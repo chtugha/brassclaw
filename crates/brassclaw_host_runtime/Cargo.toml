@@ -10,6 +10,7 @@ test-support = []
 postgres = ["dep:deadpool-postgres", "brassclaw_filesystem/postgres", "brassclaw_resources/postgres"]
 
 [dependencies]
+brassclaw_common = { path = "../brassclaw_common", version = "0.4.2" }
 async-trait = "0.1"
 base64 = "0.22.1"
 bollard = "0.18"

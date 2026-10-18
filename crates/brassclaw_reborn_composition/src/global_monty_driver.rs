@@ -52,6 +52,13 @@ pub(crate) trait CancellationAckSource: Send + Sync {
     fn current(&self) -> Result<CancellationAckSettings, AgentLoopDriverError>;
 }
 
+/// The trusted host prepares entry metadata together with its retained ports.
+/// Identity/content remain typed values; a message cannot select its own entry.
+pub(crate) struct PreparedGlobalTask {
+    pub(crate) input: TaskInput,
+    pub(crate) ports: Arc<dyn TaskPorts>,
+}
+
 /// Builds the exact admitted ports and catalogue snapshot, without executing a
 /// Tool, resolving intent or selecting a Recipe. Those operations are requested
 /// by the already-running Python orchestrator after admission.
@@ -63,8 +70,8 @@ pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
     async fn build(
         &self,
         host: Arc<MontyTaskHost>,
-        input: &TaskInput,
-    ) -> Result<Arc<dyn TaskPorts>, AgentLoopDriverError>;
+        input: TaskInput,
+    ) -> Result<PreparedGlobalTask, AgentLoopDriverError>;
 
     /// Persist the actual service settlement under this exact admitted attempt.
     /// This follows root/child/host-future acknowledgement, never finish_task's
@@ -533,14 +540,19 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
             self.remove(host.attempt())?;
             return Err(error);
         }
-        let ports = match self.ports.build(host.clone(), &input).await {
-            Ok(ports) => ports,
+        let PreparedGlobalTask { input, ports } = match self.ports.build(host.clone(), input).await
+        {
+            Ok(prepared) => prepared,
             Err(error) => {
                 drop(guard);
                 self.remove(host.attempt())?;
                 return Err(error);
             }
         };
+        let internal_entry = matches!(
+            &input.entry,
+            brassclaw_monty_host::service::TaskEntry::InternalRecipe { .. }
+        );
         // Retain before polling: a dropped drive waiter must neither discard
         // an accepted ticket nor strand a capacity-blocked preparation.
         let submission = match self.prepare_submission(&entry, input, ports)?.await {
@@ -613,8 +625,36 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
             }
         };
         match &receipt.outcome {
-            TaskOutcome::InternalCompleted { .. } => Err(failed("monty_reply_reference_invalid")),
+            TaskOutcome::InternalCompleted { receipt_ref } => {
+                if !internal_entry
+                    || !host.run_context().trusted_internal_turn
+                    || host.finalized_reply_ref().is_some()
+                    || !receipt.withheld.is_empty()
+                    || host.has_withheld_results()
+                {
+                    return Err(failed("monty_internal_result_invalid"));
+                }
+                let reference =
+                    crate::monty_result_reference::result_reference(context.run_id, receipt_ref)
+                        .ok_or_else(|| failed("monty_internal_result_invalid"))?;
+                self.settle_attempt(&entry, receipt.clone()).await?;
+                let exit = LoopExit::Completed(LoopCompleted {
+                    completion_kind: LoopCompletionKind::ResultOnly,
+                    reply_message_refs: Vec::new(),
+                    result_refs: vec![reference],
+                    final_checkpoint_id: None,
+                    usage_summary_ref: None,
+                    exit_id: LoopExitId::new(format!("exit:{}-completed", context.run_id))
+                        .map_err(|_| failed("monty_exit_reference_invalid"))?,
+                });
+                drop(guard);
+                self.remove(host.attempt())?;
+                Ok(exit)
+            }
             TaskOutcome::Completed { reply_ref } => {
+                if internal_entry {
+                    return Err(failed("monty_internal_result_invalid"));
+                }
                 let reference = LoopMessageRef::new(reply_ref.clone())
                     .map_err(|_| failed("monty_reply_reference_invalid"))?;
                 // A completed receipt records an already verified publication.

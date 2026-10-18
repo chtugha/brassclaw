@@ -74,25 +74,24 @@ pub use input_port::HostQueueLoopInputPort;
 pub use input_queue::{HostInputBatch, HostInputEnvelope, HostInputQueue, HostInputQueueError};
 pub use pg_capability_io::PgCapabilityIo;
 pub use pg_checkpoint_state_store::PgCheckpointStateStore;
-/// Source for the pre-assembled Kohai/Sempai prefix-cache bundle (§K.1.5).
-///
-/// Implementations return the full bundle text for a given `(user_id,
-/// project_id)` scope.  When the bundle is unavailable (stale, not yet
-/// assembled, or DB error) the implementation must return a compact fallback
-/// string — it must never return an error.
-///
-/// The bundle is injected as instruction snippet #0 in
-/// `ThreadBackedLoopContextPort::load_loop_context` so it becomes the first
-/// item after PRIORITY 1 (identity) and before the skill snippets.
+/// Source for complete system-prefix bytes. The legacy unscoped method may use
+/// its compatibility fallback. A retained run lookup is fallible: unavailable
+/// selected data must stop prompt assembly, never read a newer active selection.
+/// Immutable sources can use the default run method; catalogue owners override
+/// it with exact run-bound retention and scope/correlation checks.
 #[async_trait]
 pub trait SystemBundleSource: Send + Sync {
     async fn get_system_bundle(&self, user_id: &str, project_id: &str) -> String;
     /// A retained run may keep an older approved catalogue after activation.
     /// Existing immutable sources need no additional selection mechanism.
-    async fn get_system_bundle_for_run(&self, user_id: &str, project_id: &str, _run_id: &str) -> String {
-        self.get_system_bundle(user_id, project_id).await
+    async fn get_system_bundle_for_run(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        _run_id: &str,
+    ) -> Result<String, AgentLoopHostError> {
+        Ok(self.get_system_bundle(user_id, project_id).await)
     }
-
 }
 
 pub use subagent_prompt_port::{
@@ -403,8 +402,8 @@ where
             let run_id = self.run_context.run_id.to_string();
             let bundle = self
                 .selected_system_bundle
-                .get_or_init(|| source.get_system_bundle_for_run(user_id, project_id, &run_id))
-                .await;
+                .get_or_try_init(|| source.get_system_bundle_for_run(user_id, project_id, &run_id))
+                .await?;
             vec![brassclaw_turns::run_profile::LoopContextSnippet {
                 snippet_ref: "prefix:bundle:v1".to_string(),
                 model_content: bundle.clone(),

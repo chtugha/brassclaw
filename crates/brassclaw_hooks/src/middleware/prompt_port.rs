@@ -14,7 +14,7 @@
 //! `MAX_TOTAL_SAFE_SUMMARY_BYTES`). Patches that exceed the remaining budget
 //! are dropped and logged at `debug`.
 
-use std::sync::Arc;
+use std::{future::Future, sync::Arc};
 
 use async_trait::async_trait;
 use brassclaw_host_api::TenantId;
@@ -23,6 +23,7 @@ use brassclaw_turns::LoopMessageRef;
 use brassclaw_turns::run_profile::{
     AgentLoopHostError, AgentLoopHostErrorKind, LoopModelMessage, LoopPromptBundle,
     LoopPromptBundleAuthority, LoopPromptBundleRequest, LoopPromptPort, LoopRunContext,
+    PreparedLoopPromptRequest,
 };
 
 /// Narrow seam for materializing hook-emitted `msg:hook.*` content refs so
@@ -140,12 +141,15 @@ impl HookedLoopPromptPort {
     }
 }
 
-#[async_trait]
-impl LoopPromptPort for HookedLoopPromptPort {
-    async fn build_prompt_bundle(
+impl HookedLoopPromptPort {
+    async fn build_with_hooks<F, Fut>(
         &self,
-        request: LoopPromptBundleRequest,
-    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        build: F,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError>
+    where
+        F: FnOnce() -> Fut + Send,
+        Fut: Future<Output = Result<LoopPromptBundle, AgentLoopHostError>> + Send,
+    {
         let ctx = BeforePromptHookContext::new(self.tenant_id.clone(), self.snippet_byte_budget);
         let dispatched = self.dispatcher.dispatch_before_prompt(&ctx).await;
         tracing::debug!(
@@ -156,7 +160,7 @@ impl LoopPromptPort for HookedLoopPromptPort {
 
         let wrapped = wrap_patches_to_messages(&dispatched.patches, self.snippet_byte_budget)?;
 
-        let mut bundle = self.inner.build_prompt_bundle(request).await?;
+        let mut bundle = build().await?;
         if !wrapped.is_empty() {
             // Production correctness: hook-emitted `msg:hook.*` refs are
             // synthetic — they exist in the bundle but the downstream model
@@ -222,6 +226,25 @@ impl LoopPromptPort for HookedLoopPromptPort {
             authority.issue_bundle(run_context, &bundle)?;
         }
         Ok(bundle)
+    }
+}
+
+#[async_trait]
+impl LoopPromptPort for HookedLoopPromptPort {
+    async fn build_prompt_bundle(
+        &self,
+        request: LoopPromptBundleRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        self.build_with_hooks(|| self.inner.build_prompt_bundle(request))
+            .await
+    }
+
+    async fn build_prepared_prompt_bundle(
+        &self,
+        request: PreparedLoopPromptRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        self.build_with_hooks(|| self.inner.build_prepared_prompt_bundle(request))
+            .await
     }
 }
 
@@ -861,6 +884,113 @@ mod tests {
     /// downstream-store-unavailable case (disk error, store offline) and
     /// pins the contract that hook patches fail closed instead of being
     /// silently dropped from the prompt bundle.
+    #[tokio::test]
+    async fn prepared_recipe_messages_keep_hooks_materialization_and_single_use_authority() {
+        use brassclaw_host_api::{InvocationId, ThreadId};
+        use brassclaw_turns::run_profile::{
+            HostManagedLoopPromptPort, InMemoryInstructionMaterializationStore,
+            InMemoryLoopHostMilestoneSink, InMemoryRunProfileResolver,
+            InstructionBundleMaterializedMessage, InstructionMaterializationStore,
+            LoopContextBundle, LoopContextPort, LoopContextRequest, LoopInlineMessageRole,
+            PreparedLoopPromptMessage, RunProfileResolutionRequest, RunProfileResolver,
+        };
+        use brassclaw_turns::{TurnId, TurnRunId, TurnScope};
+        struct NoTranscript;
+        #[async_trait]
+        impl LoopContextPort for NoTranscript {
+            async fn load_loop_context(
+                &self,
+                _: LoopContextRequest,
+            ) -> Result<LoopContextBundle, AgentLoopHostError> {
+                panic!("prepared messages must not reload transcript")
+            }
+        }
+        struct Sink(Arc<InMemoryInstructionMaterializationStore>, LoopRunContext);
+        impl HookPromptMaterializationSink for Sink {
+            fn put(
+                &self,
+                role: &str,
+                reference: &LoopMessageRef,
+                body: String,
+            ) -> Result<(), AgentLoopHostError> {
+                self.0.put_materialized_messages(
+                    &self.1,
+                    vec![InstructionBundleMaterializedMessage {
+                        role: role.into(),
+                        content_ref: reference.clone(),
+                        model_content: body,
+                    }],
+                )
+            }
+        }
+        let context = LoopRunContext::new(
+            TurnScope::new(
+                tenant(),
+                None,
+                None,
+                ThreadId::new("prepared-hooks").unwrap(),
+            ),
+            TurnId::new(),
+            TurnRunId::new(),
+            InMemoryRunProfileResolver::default()
+                .resolve_run_profile(RunProfileResolutionRequest::interactive_default())
+                .await
+                .unwrap(),
+        );
+        let store = Arc::new(InMemoryInstructionMaterializationStore::default());
+        let authority = LoopPromptBundleAuthority::default();
+        let inner = HostManagedLoopPromptPort::new(
+            context.clone(),
+            Arc::new(NoTranscript),
+            Arc::new(InMemoryLoopHostMilestoneSink::default()),
+        )
+        .with_instruction_materialization_store(store.clone())
+        .with_prompt_bundle_authority(authority.clone());
+        let dispatcher = make_dispatcher(
+            HookTrustClass::Installed,
+            BeforePromptHookImpl::Restricted(Box::new(EnvelopeHook)),
+        );
+        let port = HookedLoopPromptPort::new(Arc::new(inner), Arc::new(dispatcher), tenant())
+            .with_materialization_sink(Arc::new(Sink(store.clone(), context.clone())))
+            .with_bundle_authority(authority.clone(), context.clone());
+        let exact = "Full task\n\n```python\nx = 'ä🙂'\n```".repeat(3000);
+        let bundle = port
+            .build_prepared_prompt_bundle(PreparedLoopPromptRequest {
+                invocation_id: InvocationId::new(),
+                metadata: default_request(),
+                messages: vec![PreparedLoopPromptMessage {
+                    role: LoopInlineMessageRole::User,
+                    content: exact.clone(),
+                }],
+            })
+            .await
+            .unwrap();
+        assert_eq!(bundle.messages.len(), 2);
+        assert_eq!(
+            store
+                .get_materialized_message(&context, &bundle.messages[0].content_ref)
+                .unwrap()
+                .unwrap()
+                .model_content,
+            exact
+        );
+        let patch = store
+            .get_materialized_message(&context, &bundle.messages[1].content_ref)
+            .unwrap()
+            .unwrap();
+        assert_eq!(patch.role, "user");
+        assert!(patch.model_content.contains("safety reminder"));
+        assert!(patch.model_content.contains("Untrusted hook content"));
+        authority
+            .authorize_latest_model_request(&context, &bundle.messages, &bundle.surface_version)
+            .unwrap();
+        assert!(
+            authority
+                .authorize_latest_model_request(&context, &bundle.messages, &bundle.surface_version)
+                .is_err()
+        );
+    }
+
     struct FailingMaterializationSink;
     impl HookPromptMaterializationSink for FailingMaterializationSink {
         fn put(

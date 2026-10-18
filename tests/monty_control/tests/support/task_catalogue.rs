@@ -228,16 +228,6 @@ impl RetainedToolPort for JsonPort {
         let retained = &self.program.bindings()[invocation.step_id()];
         assert_eq!(retained.tool(), binding.tool());
         assert_eq!(retained.python(), binding.python());
-        let record = self
-            .admission
-            .begin_tool_invocation(
-                &self.program,
-                invocation.step_id(),
-                &arguments,
-                invocation.data_limits(),
-            )
-            .await
-            .unwrap();
         let context = ExecutionContext::local_default(
             UserId::new("draft-operator").unwrap(),
             ExtensionId::new("draft-caller").unwrap(),
@@ -247,6 +237,17 @@ impl RetainedToolPort for JsonPort {
             MountView::default(),
         )
         .unwrap();
+        let record = self
+            .admission
+            .begin_tool_invocation(
+                context.invocation_id,
+                &self.program,
+                invocation.step_id(),
+                &arguments,
+                invocation.data_limits(),
+            )
+            .await
+            .unwrap();
         let actual = self
             .runtime
             .invoke(RuntimeCapabilityRequest::new(
@@ -260,7 +261,7 @@ impl RetainedToolPort for JsonPort {
             .unwrap();
         let answer = match actual {
             RuntimeCapabilityOutcome::Completed(actual) => PortAnswer::Return {
-                value: actual.output,
+                value: actual.output.into(),
             },
             outcome => panic!("unexpected real kernel outcome: {outcome:?}"),
         };

@@ -1742,6 +1742,15 @@ pub async fn list_prefix_generations(
             .await?,
     ))
 }
+pub async fn get_prefix_job(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((name, job)): Path<(String, String)>,
+) -> Result<Json<brassclaw_product_workflow::PrefixJobDetail>, WebUiV2HttpError> {
+    Ok(Json(
+        state.services().get_prefix_job(caller, &name, &job).await?,
+    ))
+}
 pub async fn get_prefix_generation(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,

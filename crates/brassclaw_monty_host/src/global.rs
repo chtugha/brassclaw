@@ -1,6 +1,6 @@
-//! Instance-root VM mechanics, isolated until the production upgrade gate.
-//! The owning service supplies verified class-10 source, durable admitted work
-//! and kernel ports. This type owns one VM, not a queue or Recipe workflow.
+//! Instance-root VM mechanics used by the supervised global service.
+//! Its owner supplies verified class-10 source, admitted work and kernel ports.
+//! This type hosts one VM; Python retains task and Recipe sequencing.
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{
@@ -962,7 +962,7 @@ impl GlobalVm {
         self.desired_workers = workers;
         self.bounds.workers = self.bounds.workers.max(workers);
         self.control.max_contexts.store(contexts, Ordering::Release);
-        self.resolve_inner(key, HostAnswer::Return(value), None)
+        self.resolve_inner(key, HostAnswer::Return(value.into()), None)
     }
 
     /// Serialized worker-only publication pump. It supplies only hosting waits
@@ -1002,7 +1002,7 @@ impl GlobalVm {
         {
             return Err(VmError::kind(VmFailure::WrongBoundary));
         }
-        let boundary = self.resolve_inner(key, HostAnswer::Return(Value::Null), None)?;
+        let boundary = self.resolve_inner(key, HostAnswer::Return(Value::Null.into()), None)?;
         let capacity = self.worker_pool_capacity()?;
         let contexts = self
             .required_pool_calls(capacity.desired)
@@ -1025,7 +1025,7 @@ impl GlobalVm {
             .iter()
             .find_map(|(key, pending)| matches!(pending.kind, CallKind::PoolWait).then_some(*key))
             .ok_or_else(|| VmError::kind(VmFailure::WrongBoundary))?;
-        self.resolve_inner(key, HostAnswer::Return(Value::Null), None)
+        self.resolve_inner(key, HostAnswer::Return(Value::Null.into()), None)
     }
 
     pub fn lifecycle(&self) -> Lifecycle {
@@ -1216,7 +1216,7 @@ impl GlobalVm {
             })
         {
             let mut error = VmError::kind(VmFailure::WrongBoundary);
-            error.rejected_answer = Some(Box::new(HostAnswer::Return(task)));
+            error.rejected_answer = Some(Box::new(HostAnswer::Return(task.into())));
             return Err(error);
         }
         let valid = task.as_object().is_some_and(|task| {
@@ -1245,12 +1245,12 @@ impl GlobalVm {
         });
         if !valid {
             let mut error = VmError::kind(VmFailure::InvalidInputs);
-            error.rejected_answer = Some(Box::new(HostAnswer::Return(task)));
+            error.rejected_answer = Some(Box::new(HostAnswer::Return(task.into())));
             return Err(error);
         }
         if budget.check().is_err() {
             let mut error = VmError::kind(VmFailure::ResourceLimit);
-            error.rejected_answer = Some(Box::new(HostAnswer::Return(task)));
+            error.rejected_answer = Some(Box::new(HostAnswer::Return(task.into())));
             return Err(error);
         }
         let binding = RootTaskAccount {
@@ -1277,7 +1277,7 @@ impl GlobalVm {
                 .expect("selected reservation")
                 .child_token = Some(binding.token.clone());
         }
-        let result = self.resolve_inner(key, HostAnswer::Return(task), Some(binding));
+        let result = self.resolve_inner(key, HostAnswer::Return(task.into()), Some(binding));
         // Conversion/validation can reject before consuming the work wait.
         // Preserve an entered/unknown attempt; only an untouched key rolls back.
         if result.is_err()
@@ -1331,7 +1331,7 @@ impl GlobalVm {
         if self.lifecycle != Lifecycle::Stopping || !self.is_work_wait(key) {
             return Err(VmError::kind(VmFailure::WrongBoundary));
         }
-        self.resolve_inner(key, HostAnswer::Return(Value::Null), None)
+        self.resolve_inner(key, HostAnswer::Return(Value::Null.into()), None)
     }
     /// Fatal supervision releases the VM, retaining pending host correlation
     /// keys for reconciliation. Dropping it does not acknowledge external effects.
@@ -1480,7 +1480,7 @@ impl GlobalVm {
             // The trusted service emits null only after the actual completion
             // owner confirmed its exact outcome. A different payload, failed
             // result or withheld answer cannot release this task's account.
-            if !matches!(&answer, HostAnswer::Return(Value::Null)) {
+            if !matches!(&answer, HostAnswer::Return(value) if value.is_null()) {
                 let mut error = VmError::kind(VmFailure::InvalidHostArguments);
                 error.rejected_answer = Some(Box::new(answer));
                 return Err(self.fail(error));

@@ -1043,6 +1043,18 @@ mod global_monty_driver;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod global_recipe_ports;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod monty_result_evidence;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod monty_result_reference;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_job_definitions;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_job_execution;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_reference_seeds;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_source_capture;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod normal_match_evidence;
@@ -1051,16 +1063,18 @@ mod normal_match_evidence;
 mod mcp_command_qualification;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_compiler_approval;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_compiler_fixture;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_compiler_validation;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_evidence;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_generation_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_generation_validation;
-#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
-mod bootstrap_compiler_fixture;
-#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
-mod bootstrap_compiler_validation;
-#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_recipe_flow;
 #[cfg(feature = "skills-db")]
 mod bootstrap_reply_approval;
@@ -1081,11 +1095,13 @@ mod monty_attempt_retention;
 mod pg_monty_admission;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod host_primitive_settings;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod model_encoding;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod monty_kernel;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod source_inspection;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
-mod host_primitive_settings;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod installed_monty_catalogue;
@@ -1098,20 +1114,20 @@ mod catalogue_source_export;
 mod component_deployment;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod pg_prefix_generation_backend;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_compiler_candidates;
 #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
 mod prefix_generation_behavior_tests;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_generation_candidates;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
-mod prefix_compiler_candidates;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_generations;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub mod prefix_installation_baseline;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
-mod prefix_model_designs;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_model_artifacts;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_model_designs;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_profile_seeds;
 #[cfg(all(test, feature = "skills-db"))]
@@ -1135,3 +1151,18 @@ mod instance_policy_loop_tests;
 
 #[cfg(all(test, feature = "postgres"))]
 mod pending_seed_metadata_tests;
+
+#[cfg(all(test, feature = "postgres"))]
+mod subagent_goal_storage_tests;
+
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+#[path = "../../../tests/monty_control/tests/support/admission.rs"]
+mod native_admission_fixture;
+
+#[cfg(all(
+    test,
+    feature = "postgres",
+    feature = "skills-db",
+    feature = "root-llm-provider"
+))]
+mod native_model_usage_tests;

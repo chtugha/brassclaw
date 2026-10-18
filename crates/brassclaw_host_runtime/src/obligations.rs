@@ -37,6 +37,8 @@ use crate::{
     http_body::{RuntimeHttpBodyStore, UnsupportedRuntimeHttpBodyStore},
 };
 
+mod output;
+
 /// Default maximum lifetime for one-shot runtime secret material staged in memory.
 pub(crate) const DEFAULT_RUNTIME_SECRET_INJECTION_TTL: Duration = Duration::from_secs(300);
 
@@ -1047,6 +1049,9 @@ fn close_reservation_once<T>(result: Result<T, ResourceError>) -> Result<(), Pro
 /// Built-in obligation handler for the current host-runtime slice.
 #[derive(Clone, Default)]
 pub struct BuiltinObligationHandler {
+    // Compile the immutable detector when the handler is constructed, outside
+    // task dispatch. Clones share it; output scanning retains no task data.
+    output_detector: Arc<LeakDetector>,
     audit_sink: Option<Arc<dyn AuditSink>>,
     security_audit_sink: Option<Arc<dyn SecurityAuditSink>>,
     network_policies: Option<Arc<NetworkObligationPolicyStore>>,
@@ -1491,41 +1496,37 @@ impl CapabilityObligationHandler for BuiltinObligationHandler {
             });
         }
 
-        let mut dispatch = request.dispatch.clone();
-        if request
+        let redact = request
             .obligations
             .iter()
-            .any(|obligation| matches!(obligation, Obligation::RedactOutput))
-        {
-            dispatch.output = match redact_output(dispatch.output) {
-                Ok(value) => value,
-                Err(error) => {
-                    // Leak-detector blocked: record the boundary decision
-                    // before propagating. The event is payload-free by
-                    // construction — only the boundary, decision, and a
-                    // stable code reach the sink. The original output never
-                    // leaves the type system.
-                    if let Some(sink) = &self.security_audit_sink {
-                        let event = SecurityAuditEvent::new(
-                            SecurityBoundary::LeakDetector,
-                            SecurityDecision::Blocked,
-                            LEAK_REDACT_FAILED_CODE,
-                        )
-                        .with_capability_id(request.capability_id.clone())
-                        .with_scope(request.context.resource_scope.clone());
-                        sink.record(event);
-                    }
-                    return Err(error);
+            .any(|obligation| matches!(obligation, Obligation::RedactOutput));
+        let output = match output::copy_output(
+            &request.dispatch.output,
+            redact.then_some(self.output_detector.as_ref()),
+        ) {
+            Ok(output) => output,
+            Err(error) => {
+                // Retain the existing payload-free rejection event. Copied
+                // subtrees are dismantled iteratively even on a late failure.
+                if redact && let Some(sink) = &self.security_audit_sink {
+                    let event = SecurityAuditEvent::new(
+                        SecurityBoundary::LeakDetector,
+                        SecurityDecision::Blocked,
+                        LEAK_REDACT_FAILED_CODE,
+                    )
+                    .with_capability_id(request.capability_id.clone())
+                    .with_scope(request.context.resource_scope.clone());
+                    sink.record(event);
                 }
-            };
-            dispatch.display_preview = None;
-        }
+                return Err(error);
+            }
+        };
 
-        let output_bytes = dispatch_output_bytes(&dispatch.output)?;
+        let output_bytes = dispatch_output_bytes(output.value())?;
         for obligation in request.obligations {
             if let Obligation::EnforceResourceCeiling { ceiling } = obligation {
                 validate_supported_resource_ceiling(ceiling)?;
-                validate_usage_within_ceiling(&dispatch.usage, output_bytes, ceiling)?;
+                validate_usage_within_ceiling(&request.dispatch.usage, output_bytes, ceiling)?;
             }
         }
         for obligation in request.obligations {
@@ -1550,7 +1551,21 @@ impl CapabilityObligationHandler for BuiltinObligationHandler {
             self.emit_audit_after(&request, output_bytes).await?;
         }
 
-        Ok(dispatch)
+        // Keep output guarded through every fallible check and await above.
+        // Only a successful completion transfers the owned value to its caller.
+        Ok(CapabilityDispatchResult {
+            capability_id: request.dispatch.capability_id.clone(),
+            provider: request.dispatch.provider.clone(),
+            runtime: request.dispatch.runtime,
+            display_preview: if redact {
+                None
+            } else {
+                request.dispatch.display_preview.clone()
+            },
+            usage: request.dispatch.usage.clone(),
+            receipt: request.dispatch.receipt.clone(),
+            output: output.into_value(),
+        })
     }
 }
 
@@ -2001,48 +2016,13 @@ fn output_obligation_failed() -> CapabilityObligationError {
 }
 
 fn dispatch_output_bytes(output: &serde_json::Value) -> Result<u64, CapabilityObligationError> {
-    serde_json::to_vec(output)
-        .map(|bytes| bytes.len() as u64)
-        .map_err(|_| output_obligation_failed())
+    brassclaw_common::json::count_json_bytes(output, None).map_err(|_| output_obligation_failed())
 }
 
-/// Security-audit reason code emitted when [`redact_output`] rejects output
+/// Security-audit reason code emitted when output redaction rejects output
 /// because the leak detector matched. Stable grep target for SRE pattern
 /// matching across durable security-audit logs.
 pub const LEAK_REDACT_FAILED_CODE: &str = "leak_redact_failed";
-
-fn redact_output(
-    output: serde_json::Value,
-) -> Result<serde_json::Value, CapabilityObligationError> {
-    match output {
-        serde_json::Value::String(value) => {
-            redact_output_string(value).map(serde_json::Value::String)
-        }
-        serde_json::Value::Array(values) => values
-            .into_iter()
-            .map(redact_output)
-            .collect::<Result<Vec<_>, _>>()
-            .map(serde_json::Value::Array),
-        serde_json::Value::Object(entries) => {
-            let mut redacted = serde_json::Map::with_capacity(entries.len());
-            for (key, value) in entries {
-                let key = redact_output_string(key)?;
-                let value = redact_output(value)?;
-                if redacted.insert(key, value).is_some() {
-                    return Err(output_obligation_failed());
-                }
-            }
-            Ok(serde_json::Value::Object(redacted))
-        }
-        value => Ok(value),
-    }
-}
-
-fn redact_output_string(value: String) -> Result<String, CapabilityObligationError> {
-    LeakDetector::new()
-        .scan_and_clean(&value)
-        .map_err(|_| output_obligation_failed())
-}
 
 fn audit_before_record(request: &CapabilityObligationRequest<'_>) -> AuditEnvelope {
     AuditEnvelope {

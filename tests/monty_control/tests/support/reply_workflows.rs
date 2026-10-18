@@ -422,9 +422,11 @@ impl RetainedToolPort for Tools {
             self.kernel.policy.tool_identity(&capability).unwrap(),
             Some(binding.tool().uuid)
         );
+        let context = execution(&self.host, &self.kernel);
         let record = self
             .admission
             .begin_tool_invocation(
+                context.invocation_id,
                 &self.program,
                 invocation.step_id(),
                 &arguments,
@@ -434,7 +436,7 @@ impl RetainedToolPort for Tools {
             .unwrap();
         let actual = self.kernel.handles[binding.capability_id()]
             .invoke(RuntimeCapabilityRequest::new(
-                execution(&self.host, &self.kernel),
+                context,
                 capability,
                 ResourceEstimate::default(),
                 arguments,
@@ -444,7 +446,7 @@ impl RetainedToolPort for Tools {
             .unwrap();
         let answer = match &actual {
             RuntimeCapabilityOutcome::Completed(actual) => PortAnswer::Return {
-                value: actual.output.clone(),
+                value: actual.output.clone().into(),
             },
             RuntimeCapabilityOutcome::Failed(failed) => PortAnswer::TerminalError {
                 reason_kind: format!("retained_tool_{}", failed.kind.as_str()),

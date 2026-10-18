@@ -7869,8 +7869,8 @@ async fn successful_child_submission_releases_its_prepared_identity() {
         parent_prepared,
         "the supported parent-to-child handoff remains valid"
     );
-    // The existing public compatibility port has a 4096-entry default. A
-    // submitted child must release its slot before new preparations fill it.
+    // Subsequent preparation/abort cycles retain independent identities;
+    // successful child handoff must not change their scope fences.
     let mut prepared = Vec::new();
     for _ in 0..4096 {
         prepared.push(
@@ -7887,4 +7887,63 @@ async fn successful_child_submission_releases_its_prepared_identity() {
         .prepare_turn(scope("prepared-after-abort"))
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn prepared_identities_cross_the_old_count_cap_without_losing_scope_fences() {
+    let (coordinator, store) = coordinator();
+    let origin = scope("prepared-large-origin");
+    let mut identities = Vec::new();
+    for _ in 0..4097 {
+        identities.push(coordinator.prepare_turn(origin.clone()).await.unwrap());
+    }
+    let first = identities[0];
+    let last = identities[identities.len() - 1];
+    assert_ne!(first, last);
+    for (id, key) in [(first, "old"), (last, "new")] {
+        let mut foreign = submit_request("prepared-large-foreign", key);
+        foreign.requested_run_id = Some(id);
+        assert!(matches!(
+            coordinator.submit_turn(foreign).await,
+            Err(TurnError::Unauthorized)
+        ));
+    }
+    assert!(store.persistence_snapshot().runs.is_empty());
+
+    // Abort every unrelated preparation without evicting either endpoint.
+    for id in identities[1..identities.len() - 1].iter().copied() {
+        coordinator.abort_prepared_turn(id).await.unwrap();
+    }
+    let mut invalid = submit_request("prepared-large-origin", "invalid-profile");
+    invalid.requested_run_id = Some(first);
+    invalid.requested_run_profile = Some(RunProfileRequest::new("missing-profile").unwrap());
+    assert!(coordinator.submit_turn(invalid).await.is_err());
+    let mut still_foreign = submit_request("prepared-large-foreign", "old-after-aborts");
+    still_foreign.requested_run_id = Some(first);
+    assert!(matches!(
+        coordinator.submit_turn(still_foreign).await,
+        Err(TurnError::Unauthorized)
+    ));
+    assert!(store.persistence_snapshot().runs.is_empty());
+
+    coordinator.abort_prepared_turn(first).await.unwrap();
+    coordinator.abort_prepared_turn(first).await.unwrap();
+    let mut correct = submit_request("prepared-large-origin", "retained-last");
+    correct.requested_run_id = Some(last);
+    assert_eq!(
+        accepted_run_id(&coordinator.submit_turn(correct).await.unwrap()),
+        last
+    );
+    // A fully drained ledger still permits fresh identities and valid admission.
+    let fresh = coordinator
+        .prepare_turn(scope("prepared-large-fresh"))
+        .await
+        .unwrap();
+    let mut next = submit_request("prepared-large-fresh", "after-drain");
+    next.requested_run_id = Some(fresh);
+    assert_eq!(
+        accepted_run_id(&coordinator.submit_turn(next).await.unwrap()),
+        fresh
+    );
+    assert_eq!(store.persistence_snapshot().runs.len(), 2);
 }

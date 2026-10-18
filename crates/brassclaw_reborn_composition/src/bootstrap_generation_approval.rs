@@ -32,6 +32,7 @@ use std::{
 use tokio_postgres::{IsolationLevel, Transaction};
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub(super) struct BootstrapGenerationApproval {
     declaration: AssociationApprovalDeclaration,
     subject: Arc<Subject>,

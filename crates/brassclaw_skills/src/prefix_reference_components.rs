@@ -25,3 +25,18 @@ pub fn reference_render_draft(id: Uuid) -> Result<ComponentRevisionDraft, Revisi
             "constants":[],"imports":[],"dependencies":[],"default_export":"compile_reference"}},
         "dependencies":[],"association":null}).to_string())
 }
+
+/// Exact shared offline/Recipe adapter. This prepares literal template data;
+/// supported-target qualification and activation are separate.
+pub fn template_adapter_draft(id: Uuid) -> Result<ComponentRevisionDraft, RevisionError> {
+    let string = json!({"type":"string","required":true,"checks":[]});
+    let body = format!(
+        "{}\n\ndef build_prefix_template(inputs):\n    return inject_reference(inputs['reference'], inputs['original_template'])\n",
+        include_str!("../../../scripts/prefix/prefix_template.py")
+    );
+    ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":id,"class_code":22,
+        "document":{"name":"build-ornith-prefix-template","description":"Prepare exact Ornith/Qwen stable-leading reference injection bytes with the shared offline adapter. Reject changed template anchors; no fallback, tokenization, serving edit or cache claim.",
+            "content":body,"includes":[],"dependency_registry":null,"input_contract":{"reference":string,"original_template":string},"result_contract":{"type":"string"},
+            "preload":{"format":"python-preload/2","exports":{"build_prefix_template":{"symbol":"build_prefix_template","parameters":["inputs"],"mapping":true}},"private_functions":{"inject_reference":["full","original"]},"constants":[],"imports":["json"],"dependencies":[],"default_export":"build_prefix_template"}},
+        "dependencies":[],"association":null}).to_string())
+}

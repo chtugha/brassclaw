@@ -22,6 +22,13 @@ Supported built-in behavior:
 - `RedactOutput`: sanitizes dispatch output string values and object keys before publication, failing closed if redacted keys collide.
 - `EnforceOutputLimit`: fails before publication if serialized output exceeds the limit.
 
+For instance Tool policy, an unknown advisory output-byte estimate does not
+reject an otherwise valid dispatch: the prepared obligations still enforce the
+actual complete result after redaction. A known estimate above the current
+ceiling is rejected before effects. Other estimate requirements and legacy
+authorizers are unchanged. Result rejection does not undo an operation already
+performed and must never be interpreted as proof that a write did not occur.
+
 ## Isolation rules
 
 - `NetworkObligationPolicyStore` keys policies by full `ResourceScope` plus capability id and consumes entries with `take(...)`.

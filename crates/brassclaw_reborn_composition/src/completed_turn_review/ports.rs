@@ -416,7 +416,7 @@ impl ReviewTools {
                 if classified.as_ref().is_some_and(|value| value == &json!({
                     "format":"completed-turn-review-primitive-failure/1","reason_kind":"review_operation_failed"})) {
                     PortAnswer::TerminalError { reason_kind: "review_operation_failed".into() }
-                } else { PortAnswer::Return { value: value.output } }
+                } else { PortAnswer::Return { value: value.output.into() } }
             }
             Ok(RuntimeCapabilityOutcome::Failed(value)) => PortAnswer::TerminalError {
                 reason_kind: format!("review_{}", value.kind.as_str()),

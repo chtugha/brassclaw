@@ -106,6 +106,21 @@ impl LoopPromptPort for SubagentLoopPromptPort {
         let request = self.composer.compose(&self.run_context, request).await?;
         self.inner.build_prompt_bundle(request).await
     }
+
+    async fn build_prepared_prompt_bundle(
+        &self,
+        mut request: brassclaw_turns::run_profile::PreparedLoopPromptRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        // The Recipe supplies complete message data, but cannot widen the
+        // child's host-owned capability surface by choosing this API.
+        let material = self
+            .composer
+            .source
+            .material_for_run(&self.run_context)
+            .await?;
+        restrict_capability_view(&mut request.metadata, material.allowed_capabilities);
+        self.inner.build_prepared_prompt_bundle(request).await
+    }
 }
 
 impl SubagentPromptComposer {
@@ -136,14 +151,18 @@ impl SubagentPromptComposer {
                 goal_message,
             ],
         );
-        let capability_view = intersect_model_capability_view(
-            material.allowed_capabilities,
-            request.capability_view.take(),
-        );
-        log_dropped_subagent_prompt_capabilities(&capability_view.dropped_capabilities);
-        request.capability_view = Some(capability_view.view);
+        restrict_capability_view(&mut request, material.allowed_capabilities);
         Ok(request)
     }
+}
+
+fn restrict_capability_view(
+    request: &mut LoopPromptBundleRequest,
+    allowed: BTreeSet<CapabilityId>,
+) {
+    let capability_view = intersect_model_capability_view(allowed, request.capability_view.take());
+    log_dropped_subagent_prompt_capabilities(&capability_view.dropped_capabilities);
+    request.capability_view = Some(capability_view.view);
 }
 
 pub fn materialize_goal_framing_message() -> Result<LoopInlineMessage, AgentLoopHostError> {
@@ -258,6 +277,136 @@ mod tests {
 
     fn cap(value: &str) -> CapabilityId {
         CapabilityId::new(value).expect("valid test capability")
+    }
+
+    #[tokio::test]
+    async fn prepared_child_input_keeps_host_owned_capability_narrowing() {
+        use brassclaw_host_api::{InvocationId, RuntimeKind, TenantId, ThreadId};
+        use brassclaw_turns::run_profile::{
+            CapabilityDescriptorView, CapabilitySurfaceVersion, ConcurrencyHint,
+            HostManagedLoopPromptPort, InMemoryInstructionMaterializationStore,
+            InMemoryLoopHostMilestoneSink, InMemoryRunProfileResolver,
+            InstructionMaterializationStore, LoopContextBundle, LoopContextPort,
+            LoopContextRequest, PreparedLoopPromptMessage, PreparedLoopPromptRequest, PromptMode,
+            RunProfileResolutionRequest, RunProfileResolver, VisibleCapabilitySurface,
+        };
+        use brassclaw_turns::{TurnId, TurnScope};
+        struct Material;
+        #[async_trait]
+        impl SubagentPromptMaterialSource for Material {
+            async fn material_for_run(
+                &self,
+                _: &LoopRunContext,
+            ) -> Result<SubagentPromptMaterial, AgentLoopHostError> {
+                Ok(SubagentPromptMaterial {
+                    direction_markdown: "already selected by the consuming Recipe".into(),
+                    goal: SubagentPromptGoal {
+                        task: "unused task data".repeat(12000),
+                        handoff: None,
+                    },
+                    allowed_capabilities: BTreeSet::from([cap("demo.read")]),
+                })
+            }
+        }
+        struct NoTranscript;
+        #[async_trait]
+        impl LoopContextPort for NoTranscript {
+            async fn load_loop_context(
+                &self,
+                _: LoopContextRequest,
+            ) -> Result<LoopContextBundle, AgentLoopHostError> {
+                panic!("complete prepared input must not load another transcript")
+            }
+        }
+        let context = LoopRunContext::new(
+            TurnScope::new(
+                TenantId::new("child-prompt").unwrap(),
+                None,
+                None,
+                ThreadId::new("child-prompt").unwrap(),
+            ),
+            TurnId::new(),
+            TurnRunId::new(),
+            InMemoryRunProfileResolver::default()
+                .resolve_run_profile(RunProfileResolutionRequest::interactive_default())
+                .await
+                .unwrap(),
+        );
+        let surface = VisibleCapabilitySurface {
+            version: CapabilitySurfaceVersion::new("child-surface").unwrap(),
+            descriptors: ["demo.read", "demo.write"]
+                .into_iter()
+                .map(|id| CapabilityDescriptorView {
+                    capability_id: cap(id),
+                    provider: None,
+                    runtime: RuntimeKind::FirstParty,
+                    safe_name: id.into(),
+                    safe_description: "A test operation".into(),
+                    concurrency_hint: ConcurrencyHint::Exclusive,
+                    parameters_schema: serde_json::json!({"type":"object"}),
+                })
+                .collect(),
+        };
+        let store = Arc::new(InMemoryInstructionMaterializationStore::default());
+        let inner = HostManagedLoopPromptPort::new(
+            context.clone(),
+            Arc::new(NoTranscript),
+            Arc::new(InMemoryLoopHostMilestoneSink::default()),
+        )
+        .with_current_surface(surface.clone())
+        .with_instruction_materialization_store(store.clone());
+        let port = SubagentLoopPromptPort::new(
+            Arc::new(inner),
+            context.clone(),
+            SubagentPromptComposer::new(Arc::new(Material)),
+        );
+        let exact = "Full child task\n\n```python\nx = 'ä🙂'\n```".repeat(3000);
+        let bundle = port
+            .build_prepared_prompt_bundle(PreparedLoopPromptRequest {
+                invocation_id: InvocationId::new(),
+                metadata: LoopPromptBundleRequest {
+                    mode: PromptMode::TextOnly,
+                    context_cursor: None,
+                    surface_version: Some(surface.version),
+                    capability_view: Some(LoopModelCapabilityView {
+                        visible_capability_ids: vec![cap("demo.read"), cap("demo.write")],
+                    }),
+                    checkpoint_state_ref: None,
+                    max_messages: None,
+                    inline_messages: vec![],
+                    recipe_hint: None,
+                },
+                messages: vec![PreparedLoopPromptMessage {
+                    role: LoopInlineMessageRole::User,
+                    content: exact.clone(),
+                }],
+            })
+            .await
+            .unwrap();
+        let materialized = bundle
+            .messages
+            .iter()
+            .map(|message| {
+                store
+                    .get_materialized_message(&context, &message.content_ref)
+                    .unwrap()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            materialized
+                .iter()
+                .any(|message| message.role == "user" && message.model_content == exact)
+        );
+        let definitions = materialized
+            .iter()
+            .filter(|message| message.role == "system")
+            .map(|message| message.model_content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(definitions.contains("demo.read"));
+        assert!(!definitions.contains("demo.write"));
+        assert!(!definitions.contains("unused task data"));
     }
 
     #[test]

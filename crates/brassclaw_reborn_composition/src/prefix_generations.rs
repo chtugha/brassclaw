@@ -315,6 +315,14 @@ pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> 
         } else if files.contains_key("compiler/prefix_units.py") {
             return Err(bad());
         }
+        if let Some(adapter) = manifest["compiler"].get("template_adapter_sha256") {
+            hash(adapter)?;
+            if files.get("compiler/prefix_template.py") != Some(adapter) {
+                return Err(bad());
+            }
+        } else if files.contains_key("compiler/prefix_template.py") {
+            return Err(bad());
+        }
         if let Some(worker) = manifest["compiler"].get("worker_sha256") {
             hash(worker)?;
             if files.get("compiler/worker.py") != Some(worker) {

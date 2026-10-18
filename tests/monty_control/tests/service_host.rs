@@ -1896,7 +1896,7 @@ async fn reduced_value_limit_preserves_completed_host_result_and_fails_only_its_
     assert!(matches!(receipt.outcome, TaskOutcome::Failed { .. }));
     assert_eq!(receipt.withheld.len(), 1);
     assert!(
-        matches!(&receipt.withheld[0].answer, HostAnswer::Return(Value::String(value)) if value == &content)
+        matches!(&receipt.withheld[0].answer, HostAnswer::Return(value) if value.as_str() == Some(content.as_str()))
     );
     assert_eq!(ports.reads.load(Ordering::Acquire), 1);
     assert_eq!(ports.writes.load(Ordering::Acquire), 0);

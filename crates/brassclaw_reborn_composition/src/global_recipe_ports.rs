@@ -85,20 +85,20 @@ pub(crate) trait RecipeCapacitySource: Send + Sync {
     async fn current(&self) -> Result<RecipeCapacity, PortFailure>;
 }
 
-struct Selection {
+pub(super) struct Selection {
     selected: SelectedMontyRecipe,
     program_ref: String,
-    execution: Mutex<Option<RetainedRecipeExecution>>,
+    pub(super) execution: Mutex<Option<RetainedRecipeExecution>>,
 }
 #[derive(Default)]
-struct State {
+pub(super) struct State {
     task: Option<TaskHandle>,
     intent_started: bool,
     // Errors retain this state; they are never reported as No-Match.
-    intent_outcome: Option<&'static str>,
+    pub(super) intent_outcome: Option<&'static str>,
     completed_reply: Option<(String, String)>,
     completed_receipt: Option<String>,
-    recipes: BTreeMap<Uuid, Arc<Selection>>,
+    pub(super) recipes: BTreeMap<Uuid, Arc<Selection>>,
     selection_order: Vec<Uuid>,
     checked_capacity: Option<RecipeCapacity>,
 }
@@ -114,7 +114,7 @@ pub(crate) struct GlobalRecipePorts {
     internal: Option<Arc<dyn InternalRecipeSource>>,
     observe_behavior: bool,
     capacity: Arc<dyn RecipeCapacitySource>,
-    state: Mutex<State>,
+    pub(super) state: Mutex<State>,
     task_context: Mutex<Option<RetainedTaskContext>>,
     fenced: std::sync::atomic::AtomicBool,
     dependency_parent: Option<Arc<dyn TaskPorts>>,
@@ -159,62 +159,35 @@ impl GlobalRecipePorts {
         }
     }
 
-    pub(crate) fn with_dependency_parent(mut self, parent: Option<Arc<dyn TaskPorts>>) -> Self {
-        self.dependency_parent = parent;
-        self
-    }
-
-    /// Private bounded pre-readiness behavior qualification only. The admitted
-    /// claim and normal kernel/journal checks remain live. No installed API or
-    /// catalogue row can request observer execution or construct this port.
-    #[cfg(test)]
-    pub(super) fn for_bootstrap(
-        admitted: &crate::bootstrap_validation::Admitted,
+    /// Production internal work retains the normal live instance owner/fence.
+    /// Only a host-validated durable definition can supply the source.
+    pub(crate) fn for_internal(
+        host: Arc<MontyTaskHost>,
+        admission: Arc<PgMontyAdmission>,
         source: Arc<dyn InternalRecipeSource>,
+        ownership: Option<crate::global_monty_owner::GlobalOwnerCheck>,
+        observe_behavior: bool,
         capacity: Arc<dyn RecipeCapacitySource>,
     ) -> Self {
         Self {
-            host: admitted.host.clone(),
-            admission: admitted.admission.clone(),
+            host,
+            admission,
             catalogue: None,
             user_input: source.reference().to_owned(),
-            ownership: None,
+            ownership,
             internal: Some(source),
-            observe_behavior: true,
-            dependency_parent: None,
+            observe_behavior,
             capacity,
             state: Mutex::new(State::default()),
             task_context: Mutex::new(None),
             fenced: std::sync::atomic::AtomicBool::new(false),
+            dependency_parent: None,
         }
     }
 
-    /// Read actual immutable observations after quiescence. A callback cannot
-    /// alter the executor, approve code or advance/replay a workflow step.
-    #[cfg(test)]
-    pub(super) async fn observe_internal_execution<T>(
-        &self,
-        observe: impl FnOnce(&RetainedRecipeExecution) -> T,
-    ) -> Result<T, PortFailure> {
-        if self.internal.is_none() {
-            return Err(failure("internal_recipe_unavailable"));
-        }
-        let selection = {
-            let state = self.state.lock().await;
-            if state.recipes.len() != 1 {
-                return Err(failure("internal_recipe_selection_invalid"));
-            }
-            state
-                .recipes
-                .values()
-                .next()
-                .cloned()
-                .ok_or_else(|| failure("internal_recipe_selection_invalid"))?
-        };
-        let execution = selection.execution.lock().await;
-        Ok(observe(execution.as_ref().ok_or_else(|| {
-            failure("internal_recipe_execution_missing")
-        })?))
+    pub(crate) fn with_dependency_parent(mut self, parent: Option<Arc<dyn TaskPorts>>) -> Self {
+        self.dependency_parent = parent;
+        self
     }
 
     async fn check_ownership(&self) -> Result<(), PortFailure> {
@@ -267,6 +240,14 @@ impl GlobalRecipePorts {
         let mut progress = Vec::new();
         let mut complete = true;
         for selection in recipes {
+            if selection
+                .selected
+                .tools
+                .as_ref()
+                .is_some_and(|tools| tools.has_uncommitted_native_results())
+            {
+                return Err(failure("native_result_evidence_uncommitted"));
+            }
             let selected = selection
                 .selected
                 .inspected

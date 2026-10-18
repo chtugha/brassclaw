@@ -64,6 +64,7 @@ async fn blocked_dispatch_intent_allows_cancel_and_rolls_back_before_effects() {
         async move {
             admission
                 .begin_tool_invocation(
+                    brassclaw_host_api::InvocationId::new(),
                     &program,
                     "0:2",
                     &json!({"data":"{\"text\":\"held\"}"}),
@@ -128,6 +129,7 @@ async fn blocked_dispatch_intent_allows_cancel_and_rolls_back_before_effects() {
         admitted
             .admission
             .begin_tool_invocation(
+                brassclaw_host_api::InvocationId::new(),
                 &program,
                 "0:2",
                 &json!({"data":"{}"}),
@@ -151,7 +153,7 @@ async fn blocked_dispatch_intent_allows_cancel_and_rolls_back_before_effects() {
 mod admission;
 #[path = "../../../crates/brassclaw_reborn/tests/common/native_pg.rs"]
 mod native_pg;
-#[path = "../../../crates/brassclaw_reborn_composition/src/pg_monty_admission.rs"]
+#[path = "../../../crates/brassclaw_reborn_composition/src/pg_monty_admission_core.rs"]
 mod pg_monty_admission;
 #[path = "support/retained_kernel.rs"]
 mod retained_kernel;
@@ -212,10 +214,20 @@ impl RetainedToolPort for KernelPort {
         let selected = &self.prepared.bindings()[invocation.step_id()];
         assert_eq!(selected.tool(), binding.tool());
         assert_eq!(selected.python(), binding.python());
+        let context = ExecutionContext::local_default(
+            UserId::new("draft-operator").unwrap(),
+            ExtensionId::new("draft-caller").unwrap(),
+            RuntimeKind::FirstParty,
+            TrustClass::FirstParty,
+            CapabilitySet::default(),
+            MountView::default(),
+        )
+        .unwrap();
         let record = self
             .admitted
             .admission
             .begin_tool_invocation(
+                context.invocation_id,
                 &self.prepared,
                 invocation.step_id(),
                 &arguments,
@@ -241,15 +253,6 @@ impl RetainedToolPort for KernelPort {
                 .publish(1, retained_kernel::snapshot(2, false, self.tool))
                 .unwrap();
         }
-        let context = ExecutionContext::local_default(
-            UserId::new("draft-operator").unwrap(),
-            ExtensionId::new("draft-caller").unwrap(),
-            RuntimeKind::FirstParty,
-            TrustClass::FirstParty,
-            CapabilitySet::default(),
-            MountView::default(),
-        )
-        .unwrap();
         let outcome = self
             .runtime
             .invoke(RuntimeCapabilityRequest::new(
@@ -265,7 +268,7 @@ impl RetainedToolPort for KernelPort {
             RuntimeCapabilityOutcome::Completed(completed) => {
                 self.outcomes.lock().unwrap().push("completed");
                 PortAnswer::Return {
-                    value: completed.output,
+                    value: completed.output.into(),
                 }
             }
             RuntimeCapabilityOutcome::Failed(failure) => {
@@ -419,7 +422,7 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
             .unwrap();
         exchange(&transport, WorkerCommand::Defer { key }).await;
         let root = exchange(&transport, WorkerCommand::Resolve { key, answer: PortAnswer::Return { value: json!({"ok":true,"program_ref":reference,
-            "steps":prepared.program().steplist.iter().map(|s| json!({"step_id":s.step_id})).collect::<Vec<_>>(),"inputs":inputs,"flow":prepared.inputs().monty_flow().unwrap()}) } }).await;
+            "steps":prepared.program().steplist.iter().map(|s| json!({"step_id":s.step_id})).collect::<Vec<_>>(),"inputs":inputs,"flow":prepared.inputs().monty_flow().unwrap()}).into() } }).await;
         let mut root = progress(&transport, root).await;
         let inspected = Arc::new(
             InspectedRetainedProgram::inspect(
@@ -588,7 +591,7 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
                 WorkerCommand::Resolve {
                     key,
                     answer: PortAnswer::Return {
-                        value: json!({"ok":true,"return_value":value}),
+                        value: json!({"ok":true,"return_value":value}).into(),
                     },
                 },
             )
@@ -627,6 +630,7 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
             admitted_fixture
                 .admission
                 .begin_tool_invocation(
+                    brassclaw_host_api::InvocationId::new(),
                     &prepared,
                     "0:2",
                     &json!({"data":inputs["data"],"operation":"parse"}),
@@ -641,6 +645,7 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
                 admitted_fixture
                     .admission
                     .begin_tool_invocation(
+                        brassclaw_host_api::InvocationId::new(),
                         &prepared,
                         "0:4",
                         &json!({"data":inputs["data"],"operation":"parse"}),
@@ -825,7 +830,7 @@ async fn recipe_children_share_one_task_parent_with_explicit_result_handoff() {
         root = progress(&transport, exchange(&transport, WorkerCommand::Resolve { key, answer: PortAnswer::Return {
             value: json!({"ok":true,"program_ref":reference,
             "steps":prepared.program().steplist.iter().map(|s| json!({"step_id":s.step_id})).collect::<Vec<_>>(),
-            "inputs":inputs,"flow":prepared.inputs().monty_flow().unwrap()})
+            "inputs":inputs,"flow":prepared.inputs().monty_flow().unwrap()}).into()
         }}).await).await;
         let inspected = Arc::new(
             InspectedRetainedProgram::inspect(
@@ -872,7 +877,7 @@ async fn recipe_children_share_one_task_parent_with_explicit_result_handoff() {
                     WorkerCommand::Resolve {
                         key,
                         answer: PortAnswer::Return {
-                            value: json!({"ok":true,"return_value":actual}),
+                            value: json!({"ok":true,"return_value":actual}).into(),
                         },
                     },
                 )
@@ -992,3 +997,6 @@ async fn selected_export_preflight_rejects_unsafe_libraries_before_execution() {
         "invalid libraries must not record a dispatch intent or invoke a Tool"
     );
 }
+
+#[path = "../../../crates/brassclaw_reborn_composition/src/monty_result_reference.rs"]
+mod monty_result_reference;

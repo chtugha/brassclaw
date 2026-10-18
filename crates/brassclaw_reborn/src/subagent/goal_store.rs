@@ -1,12 +1,9 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
 use async_trait::async_trait;
 use brassclaw_turns::{TurnRunId, TurnScope};
 use serde::{Deserialize, Serialize};
-
-pub const MAX_GOAL_ENTRIES: usize = 4096;
-pub const MAX_GOAL_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubagentGoal {
@@ -15,18 +12,10 @@ pub struct SubagentGoal {
     pub handoff: Option<String>,
 }
 
-impl SubagentGoal {
-    fn byte_len(&self) -> usize {
-        serde_json::to_vec(self).map_or(usize::MAX, |bytes| bytes.len())
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SubagentGoalStoreError {
     #[error("subagent goal for run {run_id} not found")]
     NotFound { run_id: TurnRunId },
-    #[error("subagent goal payload too large: {bytes} bytes (max {max})")]
-    PayloadTooLarge { bytes: usize, max: usize },
     #[error("subagent goal for run {run_id} already stored")]
     DuplicateKey { run_id: TurnRunId },
     #[error("subagent goal store backend failed: {reason}")]
@@ -55,6 +44,9 @@ pub trait SubagentGoalStore: Send + Sync {
     ) -> Result<(), SubagentGoalStoreError>;
 }
 
+/// Retain every accepted goal until its owner explicitly deletes it. The
+/// historical type name does not impose a second count or payload quota;
+/// admission/execution bounds belong to the caller. Never evict a live goal.
 #[derive(Default)]
 pub struct InMemoryBoundedSubagentGoalStore {
     inner: Mutex<GoalStoreInner>,
@@ -63,7 +55,6 @@ pub struct InMemoryBoundedSubagentGoalStore {
 #[derive(Default)]
 struct GoalStoreInner {
     goals: HashMap<GoalKey, SubagentGoal>,
-    insertion_order: VecDeque<GoalKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -92,31 +83,18 @@ impl InMemoryBoundedSubagentGoalStore {
         run_id: TurnRunId,
         goal: SubagentGoal,
     ) -> Result<(), SubagentGoalStoreError> {
-        let bytes = goal.byte_len();
-        if bytes > MAX_GOAL_BYTES {
-            return Err(SubagentGoalStoreError::PayloadTooLarge {
-                bytes,
-                max: MAX_GOAL_BYTES,
-            });
-        }
-        let mut inner = lock(&self.inner);
+        let mut inner = lock(&self.inner)?;
         let key = GoalKey::new(scope, run_id);
         if inner.goals.contains_key(&key) {
             return Err(SubagentGoalStoreError::DuplicateKey { run_id });
         }
-        if inner.goals.len() >= MAX_GOAL_ENTRIES {
-            while let Some(oldest) = inner.insertion_order.pop_front() {
-                if inner.goals.remove(&oldest).is_some() {
-                    tracing::debug!(
-                        evicted_run_id = %oldest.run_id,
-                        "subagent goal store at capacity; evicted oldest goal"
-                    );
-                    break;
-                }
-            }
-        }
-        inner.goals.insert(key.clone(), goal);
-        inner.insertion_order.push_back(key);
+        inner
+            .goals
+            .try_reserve(1)
+            .map_err(|_| SubagentGoalStoreError::Backend {
+                reason: "subagent goal storage capacity unavailable".into(),
+            })?;
+        inner.goals.insert(key, goal);
         Ok(())
     }
 
@@ -125,7 +103,7 @@ impl InMemoryBoundedSubagentGoalStore {
         scope: &TurnScope,
         run_id: TurnRunId,
     ) -> Result<SubagentGoal, SubagentGoalStoreError> {
-        let inner = lock(&self.inner);
+        let inner = lock(&self.inner)?;
         inner
             .goals
             .get(&GoalKey::new(scope, run_id))
@@ -133,21 +111,22 @@ impl InMemoryBoundedSubagentGoalStore {
             .ok_or(SubagentGoalStoreError::NotFound { run_id })
     }
 
-    fn delete_inner(&self, scope: &TurnScope, run_id: TurnRunId) {
-        let mut inner = lock(&self.inner);
-        let key = GoalKey::new(scope, run_id);
-        inner.goals.remove(&key);
-        inner.insertion_order.retain(|queued| *queued != key);
+    fn delete_inner(
+        &self,
+        scope: &TurnScope,
+        run_id: TurnRunId,
+    ) -> Result<(), SubagentGoalStoreError> {
+        let mut inner = lock(&self.inner)?;
+        inner.goals.remove(&GoalKey::new(scope, run_id));
+        if inner.goals.is_empty() {
+            *inner = GoalStoreInner::default();
+        }
+        Ok(())
     }
 
     #[cfg(test)]
     fn len(&self) -> usize {
-        lock(&self.inner).goals.len()
-    }
-
-    #[cfg(test)]
-    fn insertion_order_len(&self) -> usize {
-        lock(&self.inner).insertion_order.len()
+        lock(&self.inner).unwrap().goals.len()
     }
 }
 
@@ -175,8 +154,7 @@ impl SubagentGoalStore for InMemoryBoundedSubagentGoalStore {
         scope: &TurnScope,
         run_id: TurnRunId,
     ) -> Result<(), SubagentGoalStoreError> {
-        self.delete_inner(scope, run_id);
-        Ok(())
+        self.delete_inner(scope, run_id)
     }
 }
 
@@ -204,8 +182,7 @@ impl brassclaw_loop_support::SubagentSpawnGoalStore for InMemoryBoundedSubagentG
         scope: &TurnScope,
         run_id: TurnRunId,
     ) -> Result<(), brassclaw_turns::run_profile::AgentLoopHostError> {
-        self.delete_inner(scope, run_id);
-        Ok(())
+        self.delete_inner(scope, run_id).map_err(map_goal_error)
     }
 }
 
@@ -215,9 +192,6 @@ fn map_goal_error(
     let kind = match error {
         SubagentGoalStoreError::NotFound { .. } => {
             brassclaw_turns::run_profile::AgentLoopHostErrorKind::InvalidInvocation
-        }
-        SubagentGoalStoreError::PayloadTooLarge { .. } => {
-            brassclaw_turns::run_profile::AgentLoopHostErrorKind::BudgetExceeded
         }
         SubagentGoalStoreError::DuplicateKey { .. } => {
             brassclaw_turns::run_profile::AgentLoopHostErrorKind::InvalidInvocation
@@ -229,11 +203,12 @@ fn map_goal_error(
     brassclaw_turns::run_profile::AgentLoopHostError::new(kind, error.to_string())
 }
 
-fn lock(inner: &Mutex<GoalStoreInner>) -> MutexGuard<'_, GoalStoreInner> {
-    match inner.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    }
+fn lock(
+    inner: &Mutex<GoalStoreInner>,
+) -> Result<MutexGuard<'_, GoalStoreInner>, SubagentGoalStoreError> {
+    inner.lock().map_err(|_| SubagentGoalStoreError::Backend {
+        reason: "subagent goal storage state unavailable".into(),
+    })
 }
 
 // ── PgSubagentGoalStore ───────────────────────────────────────────────────
@@ -258,17 +233,6 @@ impl PgSubagentGoalStore {
                 reason: format!("pg subagent goal store connect: {error}"),
             })
     }
-
-    fn validate(goal: &SubagentGoal) -> Result<(), SubagentGoalStoreError> {
-        let bytes = goal.byte_len();
-        if bytes > MAX_GOAL_BYTES {
-            return Err(SubagentGoalStoreError::PayloadTooLarge {
-                bytes,
-                max: MAX_GOAL_BYTES,
-            });
-        }
-        Ok(())
-    }
 }
 
 #[async_trait]
@@ -279,7 +243,6 @@ impl SubagentGoalStore for PgSubagentGoalStore {
         run_id: TurnRunId,
         goal: SubagentGoal,
     ) -> Result<(), SubagentGoalStoreError> {
-        Self::validate(&goal)?;
         let run_id_str = run_id.to_string();
         // Surrogate ULID primary key — unique per row, not derived from run_id.
         let id = ulid::Ulid::new().to_string();
@@ -457,39 +420,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn put_rejects_oversized_payload() {
+    async fn complete_large_escaped_goal_and_handoff_are_retained() {
         let store = InMemoryBoundedSubagentGoalStore::new();
         let owner_scope = scope("thread-goal");
         let run_id = TurnRunId::new();
-        let large = SubagentGoal {
-            task: "x".repeat(MAX_GOAL_BYTES + 1),
-            handoff: None,
+        let expected = SubagentGoal {
+            task: "ü\n\"\\{{vars.source}}".repeat(8000),
+            handoff: Some("full handoff 🦀\n".repeat(8000)),
         };
-
-        assert!(matches!(
-            store.put_goal(&owner_scope, run_id, large).await,
-            Err(SubagentGoalStoreError::PayloadTooLarge { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn put_rejects_payload_when_json_overhead_exceeds_limit() {
-        let store = InMemoryBoundedSubagentGoalStore::new();
-        let owner_scope = scope("thread-goal");
-        let run_id = TurnRunId::new();
-        let large = SubagentGoal {
-            task: "x".repeat(MAX_GOAL_BYTES - 8),
-            handoff: None,
-        };
-
-        assert!(
-            large.task.len() <= MAX_GOAL_BYTES,
-            "raw string payload stays below the limit"
+        assert!(expected.task.len() > 64 * 1024);
+        assert!(expected.handoff.as_ref().unwrap().len() > 64 * 1024);
+        store
+            .put_goal(&owner_scope, run_id, expected.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get_goal(&owner_scope, run_id).await.unwrap(),
+            expected
         );
-        assert!(matches!(
-            store.put_goal(&owner_scope, run_id, large).await,
-            Err(SubagentGoalStoreError::PayloadTooLarge { .. })
-        ));
+        store.delete_goal(&owner_scope, run_id).await.unwrap();
+        assert_eq!(store.len(), 0);
+        assert_eq!(lock(&store.inner).unwrap().goals.capacity(), 0);
     }
 
     #[tokio::test]
@@ -513,39 +464,58 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bounded_store_evicts_oldest() {
+    async fn crossing_old_count_retains_every_live_goal_until_explicit_deletion() {
         let store = InMemoryBoundedSubagentGoalStore::new();
         let owner_scope = scope("thread-goal");
-        let first = TurnRunId::new();
-        let second = TurnRunId::new();
-        store
-            .put_goal(&owner_scope, first, goal("first"))
-            .await
-            .unwrap();
-        store
-            .put_goal(&owner_scope, second, goal("second"))
-            .await
-            .unwrap();
-        for index in 2..=MAX_GOAL_ENTRIES {
+        let mut ids = Vec::new();
+        for index in 0..4097 {
+            let id = TurnRunId::new();
             store
-                .put_goal(
-                    &owner_scope,
-                    TurnRunId::new(),
-                    goal(&format!("goal-{index}")),
-                )
+                .put_goal(&owner_scope, id, goal(&format!("goal-{index}")))
                 .await
                 .unwrap();
+            ids.push(id);
         }
+        assert_eq!(store.len(), ids.len());
+        for (index, id) in ids.iter().copied().enumerate() {
+            assert_eq!(
+                store.get_goal(&owner_scope, id).await.unwrap(),
+                goal(&format!("goal-{index}"))
+            );
+        }
+        for id in ids {
+            store.delete_goal(&owner_scope, id).await.unwrap();
+        }
+        assert_eq!(store.len(), 0);
+        assert_eq!(lock(&store.inner).unwrap().goals.capacity(), 0);
+    }
 
-        assert!(matches!(
-            store.get_goal(&owner_scope, first).await,
-            Err(SubagentGoalStoreError::NotFound { .. })
-        ));
-        assert_eq!(
-            store.get_goal(&owner_scope, second).await.unwrap(),
-            goal("second")
+    #[tokio::test]
+    async fn poisoned_storage_rejects_reads_writes_and_deletes() {
+        let store = Arc::new(InMemoryBoundedSubagentGoalStore::new());
+        let poisoned = store.clone();
+        assert!(
+            std::thread::spawn(move || {
+                let _guard = poisoned.inner.lock().unwrap();
+                panic!("intentional storage poison");
+            })
+            .join()
+            .is_err()
         );
-        assert_eq!(store.len(), MAX_GOAL_ENTRIES);
+        let owner_scope = scope("poisoned-goal");
+        let id = TurnRunId::new();
+        assert!(matches!(
+            store.put_goal(&owner_scope, id, goal("private")).await,
+            Err(SubagentGoalStoreError::Backend { .. })
+        ));
+        assert!(matches!(
+            store.get_goal(&owner_scope, id).await,
+            Err(SubagentGoalStoreError::Backend { .. })
+        ));
+        assert!(matches!(
+            store.delete_goal(&owner_scope, id).await,
+            Err(SubagentGoalStoreError::Backend { .. })
+        ));
     }
 
     #[tokio::test]
@@ -565,7 +535,7 @@ mod tests {
             store.get_goal(&owner_scope, run_id).await,
             Err(SubagentGoalStoreError::NotFound { .. })
         ));
-        assert_eq!(store.insertion_order_len(), 0);
+        assert_eq!(store.len(), 0);
     }
 
     #[tokio::test]

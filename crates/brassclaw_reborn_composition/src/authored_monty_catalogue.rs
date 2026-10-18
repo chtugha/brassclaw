@@ -424,6 +424,7 @@ impl InstalledMontyCatalogue {
                             match bootstrap {
                                 crate::installed_monty_catalogue::BootstrapUsageApproval::Reply(owner)=>owner.usage_approval(binding),
                                 crate::installed_monty_catalogue::BootstrapUsageApproval::Generation(owner)=>owner.usage_approval(binding),
+                                crate::installed_monty_catalogue::BootstrapUsageApproval::Compiler(owner)=>owner.usage_approval(binding),
                             }.ok_or_else(|| invalid("bootstrap usage differs"))?,
                         );
                     } else {

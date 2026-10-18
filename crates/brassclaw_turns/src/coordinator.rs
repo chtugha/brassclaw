@@ -7,13 +7,11 @@ use std::{
 };
 use tracing::debug;
 
-const MAX_PREPARED_RUN_IDS: usize = 4096;
-
 use crate::{
     AdmissionRejection, CancelRunRequest, CancelRunResponse, GetRunStateRequest,
     InMemoryRunProfileResolver, ResumeTurnRequest, ResumeTurnResponse, RunProfileResolver,
-    SubmitChildRunRequest, SubmitTurnRequest, SubmitTurnResponse, TurnCapacityResource, TurnError,
-    TurnRunId, TurnRunState, TurnScope, TurnSpawnTreeStateStore, TurnStateStore, TurnStatus,
+    SubmitChildRunRequest, SubmitTurnRequest, SubmitTurnResponse, TurnError, TurnRunId,
+    TurnRunState, TurnScope, TurnSpawnTreeStateStore, TurnStateStore, TurnStatus,
     events::EventCursor,
     lifecycle::{LifecyclePublicationErrorPort, NoopLifecyclePublicationErrorPort},
 };
@@ -174,12 +172,19 @@ where
                 .map_err(|_| TurnError::Unavailable {
                     reason: "prepared run identity state unavailable".into(),
                 })?;
-        if prepared.len() >= MAX_PREPARED_RUN_IDS {
-            return Err(TurnError::CapacityExceeded {
-                resource: TurnCapacityResource::SubmitTurn,
-                cap: MAX_PREPARED_RUN_IDS as u64,
+        // This is identity bookkeeping, not admission capacity. Preserve every
+        // outstanding reservation until submission or explicit abort; arbitrary
+        // eviction or a fixed count would discard fences or deny unrelated work.
+        if prepared.contains_key(&run_id) {
+            return Err(TurnError::Unavailable {
+                reason: "prepared run identity collision".into(),
             });
         }
+        prepared
+            .try_reserve(1)
+            .map_err(|_| TurnError::Unavailable {
+                reason: "prepared run identity capacity unavailable".into(),
+            })?;
         prepared.insert(run_id, scope);
         Ok(())
     }
@@ -210,7 +215,13 @@ where
                 .map_err(|_| TurnError::Unavailable {
                     reason: "prepared run identity state unavailable".into(),
                 })?;
-        Ok(prepared.remove(&run_id))
+        let removed = prepared.remove(&run_id);
+        if prepared.is_empty() {
+            // Release an entirely drained ledger's backing table. No periodic
+            // sampling or per-removal reallocation is needed.
+            *prepared = HashMap::new();
+        }
+        Ok(removed)
     }
 }
 

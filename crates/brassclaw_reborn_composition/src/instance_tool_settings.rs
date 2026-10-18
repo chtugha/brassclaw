@@ -3,7 +3,8 @@
 use async_trait::async_trait;
 use brassclaw_pg::PgPool;
 use brassclaw_product_workflow::instance_tools::{
-    InstanceToolSetting, InstanceToolSettings, InstanceToolSettingsError, UpdateInstanceToolSetting,
+    InstanceToolSetting, InstanceToolSettings, InstanceToolSettingsError, ToolResourceLimits,
+    UpdateInstanceToolSetting,
 };
 use std::sync::Arc;
 use tokio_postgres::Row;
@@ -25,12 +26,29 @@ impl PgInstanceToolSettings {
 const READ: &str = "SELECT s.tool_id,s.enabled,s.revision,h.class_code,
     array_agg(DISTINCT r.revision_bytes::jsonb->'document'->>'capability_id'
         ORDER BY r.revision_bytes::jsonb->'document'->>'capability_id')
-        FILTER (WHERE jsonb_typeof(r.revision_bytes::jsonb->'document'->'capability_id')='string')
+        FILTER (WHERE jsonb_typeof(r.revision_bytes::jsonb->'document'->'capability_id')='string'),
+    s.max_output_bytes::text
     FROM brassclaw_instance_tool_settings s
     JOIN reborn_component_revision_heads h ON h.component_id=s.tool_id
     LEFT JOIN reborn_component_revisions r ON r.component_id=s.tool_id
     WHERE ($1::uuid IS NULL OR s.tool_id=$1)
-    GROUP BY s.tool_id,s.enabled,s.revision,h.class_code ORDER BY s.tool_id";
+    GROUP BY s.tool_id,s.enabled,s.revision,s.max_output_bytes,h.class_code ORDER BY s.tool_id";
+
+pub(crate) fn decode_output_limit(
+    value: Option<String>,
+) -> Result<Option<u64>, InstanceToolSettingsError> {
+    value
+        .map(|text| {
+            let bytes = text
+                .parse::<u64>()
+                .map_err(|_| InstanceToolSettingsError::Unavailable)?;
+            if bytes == 0 || bytes.to_string() != text {
+                return Err(InstanceToolSettingsError::Unavailable);
+            }
+            Ok(bytes)
+        })
+        .transpose()
+}
 fn row(value: &Row) -> Result<InstanceToolSetting, InstanceToolSettingsError> {
     let tool_id: Uuid = value.get(0);
     let revision = u64::try_from(value.get::<_, i64>(2))
@@ -44,6 +62,9 @@ fn row(value: &Row) -> Result<InstanceToolSetting, InstanceToolSettingsError> {
         enabled: value.get(1),
         revision,
         capability_ids: aliases,
+        limits: ToolResourceLimits {
+            max_output_bytes: decode_output_limit(value.get(5))?,
+        },
     })
 }
 #[async_trait]
@@ -67,11 +88,16 @@ impl InstanceToolSettings for PgInstanceToolSettings {
         tool_id: Uuid,
         request: &UpdateInstanceToolSetting,
     ) -> Result<InstanceToolSetting, InstanceToolSettingsError> {
+        request.limits.validate()?;
         let expected = i64::try_from(request.expected_revision)
             .map_err(|_| InstanceToolSettingsError::Invalid)?;
         if tool_id.is_nil() || expected <= 0 || expected == i64::MAX {
             return Err(InstanceToolSettingsError::Invalid);
         }
+        let output_bytes = request
+            .limits
+            .max_output_bytes
+            .map(|value| value.to_string());
         let mut client = self
             .pool
             .get()
@@ -94,9 +120,10 @@ impl InstanceToolSettings for PgInstanceToolSettings {
         }
         let changed = tx
             .execute(
-                "UPDATE brassclaw_instance_tool_settings SET enabled=$2,revision=revision+1
+                "UPDATE brassclaw_instance_tool_settings SET enabled=$2,revision=revision+1,
+            max_output_bytes=$4::text::numeric
             WHERE tool_id=$1 AND revision=$3",
-                &[&tool_id, &request.enabled, &expected],
+                &[&tool_id, &request.enabled, &expected, &output_bytes],
             )
             .await
             .map_err(|_| InstanceToolSettingsError::Unavailable)?;
@@ -173,6 +200,9 @@ mod tests {
         let request = UpdateInstanceToolSetting {
             expected_revision: 1,
             enabled: false,
+            limits: ToolResourceLimits {
+                max_output_bytes: Some(9_007_199_254_740_993),
+            },
         };
         let (first, second) = tokio::join!(
             settings.update(tool, &request),
@@ -186,6 +216,7 @@ mod tests {
         let before = settings.list().await.unwrap();
         assert_eq!(before[0].revision, 2);
         assert!(!before[0].enabled);
+        assert_eq!(before[0].limits, request.limits);
         for expected in [0, u64::MAX, i64::MAX as u64] {
             assert!(matches!(
                 settings
@@ -193,7 +224,8 @@ mod tests {
                         tool,
                         &UpdateInstanceToolSetting {
                             expected_revision: expected,
-                            enabled: true
+                            enabled: true,
+                            limits: ToolResourceLimits::default(),
                         }
                     )
                     .await,
@@ -217,6 +249,9 @@ mod tests {
         let next = UpdateInstanceToolSetting {
             expected_revision: 2,
             enabled: true,
+            limits: ToolResourceLimits {
+                max_output_bytes: Some(u64::MAX),
+            },
         };
         assert!(matches!(
             settings.update(tool, &next).await,
@@ -227,6 +262,7 @@ mod tests {
         let updated = settings.update(tool, &next).await.unwrap();
         assert_eq!(updated.revision, 3);
         assert!(updated.enabled);
+        assert_eq!(updated.limits, next.limits);
         assert_eq!(updated.capability_ids, before[0].capability_ids);
         let wrong = Uuid::new_v4();
         let wrong_draft = ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":wrong,"class_code":13,"document":{},"dependencies":[],"association":null}).to_string()).unwrap();
@@ -246,7 +282,63 @@ mod tests {
             settings.update(wrong, &request).await,
             Err(InstanceToolSettingsError::NotFound)
         ));
-        assert_eq!(settings.list().await.unwrap(), [updated]);
+        assert_eq!(
+            settings.list().await.unwrap().as_slice(),
+            std::slice::from_ref(&updated)
+        );
+        assert!(matches!(
+            settings
+                .update(
+                    tool,
+                    &UpdateInstanceToolSetting {
+                        expected_revision: updated.revision,
+                        enabled: false,
+                        limits: ToolResourceLimits {
+                            max_output_bytes: Some(0)
+                        },
+                    }
+                )
+                .await,
+            Err(InstanceToolSettingsError::Invalid)
+        ));
+        for value in [
+            "0",
+            "-1",
+            "1.5",
+            "1.0",
+            "18446744073709551616",
+            "NaN",
+            "Infinity",
+            "-Infinity",
+        ] {
+            let error=client.execute("UPDATE brassclaw_instance_tool_settings SET max_output_bytes=$2::text::numeric,revision=revision+1 WHERE tool_id=$1", &[&tool,&value]).await.unwrap_err();
+            assert_eq!(
+                error.code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+            assert_eq!(
+                settings.list().await.unwrap().as_slice(),
+                std::slice::from_ref(&updated)
+            );
+        }
+        client.execute("INSERT INTO brassclaw_instance_tool_settings(tool_id) VALUES($1) ON CONFLICT(tool_id) DO NOTHING", &[&tool]).await.unwrap();
+        assert_eq!(
+            settings.list().await.unwrap().as_slice(),
+            std::slice::from_ref(&updated)
+        );
+        let cleared = settings
+            .update(
+                tool,
+                &UpdateInstanceToolSetting {
+                    expected_revision: updated.revision,
+                    enabled: true,
+                    limits: ToolResourceLimits::default(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(cleared.revision, 4);
+        assert_eq!(cleared.limits, ToolResourceLimits::default());
         assert_eq!(
             client
                 .query_one(
@@ -258,5 +350,41 @@ mod tests {
                 .get::<_, i64>(0),
             0
         );
+        // A real predecessor-shaped table proves the additive upgrade neither
+        // enables a blocked Tool nor rewrites its existing policy revision.
+        client.batch_execute("CREATE SCHEMA tool_output_upgrade; CREATE TABLE tool_output_upgrade.brassclaw_instance_tool_settings (LIKE public.brassclaw_instance_tool_settings INCLUDING ALL); SET search_path TO tool_output_upgrade; ALTER TABLE brassclaw_instance_tool_settings DROP COLUMN max_output_bytes;").await.unwrap();
+        client.execute("INSERT INTO brassclaw_instance_tool_settings(tool_id,enabled,revision) VALUES($1,false,37)", &[&tool]).await.unwrap();
+        client
+            .batch_execute(include_str!(
+                "../../brassclaw_pg/migrations/V166__instance_tool_output_ceiling.sql"
+            ))
+            .await
+            .unwrap();
+        let upgraded=client.query_one("SELECT enabled,revision,max_output_bytes::text FROM brassclaw_instance_tool_settings WHERE tool_id=$1", &[&tool]).await.unwrap();
+        assert!(!upgraded.get::<_, bool>(0));
+        assert_eq!(upgraded.get::<_, i64>(1), 37);
+        assert_eq!(upgraded.get::<_, Option<String>>(2), None);
+        client.batch_execute("RESET search_path").await.unwrap();
+        // Privileged corruption cannot turn into an unlimited default or an
+        // apparently successful repair through the ordinary operator update.
+        client.batch_execute("ALTER TABLE public.brassclaw_instance_tool_settings DROP CONSTRAINT instance_tool_output_bytes").await.unwrap();
+        client.execute("UPDATE public.brassclaw_instance_tool_settings SET max_output_bytes=0,revision=revision+1 WHERE tool_id=$1", &[&tool]).await.unwrap();
+        assert!(matches!(
+            settings.list().await,
+            Err(InstanceToolSettingsError::Unavailable)
+        ));
+        assert!(matches!(
+            settings
+                .update(
+                    tool,
+                    &UpdateInstanceToolSetting {
+                        expected_revision: 5,
+                        enabled: true,
+                        limits: ToolResourceLimits::default(),
+                    }
+                )
+                .await,
+            Err(InstanceToolSettingsError::Unavailable)
+        ));
     }
 }

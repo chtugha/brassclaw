@@ -102,7 +102,8 @@ pub use first_party_tools::{
     extract_md_section, sha256_hex,
 };
 pub use first_party_tools::{
-    PREFIX_GENERATION_CAPABILITY_ID, PrefixGenerationBackend, PrefixGenerationBackendError,
+    MODEL_ENCODING_CAPABILITY_ID, ModelEncodingBackend, PREFIX_GENERATION_CAPABILITY_ID,
+    PrefixGenerationBackend, PrefixGenerationBackendError,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use first_party_tools::{

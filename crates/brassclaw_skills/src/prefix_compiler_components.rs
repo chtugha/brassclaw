@@ -354,3 +354,20 @@ pub fn source_compiler_drafts(
     )?);
     Ok(drafts)
 }
+
+/// Reusable pure arithmetic/checking over exact measurements and retained limits.
+/// It never chooses those limits or turns a fit into activation/cache approval.
+pub fn capacity_draft(id: uuid::Uuid) -> Result<ComponentRevisionDraft, RevisionError> {
+    let integer = |minimum| json!({"type":"integer","required":true,"checks":[{"kind":"min","value":minimum},{"kind":"max","value":9007199254740991i64}]});
+    let inputs = json!({"observation_bytes":string(),"expected_specification":string(),"expected_artifact_set":string(),"expected_template_sha256":string(),"limits_ref":string(),"context_window_tokens":integer(1),"reserved_output_tokens":integer(1),"reserved_additional_input_tokens":integer(0)});
+    let result = json!({"type":"object","allow_extra_fields":false,"fields":{
+        "format":string(),"qualification":string(),"specification":string(),"artifact_set":string(),"limits_ref":string(),
+        "template_sha256":string(),"worker_checksum":string(),"preparation_revision":integer(1),
+        "context_window_tokens":integer(1),"largest_probe_tokens":integer(0),"reserved_output_tokens":integer(1),"reserved_additional_input_tokens":integer(0),"required_tokens":integer(1),"fits":{"type":"boolean","required":true,"checks":[]},"remaining_tokens":integer(0),"shortfall_tokens":integer(0),"common_prefix_tokens":integer(0),"cache_qualification":string(),"model_quality":string()}});
+    ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":id,"class_code":22,
+        "document":{"name":"assess-prefix-capacity","description":"Compare complete measured request tokens plus explicit additional-input/output allowances with a retained model/target limit. Preserve shortfall and uncertainty; do not truncate or approve.",
+            "content":include_str!("../../../scripts/prefix/prefix_capacity.py"),"includes":[],"dependency_registry":null,"input_contract":inputs,"result_contract":result,
+            "preload":{"format":"python-preload/2","exports":{"assess_prefix_capacity":{"symbol":"assess_prefix_capacity","parameters":["inputs"],"mapping":true}},
+                "private_functions":{"capacity_fields":["value","names"],"capacity_integer":["value","minimum"],"capacity_hash":["value"]},"constants":[],"imports":["json"],"dependencies":[],"default_export":"assess_prefix_capacity"}},
+        "dependencies":[],"association":null}).to_string())
+}

@@ -58,6 +58,7 @@ fn map(error: InterceptorConfigServiceError) -> Error {
         InterceptorConfigServiceError::InvalidRequest { .. } => Error::Invalid,
         InterceptorConfigServiceError::Conflict => Error::Conflict,
         InterceptorConfigServiceError::PrefixNotFound { .. }
+        | InterceptorConfigServiceError::JobNotFound
         | InterceptorConfigServiceError::GenerationNotFound => Error::NotFound,
         _ => Error::Unavailable,
     }

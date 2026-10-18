@@ -99,22 +99,11 @@ impl SourceInspectionBackend for ContainedSourceInspection {
         &self,
         source: &str,
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
-        let (settings, worker) = {
-            let bound = self
-                .bound
-                .read()
-                .map_err(|_| error(RuntimeDispatchErrorKind::OperationFailed))?;
-            let bound = bound
-                .as_ref()
-                .ok_or_else(|| error(RuntimeDispatchErrorKind::OperationFailed))?;
-            (bound.settings.clone(), bound.worker.clone())
-        };
-        let current = settings
-            .get("default", "default")
-            .await
-            .map_err(|_| error(RuntimeDispatchErrorKind::OperationFailed))?;
-        let limits = UtilityLimits::from_execution(current.execution_limits)
-            .map_err(|_| error(RuntimeDispatchErrorKind::Resource))?;
+        let PreparedUtility {
+            worker,
+            limits,
+            revision,
+        } = self.prepare().await?;
         if source.len() > limits.bounds.max_source_bytes {
             return Err(error(RuntimeDispatchErrorKind::Resource));
         }
@@ -164,7 +153,7 @@ impl SourceInspectionBackend for ContainedSourceInspection {
         else {
             return Err(error(RuntimeDispatchErrorKind::OperationFailed).with_usage(usage));
         };
-        let output = json!({"format":"python-source-facts/1", "preparation_revision":current.revision,
+        let output = json!({"format":"python-source-facts/1", "preparation_revision":revision,
             "worker_checksum":hex::encode(worker.checksum()),"facts":structure});
         let bounds = brassclaw_skills::value_contract::ContractLimits {
             max_depth: limits.bounds.max_value_depth,
@@ -191,5 +180,38 @@ impl SourceInspectionBackend for ContainedSourceInspection {
         let mut usage = usage;
         usage.output_bytes = encoded.len() as u64;
         Ok(FirstPartyCapabilityResult::new(value, usage))
+    }
+}
+
+pub(crate) struct PreparedUtility {
+    pub(crate) worker: Arc<PackagedExecutableImage>,
+    pub(crate) limits: UtilityLimits,
+    pub(crate) revision: u64,
+}
+impl ContainedSourceInspection {
+    /// Share the already retained worker and acknowledged settings with other
+    /// fixed preparation primitives. This exposes no arbitrary process command.
+    pub(crate) async fn prepare(&self) -> Result<PreparedUtility, FirstPartyCapabilityError> {
+        let (settings, worker) = {
+            let bound = self
+                .bound
+                .read()
+                .map_err(|_| error(RuntimeDispatchErrorKind::OperationFailed))?;
+            let bound = bound
+                .as_ref()
+                .ok_or_else(|| error(RuntimeDispatchErrorKind::OperationFailed))?;
+            (bound.settings.clone(), bound.worker.clone())
+        };
+        let current = settings
+            .get("default", "default")
+            .await
+            .map_err(|_| error(RuntimeDispatchErrorKind::OperationFailed))?;
+        let limits = UtilityLimits::from_execution(current.execution_limits)
+            .map_err(|_| error(RuntimeDispatchErrorKind::Resource))?;
+        Ok(PreparedUtility {
+            worker,
+            limits,
+            revision: current.revision,
+        })
     }
 }

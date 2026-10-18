@@ -28,7 +28,7 @@ use crate::{
     process::{ProcessFailure, ProcessLimits, encode, read_frame, transport_value, write_frame},
 };
 
-const PROTOCOL: u32 = 3;
+const PROTOCOL: u32 = 4;
 
 /// One accepted preparation policy. Callers resolve the authoritative settings
 /// once before an operation; later edits cannot retime or resize its worker.
@@ -77,6 +77,11 @@ impl UtilityLimits {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum UtilityRequest {
+    /// Fixed offline tokenizer/template analysis, not Python evaluation.
+    EncodeModel {
+        request_bytes: String,
+        bounds: VmBounds,
+    },
     Parse {
         source: String,
         bounds: VmBounds,
@@ -95,20 +100,33 @@ pub enum UtilityRequest {
 impl UtilityRequest {
     fn bounds(&self) -> VmBounds {
         match self {
-            Self::Parse { bounds, .. }
+            Self::EncodeModel { bounds, .. }
+            | Self::Parse { bounds, .. }
             | Self::InspectSource { bounds, .. }
             | Self::Evaluate { bounds, .. } => *bounds,
         }
     }
     fn valid(&self, frame_limit: usize) -> bool {
+        if let Self::EncodeModel {
+            request_bytes,
+            bounds,
+        } = self
+        {
+            return bounds.valid()
+                && request_bytes.len() <= brassclaw_model_encoding::MAX_INPUT_BYTES
+                && request_bytes.len() <= bounds.max_value_bytes
+                && request_bytes.len() <= frame_limit;
+        }
         let (source, bounds) = match self {
             Self::Parse { source, bounds }
             | Self::InspectSource { source, bounds }
             | Self::Evaluate { source, bounds, .. } => (source, bounds),
+            Self::EncodeModel { .. } => unreachable!("encoding checked separately"),
         };
         bounds.valid()
             && source.len() <= bounds.max_source_bytes
             && match self {
+                Self::EncodeModel { .. } => unreachable!("encoding checked separately"),
                 Self::Parse { .. } | Self::InspectSource { .. } => true,
                 Self::Evaluate {
                     inputs,
@@ -202,6 +220,12 @@ pub fn inputs_within_bounds<'a>(
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum UtilityOutput {
+    ModelEncodingFailed {
+        failure: brassclaw_model_encoding::EncodingError,
+    },
+    EncodedModel {
+        report_bytes: String,
+    },
     Parsed,
     Inspected {
         structure: crate::source_structure::SourceStructure,
@@ -214,6 +238,8 @@ pub enum UtilityOutput {
 impl fmt::Debug for UtilityOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::EncodedModel { .. } => "EncodedModel(<private encoding report>)",
+            Self::ModelEncodingFailed { .. } => "ModelEncodingFailed(<safe failure category>)",
             Self::Parsed => "Parsed",
             Self::Inspected { .. } => "Inspected(<private source structure>)",
             Self::Evaluated { .. } => "Evaluated(<private result>)",
@@ -388,6 +414,20 @@ pub async fn execute(
                 error.kind = ProcessFailure::Vm(failure);
             } else if let Some(output) = reply.output {
                 let valid = match (&*error.request, &output) {
+                    (
+                        UtilityRequest::EncodeModel { .. },
+                        UtilityOutput::EncodedModel { report_bytes },
+                    ) => {
+                        report_bytes.len() <= brassclaw_model_encoding::MAX_RESPONSE_BYTES
+                            && serde_json::from_str::<brassclaw_model_encoding::EncodingReport>(
+                                report_bytes,
+                            )
+                            .is_ok()
+                    }
+                    (
+                        UtilityRequest::EncodeModel { .. },
+                        UtilityOutput::ModelEncodingFailed { .. },
+                    ) => true,
                     (UtilityRequest::Parse { .. }, UtilityOutput::Parsed) => true,
                     (
                         UtilityRequest::InspectSource { source, bounds },
@@ -475,6 +515,21 @@ fn evaluate(request: UtilityRequest, frame_limit: usize) -> Result<UtilityOutput
         return Err(VmError::kind(VmFailure::InvalidInputs));
     }
     let (source, inputs, bounds, compute, inspect) = match request {
+        UtilityRequest::EncodeModel { request_bytes, .. } => {
+            brassclaw_model_encoding::disable_parallelism();
+            let request = serde_json::from_str::<brassclaw_model_encoding::Request>(&request_bytes)
+                .map_err(|_| VmError::kind(VmFailure::InvalidInputs))?;
+            let report = match brassclaw_model_encoding::analyze(request) {
+                Ok(report) => report,
+                Err(failure) => return Ok(UtilityOutput::ModelEncodingFailed { failure }),
+            };
+            let report_bytes = serde_json::to_string(&report)
+                .map_err(|_| VmError::kind(VmFailure::InvalidResult))?;
+            if report_bytes.len() > brassclaw_model_encoding::MAX_RESPONSE_BYTES {
+                return Err(VmError::kind(VmFailure::ResourceLimit));
+            }
+            return Ok(UtilityOutput::EncodedModel { report_bytes });
+        }
         UtilityRequest::Parse { source, bounds } => (source, None, bounds, None, false),
         UtilityRequest::InspectSource { source, bounds } => (source, None, bounds, None, true),
         UtilityRequest::Evaluate {

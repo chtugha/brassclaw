@@ -181,7 +181,7 @@ impl InstanceToolAuthorizer {
                 &descriptor.effects,
                 &trust.authority_ceiling.allowed_effects,
             )
-            || !crate::resource_estimate_is_covered(estimate, ceiling.as_ref())
+            || !instance_estimate_is_covered(estimate, ceiling.as_ref())
         {
             return denied(DenyReason::PolicyDenied);
         }
@@ -190,6 +190,26 @@ impl InstanceToolAuthorizer {
             None => denied(DenyReason::PolicyDenied),
         }
     }
+}
+
+fn instance_estimate_is_covered(
+    estimate: &ResourceEstimate,
+    ceiling: Option<&ResourceCeiling>,
+) -> bool {
+    let Some(ceiling) = ceiling else {
+        return true;
+    };
+    // Output size is advisory and often unknowable until the Tool returns.
+    // Always retain the real output ceiling in the obligations below; an
+    // unknown prediction is not an invented zero or an authority bypass.
+    // Known excessive estimates still fail before effects. Other resource
+    // estimates keep their existing requirements, including trust ceilings.
+    let other_limits = ResourceCeiling {
+        max_output_bytes: None,
+        ..ceiling.clone()
+    };
+    crate::resource_estimate_is_covered(estimate, Some(&other_limits))
+        && !matches!((estimate.output_bytes, ceiling.max_output_bytes), (Some(bytes), Some(maximum)) if bytes > maximum)
 }
 
 fn denied(reason: DenyReason) -> Decision {

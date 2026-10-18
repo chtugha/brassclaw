@@ -135,6 +135,8 @@ pub const WEBUI_V2_ROUTE_REGISTER_PREFIX_SOURCE: &str = "webui.v2.register_prefi
 pub const WEBUI_V2_PATTERN_PREFIX_SOURCES: &str = "/api/webchat/v2/prefixes/{name}/sources";
 pub const WEBUI_V2_ROUTE_LIST_PREFIX_GENERATIONS: &str = "webui.v2.list_prefix_generations";
 pub const WEBUI_V2_ROUTE_GET_PREFIX_GENERATION: &str = "webui.v2.get_prefix_generation";
+pub const WEBUI_V2_ROUTE_GET_PREFIX_JOB: &str = "webui.v2.get_prefix_job";
+pub const WEBUI_V2_PATTERN_PREFIX_JOB: &str = "/api/webchat/v2/prefixes/{name}/jobs/{job}";
 pub const WEBUI_V2_ROUTE_IMPORT_PREFIX_GENERATION: &str = "webui.v2.import_prefix_generation";
 pub const WEBUI_V2_PATTERN_PREFIX_GENERATIONS: &str = "/api/webchat/v2/prefixes/{name}/generations";
 pub const WEBUI_V2_PATTERN_PREFIX_GENERATION: &str =
@@ -458,6 +460,17 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
             ),
         ),
         descriptor(
+            WEBUI_V2_ROUTE_GET_PREFIX_JOB,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_PREFIX_JOB,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
             WEBUI_V2_ROUTE_IMPORT_PREFIX_GENERATION,
             NetworkMethod::Post,
             WEBUI_V2_PATTERN_PREFIX_GENERATIONS,
@@ -630,6 +643,7 @@ pub fn is_webui_v2_operator_route_id(route_id: &str) -> bool {
                 | WEBUI_V2_ROUTE_LIST_PREFIX_SOURCES
                 | WEBUI_V2_ROUTE_REGISTER_PREFIX_SOURCE
                 | WEBUI_V2_ROUTE_LIST_PREFIX_GENERATIONS
+                | WEBUI_V2_ROUTE_GET_PREFIX_JOB
                 | WEBUI_V2_ROUTE_GET_PREFIX_GENERATION
                 | WEBUI_V2_ROUTE_IMPORT_PREFIX_GENERATION
                 | WEBUI_V2_ROUTE_PREPARE_COMPONENT_DEPLOYMENT

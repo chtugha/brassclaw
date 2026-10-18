@@ -285,7 +285,6 @@ fn thread_scope_for_run(run_context: &LoopRunContext) -> Result<ThreadScope, Age
 fn map_goal_error(error: SubagentGoalStoreError) -> AgentLoopHostError {
     let kind = match error {
         SubagentGoalStoreError::NotFound { .. } => AgentLoopHostErrorKind::InvalidInvocation,
-        SubagentGoalStoreError::PayloadTooLarge { .. } => AgentLoopHostErrorKind::BudgetExceeded,
         SubagentGoalStoreError::DuplicateKey { .. } => AgentLoopHostErrorKind::InvalidInvocation,
         SubagentGoalStoreError::Backend { .. } => AgentLoopHostErrorKind::Unavailable,
     };

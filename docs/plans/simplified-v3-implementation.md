@@ -709,7 +709,12 @@ Backups must preserve old keys until encrypted data and relational migrations
 have been verified. Unknown external-effect outcomes after a crash require
 reconciliation, not automatic replay.
 
-## Implemented prerequisites
+## Initial prerequisites — historical evidence, 2026-10-06
+
+This subsection records the first implementation batch. It is not the current
+runtime inventory. In particular, the v0.0.16 experiment below is historical;
+ordinary production now uses the supervised global Monty service described in
+the dated implementation and acceptance entries that follow.
 
 - Runtime component initialization moved from WebUI construction into
   `component_boot.rs`, called by `build_reborn_runtime` before worker/trigger
@@ -729,33 +734,38 @@ reconciliation, not automatic replay.
 
 ## Remaining dependencies before production cutover
 
-No phase has been declared complete. The global service is not yet connected to
-production and the driver still owns per-conversation sessions. The owner/auth,
-scope/policy, edition, settings/UI and persisted-data migrations remain open.
-The inventory still requires per-consumer classification, actual route mappings
-and a settings catalogue with defaults/ranges/restart semantics.
+Current overview, 2026-10-17: ordinary `skills-db` startup owns one supervised
+global Monty service before turn workers and trigger producers. Admitted work
+reaches that existing VM through `GlobalMontyDriver`; there is no per-chat lazy
+driver or Rust-loop fallback. Actual native multi-turn Match/No-Match, retained
+child execution, live settings and kernel/PostgreSQL callers have scoped passing
+evidence in the dated entries below. The original seven composition failures are
+resolved in that documented scope. Their resolution does not complete the plan.
 
-Monty's upstream `FunctionCall::resume_pending` and incremental
-`ResolveFutures::resume` support async interleaving. `host.run_program` currently
-fully awaits `execute_code`, so it needs a retained nested continuation keyed to
-task/attempt. Durable blocked-run transitions must release the worker claim;
-keeping a parent waiting on a worker-owned oneshot is insufficient.
+The controlled Monty fork supplies task-owned coroutine accounting and retained
+contexts. Shared heap and task executing-time accounts are separate; startup
+sizing is the default and periodic pressure adjustment is optional. Configurable
+limits have acknowledged Rust/worker revisions and EN/DE help where recorded in
+the runtime limits audit. Do not reintroduce the historical lifetime allocation
+counter, per-chat VM or pressure-based default to implement later phases.
 
-The root `LimitedTracker` currently counts lifetime allocations and wall time.
-Its `FunctionCall` offers `tracker_mut`, while `ResolveFutures` does not. A global
-runtime needs bounded live-heap accounting and separately enforced task budgets,
-excluding idle/approval time. The continuation test does not prove these limits.
-Do not remove resource limits or reset global live-memory accounting to conceal
-the mismatch.
+Remaining work includes all eight concrete validator Recipes and their ordinary
+Q1 ingress, full qualified preload/activation, flow/branch/effect-occurrence and
+durable retry/recovery contracts, retained native implementations and immutable
+override acceptance, the remaining legacy authorization/data cutover, and the
+unresolved store/parser/transport and other limits in
+`docs/runtime-limits-audit.md`. Full prefix work has its own plan and acceptance;
+do not infer completion from the installed bootstrap workflows. Fatal VM recovery
+must fence the old generation and reconcile effects before replacement.
 
-The converted composition fixtures now start private native embedded PostgreSQL
-instances and fail visibly on setup or cleanup errors. Embedded PostgreSQL tests,
-component boot and the prefix-capability migration have run against real databases.
-This does not establish backup/restore or product cutover acceptance. Other
-unconverted fixtures still need inventory. Existing operator secret and instance
-data have not been rewritten, migrated or deleted.
+Private native PostgreSQL acceptance covers the tested callers and migrations.
+It does not establish complete backup/restore, installed upgrades, Windows/Linux
+execution or test-machine acceptance. The final release, GitHub builds and fresh
+remote installation/real-model QA remain required after implementation. Use the
+dated receipts and exact source inventories below to distinguish accepted slices
+from candidates and later concurrent edits. The whole plan remains unfinished.
 
-## Verification
+## Initial verification — historical evidence, 2026-10-06
 
 - `cargo test -p brassclaw_reborn_config --all-targets`: 63 passed.
 - `cargo test -p brassclaw_threads --all-targets`: all passed, including the
@@ -10125,11 +10135,13 @@ be repaired before the full-plan resource cutover is complete:
    native stack; retain the admitted task's recursive value bounds and preserve
    directory ordering/result format. A larger requested depth must not silently
    become10. Missing, null and invalid values must remain distinct.
-2. Replace `MAX_MEMORY_PATCH_RETRIES=8` with a persisted, revisioned setting and
-   WebUI help, captured for the primitive invocation. Count the initial CAS
-   attempt, retry only confirmed no-effect conflicts, preserve actual arguments
-   and stop for cancellation/current technical policy. A completed write must
-   never be repeated because indexing, output or a subsequent step fails.
+2. Remove `MAX_MEMORY_PATCH_RETRIES=8` and the hidden primitive retry loop, as
+   specified in the 2026-10-17 retry-policy revision below. Retry selection,
+   persistent counts, eligibility and fresh kernel checks belong to the approved
+   Recipe/runner contract. Without that contract a conditional-write conflict
+   stops explicitly. A completed write must never be repeated because indexing,
+   output or a subsequent step fails. Do not add a second configurable retry
+   runner inside the Rust Tool.
 
 The existing Tool-policy WebUI/port/store currently exposes only enabled/CAS
 revision, and `PgSelectedToolPolicy` currently supplies no resource ceiling.
@@ -10325,9 +10337,10 @@ document paths, deduplicates across pages and preserves complete enumeration,
 scope/sidecar rules and ordering. Narrow conflict checks use metadata for exact
 ancestors and target descendants. Chunk cleanup collects all matching metadata
 paths before deleting so offset pages cannot skip shifted rows; unrelated kinds
-are preserved. The version-archive maximum scan in `save_document_version` still
-requests full records and remains separate required work: audit its selected
-fields and integrity contract before changing it, without deriving a logical
+are preserved. At this milestone, the version-archive maximum scan in
+`save_document_version` still requested full records and remained separate work
+(accepted in the next milestone below): audit its selected fields and integrity
+contract before changing it, without deriving a logical
 version from an unchecked path or hiding a damaged index record. Its unchecked
 increment and signed index conversion also need explicit representation bounds;
 damaged version indexes must not silently disappear from the maximum scan.
@@ -10364,7 +10377,7 @@ the local projection repair, not the version-archive, complete matched-library,
 platform, installed-product, release or full v3 acceptance gates.
 
 
-## 2026-10-17 — Selected archive-index projection candidate
+## 2026-10-17 — Selected archive-index projection accepted locally
 
 Keep the existing Memory write usage and Recipe path. Add a generic native
 RootFilesystem projection of one explicitly selected indexed field, with a
@@ -10381,10 +10394,786 @@ unrelated record kinds. No total row limit or unchecked path-derived version is
 introduced. Remove the now-unused full-record scan wrapper and keep existing
 tests on the supported pagination helper.
 
-Required acceptance: real in-memory/PostgreSQL selected-field pages and types,
+Passing acceptance covers real in-memory/PostgreSQL selected-field pages and types,
 scoped/mount/capability gates, actual indexed-column permission denial, malformed
 selected JSON, multi-page archives, last representable counter/exhaustion and
-malformed/mismatched paths. Verify that an archive failure after a committed
+malformed/mismatched paths. It verifies that an archive failure after a committed
 document write is an error, never a no-write conflict; a stale retry must not
 replay or alter the committed document. These checks do not implement durable
 effect reconciliation or the separate live patch retry policy.
+
+Receipt `/private/tmp/brassclaw-memory-archive-accepted.json` retains frozen
+`target/validation/memory-archive-20261017-r1`, actual executables and the paired
+worker. All 96 filesystem, 116 Memory, 49 secrets, seven outbound and thirteen
+registered Memory Tool tests pass. Native PostgreSQL metadata/column-permission
+acceptance passes (5.438s), the archive contract (4.022s), namespace/CAS races
+(1.940s), registered Memory/live tree/large results (51.482s), global routing
+(38.588s), MCP/history (36.160s), dependency boundaries (1.599s) and strict
+affected-package test lint with PostgreSQL/Bedrock (68.743s). The archive repair
+needed no compile-error iteration or diagnostic suppression. Test elapsed times
+do not establish comparative production speed.
+
+Source verification retains all executable hashes and identifies the subsequent
+prose-only clarification of archive errors and planned encryption. Runtime
+behavior is unchanged by those comments. The prefix owner subsequently changed
+its bootstrap/catalogue wiring and tests; those later changes are listed in
+`/private/tmp/brassclaw-memory-archive-current-source-verification.json` and are
+outside the frozen acceptance. This result does not certify the whole current
+shared checkout. Durable archive recovery/reconciliation,
+live patch retry policy, complete matched-library, platform/installed-product,
+release and the full v3 plan remain open.
+
+
+## 2026-10-17 — Single-write Memory patch accepted locally
+
+The existing Recipe still binds `memory_write` and invokes its associated usage
+once. Its Rust primitive must perform one conditional patch write, not repeat
+reads and writes up to the hidden `MAX_MEMORY_PATCH_RETRIES = 8`. Remove that
+loop and constant. A confirmed CAS conflict returns a redacted explicit error;
+it is not a success payload, No-Match, automatic retry or fallback. Failed writes
+must not emit successful chat-memory/indexing effects. Preserve the current
+single successful write, metadata and derived-index behavior.
+
+This removes a hidden retry policy rather than introducing a configurable second
+runner inside a Tool. An approved Recipe/Skill retry must use the exact durable
+runner contract: original invocation/arguments, persistent attempt counts,
+eligible trusted no-effect/deduplication evidence, and fresh kernel checks for
+policy, cancellation and execution attempt before every new dispatch. Until that
+contract is selected and supported, conflicts stop. Do not manufacture approval
+or turn an archive/index failure after a committed write into a retryable conflict.
+
+Native acceptance must force a real concurrent update while the actual patch
+CAS is blocked on the PostgreSQL namespace lock. After the competing writer
+commits, the Tool must return an error without rereading/patching the new body.
+Verify the competing body and record version, absence of patch archive/index
+effects, and live denial on the next kernel dispatch. No mock filesystem or
+arbitrary sleeps may stand in for observing the blocked backend operation.
+Full Recipe retry/recovery acceptance remains a separate required gate.
+
+Accepted receipt `/private/tmp/brassclaw-memory-patch-accepted.json` retains
+`target/validation/memory-patch-20261017-r2` and the actual native executable/
+paired worker. Thirteen unchanged registered Memory cases pass (0.872s, reused
+from r1); the real Memory/PostgreSQL/namespace-lock race and next-dispatch live
+block pass (56.339s), alongside global Match/No-Match (42.274s), MCP/history
+(40.125s), architecture (1.584s) and strict affected test lint with PostgreSQL/
+Bedrock (56.822s). The competing body, exactly its version increment, all document
+sidecars/index payloads, chat-memory count and embedding request count survive
+the conflict unchanged. The existing global VM identity is retained.
+
+The first native behavioral run also passed. Strict lint initially rejected
+unused imports in the prefix owner's new compiler-approval module. Its owner
+removed them and boxed the large approval variant. The reuse check rejected
+treating that source change as imports alone; native callers were rebuilt and
+rerun against r2. No diagnostic was suppressed. Later independent prefix changes,
+if any, are excluded by the source-verification receipt. These elapsed test
+times are execution evidence, not comparative performance measurements. This
+accepts removal of the hidden primitive retry policy; it does not qualify a new
+automatic Recipe retry, durable deduplication or full recovery/cutover support.
+
+### Required next vertical: real operator Tool output ceilings
+
+`PgInstanceToolSettings`, the product DTO/Tools tab and `PgSelectedToolPolicy`
+currently expose/read only enabled/revision; the kernel receives
+`resource_ceiling: None`. Add a durable nullable per-Tool output-byte ceiling
+through that existing UUID-keyed CAS boundary, with EN/DE help, exact integer
+transport, clearing semantics and actual kernel uptake across retained aliases.
+Old/partial clients must not silently erase an existing ceiling while toggling
+allow/block. Keep component activation/approval independent and preserve existing
+operator overrides during seed upgrades. Test revision races, rejected writes,
+corrupt values and lost acknowledgements without replay.
+
+The existing obligation handler actually enforces output bytes, but explicitly
+rejects wall-clock and nonempty sandbox ceilings in
+`validate_supported_resource_ceiling`/`validate_supported_sandbox_quota`.
+Those unsupported controls require their real runtime/containment/recovery work
+before they become editable; exposing their DTO fields alone is not completion.
+Token controls must honor the instance's disabled-token-budget mode rather than
+introducing another artificial cap. The output-ceiling vertical does not complete
+these other technical-policy gates. Native acceptance must use the real operator
+facade/router/PostgreSQL and a retained Tool, proving live rejection/increase/
+clear behavior, complete results without clipping and the same global VM.
+
+
+## 2026-10-17 — Operator Tool output-ceiling local acceptance
+
+V166 adds nullable `max_output_bytes` to the existing UUID-keyed Tool policy row,
+using exact positive unsigned byte representation without numeric rounding.
+Existing enabled values and revisions are unchanged. The operator DTO carries
+required complete `limits`, with nullable quoted-decimal `max_output_bytes`;
+missing/partial/unknown limits and ambiguous numbers fail before mutation.
+The existing CAS transaction persists enabled/limits/revision together, decodes
+before commit and preserves retained aliases and seed overrides. Kernel policy
+reads the limit in the same current row, with existing attempt and post-prepare
+admission checks. No second settings publisher or authority registry is added.
+
+Ordinary Recipe dispatches have unknown output estimates. Instance policy now
+permits that unknown advisory value while retaining actual output obligations;
+known excessive estimates still fail before effects. All other estimate checks
+and the legacy authorizer remain unchanged. This is required for a usable result
+ceiling, not permission to omit measured enforcement. Oversized results fail
+after redaction, without truncation or replay, including effects already completed.
+
+The Tools tab edits/clears this limit with EN/DE explanations and exact decimal
+values beyond JavaScript integer precision. Allow/block preserves the full limit.
+Draft edits, stale revisions and lost acknowledgements retain the existing
+refresh/no-replay fence. Required native coverage includes V166 predecessor
+upgrade, full unsigned range, invalid/fractional/corrupt state, concurrent CAS,
+rejected persistence and actual browser/operator/PG/global-Monty application.
+Exercise an output denial after a real reply, retain that reply/invocation through
+correlated resubmission/recovery, then raise/clear the limit on later calls in
+the same global VM. This does not complete unsupported wall/sandbox controls,
+token-budget-mode reconciliation or the broader technical-policy/cutover gates.
+
+Local acceptance: `tool-output-policy-20261017-r5` and receipt
+`/private/tmp/brassclaw-tool-output-policy-accepted.json`. Two wire tests,
+five frontend API checks, actual PostgreSQL policy/upgrade rejection (2.879 s),
+registered Memory/kernel policy checks (54.886 s), ordinary global Monty plus
+Chromium EN/DE operator editing (55.048 s), MCP/history (39.423 s), architecture
+(1.590 s) and strict affected-package PostgreSQL/Bedrock test-target lint
+(55.824 s) pass. Reuse guards retain unchanged artifacts and caller evidence;
+three final test-only cloned comparisons become equivalent borrowed slices.
+The initial regression accidentally reused an invocation ID; separate calls now
+have separate contexts. Browser clearing uses real keyboard deletion because an
+empty CLI fill did not produce a React edit request. No assertions or warnings
+are suppressed. Native actor-injected operator routing is not a new bearer-auth
+certificate; full installed Linux/Windows, technical controls and release gates
+remain open. This milestone does not mark the whole plan complete.
+
+
+## 2026-10-17 — Remove secondary MCP discovery caps
+
+Discovery no longer applies its separate 64 KiB declaration/sentence ceiling,
+1024-program ceiling or 64-variable/positive/negative-example maxima. The
+retained revision parser, catalogue admission, command type/layout checks,
+exact qualification and captured HTTP resource limits still apply. Names retain
+the existing public-name contract. No incomplete catalogue is published and no
+unqualified component becomes advertised.
+
+Frozen `mcp-declaration-20261017-r1` passes four contract/actual-worker cases
+(2.134 s), ordinary global Monty (43.724 s), actual MCP/history (39.754 s) and
+strict affected PostgreSQL/Bedrock test-target lint (58.103 s). The large parser
+case retains an 81 KiB sentence and all 65 typed positions/examples. A 1025-input
+duplicate fixture retains exact Conflict/no-publication behavior; it does not
+claim successful qualification of 1025 distinct public commands. Receipt:
+`/private/tmp/brassclaw-mcp-declaration-accepted.json`. Complete library discovery,
+enclosing revision limits, transport/parser depth and aggregate buffering remain
+required work; this is not whole-plan or installed-platform acceptance.
+
+
+## 2026-10-17 — Iterative Monty input arena prerequisite
+
+The existing JSON-to-Monty adapter recursively builds an owned MontyObject for
+every child, then merges/rebases its arena into each parent. Replace that adapter
+with one bounded post-order worklist and one validated MontyGraph. Preserve
+JSON value-node/depth and string/key-byte accounting, unsigned integer fidelity,
+container order and classified failures. Check graph ID representation and use
+fallible reservations before allocating traversal/child storage; partial failure
+must drop only flat arena/worklist state, without recursive owned subtrees.
+
+This is shared value-transport infrastructure, not a new Tool or workflow.
+Prove deep construction/rejection on a small Rust thread stack and preserve
+actual worker/global/MCP behavior with relevant strict lint. Do not remove the
+separate process transport depth guard yet: receiving JSON, recursive output,
+clone/drop, journal and recovery consumers need their own safe implementation
+before larger acknowledged depths can traverse that boundary. A deep adapter
+unit test is not ordinary global/deep-wire acceptance.
+
+
+Local prerequisite acceptance: `input-arena-20261017-r1`, receipt
+`/private/tmp/brassclaw-input-arena-accepted.json`. Seven host unit cases
+(0.417 s) include exact scalar/budget checks and 12,000-level construction,
+rejection and flat arena cleanup on a 64 KiB thread stack. Actual worker live
+bounds/retained state (0.539 s), task-local oversized-result handling (0.020 s),
+ordinary global Monty (45.064 s), MCP/history (39.927 s) and strict host/composition
+PostgreSQL/Bedrock test-target lint (66.901 s) pass. Source and paired artifacts
+are frozen; no benchmark or cross-platform/deep-wire claim follows from these
+local tests. No dependency, wire format, Tool, workflow or resource policy changes.
+
+Next required depth work, before removing `MAX_TRANSPORT_DEPTH`:
+
+1. Replace recursive output conversion with bounded occurrence traversal,
+   preserving shared host-argument accounting and rejecting unsupported/cyclic
+   values, invalid keys and duplicates before publication. Error cleanup must
+   also be iterative when earlier results contain a deep owned subtree.
+2. Make parent/worker encoding, decoding and recovery safe for configured depths.
+   Reuse the captured value/frame policy; disabling serde recursion protection
+   alone is insufficient. Keep duplicate-key/type checks and exact complete data.
+3. Trace owned JSON cloning/dropping and journal/PostgreSQL serialization as well
+   as the VM converter. Remove the fixed transport clamp only after real live
+   WebUI acknowledgement, deep task/child/wait/recovery, rejected reductions and
+   no-replay acceptance prove the entire path. Keep immutable revision/schema
+   retention and live technical policy distinct; a parser helper is not cutover.
+
+
+## 2026-10-17 — Iterative output and host-argument custody
+
+Replace recursive Monty output traversal with a bounded post-order occurrence
+worklist. Count repeated graph references each time they expand into JSON;
+reject unsupported/cyclic nodes, nonfinite numbers and invalid/duplicate keys.
+Keep one ValueBudget and one owned JSON forest across every positional and
+keyword argument. A late argument/key/byte failure must clean up earlier deep
+results iteratively before any host request can be published.
+
+Reserve the forest's worklist for visited value nodes before constructing their
+owned data. Its disjoint trees contain no more nodes than that reserved count,
+so error cleanup can reuse the same buffer to dismantle arrays/objects without
+recursive Drop or another allocation. Validate frame/child counts including
+queued occurrences and allocate child vectors before draining owned values.
+On success, preserve exact order, types and keyword names. Keep the process
+transport depth restriction until caller encoding/decoding, ownership and durable
+journal consumers also support configured depths. Require small-stack deep
+success and late-failure tests, DAG-expansion/aggregate budget coverage and actual
+worker/global/MCP acceptance; no helper-only deep-wire claim.
+
+
+Local output prerequisite acceptance: `output-forest-20261017-r1`, receipt
+`/private/tmp/brassclaw-output-forest-accepted.json`. Eleven host unit cases
+(0.446 s) pass, including 12,000-level output and late result/argument/key/byte
+failure cleanup on a 64 KiB stack, exact scalar/aggregate budgets and bounded
+DAG expansion. Actual worker live bounds (0.557 s), task-local value failure
+(0.020 s), ordinary global Monty (45.147 s), MCP/history (39.812 s) and strict
+host/composition PostgreSQL/Bedrock test-target lint (60.696 s) pass. No dependency,
+wire format, workflow or resource policy changes. Initial module docstrings in
+`monty_host/src/{lib,global}.rs` now describe the production global service;
+body bytes and line positions remain unchanged, so no extra Cargo run is needed
+for those subsequent comments. This does not complete the authoring-doc audit.
+
+Remaining depth consumers include `process.rs` frame/recovery codecs;
+`retained_recipe.rs` canonical checksum walking and input/answer cloning;
+`host_runtime/obligations.rs` dispatch cloning, recursive redaction and result
+serialization; and `pg_monty_invocation.rs` journal serialization. Memory tree
+already checks the acknowledged value-depth bound before building nested JSON.
+Preserve that effective-profile check while making the downstream consumers safe;
+remove neither the transport guard nor kernel enforcement prematurely. Actual
+profile changes/deep journal/child/wait/recovery and installed platform gates
+remain open. Small-stack adapters alone do not establish deep-wire support.
+
+
+## 2026-10-17 — Shared streaming serialization and iterative data checks
+
+Use a shared serialization utility in the existing neutral `brassclaw_common`
+crate for kernel/primitive byte counting, Monty frame encoding and invocation
+journal encoding. Preserve exact Serde JSON bytes, error classifications, writer
+ceilings and complete output; count through a writer instead of allocating a
+second full serialized result. `serde_stacker` protects nested serialization
+callbacks, including wrapper/envelope types. Its upstream docs explicitly exclude
+Clone/Drop/Display from that protection; do not claim ownership or decoding safe
+by introducing this adapter alone (https://docs.rs/serde_stacker/0.1.14/serde_stacker/).
+
+Make borrowed data-bound traversal and typed-value checksum traversal iterative.
+Preserve object-key node/byte charges and the exact typed-value-sha256/1 format.
+Separate positive execution-data depth bounds from the still restricted
+schema/parser profile; do not relax strict_json or live transport admission.
+Test historical hash vectors, deep small-stack validation/hash/serialization,
+late byte/writer errors and actual worker/kernel/PostgreSQL/global consumers.
+Cloning, redaction, owned-value cleanup, strict parsing/decoding and full deep
+WebUI/child/recovery acceptance remain prerequisites for removing the64guard.
+
+
+Local streaming prerequisite acceptance: `json-streaming-20261017-r1`, receipt
+`/private/tmp/brassclaw-json-streaming-accepted.json`. Two serializer/byte/error
+cases, 12 contract cases, 11 host cases, 15 real-worker actor cases, two retained
+service cases, seven retained-input cases, all 137 registered built-in Tool
+cases, two invocation encoding cases, actual Memory/kernel/PostgreSQL (52.167 s),
+ordinary global Monty (41.474 s), MCP/history (39.008 s), architecture (1.579 s)
+and strict affected PostgreSQL/Bedrock test-target lint (97.992 s) pass. The
+separately locked control workspace also passes live-frame retention/reduction
+and malformed-frame rejection against the real worker. The two lockfiles add
+only serde_stacker0.1.14 and the corresponding dependency edges.
+
+The journal filter initially named the file instead of its Rust module alias;
+the runner rejected its empty run. Corrected exact tests reuse the unchanged
+frozen binaries and all prior successful results. No empty run, suppressed
+warning or assertion contributes acceptance. Disk91% triggered the mandated
+cleanup of this chat's target after preserving its executables; target2 was
+untouched. A later two-line API doc clarification preserves body bytes and line
+positions, requiring no additional Cargo execution for prose.
+
+These tests prove deep encoding/bounds/checksum helpers and current ordinary
+callers, not deep ordinary recovery or full plan completion. Kernel dispatch
+cloning/redaction, caller-owned JSON disposal, strict parsing and reader/journal
+recovery remain explicit blockers to lifting the transport profile. The v1
+checksum format and current schema/parser admission are unchanged.
+
+
+## 2026-10-17 — Kernel dispatch output ownership
+
+Replace the completion handler's recursive dispatch clone and redaction with a
+borrowed traversal that owns intermediate output in one cleanup guard. Reserve
+cleanup capacity before constructing nodes; never transfer a deep subtree to an
+unguarded local across a fallible check. Validate transformed object keys before
+assembly so collisions fail without dropping a replaced subtree recursively.
+Retain the guard through byte/resource limits, handoff cleanup and the awaited
+audit write; transfer the final value only after completion succeeds. Keep
+payload-free leak rejection events, preview clearing and exact failure kinds.
+
+Compile the immutable LeakDetector when wiring the handler, share it across
+handler clones and reuse it for all strings/keys. Regex compilation is setup
+work, not per-node or per-dispatch work. A 64 KiB regression initially identified
+regex compilation's independent stack requirement; retain that failed evidence.
+The corrected test constructs the real handler before moving it onto the small
+stack, matching service wiring, and tests six 12,000-level completion scenarios:
+copy, redaction, late secret rejection, late key collision, byte-limit rejection
+and missing-audit-sink rejection. It checks retained metadata and leak events.
+The real source/result DTOs still need explicit dismantling in this regression;
+this does not establish safe public DTO ownership or decoding.
+
+Do not remove transport/schema depth restrictions based on this handler repair.
+Retained execution still clones inputs, host arguments, completion boundaries
+and answers. Public Value ownership, strict parsing, partial decoder failure,
+PG journal recovery and actual deep task/child/wait/live-profile acceptance
+remain required. No new Recipe, Tool or workflow executor is introduced.
+
+Local acceptance: `dispatch-output-20261017-r2`, receipt
+`/private/tmp/brassclaw-dispatch-output-accepted.json`. All 33 obligation contract
+cases, seven obligation unit cases and 137 registered Tool cases pass. Actual
+ordinary global Monty (45.331 s, including post-effect output-limit no-replay),
+Memory/kernel/PostgreSQL (54.121 s) and MCP/history (43.608 s) pass against the
+paired real worker. Strict HostRuntime/Composition PostgreSQL+Bedrock test-target
+lint passes (77.485 s) without warning suppression. Frozen source and retained
+executables are preserved. R1's cold-regex small-stack abort remains separate
+failed evidence; it is not counted as acceptance. This is local macOS evidence,
+not installed Linux/Windows acceptance or completion of the full v3 plan.
+
+## 2026-10-17 — Guard partial strict-JSON parser ownership
+
+Move strict JSON parsing into `skills/value_contract/json.rs`. Deserializer
+seeds return no owned Value; visitors retain indices into one guarded forest.
+Reserve cleanup capacity before adding each pending node. A closing container
+consumes only its child roots, preserving earlier sibling indices; map visitors
+retain key/index metadata, reject duplicates before values, then assemble only
+after fallible parsing/budget checks. Keep the forest until decoder.end succeeds
+so trailing garbage also cleans up the complete root iteratively. Stack-protect
+Serde callbacks using the already pinned serde_stacker release. Preserve key
+node/UTF-8 byte charges, source-byte admission, error reasons and all value types.
+
+Keep ContractLimits' supported parser/schema depth at 64 and Serde's reader
+recursion limit enabled. This internal repair does not permit larger live
+profiles, protect public Value DTO disposal or fix derived protocol deserialization.
+The latter can still hold an owned deep field before later fields fail and needs
+its own safe representation/decoder path. Do not disable reader recursion simply
+because these strict-parser visitors now hold only indices.
+
+Exercise the public strict_json caller on a 64 KiB stack: exact 66-node parsing,
+late node/depth rejection, completed earlier subtrees followed by bad syntax,
+Unicode/number errors and escaped duplicate keys, plus trailing-data rejection.
+Check shallow scalar/object equality against Serde and unchanged profile denial.
+Keep component/association/revision, retained-input, native global/kernel/MCP,
+independently locked retained execution, architecture and strict affected lint
+acceptance. Both lockfiles add only Skills' edge to the already pinned package.
+
+Initial R1 parser evidence was partial, recorded in
+`/private/tmp/brassclaw-guarded-parser-partial.json`: 13 value-contract, five
+association, three revision, 35 Skills unit and seven retained-input cases pass.
+Actual ordinary global Monty (46.347 s), Memory/kernel/PostgreSQL (54.551 s),
+MCP/history (44.515 s), architecture and strict Skills/Engine/Composition
+PostgreSQL+Bedrock lint (107.055 s) pass on `guarded-parser-20261017-r1`.
+The independent retained-execution build exposed a missing direct Common
+dependency in its source-included journal and the prefix owner's new internal
+result-reference module missing from three harness roots. The former is repaired
+in the standalone manifest/lock; the latter remains with its production owner.
+Do not count the failed standalone build as acceptance. Its repaired module and
+feature wiring still need independent compilation/execution, including supported
+feature shapes, before this prerequisite is recorded as fully accepted.
+
+The first retained-input run also lacked a sibling packaged worker. Staging the
+actual paired worker made all seven cases pass without source changes; the four
+unchanged Skills suites reuse their retained successful executables. At 91% disk
+use, the runner preserved binaries before cleaning only its own Cargo target.
+No parser/transport admission relaxation, warning suppression, fabricated Tool
+result or full-plan completion follows from these prerequisite results.
+
+
+Parser prerequisite accepted locally: receipt
+`/private/tmp/brassclaw-guarded-parser-accepted.json` records the R1 root snapshot
+and R3 independent snapshot separately. All non-Composition crate inputs and the
+root lock remain identical, so the earlier parser/Engine/native/architecture/lint
+checks retain their stated scope. This does not certify later prefix-only
+production changes or new prefix functionality.
+
+The standalone manifest now directly declares Common, used by its included
+production journal. The prefix owner separated the actual result formatter from
+the database evidence adapter, and split admission into shared claim/journal core
+plus service lifecycle methods. The appropriate harnesses use those actual
+production parts. An initially proposed empty fixture feature was removed;
+unsupported feature paths and warning exemptions are not used. A second run's
+unused-method warnings remain failed evidence, resolved through the source split.
+
+R3 independently builds all three affected harnesses and passes all seven actual
+retained-execution/journal cases (128.190 s), ten Q1/journal cases (58.999 s) and
+strict three-harness lint with --all-features (3.311 s). The parser's source,
+budgets and public API are unchanged from its passing R1 regression. Public
+DTO/retained execution cloning and disposal, generic wire decoding, configured
+deep execution/recovery and installed Linux/Windows acceptance remain open.
+The full v3 goal remains unfinished; no release, activation or speed claim follows.
+
+## 2026-10-17 — Retained host-answer ownership
+
+Use an immutable host-API JSON handle for PortAnswer::Return and HostAnswer::Return.
+Clones share read-only data; they do not recursively clone the tree. Reserve
+cleanup work storage before retaining a complete tree, and transfer a parser's
+existing guarded storage into the retained handle. Final release dismantles the
+tree iteratively. Debug output stays private; serialization and equality must
+preserve standard JSON values and exact compact wire bytes. The VM still builds
+its own mutable invocation values; sharing immutable host data grants no Tool
+permission or cross-task mutable state.
+
+Do not rely on derived internally/adjacently tagged enum deserialization for
+these data-bearing answers: Serde may buffer deep Content before the guarded
+field is constructed. Parse answer fields directly and keep data guarded through
+later tag, duplicate, unknown-field, metadata and syntax failures. Keep the
+existing supported process depth/admission gate until the rest of Request,
+WorkerCommand, RecipeCommand/Boundary/Event, schema binding, journal recovery and
+public output/input ownership are qualified. Test-only codec qualification with
+reader recursion disabled does not enable deeper live values.
+
+Qualify deep host-data construction, shared clone, ordinary drop, equality,
+serialization, partial syntax and later enclosing-field failure on a small stack.
+Verify Return/error wire shapes and complete typed exception roundtrips. Bound
+exception metadata by its pinned nonrecursive wire schema, independently of the
+operator's arbitrary JSON data depth setting. Actual worker, retained result
+failure/cancellation, PostgreSQL answer encoding, normal global task, MCP/history,
+architecture and strict affected root/standalone checks remain required.
+
+Additional remaining limit found in the pinned control fork:
+monty-types/src/exceptions.rs still uses fixed 64 KiB MAX_OBJECT_LEN and
+MAX_DOC_LEN for structured Unicode/JSON error payloads. Map those copied-payload
+bounds to acknowledged execution/preparation settings or remove them with proper
+allocator/host accounting. Preserve exact error position/document behavior and
+an explicit oversized/unavailable result, never a partial document. Exercise
+boundary/oversized error handling in real worker and recovery; source comments
+about omitted data are not configurable-limit acceptance.
+
+Local host-answer prerequisite accepted: receipt
+`/private/tmp/brassclaw-shared-answer-accepted.json` separates the R1 runtime
+snapshot from the R3 fixture-only successor. Three small-stack JSON-handle
+tests, thirteen host units, fifteen actor cases, two live/completed-answer
+service cases, seven Engine retained-input cases and two journal cases pass.
+Ordinary global Monty (43.670 s), actual Memory/kernel/PostgreSQL (53.520 s),
+MCP/history (41.264 s), 28 architecture checks and strict affected root
+PostgreSQL+Bedrock test lint pass. Independent retained execution (seven cases),
+Q1/journal (ten), child execution (eleven) and live-frame uptake pass too.
+
+Strict standalone lint first caught a redundant reference in the new handle
+comparison. The fixture assertion is repaired without suppression; its actual
+dependent-task and invalid-completion tests and strict six-harness lint pass
+in R3. All runtime inputs remain byte-identical to R1, so their earlier passing
+evidence is reused. The first successor launcher failed source verification
+because its snapshot copy followed symlinks; it ran no Cargo/test command.
+R3 preserves and verifies those links. No failure is counted as acceptance.
+Current-source proof separately lists later concurrent prefix changes; those
+changes are not certified by this receipt. The outer protocol, deep recovery,
+remaining fixed limits, installed platforms and full v3 plan remain unfinished.
+
+## 2026-10-17 — Prepared-run identity count repair
+
+Remove the compatibility coordinator's fixed 4096-entry preparation ceiling.
+These reservations retain routing scope until submission or explicit abort;
+they are not VM capacity or Tool permission. Allocate the next map slot fallibly
+before insertion, reject identity collisions instead of replacing a fence, and
+retain every outstanding reservation through unrelated aborts/admission errors.
+An entirely drained ledger releases its backing allocation without pressure
+polling or compaction of an occupied table. Existing submit/child/abort semantics
+and durable store admission remain unchanged.
+
+Current source inventory finds only the compatibility implementation and contract
+callers of prepare/abort, so do not invent a WebUI control with no production
+consumer. Run the actual coordinator regression across 4097 simultaneous
+reservations, old/new foreign-scope rejection, failed profile admission,
+unrelated and repeated aborts, exact requested-ID admission and subsequent fresh
+work. All142 coordinator contracts pass (0.882 s), including this new regression;
+strict affected all-target lint passes (8.723 s). Receipt
+`/private/tmp/brassclaw-prepared-identity-count-accepted.json` pins the two-file
+coordinator successor and complete frozen inventory. Other turn-store/subagent
+retention limits and the full v3 plan remain separate unfinished work.
+
+## 2026-10-17 — Explicit subagent goal retention
+
+The in-memory goal backend previously evicted the oldest entry at 4096,
+irrespective of whether its task still needed it. Remove this eviction/count
+quota and its insertion-order queue. Retain each accepted scope/run goal until
+the existing owner calls delete; duplicates remain errors. Reserve insertion
+capacity fallibly and reject poisoned storage rather than recovering silently.
+Delete only the addressed key, releasing the backing table when fully drained.
+
+Remove the separate 64 KiB serialized-goal ceiling from both in-memory and
+PostgreSQL backends, including the redundant complete JSON allocation used to
+measure it. This does not change upstream admission/execution limits or database
+representation constraints. Store complete task/handoff strings as data; no
+truncation, interpolation or replay. The obsolete payload-limit error mapping
+is removed from both existing adapters. Preserve existing backend keys and
+duplicate/deletion semantics rather than inventing new scope/approval rules.
+
+Local acceptance: all106 surrounding subagent tests pass (0.612 s), including
+in-memory >4096 complete retrieval/drain, large escaped/Unicode task and handoff,
+duplicates, scoped deletion and poisoned-state errors. Real PostgreSQL complete
+committed/reopened large-value roundtrip, duplicate/foreign rejection and exact
+deletion pass (4.310 s); ordinary global Monty passes (44.606 s). Strict affected
+Reborn/Composition PostgreSQL+Bedrock test lint passes (96.758 s) without warnings.
+Receipt `/private/tmp/brassclaw-subagent-goal-retention-accepted.json` pins the
+four-file source successor and artifacts; current-source proof separates later
+concurrent prefix/Cargo changes, which this batch does not certify. The gate/tombstone stores and other retention
+controls remain separate work; this is no new workflow Tool or Rust task loop.
+
+Follow the complete goal path before claiming product-wide large-goal support:
+loop_support/subagent_spawn_port.rs still advertises/enforces the separate
+DEFAULT_SUBAGENT_GOAL_MAX_BYTES=64 KiB per-field limit. Its prompt composer has
+64/128 KiB sanitized/raw limits, collapses whitespace, then incorrectly carries
+task data through LoopSafeSummary's 512-byte/status-delimiter contract.
+Do not weaken log/status summary protection to carry actual task text. Repair
+the actual typed prompt/ingress consumer and its acknowledged data bounds, or
+use the complete retained ordinary-message path where that is the qualified
+design. Prove complete literal task/handoff transport through the consuming
+path; a backend roundtrip alone does not close these consumer limits.
+
+Also trace SpawnCompensationState::rollback and rollback_batch_compensation:
+they currently discard cancellation, gate/goal/result/thread cleanup errors and
+can drop unresolved cleanup state. The completion observer does propagate goal
+deletion errors; preserve that behavior. The spawn owner needs explicit retained
+cleanup outcomes and no replay of admitted children/effects; a warning, another
+Rust workflow loop or a manufactured successful rollback is insufficient. This
+must be resolved alongside R09's real child-admission/continuation cutover;
+the existing authorized:true primitive is not child execution evidence.
+
+## 2026-10-17 — One committed Tool-dispatch identity
+
+R09 tracing found that SelectedTools constructed a kernel ExecutionContext while
+PgMontyAdmission::begin_tool_invocation generated a second independent UUID.
+The first-party ResourceScope therefore could not identify its committed effect
+intent. Reuse the host-created ExecutionContext invocation identity in the
+intent insert; both ExecutionContext and its validated ResourceScope already
+carry that identity. Reject nil identities before writing an intent. Keep the
+independent private invocation key, exact retained selection, claim fencing,
+attempt count and record-before-effect ordering. An invocation ID is correlation
+and deduplication data, never permission or proof that an effect completed.
+
+Update every actual retained-kernel fixture to commit the identity it dispatches;
+source-only journal probes supply their own explicit fresh identities. Extend the
+existing actual PostgreSQL/kernel journal regression to verify the committed ID
+before execution and inspect real resource-governor reservation/reconciliation
+events for that same ID, including nil rejection without an inserted intent.
+Cancellation, uncertain/lost answer commits, replay rejection, retained execution,
+Q1 and ordinary global/Memory callers remain required acceptance. This is a
+prerequisite for real correlated child admission, not an implementation of it.
+Compilation, runtime checks and strict affected root/standalone lint are pending.
+
+Accepted locally in dispatch-identity-20261017-r2: the actual PostgreSQL/kernel
+journal regression passes (17.933 s), including nil rejection, identical committed
+and reserved/reconciled IDs, cancellation, uncertain answer commit and no replay.
+All seven retained-execution cases (125.869 s), ten Q1/journal cases (60.398 s),
+strict three-harness all-feature lint (22.265 s), ordinary global Monty (46.606 s),
+Memory/kernel/PostgreSQL (53.949 s) and strict affected root PostgreSQL+Bedrock
+test lint (105.838 s) pass without warnings. R1's missing UUID qualifier in the
+new test remains failed compilation evidence; R2 repairs only that name before
+running this complete batch. It is not counted as a passing check.
+
+Receipt `/private/tmp/brassclaw-dispatch-identity-accepted.json` and current-source
+proof `/private/tmp/brassclaw-dispatch-identity-current-source-verification.json`
+pin all eight changed files and retain the unchanged paired worker explicitly.
+Later concurrent prefix/Cargo changes remain outside this frozen evidence.
+Real R09 child admission, inherited task selection, durable cleanup and the full
+v3/platform/release gates remain unfinished.
+
+R09 implementation constraints from the actual caller trace:
+
+- FirstPartyCapabilityRequest already receives ResourceScope.invocation_id. Use
+  the committed ID to correlate a task-bound admission operation; do not add a
+  caller-controlled parent/run/attempt field or treat that ID alone as authority.
+  Verify the original intent, arguments, exact parent attempt and live admission.
+- OwnedGlobalTaskFactory::dependency_parent currently proves only an MCP exchange
+  and its live provider surface. A delegated Recipe child needs its own durable
+  admission provenance, matched to the actual retained parent TaskPorts before
+  borrowing dependent capacity. Do not forge MCP receipts or require a provider
+  exchange for non-MCP children.
+- InstalledMontyCatalogue::TaskCatalogue contains immutable view/source selection
+  plus already task-bound SelectedTools. Copying SelectedMontyRecipe.tools into
+  a child would keep the parent's host, admission, answers and kernel bindings.
+  Retain the inherited definition/generation selection, then bind fresh child
+  execution/Tool ports to the child's real host and admission. Do not capture
+  latest instead, or share mutable parent execution state.
+- The existing task-bound kernel reply/review registrations demonstrate the
+  supported contextual binding seam. Admission must perform one declared system
+  primitive; Recipe/Monty owns choosing work, waiting, consuming results and
+  completion. Do not route this through the legacy Rust spawn decorator or hide
+  a complete child workflow in a new Rust Tool.
+- Preserve full typed goal/handoff through admission and prompt consumption.
+  Ordinary message/data transport and internal Recipe entries already exist;
+  inspect their exact contracts before choosing the supported child entry. A
+  safe status summary is not a raw task-data carrier. Retain uncertain admission
+  and cleanup outcomes without replay or destructive best-effort rollback.
+
+## 2026-10-17 — Complete prepared model input behind existing prompt authority
+
+The actual R09/model-usage trace above reaches a second data-carrier mismatch:
+LoopPromptBundleRequest.inline_messages uses LoopSafeSummary, a short status/log
+contract with 512-byte and delimiter restrictions. It cannot carry a complete
+Recipe task, handoff, document or assembled model prompt. Do not weaken that
+status contract, resurrect the unused permissive PgKohaiPort parser, or expose
+raw resolved_messages to bypass the actual ThreadBackedLoopModelPort authority.
+
+Implement a host-only PreparedLoopPromptRequest with typed system/user/assistant
+messages and the correlated InvocationId, distinct from root-port JSON. Carry
+complete strings as data, never source. Derive opaque body/role/order references
+from SHA-256 under run, scope and invocation identity; debug/milestones contain
+metadata only. Reuse InstructionBundleBuilder, InstructionMaterializationStore,
+LoopPromptBundleAuthority, current surface validation, safety context and hooks.
+Move materialized message bodies into the store instead of cloning the whole
+body collection. Reject mixed context cursors, unverified Recipe hints, empty
+message sets, nil identities and stale surfaces. An explicit enabled message
+limit rejects the complete request rather than clipping it; disabled artificial
+budgets ignore that hint. The prepared path has no default 32/maximum 128 message
+window or status/snippet text-size clamp. Captured usage input/resource admission
+and provider technical limits still belong to the actual consuming model usage.
+
+Forward through RebornLoopDriverHost and its resume wrapper, HookedLoopPromptPort
+and SubagentLoopPromptPort. Hooks retain their materialization and refreshed
+single-use bundle authority. Child capability-view narrowing remains host-owned;
+the complete Recipe prompt does not pass through legacy goal reformatting.
+MontyTaskHost uses its existing begin/finish acknowledgement barrier, preserves
+late prompt answers for reconciliation and rejects preparation after fencing.
+There is deliberately no new raw-body dispatch_port operation or Tool grant.
+
+Scoped local acceptance in prepared-prompt-20261017-r2/r3: all three complete
+prepared-prompt contracts, eleven hook prompt cases, nine existing child prompt
+cases and four ordinary prompt cases pass, followed by strict affected Turns,
+Hooks, LoopSupport and Reborn test lint. R1 retains the failed diagnostics for
+private profile-constructor use in the two new test fixtures; R2 fixes those
+fixtures using the actual public RunProfileResolver, without exposing the private
+constructor. The R3 concrete MontyTaskHost resolver/fencing case and all four
+surrounding task-host cases pass (0.579 s); strict Reborn test lint passes (3.335 s),
+actual PostgreSQL/global-Monty matched/unmatched regression passes (45.870 s),
+and strict affected Composition PostgreSQL+Bedrock test lint passes (66.778 s).
+There are no suppressed warnings. The concrete resolver test uses the existing
+recording model gateway: it proves exact transport and run/turn identity, not a
+real provider call or activated canonical model Skill. R4 adds one direct child
+wrapper/store test for complete data and retained capability-view narrowing;
+all ten child prompt cases pass (0.296 s) and strict LoopSupport test lint passes
+(13.689 s), recorded separately in the receipt.
+
+Receipt `/private/tmp/brassclaw-prepared-prompt-accepted.json`, immutable r2/r3/r4
+artifact receipts and `/private/tmp/brassclaw-prepared-prompt-current-source-verification.json`
+separate eleven exact changed inputs from later concurrent prefix/Cargo changes.
+R4 changes only a cfg(test) child regression; its production prefix is identical
+to accepted R3. Current combined workspace reconciliation remains required.
+
+This closes a prompt-data infrastructure prerequisite, not the complete model
+or child workflow. Still implement and qualify the existing canonical
+pc-host-kohai-complete usage with a finite strict typed mapping, exact task-pinned
+full prefix/model/provider identity, structured response/tool-request retention,
+actual model accounting, current kernel policy and durable effect identity.
+Retain the actual production interceptor path; do not wire the dead permissive
+bridge or expose root-only controls to arbitrary children. Three basic message
+roles do not by themselves implement provider Tool-result/replay metadata.
+Then complete real R09 admission, inherited immutable definitions with fresh
+child-bound execution ports, explicit Monty wait/result handling and durable
+cleanup. Installation seed qualification applies; no external maintainer Q2 is
+needed for first-party shipped implementation. Full v3/platform/release gates
+remain open. The prefix owner has been notified of the current captured-prefix
+lookup's fallback to the active generation; a selected task must never use it.
+
+## 2026-10-19 — Selected single-model primitive and native answer custody (candidate)
+
+The next canonical model usage retains `host.kohai_complete` and the existing
+pc-host-kohai-complete identity for qualification; it does not revive the legacy
+permissive PgKohaiPort or protected-root model component. The implemented native
+adapter's finite input profile is `{prompt:{user_query:string,
+chat_history:[{role:system|user|assistant,content:string}]}}`, with every field
+required and no extras/defaults. There is no caller prefix selector, provider
+selector, raw source or root-control field. The task-owned kernel registration
+captures the immutable selected catalogue prefix/generation/hash; it shares its
+read-only prefix text across that task's model bindings. Actual calls materialize
+owned message data through the existing scoped prompt authority, hooks, model
+policy/accounting/interceptor ports and cancellation barrier. Binding a catalogue
+must not require a configured model for unrelated Tier-0 work; the actual model
+dispatch requires a valid retained route. Internal deterministic-root model
+restrictions remain; extending qualified internal model work is separate work.
+
+The primitive returns the complete existing LoopModelResponse as JSON text,
+including structured proposals and unknown usage. Recipes perform explicit
+parsing, semantic checks, proposal handling and completion. The consuming Recipe
+must use this actual revised profile; old ok/answer assumptions, placeholder
+fields and state[previous_result] are not compatible. Three text roles do not
+implement provider Tool-result replay history. Retain the required future
+structured profile and exact matching adapter rather than silently skipping it.
+
+V168 adds append-only native model-response evidence tied to the existing
+committed invocation. Preparation checks the original admission/claim, invocation,
+exact arguments, selected capability and privately captured prefix reference.
+Received responses enter an owned pending state before encoding/database work.
+The native answer is committed before later kernel/VM output validation. Failure
+or ambiguous acknowledgement retains the actual response and blocks owner
+release. Explicit supervisor persistence reconciliation accepts only an already
+received invocation and cannot call the model or resume the Recipe. Successful
+persistence releases the full native response in memory; unresolved data remains
+owned. Bounds are the invocation's acknowledged data_max_bytes, with no new
+fixed response quota or extra invocation approval. The shared neutral admission
+transport assembly remains the actual claim/journal/lifecycle implementation used
+by existing standalone callers; it does not install a model handler there.
+
+The selected model host path retains a received native response before its final
+delivery fence. Cancellation may therefore preserve the original late answer in
+the journal and a correlated private withheld receipt, while forbidding delivery
+to Monty, a reply, a new effect or another model call. Root model ports retain
+their existing restrictions; no raw-body/control JSON route is added.
+
+Validation history: R1 failed to compile a new test fixture that used
+ResourceCeiling::default despite that type having no Default. R2 compiled but its
+new fixture failed strict recursive association-schema parsing (missing explicit
+checks), before any provider call. Those checks were added rather than weakening
+the validator. A duplicate R2 launch stopped before Cargo because its output
+directory already existed; its prelaunch refresh makes that snapshot pathname
+unsuitable as executable-source evidence. This limitation is preserved with the
+failed artifacts. R3 used a fresh unique source snapshot and refreshed owning
+input timestamps, with an issued-once launch marker. It compiled and stopped
+before provider I/O because the fixture lacked the mandatory model-route
+resolver. R4 supplies the exact operator-selected route through a managed
+single-route resolver, preserving production validation. It reached the fourth
+actual response's native persistence barrier after the normal, output-ceiling,
+database-rejection, reconciliation and policy checks. Its cancellation assertion
+incorrectly expected the barrier deadline to return an error: the existing API
+returns a receipt containing pending-call evidence. R5 checks that the bounded
+receipt is unsettled with pending calls and no abandoned calls, then verifies
+late persistence and withheld delivery. R5 has a separate immutable snapshot and
+issued-once marker. Its actual live-model case passed (16.048 seconds), together
+with the ordinary global Monty regression (46.295 seconds) and five task-host
+contracts. Strict Composition lint then found the same admission fixture loaded
+as two modules. R6 gives the root tests one shared fixture declaration and
+updates the standalone Q1 harness to declare that same fixture once. These are
+exactly four test-only declaration/import edits; production inputs, shared
+admission implementation and behavioral test bodies are unchanged. R5's passing
+behavior is retained with that explicit reuse scope. R6's strict lint found an
+obsolete parent import formerly needed by the nested fixture. R7 removes that
+import and retains the same behavioral reuse scope. Its affected strict lints
+and actual standalone journal/Q1 checks remain pending; none of the preceding
+failed batches is recorded as a full acceptance pass.
+
+R7's strict Composition lint passed (38.317 seconds). Its standalone journal
+case then exposed V168's foreign-key effect on the old bare-TRUNCATE assertion:
+PostgreSQL rejects that statement with 0A000 before the immutability trigger.
+R8 checks that exact dependency rejection separately, then requires 23514 for
+TRUNCATE CASCADE and verifies all three original intents remain. It changes only
+that standalone test; the R5 behavior and R7 root lint retain their original
+source provenance. R8 completed the standalone journal (21.425 seconds), all ten
+Q1 tests (73.266 seconds) and strict standalone lint (30.315 seconds). No warnings
+were suppressed and no database protection was weakened. The scoped accepted
+receipt is `/private/tmp/brassclaw-native-model-usage-accepted.json`; immutable
+sources and retained executables are under the matching R5/R7/R8 directories in
+`target/validation/`. R5 owns the actual live/global/host behavioral evidence;
+R7 owns root strict lint and R8 owns the repaired standalone caller checks.
+Their declaration-only/test-only source differences and reuse are recorded
+explicitly. All twenty owning current-source inputs match R8. Concurrent prefix
+and other dependency work retains its own acceptance scope.
+
+The live native case uses a real PostgreSQL accepted run/claim and persisted
+route, actual Reborn host/ref/interceptor and retained kernel, and the explicitly
+selected operator model. It is invoked with --ignored, not counted through a
+skip. It checks normal full response capture, post-output-cap rejection, deliberate
+native-result INSERT rejection and persistence-only reconciliation, strict input,
+foreign/replay/current-Tool-block rejection, immutable response evidence, and a
+fourth real response blocked at native persistence during durable cancellation
+and bounded fencing. Its registry-factory configuration is a technical fixture,
+not provider-catalogue/operator-installation acceptance. Full model accounting,
+real Monty invocation of the canonical export, exact packaged artifact and
+association/bootstrap qualification, coherent activation, complete structured
+history, real R09 child admission, recovery, platform/release and installed QA
+remain required. Do not mark the complete model/Recipe or full-v3 plan finished.

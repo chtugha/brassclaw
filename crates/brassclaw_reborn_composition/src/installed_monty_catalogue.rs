@@ -32,7 +32,9 @@ use brassclaw_monty_host::{
     service::{PortFailure, TaskInput},
 };
 use brassclaw_pg::PgPool;
-use brassclaw_reborn::monty_task_host::MontyTaskHost;
+use brassclaw_reborn::{
+    monty_model_capability::RecipeModelResponseStore, monty_task_host::MontyTaskHost,
+};
 use brassclaw_skills::{
     component_revision::ComponentRevisionDraft,
     global_bootstrap_components::{
@@ -82,12 +84,14 @@ fn reference_value(
 pub(crate) enum BootstrapUsageApproval<'a> {
     Reply(&'a crate::bootstrap_reply_approval::BootstrapReplyApproval),
     Generation(&'a crate::bootstrap_generation_approval::BootstrapGenerationApproval),
+    Compiler(&'a crate::bootstrap_compiler_approval::BootstrapCompilerApproval),
 }
 impl BootstrapUsageApproval<'_> {
     pub(crate) fn approval_id(&self) -> Uuid {
         match self {
             Self::Reply(a) => a.approval_id(),
             Self::Generation(a) => a.approval_id(),
+            Self::Compiler(a) => a.approval_id(),
         }
     }
     pub(crate) fn usage_approval(
@@ -97,6 +101,7 @@ impl BootstrapUsageApproval<'_> {
         match self {
             Self::Reply(a) => a.usage_approval(binding),
             Self::Generation(a) => a.usage_approval(binding),
+            Self::Compiler(a) => a.usage_approval(binding),
         }
     }
     pub(crate) async fn verify_in_transaction(
@@ -106,6 +111,7 @@ impl BootstrapUsageApproval<'_> {
         match self {
             Self::Reply(a) => a.verify_in_transaction(tx).await,
             Self::Generation(a) => a.verify_in_transaction(tx).await,
+            Self::Compiler(a) => a.verify_in_transaction(tx).await,
         }
     }
 }
@@ -120,6 +126,7 @@ pub(crate) struct InstalledMontyCatalogue {
     pub(crate) history: Arc<InspectedRetainedProgram>,
     pub(crate) memory_mounts: MountView,
     pub(crate) generation: Uuid,
+    pub(crate) reference_sources: crate::prefix_reference_seeds::Package,
     pub(crate) root_reference: brassclaw_skills::association_contract::ComponentRevisionRef,
     pub(crate) mcp_discovery: Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery>,
     pub(crate) qualification_scope: IntentScope,
@@ -136,6 +143,9 @@ pub(crate) struct InstalledMontyCatalogue {
     _public_reply_candidate: Arc<InspectedRetainedProgram>,
     pub(super) _generation_candidates: [Arc<InspectedRetainedProgram>; 2],
     pub(super) _source_compiler_candidates: crate::prefix_compiler_candidates::CompilerCandidates,
+    pub(super) _compiler_program: Option<Arc<InspectedRetainedProgram>>,
+    pub(crate) compiler_approval:
+        Option<crate::bootstrap_compiler_approval::BootstrapCompilerApproval>,
     pub(crate) generation_approvals:
         Vec<crate::bootstrap_generation_approval::BootstrapGenerationApproval>,
     pub(crate) reply_approval: Option<crate::bootstrap_reply_approval::BootstrapReplyApproval>,
@@ -159,6 +169,12 @@ impl InstalledMontyCatalogue {
             .iter()
             .find(|a| a.usage_approval(binding).is_some())
             .map(BootstrapUsageApproval::Generation)
+            .or_else(|| {
+                self.compiler_approval
+                    .as_ref()
+                    .filter(|a| a.usage_approval(binding).is_some())
+                    .map(BootstrapUsageApproval::Compiler)
+            })
     }
 
     pub(crate) fn bind_preparation_settings(
@@ -305,6 +321,7 @@ impl InstalledMontyCatalogue {
             .await
             .map_err(|error| invalid(error.to_string()))?;
         crate::prefix_profile_seeds::retain(pool.as_ref()).await?;
+        let reference_sources = crate::prefix_reference_seeds::retain(pool.clone(), scope).await?;
         let generation_tool =
             crate::builtin_bootstrap::seed_prefix_generation_tool(pool.clone(), &scope.tenant_id)
                 .await
@@ -337,6 +354,18 @@ impl InstalledMontyCatalogue {
             worker,
         ))
         .await?;
+        let compiler_approval = Box::pin(crate::bootstrap_compiler_approval::qualify(
+            pool.clone(),
+            kernel.clone(),
+            &source_compiler_candidates.source,
+            &generation_approvals,
+            worker,
+        ))
+        .await?;
+        let compiler_program = match &compiler_approval {
+            Some(approval) => Some(approval.prepare_private_program().await?),
+            None => None,
+        };
         let store = PgComponentRevisionStore::new(pool.clone());
         let client = pool
             .get()
@@ -638,6 +667,8 @@ impl InstalledMontyCatalogue {
             _generation_candidates: generation_candidates,
             _source_compiler_candidates: source_compiler_candidates,
             generation_approvals,
+            compiler_approval,
+            _compiler_program: compiler_program,
             reply_approval: public_reply_approval,
             pool,
             kernel,
@@ -646,6 +677,7 @@ impl InstalledMontyCatalogue {
             memory_mounts,
             generation,
             root_reference: root,
+            reference_sources,
             _image: image,
         });
         catalogue
@@ -658,16 +690,33 @@ impl InstalledMontyCatalogue {
 
 #[async_trait]
 impl SystemBundleSource for InstalledMontyCatalogue {
-    async fn get_system_bundle_for_run(&self, user: &str, project: &str, run: &str) -> String {
-        let pinned = self
+    async fn get_system_bundle_for_run(
+        &self,
+        user: &str,
+        project: &str,
+        run: &str,
+    ) -> Result<String, brassclaw_turns::run_profile::AgentLoopHostError> {
+        use brassclaw_turns::run_profile::{AgentLoopHostError, AgentLoopHostErrorKind};
+        let unavailable = || {
+            AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unavailable,
+                "retained task prefix is unavailable",
+            )
+        };
+        let task = self
             .captured_prefixes
             .lock()
-            .ok()
-            .and_then(|p| p.get(run).and_then(std::sync::Weak::upgrade));
-        match pinned {
-            Some(task) => task.view.prefix.clone(),
-            None => self.get_system_bundle(user, project).await,
+            .map_err(|_| unavailable())?
+            .get(run)
+            .and_then(std::sync::Weak::upgrade)
+            .ok_or_else(unavailable)?;
+        if task.prefix_user != user || task.prefix_project != project {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "retained task prefix scope differs",
+            ));
         }
+        Ok(task.view.prefix.clone())
     }
     async fn get_system_bundle(&self, _user_id: &str, _project_id: &str) -> String {
         self.active.read().await.prefix.clone()
@@ -675,6 +724,8 @@ impl SystemBundleSource for InstalledMontyCatalogue {
 }
 
 struct TaskCatalogue {
+    prefix_user: String,
+    prefix_project: String,
     reply: SelectedMontyRecipe,
     history: SelectedMontyRecipe,
     incoming: Vec<SelectedMontyRecipe>,
@@ -686,6 +737,95 @@ struct TaskCatalogue {
 
 #[async_trait]
 impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
+    async fn capture_internal(
+        &self,
+        host: Arc<MontyTaskHost>,
+        admission: Arc<PgMontyAdmission>,
+        input: &TaskInput,
+    ) -> Result<
+        Option<Arc<dyn crate::global_recipe_ports::InternalRecipeSource>>,
+        AgentLoopDriverError,
+    > {
+        let context = host.run_context();
+        if !context.trusted_internal_turn {
+            return Ok(None);
+        }
+        let Some(definition) = crate::prefix_job_definitions::Store::new(self.pool.clone())
+            .get(context.run_id.as_uuid())
+            .await
+            .map_err(|_| failed())?
+        else {
+            return Ok(None);
+        };
+        let reference = format!("prefix-job:{}", definition.id);
+        let revision = definition.revision.to_string();
+        if input.user_input != reference
+            || definition.scope != context.scope
+            || definition.created_by != context.actor.as_ref().ok_or_else(failed)?.user_id.as_str()
+            || definition.operation != "generate"
+            || definition.mode != "source_only"
+            || !matches!(definition.profile.as_str(), "base-prompt" | "prefix-maker")
+            || definition.input["profile"] != definition.profile
+            || definition.input["revision"] != revision.as_str()
+        {
+            return Err(failed());
+        }
+        crate::prefix_job_execution::validate_snapshot(
+            &definition.profile,
+            definition.input["snapshot_bytes"]
+                .as_str()
+                .ok_or_else(failed)?,
+        )
+        .map_err(|_| failed())?;
+        let inspected = self._compiler_program.as_ref().ok_or_else(failed)?.clone();
+        if inspected
+            .program()
+            .inputs()
+            .instruction()
+            .retained_selection()
+            .map_err(|_| failed())?
+            .exact_bytes()
+            != definition.program_bytes
+        {
+            return Err(failed());
+        }
+        let approval = self.compiler_approval.as_ref().ok_or_else(failed)?;
+        let mut client = self.pool.get().await.map_err(|_| failed())?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .map_err(|_| failed())?;
+        approval
+            .verify_in_transaction(&tx)
+            .await
+            .map_err(|_| failed())?;
+        approval
+            .require_selected_program(&inspected)
+            .map_err(|_| failed())?;
+        tx.commit().await.map_err(|_| failed())?;
+        let RetainedProgram::Tools(program) = inspected.program() else {
+            return Err(failed());
+        };
+        let tools = bootstrap_compiler_tools(
+            self.pool.clone(),
+            self.kernel.clone(),
+            host,
+            admission,
+            program.clone(),
+            false,
+        )
+        .map_err(|_| failed())?;
+        Ok(Some(Arc::new(crate::prefix_job_execution::Invocation {
+            definition,
+            reference,
+            inspected,
+            tools,
+            pool: self.pool.clone(),
+        })))
+    }
     async fn capture(
         &self,
         host: Arc<MontyTaskHost>,
@@ -776,6 +916,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             release.notified().await;
         }
         let mut selections = Vec::new();
+        let model_prefix_reference = std::sync::OnceLock::new();
         for selected in std::iter::once(&self.reply)
             .chain(std::iter::once(&self.history))
             .chain(view.programs.iter())
@@ -783,12 +924,40 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             let RetainedProgram::Tools(program) = selected.program() else {
                 return Err(failed());
             };
+            let model_responses = program
+                .bindings()
+                .values()
+                .any(|binding| binding.capability_id() == "host.kohai_complete")
+                .then(|| {
+                    admission.model_response_store(
+                        model_prefix_reference
+                            .get_or_init(|| {
+                                (
+                                    format!(
+                                        "catalogue:{}:sha256:{}",
+                                        view.generation,
+                                        hex::encode(Sha256::digest(view.prefix.as_bytes()))
+                                    ),
+                                    Arc::<str>::from(view.prefix.as_str()),
+                                )
+                            })
+                            .0
+                            .clone(),
+                    )
+                });
             let mut runtimes = BTreeMap::new();
             for (step, binding) in program.bindings() {
                 let capability =
                     CapabilityId::new(binding.capability_id()).map_err(|_| failed())?;
                 let descriptor = if capability.as_str() == "host.post_reply" {
                     crate::monty_kernel::reply_package()
+                        .map_err(|_| failed())?
+                        .capabilities
+                        .into_iter()
+                        .next()
+                        .ok_or_else(failed)?
+                } else if capability.as_str() == "host.kohai_complete" {
+                    crate::monty_kernel::model_package()
                         .map_err(|_| failed())?
                         .capabilities
                         .into_iter()
@@ -807,7 +976,10 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
                     tool: binding.tool().uuid,
                     capability: capability.clone(),
                     effects: descriptor.effects.clone(),
-                    mounts: if capability.as_str() == "host.post_reply" {
+                    mounts: if matches!(
+                        capability.as_str(),
+                        "host.post_reply" | "host.kohai_complete"
+                    ) {
                         MountView::default()
                     } else {
                         self.memory_mounts.clone()
@@ -816,6 +988,20 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
                 let runtime = if capability.as_str() == "host.post_reply" {
                     self.kernel
                         .reply(host.clone(), policy)
+                        .map_err(|_| failed())?
+                } else if capability.as_str() == "host.kohai_complete" {
+                    let prefix = brassclaw_reborn::monty_model_capability::RecipeModelPrefix::new(
+                        model_prefix_reference.get().ok_or_else(failed)?.0.clone(),
+                        model_prefix_reference.get().ok_or_else(failed)?.1.clone(),
+                    )
+                    .map_err(|_| failed())?;
+                    self.kernel
+                        .model(
+                            host.clone(),
+                            prefix,
+                            model_responses.clone().ok_or_else(failed)?,
+                            policy,
+                        )
                         .map_err(|_| failed())?
                 } else {
                     let doc = program.inputs().instruction().snapshot().revisions()
@@ -838,6 +1024,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
                 runtimes,
                 mounts: self.memory_mounts.clone(),
                 answers: tokio::sync::Mutex::new(BTreeMap::new()),
+                model_responses,
             });
             selections.push(SelectedMontyRecipe {
                 normal_match: None,
@@ -850,6 +1037,21 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         let history = selections.pop().ok_or_else(failed)?;
         let reply = selections.pop().ok_or_else(failed)?;
         let task = Arc::new(TaskCatalogue {
+            prefix_user: host
+                .run_context()
+                .actor
+                .as_ref()
+                .map(|actor| actor.user_id.as_str())
+                .unwrap_or("_system")
+                .to_owned(),
+            prefix_project: host
+                .run_context()
+                .scope
+                .project_id
+                .as_ref()
+                .map(|project| project.as_str())
+                .unwrap_or("default")
+                .to_owned(),
             reply,
             history,
             incoming,
@@ -918,6 +1120,7 @@ pub(crate) fn bootstrap_reply_tools(
         runtimes: BTreeMap::from([("0:2".to_owned(), Arc::new(runtime))]),
         mounts: MountView::default(),
         answers: tokio::sync::Mutex::new(BTreeMap::new()),
+        model_responses: None,
     }))
 }
 
@@ -991,11 +1194,11 @@ fn bootstrap_builtin_tools(
         runtimes,
         mounts: MountView::default(),
         answers: tokio::sync::Mutex::new(BTreeMap::new()),
+        model_responses: None,
     }))
 }
 
-#[cfg(test)]
-pub(crate) fn prefix_compiler_test_tools(
+pub(crate) fn bootstrap_compiler_tools(
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,
     host: Arc<MontyTaskHost>,
@@ -1019,7 +1222,7 @@ pub(crate) fn prefix_compiler_test_tools(
             .count()
             != 1
     {
-        return Err(invalid("compiler development fixture bindings differ"));
+        return Err(invalid("compiler bootstrap fixture bindings differ"));
     }
     bootstrap_builtin_tools(pool, kernel, host, admission, program, denied)
 }
@@ -1097,9 +1300,16 @@ struct SelectedTools {
     mounts: MountView,
     // A lost answer commit retains the actual result; it cannot justify replay.
     answers: tokio::sync::Mutex<BTreeMap<String, Value>>,
+    model_responses: Option<Arc<dyn RecipeModelResponseStore>>,
 }
 #[async_trait]
 impl RetainedToolPort for SelectedTools {
+    fn has_uncommitted_native_results(&self) -> bool {
+        self.model_responses
+            .as_ref()
+            .is_some_and(|owner| owner.has_uncommitted_results())
+    }
+
     async fn dispatch(
         &self,
         invocation: RetainedToolInvocation<'_>,
@@ -1147,6 +1357,7 @@ impl RetainedToolPort for SelectedTools {
         let record = match self
             .admission
             .begin_tool_invocation(
+                execution.invocation_id,
                 &self.program,
                 invocation.step_id(),
                 &arguments,
@@ -1181,7 +1392,7 @@ impl RetainedToolPort for SelectedTools {
             .await
         {
             Ok(RuntimeCapabilityOutcome::Completed(completed)) => PortAnswer::Return {
-                value: completed.output,
+                value: completed.output.into(),
             },
             Ok(RuntimeCapabilityOutcome::Failed(failed)) => PortAnswer::TerminalError {
                 reason_kind: format!("retained_tool_{}", failed.kind.as_str()),

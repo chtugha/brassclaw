@@ -8,6 +8,7 @@ publish = false
 [workspace]
 
 [dependencies]
+brassclaw_common = { path = "../../crates/brassclaw_common" }
 tracing = "0.1"
 brassclaw_monty_host = { path = "../../crates/brassclaw_monty_host" }
 serde_json = "1"
@@ -74,3 +75,6 @@ path = "../monty_v1_upgrade/tests/recipe_state.rs"
 [[test]]
 name = "task_accounting"
 path = "../monty_v1_upgrade/tests/task_accounting.rs"
+
+[patch.crates-io]
+minijinja = { path = "../../vendor/minijinja-compat" }

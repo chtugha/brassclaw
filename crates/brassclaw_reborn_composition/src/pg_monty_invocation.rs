@@ -27,10 +27,10 @@ use super::{PgMontyAdmission, failed};
 /// after cancellation/claim loss. That is evidence retention, never dispatch.
 /// No Serialize/Debug/Clone: routing keys and arguments remain host-private.
 pub(crate) struct PgMontyInvocation {
-    admission: Arc<PgMontyAdmission>,
-    id: Uuid,
-    key: [u8; 32],
-    data_limits: ContractLimits,
+    pub(super) admission: Arc<PgMontyAdmission>,
+    pub(super) id: Uuid,
+    pub(super) key: [u8; 32],
+    pub(super) data_limits: ContractLimits,
 }
 fn reference(value: ComponentRevisionRef) -> Value {
     let checksum: String = value
@@ -40,7 +40,7 @@ fn reference(value: ComponentRevisionRef) -> Value {
         .collect();
     json!({"uuid":value.uuid,"class_code":value.class_code,"version":value.version,"checksum":checksum})
 }
-fn digest(bytes: &str) -> String {
+pub(super) fn digest(bytes: &str) -> String {
     format!("{:x}", Sha256::digest(bytes.as_bytes()))
 }
 // Stream escaping/envelope bytes through the admitted journal bound instead of
@@ -85,7 +85,7 @@ impl Write for BoundedJson {
         Ok(())
     }
 }
-fn encode_json(
+pub(super) fn encode_json(
     value: &impl serde::Serialize,
     limit: usize,
 ) -> Result<String, AgentLoopDriverError> {
@@ -94,7 +94,7 @@ fn encode_json(
         limit,
         capacity_failed: false,
     };
-    if serde_json::to_writer(&mut writer, value).is_err() {
+    if brassclaw_common::json::write_json(&mut writer, value).is_err() {
         return Err(failed(if writer.capacity_failed {
             "monty_invocation_capacity_exceeded"
         } else {
@@ -103,7 +103,10 @@ fn encode_json(
     }
     String::from_utf8(writer.bytes).map_err(|_| failed("monty_invocation_data_invalid"))
 }
-fn encoded(value: &Value, limits: ContractLimits) -> Result<String, AgentLoopDriverError> {
+pub(super) fn encoded(
+    value: &Value,
+    limits: ContractLimits,
+) -> Result<String, AgentLoopDriverError> {
     validate_data_bounds(value, limits)
         .map_err(|_| failed("monty_invocation_capacity_exceeded"))?;
     encode_json(value, limits.max_bytes)
@@ -208,6 +211,7 @@ impl PgMontyAdmission {
     /// supported; guarded repeated steps/retries need their own durable address.
     pub(crate) async fn begin_tool_invocation(
         self: &Arc<Self>,
+        dispatch_identity: brassclaw_host_api::InvocationId,
         program: &RetainedToolProgram,
         step_id: &str,
         arguments: &Value,
@@ -217,7 +221,8 @@ impl PgMontyAdmission {
             .bindings()
             .get(step_id)
             .ok_or_else(|| failed("monty_invocation_selection_invalid"))?;
-        if step_id.is_empty()
+        if dispatch_identity.as_uuid().is_nil()
+            || step_id.is_empty()
             || step_id.len() > 64
             || binding.association().failure().max_attempts() != 1
             || binding.association().failure().action()
@@ -236,7 +241,9 @@ impl PgMontyAdmission {
             .map_err(|_| failed("monty_invocation_capacity_exceeded"))?;
         let bytes = i64::try_from(data_limits.max_bytes)
             .map_err(|_| failed("monty_invocation_capacity_exceeded"))?;
-        let id = Uuid::new_v4();
+        // The same host-created identity must reach the kernel/resource scope
+        // and durable effect record. It identifies this dispatch, not a grant.
+        let id = dispatch_identity.as_uuid();
         let key: [u8; 32] = Sha256::digest(Uuid::new_v4().as_bytes()).into();
         let mut client = self
             .pool
@@ -391,6 +398,53 @@ impl PgMontyInvocation {
 mod tests {
     use super::*;
     #[test]
+    fn deep_invocation_encoding_preserves_exact_envelope_and_byte_failure() {
+        std::thread::Builder::new()
+            .stack_size(64 * 1024)
+            .spawn(|| {
+                let depth = 12_000;
+                let mut value = Value::Bool(true);
+                for _ in 0..depth {
+                    value = Value::Array(vec![value]);
+                }
+                let answer = PortAnswer::Return {
+                    value: value.into(),
+                };
+                let expected = format!(
+                    "{{\"kind\":\"return\",\"value\":{}true{}}}",
+                    "[".repeat(depth),
+                    "]".repeat(depth)
+                );
+                let limits = ContractLimits {
+                    max_depth: depth,
+                    max_nodes: depth + 1,
+                    max_bytes: expected.len(),
+                };
+                assert_eq!(encoded_answer(&answer, limits).unwrap(), expected);
+                assert!(
+                    encoded_answer(
+                        &answer,
+                        ContractLimits {
+                            max_bytes: expected.len() - 1,
+                            ..limits
+                        }
+                    )
+                    .is_err()
+                );
+                let PortAnswer::Return { value } = answer else {
+                    unreachable!()
+                };
+                let retained = value.clone();
+                drop(value);
+                // The final shared handle now dismantles deep data itself.
+                drop(retained);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
     fn invocation_encoding_bounds_value_separately_from_answer_envelope() {
         let limits = ContractLimits {
             max_depth: 1,
@@ -398,14 +452,14 @@ mod tests {
             max_bytes: 1024,
         };
         let answer = PortAnswer::Return {
-            value: json!([null]),
+            value: json!([null]).into(),
         };
         let encoded = encoded_answer(&answer, limits).unwrap();
         assert_eq!(encoded, serde_json::to_string(&answer).unwrap());
         assert!(
             encoded_answer(
                 &PortAnswer::Return {
-                    value: json!([null, null])
+                    value: json!([null, null]).into()
                 },
                 limits
             )
@@ -414,7 +468,7 @@ mod tests {
         assert!(
             encoded_answer(
                 &PortAnswer::Return {
-                    value: json!([[null]])
+                    value: json!([[null]]).into()
                 },
                 limits
             )
@@ -439,7 +493,9 @@ mod tests {
         let escaped = json!("\u{0000}".repeat(20));
         assert!(
             encoded_answer(
-                &PortAnswer::Return { value: escaped },
+                &PortAnswer::Return {
+                    value: escaped.into()
+                },
                 ContractLimits {
                     max_bytes: 64,
                     ..limits

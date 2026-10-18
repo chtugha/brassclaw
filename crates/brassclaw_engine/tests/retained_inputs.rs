@@ -190,7 +190,7 @@ fn retained_data_limits_apply_without_replacing_selected_contracts() {
     assert!(
         port_answer_checksum_with_limits(
             &PortAnswer::Return {
-                value: bound.clone()
+                value: bound.clone().into()
             },
             limits
         )
@@ -425,7 +425,8 @@ async fn execute_draft_flow(
             key,
             answer: PortAnswer::Return {
                 value: json!({"ok":true, "program_ref":reference, "steps":step_ids,
-            "inputs":inputs, "flow":program.inputs().monty_flow().unwrap()}),
+            "inputs":inputs, "flow":program.inputs().monty_flow().unwrap()})
+                .into(),
             },
         },
     )
@@ -508,7 +509,7 @@ async fn execute_draft_flow(
             WorkerCommand::Resolve {
                 key,
                 answer: PortAnswer::Return {
-                    value: json!({"ok":true,"return_value":value}),
+                    value: json!({"ok":true,"return_value":value}).into(),
                 },
             },
         )
@@ -972,4 +973,57 @@ async fn actual_invalid_step_output_fences_the_retained_execution_without_replay
         .await
         .unwrap_err();
     assert_eq!(actual, json!({"text":7}));
+}
+#[test]
+fn retained_checksums_keep_v1_bytes_and_handle_deep_borrowed_data() {
+    use brassclaw_engine::executor::retained_recipe::typed_value_checksum_with_limits;
+    use brassclaw_skills::value_contract::ContractLimits;
+    let hex = |bytes: [u8; 32]| {
+        bytes
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    };
+    let limits = ContractLimits {
+        max_depth: 16,
+        max_nodes: 64,
+        max_bytes: 1024,
+    };
+    // Fixed historical v1 tagged/length-prefixed vector, including number kind,
+    // unsigned range, null and UTF-8 object-key ordering.
+    let value = json!({"z":[null,true,u64::MAX,1.0],"é":"ß"});
+    assert_eq!(
+        hex(typed_value_checksum_with_limits(&value, limits).unwrap()),
+        "a04635a5dd9521b38b79e0222c8856d34595206c8ed4f21dfa4aa0dad892f701"
+    );
+    std::thread::Builder::new()
+        .stack_size(64 * 1024)
+        .spawn(|| {
+            let depth = 12_000;
+            let mut value = Value::Bool(true);
+            for _ in 0..depth {
+                value = Value::Array(vec![value]);
+            }
+            let limits = ContractLimits {
+                max_depth: depth,
+                max_nodes: depth + 1,
+                max_bytes: 1,
+            };
+            let hash = typed_value_checksum_with_limits(&value, limits).unwrap();
+            let hex: String = hash.iter().map(|byte| format!("{byte:02x}")).collect();
+            assert_eq!(
+                hex,
+                "95f50e5635641aafa2f8abe0ec4284ff377342e19f230825f9b6eb2b74f62bc5"
+            );
+            loop {
+                match value {
+                    Value::Array(mut values) => value = values.pop().unwrap(),
+                    Value::Bool(true) => break,
+                    _ => panic!("unexpected chain"),
+                }
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }

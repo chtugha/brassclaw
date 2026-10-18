@@ -533,7 +533,7 @@ asyncio.run(main())
             VmFailure::WrongBoundary,
         ),
         (
-            HostAnswer::Return(json!({"completed": true})),
+            HostAnswer::Return(json!({"completed": true}).into()),
             VmFailure::InvalidHostArguments,
         ),
     ] {
@@ -930,7 +930,7 @@ fn actual_global_root_waits_at_boot_and_only_explicit_shutdown_stops_it() {
     let waits: Vec<_> = inventory.into_iter().map(|(_, key)| key).collect();
     assert_work_waits(&vm, &waits);
     let error = vm
-        .resolve(waits[0], HostAnswer::Return(Value::Null))
+        .resolve(waits[0], HostAnswer::Return(Value::Null.into()))
         .unwrap_err();
     assert_eq!(error.failure, VmFailure::WrongBoundary);
     assert!(error.rejected_answer.is_some());
@@ -1060,14 +1060,14 @@ fn malformed_admission_foreign_generation_and_duplicate_reply_do_not_consume_wor
     let (mut other, first) = start(SOURCE, bounds());
     let other_waits = settle_boot(&mut other, first);
     let error = vm
-        .resolve(other_waits[0], HostAnswer::Return(Value::Null))
+        .resolve(other_waits[0], HostAnswer::Return(Value::Null.into()))
         .unwrap_err();
     assert_eq!(error.failure, VmFailure::ForeignContinuation);
     assert!(error.rejected_answer.is_some());
     vm.begin_shutdown().unwrap();
     vm.close_worker(waits[0]).unwrap();
     let error = vm
-        .resolve(waits[0], HostAnswer::Return(Value::Null))
+        .resolve(waits[0], HostAnswer::Return(Value::Null.into()))
         .unwrap_err();
     assert_eq!(error.failure, VmFailure::ForeignContinuation);
     assert!(error.rejected_answer.is_some());
@@ -1217,7 +1217,7 @@ fn real_dependent_coroutines_preserve_parent_futures_and_fence_exact_child_runs(
     let error = vm.admit(waiting, wrong.clone(), task_budget()).unwrap_err();
     assert_eq!(error.failure, VmFailure::WrongBoundary);
     assert!(
-        matches!(error.rejected_answer.as_deref(), Some(HostAnswer::Return(value)) if value == &wrong)
+        matches!(error.rejected_answer.as_deref(), Some(HostAnswer::Return(value)) if value == wrong)
     );
     assert_eq!(vm.outstanding(), before);
     assert!(!vm.task_active("wrong-dependent").unwrap());
@@ -1471,7 +1471,7 @@ fn dependent_slot_release_requires_real_finish_ack_and_keeps_parent_wait_intact(
     settle_pool(&mut vm, boundary);
     let actual = std::fs::read_to_string(&input).unwrap();
     let persist = call(
-        vm.resolve(read.continuation, HostAnswer::Return(json!(actual)))
+        vm.resolve(read.continuation, HostAnswer::Return(json!(actual).into()))
             .unwrap(),
     );
     assert_eq!(persist.name, "persist_result");
@@ -1488,8 +1488,11 @@ fn dependent_slot_release_requires_real_finish_ack_and_keeps_parent_wait_intact(
     file.sync_all().unwrap();
     let reference = format!("file:{}", output.display());
     let finish = call(
-        vm.resolve(persist.continuation, HostAnswer::Return(json!(reference)))
-            .unwrap(),
+        vm.resolve(
+            persist.continuation,
+            HostAnswer::Return(json!(reference).into()),
+        )
+        .unwrap(),
     );
     assert_eq!(finish.name, "finish_task");
     assert_eq!(
@@ -1507,7 +1510,10 @@ fn dependent_slot_release_requires_real_finish_ack_and_keeps_parent_wait_intact(
     let before = vm.outstanding();
     let parent_data = std::fs::read_to_string(&input).unwrap();
     let held = vm
-        .resolve(parent.continuation, HostAnswer::Return(json!(parent_data)))
+        .resolve(
+            parent.continuation,
+            HostAnswer::Return(json!(parent_data).into()),
+        )
         .unwrap_err();
     assert_eq!(held.failure, VmFailure::WrongBoundary);
     assert_eq!(vm.outstanding(), before);
@@ -1518,7 +1524,7 @@ fn dependent_slot_release_requires_real_finish_ack_and_keeps_parent_wait_intact(
     // exact receipt does this fixture owner acknowledge the finish port.
     assert_eq!(std::fs::read_to_string(&output).unwrap(), content);
     let boundary = vm
-        .resolve(finish.continuation, HostAnswer::Return(Value::Null))
+        .resolve(finish.continuation, HostAnswer::Return(Value::Null.into()))
         .unwrap();
     settle_pool(&mut vm, boundary);
     assert!(!vm.task_active("file-child").unwrap());

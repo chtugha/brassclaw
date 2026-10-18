@@ -1519,7 +1519,7 @@ def required_reference_cards(cards):
 
 
 def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
-    procedure_snapshot = snapshot_procedure(__file__, helpers=('prefix_evidence.py', 'prefix_units.py'))
+    procedure_snapshot = snapshot_procedure(__file__, helpers=('prefix_evidence.py', 'prefix_units.py', 'prefix_template.py'))
     teaching_receipt = validate_teaching_evidence()
     source_manifest_path = RAW/'source_manifest.json'
     source_manifest_sha256 = file_sha256(source_manifest_path)

@@ -815,10 +815,10 @@ where
         };
         self.filesystem.put(&virtual_path, entry, cas).await?;
 
-        // Document write succeeded — now archive the prior content. A
-        // failure here is best-effort: the new body is durable, the
-        // version trail just gains a gap. `save_document_version`
-        // already tolerates concurrent writers via `Absent` CAS.
+        // The document is already durable. Archive errors propagate without
+        // undoing that write and must never become a retryable no-write
+        // conflict. `Absent` CAS protects existing archive records; an archive
+        // race can still fail after the document has committed.
         if let Some((previous_bytes, _previous_version)) = previous.as_ref() {
             let previous_content = std::str::from_utf8(previous_bytes).map_err(|_| {
                 memory_error(

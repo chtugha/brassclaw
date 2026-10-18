@@ -21,6 +21,7 @@ mod model_work;
 mod monty_attempt;
 mod orchestrator_lookup;
 mod policy;
+mod prepared_prompt;
 mod prompt;
 mod prompt_text;
 mod recipe_lookup;
@@ -35,6 +36,7 @@ mod system_inference;
 
 pub use crate::CapabilityActivityId;
 pub use monty_attempt::MontyTaskAttempt;
+pub use prepared_prompt::{PreparedLoopPromptMessage, PreparedLoopPromptRequest};
 
 pub use compaction::{
     CompactionInitiator, LoopCompactionError, LoopCompactionMode, LoopCompactionOutcome,

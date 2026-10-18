@@ -1364,6 +1364,21 @@ struct BoundaryRule {
 fn boundary_rules() -> Vec<BoundaryRule> {
     vec![
         BoundaryRule {
+            // Offline rendering/encoding stays independent of authority,
+            // provider transport, storage and orchestration decisions.
+            crate_name: "brassclaw_model_encoding",
+            forbidden: vec![
+                "brassclaw_host_api",
+                "brassclaw_host_runtime",
+                "brassclaw_llm",
+                "brassclaw_pg",
+                "brassclaw_network",
+                "brassclaw_reborn_composition",
+                "brassclaw_monty_host",
+                "brassclaw_engine",
+            ],
+        },
+        BoundaryRule {
             crate_name: "brassclaw_product_workflow",
             forbidden: vec![
                 "brassclaw_dispatcher",

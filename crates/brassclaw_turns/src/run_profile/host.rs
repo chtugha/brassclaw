@@ -1009,6 +1009,16 @@ pub enum LoopInlineMessageRole {
     Assistant,
 }
 
+impl LoopInlineMessageRole {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::User => "user",
+            Self::Assistant => "assistant",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoopInlineMessage {
     pub role: LoopInlineMessageRole,
@@ -1171,6 +1181,20 @@ pub trait LoopPromptPort: Send + Sync {
         &self,
         request: LoopPromptBundleRequest,
     ) -> Result<LoopPromptBundle, AgentLoopHostError>;
+
+    /// Materialize complete, typed Recipe messages through the host's existing
+    /// scoped prompt authority. This host-only interface grants no Tool access;
+    /// callers must validate their selected usage and captured data limits.
+    /// Unsupported hosts fail explicitly rather than loading different context.
+    async fn build_prepared_prompt_bundle(
+        &self,
+        _request: super::prepared_prompt::PreparedLoopPromptRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        Err(AgentLoopHostError::new(
+            AgentLoopHostErrorKind::Unimplemented,
+            "prepared prompt materialization is unavailable",
+        ))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -8,8 +8,9 @@
 
 use std::{cmp::Ordering, collections::BTreeMap, fmt};
 
-use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value};
+
+mod json;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ContractLimits {
@@ -28,11 +29,21 @@ pub const EXECUTION_DATA_LIMITS: ContractLimits = ContractLimits {
 };
 
 impl ContractLimits {
-    fn validate(self) -> Result<Self, ContractError> {
-        if !(1..=64).contains(&self.max_depth) || self.max_nodes == 0 || self.max_bytes == 0 {
+    fn validate_data(self) -> Result<Self, ContractError> {
+        if self.max_depth == 0 || self.max_nodes == 0 || self.max_bytes == 0 {
             return Err(error("$", "invalid technical bounds"));
         }
         Ok(self)
+    }
+
+    fn validate(self) -> Result<Self, ContractError> {
+        let limits = self.validate_data()?;
+        // Schema parsing/validation still has its existing supported profile.
+        // Borrowed data traversal below does not require that parser ceiling.
+        if limits.max_depth > 64 {
+            return Err(error("$", "invalid technical bounds"));
+        }
+        Ok(limits)
     }
 }
 
@@ -1065,139 +1076,69 @@ impl SizeBudget {
 }
 
 fn check_size(value: &Value, limits: ContractLimits) -> Result<(), ContractError> {
-    fn walk(value: &Value, budget: &mut SizeBudget, depth: usize) -> Result<(), ContractError> {
-        budget.enter(depth, value.as_str().map_or(0, str::len))?;
-        match value {
-            Value::Array(values) => {
-                for value in values {
-                    walk(value, budget, depth + 1)?;
-                }
-            }
-            Value::Object(values) => {
-                for (name, value) in values {
-                    budget.enter(depth + 1, name.len())?;
-                    walk(value, budget, depth + 1)?;
-                }
-            }
-            _ => (),
-        }
-        Ok(())
-    }
-    walk(
-        value,
-        &mut SizeBudget {
-            limits,
-            nodes: 0,
-            bytes: 0,
-        },
-        0,
-    )
-}
-
-/// Check the complete borrowed data graph before copying or serialization.
-/// This is a technical bound, not a schema or an artificial token ceiling.
-pub fn validate_data_bounds(value: &Value, limits: ContractLimits) -> Result<(), ContractError> {
-    check_size(value, limits.validate()?)
-}
-
-/// Parse bounded data without losing duplicate keys at any nesting level.
-pub fn strict_json(source: &str, limits: ContractLimits) -> Result<Value, ContractError> {
-    let limits = limits.validate()?;
-    if source.len() > limits.max_bytes {
-        return Err(error("$", "JSON document byte bound exceeded"));
+    enum Frame<'a> {
+        Value(&'a Value, usize),
+        Array(std::slice::Iter<'a, Value>, usize),
+        Object(serde_json::map::Iter<'a>, usize),
     }
     let mut budget = SizeBudget {
         limits,
         nodes: 0,
         bytes: 0,
     };
-    let mut decoder = serde_json::Deserializer::from_str(source);
-    let value = JsonSeed {
-        budget: &mut budget,
-        depth: 0,
-    }
-    .deserialize(&mut decoder)
-    .map_err(|_| error("$", "invalid, duplicate-key or oversized JSON"))?;
-    decoder
-        .end()
-        .map_err(|_| error("$", "trailing JSON data"))?;
-    Ok(value)
-}
-
-struct JsonSeed<'a> {
-    budget: &'a mut SizeBudget,
-    depth: usize,
-}
-
-impl<'de> DeserializeSeed<'de> for JsonSeed<'_> {
-    type Value = Value;
-    fn deserialize<D: serde::Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
-        self.budget
-            .enter(self.depth, 0)
-            .map_err(serde::de::Error::custom)?;
-        deserializer.deserialize_any(self)
-    }
-}
-
-impl<'de> Visitor<'de> for JsonSeed<'_> {
-    type Value = Value;
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("bounded JSON data with unique keys")
-    }
-    fn visit_unit<E: serde::de::Error>(self) -> Result<Value, E> {
-        Ok(Value::Null)
-    }
-    fn visit_bool<E: serde::de::Error>(self, value: bool) -> Result<Value, E> {
-        Ok(Value::Bool(value))
-    }
-    fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<Value, E> {
-        Ok(Value::Number(value.into()))
-    }
-    fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Value, E> {
-        Ok(Value::Number(value.into()))
-    }
-    fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<Value, E> {
-        Number::from_f64(value)
-            .map(Value::Number)
-            .ok_or_else(|| E::custom("non-finite number"))
-    }
-    fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Value, E> {
-        // Account decoded UTF-8 too: escaped source spelling is not its payload.
-        self.budget.bytes = self
-            .budget
-            .bytes
-            .checked_add(value.len())
-            .ok_or_else(|| E::custom("byte bound"))?;
-        if self.budget.bytes > self.budget.limits.max_bytes {
-            return Err(E::custom("byte bound"));
-        }
-        Ok(Value::String(value.into()))
-    }
-    fn visit_seq<A: SeqAccess<'de>>(self, mut sequence: A) -> Result<Value, A::Error> {
-        let mut values = Vec::new();
-        while let Some(value) = sequence.next_element_seed(JsonSeed {
-            budget: self.budget,
-            depth: self.depth + 1,
-        })? {
-            values.push(value);
-        }
-        Ok(Value::Array(values))
-    }
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
-        let mut values = Map::new();
-        while let Some(key) = map.next_key::<String>()? {
-            self.budget
-                .enter(self.depth + 1, key.len())
-                .map_err(serde::de::Error::custom)?;
-            if values.contains_key(&key) {
-                return Err(serde::de::Error::custom("duplicate key"));
+    let mut pending = Vec::new();
+    pending
+        .try_reserve(1)
+        .map_err(|_| error("$", "technical value capacity exceeded"))?;
+    pending.push(Frame::Value(value, 0));
+    while let Some(frame) = pending.pop() {
+        pending
+            .try_reserve(2)
+            .map_err(|_| error("$", "technical value capacity exceeded"))?;
+        match frame {
+            Frame::Value(value, depth) => {
+                budget.enter(depth, value.as_str().map_or(0, str::len))?;
+                match value {
+                    Value::Array(values) => pending.push(Frame::Array(
+                        values.iter(),
+                        depth
+                            .checked_add(1)
+                            .ok_or_else(|| error("$", "technical value bound exceeded"))?,
+                    )),
+                    Value::Object(values) => pending.push(Frame::Object(
+                        values.iter(),
+                        depth
+                            .checked_add(1)
+                            .ok_or_else(|| error("$", "technical value bound exceeded"))?,
+                    )),
+                    _ => {}
+                }
             }
-            let value = map.next_value_seed(JsonSeed {
-                budget: self.budget,
-                depth: self.depth + 1,
-            })?;
-            values.insert(key, value);
+            Frame::Array(mut values, depth) => {
+                if let Some(value) = values.next() {
+                    pending.push(Frame::Array(values, depth));
+                    pending.push(Frame::Value(value, depth));
+                }
+            }
+            Frame::Object(mut values, depth) => {
+                if let Some((key, value)) = values.next() {
+                    budget.enter(depth, key.len())?;
+                    pending.push(Frame::Object(values, depth));
+                    pending.push(Frame::Value(value, depth));
+                }
+            }
         }
-        Ok(Value::Object(values))
     }
+    Ok(())
+}
+
+/// Check the complete borrowed graph against caller-supplied resource bounds.
+/// Larger profiles also require depth-safe codecs, cloning and cleanup.
+pub fn validate_data_bounds(value: &Value, limits: ContractLimits) -> Result<(), ContractError> {
+    check_size(value, limits.validate_data()?)
+}
+
+/// Parse bounded data without losing duplicate keys at any nesting level.
+pub fn strict_json(source: &str, limits: ContractLimits) -> Result<Value, ContractError> {
+    json::parse(source, limits.validate()?)
 }

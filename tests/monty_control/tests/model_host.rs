@@ -83,7 +83,7 @@ mod runtime {
         pub(crate) use crate::native_pg;
     }
 }
-#[path = "../../../crates/brassclaw_reborn_composition/src/pg_monty_admission.rs"]
+#[path = "../../../crates/brassclaw_reborn_composition/src/pg_monty_admission_transport.rs"]
 mod pg_monty_admission;
 #[path = "support/runtime.rs"]
 mod support;
@@ -395,8 +395,11 @@ impl global_monty_driver::GlobalTaskPortsFactory for NativeTaskPortsFactory {
     async fn build(
         &self,
         host: Arc<MontyTaskHost>,
-        input: &TaskInput,
-    ) -> Result<Arc<dyn TaskPorts>, brassclaw_turns::run_profile::AgentLoopDriverError> {
+        input: TaskInput,
+    ) -> Result<
+        global_monty_driver::PreparedGlobalTask,
+        brassclaw_turns::run_profile::AgentLoopDriverError,
+    > {
         *self.last_host.lock().unwrap() = Some(host.clone());
         global_monty_driver::GlobalTaskPortsFactory::build(&self.inner, host, input).await
     }
@@ -723,10 +726,14 @@ async fn global_no_match_uses_actual_scoped_model_and_persisted_reply_ports() {
         )
         .await;
         let task_host = Arc::new(MontyTaskHost::new(handoff));
-        let ports =
-            global_monty_driver::GlobalTaskPortsFactory::build(&factory, task_host.clone(), &input)
-                .await
-                .unwrap();
+        let global_monty_driver::PreparedGlobalTask { input, ports } =
+            global_monty_driver::GlobalTaskPortsFactory::build(
+                &factory,
+                task_host.clone(),
+                copy_task_input(&input),
+            )
+            .await
+            .unwrap();
         if name == "A" {
             threads
                 .accept_inbound_message(AcceptInboundMessageRequest {
@@ -985,10 +992,14 @@ async fn global_model_tool_followup_uses_real_mount_kernel_and_retained_output()
         None,
     )
     .await;
-    let ports =
-        global_monty_driver::GlobalTaskPortsFactory::build(&factory, task_host.clone(), &input)
-            .await
-            .unwrap();
+    let global_monty_driver::PreparedGlobalTask { input, ports } =
+        global_monty_driver::GlobalTaskPortsFactory::build(
+            &factory,
+            task_host.clone(),
+            copy_task_input(&input),
+        )
+        .await
+        .unwrap();
     let receipt = tokio::time::timeout(
         Duration::from_secs(10),
         owner.client().submit(input, ports).unwrap().wait(),
@@ -1803,7 +1814,10 @@ async fn unsubmitted_cancellation_retains_exact_proof_until_database_acknowledge
     )
     .await;
     let host = Arc::new(MontyTaskHost::new(handoff));
-    let ports = factory.build(host.clone(), &input).await.unwrap();
+    let global_monty_driver::PreparedGlobalTask { input, ports } = factory
+        .build(host.clone(), copy_task_input(&input))
+        .await
+        .unwrap();
     let root = owner.client().root_identity();
     let result = owner
         .client()
@@ -2040,8 +2054,10 @@ async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admi
     let host = Arc::new(MontyTaskHost::new(handoff));
     let original_conversation = input.conversation_id.clone();
     input.conversation_id = "another-opaque-conversation".into();
-    assert!(matches!(factory.build(host.clone(), &input).await,
-        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_identity_invalid"));
+    assert!(
+        matches!(factory.build(host.clone(), copy_task_input(&input)).await,
+        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_identity_invalid")
+    );
     let client = database.pool.get().await.unwrap();
     assert!(
         !client
@@ -2054,15 +2070,19 @@ async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admi
             .get::<_, bool>(0)
     );
     input.conversation_id = original_conversation;
-    assert!(matches!(factory.build(host.clone(), &input).await,
-        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "catalogue_capture_failed"));
+    assert!(
+        matches!(factory.build(host.clone(), copy_task_input(&input)).await,
+        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "catalogue_capture_failed")
+    );
     assert_eq!(owner.client().retained_attempts().retained, 1);
     let original = client.query_one("SELECT phase,admission_key,claim_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1", &[&host.attempt().run_id.as_uuid()]).await.unwrap();
     assert_eq!(original.get::<_, &str>(0), "reserved");
     admission_integrity::reject_reserved_rewrite(&database.pool, host.attempt().run_id).await;
     assert!(factory.take_failed_settlement(host.attempt()).is_err());
-    assert!(matches!(factory.build(host.clone(), &input).await,
-        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_replay_requires_recovery"));
+    assert!(
+        matches!(factory.build(host.clone(), copy_task_input(&input)).await,
+        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_replay_requires_recovery")
+    );
     let repeated = client.query_one("SELECT admission_key,claim_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1", &[&host.attempt().run_id.as_uuid()]).await.unwrap();
     assert_eq!(original.get::<_, Vec<u8>>(1), repeated.get::<_, Vec<u8>>(0));
     assert_eq!(original.get::<_, Vec<u8>>(2), repeated.get::<_, Vec<u8>>(1));
@@ -2078,7 +2098,9 @@ async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admi
     .await;
     let next = Arc::new(MontyTaskHost::new(handoff));
     assert!(matches!(
-        factory.build(next.clone(), &next_input).await,
+        factory
+            .build(next.clone(), copy_task_input(&next_input))
+            .await,
         Err(brassclaw_turns::run_profile::AgentLoopDriverError::Unavailable { .. })
     ));
     assert!(
@@ -2173,7 +2195,7 @@ async fn owned_task_factory_retains_cancelled_catalogue_preparation() {
     )
     .await;
     let host = Arc::new(MontyTaskHost::new(handoff));
-    let mut preparation = Box::pin(factory.build(host.clone(), &input));
+    let mut preparation = Box::pin(factory.build(host.clone(), copy_task_input(&input)));
     tokio::time::timeout(Duration::from_secs(5), async {
         tokio::select! {
             _ = entered.notified() => (),
@@ -2188,8 +2210,10 @@ async fn owned_task_factory_retains_cancelled_catalogue_preparation() {
     drop(preparation);
     host.fence_dispatch();
     assert!(factory.take_failed_settlement(host.attempt()).is_err());
-    assert!(matches!(factory.build(host.clone(), &input).await,
-        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_replay_requires_recovery"));
+    assert!(
+        matches!(factory.build(host.clone(), copy_task_input(&input)).await,
+        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_replay_requires_recovery")
+    );
     let client = database.pool.get().await.unwrap();
     let row = client.query_one("SELECT phase,octet_length(admission_key),outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1", &[&host.attempt().run_id.as_uuid()]).await.unwrap();
     assert_eq!(row.get::<_, &str>(0), "reserved");
@@ -2489,6 +2513,31 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
         admitted
             .admission
             .begin_tool_invocation(
+                brassclaw_host_api::InvocationId::from_uuid(uuid::Uuid::nil()),
+                &program,
+                "0:2",
+                &arguments,
+                brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
+            )
+            .await
+            .is_err(),
+        "nil dispatch identity cannot reserve an effect"
+    );
+    let intents: i64 = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(intents, 0);
+    assert!(
+        admitted
+            .admission
+            .begin_tool_invocation(
+                brassclaw_host_api::InvocationId::new(),
                 &replacement_program,
                 "0:2",
                 &arguments,
@@ -2501,6 +2550,7 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
     let pending = admitted
         .admission
         .begin_tool_invocation(
+            brassclaw_host_api::InvocationId::new(),
             &program,
             "0:4",
             &arguments,
@@ -2515,6 +2565,7 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
         admitted
             .admission
             .begin_tool_invocation(
+                brassclaw_host_api::InvocationId::new(),
                 &program,
                 "0:4",
                 &arguments,
@@ -2529,6 +2580,7 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
     let follow_on_record = admitted
         .admission
         .begin_tool_invocation(
+            brassclaw_host_api::InvocationId::new(),
             &follow_on,
             "0:2",
             &arguments,
@@ -2544,18 +2596,6 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
         max_nodes: 5,
         max_bytes: 1024,
     };
-    let record = admitted
-        .admission
-        .begin_tool_invocation(&program, "0:2", &arguments, data_limits)
-        .await
-        .unwrap();
-    let (runtime, policy) = retained_kernel::runtime(&program, "0:2").await;
-    assert_eq!(
-        policy
-            .tool_identity(&CapabilityId::new("builtin.json").unwrap())
-            .unwrap(),
-        Some(program.bindings()["0:2"].tool().uuid)
-    );
     let context = ExecutionContext::local_default(
         UserId::new("draft-operator").unwrap(),
         ExtensionId::new("draft-caller").unwrap(),
@@ -2565,6 +2605,33 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
         MountView::default(),
     )
     .unwrap();
+    let record = admitted
+        .admission
+        .begin_tool_invocation(
+            context.invocation_id,
+            &program,
+            "0:2",
+            &arguments,
+            data_limits,
+        )
+        .await
+        .unwrap();
+    let budget_events = Arc::new(brassclaw_resources::InMemoryBudgetEventSink::new());
+    let (runtime, policy) =
+        retained_kernel::runtime_with_budget_events(&program, "0:2", Some(budget_events.clone()))
+            .await;
+    assert_eq!(
+        policy
+            .tool_identity(&CapabilityId::new("builtin.json").unwrap())
+            .unwrap(),
+        Some(program.bindings()["0:2"].tool().uuid)
+    );
+    let committed_identity = context.invocation_id;
+    let recorded: uuid::Uuid = rig.pool.get().await.unwrap().query_one(
+        "SELECT invocation_id FROM brassclaw_monty_tool_invocations WHERE invocation_id=$1 AND run_id=$2 AND phase='dispatch_intent'",
+        &[&committed_identity.as_uuid(), &admitted.context.run_id.as_uuid()],
+    ).await.unwrap().get(0);
+    assert_eq!(recorded, committed_identity.as_uuid());
     let outcome = runtime
         .invoke(RuntimeCapabilityRequest::new(
             context,
@@ -2579,8 +2646,28 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
         panic!("actual JSON kernel result required: {outcome:?}");
     };
     assert_eq!(completed.output, json!({"text":"observed"}));
+    let events = budget_events.snapshot();
+    let mut reserved = 0usize;
+    let mut reconciled = 0usize;
+    for event in events {
+        match event {
+            brassclaw_resources::BudgetEvent::Reserved { reservation, .. } => {
+                assert_eq!(reservation.scope.invocation_id, committed_identity);
+                reserved += 1;
+            }
+            brassclaw_resources::BudgetEvent::Reconciled { receipt, .. } => {
+                assert_eq!(receipt.scope.invocation_id, committed_identity);
+                reconciled += 1;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        reserved > 0 && reconciled > 0,
+        "actual kernel dispatch must reserve and reconcile the committed identity"
+    );
     let answer = PortAnswer::Return {
-        value: completed.output,
+        value: completed.output.into(),
     };
     let client = rig.pool.get().await.unwrap();
     client
@@ -2597,6 +2684,7 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
         admitted
             .admission
             .begin_tool_invocation(
+                brassclaw_host_api::InvocationId::new(),
                 &program,
                 "0:2",
                 &arguments,
@@ -2675,13 +2763,20 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
     assert_eq!(bounds.get::<_, i64>(0), 1);
     assert_eq!(bounds.get::<_, i64>(1), 5);
     assert_eq!(bounds.get::<_, i64>(2), 1024);
+    // V168's native-response FK rejects a bare parent TRUNCATE before its
+    // immutability trigger. CASCADE below must still reach and fail that trigger.
+    let dependency_error = client
+        .batch_execute("TRUNCATE brassclaw_monty_tool_invocations")
+        .await
+        .unwrap_err();
+    assert_eq!(dependency_error.as_db_error().unwrap().code().code(), "0A000");
     for statement in [
         "UPDATE brassclaw_monty_tool_invocations SET data_max_bytes=data_max_bytes+1",
         "UPDATE brassclaw_monty_tool_invocations SET phase='dispatch_intent',answer_bytes=NULL,answer_checksum=NULL,answered_at=NULL WHERE step_id='0:2'",
         "UPDATE brassclaw_monty_tool_invocations SET attempt_count=2",
         "UPDATE brassclaw_monty_tool_invocations SET step_id='replacement'",
         "DELETE FROM brassclaw_monty_tool_invocations",
-        "TRUNCATE brassclaw_monty_tool_invocations",
+        "TRUNCATE brassclaw_monty_tool_invocations CASCADE",
         "UPDATE brassclaw_monty_recipe_selections SET selection_bytes='{}'",
         "DELETE FROM brassclaw_monty_recipe_selections",
         "TRUNCATE brassclaw_monty_recipe_selections CASCADE",
@@ -2689,10 +2784,20 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
         let error = client.batch_execute(statement).await.unwrap_err();
         assert_eq!(error.as_db_error().unwrap().code().code(), "23514");
     }
+    let retained: i64 = client
+        .query_one(
+            "SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1",
+            &[&admitted.context.run_id.as_uuid()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(retained, 3, "rejected mutations retain every original intent");
     assert!(
         admitted
             .admission
             .begin_tool_invocation(
+                brassclaw_host_api::InvocationId::new(),
                 &program,
                 "0:4",
                 &arguments,
@@ -3434,7 +3539,10 @@ async fn rejected_admission_keeps_proof_across_a_committed_but_lost_database_rep
     )
     .await;
     let host = Arc::new(MontyTaskHost::new(handoff));
-    let ports = factory.build(host.clone(), &input).await.unwrap();
+    let global_monty_driver::PreparedGlobalTask { input, ports } = factory
+        .build(host.clone(), copy_task_input(&input))
+        .await
+        .unwrap();
     let root = owner.client().root_identity();
     let submission = owner
         .client()
@@ -3745,4 +3853,26 @@ async fn global_driver_settles_queued_value_rejection_before_releasing_its_reten
     assert_eq!(provider.requests.lock().unwrap().len(), 2);
     assert_eq!(owner.client().retained_attempts().retained, 0);
     stop_rejection_owner(&mut owner).await;
+}
+
+#[path = "../../../crates/brassclaw_reborn_composition/src/monty_result_reference.rs"]
+mod monty_result_reference;
+
+fn copy_task_input(input: &TaskInput) -> TaskInput {
+    TaskInput {
+        entry: match &input.entry {
+            brassclaw_monty_host::service::TaskEntry::Chat => {
+                brassclaw_monty_host::service::TaskEntry::Chat
+            }
+            brassclaw_monty_host::service::TaskEntry::InternalRecipe { name } => {
+                brassclaw_monty_host::service::TaskEntry::InternalRecipe { name: name.clone() }
+            }
+        },
+        conversation_id: input.conversation_id.clone(),
+        message_id: input.message_id.clone(),
+        turn_id: input.turn_id.clone(),
+        run_id: input.run_id.clone(),
+        user_input: input.user_input.clone(),
+        history: input.history.clone(),
+    }
 }

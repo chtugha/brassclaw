@@ -51,6 +51,7 @@ class BaseCompilerTests(unittest.TestCase):
         directory = self.root / 'a' / first['generation']
         for artifact, name, key in [('compiler/entry.py', 'base-promt-compiler.py', 'entry_sha256'),
                                     ('compiler/prefix_evidence.py', 'prefix_evidence.py', 'shared_evidence_sha256'),
+                                    ('compiler/prefix_template.py', 'prefix_template.py', 'template_adapter_sha256'),
                                     ('compiler/prefix_render.py', 'prefix_render.py', 'renderer_sha256')]:
             original = Path(c.__file__).with_name(name).read_bytes()
             self.assertEqual((directory / artifact).read_bytes(), original)

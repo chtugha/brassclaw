@@ -4072,6 +4072,25 @@ async fn native_live_memory_embedding_uses_registered_tools_and_current_db_selec
             MEMORY_READ_CAPABILITY_ID,
             json!({"path":"large/complete.md"}),
         );
+        if maximum == 8 {
+            let mut excessive = invoke(
+                MEMORY_READ_CAPABILITY_ID,
+                json!({"path":"large/complete.md"}),
+            );
+            excessive.estimate.output_bytes = Some(9);
+            let RuntimeCapabilityOutcome::Failed(failure) = retained
+                [&CapabilityId::new(MEMORY_READ_CAPABILITY_ID).unwrap()]
+                .invoke(excessive)
+                .await
+                .unwrap()
+            else {
+                panic!("known excessive estimates must fail before dispatch")
+            };
+            assert_eq!(
+                failure.kind,
+                brassclaw_host_runtime::RuntimeFailureKind::Authorization
+            );
+        }
         request.estimate.output_bytes = Some(8);
         let outcome = retained[&CapabilityId::new(MEMORY_READ_CAPABILITY_ID).unwrap()]
             .invoke(request)
@@ -4210,6 +4229,167 @@ async fn native_live_memory_embedding_uses_registered_tools_and_current_db_selec
             .unwrap(),
         RuntimeCapabilityOutcome::Failed(_)
     ));
+    // Block the actual patch CAS at its namespace lock, after its reads, then
+    // commit a competing update. Hidden Rust retries would patch the new body.
+    let race_target = "race/patch.md";
+    assert!(matches!(
+        retained[&CapabilityId::new(MEMORY_WRITE_CAPABILITY_ID).unwrap()]
+            .invoke(invoke(
+                MEMORY_WRITE_CAPABILITY_ID,
+                json!({"target":race_target,"content":"keep original","append":false})
+            ))
+            .await
+            .unwrap(),
+        RuntimeCapabilityOutcome::Completed(_)
+    ));
+    let patch_request = invoke(
+        MEMORY_WRITE_CAPABILITY_ID,
+        json!({"target":race_target,"old_string":"keep","new_string":"changed"}),
+    );
+    let scope = &patch_request.context.resource_scope;
+    let race_path = format!(
+        "/memory/tenants/{}/users/{}/agents/{}/projects/{}/{race_target}",
+        scope.tenant_id,
+        scope.user_id,
+        scope
+            .agent_id
+            .as_ref()
+            .map(|id| id.as_str())
+            .unwrap_or("_none"),
+        scope
+            .project_id
+            .as_ref()
+            .map(|id| id.as_str())
+            .unwrap_or("_none")
+    );
+    let mut admin = rig.pool.get().await.unwrap();
+    let document_version: i64 = admin
+        .query_one(
+            "SELECT version FROM root_filesystem_entries WHERE path=$1",
+            &[&race_path],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let sidecar_prefix = format!("{race_path}.");
+    let sidecars = |rows: Vec<tokio_postgres::Row>| {
+        rows.into_iter()
+            .map(|row| {
+                (
+                    row.get::<_, String>(0),
+                    row.get::<_, Vec<u8>>(1),
+                    row.get::<_, i64>(2),
+                    row.get::<_, serde_json::Value>(3),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let before_sidecars = sidecars(admin.query("SELECT path,contents,version,indexed FROM root_filesystem_entries WHERE left(path,length($1))=$1 ORDER BY path COLLATE \"C\"", &[&sidecar_prefix]).await.unwrap());
+    let before_chat: i64 = admin
+        .query_one("SELECT count(*) FROM brassclaw_memory_chat_records", &[])
+        .await
+        .unwrap()
+        .get(0);
+    let before_embedding = calls.lock().await.len();
+    let held = admin.transaction().await.unwrap();
+    let lock_key = format!("brassclaw.root-filesystem.namespace:{race_path}");
+    held.query_one(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+        &[&lock_key],
+    )
+    .await
+    .unwrap();
+    let patch_tool = retained[&CapabilityId::new(MEMORY_WRITE_CAPABILITY_ID).unwrap()].clone();
+    let patch = tokio::spawn(async move { patch_tool.invoke(patch_request).await });
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let waiting: bool = held.query_one("SELECT EXISTS(SELECT 1 FROM pg_locks waiting JOIN pg_locks mine ON waiting.database=mine.database AND waiting.classid=mine.classid AND waiting.objid=mine.objid AND waiting.objsubid=mine.objsubid WHERE mine.locktype='advisory' AND waiting.locktype='advisory' AND mine.pid=pg_backend_pid() AND mine.granted AND NOT waiting.granted AND waiting.pid<>mine.pid)", &[]).await.unwrap().get(0);
+            if waiting { break; }
+            tokio::task::yield_now().await;
+        }
+    }).await.expect("observe the actual patch waiting for this exact namespace lock");
+    let competing_body = b"keep concurrent".to_vec();
+    assert_eq!(
+        held.execute(
+            "UPDATE root_filesystem_entries SET contents=$2,version=version+1 WHERE path=$1",
+            &[&race_path, &competing_body]
+        )
+        .await
+        .unwrap(),
+        1
+    );
+    held.commit().await.unwrap();
+    let RuntimeCapabilityOutcome::Failed(conflict) = patch.await.unwrap().unwrap() else {
+        panic!("a conditional patch conflict must stop without an internal retry")
+    };
+    assert_eq!(
+        conflict.kind,
+        brassclaw_host_runtime::RuntimeFailureKind::OperationFailed
+    );
+    assert!(
+        conflict
+            .message
+            .as_deref()
+            .is_some_and(|message| message.contains("Memory patch conflict"))
+    );
+    let stored = admin
+        .query_one(
+            "SELECT contents,version FROM root_filesystem_entries WHERE path=$1",
+            &[&race_path],
+        )
+        .await
+        .unwrap();
+    assert_eq!(stored.get::<_, Vec<u8>>(0), competing_body);
+    assert_eq!(stored.get::<_, i64>(1), document_version + 1);
+    assert_eq!(sidecars(admin.query("SELECT path,contents,version,indexed FROM root_filesystem_entries WHERE left(path,length($1))=$1 ORDER BY path COLLATE \"C\"", &[&sidecar_prefix]).await.unwrap()),before_sidecars);
+    assert_eq!(
+        admin
+            .query_one("SELECT count(*) FROM brassclaw_memory_chat_records", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        before_chat
+    );
+    assert_eq!(calls.lock().await.len(), before_embedding);
+    // A separate dispatch still uses the current instance Tool policy.
+    let write_id =
+        policy_snapshot.capabilities[&CapabilityId::new(MEMORY_WRITE_CAPABILITY_ID).unwrap()];
+    let previous_revision = policy_snapshot.revision;
+    policy_snapshot.revision += 1;
+    for rule in policy_snapshot.tools.values_mut() {
+        rule.revision = policy_snapshot.revision;
+    }
+    policy_snapshot.tools.get_mut(&write_id).unwrap().enabled = false;
+    policy
+        .publish(previous_revision, policy_snapshot.clone())
+        .unwrap();
+    let RuntimeCapabilityOutcome::Failed(blocked) = retained
+        [&CapabilityId::new(MEMORY_WRITE_CAPABILITY_ID).unwrap()]
+        .invoke(invoke(
+            MEMORY_WRITE_CAPABILITY_ID,
+            json!({"target":race_target,"old_string":"keep","new_string":"changed"}),
+        ))
+        .await
+        .unwrap()
+    else {
+        panic!("the next dispatch must honor the current Tool block")
+    };
+    assert_eq!(
+        blocked.kind,
+        brassclaw_host_runtime::RuntimeFailureKind::Authorization
+    );
+    assert_eq!(
+        admin
+            .query_one(
+                "SELECT contents FROM root_filesystem_entries WHERE path=$1",
+                &[&race_path]
+            )
+            .await
+            .unwrap()
+            .get::<_, Vec<u8>>(0),
+        competing_body
+    );
+    drop(admin);
     assert_eq!(runtime.global_monty_owner.client().root_identity(), vm);
     drop(bundle);
     shutdown_shared_runtime(runtime).await.unwrap();

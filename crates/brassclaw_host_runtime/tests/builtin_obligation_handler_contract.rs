@@ -594,6 +594,153 @@ async fn builtin_obligation_handler_fails_closed_when_redacted_object_keys_colli
     ));
 }
 
+#[test]
+fn builtin_obligation_completion_deep_copy_redaction_and_late_failures_are_stack_safe() {
+    use brassclaw_events::InMemorySecurityAuditSink;
+    use serde_json::Value;
+
+    const DEPTH: usize = 12_000;
+    const TOKEN: &str = "Bearer abcdefghijklmnopqrstuvwxyz0123456789";
+
+    fn deep() -> Value {
+        let mut value = Value::String(TOKEN.to_owned());
+        for index in 0..DEPTH {
+            value = if index % 2 == 0 {
+                Value::Array(vec![value])
+            } else {
+                Value::Object([(String::from("child"), value)].into_iter().collect())
+            };
+        }
+        value
+    }
+
+    fn dismantle(value: Value) {
+        let mut pending = vec![value];
+        while let Some(value) = pending.pop() {
+            match value {
+                Value::Array(values) => pending.extend(values),
+                Value::Object(values) => pending.extend(values.into_values()),
+                _ => {}
+            }
+        }
+    }
+
+    async fn exercise(
+        handler: BuiltinObligationHandler,
+        security_sink: Arc<InMemorySecurityAuditSink>,
+    ) {
+        let context = execution_context(CapabilitySet::default());
+        let capability_id = capability_id();
+        let estimate = ResourceEstimate::default();
+        for redact in [false, true] {
+            let dispatch = sample_dispatch(&context.resource_scope, &capability_id, deep());
+            let obligations = if redact {
+                vec![Obligation::RedactOutput]
+            } else {
+                vec![]
+            };
+            let completed = handler
+                .complete_dispatch(CapabilityObligationCompletionRequest {
+                    phase: CapabilityObligationPhase::Invoke,
+                    context: &context,
+                    capability_id: &capability_id,
+                    estimate: &estimate,
+                    obligations: &obligations,
+                    dispatch: &dispatch,
+                })
+                .await
+                .unwrap();
+            let mut leaf = &completed.output;
+            for index in (0..DEPTH).rev() {
+                leaf = if index % 2 == 0 {
+                    &leaf[0]
+                } else {
+                    &leaf["child"]
+                };
+            }
+            assert_eq!(
+                leaf.as_str(),
+                Some(if redact { "[REDACTED]" } else { TOKEN })
+            );
+            assert_eq!(completed.capability_id, dispatch.capability_id);
+            assert_eq!(completed.provider, dispatch.provider);
+            assert_eq!(completed.runtime, dispatch.runtime);
+            assert_eq!(completed.usage, dispatch.usage);
+            assert_eq!(completed.receipt, dispatch.receipt);
+            // The public DTO still owns an ordinary Value. Its caller
+            // must dismantle larger profiles until that API is migrated.
+            dismantle(completed.output);
+            dismantle(dispatch.output);
+        }
+
+        for (suffix, obligations, expected_kind) in [
+            (
+                Value::String("AKIAIOSFODNN7EXAMPLE".into()),
+                vec![Obligation::RedactOutput],
+                CapabilityObligationFailureKind::Output,
+            ),
+            (
+                json!({TOKEN: true, "[REDACTED]": false}),
+                vec![Obligation::RedactOutput],
+                CapabilityObligationFailureKind::Output,
+            ),
+            (
+                Value::Null,
+                vec![Obligation::EnforceOutputLimit { bytes: 1 }],
+                CapabilityObligationFailureKind::Output,
+            ),
+            (
+                Value::Null,
+                vec![Obligation::AuditAfter],
+                CapabilityObligationFailureKind::Audit,
+            ),
+        ] {
+            let dispatch = sample_dispatch(
+                &context.resource_scope,
+                &capability_id,
+                Value::Array(vec![deep(), suffix]),
+            );
+            let result = handler
+                .complete_dispatch(CapabilityObligationCompletionRequest {
+                    phase: CapabilityObligationPhase::Invoke,
+                    context: &context,
+                    capability_id: &capability_id,
+                    estimate: &estimate,
+                    obligations: &obligations,
+                    dispatch: &dispatch,
+                })
+                .await;
+            assert!(
+                matches!(result, Err(CapabilityObligationError::Failed { kind }) if kind == expected_kind)
+            );
+            dismantle(dispatch.output);
+        }
+        let events = security_sink.snapshot();
+        assert_eq!(events.len(), 2);
+        for event in events {
+            assert_eq!(event.code, "leak_redact_failed");
+            assert_eq!(event.capability_id.as_ref(), Some(&capability_id));
+            assert_eq!(event.scope.as_ref(), Some(&context.resource_scope));
+        }
+    }
+
+    // Production constructs the handler during service wiring, before tasks.
+    // Regex compilation has its own stack needs, independent of output depth.
+    let security_sink = Arc::new(InMemorySecurityAuditSink::new());
+    let handler = BuiltinObligationHandler::new().with_security_audit_sink(security_sink.clone());
+    std::thread::Builder::new()
+        .stack_size(64 * 1024)
+        .spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap()
+                .block_on(exercise(handler, security_sink));
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
 #[tokio::test]
 async fn builtin_obligation_handler_stores_network_policy_for_runtime_handoff() {
     let services = obligation_services(

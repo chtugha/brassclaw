@@ -9,8 +9,7 @@
 //! projection values. There is no parallel API for the two cases; the same
 //! put/get/query/CAS machinery serves both.
 //!
-//! Encryption-at-rest is applied by a
-//! planned `EncryptedBackend` decorator over the
+//! A planned `EncryptedBackend` decorator would encrypt
 //! [`Entry::body`] and any `IndexValue::Bytes` projection so the indexed
 //! scalar values (`scope`, `status`, …) remain queryable on the underlying
 //! mount.

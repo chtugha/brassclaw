@@ -34,6 +34,13 @@ integrations/abound/tests/source_env_vars.sh
 
 target/
 
+# Common generated dependency, build and cache outputs
+node_modules/
+dist/
+build/
+.cache/
+*.log
+
 # Python
 __pycache__/
 *.pyc

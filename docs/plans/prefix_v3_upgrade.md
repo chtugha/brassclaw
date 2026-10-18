@@ -2372,10 +2372,11 @@ Monty, registered native dispatch and real PostgreSQL; its output equals the
 independent CPython/SHA oracle exactly. It also passes large-value persistence,
 existing catalogue activation/export, model artifact import/readback/deduplication,
 legacy/profile/Tool identity preservation, tokenizer-aware offline workers and all
-four domain regression suites. Q1/approval and durable Generate admission remain
-open. A neutral `SourceCompilerIds`/`source_compiler_drafts` factory is now being
-introduced so installation and behavioral checks use one component-definition
-source, retaining the existing canonical Retain usage rather than copying it.
+four domain regression suites. At that freeze, Q1/approval and durable Generate admission remained
+open; accepted source-only qualification is recorded below. The neutral
+`SourceCompilerIds`/`source_compiler_drafts` factory supplies one component-definition
+source for installation and behavioral checks, retaining the existing canonical
+Retain usage rather than copying it.
 
 Installation candidate retention, canonical JSON-list command parsing, exact
 retained subgraph selection and preservation of an existing JSON Tool identity/
@@ -2440,16 +2441,324 @@ successes, duplicate retention, missing guide, blocked Tool and invalid revision
 They must compare all invocation rows for each run with the actual observations,
 recompute UTF-8 digests independently, reread immutable original packages and
 receipts, and reject altered proof records in a coherent database transaction.
-These tests create neither installation approval nor catalogue activation. Add
-the closed Q1-intent/behavior/approval writer only after those checks pass; incomplete
+The evidence reader must derive the expected fixture from the closed profile/view
+inventory, require unique run/root/thread identities, match the exact retained
+selection and completed/failed steps, and check original-UTF-8 digest results against
+independent SHA-256. Rejected pure work may legitimately fail after a cooperative
+ResumeControl; rejected Tool work must retain its actual authorization answer and
+ResumeHost origin. Include a complete fenced YAML original with CRLF endings and
+an embedded model control token: archive bytes stay exact, and only the model-facing
+literal view escapes that token using an outer fence longer than the inner fence.
+These tests create neither installation approval nor catalogue activation. The eight-case native producer and coherent evidence reader pass in the scoped
+`target/validation/prefix-registry-artifacts-yrg3_na1/accepted.json` freeze. The
+installation writer acceptance below pins the complete packaged
+graph, native implementations, captured worker, observer/validator/oracle sources
+and existing canonical Retain approval; commit its exact Q1 intent before effects;
+and atomically store verified behavior with its hash-usage approval. Private
+qualified compiler selections are separate from routable chat Recipes: their
+result is an internal receipt, so qualification must not advertise a normal chat
+route. Test proof reuse with zero new dispatch, rollback-only incomplete-intent
+rejection, exact association pinning and denial of public-route promotion.
+
+Namespace synthetic fixture artifacts by the closed qualification identity.
+A new binary/native qualification can otherwise collide with an unchanged
+fixture package retained under an older profile revision. The same qualification
+still reuses exact fixture bytes; older records remain immutable. Scope belongs
+to validation metadata, never the production prefix design or model-facing text.
+The scoped observation record uses `source-compiler-behavior-observations/2` and
+its reader rejects a different scope; old proof bytes remain with their original
+producer/subject. Treat the closed writer as accepted only after its native checks pass; incomplete
 qualification intents require reconciliation without automatic effect replay.
 
-Next, qualify the exact compiler graph through the existing installation owner,
-with real positive/negative behavior and durable dispatch receipts. Reuse the global
-`InternalRecipe` entry and retained execution/settlement owners for asynchronous
-Generate admission; do not copy the review executor or create a second VM/job loop.
-Only after those checks may the corresponding Generate action be enabled. Keep
-first-party integrity/bootstrap evidence distinct from authored human-Q2 review.
+The closed compiler writer, scoped/YAML fixtures and private approved selection
+pass in `target/validation/prefix-registry-artifacts-p6m1aifn/accepted.json`.
+This is the accepted source-only installation slice: exact graph/native/worker
+integrity, committed intent before effects, actual eight-case behavior, coherent
+proof readback, existing Retain approval reuse, atomic hash-usage approval,
+zero-dispatch proof reuse and incomplete-intent rejection without modifying
+immutable completed evidence. Normal matched/No-Match execution, archive integrity,
+model artifact APIs, large values and all domain compiler regressions also pass in
+that freeze. It does not implement production Generate jobs, accepted model designs,
+provider resolution, composites, activation or cache qualification.
+
+Next, reuse the global `InternalRecipe` entry and existing durable turn queue,
+attempt retention and settlement owners for asynchronous Generate admission.
+The initial normal-driver transport constructed only Chat entries, rejected internal
+completion receipts, and verified result references only through thread messages.
+The neutral admission/completion extension passes the complete
+`target/validation/prefix-registry-artifacts-vxkw6s17/accepted.json` freeze;
+the two internal-reference/outcome contract tests also passed against that exact
+captured test binary. Prepare entry data and ports together, admit only host-selected
+internal work, represent a verified receipt as a run-bound `result:monty.` reference
+and reread the exact privately settled admission/scope. Match the persisted source
+binding before admitting its trusted-internal marker. Ordinary chat retains transcript
+verification; internal completion cannot carry a fabricated assistant reply.
+
+Immutable job definitions pass the scoped native
+`target/validation/prefix-registry-artifacts-dxv273th/accepted.json` freeze. V167 links
+one definition to the existing turn run UUID and retains request, source inputs,
+profile revision, complete compiler selection, actor and data scopes. The first capture
+survives same-request retries; conflicting requests and definition mutations fail.
+That receipt proves metadata/idempotency only, with no new admissions or Tool calls.
+It does not qualify a Generate action.
+
+The source-only snapshot submission/resolver passes the scoped native and
+standalone-consumer freeze in
+`target/validation/prefix-registry-artifacts-c5z_1d40/accepted.json`. Reuse ordinary durable ingress, the existing global service, retained
+attempts, native invocation journal and result settlement. Reconstruct transport
+scope from the retained definition after reconnect rather than relying on a one-shot
+in-memory map. Verify the exact closed compiler approval and program bytes before
+selection; never replace a retained selection with a newer compiler. Match archived
+source data and compiler-procedure bytes to the actual pinned execution. Internal
+builds do not advertise a provider/MCP exchange or send model requests. The native test verifies real
+ResultOnly completion in the same global VM, no synthetic assistant reply, correlated
+immutable output, duplicate submission without additional dispatch, conflicting
+profile rejection and rejection of misidentified compiler procedures before retaining
+a definition. Strict affected-library linting, the two internal-result contracts and
+three actual standalone driver/cancellation/preparation regressions pass in that
+freeze. This low-level snapshot boundary does not collect authoritative
+sources or implement the normal WebUI Generate action. An incompatible restart still
+requires retained-artifact recovery or explicit reconciliation, never a latest lookup.
+
+Do not publish this compiler as a chat Recipe, invent a reply, copy the review
+executor or create another VM/job loop. The existing reserved internal source binding
+marks host-created prefix turns and prevents Tier-2 fallback. Preserve that host-only
+proof; never infer it from a user's text.
+The database-backed core-source capture passes the scoped native/strict
+standalone freeze in
+`target/validation/prefix-registry-artifacts-lbw2_5kw/accepted.json`. It reuses
+class-17 revisions in `PgComponentRevisionStore` for the seven component guides,
+Prefix-Maker reference and declarative source-only framing. The installation owner
+compares the complete captured document graph to its actual packaged bytes. An
+editable `reborn_docus` row is only a compatibility projection; reseeding never
+overwrites it, and its source/status labels cannot establish packaged authority.
+New packaged revisions and unapproved operator revisions remain retained separately.
+The core collector reads exact package revisions plus the existing coherent catalogue
+export, preserving both complete provenance envelopes. It does not scan a developer
+checkout, look up newest document heads during execution, fetch network references,
+qualify a target model or pretend to cover private workflows/all documentation.
+`core-reference-designs.json` supplies a fixed literal-v1 source-only frame; this is
+not an accepted model-specific design. Normal complete-library collection and the
+remaining profile adapters are still prerequisites for the full Generate surface. The native test
+checks exact originals, idempotent capture, preservation of editable Docu projections
+and newer unapproved revision heads, rejection of forged packaged bytes, and real
+core compilation through the existing global VM with no assistant reply or repeated
+effects on reconnect. Its captured input was 1,370,747 bytes and observed completion
+about 13 seconds; this is one local source-only observation, not model/cache or
+performance qualification. Use a bounded large-build test observer, not the default
+ten-second chat fixture wait, while keeping real task/resource limits unchanged.
+The actual routing catalogue is included alongside selections so disabled Recipe
+metadata is not hidden by a provenance-only transfer envelope.
+
+Read-only job inspection passes the scoped native/strict-standalone and route
+contract freeze in
+`target/validation/prefix-registry-artifacts-oboa7t42/accepted.json`. It uses the existing
+`InterceptorConfigService`, facade and authenticated v2 ingress. It projects the
+immutable request/compiler/input hashes plus actual turn/admission/operation state;
+status polling must not reload large source/compiler blobs, drive a task, fabricate
+completion or repeat effects. Verify run/source-binding/scope/actor correlation and
+only expose a completed result after its real admission settlement and turn completion.
+A definition retained before a lost admission remains distinct from a queued run.
+Record counts are observations, not reconciliation evidence or retry authority. The next metadata revision supplies the existing opaque thread/run references
+for shared event/cancellation controls; do not introduce a parallel cancellation
+workflow or infer that unresolved native work has been reconciled.
+
+
+
+The normal Generate action remains gated on the complete job/source/target
+contract. First-party bootstrap evidence stays distinct from authored human Q2.
+
+### Phase C continuation — contained model encoding (2026-10-17)
+
+The model-specific measurement prerequisite now has an offline encoding engine
+(`brassclaw_model_encoding`) behind the existing retained `monty_worker` utility
+boundary, not another global VM, process supervisor or Python environment.
+Utility protocol 4 adds one `EncodeModel` operation; exact worker/image changes
+must invalidate incompatible qualification rather than accepting an older
+protocol. Assets and contexts are typed data; no tokenizer remote code, template
+filesystem loader, source selection or provider calls run in this operation.
+
+Accepted frozen offline evidence:
+`target/validation/prefix-registry-artifacts-dvpfuk_0/accepted.json`.
+It covers three focused engine tests, an explicitly executed retained-Ornith
+Hugging Face oracle and an actual contained-worker test. The oracle uses offline
+`AutoTokenizer.from_pretrained(..., trust_remote_code=False)` and the complete
+retained six-file model set. It compares full rendered-byte and token-ID hashes,
+counts and common-prefix hashes for long system text, tool schemas/arguments,
+Unicode, reasoning/history and image placeholders, plus a separate 2,048-value
+finite-float corpus. This is finite target-specific evidence, not universal
+chat-template equivalence, a server/cache measurement or model answer-quality
+acceptance. Python is an independent development oracle, not a runtime dependency.
+
+Keep JSON object order all the way through nested tools/arguments. The renderer
+must use Python/Hugging Face JSON spacing and escaping, rather than HTML-safe
+Jinja JSON. Preserve exact numeric float parsing/printing; the initial larger
+oracle exposed different token IDs without JSON float-roundtrip parsing. Saved
+tokenizer truncation/padding are explicitly disabled; adding special tokens after
+a completed chat template is disabled too. The long-input regression proves that
+the model tokenizer's saved 1,024-token truncation does not silently shorten the
+measurement. Template wall-clock functions fail closed.
+
+The contained fixture explicitly requests a finite 1 GiB utility-worker memory
+ceiling and 120-second response deadline. These are test preparation settings,
+not automatic production overrides. Production must capture acknowledged limits
+and visibly report insufficient capacity. The shared VM heap and task compute
+account remain separate. Timeout/reap failure is never successful measurement or
+permission to activate a prefix.
+
+The `builtin.model_encoding` native adapter and canonical single-usage
+Skill/PythonCode/ToolSkill/Recipe drafts are implementation work in this slice.
+They resolve an exact specification/artifact-set binding from the existing model
+store and share the already retained preparation worker/settings owner used by
+source inspection. No second model catalogue, pool, queue or cache store is
+introduced. Native registration, real PostgreSQL execution, current policy,
+exact usage inspection and consumer regressions require their own acceptance
+receipt before this paragraph can be promoted to a completed production claim.
+These drafts are not approved/activated merely because the engine oracle passes.
+
+Next, bind this usage into the generation Recipe's accepted per-model design,
+freeze full provider render contexts/probes, compare required stable-prefix IDs
+and context/output headroom in reusable PythonCode, and retain target evidence.
+Keep full model/config/runtime fingerprints and actual attention/recurrent-state
+cache qualification separate. A tokenizer measurement does not establish KV
+capacity, LMCache persistence, salt isolation, cache hits or answer accuracy.
+Normal Generate remains gated on those remaining source/design/job contracts.
+
+The first native adapter measures the exact chat template in the retained model
+artifact set. That is not evidence of the serving server's effective injection
+template. Pin original model-template bytes and effective target/injection-adapter
+bytes separately. In particular, an ordinary system message can follow a dynamic
+tool-schema preamble: a long reference inside that message does not create a
+common leading cache prefix across different tool sets. The accepted adapter and
+probe workflow must cover the actual tool/no-tool, role/content, history and
+thinking variants, measure complete rendered requests (never concatenate separately
+encoded prefix/suffix tokens), and reject an incompatible stable-prefix claim.
+
+Retained-task prefix lookup is also part of this boundary. A missing, expired or
+poisoned run capture must return a typed prompt-assembly failure rather than read
+the current active catalogue. Scope/correlation must match the captured task.
+The compatibility unscoped lookup is not the retained-task resolver. Fail-closed
+lookup is a prerequisite; it does not establish durable prefix/model selection
+restoration after restart. Retain generation, model/target/design and complete
+render-adapter identities through the existing continuation contract before
+claiming that restart/resume or the new prepared-message model usage is qualified.
+
+#### Native encoding integration and observed capacity
+
+Frozen receipt `target/validation/prefix-registry-artifacts-0a0vlb9z/accepted.json`
+now covers the three focused engine tests, offline full AutoTokenizer oracle,
+actual contained-worker operation, affected-library strict lint, standalone
+strict lint/consumer regressions, authenticated job routes and the native
+component-deployment integration. The latter imports/reads exact model artifacts
+through the real API/DB, measures the actual source-job output through the
+registered native handler, checks live Tool blocking and malformed/missing
+artifact failures, and prepares/inspects the real canonical encoding-usage graph.
+It preserves one ordinary global root. This is native candidate-usage evidence;
+it does not approve/activate the new usage or qualify Generate, serving or caches.
+
+That frozen core source build used literal-reference/v1: its model view contained
+620,802 UTF-8 bytes; the two framed Ornith request probes each contained 144,778
+tokens, with 144,767 common leading tokens for those two particular questions.
+The measured request is larger than the historical 131,072-token serving setting
+before any response/history reserve. Do not activate it by ignoring that limit,
+clipping text or relabeling the configured/architectural context. A larger
+architecture limit is not evidence that the deployment has that capacity.
+The complete retained package is in that receipt directory's
+`core-generation.json`; no source or failed artifact was removed.
+
+The successor packaged **source-only** design selects the already supported
+literal-reference/v2-deduplicated whole-unit renderer. It retains original source
+bytes and every origin/range mapping and emits repeated complete units once;
+it does not summarize unique content or change an accepted installed model design.
+Old source snapshots continue to name their original renderer mode. The resulting
+size/headroom must be measured again through the actual generation/encoding path
+before a model-specific design is accepted. The successor also adds a separate
+effective-template encoding usage: original and supplied-template identities
+remain distinct, and template measurements never approve an adapter or claim
+server injection/cache compatibility.
+
+#### Effective-template compatibility and retained-run correction
+
+The successor native integration in
+`target/validation/prefix-registry-artifacts-tvsgm75_` correctly failed rather
+than accepting a bad effective-template measurement. Preserve that failure and
+its complete core-generation artifact. Its source-only v2 build measured 602,082
+context bytes and 141,820 framed tokens; whole-section deduplication alone does
+not make the mandatory core fit the historical 131,072-token setting.
+
+The independent reproduction identified two Python/Jinja compatibility gaps:
+sequence concatenation must remain indexable/sliceable, and `None is iterable`
+must be false. MiniJinja's lazy iterable semantics are not interchangeable with
+the existing injection wrapper's list semantics. A version downgrade was not a
+solution: inspected 2.x releases also use lazy concatenation. The pinned
+`vendor/minijinja-compat` source retains the upstream license/hash inventory and
+an explicit opt-in eager-concatenation patch. The encoder environment separately
+corrects the None test and retains Python JSON/numeric behavior. Do not change
+the effective template bytes to conceal a renderer mismatch. Dependency/adapter
+changes require new worker identity and affected target qualification.
+
+Frozen receipt
+`target/validation/prefix-registry-artifacts-33w6ysc2/accepted.json` covers four
+engine tests, the offline full AutoTokenizer oracle, strict engine/worker lint
+and actual contained-worker checks, including safe classified template failures.
+The full 12-context injected-template reproduction additionally matches the
+independent Hugging Face report exactly:
+`target/validation/prefix-encoding-reproduction-xk42v_67/accepted.json`.
+It measures 141,807 shared leading tokens across the tested tools, role/content
+and thinking variants. These are offline/contained measurements, not a native
+usage bootstrap approval, server cache/state proof or model answer-quality claim.
+The corrected native DB/usage integration is now accepted in
+`target/validation/prefix-registry-artifacts-pct_i_6f/accepted.json` (2026-10-19).
+It also covers affected-library strict lint, the closed source-compiler fixture,
+internal result checks, authenticated routes and the three standalone consumer
+regressions. Its complete source-only v2 context is 602,078 bytes; original-template
+requests measure 141,853 tokens each and the 12 effective-template contexts retain
+141,840 common leading tokens (complete requests: 141,857–142,100 tokens).
+These counts belong to that exact frozen source package, not future catalogue
+content. The canonical encoding usages remain candidate definitions: direct
+native dispatch plus retained-graph inspection is not closed bootstrap
+qualification or activated Recipe execution.
+
+The fallible retained-run source API and ordinary matched/No-Match path passed
+separately in
+`target/validation/prefix-registry-artifacts-tvsgm75_/retained-prefix-accepted.json`.
+Missing/expired captures now stop prompt assembly; a run cannot fall back to the
+latest active prefix. Captured actor/project correlation is checked. Durable
+restart restoration and complete model/design/prefix resolver identity remain
+separate prerequisites; a String-returning compatibility source is not that
+complete resolver.
+
+Controlled formatting experiments were retained without promotion:
+`target/validation/prefix-dedup-counterfactual-3qwnax8e` and
+`target/validation/prefix-fragment-experiment-5g_nm4ai`. The latter reconstructed
+all original text but still measured 139,885 framed tokens. It is not a supported
+renderer or an accepted design. Do not keep splitting/rewriting prose merely to
+claim a fit: the plan requires literal prose/Python/YAML, safe strict-JSON-only
+display projection and explicit coverage/capacity rejection when mandatory
+knowledge cannot fit. A compatible larger context/model may be necessary.
+
+#### Reusable measured-capacity comparison (2026-10-19)
+
+`scripts/prefix/prefix_capacity.py` and its class-22 `capacity_draft` now provide
+pure `assess_prefix_capacity(inputs)`. The component consumes complete canonical
+native observation bytes, expected specification/artifact/effective-template
+identities and an explicit retained limits reference with context/output/additional
+input allowances. It rejects identity mismatches, partial observation shapes,
+noncanonical JSON, disabled full-token measurement, invalid counters, booleans,
+nulls and negative allowances. It retains worker/preparation/template identity,
+complete maximum request count, common-prefix count and fit/headroom/shortfall.
+It never picks limits, drops knowledge, changes a model design or grants approval.
+
+Frozen receipt `target/validation/prefix-registry-artifacts-ceyqqz_1/accepted.json`
+executes that exact component in the real contained Monty worker using the native
+12-context observation from the real source job and model store. The fixture's
+131,072-token comparison fails fit; its explicitly hypothetical 262,144-token
+comparison fits. Neither case establishes a deployed context limit, cache reuse
+or answer quality. Template/artifact substitution, boolean context, null output
+and negative additional-input cases stop. The same batch passes strict affected
+library lint, compiler/result fixtures, authenticated routes and native candidate
+integration. The component remains a packaged draft pending workflow/bootstrap
+integration, not an activated Generate path.
 
 ### Phase C1 — Sempai reference, review packet and component proposals
 

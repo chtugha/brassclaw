@@ -364,6 +364,25 @@ impl RebornInterceptorConfigService {
 
 #[async_trait]
 impl InterceptorConfigService for RebornInterceptorConfigService {
+    async fn get_job(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        job: &str,
+    ) -> Result<brassclaw_product_workflow::PrefixJobDetail, InterceptorConfigServiceError> {
+        let id = uuid::Uuid::parse_str(job)
+            .ok()
+            .filter(|id| !id.is_nil() && id.to_string() == job)
+            .ok_or_else(|| InterceptorConfigServiceError::InvalidRequest {
+                reason: "canonical non-nil prefix job UUID required".into(),
+            })?;
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        if let Some(runtime) = self.runtime.as_ref().and_then(std::sync::Weak::upgrade) {
+            return runtime.inspect_prefix_job(profile, id).await;
+        }
+        let _ = (profile, id);
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     async fn model_design_catalogue(
         &self,

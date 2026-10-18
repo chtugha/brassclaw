@@ -2693,6 +2693,17 @@ pub async fn build_reborn_runtime(
         Arc::clone(&loop_checkpoint_store),
         thread_scope.clone(),
     ));
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let loop_exit_evidence = Arc::new(crate::monty_result_evidence::MontyResultEvidence::new(
+        services
+            .pg_pool
+            .as_ref()
+            .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                reason: "Postgres is required for internal result evidence".into(),
+            })?
+            .clone(),
+        loop_exit_evidence,
+    ));
     // `event_log` and `audit_log` are substrate variables extracted above.
     let milestone_thread_scope = ThreadScope {
         owner_user_id: Some(actor_user_id.clone()),
@@ -4071,6 +4082,9 @@ mod tests {
     ))]
     #[path = "model_discovery_tests.rs"]
     mod model_discovery_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "model_encoding_tests.rs"]
+    mod model_encoding_tests;
     #[path = "../../../tests/common/native_http.rs"]
     mod native_http;
     #[cfg(all(
@@ -4090,6 +4104,9 @@ mod tests {
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "source_inspection_tests.rs"]
     mod source_inspection_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "tool_output_policy.rs"]
+    mod tool_output_policy;
 
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     mod mcp_provider_acceptance {
@@ -8198,6 +8215,7 @@ mod tests {
         let request = brassclaw_product_workflow::instance_tools::UpdateInstanceToolSetting {
             expected_revision: selected.revision,
             enabled: false,
+            limits: selected.limits.clone(),
         };
         let response = app
             .clone()
@@ -8503,6 +8521,19 @@ mod tests {
             blocked.run_id.as_uuid(),
         ))
         .await;
+        let before_output_cases = requests.lock().unwrap().len();
+        tool_output_policy::assert_live_output_policy(
+            runtime.clone(),
+            app.clone(),
+            rig.pool.clone(),
+            selected.tool_id,
+        )
+        .await;
+        assert_eq!(
+            requests.lock().unwrap().len(),
+            before_output_cases,
+            "output-limit failures of a matched Recipe must not enter Tier 2"
+        );
         let client = rig.pool.get().await.unwrap();
         client.execute("UPDATE brassclaw_instance_tool_settings SET enabled=false,revision=revision+1 WHERE tool_id IN(SELECT id FROM reborn_tools WHERE tenant_id=$1 AND capability_id='host.post_reply')", &[&runtime.thread_scope.tenant_id.as_str()]).await.unwrap();
         drop(client);
@@ -10254,3 +10285,11 @@ mod tests {
             .expect("runtime shutdown");
     }
 }
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+#[path = "prefix_job_submission.rs"]
+mod prefix_job_submission;
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+#[path = "prefix_job_inspection.rs"]
+mod prefix_job_inspection;

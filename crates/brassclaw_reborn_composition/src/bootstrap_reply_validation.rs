@@ -198,7 +198,7 @@ pub(super) async fn execute_cases(
             }
             (
                 PortAnswer::Return {
-                    value: value.clone(),
+                    value: value.clone().into(),
                 },
                 Some(value),
                 None,

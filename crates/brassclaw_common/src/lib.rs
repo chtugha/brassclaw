@@ -7,6 +7,7 @@ mod event;
 mod event_publisher;
 pub mod hashing;
 mod identity;
+pub mod json;
 mod onboarding;
 pub mod paths;
 pub mod pkce;

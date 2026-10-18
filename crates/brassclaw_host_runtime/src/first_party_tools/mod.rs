@@ -12,6 +12,7 @@ mod http_output;
 mod json;
 mod memory;
 mod memory_tree;
+mod model_encoding;
 mod prefix_bundle;
 mod prefix_generation;
 mod primitive_settings;
@@ -59,6 +60,7 @@ pub use memory::{
     MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID,
     MEMORY_WRITE_CAPABILITY_ID,
 };
+pub use model_encoding::{MODEL_ENCODING_CAPABILITY_ID, ModelEncodingBackend};
 pub use prefix_bundle::{
     PrefixBundleCapabilityError, PrefixBundleCapabilityState, STORE_PREFIX_BUNDLE_CAPABILITY_ID,
     SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID, StorePrefixBundleBackend, StorePrefixBundleResult,
@@ -179,6 +181,7 @@ pub fn builtin_first_party_package() -> Result<ExtensionPackage, ExtensionError>
                     time::manifest()?,
                     json::manifest()?,
                     source_inspection::manifest()?,
+                    model_encoding::manifest()?,
                     http::manifest()?,
                     http::save_manifest()?,
                     shell::manifest()?,
@@ -348,6 +351,10 @@ fn builtin_first_party_registry_from_tools(
             CapabilityId::new(SOURCE_INSPECTION_CAPABILITY_ID)?,
             handler.clone(),
         )
+        .with_handler(
+            CapabilityId::new(MODEL_ENCODING_CAPABILITY_ID)?,
+            handler.clone(),
+        )
         .with_handler(CapabilityId::new(HTTP_CAPABILITY_ID)?, handler.clone())
         .with_handler(CapabilityId::new(HTTP_SAVE_CAPABILITY_ID)?, handler.clone())
         .with_handler(
@@ -425,6 +432,7 @@ fn first_party_capability_manifest(
 pub struct BuiltinFirstPartyTools {
     primitive_settings: Option<Arc<dyn HostPrimitiveSettingsSource>>,
     source_inspection_state: source_inspection::SourceInspectionState,
+    model_encoding_state: model_encoding::ModelEncodingState,
     coding_state: CodingCapabilityState,
     memory_state: memory::MemoryCapabilityState,
     component_db_state: component_db::ComponentDbState,
@@ -449,6 +457,10 @@ impl BuiltinFirstPartyTools {
     ) -> Self {
         self.memory_state = memory::MemoryCapabilityState::with_embedding_source(source)
             .with_chat_memory_writer_opt(self.memory_state.take_chat_memory_writer());
+        self
+    }
+    pub fn with_model_encoding_backend(mut self, backend: Arc<dyn ModelEncodingBackend>) -> Self {
+        self.model_encoding_state = model_encoding::ModelEncodingState::new(backend);
         self
     }
     pub fn with_source_inspection_backend(
@@ -522,6 +534,14 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
         bounded_input_size(request.capability_id.as_str(), &request.input)?;
         normalize_optional_null_sentinels(&mut request);
+        if request.capability_id.as_str() == MODEL_ENCODING_CAPABILITY_ID {
+            return model_encoding::dispatch(
+                &self.model_encoding_state,
+                &request.input,
+                &request.scope,
+            )
+            .await;
+        }
         if request.capability_id.as_str() == SOURCE_INSPECTION_CAPABILITY_ID {
             // The actual backend captures acknowledged limits and accounts for
             // its contained worker. No shared 1 MiB fallback truncates facts.
@@ -670,9 +690,10 @@ pub(super) fn bounded_input_size(
             // memory operation, including complete history and search data.
             isize::MAX as u64
         }
-        HTTP_CAPABILITY_ID | HTTP_SAVE_CAPABILITY_ID | SOURCE_INSPECTION_CAPABILITY_ID => {
-            isize::MAX as u64
-        }
+        HTTP_CAPABILITY_ID
+        | HTTP_SAVE_CAPABILITY_ID
+        | SOURCE_INSPECTION_CAPABILITY_ID
+        | MODEL_ENCODING_CAPABILITY_ID => isize::MAX as u64,
         _ => coding_capability_metadata(capability_id)
             .map(|metadata| metadata.max_input_bytes)
             .unwrap_or(MAX_FIRST_PARTY_INPUT_BYTES) as u64,
@@ -692,44 +713,12 @@ fn count_json_bytes(
     max_bytes: u64,
     overflow: RuntimeDispatchErrorKind,
 ) -> Result<u64, FirstPartyCapabilityError> {
-    let mut writer = JsonByteCounter {
-        bytes: 0,
-        max_bytes,
-        exceeded: false,
-    };
-    if serde_json::to_writer(&mut writer, value).is_err() {
-        return Err(if writer.exceeded {
+    brassclaw_common::json::count_json_bytes(value, Some(max_bytes)).map_err(|error| match error {
+        brassclaw_common::json::JsonWriteError::LimitExceeded => {
             FirstPartyCapabilityError::new(overflow)
-        } else {
-            input_error()
-        });
-    }
-    Ok(writer.bytes)
-}
-
-/// Count serialized JSON without allocating a second complete copy. Stop
-/// at the accepted bound; a serialization failure cannot become success.
-struct JsonByteCounter {
-    bytes: u64,
-    max_bytes: u64,
-    exceeded: bool,
-}
-impl std::io::Write for JsonByteCounter {
-    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        let next = u64::try_from(buffer.len())
-            .ok()
-            .and_then(|bytes| self.bytes.checked_add(bytes))
-            .filter(|bytes| *bytes <= self.max_bytes);
-        let Some(next) = next else {
-            self.exceeded = true;
-            return Err(std::io::Error::other("output byte limit exceeded"));
-        };
-        self.bytes = next;
-        Ok(buffer.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
+        }
+        brassclaw_common::json::JsonWriteError::Encoding => input_error(),
+    })
 }
 
 /// Treat null sentinels as absent for declared optional fields.

@@ -1116,6 +1116,15 @@ async fn build_local_dev(
         Some(source_inspection.clone() as Arc<dyn brassclaw_host_runtime::SourceInspectionBackend>);
     #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
     let source_inspection_backend = None;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let model_encoding_backend = pg_pool.as_ref().map(|pool| {
+        Arc::new(crate::model_encoding::ContainedModelEncoding::new(
+            pool.clone(),
+            source_inspection.clone(),
+        )) as Arc<dyn brassclaw_host_runtime::ModelEncodingBackend>
+    });
+    #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
+    let model_encoding_backend = None;
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
     let memory_embedding_source = pg_pool
         .as_ref()
@@ -1160,6 +1169,7 @@ async fn build_local_dev(
             prefix_bundle_backends,
             prefix_generation_backend,
             source_inspection_backend,
+            model_encoding_backend,
             primitive_settings: {
                 #[cfg(all(feature = "postgres", feature = "skills-db"))]
                 {
@@ -1921,6 +1931,7 @@ struct BuiltinFirstPartyRegistrationInputs {
     )>,
     prefix_generation_backend: Option<Arc<dyn brassclaw_host_runtime::PrefixGenerationBackend>>,
     source_inspection_backend: Option<Arc<dyn brassclaw_host_runtime::SourceInspectionBackend>>,
+    model_encoding_backend: Option<Arc<dyn brassclaw_host_runtime::ModelEncodingBackend>>,
     primitive_settings: Option<Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
     memory_embedding_source: Option<Arc<dyn brassclaw_memory::EmbeddingProviderSource>>,
     native_registration_limits: brassclaw_host_api::MontyExecutionLimits,
@@ -1936,6 +1947,7 @@ async fn builtin_first_party_registry_with_trigger_create_hook(
         prefix_bundle_backends,
         prefix_generation_backend,
         source_inspection_backend,
+        model_encoding_backend,
         primitive_settings,
         memory_embedding_source,
         native_registration_limits,
@@ -1960,6 +1972,9 @@ async fn builtin_first_party_registry_with_trigger_create_hook(
         }
         if let Some(source) = memory_embedding_source {
             tools = tools.with_memory_embedding_source(source);
+        }
+        if let Some(backend) = model_encoding_backend {
+            tools = tools.with_model_encoding_backend(backend);
         }
         if let Some(backend) = source_inspection_backend {
             tools = tools.with_source_inspection_backend(backend);
@@ -1992,6 +2007,7 @@ async fn builtin_first_party_registry_with_trigger_create_hook(
         || prefix_bundle_backends.is_some()
         || prefix_generation_backend.is_some()
         || source_inspection_backend.is_some()
+        || model_encoding_backend.is_some()
         || primitive_settings.is_some()
         || memory_embedding_source.is_some()
     {
@@ -2001,6 +2017,9 @@ async fn builtin_first_party_registry_with_trigger_create_hook(
         }
         if let Some(source) = memory_embedding_source {
             tools = tools.with_memory_embedding_source(source);
+        }
+        if let Some(backend) = model_encoding_backend {
+            tools = tools.with_model_encoding_backend(backend);
         }
         if let Some(backend) = source_inspection_backend {
             tools = tools.with_source_inspection_backend(backend);

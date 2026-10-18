@@ -18,7 +18,7 @@ use brassclaw_turns::{
         AppendCapabilityResultRef, CapabilityInvocation, CapabilityOutcome,
         FinalizeAssistantMessage, LoopModelRequest, LoopModelResponse, LoopPromptBundle,
         LoopPromptBundleRequest, LoopRunContext, MontyTaskAttempt, MontyTaskHandoff,
-        VisibleCapabilityRequest, VisibleCapabilitySurface,
+        PreparedLoopPromptRequest, VisibleCapabilityRequest, VisibleCapabilitySurface,
     },
 };
 
@@ -50,6 +50,10 @@ pub enum WithheldTaskPortValue {
     VisibleCapabilities(VisibleCapabilitySurface),
     PromptBundle(LoopPromptBundle),
     ModelResponse(LoopModelResponse),
+    RecordedModelResponse {
+        invocation_id: brassclaw_host_api::InvocationId,
+        response_bytes: String,
+    },
     CapabilityOutcome(CapabilityOutcome),
     CapabilityResultReference(LoopMessageRef),
     FinalizedReplyReference(LoopMessageRef),
@@ -224,12 +228,34 @@ impl MontyTaskHost {
         self.finish_call(call, result, WithheldTaskPortValue::PromptBundle)
     }
 
+    /// Host-only preparation for a selected Recipe's complete model input.
+    /// There is deliberately no raw-body JSON port in `dispatch_port`: the
+    /// retained usage adapter must validate its typed input and selected prefix.
+    /// Preparing references never calls the model or grants Tool permission.
+    pub async fn build_prepared_prompt_bundle(
+        &self,
+        request: PreparedLoopPromptRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        let call = self.begin_call()?;
+        let result = self.host.build_prepared_prompt_bundle(request).await;
+        self.finish_call(call, result, WithheldTaskPortValue::PromptBundle)
+    }
+
     /// Return the structured response unchanged: tool requests are never
     /// converted to assistant text or dispatched by this adapter.
     pub async fn stream_model(
         &self,
         request: LoopModelRequest,
     ) -> Result<LoopModelResponse, AgentLoopHostError> {
+        let call = self.begin_model_call(&request)?;
+        let result = self.host.stream_model(request).await;
+        self.finish_call(call, result, WithheldTaskPortValue::ModelResponse)
+    }
+
+    fn begin_model_call(
+        &self,
+        request: &LoopModelRequest,
+    ) -> Result<MontyHostCall, AgentLoopHostError> {
         if self.run_context().trusted_internal_turn {
             return Err(AgentLoopHostError::new(
                 AgentLoopHostErrorKind::PolicyDenied,
@@ -248,8 +274,39 @@ impl MontyTaskHost {
         let call = self.begin_call()?;
         self.model_exchange_count
             .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-        let result = self.host.stream_model(request).await;
-        self.finish_call(call, result, WithheldTaskPortValue::ModelResponse)
+        Ok(call)
+    }
+
+    /// A selected native usage takes custody of a received response before the
+    /// final delivery fence. A late result may be journaled for the original
+    /// effect, but can never resume Python or authorize another dispatch.
+    pub(crate) async fn stream_model_retaining<F, Fut>(
+        &self,
+        invocation_id: brassclaw_host_api::InvocationId,
+        request: LoopModelRequest,
+        retain: F,
+    ) -> Result<String, AgentLoopHostError>
+    where
+        F: FnOnce(LoopModelResponse) -> Fut + Send,
+        Fut: std::future::Future<Output = Result<String, AgentLoopHostError>> + Send,
+    {
+        if invocation_id.as_uuid().is_nil() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "model invocation identity is invalid",
+            ));
+        }
+        let call = self.begin_model_call(&request)?;
+        let result = match self.host.stream_model(request).await {
+            Ok(response) => retain(response).await,
+            Err(error) => Err(error),
+        };
+        self.finish_call(call, result, |response_bytes| {
+            WithheldTaskPortValue::RecordedModelResponse {
+                invocation_id,
+                response_bytes,
+            }
+        })
     }
 
     pub async fn invoke_capability(

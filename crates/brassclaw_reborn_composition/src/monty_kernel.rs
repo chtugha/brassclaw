@@ -22,7 +22,12 @@ use brassclaw_host_runtime::{
 };
 use brassclaw_pg::PgPool;
 use brassclaw_processes::{ProcessResultStore, ProcessStore};
-use brassclaw_reborn::monty_task_host::MontyTaskHost;
+use brassclaw_reborn::{
+    monty_model_capability::{
+        KOHAI_COMPLETE_CAPABILITY_ID, RecipeModelPrefix, RecipeModelResponseStore,
+    },
+    monty_task_host::MontyTaskHost,
+};
 use brassclaw_resources::ResourceGovernor;
 use brassclaw_trust::{AdminConfig, AdminEntry, HostTrustAssignment, HostTrustPolicy};
 use uuid::Uuid;
@@ -50,6 +55,13 @@ pub(crate) trait MontyKernelSnapshot: Send + Sync {
         &self,
         handler: Arc<crate::completed_turn_review::backend::ReviewPrimitive>,
         capability: &CapabilityId,
+        policy: Arc<dyn InstanceToolPolicySource>,
+    ) -> Result<RetainedFirstPartyCapability, RebornBuildError>;
+    fn model(
+        &self,
+        host: Arc<MontyTaskHost>,
+        prefix: RecipeModelPrefix,
+        responses: Arc<dyn RecipeModelResponseStore>,
         policy: Arc<dyn InstanceToolPolicySource>,
     ) -> Result<RetainedFirstPartyCapability, RebornBuildError>;
     fn reply(
@@ -120,6 +132,21 @@ pub(crate) fn reply_package() -> Result<ExtensionPackage, RebornBuildError> {
         VirtualPath::new("/system/extensions/host")?,
     )
     .map_err(|error| invalid(error.to_string()))
+}
+
+pub(crate) fn model_package() -> Result<ExtensionPackage, RebornBuildError> {
+    let mut manifest = reply_package()?.manifest;
+    manifest.description = "Task-bound single model operation".into();
+    let capability = &mut manifest.capabilities[0];
+    capability.id = CapabilityId::new(KOHAI_COMPLETE_CAPABILITY_ID)?;
+    capability.description =
+        "Call the selected model with a retained prefix and complete typed prompt".into();
+    capability.input_schema_ref =
+        CapabilityProfileSchemaRef::new("schemas/kohai-complete.input.v2.json")?;
+    capability.output_schema_ref =
+        CapabilityProfileSchemaRef::new("schemas/kohai-complete.output.v2.json")?;
+    ExtensionPackage::from_manifest(manifest, VirtualPath::new("/system/extensions/host")?)
+        .map_err(|error| invalid(error.to_string()))
 }
 
 impl<F: RootFilesystem + 'static, G: ResourceGovernor + 'static> MontyKernelSnapshot
@@ -195,6 +222,33 @@ impl<F: RootFilesystem + 'static, G: ResourceGovernor + 'static> MontyKernelSnap
         )
         .map_err(|e| invalid(e.to_string()))
     }
+    fn model(
+        &self,
+        host: Arc<MontyTaskHost>,
+        prefix: RecipeModelPrefix,
+        responses: Arc<dyn RecipeModelResponseStore>,
+        policy: Arc<dyn InstanceToolPolicySource>,
+    ) -> Result<RetainedFirstPartyCapability, RebornBuildError> {
+        let trust = HostTrustPolicy::new(vec![Box::new(AdminConfig::with_entries(vec![
+            AdminEntry::for_local_manifest(
+                PackageId::new("host")?,
+                "/system/extensions/host/manifest.toml".into(),
+                None,
+                HostTrustAssignment::first_party(),
+                vec![EffectKind::ExternalWrite],
+                None,
+            ),
+        ]))])
+        .map_err(|error| invalid(error.to_string()))?;
+        self.retain_bound_handler(
+            model_package()?,
+            &CapabilityId::new(KOHAI_COMPLETE_CAPABILITY_ID)?,
+            host.model_capability(prefix, responses),
+            Arc::new(InstanceToolAuthorizer::new(policy)),
+            Arc::new(trust),
+        )
+        .map_err(|error| invalid(error.to_string()))
+    }
     fn reply(
         &self,
         host: Arc<MontyTaskHost>,
@@ -253,7 +307,7 @@ impl InstanceToolPolicySource for PgSelectedToolPolicy {
             .map_err(|_| InstanceToolPolicyError::Unavailable)?;
         let row = client
             .query_opt(
-                "SELECT enabled,revision FROM brassclaw_instance_tool_settings WHERE tool_id=$1",
+                "SELECT enabled,revision,max_output_bytes::text FROM brassclaw_instance_tool_settings WHERE tool_id=$1",
                 &[&self.tool],
             )
             .await
@@ -264,6 +318,8 @@ impl InstanceToolPolicySource for PgSelectedToolPolicy {
         row.map(|row| {
             let revision = u64::try_from(row.get::<_, i64>(1))
                 .map_err(|_| InstanceToolPolicyError::Invalid)?;
+            let output_limit = crate::instance_tool_settings::decode_output_limit(row.get(2))
+                .map_err(|_| InstanceToolPolicyError::Invalid)?;
             Ok(InstanceToolRule {
                 enabled: row.get(0),
                 revision,
@@ -272,7 +328,16 @@ impl InstanceToolPolicySource for PgSelectedToolPolicy {
                     mounts: self.mounts.clone(),
                     network: NetworkPolicy::default(),
                     secrets: vec![],
-                    resource_ceiling: None,
+                    resource_ceiling: output_limit.map(|bytes| {
+                        brassclaw_host_api::ResourceCeiling {
+                            max_usd: None,
+                            max_input_tokens: None,
+                            max_output_tokens: None,
+                            max_wall_clock_ms: None,
+                            max_output_bytes: Some(bytes),
+                            sandbox: None,
+                        }
+                    }),
                 },
             })
         })

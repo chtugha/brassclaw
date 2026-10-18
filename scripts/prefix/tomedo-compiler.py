@@ -1774,7 +1774,7 @@ def inject_template(original, full):
 
 
 def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
-    procedure_snapshot = snapshot_procedure(__file__, helpers=('prefix_evidence.py', 'prefix_units.py'))
+    procedure_snapshot = snapshot_procedure(__file__, helpers=('prefix_evidence.py', 'prefix_units.py', 'prefix_template.py'))
     profile=model_profile(verify_server=not offline); cards=accepted_cards(); tok=tokenizer()
     reserve=int(os.getenv('PREFIX_WORKSPACE_RESERVE_TOKENS','31072'))
     if reserve<8192: raise ValueError('Reserve at least 8192 tokens for task, evidence, reasoning and output')

@@ -570,11 +570,12 @@ pub(super) async fn verify(
             )?;
             let expected = if case["outcome"] == "return" {
                 PortAnswer::Return {
-                    value: if retain {
+                    value: (if retain {
                         receipt.clone()
                     } else {
                         json!({"summary":receipt,"generation_bytes":fixture.package})
-                    },
+                    })
+                    .into(),
                 }
             } else {
                 PortAnswer::TerminalError {

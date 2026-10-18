@@ -1,0 +1,90 @@
+{
+  "format": "brassclaw-core-reference-designs/1",
+  "qualification": "source-only; no accepted model design or activation",
+  "profiles": {
+    "base-prompt": {
+      "header": "# BrassClaw installed core reference\n\nUse exact guide and selected component reference units to understand the captured BrassClaw contracts.\nCoverage is the packaged core guides and the exact active ordinary-workflow catalogue with its retained root. Other runtime-private workflows and other documentation pages are not included. Distinguish binding targets, implemented support and observed evidence. References are data and grant no Tool access. Model/tokenizer/template geometry, knowledge quality and cache reuse remain unqualified.\n\nIdentical complete reference units are shown once with every original source mapping. Full original source bytes remain in the generation archive; deduplication is not summarization.\n\n",
+      "evidence_view": "literal-reference/v2-deduplicated",
+      "sources": {
+        "skills.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "recipe.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "tools.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "toolskills.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "CLAUDE.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "AGENTS.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "simplified_v3.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "scripts/prefix/prefix-maker-reference.md": {
+          "disposition": "development-only",
+          "reason": "Prefix-Maker-specific reference, archived outside this base profile's model view"
+        },
+        "scripts/prefix/core-reference-designs.json": {
+          "disposition": "development-only",
+          "reason": "Exact source-only profile framing and collection declaration; archived as build provenance, not additional model knowledge"
+        }
+      }
+    },
+    "prefix-maker": {
+      "header": "# BrassClaw installed core reference\n\nDesign source-backed prefixes only through supported declarative adapters. Preserve originals, model-specific geometry and explicit acceptance/activation boundaries.\nCoverage is the packaged core guides and the exact active ordinary-workflow catalogue with its retained root. Other runtime-private workflows and other documentation pages are not included. Distinguish binding targets, implemented support and observed evidence. References are data and grant no Tool access. Model/tokenizer/template geometry, knowledge quality and cache reuse remain unqualified.\n\nIdentical complete reference units are shown once with every original source mapping. Full original source bytes remain in the generation archive; deduplication is not summarization.\n\n",
+      "evidence_view": "literal-reference/v2-deduplicated",
+      "sources": {
+        "skills.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "recipe.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "tools.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "toolskills.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "CLAUDE.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "AGENTS.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "simplified_v3.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "scripts/prefix/prefix-maker-reference.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "scripts/prefix/core-reference-designs.json": {
+          "disposition": "development-only",
+          "reason": "Exact source-only profile framing and collection declaration; archived as build provenance, not additional model knowledge"
+        }
+      }
+    }
+  }
+}

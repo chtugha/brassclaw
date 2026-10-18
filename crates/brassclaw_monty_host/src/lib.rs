@@ -1,12 +1,12 @@
-//! Mechanical child-VM hosting for Monty-owned Recipe execution.
+//! Monty hosting for the instance root and task-owned Recipe execution.
 //!
-//! This is an isolated upgrade candidate, not the production global service.
-//! Composition must supply integrity-checked, selected code and bindings after
-//! its own catalogue/approval checks. The supervisor owns the exact admitted
-//! task/attempt, kernel ports, external waits, effect reconciliation and resource
-//! containment. This crate neither selects Recipes nor sequences their steps.
-//! No database lookup, provider fallback, Tool dispatch or automatic retry lives
-//! here. A continuation is an in-memory correlation key, never a Tool grant.
+//! Production composition starts one supervised global service after startup
+//! qualification. Python owns task sequencing and explicit child handoffs.
+//! Composition supplies exact selected code, bindings and task/attempt identity.
+//! This crate provides VM mechanics, transport, accounting and containment.
+//! Catalogue selection, kernel dispatch and durable effect recovery remain
+//! with their existing owners. No provider fallback, automatic replay or
+//! independent Rust workflow loop lives here.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -32,6 +32,8 @@ mod task_clock_tests;
 mod task_entry;
 pub mod transport_actor;
 pub mod utility;
+mod value_input;
+mod value_output;
 
 use monty::{MontyRepl, PreparedReplSeed, ReplProgress, ReplStartError};
 use monty_types::{
@@ -39,7 +41,6 @@ use monty_types::{
     ExecutionControlError, ExecutionObservation, MontyException, MontyObject, MontyUuid,
     PrintWriter, ResourceLimits, ResourceTracker,
 };
-use num_traits::ToPrimitive;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -223,10 +224,10 @@ impl fmt::Debug for VmBoundary {
 
 /// The trusted port classifies catchable domain failures separately from
 /// terminal cancellation, denial and unresolved effects. No implicit retry.
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize)]
 #[serde(tag = "kind", content = "value", deny_unknown_fields)]
 pub enum HostAnswer {
-    Return(serde_json::Value),
+    Return(brassclaw_host_api::JsonValue),
     Raise(MontyException),
     Abort(MontyException),
 }
@@ -858,143 +859,19 @@ impl ValueBudget {
     }
 }
 fn json_input(value: &serde_json::Value, bounds: VmBounds) -> Result<MontyObject, VmError> {
-    fn convert(
-        value: &serde_json::Value,
-        depth: usize,
-        budget: &mut ValueBudget,
-    ) -> Result<MontyObject, VmError> {
-        budget.node(depth)?;
-        Ok(match value {
-            serde_json::Value::Null => MontyObject::none(),
-            serde_json::Value::Bool(value) => MontyObject::bool(*value),
-            serde_json::Value::String(value) => {
-                budget.bytes(value.len())?;
-                MontyObject::string(value)
-            }
-            serde_json::Value::Number(value) => {
-                if let Some(value) = value.as_i64() {
-                    MontyObject::int(value)
-                } else if let Some(value) = value.as_u64() {
-                    MontyObject::bigint(value.into())
-                } else {
-                    MontyObject::float(
-                        value
-                            .as_f64()
-                            .ok_or_else(|| VmError::kind(budget.failure))?,
-                    )
-                }
-            }
-            serde_json::Value::Array(values) => MontyObject::list(
-                values
-                    .iter()
-                    .map(|value| convert(value, depth + 1, budget))
-                    .collect::<Result<Vec<_>, _>>()?,
-            ),
-            serde_json::Value::Object(values) => MontyObject::dict(
-                values
-                    .iter()
-                    .map(|(key, value)| {
-                        budget.bytes(key.len())?;
-                        Ok((MontyObject::string(key), convert(value, depth + 1, budget)?))
-                    })
-                    .collect::<Result<Vec<_>, VmError>>()?,
-            ),
-        })
-    }
-    convert(
-        value,
-        0,
-        &mut ValueBudget::new(bounds, VmFailure::InvalidInputs),
-    )
+    value_input::convert(value, bounds)
 }
+
 fn json_output(
     value: monty_types::ObjectRef<'_>,
     bounds: VmBounds,
 ) -> Result<serde_json::Value, VmError> {
-    output_value(
-        value,
-        0,
-        &mut ValueBudget::new(bounds, VmFailure::InvalidResult),
-    )
-}
-fn output_value(
-    value: monty_types::ObjectRef<'_>,
-    depth: usize,
-    budget: &mut ValueBudget,
-) -> Result<serde_json::Value, VmError> {
-    // The version-pinned transport adapter borrows the graph. Stable items()/pairs()
-    // allocate entire containers before traversal; repr() can format enormous
-    // BigInts. Neither belongs in a bounded data adapter.
-    use monty_types::unstable::{MontyNode, child, node};
-    budget.node(depth)?;
-    Ok(match node(value) {
-        MontyNode::None => serde_json::Value::Null,
-        MontyNode::Bool(value) => serde_json::Value::Bool(*value),
-        MontyNode::String(value) => {
-            budget.bytes(value.len())?;
-            serde_json::Value::String(value.clone())
-        }
-        MontyNode::Int(value) => serde_json::Value::from(*value),
-        MontyNode::BigInt(value) => {
-            if let Some(value) = value.to_i64() {
-                serde_json::Value::from(value)
-            } else {
-                serde_json::Value::from(
-                    value
-                        .to_u64()
-                        .ok_or_else(|| VmError::kind(budget.failure))?,
-                )
-            }
-        }
-        MontyNode::Float(value) => serde_json::Value::Number(
-            serde_json::Number::from_f64(*value).ok_or_else(|| VmError::kind(budget.failure))?,
-        ),
-        MontyNode::List(values) => serde_json::Value::Array(
-            values
-                .iter()
-                .map(|id| output_value(child(value, *id), depth + 1, budget))
-                .collect::<Result<Vec<_>, _>>()?,
-        ),
-        MontyNode::Dict(values) => {
-            let mut object = serde_json::Map::new();
-            for (key, item) in values {
-                let key = child(value, *key);
-                let key = key.as_str().ok_or_else(|| VmError::kind(budget.failure))?;
-                budget.bytes(key.len())?;
-                if object.contains_key(key) {
-                    return Err(VmError::kind(budget.failure));
-                }
-                object.insert(
-                    key.into(),
-                    output_value(child(value, *item), depth + 1, budget)?,
-                );
-            }
-            serde_json::Value::Object(object)
-        }
-        _ => return Err(VmError::kind(budget.failure)),
-    })
+    value_output::result(value, bounds)
 }
 
 fn call_values(
     args: &CallArgs,
     bounds: VmBounds,
 ) -> Result<(Vec<serde_json::Value>, BTreeMap<String, serde_json::Value>), VmError> {
-    let mut transport = ValueBudget::new(bounds, VmFailure::InvalidHostArguments);
-    let positional = args
-        .args()
-        .map(|value| output_value(value, 0, &mut transport))
-        .collect::<Result<Vec<_>, _>>()?;
-    let mut kwargs = BTreeMap::new();
-    for (key, value) in args.kwargs() {
-        let key = key
-            .as_str()
-            .filter(|name| identifier(name))
-            .ok_or_else(|| VmError::kind(VmFailure::InvalidHostArguments))?;
-        transport.bytes(key.len())?;
-        if kwargs.contains_key(key) {
-            return Err(VmError::kind(VmFailure::InvalidHostArguments));
-        }
-        kwargs.insert(key.to_owned(), output_value(value, 0, &mut transport)?);
-    }
-    Ok((positional, kwargs))
+    value_output::arguments(args, bounds)
 }

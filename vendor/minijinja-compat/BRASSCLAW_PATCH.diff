@@ -1,0 +1,15 @@
+--- upstream/src/value/ops.rs
++++ compat/src/value/ops.rs
+@@ -333,6 +333,12 @@
+     if matches!(lhs.kind(), ValueKind::Seq | ValueKind::Iterable)
+         && matches!(rhs.kind(), ValueKind::Seq | ValueKind::Iterable)
+     {
++        // Python Jinja list concatenation is eager and supports subsequent
++        // indexing/slicing. Chat templates rely on this after prefix injection.
++        // The contained caller supplies allocation and execution bounds.
++        if cfg!(feature = "brassclaw_eager_concat") {
++            return materialize_seq_concat(lhs, rhs, seq_concat_len(lhs, rhs).unwrap_or(0));
++        }
+         let values = vec![lhs.clone(), rhs.clone()];
+         let depth = MergeSeq::depth_for_values(&values);
+ 

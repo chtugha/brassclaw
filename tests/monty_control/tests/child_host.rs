@@ -145,7 +145,7 @@ fn actual_child_result_resumes_exact_parent_and_other_tasks_can_progress() {
     assert_eq!(
         complete(
             parent
-                .resume_host(pending.continuation, HostAnswer::Return(answer))
+                .resume_host(pending.continuation, HostAnswer::Return(answer.into()))
                 .unwrap()
         ),
         json!(42)
@@ -175,7 +175,10 @@ fn foreign_and_stale_replies_are_retained_without_consuming_the_correct_continua
             .unwrap(),
     );
     let error = a
-        .resume_host(b_call.continuation, HostAnswer::Return(value.clone()))
+        .resume_host(
+            b_call.continuation,
+            HostAnswer::Return(value.clone().into()),
+        )
         .unwrap_err();
     assert_eq!(error.failure, VmFailure::ForeignContinuation);
     let Some(retained) = error.rejected_answer else {
@@ -187,20 +190,26 @@ fn foreign_and_stale_replies_are_retained_without_consuming_the_correct_continua
     assert_eq!(retained, value);
     assert_eq!(
         complete(
-            a.resume_host(a_call.continuation, HostAnswer::Return(value.clone()))
-                .unwrap()
+            a.resume_host(
+                a_call.continuation,
+                HostAnswer::Return(value.clone().into())
+            )
+            .unwrap()
         ),
         value
     );
     let next = call(a.start_step(code, json!({})).unwrap());
     let error = a
-        .resume_host(a_call.continuation, HostAnswer::Return(value.clone()))
+        .resume_host(
+            a_call.continuation,
+            HostAnswer::Return(value.clone().into()),
+        )
         .unwrap_err();
     assert_eq!(error.failure, VmFailure::ForeignContinuation);
     assert!(error.rejected_answer.is_some());
     assert_eq!(
         complete(
-            a.resume_host(next.continuation, HostAnswer::Return(value))
+            a.resume_host(next.continuation, HostAnswer::Return(value.into()))
                 .unwrap()
         ),
         json!(42)
@@ -313,7 +322,7 @@ fn live_duration_update_interrupts_retained_context_without_resetting_usage() {
     let parent_failure = vm
         .resume_host(
             pending.continuation,
-            HostAnswer::Return(completed_value.clone()),
+            HostAnswer::Return(completed_value.clone().into()),
         )
         .unwrap_err();
     assert_eq!(parent_failure.failure, VmFailure::ResourceLimit);
@@ -480,7 +489,7 @@ fn eager_async_host_reply_comes_from_an_actual_child_vm() {
     );
     assert_eq!(
         complete(
-            vm.resume_host(pending.continuation, HostAnswer::Return(value))
+            vm.resume_host(pending.continuation, HostAnswer::Return(value.into()))
                 .unwrap()
         ),
         json!(42)

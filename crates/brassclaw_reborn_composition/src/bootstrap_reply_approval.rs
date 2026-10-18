@@ -520,7 +520,7 @@ async fn verify_observations(
                 return Err(invalid("bootstrap positive reply missing"));
             }
             brassclaw_monty_host::process::PortAnswer::Return {
-                value: case["reply_ref"].clone(),
+                value: case["reply_ref"].clone().into(),
             }
         } else {
             if !case["reply_ref"].is_null()

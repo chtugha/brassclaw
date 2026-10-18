@@ -430,6 +430,99 @@ async fn monty_task_host_preserves_opaque_identity_prompt_authority_and_reply_sc
 }
 
 #[tokio::test]
+async fn monty_task_host_materializes_complete_recipe_input_and_fences_preparation() {
+    use brassclaw_host_api::InvocationId;
+    use brassclaw_reborn::monty_task_host::MontyTaskHost;
+    use brassclaw_turns::run_profile::{
+        LoopInlineMessageRole, MontyTaskAttempt, MontyTaskHandoff, PreparedLoopPromptMessage,
+        PreparedLoopPromptRequest,
+    };
+    let fixture = HostFixture::new("prepared-recipe-input", "must not replace explicit data").await;
+    let task = MontyTaskHost::new(
+        MontyTaskHandoff::new(
+            AgentLoopDriverRunRequest {
+                turn_id: fixture.context.turn_id,
+                run_id: fixture.context.run_id,
+                resolved_run_profile: fixture.context.resolved_run_profile.clone(),
+            },
+            MontyTaskAttempt {
+                run_id: fixture.context.run_id,
+                runner_id: fixture.claimed.runner_id,
+                lease_token: fixture.claimed.lease_token,
+            },
+            Arc::new(fixture.build_host().await),
+        )
+        .unwrap(),
+    );
+    let surface = task.visible_capabilities().await.unwrap();
+    let exact = "Typed task data\n\n```python\nx = 'ä🙂'\n```".repeat(3000);
+    let request = PreparedLoopPromptRequest {
+        invocation_id: InvocationId::new(),
+        metadata: LoopPromptBundleRequest {
+            mode: PromptMode::TextOnly,
+            context_cursor: None,
+            surface_version: Some(surface.version),
+            checkpoint_state_ref: None,
+            max_messages: None,
+            capability_view: None,
+            inline_messages: vec![],
+            recipe_hint: None,
+        },
+        messages: vec![PreparedLoopPromptMessage {
+            role: LoopInlineMessageRole::User,
+            content: exact.clone(),
+        }],
+    };
+    let bundle = task
+        .build_prepared_prompt_bundle(request.clone())
+        .await
+        .unwrap();
+    assert!(bundle.bundle_ref.is_for_run(&fixture.context));
+    assert!(
+        fixture.gateway.requests().is_empty(),
+        "materialization performs no model call"
+    );
+    task.stream_model(LoopModelRequest {
+        messages: bundle.messages,
+        surface_version: bundle.surface_version,
+        ..LoopModelRequest::default()
+    })
+    .await
+    .unwrap();
+    // This recording gateway observes the actual host resolver's inputs; it is
+    // transport-contract evidence, not a live provider/selected usage acceptance.
+    let sent = fixture.gateway.requests();
+    assert_eq!(sent.len(), 1);
+    assert!(
+        sent[0]
+            .messages
+            .iter()
+            .any(|m| m.role == HostManagedModelMessageRole::User && m.content == exact)
+    );
+    assert!(
+        !sent[0]
+            .messages
+            .iter()
+            .any(|m| m.content == "must not replace explicit data")
+    );
+    assert_eq!(sent[0].run_id, fixture.context.run_id);
+    assert_eq!(sent[0].turn_id, fixture.context.turn_id);
+    task.fence_handle()
+        .fence_and_wait(task.attempt(), std::time::Duration::ZERO)
+        .await
+        .unwrap();
+    assert_eq!(
+        task.build_prepared_prompt_bundle(request)
+            .await
+            .unwrap_err()
+            .kind,
+        AgentLoopHostErrorKind::Cancelled
+    );
+    assert_eq!(fixture.gateway.requests().len(), 1);
+    assert_public_milestones_hide_raw_payloads(&fixture.milestones());
+}
+
+#[tokio::test]
 async fn monty_task_host_retains_tool_requests_and_rejects_prompt_bypass_and_foreign_refs() {
     use brassclaw_reborn::monty_task_host::MontyTaskHost;
     use brassclaw_turns::run_profile::{MontyTaskAttempt, MontyTaskHandoff};

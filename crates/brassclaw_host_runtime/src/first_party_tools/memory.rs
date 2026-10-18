@@ -34,7 +34,6 @@ pub const MEMORY_TREE_CAPABILITY_ID: &str = "builtin.memory_tree";
 const MEMORY_PATH: &str = "MEMORY.md";
 const HEARTBEAT_PATH: &str = "HEARTBEAT.md";
 const BOOTSTRAP_PATH: &str = "BOOTSTRAP.md";
-const MAX_MEMORY_PATCH_RETRIES: usize = 8;
 const MEMORY_PROMPT_SAFETY_EXTENSION_ID: &str = "memory.prompt_safety";
 
 /// Backend and optional Path B indexer produced by [`build_backend`].
@@ -869,48 +868,52 @@ async fn patch_document(
     replace_all: bool,
 ) -> Result<Value, FirstPartyCapabilityError> {
     let options = write_options(metadata_overlay);
-    for _ in 0..MAX_MEMORY_PATCH_RETRIES {
-        let Some(bytes) = services
-            .backend
-            .read_document(&services.context, path)
-            .await
-            .map_err(|_| operation_error())?
-        else {
-            return Err(operation_error());
-        };
-        let existing = String::from_utf8(bytes).map_err(|_| operation_error())?;
-        let expected = content_bytes_sha256(existing.as_bytes());
-        let replacements = existing.matches(old_string).count();
-        if replacements == 0 {
-            return Err(input_error());
-        }
-        let replacement_count = if replace_all { replacements } else { 1 };
-        let updated = if replace_all {
-            existing.replace(old_string, new_string)
-        } else {
-            existing.replacen(old_string, new_string, 1)
-        };
-        let outcome = services
-            .backend
-            .compare_and_write_document_with_backend_options(
-                &services.context,
-                path,
-                Some(&expected),
-                updated.as_bytes(),
-                &options,
-            )
-            .await
-            .map_err(|_| operation_error())?;
-        if outcome == MemoryWriteOutcome::Written {
-            return Ok(json!({
-                "status": "patched",
-                "path": resolved_path,
-                "replacements": replacement_count,
-                "content_length": updated.len(),
-            }));
-        }
+    let Some(bytes) = services
+        .backend
+        .read_document(&services.context, path)
+        .await
+        .map_err(|_| operation_error())?
+    else {
+        return Err(operation_error());
+    };
+    let existing = String::from_utf8(bytes).map_err(|_| operation_error())?;
+    let expected = content_bytes_sha256(existing.as_bytes());
+    let replacements = existing.matches(old_string).count();
+    if replacements == 0 {
+        return Err(input_error());
     }
-    Err(operation_error())
+    let replacement_count = if replace_all { replacements } else { 1 };
+    let updated = if replace_all {
+        existing.replace(old_string, new_string)
+    } else {
+        existing.replacen(old_string, new_string, 1)
+    };
+    // One primitive invocation performs one conditional write. A conflict is
+    // terminal here; an approved Recipe retry must re-enter the kernel with
+    // its retained arguments/count and current policy/attempt checks.
+    match services
+        .backend
+        .compare_and_write_document_with_backend_options(
+            &services.context,
+            path,
+            Some(&expected),
+            updated.as_bytes(),
+            &options,
+        )
+        .await
+        .map_err(|_| operation_error())?
+    {
+        MemoryWriteOutcome::Written => Ok(json!({
+            "status": "patched",
+            "path": resolved_path,
+            "replacements": replacement_count,
+            "content_length": updated.len(),
+        })),
+        MemoryWriteOutcome::Conflict => Err(FirstPartyCapabilityError::with_safe_summary(
+            RuntimeDispatchErrorKind::OperationFailed,
+            "Memory patch conflict: the document changed concurrently; this patch was not written.",
+        )),
+    }
 }
 
 async fn append_document(

@@ -423,7 +423,7 @@ pub(super) async fn assert_native_source_compiler(catalogue: &Arc<InstalledMonty
         ))
         .await
         .unwrap();
-        let tools = crate::installed_monty_catalogue::prefix_compiler_test_tools(
+        let tools = crate::installed_monty_catalogue::bootstrap_compiler_tools(
             catalogue.pool.clone(),
             catalogue.kernel.clone(),
             admitted.host.clone(),

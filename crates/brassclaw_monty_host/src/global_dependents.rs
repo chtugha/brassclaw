@@ -219,7 +219,7 @@ impl GlobalVm {
             .store(prepared.contexts, Ordering::Release);
         // Execution errors after this boundary retain the reservation and every
         // real continuation for containment; they are never a clean rejection.
-        self.resolve_inner(coordinator, HostAnswer::Return(update), None)
+        self.resolve_inner(coordinator, HostAnswer::Return(update.into()), None)
             .map(|boundary| (worker, boundary))
     }
 

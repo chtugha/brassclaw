@@ -60,6 +60,8 @@ pub mod prefix_compiler_components;
 pub mod utf8_digest_components;
 /// Reusable immutable-generation usages; runtime bootstrap/activation are separate.
 pub mod prefix_generation_components;
+/// Canonical single-usage offline encoding drafts; qualification is separate.
+pub mod model_encoding_components;
 
 /// Immutable class-10 root source/compiler/port definitions. Parsing is neither
 /// protected-root review nor a system-seed provenance/activation shortcut.

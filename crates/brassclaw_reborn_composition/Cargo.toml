@@ -47,6 +47,7 @@ postgres = [
     "brassclaw_resources/postgres",
 ]
 [dependencies]
+brassclaw_model_encoding = { path = "../brassclaw_model_encoding" }
 brassclaw_pg = { path = "../brassclaw_pg" }
 aes-gcm = "0.10"
 argon2 = "0.5"

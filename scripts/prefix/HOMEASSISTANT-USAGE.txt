@@ -1,4 +1,6 @@
-Shared compiler dependency: keep prefix_evidence.py beside the compiler script.
+Keep the complete scripts/prefix directory together, including shared helpers
+prefix_evidence.py, prefix_units.py, prefix_template.py and prefix_procedure.py.
+Copying only the compiler file is insufficient.
 When copying a compiler to another machine, copy this module too. Its checksum
 is included in new generation identities; existing generation artifacts remain intact.
 

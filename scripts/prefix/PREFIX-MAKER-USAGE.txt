@@ -1,3 +1,7 @@
+Keep the complete scripts/prefix directory together, including prefix_template.py.
+The shared adapter bytes are retained in compiler provenance; copy the directory
+when moving an offline compiler to another machine.
+
 PREFIX-MAKER — EXACT OFFLINE BUILD COMMANDS (LINUX OR macOS)
 
 Run from the BrassClaw repository root. This creates a quarantined reference;

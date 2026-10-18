@@ -2130,6 +2130,13 @@ impl LoopPromptPort for RebornLoopDriverHost {
     ) -> Result<LoopPromptBundle, AgentLoopHostError> {
         self.prompt.build_prompt_bundle(request).await
     }
+
+    async fn build_prepared_prompt_bundle(
+        &self,
+        request: brassclaw_turns::run_profile::PreparedLoopPromptRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        self.prompt.build_prepared_prompt_bundle(request).await
+    }
 }
 
 #[async_trait]

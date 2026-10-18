@@ -228,9 +228,42 @@ pub struct PrefixGenerationDetail {
     pub generation_bytes: String,
 }
 
+/// Durable job projection. Counts describe recorded native operations, not
+/// effect reconciliation or permission to retry. Source/compiler bodies stay
+/// in their immutable owner rather than being copied into every status poll.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixJobDetail {
+    pub job_id: String,
+    /// Opaque conversation reference for the existing run/event/cancel APIs.
+    pub thread_id: String,
+    pub profile: String,
+    pub profile_revision: u64,
+    pub operation: String,
+    pub mode: String,
+    pub created_at: String,
+    pub request_sha256: String,
+    pub program_sha256: String,
+    pub input_sha256: String,
+    pub run_status: Option<brassclaw_turns::TurnStatus>,
+    pub admission_phase: Option<String>,
+    pub answered_tool_calls: u64,
+    pub pending_tool_calls: u64,
+    pub failure_kind: Option<String>,
+    pub internal_receipt: Option<String>,
+    pub result_ref: Option<String>,
+}
+
 /// Interceptor configuration + control service (product-layer port).
 #[async_trait]
 pub trait InterceptorConfigService: Send + Sync {
+    async fn get_job(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _job: &str,
+    ) -> Result<PrefixJobDetail, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
     async fn model_design_catalogue(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -357,6 +390,8 @@ pub trait InterceptorConfigService: Send + Sync {
 pub enum InterceptorConfigServiceError {
     #[error("prefix revision conflict")]
     Conflict,
+    #[error("prefix job not found")]
+    JobNotFound,
     #[error("prefix generation not found")]
     GenerationNotFound,
     #[error("interceptor config service is unavailable")]
@@ -385,7 +420,8 @@ pub fn map_interceptor_config_error(
             409,
             false,
         ),
-        InterceptorConfigServiceError::GenerationNotFound => {
+        InterceptorConfigServiceError::JobNotFound
+        | InterceptorConfigServiceError::GenerationNotFound => {
             crate::RebornServicesError::from_status(
                 crate::RebornServicesErrorCode::NotFound,
                 404,

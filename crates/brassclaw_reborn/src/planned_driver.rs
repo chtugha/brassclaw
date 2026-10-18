@@ -873,6 +873,13 @@ mod tests {
         ) -> Result<LoopPromptBundle, AgentLoopHostError> {
             self.inner.build_prompt_bundle(request).await
         }
+
+        async fn build_prepared_prompt_bundle(
+            &self,
+            request: brassclaw_turns::run_profile::PreparedLoopPromptRequest,
+        ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+            self.inner.build_prepared_prompt_bundle(request).await
+        }
     }
 
     #[async_trait::async_trait]

@@ -392,3 +392,161 @@ fn execution_data_capacity_is_separate_from_schema_meaning_and_metadata() {
             .is_err()
     );
 }
+#[test]
+fn borrowed_data_bounds_support_deep_values_without_relaxing_parser_profiles() {
+    use brassclaw_skills::value_contract::{ContractLimits, strict_json, validate_data_bounds};
+    std::thread::Builder::new()
+        .stack_size(64 * 1024)
+        .spawn(|| {
+            let depth = 12_000;
+            let mut value = serde_json::Value::Bool(true);
+            for _ in 0..depth {
+                value = serde_json::Value::Array(vec![value]);
+            }
+            let limits = ContractLimits {
+                max_depth: depth,
+                max_nodes: depth + 1,
+                max_bytes: 1,
+            };
+            validate_data_bounds(&value, limits).unwrap();
+            assert!(
+                validate_data_bounds(
+                    &value,
+                    ContractLimits {
+                        max_depth: depth - 1,
+                        ..limits
+                    }
+                )
+                .is_err()
+            );
+            assert!(
+                validate_data_bounds(
+                    &value,
+                    ContractLimits {
+                        max_nodes: depth,
+                        ..limits
+                    }
+                )
+                .is_err()
+            );
+            assert!(
+                strict_json("true", limits).is_err(),
+                "schema parser support is unchanged"
+            );
+            loop {
+                match value {
+                    serde_json::Value::Array(mut values) => value = values.pop().unwrap(),
+                    serde_json::Value::Bool(true) => break,
+                    _ => panic!("unexpected chain"),
+                }
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+    let limits = ContractLimits {
+        max_depth: 2,
+        max_nodes: 4,
+        max_bytes: 4,
+    };
+    let value = serde_json::json!({"é":["ß"]});
+    validate_data_bounds(&value, limits).unwrap();
+    assert!(
+        validate_data_bounds(
+            &value,
+            ContractLimits {
+                max_nodes: 3,
+                ..limits
+            }
+        )
+        .is_err()
+    );
+    assert!(
+        validate_data_bounds(
+            &value,
+            ContractLimits {
+                max_bytes: 3,
+                ..limits
+            }
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn strict_json_keeps_partial_values_guarded_through_late_failures() {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024)
+        .spawn(|| {
+            let bounds = ContractLimits {
+                max_depth: 64,
+                max_nodes: 4096,
+                max_bytes: 65536,
+            };
+            let branch = format!("{}true{}", "[".repeat(63), "]".repeat(63));
+            let source = format!("[{branch},0]");
+            let exact = ContractLimits {
+                max_nodes: 66,
+                ..bounds
+            };
+            let mut value = strict_json(&source, exact).unwrap();
+            assert_eq!(value.as_array().unwrap().len(), 2);
+            let mut cursor = &value[0];
+            for _ in 0..63 {
+                cursor = &cursor[0];
+            }
+            assert_eq!(cursor.as_bool(), Some(true));
+            // Public Value ownership is unchanged. Dismantle the successful
+            // chain here; parser failure cleanup is exercised by the cases below.
+            loop {
+                match value {
+                    Value::Array(mut values) => value = values.remove(0),
+                    Value::Bool(true) => break,
+                    _ => panic!("unexpected parsed chain"),
+                }
+            }
+            assert!(
+                strict_json(
+                    &source,
+                    ContractLimits {
+                        max_nodes: 65,
+                        ..bounds
+                    }
+                )
+                .is_err()
+            );
+            for invalid in [
+                format!("[{branch},]"),
+                format!("[{branch},1e1000]"),
+                format!("[{branch},\"\\uD800\"]"),
+                format!("{{\"a\":{branch},\"\\u0061\":0}}"),
+                format!("{{\"a\":{branch},\"later\":}}"),
+                format!("[{branch},{}true{}]", "[".repeat(64), "]".repeat(64)),
+                format!("{source} private trailing payload"),
+            ] {
+                let error = strict_json(&invalid, bounds).unwrap_err();
+                assert!(!format!("{error} {error:?}").contains("private"));
+            }
+            let mixed =
+                r#"{"z":[null,true,-1,18446744073709551615,1.0,"é\u0000"],"a":{"":[],"z":{}}}"#;
+            assert_eq!(
+                strict_json(mixed, bounds).unwrap(),
+                serde_json::from_str::<Value>(mixed).unwrap()
+            );
+            // Neither the public schema/parser profile nor live transport
+            // admission is widened by stack-protecting these callbacks.
+            assert!(
+                strict_json(
+                    "true",
+                    ContractLimits {
+                        max_depth: 65,
+                        ..bounds
+                    }
+                )
+                .is_err()
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}

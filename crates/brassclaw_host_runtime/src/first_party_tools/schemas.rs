@@ -2,6 +2,13 @@ use serde_json::{Value, json};
 
 pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value> {
     Some(match reference {
+        "schemas/builtin/model_encoding.input.v1.json" => json!({
+            "type":"object","properties":{
+                "specification":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+                "artifact_set":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+                "probes_json":{"type":"string","minLength":1},"template_utf8":{"type":"string"}},
+            "required":["specification","artifact_set","probes_json"],"additionalProperties":false
+        }),
         "schemas/builtin/source_inspection.input.v1.json" => json!({
             "type":"object","properties":{"source":{"type":"string"}},
             "required":["source"],"additionalProperties":false

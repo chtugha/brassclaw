@@ -94,6 +94,12 @@ impl RetainedToolInvocation<'_> {
 /// its real kernel, current policy and durable effect adapter. The instance
 /// service must own this future to actual completion even after cancellation.
 pub trait RetainedToolPort: Send + Sync {
+    /// Received native results still needing durable acknowledgement keep their
+    /// owner alive. This flag grants no dispatch/retry/continuation authority.
+    fn has_uncommitted_native_results(&self) -> bool {
+        false
+    }
+
     async fn dispatch(
         &self,
         invocation: RetainedToolInvocation<'_>,
@@ -309,37 +315,52 @@ pub fn typed_value_checksum_with_limits(
         hash.update((value.len() as u64).to_be_bytes());
         hash.update(value);
     }
-    fn walk(hash: &mut Sha256, value: &Value) {
-        match value {
-            Value::Null => hash.update([0]),
-            Value::Bool(value) => hash.update([1, u8::from(*value)]),
-            Value::Number(value) => {
-                hash.update([2]);
-                bytes(hash, value.to_string().as_bytes());
-            }
-            Value::String(value) => {
-                hash.update([3]);
-                bytes(hash, value.as_bytes());
-            }
-            Value::Array(values) => {
-                hash.update([4]);
-                hash.update((values.len() as u64).to_be_bytes());
-                for value in values {
-                    walk(hash, value);
-                }
-            }
-            Value::Object(values) => {
-                hash.update([5]);
-                hash.update((values.len() as u64).to_be_bytes());
-                let mut keys: Vec<_> = values.keys().collect();
-                keys.sort_unstable();
-                for key in keys {
+    fn walk(hash: &mut Sha256, root: &Value) {
+        enum Item<'a> {
+            Value(&'a Value),
+            Entry(&'a str, &'a Value),
+        }
+        let mut pending = vec![Item::Value(root)];
+        while let Some(item) = pending.pop() {
+            let value = match item {
+                Item::Value(value) => value,
+                Item::Entry(key, value) => {
                     bytes(hash, key.as_bytes());
-                    walk(hash, &values[key]);
+                    pending.push(Item::Value(value));
+                    continue;
+                }
+            };
+            match value {
+                Value::Null => hash.update([0]),
+                Value::Bool(value) => hash.update([1, u8::from(*value)]),
+                Value::Number(value) => {
+                    hash.update([2]);
+                    bytes(hash, value.to_string().as_bytes());
+                }
+                Value::String(value) => {
+                    hash.update([3]);
+                    bytes(hash, value.as_bytes());
+                }
+                Value::Array(values) => {
+                    hash.update([4]);
+                    hash.update((values.len() as u64).to_be_bytes());
+                    pending.extend(values.iter().rev().map(Item::Value));
+                }
+                Value::Object(values) => {
+                    hash.update([5]);
+                    hash.update((values.len() as u64).to_be_bytes());
+                    let mut keys: Vec<_> = values.keys().collect();
+                    keys.sort_unstable();
+                    pending.extend(
+                        keys.into_iter()
+                            .rev()
+                            .map(|key| Item::Entry(key, &values[key])),
+                    );
                 }
             }
         }
     }
+
     let mut hash = Sha256::new();
     hash.update(b"typed-value-sha256/1\0");
     walk(&mut hash, value);

@@ -53,6 +53,14 @@ pub(super) async fn runtime(
     program: &brassclaw_engine::memory::retained_tools::RetainedToolProgram,
     step: &str,
 ) -> (Arc<RetainedFirstPartyCapability>, Arc<LiveStableToolPolicy>) {
+    runtime_with_budget_events(program, step, None).await
+}
+
+pub(super) async fn runtime_with_budget_events(
+    program: &brassclaw_engine::memory::retained_tools::RetainedToolProgram,
+    step: &str,
+    events: Option<Arc<dyn brassclaw_resources::BudgetEventSink>>,
+) -> (Arc<RetainedFirstPartyCapability>, Arc<LiveStableToolPolicy>) {
     let tool = program.bindings()[step].tool();
     let definition = program.inputs().instruction().snapshot().revisions()[&tool.uuid]
         .draft()
@@ -104,10 +112,14 @@ pub(super) async fn runtime(
         ),
     ]))])
     .unwrap();
+    let mut governor = InMemoryResourceGovernor::new();
+    if let Some(events) = events {
+        governor = governor.with_event_sink(events);
+    }
     let runtime = HostRuntimeServices::new(
         Arc::new(registry),
         Arc::new(LocalFilesystem::new()),
-        Arc::new(InMemoryResourceGovernor::new()),
+        Arc::new(governor),
         Arc::new(InstanceToolAuthorizer::new(policy.clone())),
         brassclaw_processes::ProcessServices::in_memory(),
         CapabilitySurfaceVersion::new("retained-draft-kernel").unwrap(),

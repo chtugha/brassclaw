@@ -48,9 +48,12 @@ pub(super) async fn execute(
     if admitted.input["user_input"].as_str() != Some(request.source.reference()) {
         return Err(invalid("bootstrap source reference differs from admission"));
     }
-    let ports = Arc::new(GlobalRecipePorts::for_bootstrap(
-        admitted,
+    let ports = Arc::new(GlobalRecipePorts::for_internal(
+        admitted.host.clone(),
+        admitted.admission.clone(),
         request.source.clone(),
+        None,
+        true,
         Arc::new(Capacity(request.capacity)),
     ));
     let mut owner = ServiceOwner::start(
@@ -116,4 +119,34 @@ pub(super) async fn execute(
         report,
         exit,
     })
+}
+
+fn observation_failure(reason: &str) -> brassclaw_monty_host::service::PortFailure {
+    brassclaw_monty_host::service::PortFailure::new(reason).expect("constant classification")
+}
+
+impl GlobalRecipePorts {
+    /// Read actual immutable observations after quiescence. A callback cannot
+    /// alter the executor, approve code or advance/replay a workflow step.
+    pub(crate) async fn observe_internal_execution<T>(
+        &self,
+        observe: impl FnOnce(&brassclaw_engine::executor::retained_recipe::RetainedRecipeExecution) -> T,
+    ) -> Result<T, brassclaw_monty_host::service::PortFailure> {
+        let selection = {
+            let state = self.state.lock().await;
+            if state.intent_outcome != Some("internal_recipe") || state.recipes.len() != 1 {
+                return Err(observation_failure("internal_recipe_selection_invalid"));
+            }
+            state
+                .recipes
+                .values()
+                .next()
+                .cloned()
+                .ok_or_else(|| observation_failure("internal_recipe_selection_invalid"))?
+        };
+        let execution = selection.execution.lock().await;
+        Ok(observe(execution.as_ref().ok_or_else(|| {
+            observation_failure("internal_recipe_execution_missing")
+        })?))
+    }
 }

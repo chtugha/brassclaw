@@ -24,7 +24,9 @@ use brassclaw_turns::{
 use serde_json::{Value, json};
 
 use crate::{
-    global_monty_driver::{CancellationAckSettings, CancellationAckSource, GlobalTaskPortsFactory},
+    global_monty_driver::{
+        CancellationAckSettings, CancellationAckSource, GlobalTaskPortsFactory, PreparedGlobalTask,
+    },
     global_monty_owner::GlobalOwnerCheck,
     global_recipe_ports::{GlobalRecipePorts, MontyTaskCatalogue, RecipeCapacitySource},
     monty_attempt_retention::{AttemptRetentionLease, AttemptRetentionRegistry},
@@ -37,6 +39,19 @@ use crate::{
 /// uses its own explicit provider; it cannot become a production approval flag.
 #[async_trait]
 pub(crate) trait MontyCatalogueProvider: Send + Sync {
+    /// Resolve host-owned durable internal work before ordinary chat matching.
+    /// The default preserves normal catalogues and grants no internal entry.
+    async fn capture_internal(
+        &self,
+        _host: Arc<MontyTaskHost>,
+        _admission: Arc<PgMontyAdmission>,
+        _input: &TaskInput,
+    ) -> Result<
+        Option<Arc<dyn crate::global_recipe_ports::InternalRecipeSource>>,
+        AgentLoopDriverError,
+    > {
+        Ok(None)
+    }
     async fn capture(
         &self,
         host: Arc<MontyTaskHost>,
@@ -281,8 +296,8 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
     async fn build(
         &self,
         host: Arc<MontyTaskHost>,
-        input: &TaskInput,
-    ) -> Result<Arc<dyn TaskPorts>, AgentLoopDriverError> {
+        mut input: TaskInput,
+    ) -> Result<PreparedGlobalTask, AgentLoopDriverError> {
         let context = host.run_context();
         // The message ID is opaque typed data, not a UUID engine address. Check
         // the handoff before allocating an admission or exposing task ports.
@@ -297,7 +312,9 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         {
             return Err(failed("monty_admission_identity_invalid"));
         }
-        let provider_port = if let Some(binding) = &self.mcp_provider_binding {
+        let provider_port = if context.trusted_internal_turn {
+            None
+        } else if let Some(binding) = &self.mcp_provider_binding {
             if let Some(port) = binding
                 .clone()
                 .retain(context.run_id)
@@ -359,16 +376,31 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         // Retention precedes every await below, including a lost COMMIT reply
         // and a caller dropping this future. No registry lock crosses I/O.
         admission.persist_reservation().await?;
-        let dependency_parent = self.dependency_parent(&host, input).await?;
-        let catalogue = self
+        let dependency_parent = self.dependency_parent(&host, &input).await?;
+        let internal = self
             .catalogue
-            .capture(host.clone(), admission.clone(), input)
+            .capture_internal(host.clone(), admission.clone(), &input)
             .await?;
-        self.ownership
-            .check()
-            .await
-            .map_err(|_| failed("monty_instance_ownership_failed"))?;
-        let ports = Arc::new(
+        let ports = if let Some(source) = internal {
+            if !context.trusted_internal_turn || source.reference() != input.user_input {
+                return Err(failed("internal_recipe_admission_invalid"));
+            }
+            input.entry = brassclaw_monty_host::service::TaskEntry::InternalRecipe {
+                name: source.name().to_owned(),
+            };
+            GlobalRecipePorts::for_internal(
+                host.clone(),
+                admission,
+                source,
+                Some(self.ownership.clone()),
+                false,
+                self.recipe_capacity.clone(),
+            )
+        } else {
+            let catalogue = self
+                .catalogue
+                .capture(host.clone(), admission.clone(), &input)
+                .await?;
             GlobalRecipePorts::new(
                 host.clone(),
                 admission,
@@ -377,13 +409,17 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                 self.ownership.clone(),
                 self.recipe_capacity.clone(),
             )
-            .with_dependency_parent(dependency_parent),
-        );
+        };
+        self.ownership
+            .check()
+            .await
+            .map_err(|_| failed("monty_instance_ownership_failed"))?;
+        let ports = Arc::new(ports.with_dependency_parent(dependency_parent));
         self.tasks()?
             .get_mut(&host.attempt())
             .ok_or_else(|| failed("monty_task_registry_failed"))?
             .ports = Some(ports.clone());
-        Ok(ports)
+        Ok(PreparedGlobalTask { input, ports })
     }
 
     async fn settle_unsubmitted(
@@ -440,8 +476,20 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         receipt: Arc<TaskReceipt>,
     ) -> Result<(), AgentLoopDriverError> {
         let mut outcome = match &receipt.outcome {
-            TaskOutcome::InternalCompleted { .. } => {
-                return Err(failed("monty_reply_reference_invalid"));
+            TaskOutcome::InternalCompleted { receipt_ref } => {
+                if !host.run_context().trusted_internal_turn
+                    || host.finalized_reply_ref().is_some()
+                    || !receipt.withheld.is_empty()
+                    || host.has_withheld_results()
+                {
+                    return Err(failed("monty_internal_result_invalid"));
+                }
+                let reference = crate::monty_result_reference::result_reference(
+                    host.attempt().run_id,
+                    receipt_ref,
+                )
+                .ok_or_else(|| failed("monty_internal_result_invalid"))?;
+                json!({"status":"completed","result_ref":reference.as_str(),"internal_receipt":receipt_ref})
             }
             TaskOutcome::Completed { reply_ref } => {
                 let reference = LoopMessageRef::new(reply_ref.clone())
@@ -509,6 +557,15 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                 report
             }
         };
+        if let TaskOutcome::InternalCompleted { receipt_ref } = &receipt.outcome
+            && (report["format"] != "monty-internal-task-execution/1"
+                || report["root_completed"] != true
+                || report["all_selected_recipes_complete"] != true
+                || report["internal_receipt"] != receipt_ref.as_str()
+                || !report["reply"].is_null())
+        {
+            return Err(failed("monty_internal_result_invalid"));
+        }
         // Keep the original report across unknown commit acknowledgement. The
         // same transaction records outcome and child completion together; audit
         // recovery never rereads latest, restores dispatch or repeats an effect.
@@ -532,9 +589,12 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             task.provider_watch.take();
         }
         // Failed tasks retain actual child/Tool evidence for reconciliation.
-        // Only a real published completion with acknowledged durable settlement
+        // Only a verified reply/result with acknowledged durable settlement
         // frees this bounded slot. The global driver still owns its receipt.
-        if matches!(receipt.outcome, TaskOutcome::Completed { .. }) {
+        if matches!(
+            receipt.outcome,
+            TaskOutcome::Completed { .. } | TaskOutcome::InternalCompleted { .. }
+        ) {
             if let Some(task) = tasks.get(&host.attempt()) {
                 task.retention.completed()?;
             }

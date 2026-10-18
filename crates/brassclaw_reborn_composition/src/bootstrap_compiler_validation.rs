@@ -130,6 +130,7 @@ pub(super) async fn execute(
     kernel: Arc<dyn MontyKernelSnapshot>,
     inspected: Arc<InspectedRetainedProgram>,
     worker: &Path,
+    scope: &str,
 ) -> Result<Value, RebornBuildError> {
     let RetainedProgram::Tools(program) = inspected.program() else {
         return Err(invalid("compiler requires Tool program"));
@@ -164,7 +165,7 @@ pub(super) async fn execute(
     let mut reports = Vec::new();
     let mut original = None;
     for &(name, profile, view) in CASES {
-        let fixture = Arc::new(CompilerFixture::new(profile, view)?);
+        let fixture = Arc::new(CompilerFixture::scoped(profile, view, scope)?);
         let client = pool.get().await.map_err(invalid)?;
         let revision: i64 = client
             .query_one(
@@ -190,7 +191,7 @@ pub(super) async fn execute(
             &reference,
         ))
         .await?;
-        let tools = crate::installed_monty_catalogue::prefix_compiler_test_tools(
+        let tools = crate::installed_monty_catalogue::bootstrap_compiler_tools(
             pool.clone(),
             kernel.clone(),
             admitted.host.clone(),
@@ -365,7 +366,7 @@ pub(super) async fn execute(
         reports.push(json!({"case":name,"profile":profile,"view":view,"run_id":admitted.attempt.run_id.as_uuid(),"revision":inputs["revision"],"thread_id":admitted.host.run_context().thread_id,"rejection":rejection,"inputs_checksum":hex::encode(typed_value_checksum(&inputs).map_err(invalid)?),"execution":observed.report,"invocations":invocations}));
     }
     Ok(
-        json!({"format":"source-compiler-behavior-observations/1","cases":reports,"catalogue_activation":false,"model_quality":"unmeasured"}),
+        json!({"format":"source-compiler-behavior-observations/2","qualification_scope":scope,"cases":reports,"catalogue_activation":false,"model_quality":"unmeasured"}),
     )
 }
 
@@ -375,14 +376,16 @@ pub(super) async fn verify(
     tx: &Transaction<'_>,
     inspected: &InspectedRetainedProgram,
     observed: &Value,
+    scope: &str,
 ) -> Result<(), RebornBuildError> {
     crate::bootstrap_evidence::require_coherent(tx).await?;
     let RetainedProgram::Tools(program) = inspected.program() else {
         return Err(invalid("compiler program missing"));
     };
     check(
-        observed.as_object().is_some_and(|value| value.len() == 4)
-            && observed["format"] == "source-compiler-behavior-observations/1"
+        observed.as_object().is_some_and(|value| value.len() == 5)
+            && observed["qualification_scope"] == scope
+            && observed["format"] == "source-compiler-behavior-observations/2"
             && observed["catalogue_activation"] == false
             && observed["model_quality"] == "unmeasured",
         "compiler observation format differs",
@@ -437,7 +440,7 @@ pub(super) async fn verify(
             },
             "compiler case revision differs",
         )?;
-        let fixture = CompilerFixture::new(profile, view)?;
+        let fixture = CompilerFixture::scoped(profile, view, scope)?;
         let mut snapshot = fixture.snapshot().clone();
         if name == "missing-guide" {
             snapshot["sources"]

@@ -2529,7 +2529,7 @@ async fn run(
                     let answer = match result.result {
                         Ok(value) => {
                             let probe = WorkerCommand::Resolve { key: result.key,
-                                answer: PortAnswer::Return { value } };
+                                answer: PortAnswer::Return { value: value.into() } };
                             let accepted = crate::process::retain_command(&probe, *transport.live_vm_bounds().borrow(), transport.frame_limit()).is_ok();
                             let WorkerCommand::Resolve { answer: PortAnswer::Return { value }, .. } = probe else { unreachable!() };
                             if !accepted {

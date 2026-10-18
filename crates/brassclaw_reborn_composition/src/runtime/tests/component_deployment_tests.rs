@@ -1,6 +1,7 @@
 //! Retained review submissions -> read-only preparation -> actual operator
 //! publication -> ordinary global Monty. Reuses actual bundled usage approval.
 use super::*;
+use crate::runtime::RebornRuntime;
 async fn at(
     app: &axum::Router,
     method: &str,
@@ -48,10 +49,24 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     }))
     .with_poll_settings(PollSettings {
         interval: Duration::from_millis(10),
-        max_total: RUNTIME_SEND_TIMEOUT,
+        // Real large source compilation is asynchronous; this acceptance
+        // observer needs more than the ordinary ten-second chat fixture.
+        max_total: Duration::from_secs(120),
     });
     let runtime = Arc::new(Box::pin(build_reborn_runtime(input)).await.unwrap());
     let catalogue = runtime.installed_catalogue.clone();
+    assert!(
+        brassclaw_loop_support::SystemBundleSource::get_system_bundle_for_run(
+            catalogue.as_ref(),
+            "component-deployment-owner",
+            "bootstrap",
+            &Uuid::new_v4().to_string()
+        )
+        .await
+        .is_err(),
+        "a missing retained capture must never substitute the active prefix"
+    );
+
     let source_candidate = &catalogue._source_compiler_candidates.source;
     assert_eq!(
         source_candidate
@@ -127,6 +142,70 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     .await
     .unwrap();
     assert_eq!(reused.len(), 2);
+    let compiler_approval = catalogue
+        .compiler_approval
+        .as_ref()
+        .expect("closed compiler qualification before readiness");
+    let reused_compiler = Box::pin(crate::bootstrap_compiler_approval::qualify(
+        rig.pool.clone(),
+        catalogue.kernel.clone(),
+        &catalogue._source_compiler_candidates.source,
+        &catalogue.generation_approvals,
+        &catalogue.worker,
+    ))
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        reused_compiler.approval_id(),
+        compiler_approval.approval_id()
+    );
+    crate::bootstrap_compiler_approval::assert_incomplete_intent_is_not_replayed(
+        rig.pool.clone(),
+        compiler_approval,
+    )
+    .await;
+    let private = catalogue._compiler_program.as_ref().unwrap();
+    assert_eq!(
+        private
+            .program()
+            .inputs()
+            .instruction()
+            .association_approvals()
+            .len(),
+        5
+    );
+    let candidate_instruction = catalogue
+        ._source_compiler_candidates
+        .source
+        .program()
+        .inputs()
+        .instruction();
+    let private_route:brassclaw_product_workflow::CatalogueRecipeSelection = serde_json::from_value(json!({
+        "recipe_id":candidate_instruction.recipe().uuid,"workflow_class":"deterministic",
+        "components":candidate_instruction.snapshot().revisions().values().map(|revision| reference(revision.reference())).collect::<Vec<_>>(),"association_approvals":{},
+    })).unwrap();
+    let mut route_client = rig.pool.get().await.unwrap();
+    let route_tx = route_client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    assert!(
+        catalogue
+            .prepare_authored(
+                &route_tx,
+                &[private_route],
+                catalogue.preparation_policy().await.unwrap()
+            )
+            .await
+            .is_err(),
+        "an internal receipt workflow must not acquire a public chat route from its private qualification"
+    );
+    route_tx.rollback().await.unwrap();
+    drop(route_client);
     let mut client = rig.pool.get().await.unwrap();
     let tx = client
         .build_transaction()
@@ -147,6 +226,11 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     );
     tx.commit().await.unwrap();
     drop(client);
+
+    crate::prefix_reference_seeds::assert_database_sources(&catalogue).await;
+    crate::prefix_job_definitions::assert_metadata_only(&catalogue).await;
+    let prefix_job_id =
+        crate::runtime::prefix_job_submission::assert_global_snapshot_submission(&runtime).await;
 
     // The canonical Retain workflow may use only its own qualified formatter.
     // A different Recipe sharing the storage usage cannot borrow that coverage.
@@ -248,6 +332,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         catalogue.kernel.clone(),
         catalogue._source_compiler_candidates.source.clone(),
         &catalogue.worker,
+        "development-prefix-compiler/1",
     )
     .await
     .unwrap();
@@ -263,6 +348,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         &proof_tx,
         &catalogue._source_compiler_candidates.source,
         &source_behavior,
+        "development-prefix-compiler/1",
     )
     .await
     .unwrap();
@@ -270,16 +356,28 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         &proof_tx,
         &catalogue._source_compiler_candidates.source,
         &source_behavior,
+        "development-prefix-compiler/1",
     )
     .await
     .unwrap();
+    assert!(
+        crate::bootstrap_compiler_validation::verify(
+            &proof_tx,
+            &catalogue._source_compiler_candidates.source,
+            &source_behavior,
+            "wrong-qualification-scope",
+        )
+        .await
+        .is_err()
+    );
     let mut forged = source_behavior.clone();
     forged["cases"][0]["execution"]["semantic_approval"] = json!(true);
     assert!(
         crate::bootstrap_compiler_validation::verify(
             &proof_tx,
             &catalogue._source_compiler_candidates.source,
-            &forged
+            &forged,
+            "development-prefix-compiler/1",
         )
         .await
         .is_err()
@@ -291,7 +389,8 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         crate::bootstrap_compiler_validation::verify(
             &proof_tx,
             &catalogue._source_compiler_candidates.source,
-            &forged
+            &forged,
+            "development-prefix-compiler/1",
         )
         .await
         .is_err()
@@ -378,6 +477,87 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         ),
     )
     .unwrap();
+    let job_path = format!("/api/webchat/v2/prefixes/base-prompt/jobs/{prefix_job_id}");
+    assert_eq!(
+        at(&app, "GET", &job_path, None, false).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    for _ in 0..2 {
+        let (status, job) = at(&app, "GET", &job_path, None, true).await;
+        assert_eq!(status, StatusCode::OK, "{job}");
+        assert_eq!(job["job_id"], prefix_job_id.to_string());
+        assert_eq!(job["run_status"], "Completed");
+        assert!(!job["thread_id"].as_str().unwrap().is_empty());
+        assert_eq!(job["admission_phase"], "settled");
+        assert_eq!(job["answered_tool_calls"], 5);
+        assert_eq!(job["pending_tool_calls"], 0);
+        assert!(
+            job["internal_receipt"]
+                .as_str()
+                .unwrap()
+                .starts_with("prefix-generation:base-prompt:")
+        );
+        assert!(
+            job["result_ref"]
+                .as_str()
+                .unwrap()
+                .starts_with("result:monty.")
+        );
+        assert!(job.get("input").is_none() && job.get("program_bytes").is_none());
+    }
+    assert_eq!(
+        at(
+            &app,
+            "GET",
+            &format!("/api/webchat/v2/prefixes/prefix-maker/jobs/{prefix_job_id}"),
+            None,
+            true
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        at(
+            &app,
+            "GET",
+            &format!(
+                "/api/webchat/v2/prefixes/base-prompt/jobs/{}",
+                Uuid::new_v4()
+            ),
+            None,
+            true
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        at(
+            &app,
+            "GET",
+            "/api/webchat/v2/prefixes/base-prompt/jobs/not-a-uuid",
+            None,
+            true
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        rig.pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1",
+                &[&prefix_job_id]
+            )
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        5
+    );
     let (status, profiles) = at(&app, "GET", "/api/webchat/v2/prefixes", None, true).await;
     assert_eq!(status, StatusCode::OK, "{profiles}");
     assert_eq!(
@@ -732,7 +912,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     );
     drop(source_client);
     exercise_prefix_maker_import(&app, &checkout, root.path()).await;
-    exercise_prefix_model_records(&model_app, &rig.pool).await;
+    exercise_prefix_model_records(&model_app, &rig.pool, &runtime, prefix_job_id).await;
     let initial = at(&app, "GET", "/api/webchat/v2/catalogue", None, true)
         .await
         .1;
@@ -1183,7 +1363,12 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     shutdown_shared_runtime(runtime).await.unwrap();
 }
 
-async fn exercise_prefix_model_records(app: &axum::Router, pool: &Arc<brassclaw_pg::PgPool>) {
+async fn exercise_prefix_model_records(
+    app: &axum::Router,
+    pool: &Arc<brassclaw_pg::PgPool>,
+    runtime: &Arc<RebornRuntime>,
+    prefix_job_id: Uuid,
+) {
     let catalogue_route = "/api/webchat/v2/prefix-model-designs";
     let capture_route = "/api/webchat/v2/prefix-model-specifications";
     assert_eq!(
@@ -1239,7 +1424,7 @@ async fn exercise_prefix_model_records(app: &axum::Router, pool: &Arc<brassclaw_
         at(app, "POST", capture_route, Some(&request), true).await.1,
         specification
     );
-    exercise_prefix_model_artifacts(app, pool, &specification).await;
+    exercise_prefix_model_artifacts(app, pool, &specification, runtime, prefix_job_id).await;
     let proposal_bytes = json!({"format":"brassclaw-prefix-design-proposal/1","profile":"sempai","specification":specification["id"],"design":{"adapter":"ornith-qwen-system/1","evidence_view":"literal-reference/v1","source_selection":"complete-mandatory","reserve_tokens":8192},"rationale":"Recorded proposal; no quality or architecture qualification asserted."}).to_string();
     let proposal_request =
         json!({"specification":specification["id"],"proposal_bytes":proposal_bytes});
@@ -1681,6 +1866,8 @@ async fn exercise_prefix_model_artifacts(
     app: &axum::Router,
     pool: &Arc<brassclaw_pg::PgPool>,
     specification: &Value,
+    runtime: &Arc<RebornRuntime>,
+    prefix_job_id: Uuid,
 ) {
     use base64::{Engine, engine::general_purpose::STANDARD};
     use sha2::Digest;
@@ -1744,6 +1931,13 @@ async fn exercise_prefix_model_artifacts(
             original
         );
     }
+    super::model_encoding_tests::assert_registered_encoding(
+        runtime,
+        specification["id"].as_str().unwrap(),
+        stored["id"].as_str().unwrap(),
+        prefix_job_id,
+    )
+    .await;
     let mut import = set.clone();
     import["format"] = json!("brassclaw-prefix-model-artifact-import/1");
     for artifact in import["artifacts"].as_object_mut().unwrap().values_mut() {

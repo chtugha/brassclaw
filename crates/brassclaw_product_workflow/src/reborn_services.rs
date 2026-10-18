@@ -105,12 +105,13 @@ pub use error::{RebornServicesError, RebornServicesErrorCode, RebornServicesErro
 pub use interceptor_config::{
     CapturePrefixModelRequest, ImportPrefixGenerationRequest, InterceptorConfigService,
     InterceptorConfigServiceError, InterceptorConfigSnapshot, PrefixDesignProposal, PrefixEntry,
-    PrefixGenerationDetail, PrefixGenerationSummary, PrefixListResponse, PrefixModelArtifactDetail,
-    PrefixModelArtifactFile, PrefixModelArtifactSet, PrefixModelDesignCatalogue,
-    PrefixModelSpecification, PrefixModelTarget, PrefixRegenerateResponse, PrefixSourceInventory,
-    PrefixSourceRegistration, PrefixUsedSource, RegisterPrefixSourceRequest,
-    RetainPrefixDesignProposalRequest, RetainPrefixModelArtifactsRequest,
-    UpdateInterceptorConfigRequest, interceptor_config_unavailable, map_interceptor_config_error,
+    PrefixGenerationDetail, PrefixGenerationSummary, PrefixJobDetail, PrefixListResponse,
+    PrefixModelArtifactDetail, PrefixModelArtifactFile, PrefixModelArtifactSet,
+    PrefixModelDesignCatalogue, PrefixModelSpecification, PrefixModelTarget,
+    PrefixRegenerateResponse, PrefixSourceInventory, PrefixSourceRegistration, PrefixUsedSource,
+    RegisterPrefixSourceRequest, RetainPrefixDesignProposalRequest,
+    RetainPrefixModelArtifactsRequest, UpdateInterceptorConfigRequest,
+    interceptor_config_unavailable, map_interceptor_config_error,
 };
 pub use llm_config::{
     CodexLoginStart, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
@@ -1511,6 +1512,14 @@ pub trait RebornServicesApi: Send + Sync {
         _caller: WebUiAuthenticatedCaller,
         _profile: &str,
     ) -> Result<Vec<PrefixGenerationSummary>, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn get_prefix_job(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _job: &str,
+    ) -> Result<PrefixJobDetail, RebornServicesError> {
         Err(interceptor_config::interceptor_config_unavailable())
     }
     async fn get_prefix_generation(
@@ -4725,6 +4734,19 @@ impl RebornServicesApi for RebornServices {
             .as_ref()
             .ok_or_else(interceptor_config::interceptor_config_unavailable)?
             .list_generations(caller, profile)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn get_prefix_job(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        job: &str,
+    ) -> Result<PrefixJobDetail, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .get_job(caller, profile, job)
             .await
             .map_err(interceptor_config::map_interceptor_config_error)
     }

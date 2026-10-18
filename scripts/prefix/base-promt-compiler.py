@@ -129,6 +129,7 @@ def compile_package(package, output, *, tokenizer_dir=None, max_model_len=None, 
     procedure_paths = {
         'compiler/entry.py': Path(__file__),
         'compiler/prefix_evidence.py': Path(__file__).with_name('prefix_evidence.py'),
+        'compiler/prefix_template.py': Path(__file__).with_name('prefix_template.py'),
         'compiler/prefix_units.py': Path(__file__).with_name('prefix_units.py'),
         'compiler/prefix_render.py': Path(__file__).with_name('prefix_render.py'),
     }
@@ -230,6 +231,7 @@ def compile_package(package, output, *, tokenizer_dir=None, max_model_len=None, 
                 'execution_attestation': 'unqualified-development-process',
                 'entry_sha256': sha(procedures['compiler/entry.py']),
                 'shared_evidence_sha256': sha(procedures['compiler/prefix_evidence.py']),
+                'template_adapter_sha256': sha(procedures['compiler/prefix_template.py']),
                 'renderer_sha256': sha(procedures['compiler/prefix_render.py']),
                 'unit_segmenter_sha256': sha(procedures['compiler/prefix_units.py'])}
     if worker_path is not None:

@@ -1207,7 +1207,9 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
     let excessive_depth = process
         .exchange(WorkerCommand::Resolve {
             key: first_wait,
-            answer: PortAnswer::Return { value: nested },
+            answer: PortAnswer::Return {
+                value: nested.into(),
+            },
         })
         .await
         .unwrap_err();
@@ -2071,7 +2073,7 @@ async fn worker_recipe_state_child_handoff_and_task_cancellation_keep_root_alive
                 context: context_b,
                 key: parent_key,
                 answer: PortAnswer::Return {
-                    value: value.clone(),
+                    value: value.clone().into(),
                 },
             },
         })
@@ -2086,7 +2088,9 @@ async fn worker_recipe_state_child_handoff_and_task_cancellation_keep_root_alive
         RecipeCommand::ResumeHost {
             context: context_a,
             key: parent_key,
-            answer: PortAnswer::Return { value },
+            answer: PortAnswer::Return {
+                value: value.into(),
+            },
         },
     )
     .await;
@@ -2136,7 +2140,7 @@ async fn worker_recipe_state_child_handoff_and_task_cancellation_keep_root_alive
                 context: child,
                 key: child_key,
                 answer: PortAnswer::Return {
-                    value: json!("late"),
+                    value: json!("late").into(),
                 },
             },
         })
@@ -2611,7 +2615,7 @@ async fn dependent_worker_transport_preserves_actual_parent_result_and_releases_
         .exchange(WorkerCommand::Resolve {
             key: parent_key,
             answer: PortAnswer::Return {
-                value: json!(actual_parent),
+                value: json!(actual_parent).into(),
             },
         })
         .await
@@ -2634,7 +2638,7 @@ async fn dependent_worker_transport_preserves_actual_parent_result_and_releases_
         .exchange(WorkerCommand::Resolve {
             key: read_key,
             answer: PortAnswer::Return {
-                value: json!(actual_child),
+                value: json!(actual_child).into(),
             },
         })
         .await
@@ -2667,7 +2671,7 @@ async fn dependent_worker_transport_preserves_actual_parent_result_and_releases_
         .exchange(WorkerCommand::Resolve {
             key: persist_key,
             answer: PortAnswer::Return {
-                value: json!(reference),
+                value: json!(reference).into(),
             },
         })
         .await
@@ -2705,7 +2709,9 @@ async fn dependent_worker_transport_preserves_actual_parent_result_and_releases_
     let finished = process
         .exchange(WorkerCommand::Resolve {
             key: finish_key,
-            answer: PortAnswer::Return { value: Value::Null },
+            answer: PortAnswer::Return {
+                value: Value::Null.into(),
+            },
         })
         .await
         .unwrap();

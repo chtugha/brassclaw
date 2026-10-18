@@ -334,6 +334,7 @@ async fn builtin_first_party_surface_lists_allowed_tools_in_registry_order() {
                 HTTP_CAPABILITY_ID
                     | HTTP_SAVE_CAPABILITY_ID
                     | brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID
+                    | brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID
                     | MEMORY_SEARCH_CAPABILITY_ID
                     | MEMORY_WRITE_CAPABILITY_ID
                     | MEMORY_READ_CAPABILITY_ID
@@ -345,6 +346,7 @@ async fn builtin_first_party_surface_lists_allowed_tools_in_registry_order() {
         HTTP_CAPABILITY_ID,
         HTTP_SAVE_CAPABILITY_ID,
         brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID,
+        brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID,
         MEMORY_SEARCH_CAPABILITY_ID,
         MEMORY_WRITE_CAPABILITY_ID,
         MEMORY_READ_CAPABILITY_ID,
@@ -5527,6 +5529,7 @@ fn all_builtin_capability_ids() -> Vec<&'static str> {
         TIME_CAPABILITY_ID,
         JSON_CAPABILITY_ID,
         brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID,
+        brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID,
         HTTP_CAPABILITY_ID,
         HTTP_SAVE_CAPABILITY_ID,
         SHELL_CAPABILITY_ID,

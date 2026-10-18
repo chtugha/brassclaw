@@ -42,6 +42,9 @@ pub use crate::process_recipe::{
     ReleasedContext, SelectedPython, TaskAccounting, TaskHandle, TaskSettings,
 };
 
+#[path = "process_answer.rs"]
+mod answer;
+
 // Version 20 transports exact dependent-slot ownership with pool observations.
 // Reject older workers before readiness rather than claiming false capacity.
 const PROTOCOL: u32 = 20;
@@ -227,12 +230,18 @@ pub enum WorkerCommand {
 /// Domain errors are classified by the trusted port, without placing arbitrary
 /// host exception strings into Python. A fatal instance failure uses process
 /// termination; it cannot masquerade as a catchable task error.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PortAnswer {
-    Return { value: Value },
-    DomainError { reason_kind: String },
-    TerminalError { reason_kind: String },
+    Return {
+        value: brassclaw_host_api::JsonValue,
+    },
+    DomainError {
+        reason_kind: String,
+    },
+    TerminalError {
+        reason_kind: String,
+    },
 }
 impl PortAnswer {
     pub(crate) fn into_host(self) -> Result<HostAnswer, VmFailure> {
@@ -1351,7 +1360,7 @@ fn validate_command_data(
     {
         return Err(ProcessFailure::Vm(VmFailure::InvalidBounds));
     }
-    let data = match command {
+    let data: Option<&Value> = match command {
         WorkerCommand::Admit { task, .. } => Some(task),
         WorkerCommand::Resolve {
             answer: PortAnswer::Return { value },
@@ -1454,7 +1463,7 @@ pub(crate) fn encode(value: &impl Serialize, limit: usize) -> io::Result<Vec<u8>
         bytes: Vec::new(),
         limit,
     };
-    serde_json::to_writer(&mut frame, value).map_err(io::Error::other)?;
+    brassclaw_common::json::write_json(&mut frame, value).map_err(io::Error::other)?;
     Ok(frame.bytes)
 }
 pub(crate) fn read_frame<T: DeserializeOwned>(

@@ -31,11 +31,9 @@ use brassclaw_turns::{GetRunStateRequest, TurnStateStore};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-#[path = "admission.rs"]
-mod admission;
+use crate::native_admission_fixture as admission;
 #[path = "../../../../crates/brassclaw_reborn/tests/common/native_pg.rs"]
 mod native_pg;
-use crate::pg_monty_admission;
 #[path = "../../../../crates/brassclaw_reborn_composition/src/pg_retained_q1.rs"]
 mod pg_retained_q1;
 #[path = "../../../../crates/brassclaw_reborn_composition/src/pg_workflow_review.rs"]
@@ -427,17 +425,6 @@ impl RetainedToolPort for ObservedJsonPort {
             self.prepared.bindings()[invocation.step_id()].tool(),
             binding.tool()
         );
-        let record = self
-            .admitted
-            .admission
-            .begin_tool_invocation(
-                &self.prepared,
-                invocation.step_id(),
-                &arguments,
-                invocation.data_limits(),
-            )
-            .await
-            .unwrap();
         let context = ExecutionContext::local_default(
             UserId::new("draft-operator").unwrap(),
             ExtensionId::new("draft-caller").unwrap(),
@@ -447,6 +434,18 @@ impl RetainedToolPort for ObservedJsonPort {
             MountView::default(),
         )
         .unwrap();
+        let record = self
+            .admitted
+            .admission
+            .begin_tool_invocation(
+                context.invocation_id,
+                &self.prepared,
+                invocation.step_id(),
+                &arguments,
+                invocation.data_limits(),
+            )
+            .await
+            .unwrap();
         let actual = self
             .runtime
             .invoke(RuntimeCapabilityRequest::new(
@@ -462,7 +461,7 @@ impl RetainedToolPort for ObservedJsonPort {
             panic!("actual JSON kernel completion required");
         };
         let answer = PortAnswer::Return {
-            value: actual.output,
+            value: actual.output.into(),
         };
         record.record_answer(&answer).await.unwrap();
         answer
@@ -625,7 +624,7 @@ async fn retained_workflow_review_uses_each_steps_accepted_limits_for_complete_h
     let snapshot = exchange(&transport, WorkerCommand::Resolve { key, answer: PortAnswer::Return { value: json!({
         "ok":true,"program_ref":reference,"inputs":inputs,"flow":program.inputs().monty_flow().unwrap(),
         "steps":program.program().steplist.iter().map(|step|json!({"step_id":step.step_id})).collect::<Vec<_>>()
-    }) }}).await;
+    }).into() }}).await;
     let mut root = progress(&transport, snapshot).await;
     let mut parent = RetainedTaskContext::new(task);
     let context = parent.open(&transport).await.unwrap();
@@ -693,7 +692,7 @@ async fn retained_workflow_review_uses_each_steps_accepted_limits_for_complete_h
             WorkerCommand::Resolve {
                 key,
                 answer: PortAnswer::Return {
-                    value: json!({"ok":true,"return_value":value}),
+                    value: json!({"ok":true,"return_value":value}).into(),
                 },
             },
         )
@@ -1145,7 +1144,7 @@ async fn exercise_behavior_cases(observer: Option<&dyn ReviewObserver>, cases: &
             "ok":true,"program_ref":reference,
             "steps":prepared.program().steplist.iter().map(|s| json!({"step_id":s.step_id})).collect::<Vec<_>>(),
             "inputs":inputs,"flow":prepared.inputs().monty_flow().unwrap(),
-        }) } }).await;
+        }).into() } }).await;
         let mut root = progress(&transport, snapshot).await;
         let inspected = Arc::new(
             InspectedRetainedProgram::inspect(RetainedProgram::Tools(prepared.clone()), worker())
@@ -1167,7 +1166,7 @@ async fn exercise_behavior_cases(observer: Option<&dyn ReviewObserver>, cases: &
                 inputs: inputs.clone(),
                 arguments: json!({"data":inputs["data"],"operation":"parse"}),
                 answer: PortAnswer::Return {
-                    value: data.clone(),
+                    value: data.clone().into(),
                 },
                 result: ExpectedStepResult::Return(data.clone()),
             },
@@ -1211,7 +1210,7 @@ async fn exercise_behavior_cases(observer: Option<&dyn ReviewObserver>, cases: &
                 WorkerCommand::Resolve {
                     key,
                     answer: PortAnswer::Return {
-                        value: json!({"ok":true,"return_value":value}),
+                        value: json!({"ok":true,"return_value":value}).into(),
                     },
                 },
             )
@@ -1230,7 +1229,7 @@ async fn exercise_behavior_cases(observer: Option<&dyn ReviewObserver>, cases: &
                     inputs: inputs.clone(),
                     arguments: json!({"data":inputs["data"],"operation":"parse"}),
                     answer: PortAnswer::Return {
-                        value: data.clone(),
+                        value: data.clone().into(),
                     },
                     result: ExpectedStepResult::Return(data.clone()),
                 },

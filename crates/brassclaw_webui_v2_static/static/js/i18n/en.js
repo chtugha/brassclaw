@@ -666,6 +666,14 @@ registerPack("en", {
 
   // Settings — tools tab
   "settings.tools.title": "Instance-wide Tool policy",
+  "settings.tools.outputLimit": "Result limit (bytes)",
+  "settings.tools.outputLimitLabel": "Result limit for Tool {tool}",
+  "settings.tools.outputUnlimited": "No additional limit",
+  "settings.tools.outputLimitHelp": "Maximum size of one complete Tool result. Leave blank for no additional Tool limit; other system limits still apply. Oversized results fail instead of being shortened. This does not undo actions the Tool has already performed.",
+  "settings.tools.outputLimitInvalid": "Enter a positive whole number up to 18446744073709551615, or leave blank.",
+  "settings.tools.pendingOutputLimit": "Save or restore the result limit before changing allow/block.",
+  "settings.tools.saveOutputLimit": "Save result limit",
+  "settings.tools.saveOutputLimitLabel": "Save result limit for Tool {tool}",
   "settings.tools.empty": "No tools registered",
   "settings.tools.emptyDesc": "No instance Tool policies are installed. Policy entries are created by supported Tool installation, not by this editor.",
   "settings.tools.failedLoad": "Failed to load tools: {message}",

@@ -27,6 +27,12 @@ pub(super) struct Admitted {
     pub state: Arc<PgTurnStateStore>,
 }
 pub(super) async fn reserve(pool: Arc<PgPool>, user_input: &str) -> Admitted {
+    reserve_with_claim(pool, user_input).await.0
+}
+pub(super) async fn reserve_with_claim(
+    pool: Arc<PgPool>,
+    user_input: &str,
+) -> (Admitted, brassclaw_turns::runner::ClaimedTurnRun) {
     let tenant = TenantId::new("retained-invocation").unwrap();
     let agent = AgentId::new("draft-agent").unwrap();
     let project = ProjectId::new("draft-project").unwrap();
@@ -125,11 +131,12 @@ pub(super) async fn reserve(pool: Arc<PgPool>, user_input: &str) -> Admitted {
             .unwrap(),
     );
     admission.check_and_start().await.unwrap();
-    Admitted {
+    let admitted = Admitted {
         input: json!({"conversation_id":conversation,"message_id":accepted.message_id,
         "turn_id":context.turn_id,"run_id":context.run_id,"user_input":user_input,"history":[]}),
         admission,
         context,
         state,
-    }
+    };
+    (admitted, claimed)
 }

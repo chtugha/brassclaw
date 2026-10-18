@@ -3,16 +3,18 @@ use std::{collections::HashSet, sync::Arc};
 use async_trait::async_trait;
 
 use super::host::{
-    AgentLoopHostError, AgentLoopHostErrorKind, CapabilitySurfaceVersion, LoopContextPort,
-    LoopContextRequest, LoopPromptBundle, LoopPromptBundleAuthority, LoopPromptBundleRef,
-    LoopPromptBundleRequest, LoopPromptPort, LoopRunContext, PromptMode, VisibleCapabilitySurface,
+    AgentLoopHostError, AgentLoopHostErrorKind, CapabilitySurfaceVersion,
+    LoopContextCompactionMetadata, LoopContextPort, LoopContextRequest, LoopPromptBundle,
+    LoopPromptBundleAuthority, LoopPromptBundleRef, LoopPromptBundleRequest, LoopPromptPort,
+    LoopRunContext, PromptMode, VisibleCapabilitySurface,
 };
 use super::instruction_bundle::{
-    InstructionBundleBuilder, InstructionBundleRequest, InstructionMaterializationStore,
-    InstructionSafetyContext,
+    InstructionBundle, InstructionBundleBuilder, InstructionBundleRequest,
+    InstructionMaterializationStore, InstructionSafetyContext,
 };
 use super::milestones::LoopHostMilestoneEmitter;
 use super::milestones::LoopHostMilestoneSink;
+use super::prepared_prompt::{self, PreparedLoopPromptRequest};
 
 const DEFAULT_TEXT_ONLY_MESSAGE_LIMIT: usize = 32;
 const MAX_TEXT_ONLY_MESSAGE_LIMIT: usize = 128;
@@ -229,33 +231,11 @@ where
             .clamp(1, MAX_TEXT_ONLY_MESSAGE_LIMIT)
     }
 
-    fn instruction_builder(&self) -> InstructionBundleBuilder {
-        InstructionBundleBuilder::new(self.context.clone())
-    }
-}
-
-#[async_trait]
-impl<C, S> LoopPromptPort for HostManagedLoopPromptPort<C, S>
-where
-    C: LoopContextPort + ?Sized,
-    S: LoopHostMilestoneSink + ?Sized,
-{
-    async fn build_prompt_bundle(
+    fn visible_surface(
         &self,
-        request: LoopPromptBundleRequest,
-    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
-        self.validate_request(&request)?;
-        let context = self
-            .context_port
-            .load_loop_context(LoopContextRequest {
-                after: request.context_cursor.clone(),
-                limit: self.message_limit(&request),
-                mode: request.mode,
-            })
-            .await?;
-        let identity_message_count = context.identity_messages.len() as u32;
-        let instruction_snippet_count = context.instruction_snippets.len() as u32;
-        let visible_surface = if request.surface_version.is_some() {
+        request: &LoopPromptBundleRequest,
+    ) -> Result<Option<VisibleCapabilitySurface>, AgentLoopHostError> {
+        let surface = if request.surface_version.is_some() {
             match self.current_surface.as_ref() {
                 Some(current_surface) => {
                     let mut surface = current_surface()?;
@@ -277,21 +257,29 @@ where
         } else {
             None
         };
-        let compaction_message_index = context
-            .messages
-            .iter()
-            .filter_map(|message| message.compaction.clone())
-            .collect::<Vec<_>>();
-        let instruction_bundle = self.instruction_builder().build(InstructionBundleRequest {
-            context_bundle: context,
-            visible_surface,
-            safety_context: self.safety_context.clone(),
-            inline_messages: request.inline_messages.clone(),
-        })?;
+        if let (Some(surface), Some(expected)) = (&surface, &request.surface_version)
+            && &surface.version != expected
+        {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::StaleSurface,
+                "prompt surface changed during bundle construction",
+            ));
+        }
+        Ok(surface)
+    }
+
+    async fn publish_bundle(
+        &self,
+        request: &LoopPromptBundleRequest,
+        mut instruction_bundle: InstructionBundle,
+        compaction_message_index: Vec<LoopContextCompactionMetadata>,
+        identity_message_count: u32,
+        instruction_snippet_count: u32,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
         if let Some(store) = self.instruction_materialization_store.as_ref() {
             store.put_materialized_messages(
                 &self.context,
-                instruction_bundle.materialized_messages.clone(),
+                std::mem::take(&mut instruction_bundle.materialized_messages),
             )?;
         } else if instruction_bundle.requires_materialization_store {
             return Err(AgentLoopHostError::new(
@@ -319,6 +307,95 @@ where
             )
             .await?;
         Ok(bundle)
+    }
+
+    fn instruction_builder(&self) -> InstructionBundleBuilder {
+        InstructionBundleBuilder::new(self.context.clone())
+    }
+}
+
+#[async_trait]
+impl<C, S> LoopPromptPort for HostManagedLoopPromptPort<C, S>
+where
+    C: LoopContextPort + ?Sized,
+    S: LoopHostMilestoneSink + ?Sized,
+{
+    async fn build_prompt_bundle(
+        &self,
+        request: LoopPromptBundleRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        self.validate_request(&request)?;
+        let context = self
+            .context_port
+            .load_loop_context(LoopContextRequest {
+                after: request.context_cursor.clone(),
+                limit: self.message_limit(&request),
+                mode: request.mode,
+            })
+            .await?;
+        let identity_message_count = context.identity_messages.len() as u32;
+        let instruction_snippet_count = context.instruction_snippets.len() as u32;
+        let visible_surface = self.visible_surface(&request)?;
+        let compaction_message_index = context
+            .messages
+            .iter()
+            .filter_map(|message| message.compaction.clone())
+            .collect::<Vec<_>>();
+        let instruction_bundle = self.instruction_builder().build(InstructionBundleRequest {
+            context_bundle: context,
+            visible_surface,
+            safety_context: self.safety_context.clone(),
+            inline_messages: request.inline_messages.clone(),
+        })?;
+        self.publish_bundle(
+            &request,
+            instruction_bundle,
+            compaction_message_index,
+            identity_message_count,
+            instruction_snippet_count,
+        )
+        .await
+    }
+
+    async fn build_prepared_prompt_bundle(
+        &self,
+        request: PreparedLoopPromptRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        self.validate_request(&request.metadata)?;
+        if request.metadata.context_cursor.is_some() || request.metadata.recipe_hint.is_some() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "prepared prompt cannot mix a context cursor or unverified Recipe hint with complete messages",
+            ));
+        }
+        if request.messages.is_empty() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "prepared prompt requires model messages",
+            ));
+        }
+        let budgets_disabled = self.token_budget_mode.as_ref().is_some_and(|mode| !mode());
+        if !budgets_disabled
+            && request
+                .metadata
+                .max_messages
+                .is_some_and(|max| request.messages.len() > max as usize)
+        {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::BudgetExceeded,
+                "complete prepared prompt exceeds the requested message limit",
+            ));
+        }
+        let visible_surface = self.visible_surface(&request.metadata)?;
+        let metadata = request.metadata.clone();
+        let instruction = prepared_prompt::build(
+            &self.context,
+            request,
+            visible_surface,
+            self.safety_context.clone(),
+        )?;
+        self.publish_bundle(&metadata, instruction, Vec::new(), 0, 0)
+            .await
     }
 }
 

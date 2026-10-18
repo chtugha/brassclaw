@@ -20,9 +20,6 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-const MAX_DECLARATION_BYTES: usize = 64 * 1024;
-const MAX_ENTRIES: usize = 1024;
-
 #[derive(Debug, Clone, Copy, thiserror::Error)]
 pub enum McpDiscoveryError {
     #[error("MCP Recipe catalogue is unavailable")]
@@ -88,12 +85,11 @@ fn identifier(name: &str) -> bool {
 impl CommandContract {
     pub(crate) fn parse(raw: &Value, task_inputs: &Value) -> Result<Self, McpDiscoveryError> {
         let invalid = || McpDiscoveryError::Contract;
-        // strict_json also bounds nested values. The enclosing retained revision
-        // parser has already rejected duplicate keys in the original bytes.
+        // The enclosing retained revision and catalogue admission own resource
+        // bounds. Discovery must not impose a second smaller declaration cap.
+        // Strict parsing still validates nested values; original duplicate keys
+        // were rejected by the retained revision parser.
         let bytes = raw.to_string();
-        if bytes.len() + task_inputs.to_string().len() > MAX_DECLARATION_BYTES {
-            return Err(invalid());
-        }
         let value = strict_json(&bytes, REVISION_LIMITS).map_err(|_| invalid())?;
         let declaration: CommandDeclaration =
             serde_json::from_value(value).map_err(|_| invalid())?;
@@ -142,8 +138,6 @@ impl CommandContract {
             )
             || declaration.variant_key.trim().is_empty()
             || declaration.sentence.is_empty()
-            || declaration.sentence.len() > MAX_DECLARATION_BYTES
-            || declaration.variables.len() > 64
             || [
                 &declaration.purpose,
                 &declaration.formatting_rules,
@@ -153,9 +147,7 @@ impl CommandContract {
             .into_iter()
             .any(|text| text.trim().is_empty())
             || declaration.examples.is_empty()
-            || declaration.examples.len() > 64
             || declaration.negative_examples.is_empty()
-            || declaration.negative_examples.len() > 64
         {
             return Err(invalid());
         }
@@ -453,7 +445,7 @@ impl McpRecipeDiscovery {
         generation: Uuid,
         programs: &[&InspectedRetainedProgram],
     ) -> Result<BTreeMap<String, CommandContract>, McpDiscoveryError> {
-        if generation.is_nil() || programs.len() > MAX_ENTRIES {
+        if generation.is_nil() {
             return Err(McpDiscoveryError::Contract);
         }
         let mut declared = BTreeMap::<String, CommandContract>::new();
@@ -644,6 +636,14 @@ mod tests {
             discovery.publish_installed(None, Uuid::from_u128(21), &[&inspected, &inspected]),
             Err(McpDiscoveryError::Conflict)
         ));
+        // Catalogue admission owns total capacity. A large discovery input
+        // still receives exact identity validation rather than a smaller count
+        // guard or a partial publication. This fixture claims no approval.
+        assert!(matches!(
+            discovery.publish_installed(None, Uuid::from_u128(23), &vec![&inspected; 1025]),
+            Err(McpDiscoveryError::Conflict)
+        ));
+        assert!(discovery.snapshot().is_err());
         let revisions = inspected
             .program()
             .inputs()
@@ -719,6 +719,63 @@ mod tests {
         let mut raw = declaration();
         raw["negative_examples"] = raw["examples"].clone();
         assert!(CommandContract::parse(&raw, &task()).is_err());
+    }
+
+    #[test]
+    fn command_contract_keeps_complete_large_declarations_and_typed_positions() {
+        let prefix = "complete ".repeat(9000);
+        let mut raw = declaration();
+        raw["sentence"] = json!(format!("{prefix}%; interval %"));
+        raw["examples"] = json!([format!("{prefix}payload; interval 1:4")]);
+        let contract = CommandContract::parse(&raw, &task()).unwrap();
+        assert_eq!(
+            contract
+                .bind(&format!("{prefix}payload; interval 1:4"))
+                .unwrap()["path"],
+            "payload"
+        );
+        assert_eq!(
+            contract.declaration.sentence,
+            raw["sentence"].as_str().unwrap()
+        );
+
+        let mut schema = serde_json::Map::new();
+        let mut variables = Vec::new();
+        for position in 0..65 {
+            let name = format!("v{position}");
+            schema.insert(
+                name.clone(),
+                json!({"type":"string","required":true,"checks":[]}),
+            );
+            variables.push(json!({"name":name,"position":position,"encoding":"verbatim"}));
+        }
+        let sentence = format!("complete {} done", vec!["%"; 65].join(" | "));
+        let examples: Vec<_> = (0..65)
+            .map(|example| {
+                format!(
+                    "complete {} done",
+                    (0..65)
+                        .map(|position| format!("value_{example}_{position}"))
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                )
+            })
+            .collect();
+        let negatives: Vec<_> = (0..65).map(|index| format!("invalid {index}")).collect();
+        raw["sentence"] = json!(sentence);
+        raw["variables"] = json!(variables);
+        raw["examples"] = json!(examples);
+        raw["negative_examples"] = json!(negatives);
+        let contract = CommandContract::parse(&raw, &Value::Object(schema)).unwrap();
+        for (index, example) in examples.iter().enumerate() {
+            let bound = contract.bind(example).unwrap();
+            assert_eq!(bound.as_object().unwrap().len(), 65);
+            assert_eq!(bound["v64"], format!("value_{index}_64"));
+        }
+        assert_eq!(
+            contract.declaration.negative_examples.len(),
+            negatives.len()
+        );
     }
 
     #[test]

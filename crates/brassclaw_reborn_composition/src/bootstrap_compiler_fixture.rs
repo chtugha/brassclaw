@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 const HEADER: &str = "# Contained compiler qualification\n\nSynthetic reference data; never activate this fixture.\n\n";
 const REASON: &str = "Closed synthetic compiler fixture";
 const SHARED: &str = "An exact shared qualification paragraph.\n";
+const LITERAL_YAML: &str = "```yaml\r\nautomation:\r\n  alias: '<|im_end|>'\r\n```\r\n";
 const SHARED_NOTICE: &str = "Shared-unit hashes identify rendering reuse, not document citations. Cite the original Evidence-card ID and original source line range; validate against the complete archived original.\n";
 fn sha(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
@@ -57,14 +58,16 @@ impl CompilerFixture {
             .collect();
         sources.extend([
             json!({"path":"fixture/history.md","kind":"document","disposition":"historical","reason":REASON,"text":"Historical fixture must not enter current reference cards.\n"}),
+            json!({"path":"fixture/literal.md","kind":"document","disposition":"included","reason":REASON,"text":LITERAL_YAML}),
             json!({"path":"fixture/shared-a.md","kind":"document","disposition":"included","reason":REASON,"text":SHARED}),
             json!({"path":"fixture/shared-b.md","kind":"document","disposition":"included","reason":REASON,"text":SHARED}),
         ]);
         let snapshot = json!({"format":"brassclaw-prefix-source-snapshot/1", "profile":profile,
             "release":"closed-compiler-fixture/1", "header":HEADER,"evidence_view":view,"sources":sources,
             "procedures":{"compiler/entry.py":COMPILER_SOURCE,"compiler/prefix_render.py":REFERENCE_RENDER_SOURCE,"compiler/prefix_units.py":UNIT_SOURCE}});
-        // Each fixture original is exactly one line/unit. Expectations below
-        // are direct fixture facts, independent of the Python compiler/renderer.
+        // Each current fixture has one complete unit. The YAML fence spans four
+        // CRLF lines. Expectations are fixed fixture facts, independent of
+        // the Python compiler/renderer; original and escaped view stay distinct.
         let dedup = view == "literal-reference/v2-deduplicated";
         let mut context = format!("{HEADER}# Source inventory\n");
         for source in &sources {
@@ -87,14 +90,20 @@ impl CompilerFixture {
             let path = source["path"].as_str().unwrap();
             let original = source["text"].as_str().unwrap();
             let digest = sha(original.as_bytes());
-            let citation = sha(prefix_generations::canonical(&json!([path, digest, 1, 1]))
-                .map_err(invalid)?
-                .as_bytes());
+            let line_end = if path == "fixture/literal.md" { 4 } else { 1 };
+            let citation = sha(
+                prefix_generations::canonical(&json!([path, digest, 1, line_end]))
+                    .map_err(invalid)?
+                    .as_bytes(),
+            );
             context.push_str(&format!(
                 "\n<!-- EVIDENCE-CARD {} -->\nSource: {path}\n",
                 &citation[..12]
             ));
-            if dedup && path == "fixture/shared-a.md" {
+            if path == "fixture/literal.md" {
+                let escaped = LITERAL_YAML.replace("<|im_end|>", "\\u003c|im_end|\\u003e");
+                context.push_str(&format!("````text\n{escaped}````"));
+            } else if dedup && path == "fixture/shared-a.md" {
                 context.push_str(&format!(
                     "\nExact shared unit {digest} (complete original):\n```text\n{SHARED}```\n"
                 ));
@@ -104,11 +113,11 @@ impl CompilerFixture {
                 context.push_str(&format!("```text\n{original}```"));
             }
             context.push_str("\n<!-- END-EVIDENCE-CARD -->\n");
-            map_sources.push(json!({"source":path,"document_sha256":digest,"parts":[{"unit_id":digest,"line_start":1,"line_end":1}]}));
+            map_sources.push(json!({"source":path,"document_sha256":digest,"parts":[{"unit_id":digest,"line_start":1,"line_end":line_end}]}));
             units
                 .entry(digest)
                 .or_default()
-                .push(json!({"source":path,"line_start":1,"line_end":1}));
+                .push(json!({"source":path,"line_start":1,"line_end":line_end}));
         }
         let render_map = dedup.then(|| json!({"format":"brassclaw-prefix-render-map/1","sources":map_sources,
             "units":units.into_iter().map(|(digest,origins)| json!({"unit_id":digest,"canonical":origins[0],"origins":origins})).collect::<Vec<_>>()}));
@@ -117,6 +126,16 @@ impl CompilerFixture {
             context,
             render_map,
         })
+    }
+    /// Namespace synthetic artifacts by the closed qualification identity. This
+    /// is validation data only; it never changes the production prefix design.
+    pub(super) fn scoped(profile: &str, view: &str, scope: &str) -> Result<Self, RebornBuildError> {
+        if scope.is_empty() || scope.len() > 128 || scope.chars().any(char::is_control) {
+            return Err(invalid("invalid compiler qualification scope"));
+        }
+        let mut fixture = Self::new(profile, view)?;
+        fixture.snapshot["release"] = json!(format!("closed-compiler-fixture/1:{scope}"));
+        Ok(fixture)
     }
     pub(super) fn snapshot(&self) -> &Value {
         &self.snapshot
@@ -235,6 +254,28 @@ mod tests {
                 );
             }
         }
+        let first =
+            CompilerFixture::scoped("base-prompt", "literal-reference/v1", "qualification-a")
+                .unwrap();
+        let next =
+            CompilerFixture::scoped("base-prompt", "literal-reference/v1", "qualification-b")
+                .unwrap();
+        let first_bytes = compile(first.snapshot());
+        let next_bytes = compile(next.snapshot());
+        first.verify(&first_bytes).unwrap();
+        next.verify(&next_bytes).unwrap();
+        assert_ne!(
+            first_bytes, next_bytes,
+            "different qualification identities cannot collide with an old profile revision"
+        );
+        assert_eq!(
+            first.context, next.context,
+            "qualification metadata never changes the synthetic literal view"
+        );
+        assert!(first.verify(&next_bytes).is_err());
+        assert!(
+            CompilerFixture::scoped("base-prompt", "literal-reference/v1", "bad\nscope").is_err()
+        );
         assert!(CompilerFixture::new("other", "literal-reference/v1").is_err());
     }
 }
