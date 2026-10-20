@@ -364,6 +364,35 @@ impl RebornInterceptorConfigService {
 
 #[async_trait]
 impl InterceptorConfigService for RebornInterceptorConfigService {
+    async fn measure(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        job: &str,
+        request: brassclaw_product_workflow::MeasurePrefixRequest,
+    ) -> Result<brassclaw_product_workflow::PrefixJobDetail, InterceptorConfigServiceError> {
+        let id = uuid::Uuid::parse_str(job)
+            .ok()
+            .filter(|id| !id.is_nil() && id.to_string() == job)
+            .ok_or_else(|| InterceptorConfigServiceError::InvalidRequest {
+                reason: "canonical non-nil prefix job UUID required".into(),
+            })?;
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        if let Some(runtime) = self.runtime.as_ref().and_then(std::sync::Weak::upgrade) {
+            runtime
+                .submit_prefix_measurement(id, profile, request, caller)
+                .await
+                .map_err(|error| match error {
+                    crate::RebornRuntimeError::InvalidArgument { reason } => {
+                        InterceptorConfigServiceError::InvalidRequest { reason }
+                    }
+                    _ => InterceptorConfigServiceError::Unavailable,
+                })?;
+            return runtime.inspect_prefix_job(profile, id).await;
+        }
+        let _ = (caller, profile, id, request);
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
     async fn get_job(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -759,6 +788,7 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
                 let content_ref = LoopMessageRef::new("msg:interceptor.regenerate-prefix")
                     .map_err(|_| InterceptorConfigServiceError::Unavailable)?;
                 let request = HostManagedModelRequest {
+                    dispatch_policy: Default::default(),
                     model_profile_id: profile_id,
                     messages: vec![HostManagedModelMessage {
                         role: HostManagedModelMessageRole::System,

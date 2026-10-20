@@ -601,6 +601,20 @@ impl LocalDevResultHydratingModelGateway {
 
 #[async_trait::async_trait]
 impl HostManagedModelGateway for LocalDevResultHydratingModelGateway {
+    fn supports_provider_observation(&self) -> bool {
+        self.inner.supports_provider_observation()
+    }
+    async fn stream_model_observed(
+        &self,
+        request: HostManagedModelRequest,
+        capabilities: Option<Arc<dyn LoopCapabilityPort>>,
+        custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        self.inner
+            .stream_model_observed(self.hydrate_request(request)?, capabilities, custodian)
+            .await
+    }
+
     fn supports_tool_exchange(&self) -> bool {
         self.inner.supports_tool_exchange()
     }

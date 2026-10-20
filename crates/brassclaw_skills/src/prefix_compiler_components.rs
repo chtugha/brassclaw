@@ -263,14 +263,7 @@ impl SourceCompilerIds {
             stages: ["prepare", "reference", "render", "identity", "finalize"]
                 .map(|stage| allocate(&format!("prefix-source-compiler:{stage}"))),
             receipt: allocate("prefix-source-compiler:receipt"),
-            digest: UsageComponentIds {
-                recipe: allocate("utf8-digest:recipe"),
-                python_code: allocate("utf8-digest:code"),
-                skill: allocate("utf8-digest:skill"),
-                tool_skill: allocate("utf8-digest:binding"),
-                tool: json_tool,
-                formatter: Some(allocate("utf8-digest:argument-parser")),
-            },
+            digest: crate::utf8_digest_components::usage_ids(json_tool, &mut allocate),
             // Reuse the shipped canonical storage usage identities and exact
             // definitions; do not create a second Retain Skill/Recipe.
             retain: UsageComponentIds {

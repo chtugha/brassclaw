@@ -1200,6 +1200,7 @@ async fn native_llm_response_cache_zero_capacity_and_completion_ttl() {
     )
     .unwrap();
     let request = || brassclaw_llm::CompletionRequest {
+        dispatch_policy: Default::default(),
         messages: vec![brassclaw_llm::ChatMessage::user("native cache request")],
         model: None,
         max_tokens: Some(16),
@@ -1243,9 +1244,18 @@ async fn native_llm_response_cache_zero_capacity_and_completion_ttl() {
     let second = second.unwrap();
     assert_eq!(first.content, "protocol answer");
     assert_eq!(second.content, first.content);
-    assert_eq!((first.input_tokens, first.output_tokens), (1, 2));
     assert_eq!(
-        (second.input_tokens, second.output_tokens),
+        (
+            first.usage.unwrap().input_tokens,
+            first.usage.unwrap().output_tokens
+        ),
+        (1, 2)
+    );
+    assert_eq!(
+        (
+            second.usage.unwrap().input_tokens,
+            second.usage.unwrap().output_tokens
+        ),
         (0, 0),
         "a cache hit cannot rebill preceding provider usage"
     );
@@ -2460,6 +2470,7 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
     let retained_primary = primary.retained_provider().expect("named primary snapshot");
     let retained_sempai = sempai.retained_selection();
     let request = |text: &str| CompletionRequest {
+        dispatch_policy: Default::default(),
         messages: vec![brassclaw_llm::ChatMessage::user(text)],
         model: None,
         max_tokens: Some(16),
@@ -2472,6 +2483,10 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
             .complete(request("same request"))
             .await
             .unwrap()
+            .usage
+            .expect(
+                "the protocol fixture supplies a complete meter; cache hits have known zero usage"
+            )
             .input_tokens,
         1
     );
@@ -2480,6 +2495,10 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
             .complete(request("same request"))
             .await
             .unwrap()
+            .usage
+            .expect(
+                "the protocol fixture supplies a complete meter; cache hits have known zero usage"
+            )
             .input_tokens,
         0
     );
@@ -2488,6 +2507,10 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
             .complete(request("same request"))
             .await
             .unwrap()
+            .usage
+            .expect(
+                "the protocol fixture supplies a complete meter; cache hits have known zero usage"
+            )
             .input_tokens,
         1
     );
@@ -2496,6 +2519,10 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
             .complete(request("same request"))
             .await
             .unwrap()
+            .usage
+            .expect(
+                "the protocol fixture supplies a complete meter; cache hits have known zero usage"
+            )
             .input_tokens,
         0
     );
@@ -2580,6 +2607,10 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
             .complete(request("same request"))
             .await
             .unwrap()
+            .usage
+            .expect(
+                "the protocol fixture supplies a complete meter; cache hits have known zero usage"
+            )
             .input_tokens,
         0
     );
@@ -2589,6 +2620,10 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
             .complete(request("same request"))
             .await
             .unwrap()
+            .usage
+            .expect(
+                "the protocol fixture supplies a complete meter; cache hits have known zero usage"
+            )
             .input_tokens,
         0
     );

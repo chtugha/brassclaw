@@ -63,6 +63,17 @@ where
     S: SessionThreadService + ?Sized + Send + Sync + 'static,
     G: HostManagedModelGateway + ?Sized + Send + Sync + 'static,
 {
+    async fn prepare_model_call_with_observation(
+        &self,
+        request: LoopModelGatewayRequest,
+        custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    ) -> Result<Box<dyn PreparedLoopModelCall>, LoopModelGatewayError> {
+        self.port(request.context)
+            .prepare_model_call_with_observation(request.request, custodian)
+            .await
+            .map_err(host_error_to_model_gateway_error)
+    }
+
     async fn prepare_model_call(
         &self,
         request: LoopModelGatewayRequest,

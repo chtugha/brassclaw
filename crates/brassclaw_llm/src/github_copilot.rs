@@ -202,32 +202,27 @@ impl LlmProvider for GithubCopilotProvider {
                     provider: "github_copilot".to_string(),
                 })?;
 
-        let (content, _tool_calls) = extract_choice_content(&choice);
+        let (content, _tool_calls, valid_arguments) = extract_choice_content(&choice);
 
-        let finish_reason = match choice.finish_reason.as_deref() {
-            Some("stop") => FinishReason::Stop,
-            Some("length") => FinishReason::Length,
-            Some("tool_calls") => FinishReason::ToolUse,
-            Some("content_filter") => FinishReason::ContentFilter,
-            _ => FinishReason::Unknown,
+        let finish_reason = if valid_arguments {
+            FinishReason::from_chat_reason(choice.finish_reason.as_deref())
+        } else {
+            FinishReason::Unknown
         };
 
         Ok(CompletionResponse {
             content: content.unwrap_or_default(),
             finish_reason,
-            input_tokens: response
-                .usage
-                .as_ref()
-                .map(|u| u.prompt_tokens)
-                .unwrap_or(0),
-            output_tokens: response
-                .usage
-                .as_ref()
-                .map(|u| u.completion_tokens)
-                .unwrap_or(0),
+            usage: response.usage.as_ref().and_then(|usage| {
+                crate::TokenUsage::from_reported_counts(
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                    0,
+                    0,
+                )
+            }),
+
             reasoning: None,
-            cache_creation_input_tokens: 0,
-            cache_read_input_tokens: 0,
         })
     }
 
@@ -282,39 +277,28 @@ impl LlmProvider for GithubCopilotProvider {
                     provider: "github_copilot".to_string(),
                 })?;
 
-        let (content, tool_calls) = extract_choice_content(&choice);
+        let (content, tool_calls, valid_arguments) = extract_choice_content(&choice);
 
-        let finish_reason = match choice.finish_reason.as_deref() {
-            Some("stop") => FinishReason::Stop,
-            Some("length") => FinishReason::Length,
-            Some("tool_calls") => FinishReason::ToolUse,
-            Some("content_filter") => FinishReason::ContentFilter,
-            _ => {
-                if !tool_calls.is_empty() {
-                    FinishReason::ToolUse
-                } else {
-                    FinishReason::Unknown
-                }
-            }
+        let finish_reason = if valid_arguments {
+            FinishReason::from_chat_reason(choice.finish_reason.as_deref())
+        } else {
+            FinishReason::Unknown
         };
 
         Ok(ToolCompletionResponse {
             content,
             tool_calls,
             finish_reason,
-            input_tokens: response
-                .usage
-                .as_ref()
-                .map(|u| u.prompt_tokens)
-                .unwrap_or(0),
-            output_tokens: response
-                .usage
-                .as_ref()
-                .map(|u| u.completion_tokens)
-                .unwrap_or(0),
-            cache_creation_input_tokens: 0,
+            usage: response.usage.as_ref().and_then(|usage| {
+                crate::TokenUsage::from_reported_counts(
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                    0,
+                    0,
+                )
+            }),
+
             reasoning: None,
-            cache_read_input_tokens: 0,
         })
     }
 
@@ -466,9 +450,9 @@ struct OpenAiResponseFunction {
 #[derive(Debug, Deserialize)]
 struct OpenAiUsage {
     #[serde(default)]
-    prompt_tokens: u32,
+    prompt_tokens: Option<u64>,
     #[serde(default)]
-    completion_tokens: u32,
+    completion_tokens: Option<u64>,
 }
 
 /// Convert BrassClaw messages to OpenAI Chat Completions format.
@@ -556,7 +540,8 @@ fn convert_messages(messages: Vec<ChatMessage>) -> Vec<OpenAiMessage> {
 }
 
 /// Extract text and tool calls from an OpenAI response choice.
-fn extract_choice_content(choice: &OpenAiChoice) -> (Option<String>, Vec<ToolCall>) {
+fn extract_choice_content(choice: &OpenAiChoice) -> (Option<String>, Vec<ToolCall>, bool) {
+    let mut valid_arguments = true;
     let content = choice.message.content.clone();
     let tool_calls = choice
         .message
@@ -565,19 +550,23 @@ fn extract_choice_content(choice: &OpenAiChoice) -> (Option<String>, Vec<ToolCal
         .map(|calls| {
             calls
                 .iter()
-                .map(|tc| ToolCall {
-                    id: tc.id.clone(),
-                    name: tc.function.name.clone(),
-                    arguments: serde_json::from_str(&tc.function.arguments)
-                        .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
-                    reasoning: None,
-                    signature: None,
+                .map(|tc| {
+                    let (arguments, valid) =
+                        crate::provider::decode_provider_arguments(&tc.function.arguments);
+                    valid_arguments &= valid;
+                    ToolCall {
+                        id: tc.id.clone(),
+                        name: tc.function.name.clone(),
+                        arguments,
+                        reasoning: None,
+                        signature: None,
+                    }
                 })
                 .collect()
         })
         .unwrap_or_default();
 
-    (content, tool_calls)
+    (content, tool_calls, valid_arguments)
 }
 
 #[cfg(test)]
@@ -668,7 +657,8 @@ mod tests {
             },
             finish_reason: Some("stop".to_string()),
         };
-        let (content, tool_calls) = extract_choice_content(&choice);
+        let (content, tool_calls, valid_arguments) = extract_choice_content(&choice);
+        assert!(valid_arguments);
         assert_eq!(content, Some("Hello!".to_string()));
         assert!(tool_calls.is_empty());
     }
@@ -688,7 +678,8 @@ mod tests {
             },
             finish_reason: Some("tool_calls".to_string()),
         };
-        let (content, tool_calls) = extract_choice_content(&choice);
+        let (content, tool_calls, valid_arguments) = extract_choice_content(&choice);
+        assert!(valid_arguments);
         assert_eq!(content, Some("Let me search.".to_string()));
         assert_eq!(tool_calls.len(), 1);
         assert_eq!(tool_calls[0].name, "search");

@@ -27,8 +27,7 @@ use brassclaw_reborn::{
     },
     model_gateway::{LlmModelProfilePolicy, LlmProviderModelGateway},
     model_routes::{
-        ModelRoute, ModelRoutePolicy, ModelSelectionMode, ModelSlot,
-        StaticModelRouteResolver,
+        ModelRoute, ModelRoutePolicy, ModelSelectionMode, ModelSlot, StaticModelRouteResolver,
     },
     monty_model_capability::RecipeModelPrefix,
     monty_task_host::MontyTaskHost,
@@ -74,7 +73,7 @@ async fn program(store: &PgComponentRevisionStore) -> Arc<RetainedToolProgram> {
         "callable":"host.kohai_complete","inputs":inputs,"arguments":{"prompt":"prompt"},"code_arguments":{},"result":result,"failure":failure}).to_string();
     let mut steps = Vec::new();
     let mut layouts = serde_json::Map::new();
-    for n in 0..6 {
+    for n in 0..7 {
         steps.push(json!({"stepnumber":n*2+1,"knowledge":"rust","goal":"Bind one model usage","content":"","type":"component","include":[binding],"tool_bindings":[{"tool_id":tool,"tool_name":"kohai_complete","params":{},"error_policy":{"policy":"fail"}}]}));
         steps.push(json!({"stepnumber":n*2+2,"knowledge":"orchestrator","goal":"Call one model operation","content":"","type":"component","include":[code]}));
         layouts.insert(
@@ -310,17 +309,121 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
         }
     }));
     let profile = context.resolved_run_profile.model_profile_id.clone();
-    let provider = brassclaw_llm::create_registry_provider(
-        &RegistryProviderConfig::generic(
+    // A real upstream model completes before the relay deliberately loses its
+    // first answer. This must remain one uncertain submission, not a hidden
+    // configured retry after a charged/possibly completed external operation.
+    use axum::{Json, extract::State, response::IntoResponse, routing::post};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    struct Relay {
+        endpoint: String,
+        model: String,
+        client: reqwest::Client,
+        lose_answer: AtomicBool,
+        omit_usage: AtomicBool,
+        calls: AtomicUsize,
+        actual_responses: tokio::sync::Mutex<Vec<Value>>,
+    }
+    async fn relay(
+        State(state): State<Arc<Relay>>,
+        Json(body): Json<Value>,
+    ) -> axum::response::Response {
+        state.calls.fetch_add(1, Ordering::SeqCst);
+        assert_eq!(
+            body["model"], state.model,
+            "a pinned task cannot use the configured cheap model"
+        );
+        let actual = state
+            .client
+            .post(format!(
+                "{}/chat/completions",
+                state.endpoint.trim_end_matches('/')
+            ))
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            actual.status().is_success(),
+            "actual selected model must complete"
+        );
+        let bytes = actual.bytes().await.unwrap();
+        let parsed: Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(parsed["choices"][0]["message"]["content"].is_string());
+        state.actual_responses.lock().await.push(parsed.clone());
+        if state.omit_usage.load(Ordering::SeqCst) {
+            // Fault injection removes only metadata from a real received model
+            // answer; no content, counters or success is manufactured.
+            let mut delivered = parsed;
+            delivered.as_object_mut().unwrap().remove("usage");
+            return Json(delivered).into_response();
+        }
+        if state.lose_answer.load(Ordering::SeqCst) {
+            return (
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({"error":{"message":"upstream completion was lost"}})),
+            )
+                .into_response();
+        }
+        (
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            bytes,
+        )
+            .into_response()
+    }
+    let relay_state = Arc::new(Relay {
+        endpoint,
+        model: model.clone(),
+        client: reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .unwrap(),
+        lose_answer: AtomicBool::new(true),
+        omit_usage: AtomicBool::new(false),
+        calls: AtomicUsize::new(0),
+        actual_responses: tokio::sync::Mutex::new(Vec::new()),
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let stop_relay = tokio_util::sync::CancellationToken::new();
+    let stopped = stop_relay.clone();
+    let router = axum::Router::new()
+        .route("/v1/chat/completions", post(relay))
+        .with_state(relay_state.clone());
+    let relay_server = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+        axum::serve(listener, router)
+            .with_graceful_shutdown(stopped.cancelled_owned())
+            .await
+            .unwrap();
+    }));
+    let mut config = brassclaw_llm::build_llm_config_with_provider_policy(
+        brassclaw_llm::ResolvedProviderConfig::Registry(RegistryProviderConfig::generic(
             ProviderProtocol::OpenAiCompletions,
             "native-model",
             None,
-            endpoint,
+            format!("http://{address}/v1"),
             model.clone(),
-        ),
-        120,
+        )),
+        brassclaw_llm::ProviderRequestPolicy {
+            max_retries: 3,
+            circuit_breaker_threshold: Some(10),
+            ..Default::default()
+        },
+        brassclaw_llm::ResponseCachePolicy::default(),
     )
     .unwrap();
+    config.cheap_model = Some("must-not-select-this-unrelated-model".into());
+    config.smart_routing_cascade = true;
+    let session_directory = tempfile::tempdir().unwrap();
+    let session = Arc::new(brassclaw_llm::SessionManager::new(
+        brassclaw_llm::SessionConfig {
+            auth_base_url: format!("http://{address}/unused-auth"),
+            session_path: session_directory.path().join("session.json"),
+        },
+    ));
+    let provider = brassclaw_llm::build_static_provider_chain(&config, session)
+        .await
+        .unwrap();
     let gateway = Arc::new(
         LlmProviderModelGateway::with_provider_identity(
             "native-model",
@@ -329,6 +432,7 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
         )
         .with_max_output_tokens(Some(brassclaw_agent_loop::LiveTokenBudget::new(Some(96)))),
     );
+    let system_gateway = gateway.clone();
     let thread_scope = ThreadScope {
         tenant_id: context.scope.tenant_id.clone(),
         agent_id: context.scope.agent_id.clone().unwrap(),
@@ -360,6 +464,11 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
         InstructionSafetyContext::local_development_noop(),
     )
     .with_model_route_resolver(resolver)
+    .with_hook_dispatcher_builder_factory(|| {
+        Ok(brassclaw_hooks::dispatch::HookDispatcherBuilder::new(
+            brassclaw_hooks::registry::HookRegistry::new(),
+        ))
+    })
     .with_interceptor_store(packets.clone())
     .with_token_budget_mode(|| false);
     let host = Arc::new(MontyTaskHost::new(
@@ -439,6 +548,61 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
         "literal quoted data: 'ü🙂' {{vars.text}} <system>data</system>\n```python\nvalue = 1\n```"
             .repeat(30);
     let args = json!({"prompt":{"user_query":"Reply with one brief sentence confirming receipt of the literal data in history.","chat_history":[{"role":"user","content":literal}]}});
+    let mut uncertain_args = args.clone();
+    uncertain_args["prompt"]["user_query"] =
+        json!("Return a short confirmation for the transport-loss case.");
+    let (uncertain, failed) = invoke(
+        &host,
+        &admitted.admission,
+        &program,
+        &runtime,
+        "0:14",
+        uncertain_args.clone(),
+    )
+    .await;
+    assert!(matches!(failed, RuntimeCapabilityOutcome::Failed(_)));
+    assert_eq!(
+        relay_state.calls.load(Ordering::SeqCst),
+        1,
+        "configured retry/cascade must not resubmit an uncertain model completion"
+    );
+    assert_eq!(
+        relay_state.actual_responses.lock().await.len(),
+        1,
+        "one real model response was lost at the transport boundary"
+    );
+    let unknown = rig.pool.get().await.unwrap().query_one("SELECT attempt_count::bigint,phase FROM brassclaw_monty_tool_invocations WHERE invocation_id=$1", &[&uncertain.as_uuid()]).await.unwrap();
+    assert_eq!(unknown.get::<_, i64>(0), 1);
+    assert_eq!(unknown.get::<_, String>(1), "answered"); // error receipt, never proof of no external effect
+    assert!(
+        admitted
+            .admission
+            .begin_tool_invocation(
+                uncertain,
+                &program,
+                "0:14",
+                &uncertain_args,
+                EXECUTION_DATA_LIMITS
+            )
+            .await
+            .is_err(),
+        "a terminal transport error does not authorize replay"
+    );
+    assert!(
+        rig.pool
+            .get()
+            .await
+            .unwrap()
+            .query_opt(
+                "SELECT 1 FROM brassclaw_monty_model_responses WHERE invocation_id=$1",
+                &[&uncertain.as_uuid()]
+            )
+            .await
+            .unwrap()
+            .is_none(),
+        "never manufacture a received native answer from relay-only observations"
+    );
+    relay_state.lose_answer.store(false, Ordering::SeqCst);
     let (first, outcome) = invoke(
         &host,
         &admitted.admission,
@@ -456,9 +620,29 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
         _ => panic!("live model candidate returned no completed result"),
     };
     let actual: LoopModelResponse = serde_json::from_str(done.output.as_str().unwrap()).unwrap();
+    let brassclaw_turns::run_profile::ParentLoopOutput::AssistantReply(reply) = &actual.output
+    else {
+        panic!("this assistant-only candidate requires the real assistant output profile")
+    };
+    crate::validator_component_tests::assert_model_answer_projection(
+        serde_json::to_value(&actual).unwrap(),
+        &reply.content,
+    )
+    .await;
     let captured = packets.list_recent(1).await.unwrap();
     assert_eq!(captured.len(), 1);
     assert_eq!(captured[0].run_id, context.run_id.to_string());
+    let request_evidence: Value = serde_json::from_str(
+        captured[0]
+            .model_exchange
+            .as_ref()
+            .unwrap()
+            .effective_request_bytes
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(request_evidence["dispatch_policy"], "single_submission");
     assert!(
         captured[0]
             .prompt
@@ -489,6 +673,136 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
     assert_eq!(row.get::<_, String>(0), prefix_ref);
     assert_eq!(row.get::<_, String>(1), done.output.as_str().unwrap());
     assert!(!responses.has_uncommitted_results());
+    // Observe the existing system-inference adapter separately: one real model
+    // response must retain its actual input/output/cache meter through the
+    // neutral work handoff and real PostgreSQL governor. This does not qualify
+    // this legacy internal path as a canonical Recipe/kernel/custody cutover.
+    {
+        use brassclaw_loop_support::{
+            GovernorBackedAccountant, ModelGatewayBackedSystemInferencePort, ZeroCostTable,
+        };
+        use brassclaw_resources::{
+            BudgetPeriod, PersistentResourceGovernor, PgResourceGovernorStore, ResourceAccount,
+            ResourceGovernor, ResourceLimits,
+        };
+        use brassclaw_turns::run_profile::{
+            LoopModelBudgetAccountant, ModelWorkOutcome, ModelWorkRequest, SystemInferenceIdentity,
+            SystemInferencePort, SystemInferenceRequest, SystemInferenceTaskId, SystemPromptSource,
+            SystemTaskKind,
+        };
+        let governor = Arc::new(PersistentResourceGovernor::new(
+            PgResourceGovernorStore::new(rig.pool.clone(), context.scope.tenant_id.as_str()),
+        ));
+        let account = ResourceAccount::user(
+            context.scope.tenant_id.clone(),
+            context.actor.as_ref().unwrap().user_id.clone(),
+        );
+        governor
+            .set_limit(
+                account.clone(),
+                ResourceLimits {
+                    max_usd: Some(rust_decimal::Decimal::ONE),
+                    period: BudgetPeriod::Rolling24h,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        // This explicitly free local fixture tests token observations, not a
+        // production provider price catalogue or an inferred LAN discount.
+        let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(ZeroCostTable));
+        let request = SystemInferenceRequest {
+            task_id: SystemInferenceTaskId::new(),
+            identity: SystemInferenceIdentity {
+                task_kind: SystemTaskKind::Compaction,
+                prompt_source: SystemPromptSource::Static {
+                    prompt_id: "native_system_meter".to_string().try_into().unwrap(),
+                },
+                system_prompt: "Answer with one short word. Do not request tools.".into(),
+            },
+            input_text: "Confirm receipt.".into(),
+            max_input_tokens: 1000,
+            deadline_ms: 120_000,
+        };
+        let work = ModelWorkRequest::for_system_inference(&context, &request);
+        accountant.pre_model_work(&context, &work).await.unwrap();
+        accountant.model_work_dispatching(&context, &work).unwrap();
+        let before = relay_state.calls.load(Ordering::SeqCst);
+        let system = ModelGatewayBackedSystemInferencePort::new(system_gateway, context.clone());
+        let mut unknown_request = request.clone();
+        unknown_request.task_id = SystemInferenceTaskId::new();
+        let result = system.call_system_inference(request).await;
+        let response = result.as_ref().unwrap();
+        let meter = response
+            .usage
+            .expect("actual provider meter must reach system inference");
+        let actual = relay_state
+            .actual_responses
+            .lock()
+            .await
+            .last()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            u64::from(meter.input_tokens),
+            actual["usage"]["prompt_tokens"].as_u64().unwrap()
+        );
+        assert_eq!(
+            u64::from(meter.output_tokens),
+            actual["usage"]["completion_tokens"].as_u64().unwrap()
+        );
+        assert_eq!(meter.cache_read_input_tokens, 0);
+        assert_eq!(meter.cache_creation_input_tokens, 0);
+        assert_eq!(relay_state.calls.load(Ordering::SeqCst), before + 1);
+        accountant
+            .post_model_work(
+                &context,
+                &work,
+                ModelWorkOutcome::from_system_inference_result(&result),
+            )
+            .await
+            .unwrap();
+        let reopened = PersistentResourceGovernor::new(PgResourceGovernorStore::new(
+            rig.pool.clone(),
+            context.scope.tenant_id.as_str(),
+        ));
+        let state = reopened.account_snapshot(&account).unwrap().unwrap();
+        assert_eq!(
+            state.ledger.spent.input_tokens,
+            u64::from(meter.input_tokens)
+        );
+        assert_eq!(
+            state.ledger.spent.output_tokens,
+            u64::from(meter.output_tokens)
+        );
+        assert_eq!(
+            state.ledger.spent.output_bytes,
+            response.output_text.len() as u64
+        );
+        assert_eq!(state.ledger.spent.wall_clock_ms, response.elapsed_ms);
+        assert_eq!(
+            state.ledger.reserved,
+            brassclaw_resources::ResourceTally::default()
+        );
+        // This is a gateway/DTO observation, not an accounting or canonical
+        // activation certificate for unmetered work. The legacy estimated debit
+        // path remains separately documented and must not fabricate counters.
+        relay_state.omit_usage.store(true, Ordering::SeqCst);
+        let before = relay_state.calls.load(Ordering::SeqCst);
+        let unmetered = system.call_system_inference(unknown_request).await.unwrap();
+        relay_state.omit_usage.store(false, Ordering::SeqCst);
+        assert_eq!(relay_state.calls.load(Ordering::SeqCst), before + 1);
+        assert_eq!(unmetered.usage, None);
+        assert!(!unmetered.output_text.trim().is_empty());
+        let actual = relay_state
+            .actual_responses
+            .lock()
+            .await
+            .last()
+            .unwrap()
+            .clone();
+        assert!(actual["usage"]["prompt_tokens"].as_u64().unwrap() > 0);
+        assert!(actual["usage"]["completion_tokens"].as_u64().unwrap() > 0);
+    }
     live.publish(1, policy(2, tool, true, Some(1))).unwrap();
     let (second, failed) = invoke(
         &host,
@@ -513,7 +827,7 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
             .unwrap()
             .is_some()
     );
-    assert_eq!(host.review_dispatch_counts().0, 2);
+    assert_eq!(host.review_dispatch_counts().0, 3);
     live.publish(2, policy(3, tool, true, None)).unwrap();
     rig.pool.get().await.unwrap().batch_execute("CREATE FUNCTION reject_native_model_response() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'deliberate native response rejection'; END $$; CREATE TRIGGER reject_native_model_response BEFORE INSERT ON brassclaw_monty_model_responses FOR EACH ROW EXECUTE FUNCTION reject_native_model_response();").await.unwrap();
     let (third, failed) = invoke(
@@ -527,21 +841,21 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
     .await;
     assert!(matches!(failed, RuntimeCapabilityOutcome::Failed(_)));
     assert!(responses.has_uncommitted_results());
-    assert_eq!(host.review_dispatch_counts().0, 3);
+    assert_eq!(host.review_dispatch_counts().0, 4);
     rig.pool.get().await.unwrap().batch_execute("DROP TRIGGER reject_native_model_response ON brassclaw_monty_model_responses; DROP FUNCTION reject_native_model_response();").await.unwrap();
     responses.reconcile_received_response(third).await.unwrap();
     responses.reconcile_received_response(third).await.unwrap();
     assert!(!responses.has_uncommitted_results());
     assert_eq!(
         host.review_dispatch_counts().0,
-        3,
+        4,
         "reconciliation cannot replay the provider"
     );
     let mut bad = args.clone();
     bad["prompt"]["prefix_reference"] = json!("attempted override");
     let (_, failed) = invoke(&host, &admitted.admission, &program, &runtime, "0:8", bad).await;
     assert!(matches!(failed, RuntimeCapabilityOutcome::Failed(_)));
-    assert_eq!(host.review_dispatch_counts().0, 3);
+    assert_eq!(host.review_dispatch_counts().0, 4);
     live.publish(3, policy(4, tool, false, None)).unwrap();
     let (_, failed) = invoke(
         &host,
@@ -553,7 +867,7 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
     )
     .await;
     assert!(matches!(failed, RuntimeCapabilityOutcome::Failed(_)));
-    assert_eq!(host.review_dispatch_counts().0, 3);
+    assert_eq!(host.review_dispatch_counts().0, 4);
     assert!(
         responses
             .prepare(first, &json!({}), prefix_ref)
@@ -602,7 +916,11 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
             .await
     }));
     tokio::time::timeout(std::time::Duration::from_secs(120), async {
-        while !responses.has_uncommitted_results() {
+        // Wait for the exact Loop-response write, not an earlier raw-wire or
+        // adapter observation now owned by the same native occurrence.
+        while !rig.pool.get().await.unwrap().query_one(
+            "SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND classid=0 AND objid=771888601 AND NOT granted)", &[]
+        ).await.unwrap().get::<_, bool>(0) {
             assert!(
                 !late_call.is_finished(),
                 "model call stopped before its received-response barrier"
@@ -612,6 +930,7 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
     })
     .await
     .expect("actual received model response reaches native persistence barrier");
+    assert!(responses.has_uncommitted_results());
     stop_heartbeat.send(true).unwrap();
     heartbeat.await.unwrap().unwrap();
     admitted
@@ -635,7 +954,10 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
         .fence_and_wait(host.attempt(), std::time::Duration::ZERO)
         .await
         .unwrap();
-    assert!(!pending.calls_settled(), "blocked native persistence is not quiescence");
+    assert!(
+        !pending.calls_settled(),
+        "blocked native persistence is not quiescence"
+    );
     assert!(pending.pending_calls > 0);
     assert!(pending.abandoned_calls.is_empty());
     gate.query_one("SELECT pg_advisory_unlock(771888601::bigint)", &[])
@@ -669,7 +991,7 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
     let withheld = host.take_withheld_results();
     assert!(withheld.iter().any(|result| matches!(&result.value, brassclaw_reborn::monty_task_host::WithheldTaskPortValue::RecordedModelResponse {invocation_id, response_bytes} if *invocation_id == late_id && response_bytes == &late_bytes)));
     assert!(!responses.has_uncommitted_results());
-    assert_eq!(host.review_dispatch_counts().0, 4);
+    assert_eq!(host.review_dispatch_counts().0, 5);
     late_record
         .record_answer(&brassclaw_monty_host::process::PortAnswer::TerminalError {
             reason_kind: "model_attempt_cancelled".into(),
@@ -702,4 +1024,423 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
         .unwrap()
         .get(0);
     assert_eq!(count, 4);
+    assert_eq!(relay_state.calls.load(Ordering::SeqCst), 7);
+    assert_eq!(relay_state.actual_responses.lock().await.len(), 7);
+    stop_relay.cancel();
+    relay_server.await.unwrap();
+}
+
+/// Separate admitted run: accounting uncertainty must not be cleared merely to
+/// continue the independent cases in the preceding native custody fixture.
+mod accounting {
+    use super::*;
+    use brassclaw_loop_support::{GovernorBackedAccountant, ZeroCostTable};
+    use brassclaw_resources::{
+        PersistentResourceGovernor, PgResourceGovernorStore, ResourceAccount, ResourceGovernor,
+    };
+    use brassclaw_turns::run_profile::{
+        LoopModelBudgetAccountant, LoopModelGatewayError, LoopModelRequest, LoopRunContext,
+        ModelCallOutcome, ModelWorkOutcome, ModelWorkRequest,
+    };
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct Observations {
+        request: Option<ModelWorkRequest>,
+        response: Option<LoopModelResponse>,
+    }
+    /// Instrument the supported accounting boundary without fabricating any
+    /// admission, provider response, usage or settlement result.
+    struct ObservedAccountant {
+        inner: Arc<GovernorBackedAccountant>,
+        observed: Mutex<Observations>,
+    }
+    impl ObservedAccountant {
+        fn response(&self, outcome: &ModelCallOutcome<'_>) {
+            if let ModelCallOutcome::Success(response) = outcome {
+                self.observed
+                    .lock()
+                    .unwrap()
+                    .response
+                    .get_or_insert_with(|| LoopModelResponse::clone(response));
+            }
+        }
+    }
+    #[async_trait::async_trait]
+    impl LoopModelBudgetAccountant for ObservedAccountant {
+        fn isolated_work_accountant(&self) -> Option<Arc<dyn LoopModelBudgetAccountant>> {
+            self.inner.isolated_work_accountant()
+        }
+        async fn pre_model_work(
+            &self,
+            context: &LoopRunContext,
+            request: &ModelWorkRequest,
+        ) -> Result<(), LoopModelGatewayError> {
+            self.inner.pre_model_work(context, request).await?;
+            self.observed
+                .lock()
+                .unwrap()
+                .request
+                .get_or_insert_with(|| request.clone());
+            Ok(())
+        }
+        fn model_work_dispatching(
+            &self,
+            context: &LoopRunContext,
+            request: &ModelWorkRequest,
+        ) -> Result<(), LoopModelGatewayError> {
+            self.inner.model_work_dispatching(context, request)
+        }
+        async fn post_model_work(
+            &self,
+            context: &LoopRunContext,
+            request: &ModelWorkRequest,
+            outcome: ModelWorkOutcome,
+        ) -> Result<(), LoopModelGatewayError> {
+            self.inner.post_model_work(context, request, outcome).await
+        }
+        async fn post_model_work_result(
+            &self,
+            context: &LoopRunContext,
+            request: &ModelWorkRequest,
+            outcome: ModelCallOutcome<'_>,
+        ) -> Result<(), LoopModelGatewayError> {
+            self.response(&outcome);
+            self.inner
+                .post_model_work_result(context, request, outcome)
+                .await
+        }
+        async fn post_model_call(
+            &self,
+            context: &LoopRunContext,
+            request: &LoopModelRequest,
+            outcome: ModelCallOutcome<'_>,
+        ) -> Result<(), LoopModelGatewayError> {
+            self.response(&outcome);
+            self.inner.post_model_call(context, request, outcome).await
+        }
+        async fn reconcile_retained_model_work(
+            &self,
+            context: &LoopRunContext,
+            request: &ModelWorkRequest,
+            response: &LoopModelResponse,
+        ) -> Option<Result<(), LoopModelGatewayError>> {
+            self.inner
+                .reconcile_retained_model_work(context, request, response)
+                .await
+        }
+        fn release_in_flight(&self, context: &LoopRunContext, request: &ModelWorkRequest) {
+            self.inner.release_in_flight(context, request);
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "requires the explicit operator-selected real model endpoint and model ID"]
+    async fn native_model_accounting_failure_retains_answer_and_settles_original_hold_without_replay()
+     {
+        use brassclaw_llm::{config::RegistryProviderConfig, registry::ProviderProtocol};
+        let endpoint = std::env::var("BRASSCLAW_TEST_MODEL_URL").expect("explicit live endpoint");
+        let model = std::env::var("BRASSCLAW_TEST_MODEL_ID").expect("explicit live model");
+        let rig = crate::runtime::test_pg::pg_rig().await;
+        let store = PgComponentRevisionStore::new(rig.pool.clone());
+        let program = program(&store).await;
+        let (admitted, mut claimed) = admission_fixture::reserve_with_claim(
+            rig.pool.clone(),
+            "real native model accounting candidate",
+        )
+        .await;
+        let route = LoopModelRouteSnapshot::try_new(
+            "native-model",
+            &model,
+            "config:native-accounting-v1",
+            "auth:none",
+        )
+        .unwrap();
+        claimed.state = admitted
+            .state
+            .record_model_route_snapshot(RecordModelRouteSnapshotRequest {
+                run_id: admitted.context.run_id,
+                runner_id: claimed.runner_id,
+                lease_token: claimed.lease_token,
+                snapshot: route.clone(),
+            })
+            .await
+            .unwrap();
+        let context = admitted.context.clone().with_resolved_model_route(route);
+        let (stop_heartbeat, mut heartbeat_stop) = tokio::sync::watch::channel(false);
+        let heartbeat_store = admitted.state.clone();
+        let heartbeat_request = brassclaw_turns::runner::HeartbeatRequest {
+            run_id: context.run_id,
+            runner_id: claimed.runner_id,
+            lease_token: claimed.lease_token,
+        };
+        let heartbeat = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    changed = heartbeat_stop.changed() => {
+                        if changed.is_err() || *heartbeat_stop.borrow() { return Ok::<(), brassclaw_turns::TurnError>(()); }
+                    }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {
+                        heartbeat_store.heartbeat(heartbeat_request.clone()).await?;
+                    }
+                }
+            }
+        }));
+        let config = brassclaw_llm::build_llm_config_with_provider_policy(
+            brassclaw_llm::ResolvedProviderConfig::Registry(RegistryProviderConfig::generic(
+                ProviderProtocol::OpenAiCompletions,
+                "native-model",
+                None,
+                endpoint.clone(),
+                model.clone(),
+            )),
+            brassclaw_llm::ProviderRequestPolicy {
+                max_retries: 3,
+                ..Default::default()
+            },
+            brassclaw_llm::ResponseCachePolicy::default(),
+        )
+        .unwrap();
+        let session_directory = tempfile::tempdir().unwrap();
+        let session = Arc::new(brassclaw_llm::SessionManager::new(
+            brassclaw_llm::SessionConfig {
+                auth_base_url: format!("{}/unused-auth", endpoint.trim_end_matches('/')),
+                session_path: session_directory.path().join("session.json"),
+            },
+        ));
+        let provider = brassclaw_llm::build_static_provider_chain(&config, session)
+            .await
+            .unwrap();
+        let gateway = Arc::new(
+            LlmProviderModelGateway::with_provider_identity(
+                "native-model",
+                provider,
+                LlmModelProfilePolicy::new().allow_model_profile(
+                    context.resolved_run_profile.model_profile_id.clone(),
+                    Some(model.clone()),
+                ),
+            )
+            .with_max_output_tokens(Some(brassclaw_agent_loop::LiveTokenBudget::new(Some(96)))),
+        );
+        let selected = ModelRoute::new("native-model", &model).unwrap();
+        let resolver = Arc::new(
+            StaticModelRouteResolver::new(
+                ModelRoutePolicy::new(ModelSelectionMode::ManagedOnly)
+                    .with_approved_route(selected.clone()),
+            )
+            .with_route(ModelSlot::Default, selected),
+        );
+        let governor = Arc::new(PersistentResourceGovernor::new(
+            PgResourceGovernorStore::new(rig.pool.clone(), context.scope.tenant_id.as_str()),
+        ));
+        // The explicit local/free pricing policy still reserves and records
+        // token usage; it is not a claim about third-party provider billing.
+        let accountant = Arc::new(GovernorBackedAccountant::new(
+            governor.clone(),
+            Arc::new(ZeroCostTable),
+        ));
+        let observed = Arc::new(ObservedAccountant {
+            inner: accountant.clone(),
+            observed: Mutex::new(Observations::default()),
+        });
+        let thread_scope = ThreadScope {
+            tenant_id: context.scope.tenant_id.clone(),
+            agent_id: context.scope.agent_id.clone().unwrap(),
+            project_id: context.scope.project_id.clone(),
+            owner_user_id: None,
+        };
+        brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
+            include_str!("../../brassclaw_loop_support/prompts/compaction_summarizer_fresh.md")
+                .into(),
+        );
+        let factory = RebornLoopDriverHostFactory::new(
+            Arc::new(PgSessionThreadService::new(
+                rig.pool.clone(),
+                context.scope.tenant_id.as_str(),
+            )),
+            thread_scope,
+            gateway,
+            Arc::new(InMemoryCheckpointStateStore::default()),
+            admitted.state.clone(),
+            Arc::new(InMemoryLoopCheckpointStore::default()),
+            Arc::new(InMemoryLoopHostMilestoneSink::default()),
+            TextOnlyLoopHostConfig {
+                max_messages: 8,
+                require_model_route_snapshot: true,
+            },
+            InstructionSafetyContext::local_development_noop(),
+        )
+        .with_model_route_resolver(resolver)
+        .with_model_budget_accountant(observed.clone())
+        .with_hook_dispatcher_builder_factory(|| {
+            Ok(brassclaw_hooks::dispatch::HookDispatcherBuilder::new(
+                brassclaw_hooks::registry::HookRegistry::new(),
+            ))
+        })
+        .with_interceptor_store(Arc::new(brassclaw_interceptor::PgInterceptorStore::new(
+            rig.pool.clone(),
+            context.scope.tenant_id.as_str(),
+        )))
+        .with_token_budget_mode(|| false);
+        let host = Arc::new(MontyTaskHost::new(
+            MontyTaskHandoff::new(
+                AgentLoopDriverRunRequest {
+                    turn_id: context.turn_id,
+                    run_id: context.run_id,
+                    resolved_run_profile: context.resolved_run_profile.clone(),
+                },
+                brassclaw_turns::run_profile::MontyTaskAttempt {
+                    run_id: context.run_id,
+                    runner_id: claimed.runner_id,
+                    lease_token: claimed.lease_token,
+                },
+                Arc::new(
+                    factory
+                        .build_text_only_host(RebornLoopDriverHostRequest {
+                            claimed_run: claimed,
+                            loop_run_context: context.clone(),
+                        })
+                        .await
+                        .unwrap(),
+                ),
+            )
+            .unwrap(),
+        ));
+        let tool = program.bindings()["0:2"].tool().uuid;
+        let live = Arc::new(LiveStableToolPolicy::new(policy(1, tool, true, None)).unwrap());
+        let trust_policy = HostTrustPolicy::new(vec![Box::new(AdminConfig::with_entries(vec![
+            AdminEntry::for_local_manifest(
+                PackageId::new("host").unwrap(),
+                "/system/extensions/host/manifest.toml".into(),
+                None,
+                HostTrustAssignment::first_party(),
+                vec![EffectKind::ExternalWrite],
+                None,
+            ),
+        ]))])
+        .unwrap();
+        let services = HostRuntimeServices::new(
+            Arc::new(ExtensionRegistry::new()),
+            Arc::new(brassclaw_filesystem::InMemoryBackend::new()),
+            Arc::new(brassclaw_resources::InMemoryResourceGovernor::new()),
+            Arc::new(InstanceToolAuthorizer::new(live.clone())),
+            brassclaw_processes::ProcessServices::in_memory(),
+            brassclaw_host_runtime::CapabilitySurfaceVersion::new("native-accounting").unwrap(),
+        )
+        .with_first_party_capabilities(Arc::new(FirstPartyCapabilityRegistry::new()))
+        .with_trust_policy(Arc::new(trust_policy))
+        .with_runtime_policy(brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy {
+            deployment: brassclaw_host_api::runtime_policy::DeploymentMode::LocalSingleUser,
+            requested_profile: brassclaw_host_api::runtime_policy::RuntimeProfile::LocalDev,
+            resolved_profile: brassclaw_host_api::runtime_policy::RuntimeProfile::LocalDev,
+            filesystem_backend:
+                brassclaw_host_api::runtime_policy::FilesystemBackendKind::HostWorkspace,
+            process_backend: brassclaw_host_api::runtime_policy::ProcessBackendKind::LocalHost,
+            network_mode: brassclaw_host_api::runtime_policy::NetworkMode::DirectLogged,
+            secret_mode: brassclaw_host_api::runtime_policy::SecretMode::ScrubbedEnv,
+            approval_policy: brassclaw_host_api::runtime_policy::ApprovalPolicy::AskDestructive,
+            audit_mode: brassclaw_host_api::runtime_policy::AuditMode::LocalMinimal,
+        });
+        let prefix_ref = "candidate:accounting-prefix:immutable-v1";
+        let responses = admitted.admission.model_response_store(prefix_ref.into());
+        let runtime = crate::monty_kernel::capture(&services)
+            .unwrap()
+            .model(
+                host.clone(),
+                RecipeModelPrefix::new(
+                    prefix_ref.into(),
+                    Arc::from("Answer the user with one brief sentence."),
+                )
+                .unwrap(),
+                responses.clone(),
+                live,
+            )
+            .unwrap();
+        rig.pool.get().await.unwrap().batch_execute("CREATE FUNCTION reject_observed_model_settlement() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF EXISTS (SELECT 1 FROM jsonb_array_elements(NEW.payload->'state'->'reservations') AS r WHERE r->1->>'status'='Reconciled') THEN RAISE EXCEPTION 'deliberate observed model settlement rejection'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_observed_model_settlement BEFORE UPDATE ON brassclaw_resource_accounts FOR EACH ROW EXECUTE FUNCTION reject_observed_model_settlement();").await.unwrap();
+        let args = json!({"prompt":{"user_query":"Give one short sentence for this accounting test.","chat_history":[]}});
+        let (invocation, outcome) = invoke(
+            &host,
+            &admitted.admission,
+            &program,
+            &runtime,
+            "0:2",
+            args.clone(),
+        )
+        .await;
+        assert!(
+            matches!(outcome, RuntimeCapabilityOutcome::Failed(_)),
+            "actual settlement rejection must fail the operation"
+        );
+        let (work, response) = {
+            let observed = observed.observed.lock().unwrap();
+            (
+                observed.request.clone().unwrap(),
+                observed.response.clone().unwrap(),
+            )
+        };
+        assert_eq!(
+            work.work_id.unwrap().as_uuid(),
+            invocation.as_uuid(),
+            "budget work keeps the exact admitted native invocation identity"
+        );
+        let usage = response.usage.expect("actual model-reported usage");
+        assert_eq!(response.effective_model_profile_id, work.model_profile_id);
+        assert!(usage.input_tokens > 0 && usage.output_tokens > 0);
+        let row = rig.pool.get().await.unwrap().query_one(
+            "SELECT prefix_reference,response_bytes FROM brassclaw_monty_model_responses WHERE invocation_id=$1", &[&invocation.as_uuid()],
+        ).await.unwrap();
+        assert_eq!(row.get::<_, String>(0), prefix_ref);
+        assert_eq!(
+            serde_json::from_str::<LoopModelResponse>(&row.get::<_, String>(1)).unwrap(),
+            response
+        );
+        assert!(!responses.has_uncommitted_results());
+        let account = ResourceAccount::tenant(context.scope.tenant_id.clone());
+        let held = governor.account_snapshot(&account).unwrap().unwrap().ledger;
+        assert!(held.reserved.input_tokens > 0 && held.reserved.output_tokens > 0);
+        assert_eq!(held.spent.input_tokens, 0);
+        assert_eq!(held.spent.output_tokens, 0);
+        assert_eq!(host.review_dispatch_counts().0, 1);
+        assert!(
+            admitted
+                .admission
+                .begin_tool_invocation(
+                    InvocationId::new(),
+                    &program,
+                    "0:2",
+                    &args,
+                    EXECUTION_DATA_LIMITS
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(host.review_dispatch_counts().0, 1);
+        rig.pool.get().await.unwrap().batch_execute("DROP TRIGGER reject_observed_model_settlement ON brassclaw_resource_accounts; DROP FUNCTION reject_observed_model_settlement();").await.unwrap();
+        accountant
+            .reconcile_retained_model_work(&context, &work, &response)
+            .await
+            .unwrap()
+            .unwrap();
+        let settled = governor.account_snapshot(&account).unwrap().unwrap().ledger;
+        assert_eq!(settled.reserved.input_tokens, 0);
+        assert_eq!(settled.reserved.output_tokens, 0);
+        assert_eq!(settled.spent.input_tokens, u64::from(usage.input_tokens));
+        assert_eq!(settled.spent.output_tokens, u64::from(usage.output_tokens));
+        assert_eq!(settled.spent.usd, rust_decimal::Decimal::ZERO);
+        let reopened = PersistentResourceGovernor::new(PgResourceGovernorStore::new(
+            rig.pool.clone(),
+            context.scope.tenant_id.as_str(),
+        ));
+        let after = reopened.account_snapshot(&account).unwrap().unwrap().ledger;
+        assert_eq!(after.spent, settled.spent);
+        assert_eq!(after.reserved, settled.reserved);
+        responses
+            .reconcile_received_response(invocation)
+            .await
+            .unwrap();
+        assert_eq!(host.review_dispatch_counts().0, 1);
+        host.fence_dispatch();
+        stop_heartbeat.send(true).unwrap();
+        heartbeat.await.unwrap().unwrap();
+    }
 }

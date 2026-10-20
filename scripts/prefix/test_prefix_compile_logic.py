@@ -46,7 +46,7 @@ def run_stages(source):
 class CompileLogicTests(unittest.TestCase):
     def test_actual_profiles_and_views_preserve_every_original_and_match_shared_renderer(self):
         for profile in ['base-prompt', 'prefix-maker']:
-            for view in ['literal-reference/v1', 'literal-reference/v2-deduplicated']:
+            for view in ['literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing']:
                 with self.subTest(profile=profile, view=view):
                     source = snapshot(profile, view)
                     compiled, _ = run_stages(source)
@@ -69,7 +69,9 @@ class CompileLogicTests(unittest.TestCase):
                     rendering = [{**record, 'sha256': hashlib.sha256(record['text'].encode()).hexdigest(),
                         'evidence_id': next(e['id'] for e in evidence if e['path'] == record['path']),
                         'units': [{'line_start':a,'line_end':b,'text':text,'id':hashlib.sha256(text.encode()).hexdigest()} for a,b,text,_ in core.source_units(record['text'], '.'+record['path'].split('.')[-1])]} for record in source['sources']]
-                    expected = core.render_prefix_reference(source['header'], rendering, []) if view == 'literal-reference/v1' else core.render_deduplicated_prefix_reference(source['header'], rendering, [])['context']
+                    expected = core.render_prefix_reference(source['header'], rendering, []) if view == 'literal-reference/v1' else (core.render_trailing_inventory_prefix_reference if view == 'literal-reference/v3-trailing-inventory' else core.render_deduplicated_prefix_reference)(source['header'], rendering, [])['context']
+                    if view == 'literal-reference/v4-stable-sharing':
+                        expected = core.render_stable_sharing_prefix_reference(source['header'], rendering, [])['context']
                     self.assertEqual(files['context.md'].decode(), expected)
                     manifest = json.loads(files['manifest.json'])
                     self.assertFalse(manifest['activation_eligible'])

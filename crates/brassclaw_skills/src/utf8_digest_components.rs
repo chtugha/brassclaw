@@ -5,6 +5,21 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+/// Shared canonical identities; consumers reuse the same usage, not copies.
+pub fn usage_ids(
+    tool: uuid::Uuid,
+    mut allocate: impl FnMut(&str) -> uuid::Uuid,
+) -> UsageComponentIds {
+    UsageComponentIds {
+        recipe: allocate("utf8-digest:recipe"),
+        python_code: allocate("utf8-digest:code"),
+        skill: allocate("utf8-digest:skill"),
+        tool_skill: allocate("utf8-digest:binding"),
+        tool,
+        formatter: Some(allocate("utf8-digest:argument-parser")),
+    }
+}
+
 pub fn utf8_digest_usage_drafts(
     ids: UsageComponentIds,
 ) -> Result<Vec<ComponentRevisionDraft>, RevisionError> {

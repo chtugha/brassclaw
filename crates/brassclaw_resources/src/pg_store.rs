@@ -10,7 +10,11 @@
 //!
 //! Stores budget approval gates in `brassclaw_budget_gates` (V019).
 
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{
+    future::Future,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use brassclaw_host_api::ResourceScope;
 use brassclaw_pg::PgPool;
@@ -21,6 +25,7 @@ use serde_json::Value;
 use crate::{
     BudgetApprovalGate, BudgetGateError, BudgetGateId, BudgetGateOutcome, BudgetGateStatus,
     BudgetGateStore, ResourceError, ResourceGovernorSnapshot, ResourceGovernorStore,
+    ResourceSnapshotUpdate,
 };
 
 fn map_pool_r(e: deadpool_postgres::PoolError) -> ResourceError {
@@ -59,13 +64,53 @@ fn map_json_b(e: serde_json::Error) -> BudgetGateError {
     }
 }
 
+/// One acknowledged resource-store policy, captured before a logical operation.
+/// This controls containment time only; a timeout cannot prove a write failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PgResourceStoreSettings {
+    pub revision: u64,
+    pub timeout: Duration,
+}
+impl PgResourceStoreSettings {
+    pub fn validate(self) -> Result<Self, &'static str> {
+        if self.revision == 0
+            || self.timeout.is_zero()
+            || Instant::now().checked_add(self.timeout).is_none()
+        {
+            return Err("invalid PostgreSQL resource-store deadline");
+        }
+        Ok(self)
+    }
+}
+/// Host-owned source; no database lookup or async execution at this boundary.
+/// It may retain the last acknowledged policy for post-failure reconciliation.
+pub trait PgResourceStoreSettingsSource: Send + Sync {
+    fn snapshot(&self) -> Result<PgResourceStoreSettings, &'static str>;
+}
+struct DefaultStoreSettings;
+impl PgResourceStoreSettingsSource for DefaultStoreSettings {
+    fn snapshot(&self) -> Result<PgResourceStoreSettings, &'static str> {
+        PgResourceStoreSettings {
+            revision: 1,
+            timeout: Duration::from_millis(
+                brassclaw_host_api::MontyExecutionLimits::default().resource_store_timeout_millis,
+            ),
+        }
+        .validate()
+    }
+}
+
 // The synchronous governor is called on the production multithread runtime.
 // Reject incompatible callers before block_in_place can panic. Do not detach
 // mutations onto another executor: cancellation must not lose a reservation.
 fn blocking_pg<T, E>(
     operation: impl Future<Output = Result<T, E>>,
     storage_error: impl Fn(&str) -> E,
+    settings: Result<PgResourceStoreSettings, &'static str>,
 ) -> Result<T, E> {
+    let settings = settings
+        .and_then(PgResourceStoreSettings::validate)
+        .map_err(&storage_error)?;
     let runtime = tokio::runtime::Handle::try_current()
         .map_err(|_| storage_error("PostgreSQL resource store requires a Tokio runtime"))?;
     if runtime.runtime_flavor() != tokio::runtime::RuntimeFlavor::MultiThread {
@@ -75,7 +120,7 @@ fn blocking_pg<T, E>(
     }
     tokio::task::block_in_place(|| {
         runtime.block_on(async {
-            tokio::time::timeout(Duration::from_secs(2), operation)
+            tokio::time::timeout(settings.timeout, operation)
                 .await
                 .map_err(|_| storage_error(
                     "PostgreSQL resource operation timed out; write outcome may require readback",
@@ -92,6 +137,7 @@ fn blocking_pg<T, E>(
 pub struct PgResourceGovernorStore {
     pool: Arc<PgPool>,
     tenant_id: String,
+    settings: Arc<dyn PgResourceStoreSettingsSource>,
 }
 
 impl PgResourceGovernorStore {
@@ -99,10 +145,22 @@ impl PgResourceGovernorStore {
         Self {
             pool,
             tenant_id: tenant_id.into(),
+            settings: Arc::new(DefaultStoreSettings),
         }
     }
 
-    fn read_snapshot_sync(&self) -> Result<(ResourceGovernorSnapshot, i64), ResourceError> {
+    pub fn with_settings_source(
+        mut self,
+        settings: Arc<dyn PgResourceStoreSettingsSource>,
+    ) -> Self {
+        self.settings = settings;
+        self
+    }
+
+    fn read_snapshot_sync(
+        &self,
+        settings: PgResourceStoreSettings,
+    ) -> Result<(ResourceGovernorSnapshot, i64), ResourceError> {
         blocking_pg(
             async {
                 let client = self.pool.get().await.map_err(map_pool_r)?;
@@ -129,6 +187,7 @@ impl PgResourceGovernorStore {
             |reason| ResourceError::Storage {
                 reason: reason.to_owned(),
             },
+            Ok(settings),
         )
     }
 
@@ -136,6 +195,7 @@ impl PgResourceGovernorStore {
         &self,
         snapshot: &ResourceGovernorSnapshot,
         expected_version: i64,
+        settings: PgResourceStoreSettings,
     ) -> Result<bool, ResourceError> {
         blocking_pg(
             async {
@@ -171,6 +231,7 @@ impl PgResourceGovernorStore {
             |reason| ResourceError::Storage {
                 reason: reason.to_owned(),
             },
+            Ok(settings),
         )
     }
 }
@@ -181,9 +242,33 @@ impl ResourceGovernorStore for PgResourceGovernorStore {
         T: Send + 'static,
         F: FnOnce(&mut ResourceGovernorSnapshot) -> Result<T, ResourceError> + Send + 'static,
     {
-        let (mut snapshot, version) = self.read_snapshot_sync()?;
-        let value = update(&mut snapshot)?;
-        if self.write_snapshot_sync(&snapshot, version)? {
+        self.update_if_changed(move |snapshot| {
+            update(snapshot).map(ResourceSnapshotUpdate::Changed)
+        })
+    }
+
+    fn update_if_changed<T, F>(&self, update: F) -> Result<T, ResourceError>
+    where
+        T: Send + 'static,
+        F: FnOnce(
+                &mut ResourceGovernorSnapshot,
+            ) -> Result<ResourceSnapshotUpdate<T>, ResourceError>
+            + Send
+            + 'static,
+    {
+        let settings = self
+            .settings
+            .snapshot()
+            .and_then(PgResourceStoreSettings::validate)
+            .map_err(|reason| ResourceError::Storage {
+                reason: reason.to_owned(),
+            })?;
+        let (mut snapshot, version) = self.read_snapshot_sync(settings)?;
+        let value = match update(&mut snapshot)? {
+            ResourceSnapshotUpdate::Unchanged(value) => return Ok(value),
+            ResourceSnapshotUpdate::Changed(value) => value,
+        };
+        if self.write_snapshot_sync(&snapshot, version, settings)? {
             return Ok(value);
         }
         Err(ResourceError::Storage {
@@ -200,6 +285,7 @@ impl ResourceGovernorStore for PgResourceGovernorStore {
 pub struct PgBudgetGateStore {
     pool: Arc<PgPool>,
     tenant_id: String,
+    settings: Arc<dyn PgResourceStoreSettingsSource>,
 }
 
 impl std::fmt::Debug for PgBudgetGateStore {
@@ -215,7 +301,16 @@ impl PgBudgetGateStore {
         Self {
             pool,
             tenant_id: tenant_id.into(),
+            settings: Arc::new(DefaultStoreSettings),
         }
+    }
+
+    pub fn with_settings_source(
+        mut self,
+        settings: Arc<dyn PgResourceStoreSettingsSource>,
+    ) -> Self {
+        self.settings = settings;
+        self
     }
 
     // Every caller verifies the indexed envelope before trusting the payload.
@@ -274,6 +369,7 @@ impl PgBudgetGateStore {
             |reason| BudgetGateError::Storage {
                 reason: reason.to_owned(),
             },
+            self.settings.snapshot(),
         )
     }
 
@@ -347,6 +443,7 @@ impl BudgetGateStore for PgBudgetGateStore {
             |reason| BudgetGateError::Storage {
                 reason: reason.to_owned(),
             },
+            self.settings.snapshot(),
         )
     }
 
@@ -410,6 +507,7 @@ impl BudgetGateStore for PgBudgetGateStore {
             |reason| BudgetGateError::Storage {
                 reason: reason.to_owned(),
             },
+            self.settings.snapshot(),
         )
     }
 
@@ -460,6 +558,7 @@ impl BudgetGateStore for PgBudgetGateStore {
             |reason| BudgetGateError::Storage {
                 reason: reason.to_owned(),
             },
+            self.settings.snapshot(),
         )
     }
 
@@ -495,6 +594,7 @@ impl BudgetGateStore for PgBudgetGateStore {
             |reason| BudgetGateError::Storage {
                 reason: reason.to_owned(),
             },
+            self.settings.snapshot(),
         )
     }
 }

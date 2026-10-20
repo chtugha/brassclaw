@@ -4,7 +4,8 @@
 //! [`LoopModelBudgetAccountant`] used by production composition. It estimates
 //! USD cost per model-backed work item from a [`ModelCostTable`] (provider-supplied
 //! cost-per-token × model max-output × overestimate factor), reserves against
-//! a [`ResourceGovernor`], and reconciles or releases on `post_model_work`.
+//! a [`ResourceGovernor`], and reconciles actual usage. Unknown provider outcomes
+//! retain their hold; only proved unsubmitted work can be released.
 //!
 //! It is *not* the gate handler — when reservation returns
 //! [`ResourceError::RequiresApproval`], the accountant surfaces a sanitized
@@ -38,31 +39,33 @@ use brassclaw_resources::{
 use brassclaw_turns::TurnRunId;
 use brassclaw_turns::run_profile::{
     AgentLoopHostErrorKind, LoopModelBudgetAccountant, LoopModelGatewayError, LoopModelRequest,
-    LoopModelResponse, LoopRunContext, ModelCallOutcome, ModelProfileId, ModelWorkOutcome,
+    LoopModelResponse, LoopModelUsage, LoopRunContext, ModelCallOutcome, ModelWorkOutcome,
     ModelWorkRequest,
 };
 use chrono::Utc;
 use dashmap::{DashMap, DashSet};
 use rust_decimal::Decimal;
 
-use crate::budget_cost_table::{ModelCost, ModelCostTable};
+use crate::budget_cost_table::{
+    ModelCost, ModelCostTable, ModelQuoteSettings, ModelQuoteSettingsSource,
+};
 use crate::budget_seeding::BudgetSeedingPolicy;
 
 /// Production budget accountant.
 ///
 /// Wraps any [`ResourceGovernor`] with model-work hooks: `pre_model_work`
-/// reserves an estimated worst-case cost, `post_model_work` reconciles
-/// (success) or releases (failure). The token estimate is approximated from
+/// reserves an estimated worst-case cost, `post_model_work` reconciles success
+/// or retains unknown spend. The token estimate is approximated from
 /// the neutral work request; refining it is a follow-up enhancement (it does
 /// not change correctness because reconcile can consume actual usage).
 pub struct GovernorBackedAccountant {
     governor: Arc<dyn ResourceGovernor>,
     cost_table: Arc<dyn ModelCostTable>,
     overestimate_factor: Decimal,
+    quote_settings: Option<Arc<dyn ModelQuoteSettingsSource>>,
     /// Cost to charge when the cost table has no entry for a model.
     /// Defaults to a conservative non-zero estimate (~GPT-4o pricing,
-    /// `input=$0.000003 / token`, `output=$0.000012 / token`,
-    /// `max_output=8 KiB`) so a misconfigured route or new paid model
+    /// with an independently configured output estimate) so an unknown model
     /// never silently reconciles to zero USD (review feedback:
     /// Medium #5). Callers that genuinely want zero-cost (Ollama, free
     /// tier) wire a `ZeroCostTable` instead.
@@ -77,9 +80,8 @@ pub struct GovernorBackedAccountant {
     /// Tracks in-flight reservations per run so `post_model_work` can
     /// reconcile/release the matching reservation without the caller
     /// threading state through the loop port. Stores the original estimate
-    /// alongside the id so reconcile can fall back to the estimated USD
-    /// as the recorded actual until provider-supplied token usage threads
-    /// through the loop layer.
+    /// alongside its configured rate. Provider meters use that retained rate;
+    /// missing meters still take the legacy conservative estimated-debit path.
     in_flight: Arc<DashMap<TurnRunId, InFlightReservation>>,
     // Claim before contacting the governor; no map lock spans external work.
     reserving: Arc<DashSet<TurnRunId>>,
@@ -106,9 +108,27 @@ pub struct GovernorBackedAccountant {
 struct InFlightReservation {
     id: ResourceReservationId,
     estimate: ResourceEstimate,
+    quote_settings_revision: u64,
+    /// Exact configured rate captured with this work's reservation. Never
+    /// resolve a replacement rate during settlement or retained reconciliation.
+    quoted_cost: ModelCost,
     retained_usage: Option<ResourceUsage>,
     retained_response: Option<LoopModelResponse>,
     retained_request: Option<ModelWorkRequest>,
+    /// Claim dispatch or cancellation before entering external work. After
+    /// dispatch is claimed, errors and cancellation cannot establish zero spend.
+    dispatch_state: DispatchState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DispatchState {
+    /// Durable admission is not acknowledged yet; dispatch is forbidden.
+    Reserving,
+    Reserved,
+    MayHaveDispatched,
+    /// Claim cancellation before external governor I/O so another caller
+    /// cannot begin dispatch while the unsubmitted reservation is released.
+    Releasing,
 }
 
 impl std::fmt::Debug for GovernorBackedAccountant {
@@ -122,11 +142,19 @@ impl std::fmt::Debug for GovernorBackedAccountant {
 }
 
 impl GovernorBackedAccountant {
+    /// Settlement/release may finish after another observer has closed the old
+    /// hold. Never remove a successor reservation merely because its run matches.
+    fn forget_reservation(&self, context: &LoopRunContext, id: ResourceReservationId) {
+        self.in_flight
+            .remove_if(&context.run_id, |_, current| current.id == id);
+    }
+
     pub fn new(governor: Arc<dyn ResourceGovernor>, cost_table: Arc<dyn ModelCostTable>) -> Self {
         Self {
             governor,
             cost_table,
             overestimate_factor: DEFAULT_OVERESTIMATE_FACTOR,
+            quote_settings: None,
             in_flight: Arc::new(DashMap::new()),
             reserving: Arc::new(DashSet::new()),
             seeding_policy: None,
@@ -154,6 +182,13 @@ impl GovernorBackedAccountant {
     /// see a single ordered stream.
     pub fn with_event_sink(mut self, sink: Arc<dyn BudgetEventSink>) -> Self {
         self.event_sink = sink;
+        self
+    }
+
+    /// Bind acknowledged reservation estimates. Isolated nested work keeps the
+    /// same source, while accepted reservations retain their captured quote.
+    pub fn with_quote_settings(mut self, settings: Arc<dyn ModelQuoteSettingsSource>) -> Self {
+        self.quote_settings = Some(settings);
         self
     }
 
@@ -273,7 +308,26 @@ impl GovernorBackedAccountant {
         Ok(())
     }
 
-    fn estimate_for(&self, request: &ModelWorkRequest) -> ResourceEstimate {
+    fn estimate_for(
+        &self,
+        request: &ModelWorkRequest,
+    ) -> Result<(ResourceEstimate, u64, ModelCost), LoopModelGatewayError> {
+        let settings = match &self.quote_settings {
+            Some(source) => source.snapshot(),
+            None => Ok(ModelQuoteSettings {
+                revision: 1,
+                output_tokens: brassclaw_host_api::MontyExecutionLimits::default()
+                    .model_quote_output_tokens,
+            }),
+        }
+        .and_then(ModelQuoteSettings::validate)
+        .map_err(|_| {
+            LoopModelGatewayError::new(
+                AgentLoopHostErrorKind::BudgetAccountingFailed,
+                "model quote settings unavailable",
+            )
+            .expect("static summary")
+        })?;
         // Fail-safe non-zero default — see `default_cost` field comment.
         // A missing entry is treated as a paid call so misconfigured
         // routes can't silently bypass daily caps.
@@ -282,7 +336,7 @@ impl GovernorBackedAccountant {
             .cost_for(&request.model_profile_id)
             .unwrap_or(self.default_cost);
         let max_output_tokens = if cost.max_output_tokens == 0 {
-            <dyn ModelCostTable>::DEFAULT_MAX_OUTPUT_TOKENS
+            u64::from(settings.output_tokens)
         } else {
             cost.max_output_tokens
         };
@@ -291,23 +345,31 @@ impl GovernorBackedAccountant {
         let output_usd = Decimal::from(output_tokens) * cost.output_per_token;
         let raw_usd = input_usd + output_usd;
         let estimated_usd = raw_usd * self.overestimate_factor;
-        ResourceEstimate {
-            usd: if estimated_usd > Decimal::ZERO {
-                Some(estimated_usd)
-            } else {
-                None
+        Ok((
+            ResourceEstimate {
+                usd: if estimated_usd > Decimal::ZERO {
+                    Some(estimated_usd)
+                } else {
+                    None
+                },
+                input_tokens: Some(request.estimated_input_tokens),
+                output_tokens: Some(output_tokens),
+                ..ResourceEstimate::default()
             },
-            input_tokens: Some(request.estimated_input_tokens),
-            output_tokens: Some(output_tokens),
-            ..ResourceEstimate::default()
-        }
+            settings.revision,
+            cost,
+        ))
     }
 
     fn reserve_estimate(
         &self,
         context: &LoopRunContext,
         estimate: ResourceEstimate,
-    ) -> Result<(), LoopModelGatewayError> {
+        quote_settings_revision: u64,
+        request: &ModelWorkRequest,
+        quoted_cost: ModelCost,
+    ) -> Result<ResourceReservationId, LoopModelGatewayError> {
+        let work_id = request.work_id.ok_or_else(missing_work_identity_error)?;
         // Claim the run before making any governor call. This prevents two
         // concurrent callers from creating holds and then racing to publish
         // one of them. The claim has its own short-lived guard, so governor
@@ -323,7 +385,8 @@ impl GovernorBackedAccountant {
             return Err(overlapping_reservation_error());
         }
 
-        let scope = self.resource_scope(context);
+        let mut scope = self.resource_scope(context);
+        scope.invocation_id = InvocationId::from_uuid(work_id.as_uuid());
         if self.seed_if_missing(&scope).is_err() {
             return Err(LoopModelGatewayError::new(
                 AgentLoopHostErrorKind::BudgetAccountingFailed,
@@ -331,7 +394,13 @@ impl GovernorBackedAccountant {
             )
             .map_err(internal_summary_error)?);
         }
-        let reservation_id = ResourceReservationId::new();
+        // Stable within this run and logical operation, distinct from native
+        // Tool reservations. The governor retains closed IDs, so a completed
+        // operation cannot acquire a new hold and replay under the same identity.
+        let mut identity = b"brassclaw-model-budget/1".to_vec();
+        identity.extend_from_slice(context.run_id.as_uuid().as_bytes());
+        let reservation_id =
+            ResourceReservationId::from_uuid(uuid::Uuid::new_v5(&work_id.as_uuid(), &identity));
         // Retain the address before durable I/O. A storage error can follow a
         // committed write; it must fence another quote instead of orphaning
         // the hold or dispatching/replaying model work without acknowledgement.
@@ -340,9 +409,12 @@ impl GovernorBackedAccountant {
             InFlightReservation {
                 id: reservation_id,
                 estimate: estimate.clone(),
+                quote_settings_revision,
+                quoted_cost,
                 retained_usage: None,
                 retained_response: None,
-                retained_request: None,
+                retained_request: Some(request.clone()),
+                dispatch_state: DispatchState::Reserving,
             },
         );
         match self
@@ -350,16 +422,24 @@ impl GovernorBackedAccountant {
             .reserve_with_id_and_outcome(scope, estimate.clone(), reservation_id)
         {
             Ok(outcome) => {
-                self.in_flight.insert(
-                    context.run_id,
-                    InFlightReservation {
-                        id: outcome.reservation.id,
-                        estimate,
-                        retained_usage: None,
-                        retained_response: None,
-                        retained_request: None,
-                    },
-                );
+                if outcome.reservation.id != reservation_id {
+                    return Err(unresolved_spend_error(reservation_id));
+                }
+                // Cancellation may have claimed or removed the original entry
+                // while reserve was committing. Never resurrect or overwrite it.
+                {
+                    let mut entry = self
+                        .in_flight
+                        .get_mut(&context.run_id)
+                        .ok_or_else(|| unresolved_spend_error(reservation_id))?;
+                    if entry.id != reservation_id
+                        || entry.retained_request.as_ref() != Some(request)
+                        || entry.dispatch_state != DispatchState::Reserving
+                    {
+                        return Err(unresolved_spend_error(reservation_id));
+                    }
+                    entry.dispatch_state = DispatchState::Reserved;
+                }
                 if !outcome.warnings.is_empty() {
                     tracing::debug!(
                         warnings = outcome.warnings.len(),
@@ -367,10 +447,10 @@ impl GovernorBackedAccountant {
                         "budget reservation crossed warn threshold"
                     );
                 }
-                Ok(())
+                Ok(outcome.reservation.id)
             }
             Err(ResourceError::RequiresApproval { needed, .. }) => {
-                self.in_flight.remove(&context.run_id);
+                self.forget_reservation(context, reservation_id);
                 // Side-effect: persist a pending gate when a store is
                 // wired. The error returned to the run is unchanged so
                 // existing callers still fail closed; the gate is what
@@ -387,7 +467,7 @@ impl GovernorBackedAccountant {
                 .map_err(internal_summary_error)?)
             }
             Err(ResourceError::LimitExceeded { denial, .. }) => {
-                self.in_flight.remove(&context.run_id);
+                self.forget_reservation(context, reservation_id);
                 Err(LoopModelGatewayError::new(
                     AgentLoopHostErrorKind::BudgetExceeded,
                     format!("budget exhausted for {}", denial.dimension),
@@ -395,7 +475,7 @@ impl GovernorBackedAccountant {
                 .map_err(internal_summary_error)?)
             }
             Err(ResourceError::InvalidEstimate { dimension, .. }) => {
-                self.in_flight.remove(&context.run_id);
+                self.forget_reservation(context, reservation_id);
                 Err(LoopModelGatewayError::new(
                     AgentLoopHostErrorKind::BudgetAccountingFailed,
                     format!("invalid estimate for {dimension}"),
@@ -409,7 +489,7 @@ impl GovernorBackedAccountant {
                         "budget admission outcome uncertain; reservation address retained; model dispatch denied"
                     );
                 } else {
-                    self.in_flight.remove(&context.run_id);
+                    self.forget_reservation(context, reservation_id);
                 }
                 Err(LoopModelGatewayError::new(
                     AgentLoopHostErrorKind::BudgetAccountingFailed,
@@ -418,6 +498,25 @@ impl GovernorBackedAccountant {
                 .map_err(internal_summary_error)?)
             }
         }
+    }
+
+    fn confirm_reserved_work(
+        &self,
+        context: &LoopRunContext,
+        id: ResourceReservationId,
+        request: &ModelWorkRequest,
+    ) -> Result<(), LoopModelGatewayError> {
+        let entry = self
+            .in_flight
+            .get(&context.run_id)
+            .ok_or_else(|| unresolved_spend_error(id))?;
+        if entry.id != id
+            || entry.dispatch_state != DispatchState::Reserved
+            || entry.retained_request.as_ref() != Some(request)
+        {
+            return Err(unresolved_spend_error(id));
+        }
+        Ok(())
     }
 
     fn resource_scope(&self, context: &LoopRunContext) -> ResourceScope {
@@ -444,6 +543,7 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
             governor: Arc::clone(&self.governor),
             cost_table: Arc::clone(&self.cost_table),
             overestimate_factor: self.overestimate_factor,
+            quote_settings: self.quote_settings.clone(),
             default_cost: self.default_cost,
             event_sink: Arc::clone(&self.event_sink),
             in_flight: Arc::new(DashMap::new()),
@@ -460,25 +560,53 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
         context: &LoopRunContext,
         request: &ModelWorkRequest,
     ) -> Result<(), LoopModelGatewayError> {
-        self.reserve_estimate(context, self.estimate_for(request))?;
-        if let Some(mut entry) = self.in_flight.get_mut(&context.run_id) {
-            entry.retained_request = Some(request.clone());
+        request.work_id.ok_or_else(missing_work_identity_error)?;
+        let (estimate, revision, cost) = self.estimate_for(request)?;
+        let id = self.reserve_estimate(context, estimate, revision, request, cost)?;
+        self.confirm_reserved_work(context, id, request)
+    }
+
+    fn model_work_dispatching(
+        &self,
+        context: &LoopRunContext,
+        request: &ModelWorkRequest,
+    ) -> Result<(), LoopModelGatewayError> {
+        let mut entry = self
+            .in_flight
+            .get_mut(&context.run_id)
+            .ok_or_else(overlapping_reservation_error)?;
+        if entry.retained_request.as_ref() != Some(request)
+            || entry.dispatch_state != DispatchState::Reserved
+        {
+            return Err(overlapping_reservation_error());
         }
+        entry.dispatch_state = DispatchState::MayHaveDispatched;
         Ok(())
     }
 
     async fn post_model_work(
         &self,
         context: &LoopRunContext,
-        _request: &ModelWorkRequest,
+        request: &ModelWorkRequest,
         outcome: ModelWorkOutcome,
     ) -> Result<(), LoopModelGatewayError> {
         // Peek without removing — only clear the in-flight entry after the
-        // governor confirms the reconcile/release succeeded. Otherwise a
+        // governor confirms reconciliation succeeded. Otherwise a
         // transient storage error would orphan the reservation in the
         // governor with no id left here to retry or audit.
-        let entry = match self.in_flight.get(&context.run_id) {
-            Some(e) => e.clone(),
+        let entry = match self.in_flight.get_mut(&context.run_id) {
+            Some(mut e) => {
+                if e.retained_request.as_ref() != Some(request)
+                    || matches!(
+                        e.dispatch_state,
+                        DispatchState::Reserving | DispatchState::Releasing
+                    )
+                {
+                    return Err(unresolved_spend_error(e.id));
+                }
+                e.dispatch_state = DispatchState::MayHaveDispatched;
+                e.clone()
+            }
             None => {
                 // No reservation registered — pre_model_work must have
                 // failed before reservation succeeded.
@@ -488,14 +616,25 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
         let reservation_id = entry.id;
         let result = match outcome {
             ModelWorkOutcome::Success(usage) => {
-                let usage = usage_for_model_work(usage, &entry.estimate);
+                let usage = usage_for_model_work(usage, &entry.estimate, entry.quoted_cost);
+                let mut retained = self
+                    .in_flight
+                    .get_mut(&context.run_id)
+                    .ok_or_else(|| unresolved_spend_error(reservation_id))?;
+                if retained.id != reservation_id
+                    || retained.retained_request.as_ref() != Some(request)
+                {
+                    return Err(unresolved_spend_error(reservation_id));
+                }
+                let usage = retained.retained_usage.get_or_insert(usage).clone();
+                drop(retained);
                 self.governor.reconcile(reservation_id, usage).map(|_| ())
             }
-            ModelWorkOutcome::Failure(_) => self.governor.release(reservation_id).map(|_| ()),
+            ModelWorkOutcome::Failure(_) => return Err(unresolved_spend_error(reservation_id)),
         };
         match result {
             Ok(()) => {
-                self.in_flight.remove(&context.run_id);
+                self.forget_reservation(context, reservation_id);
                 Ok(())
             }
             Err(err) => {
@@ -503,6 +642,7 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
                     error = ?err,
                     run_id = ?context.run_id,
                     reservation_id = ?reservation_id,
+                    quote_settings_revision = entry.quote_settings_revision,
                     "budget accounting failed during post-model-call reconciliation; \
                      reservation id retained for retry/cleanup"
                 );
@@ -535,15 +675,26 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
     async fn post_model_work_result(
         &self,
         context: &LoopRunContext,
-        _request: &ModelWorkRequest,
+        request: &ModelWorkRequest,
         outcome: ModelCallOutcome<'_>,
     ) -> Result<(), LoopModelGatewayError> {
         // Peek without removing — only clear the in-flight entry after the
-        // governor confirms the reconcile/release succeeded. Otherwise a
+        // governor confirms reconciliation succeeded. Otherwise a
         // transient storage error would orphan the reservation in the
         // governor with no id left here to retry or audit.
-        let entry = match self.in_flight.get(&context.run_id) {
-            Some(e) => e.clone(),
+        let entry = match self.in_flight.get_mut(&context.run_id) {
+            Some(mut e) => {
+                if e.retained_request.as_ref() != Some(request)
+                    || matches!(
+                        e.dispatch_state,
+                        DispatchState::Reserving | DispatchState::Releasing
+                    )
+                {
+                    return Err(unresolved_spend_error(e.id));
+                }
+                e.dispatch_state = DispatchState::MayHaveDispatched;
+                e.clone()
+            }
             None => {
                 // No reservation registered — pre_model_call must have
                 // failed before reservation succeeded.
@@ -553,18 +704,24 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
         let reservation_id = entry.id;
         let result = match outcome {
             ModelCallOutcome::Success(response) => {
-                let usage = usage_for_response(
-                    response,
-                    &entry.estimate,
-                    self.cost_table.as_ref(),
-                    &response.effective_model_profile_id,
-                    &self.default_cost,
-                );
+                if response.effective_model_profile_id != request.model_profile_id {
+                    return Err(unresolved_spend_error(reservation_id));
+                }
+                let usage = usage_for_response(response, &entry.estimate, entry.quoted_cost);
                 let usage = {
                     let mut retained = self
                         .in_flight
                         .get_mut(&context.run_id)
-                        .expect("reservation retained during model accounting");
+                        .ok_or_else(|| unresolved_spend_error(reservation_id))?;
+                    if retained.id != reservation_id
+                        || retained.retained_request.as_ref() != Some(request)
+                        || retained
+                            .retained_response
+                            .as_ref()
+                            .is_some_and(|original| original != response)
+                    {
+                        return Err(unresolved_spend_error(reservation_id));
+                    }
                     retained
                         .retained_response
                         .get_or_insert_with(|| response.clone());
@@ -572,11 +729,11 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
                 };
                 self.governor.reconcile(reservation_id, usage).map(|_| ())
             }
-            ModelCallOutcome::Failure(_) => self.governor.release(reservation_id).map(|_| ()),
+            ModelCallOutcome::Failure(_) => return Err(unresolved_spend_error(reservation_id)),
         };
         match result {
             Ok(()) => {
-                self.in_flight.remove(&context.run_id);
+                self.forget_reservation(context, reservation_id);
                 Ok(())
             }
             Err(err) => {
@@ -584,6 +741,7 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
                     error = ?err,
                     run_id = ?context.run_id,
                     reservation_id = ?reservation_id,
+                    quote_settings_revision = entry.quote_settings_revision,
                     "budget accounting failed during post-model-call reconciliation; \
                      reservation id retained for retry/cleanup"
                 );
@@ -605,6 +763,7 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
         // Only the isolated owner may call this after actual host quiescence.
         let entry = self.in_flight.get(&context.run_id)?.clone();
         if entry.retained_request.as_ref() != Some(request)
+            || response.effective_model_profile_id != request.model_profile_id
             || entry
                 .retained_response
                 .as_ref()
@@ -616,24 +775,22 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
             )
             .expect("classified summary")));
         }
-        let usage = entry.retained_usage.unwrap_or_else(|| {
-            usage_for_response(
-                response,
-                &entry.estimate,
-                self.cost_table.as_ref(),
-                &response.effective_model_profile_id,
-                &self.default_cost,
-            )
-        });
+        let usage = entry
+            .retained_usage
+            .unwrap_or_else(|| usage_for_response(response, &entry.estimate, entry.quoted_cost));
         {
             let mut retained = self.in_flight.get_mut(&context.run_id)?;
+            if retained.id != entry.id || retained.retained_request.as_ref() != Some(request) {
+                return Some(Err(unresolved_spend_error(entry.id)));
+            }
+            retained.dispatch_state = DispatchState::MayHaveDispatched;
             retained.retained_usage = Some(usage.clone());
             retained.retained_response = Some(response.clone());
         }
         let result = self.governor.reconcile_retained(entry.id, usage)?;
         Some(match result {
             Ok(_) => {
-                self.in_flight.remove(&context.run_id);
+                self.forget_reservation(context, entry.id);
                 Ok(())
             }
             Err(_) => Err(LoopModelGatewayError::new(
@@ -644,32 +801,32 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
         })
     }
 
-    /// Synchronous best-effort release for cancellation paths.
-    ///
-    /// `HostManagedLoopModelPort`'s RAII guard calls this when the
-    /// model future is dropped mid-await — before `post_model_call`
-    /// could run, or while `post_model_call` is still awaiting.
-    ///
-    /// Idempotency / failure handling:
-    ///
-    /// - We **peek** the in-flight entry first, attempt the governor
-    ///   release, and only remove the entry on success. On a transient
-    ///   storage error the entry stays in `in_flight` with a warning
-    ///   logged, so a later retry / cleanup hook still has the
-    ///   reservation id needed to close the hold (review feedback:
-    ///   Medium #4).
-    /// - This method is safe to call after a successful
-    ///   `post_model_call`. `post_model_call` removes the entry on
-    ///   success, so a follow-up `release_in_flight` short-circuits
-    ///   on the `is_none` branch (review feedback: Medium #3 — the
-    ///   RAII guard stays armed across `post_model_call`'s await).
-    fn release_in_flight(&self, context: &LoopRunContext) {
-        let Some(entry) = self.in_flight.get(&context.run_id).map(|e| e.clone()) else {
-            return;
+    /// Release only proved unsubmitted work. After dispatch could have begun,
+    /// preserve the original governor hold, request and any actual response.
+    /// A failed or lost settlement acknowledgement must not release spend.
+    fn release_in_flight(&self, context: &LoopRunContext, request: &ModelWorkRequest) {
+        let entry = {
+            let Some(mut entry) = self.in_flight.get_mut(&context.run_id) else {
+                return;
+            };
+            if entry.retained_request.as_ref() != Some(request) {
+                return;
+            }
+            if entry.dispatch_state == DispatchState::MayHaveDispatched {
+                tracing::warn!(
+                    run_id = ?context.run_id,
+                    reservation_id = ?entry.id,
+                    "model work cancelled after dispatch boundary; budget reservation retained for reconciliation"
+                );
+                return;
+            }
+            entry.dispatch_state = DispatchState::Releasing;
+            entry.clone()
         };
+        // No map lock spans external I/O. The releasing state fences dispatch.
         match self.governor.release(entry.id) {
             Ok(_) => {
-                self.in_flight.remove(&context.run_id);
+                self.forget_reservation(context, entry.id);
             }
             Err(error) => {
                 tracing::warn!(
@@ -682,6 +839,26 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
             }
         }
     }
+}
+
+fn missing_work_identity_error() -> LoopModelGatewayError {
+    LoopModelGatewayError::new(
+        AgentLoopHostErrorKind::InvalidInvocation,
+        "model work identity is missing",
+    )
+    .expect("classified summary")
+}
+
+fn unresolved_spend_error(id: ResourceReservationId) -> LoopModelGatewayError {
+    LoopModelGatewayError::new(
+        AgentLoopHostErrorKind::BudgetAccountingFailed,
+        "model spend unresolved",
+    )
+    .expect("classified summary")
+    .with_diagnostic_ref(
+        brassclaw_turns::LoopDiagnosticRef::new(format!("diag:model-budget-{id}"))
+            .expect("internal reservation reference"),
+    )
 }
 
 struct ReservationClaim<'a> {
@@ -707,62 +884,27 @@ fn overlapping_reservation_error() -> LoopModelGatewayError {
 fn usage_for_response(
     response: &LoopModelResponse,
     estimate: &ResourceEstimate,
-    cost_table: &dyn ModelCostTable,
-    effective_model: &ModelProfileId,
-    default_cost: &ModelCost,
+    cost: ModelCost,
 ) -> ResourceUsage {
-    // Prefer provider-reported usage when the gateway threaded real numbers
-    // through `LoopModelResponse::usage`. Compute actual USD from the cost
-    // table for the effective model so daily caps deplete by real spend.
-    //
-    // When the gateway did not surface usage (replay stubs, providers
-    // without a usage object), fall back to reconciling the reservation
-    // estimate. That is conservative (the estimate carries the
-    // overestimate factor) but matches the security invariant the cascade
-    // depends on — daily caps still deplete, just by an upper bound.
-    //
-    // When the cost table has no entry for the effective model we use
-    // the accountant's `default_cost` rather than zero, so a
-    // misconfigured route or new paid model never silently reconciles to
-    // zero USD (review feedback: Medium #5).
+    // Apply the original configured quote to the provider's reported meter.
+    // The caller verifies the effective profile against the retained request;
+    // a live table edit must never reprice work that has already been admitted.
+    // Missing meters still use the existing conservative estimated debit below.
+    // This retained in-process rate is not durable billing provenance.
     let output_bytes = response
         .chunks
         .iter()
         .map(|chunk| chunk.safe_text_delta.len() as u64)
         .sum();
     if let Some(usage) = response.usage {
-        let cost = cost_table
-            .cost_for(effective_model)
-            .unwrap_or(*default_cost);
-        // Provider-supplied token counts split across fresh input,
-        // cache creation, cache read, and output. Cache multipliers are
-        // already inherent in `cost` (see `ModelCost::cache_*_cost`).
-        // Providers without caching return 0 for cache fields, so the
-        // multiplier math yields zero cost naturally — no provider guard
-        // needed.
-        let input_tokens = u64::from(usage.input_tokens);
-        let output_tokens = u64::from(usage.output_tokens);
-        let cache_creation_input_tokens = u64::from(usage.cache_creation_input_tokens);
-        let cache_read_input_tokens = u64::from(usage.cache_read_input_tokens);
-        let actual_usd = cost.fresh_input_cost(input_tokens)
-            + cost.cache_write_cost(cache_creation_input_tokens)
-            + cost.cache_read_cost(cache_read_input_tokens)
-            + cost.output_cost(output_tokens);
-        return ResourceUsage {
-            usd: actual_usd,
-            input_tokens,
-            output_tokens,
-            wall_clock_ms: 0,
-            output_bytes,
-            network_egress_bytes: 0,
-            process_count: 0,
-        };
+        return priced_provider_usage(usage, cost, output_bytes, 0);
     }
-    let chunks = response.chunks.len() as u64;
+    // Legacy estimated debit, never a transport-chunk token count. Durable
+    // metering provenance and unresolved usage remain a separate cutover.
     ResourceUsage {
         usd: estimate.usd.unwrap_or(Decimal::ZERO),
         input_tokens: estimate.input_tokens.unwrap_or(0),
-        output_tokens: chunks,
+        output_tokens: estimate.output_tokens.unwrap_or(0),
         wall_clock_ms: 0,
         output_bytes,
         network_egress_bytes: 0,
@@ -773,23 +915,45 @@ fn usage_for_response(
 fn usage_for_model_work(
     usage: brassclaw_turns::run_profile::ModelWorkUsage,
     estimate: &ResourceEstimate,
+    cost: ModelCost,
 ) -> ResourceUsage {
-    // `ModelWorkUsage` (consumed by non-loop model work such as system
-    // inference and async tool calls) intentionally carries only
-    // `output_tokens` / `output_bytes` / `wall_clock_ms` — there is no
-    // analogous `LoopModelUsage::input_tokens` or cache-field surface here,
-    // so all input-token and USD accounting must come from the original
-    // reservation estimate. Reconciling the estimate as the recorded USD
-    // spend is conservative (the estimate carries the over-reserve factor)
-    // and ensures daily USD budgets still deplete for these non-loop calls.
+    if let Some(tokens) = usage.token_usage {
+        return priced_provider_usage(tokens, cost, usage.output_bytes, usage.wall_clock_ms);
+    }
+    // Legacy conservative debit for a successful response without a meter.
+    // It is not provider-reported consumption. Provenance/durable quote and
+    // unknown-meter settlement remain a coordinated accounting migration.
     ResourceUsage {
         usd: estimate.usd.unwrap_or(Decimal::ZERO),
         input_tokens: estimate.input_tokens.unwrap_or(0),
-        output_tokens: usage
-            .output_tokens
-            .unwrap_or_else(|| estimate.output_tokens.unwrap_or(0)),
+        output_tokens: estimate.output_tokens.unwrap_or(0),
         wall_clock_ms: usage.wall_clock_ms,
         output_bytes: usage.output_bytes,
+        network_egress_bytes: 0,
+        process_count: 0,
+    }
+}
+
+// Both callers preserve all four original counters. The configured rate table
+// prices those observations; this is not an assertion of provider billing or
+// retained pricing/route provenance when a fallback row is used.
+fn priced_provider_usage(
+    usage: LoopModelUsage,
+    cost: ModelCost,
+    output_bytes: u64,
+    wall_clock_ms: u64,
+) -> ResourceUsage {
+    let input_tokens = u64::from(usage.input_tokens);
+    let output_tokens = u64::from(usage.output_tokens);
+    ResourceUsage {
+        usd: cost.fresh_input_cost(input_tokens)
+            + cost.cache_write_cost(u64::from(usage.cache_creation_input_tokens))
+            + cost.cache_read_cost(u64::from(usage.cache_read_input_tokens))
+            + cost.output_cost(output_tokens),
+        input_tokens,
+        output_tokens,
+        wall_clock_ms,
+        output_bytes,
         network_egress_bytes: 0,
         process_count: 0,
     }
@@ -849,13 +1013,7 @@ mod tests {
             usage: None,
         };
         let entry = accountant.in_flight.get(&context.run_id).unwrap().clone();
-        let actual = usage_for_response(
-            &response,
-            &entry.estimate,
-            accountant.cost_table.as_ref(),
-            &response.effective_model_profile_id,
-            &accountant.default_cost,
-        );
+        let actual = usage_for_response(&response, &entry.estimate, entry.quoted_cost);
         // Simulate a committed settlement whose acknowledgement was lost.
         governor.reconcile(entry.id, actual.clone()).unwrap();
         assert!(
@@ -865,6 +1023,13 @@ mod tests {
                 .is_err()
         );
         assert!(accountant.in_flight.contains_key(&context.run_id));
+        // Cancellation after a lost settlement acknowledgement must not
+        // release the already committed spend or forget its original address.
+        accountant.release_in_flight(&context, &work);
+        assert_eq!(
+            accountant.in_flight.get(&context.run_id).unwrap().id,
+            entry.id
+        );
         let mut changed = response.clone();
         changed
             .safe_reasoning_deltas
@@ -963,6 +1128,8 @@ mod tests {
 
     fn sample_request() -> LoopModelRequest {
         LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: vec![],
             surface_version: None,
             model_preference: None,
@@ -978,6 +1145,131 @@ mod tests {
         fn cost_for(&self, _: &ModelProfileId) -> Option<ModelCost> {
             Some(self.0)
         }
+    }
+
+    #[tokio::test]
+    async fn admitted_model_work_keeps_its_rate_after_table_changes() {
+        // Mutable host policy around the actual table/governor. No provider I/O
+        // is replaced: this test exercises reservation and settlement arithmetic.
+        #[derive(Debug, Default)]
+        struct Rates(parking_lot::RwLock<crate::StaticModelCostTable>);
+        impl ModelCostTable for Rates {
+            fn cost_for(&self, model: &ModelProfileId) -> Option<ModelCost> {
+                self.0.read().cost_for(model)
+            }
+        }
+        let governor = Arc::new(InMemoryResourceGovernor::new());
+        let rates = Arc::new(Rates::default());
+        let accountant = GovernorBackedAccountant::new(governor.clone(), rates.clone());
+        let context = run_context();
+        let profile = context.resolved_run_profile.model_profile_id.clone();
+        let account = ResourceAccount::user(
+            context.scope.tenant_id.clone(),
+            UserId::new("acct-user").unwrap(),
+        );
+        governor
+            .set_limit(account.clone(), ResourceLimits::default())
+            .unwrap();
+        let original = ModelCost::with_cache_pricing(dec!(0.01), dec!(0.10), 128);
+        let replacement = ModelCost::with_cache_pricing(dec!(1.00), dec!(10.00), 128);
+        let tokens = LoopModelUsage {
+            input_tokens: 7,
+            output_tokens: 3,
+            cache_read_input_tokens: 11,
+            cache_creation_input_tokens: 5,
+        };
+        for mode in 0..3 {
+            rates.0.write().insert(profile.clone(), original);
+            let mut work = ModelWorkRequest::for_assistant(&context, &sample_request());
+            if mode == 1 {
+                work.kind = brassclaw_turns::run_profile::ModelWorkKind::SempaiReview;
+            }
+            accountant.pre_model_work(&context, &work).await.unwrap();
+            accountant.model_work_dispatching(&context, &work).unwrap();
+            rates.0.write().insert(profile.clone(), replacement);
+            if mode == 1 {
+                accountant
+                    .post_model_work(
+                        &context,
+                        &work,
+                        ModelWorkOutcome::Success(brassclaw_turns::run_profile::ModelWorkUsage {
+                            token_usage: Some(tokens),
+                            output_bytes: 0,
+                            wall_clock_ms: 0,
+                        }),
+                    )
+                    .await
+                    .unwrap();
+            } else {
+                let response = LoopModelResponse {
+                    chunks: vec![],
+                    safe_reasoning_deltas: vec![],
+                    output: brassclaw_turns::run_profile::ParentLoopOutput::AssistantReply(
+                        brassclaw_turns::run_profile::AssistantReply {
+                            content: "ok".into(),
+                        },
+                    ),
+                    effective_model_profile_id: profile.clone(),
+                    usage: Some(tokens),
+                };
+                let mut mismatched = response.clone();
+                mismatched.effective_model_profile_id = ModelProfileId::new("other-rate").unwrap();
+                assert!(
+                    accountant
+                        .post_model_work_result(
+                            &context,
+                            &work,
+                            ModelCallOutcome::Success(&mismatched)
+                        )
+                        .await
+                        .is_err()
+                );
+                assert!(
+                    accountant
+                        .reconcile_retained_model_work(&context, &work, &mismatched)
+                        .await
+                        .unwrap()
+                        .is_err()
+                );
+                assert!(accountant.in_flight.contains_key(&context.run_id));
+                if mode == 2 {
+                    accountant
+                        .reconcile_retained_model_work(&context, &work, &response)
+                        .await
+                        .unwrap()
+                        .unwrap();
+                } else {
+                    accountant
+                        .post_model_work_result(
+                            &context,
+                            &work,
+                            ModelCallOutcome::Success(&response),
+                        )
+                        .await
+                        .unwrap();
+                }
+            }
+            let ledger = governor.account_snapshot(&account).unwrap().unwrap().ledger;
+            assert_eq!(ledger.spent.usd, dec!(0.4435) * Decimal::from(mode + 1));
+            assert_eq!(
+                ledger.reserved,
+                brassclaw_resources::ResourceTally::default()
+            );
+            assert!(!accountant.in_flight.contains_key(&context.run_id));
+        }
+        // Successors capture the new rate, while all completed holds above have
+        // been released. Keeping a quote never freezes future policy edits.
+        let work = ModelWorkRequest::for_assistant(&context, &sample_request());
+        accountant.pre_model_work(&context, &work).await.unwrap();
+        assert_eq!(
+            accountant
+                .in_flight
+                .get(&context.run_id)
+                .unwrap()
+                .quoted_cost,
+            replacement
+        );
+        accountant.release_in_flight(&context, &work);
     }
 
     #[tokio::test]
@@ -1008,10 +1300,8 @@ mod tests {
                 cache_read_multiplier_milli: 0,
             })),
         );
-        accountant
-            .pre_model_call(&context, &sample_request())
-            .await
-            .unwrap();
+        let request = sample_request();
+        accountant.pre_model_call(&context, &request).await.unwrap();
         assert_eq!(
             governor
                 .account_snapshot(&account)
@@ -1024,7 +1314,10 @@ mod tests {
         );
         assert_eq!(accountant.default_cost.input_per_token, dec!(0.0000025));
         assert_eq!(accountant.default_cost.output_per_token, dec!(0.00001));
-        accountant.release_in_flight(&context);
+        accountant.release_in_flight(
+            &context,
+            &ModelWorkRequest::for_assistant(&context, &request),
+        );
         assert_eq!(
             governor
                 .account_snapshot(&account)
@@ -1181,8 +1474,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_model_call_failure_releases_reservation() {
-        let governor: Arc<dyn ResourceGovernor> = Arc::new(InMemoryResourceGovernor::new());
+    async fn provider_failure_keeps_durable_hold_until_actual_response_reconciliation() {
+        use brassclaw_resources::{JsonFileResourceGovernorStore, PersistentResourceGovernor};
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("governor.json");
+        let governor = Arc::new(PersistentResourceGovernor::new(
+            JsonFileResourceGovernorStore::new(&path),
+        ));
         let cost = ModelCost {
             input_per_token: Decimal::ZERO,
             output_per_token: Decimal::ZERO,
@@ -1194,14 +1492,62 @@ mod tests {
         let context = run_context();
         let request = sample_request();
         accountant.pre_model_call(&context, &request).await.unwrap();
+        let work = ModelWorkRequest::for_assistant(&context, &request);
+        accountant.model_work_dispatching(&context, &work).unwrap();
+        let id = accountant.in_flight.get(&context.run_id).unwrap().id;
+        let account = ResourceAccount::tenant(context.scope.tenant_id.clone());
+        let before = governor.account_snapshot(&account).unwrap().unwrap().ledger;
+        assert!(before.reserved.input_tokens > 0);
         let failure =
             LoopModelGatewayError::new(AgentLoopHostErrorKind::Unavailable, "model unavailable")
                 .unwrap();
-        accountant
+        let unresolved = accountant
             .post_model_call(&context, &request, ModelCallOutcome::Failure(&failure))
             .await
+            .unwrap_err();
+        assert_eq!(
+            unresolved.kind,
+            AgentLoopHostErrorKind::BudgetAccountingFailed
+        );
+        assert_eq!(
+            unresolved.diagnostic_ref.unwrap().as_str(),
+            format!("diag:model-budget-{id}")
+        );
+        accountant.release_in_flight(&context, &work);
+        assert_eq!(accountant.in_flight.get(&context.run_id).unwrap().id, id);
+        assert!(accountant.pre_model_call(&context, &request).await.is_err());
+        // Reopening the real persistent governor keeps the unresolved hold.
+        // This proves hold durability, not restoration of accountant ownership.
+        let reopened = PersistentResourceGovernor::new(JsonFileResourceGovernorStore::new(&path));
+        let after = reopened.account_snapshot(&account).unwrap().unwrap().ledger;
+        assert_eq!(before.reserved, after.reserved);
+        assert_eq!(before.spent, after.spent);
+        let response = LoopModelResponse {
+            chunks: vec![],
+            safe_reasoning_deltas: vec![],
+            output: brassclaw_turns::run_profile::ParentLoopOutput::AssistantReply(
+                brassclaw_turns::run_profile::AssistantReply {
+                    content: "observed later".into(),
+                },
+            ),
+            effective_model_profile_id: context.resolved_run_profile.model_profile_id.clone(),
+            usage: Some(brassclaw_turns::run_profile::LoopModelUsage {
+                input_tokens: 7,
+                output_tokens: 3,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+            }),
+        };
+        accountant
+            .reconcile_retained_model_work(&context, &work, &response)
+            .await
+            .unwrap()
             .unwrap();
         assert!(!accountant.in_flight.contains_key(&context.run_id));
+        let settled = reopened.account_snapshot(&account).unwrap().unwrap().ledger;
+        assert_eq!(settled.reserved.input_tokens, 0);
+        assert_eq!(settled.spent.input_tokens, 7);
+        assert_eq!(settled.spent.output_tokens, 3);
     }
 
     #[tokio::test]
@@ -1210,8 +1556,9 @@ mod tests {
         let accountant = GovernorBackedAccountant::new(governor, Arc::new(ZeroCostTable));
         let context = run_context();
         let request = sample_request();
-        let estimate =
-            accountant.estimate_for(&ModelWorkRequest::for_assistant(&context, &request));
+        let (estimate, _, _) = accountant
+            .estimate_for(&ModelWorkRequest::for_assistant(&context, &request))
+            .unwrap();
         assert_eq!(estimate.usd, None);
         assert!(estimate.input_tokens.is_some());
     }
@@ -1405,28 +1752,428 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn release_in_flight_drains_orphan_reservation_on_cancellation() {
-        // Regression for #3841 follow-up "cancellation safety — reservation
-        // orphans on tokio cancel". When `stream_model` is dropped mid-await
-        // the RAII guard in `HostManagedLoopModelPort` calls
-        // `release_in_flight`, which must clear the per-run entry AND
-        // release the underlying reservation against the governor.
+    async fn system_work_reconciles_complete_reported_meter_including_cache_and_zero() {
+        use brassclaw_turns::run_profile::{
+            SystemInferenceIdentity, SystemInferenceRequest, SystemInferenceResponse,
+            SystemInferenceTaskId, SystemPromptSource, SystemTaskKind,
+        };
+        let governor = Arc::new(InMemoryResourceGovernor::new());
+        let context = run_context();
+        let account = ResourceAccount::user(
+            context.scope.tenant_id.clone(),
+            UserId::new("acct-user").unwrap(),
+        );
+        governor
+            .set_limit(
+                account.clone(),
+                ResourceLimits {
+                    max_usd: Some(dec!(1000)),
+                    period: BudgetPeriod::Rolling24h,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let cost = ModelCost::with_cache_pricing(dec!(0.01), dec!(0.10), 128);
+        let table = crate::StaticModelCostTable::new()
+            .with_entry(context.resolved_run_profile.model_profile_id.clone(), cost);
+        let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(table));
+        let mut previous = None;
+        for tokens in [
+            LoopModelUsage {
+                input_tokens: 7,
+                output_tokens: 3,
+                cache_read_input_tokens: 11,
+                cache_creation_input_tokens: 5,
+            },
+            LoopModelUsage::default(),
+        ] {
+            let request = SystemInferenceRequest {
+                task_id: SystemInferenceTaskId::new(),
+                identity: SystemInferenceIdentity {
+                    task_kind: SystemTaskKind::Compaction,
+                    prompt_source: SystemPromptSource::Static {
+                        prompt_id: "meter_test".to_string().try_into().unwrap(),
+                    },
+                    system_prompt: "Summarize".into(),
+                },
+                input_text: "complete data".into(),
+                max_input_tokens: 1000,
+                deadline_ms: 1000,
+            };
+            let work = ModelWorkRequest::for_system_inference(&context, &request);
+            accountant.pre_model_work(&context, &work).await.unwrap();
+            let id = accountant.in_flight.get(&context.run_id).unwrap().id;
+            if let Some(old) = previous {
+                accountant.forget_reservation(&context, old);
+                assert_eq!(
+                    accountant.in_flight.get(&context.run_id).unwrap().id,
+                    id,
+                    "a delayed old completion cannot forget the new hold"
+                );
+                assert_eq!(
+                    governor
+                        .account_snapshot(&account)
+                        .unwrap()
+                        .unwrap()
+                        .ledger
+                        .reserved
+                        .output_tokens,
+                    128
+                );
+            }
+            let response = SystemInferenceResponse {
+                task_id: request.task_id,
+                output_text: "ü".into(),
+                elapsed_ms: 17,
+                usage: Some(tokens),
+            };
+            let mut wrong_work = work.clone();
+            wrong_work.estimated_input_tokens += 1;
+            assert!(
+                accountant
+                    .post_model_work(
+                        &context,
+                        &wrong_work,
+                        ModelWorkOutcome::from_system_inference_result(&Ok(response.clone()))
+                    )
+                    .await
+                    .is_err()
+            );
+            assert!(
+                accountant
+                    .in_flight
+                    .get(&context.run_id)
+                    .unwrap()
+                    .dispatch_state
+                    == DispatchState::Reserved
+            );
+            accountant.model_work_dispatching(&context, &work).unwrap();
+            accountant
+                .post_model_work(
+                    &context,
+                    &work,
+                    ModelWorkOutcome::from_system_inference_result(&Ok(response)),
+                )
+                .await
+                .unwrap();
+            let state = governor.account_snapshot(&account).unwrap().unwrap();
+            assert_eq!(state.ledger.spent.usd, dec!(0.4435));
+            assert_eq!(state.ledger.spent.input_tokens, 7);
+            assert_eq!(state.ledger.spent.output_tokens, 3);
+            assert_eq!(
+                state.ledger.reserved,
+                brassclaw_resources::ResourceTally::default()
+            );
+            assert!(!accountant.in_flight.contains_key(&context.run_id));
+            previous = Some(id);
+        }
+        let state = governor.account_snapshot(&account).unwrap().unwrap();
+        assert_eq!(state.ledger.spent.wall_clock_ms, 34);
+        assert_eq!(state.ledger.spent.output_bytes, 4);
+    }
+
+    #[test]
+    fn cancellation_between_actual_reservation_commit_and_acknowledgement_is_not_resurrected() {
+        use brassclaw_host_api::ResourceReceipt;
+        use brassclaw_resources::{AccountSnapshot, ReservationOutcome};
+        use std::sync::Mutex;
+        // Observe a real governor commit and perform real cancellation before
+        // its acknowledgement returns. All resource operations are delegated.
+        struct CommitObserver {
+            inner: InMemoryResourceGovernor,
+            after_commit: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+        }
+        impl ResourceGovernor for CommitObserver {
+            fn set_limit(
+                &self,
+                account: ResourceAccount,
+                limits: ResourceLimits,
+            ) -> Result<(), ResourceError> {
+                self.inner.set_limit(account, limits)
+            }
+            fn reserve_with_outcome(
+                &self,
+                scope: ResourceScope,
+                estimate: ResourceEstimate,
+            ) -> Result<ReservationOutcome, ResourceError> {
+                self.inner.reserve_with_outcome(scope, estimate)
+            }
+            fn reserve_with_id_and_outcome(
+                &self,
+                scope: ResourceScope,
+                estimate: ResourceEstimate,
+                id: ResourceReservationId,
+            ) -> Result<ReservationOutcome, ResourceError> {
+                let outcome = self
+                    .inner
+                    .reserve_with_id_and_outcome(scope, estimate, id)?;
+                let observer = self.after_commit.lock().unwrap().take();
+                if let Some(observer) = observer {
+                    observer();
+                }
+                Ok(outcome)
+            }
+            fn reconcile(
+                &self,
+                id: ResourceReservationId,
+                usage: ResourceUsage,
+            ) -> Result<ResourceReceipt, ResourceError> {
+                self.inner.reconcile(id, usage)
+            }
+            fn release(&self, id: ResourceReservationId) -> Result<ResourceReceipt, ResourceError> {
+                self.inner.release(id)
+            }
+            fn account_snapshot(
+                &self,
+                account: &ResourceAccount,
+            ) -> Result<Option<AccountSnapshot>, ResourceError> {
+                self.inner.account_snapshot(account)
+            }
+        }
+        let governor = Arc::new(CommitObserver {
+            inner: InMemoryResourceGovernor::new(),
+            after_commit: Mutex::new(None),
+        });
+        let accountant = Arc::new(GovernorBackedAccountant::new(
+            governor.clone(),
+            Arc::new(ZeroCostTable),
+        ));
+        let context = run_context();
+        let account = ResourceAccount::tenant(context.scope.tenant_id.clone());
+        governor
+            .set_limit(account.clone(), ResourceLimits::default())
+            .unwrap();
+        let work = ModelWorkRequest::for_assistant(&context, &sample_request());
+        let weak = Arc::downgrade(&accountant);
+        let cancelled_context = context.clone();
+        let cancelled_work = work.clone();
+        *governor.after_commit.lock().unwrap() = Some(Box::new(move || {
+            let accountant = weak.upgrade().unwrap();
+            assert!(
+                accountant
+                    .model_work_dispatching(&cancelled_context, &cancelled_work)
+                    .is_err(),
+                "a committed but unacknowledged admission cannot dispatch"
+            );
+            accountant.release_in_flight(&cancelled_context, &cancelled_work);
+        }));
+        assert!(
+            accountant
+                .reserve_estimate(
+                    &context,
+                    ResourceEstimate {
+                        input_tokens: Some(37),
+                        ..Default::default()
+                    },
+                    1,
+                    &work,
+                    accountant.default_cost,
+                )
+                .is_err()
+        );
+        assert!(accountant.in_flight.is_empty());
+        assert!(accountant.reserving.is_empty());
+        assert!(accountant.model_work_dispatching(&context, &work).is_err());
+        assert!(
+            accountant
+                .reserve_estimate(
+                    &context,
+                    ResourceEstimate::default(),
+                    1,
+                    &work,
+                    accountant.default_cost
+                )
+                .is_err()
+        );
+        let ledger = governor.account_snapshot(&account).unwrap().unwrap().ledger;
+        assert_eq!(
+            ledger.reserved,
+            brassclaw_resources::ResourceTally::default()
+        );
+        assert_eq!(ledger.spent, brassclaw_resources::ResourceTally::default());
+    }
+
+    #[tokio::test]
+    async fn cancellation_before_dispatch_releases_unsubmitted_reservation() {
         let governor: Arc<dyn ResourceGovernor> = Arc::new(InMemoryResourceGovernor::new());
         let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(ZeroCostTable));
         let context = run_context();
         let request = sample_request();
         accountant.pre_model_call(&context, &request).await.unwrap();
         assert!(accountant.in_flight.contains_key(&context.run_id));
-        // Simulate cancellation: post_model_call never runs.
-        accountant.release_in_flight(&context);
+        // No dispatch boundary was crossed. Cancellation can prove zero spend.
+        accountant.release_in_flight(
+            &context,
+            &ModelWorkRequest::for_assistant(&context, &request),
+        );
         assert!(
             !accountant.in_flight.contains_key(&context.run_id),
             "release_in_flight must drop the per-run entry"
         );
-        // And a follow-up pre_model_call on the same run must succeed —
-        // proves the governor side really released, not just the
-        // accountant cache.
-        accountant.pre_model_call(&context, &request).await.unwrap();
+        // A closed operation cannot reacquire a hold and replay. New work in
+        // the same run has a new identity, even with identical prompt sizes.
+        assert!(accountant.pre_model_call(&context, &request).await.is_err());
+        let successor = sample_request();
+        accountant
+            .pre_model_call(&context, &successor)
+            .await
+            .unwrap();
+        accountant.release_in_flight(
+            &context,
+            &ModelWorkRequest::for_assistant(&context, &request),
+        );
+        assert!(accountant.in_flight.contains_key(&context.run_id));
+        accountant.release_in_flight(
+            &context,
+            &ModelWorkRequest::for_assistant(&context, &successor),
+        );
+        assert!(!accountant.in_flight.contains_key(&context.run_id));
+    }
+
+    #[tokio::test]
+    async fn delayed_admission_and_outcomes_cannot_touch_an_equal_sized_successor() {
+        let governor = Arc::new(InMemoryResourceGovernor::new());
+        let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(ZeroCostTable));
+        let context = run_context();
+        let work = ModelWorkRequest::for_assistant(&context, &sample_request());
+        let first = accountant
+            .reserve_estimate(
+                &context,
+                ResourceEstimate::default(),
+                1,
+                &work,
+                accountant.default_cost,
+            )
+            .unwrap();
+        assert_eq!(
+            accountant
+                .in_flight
+                .get(&context.run_id)
+                .unwrap()
+                .retained_request
+                .as_ref(),
+            Some(&work)
+        );
+        accountant.release_in_flight(&context, &work);
+        assert!(
+            accountant
+                .confirm_reserved_work(&context, first, &work)
+                .is_err()
+        );
+        let mut successor = work.clone();
+        successor.work_id = Some(brassclaw_turns::run_profile::ModelWorkId::new());
+        let second = accountant
+            .reserve_estimate(
+                &context,
+                ResourceEstimate::default(),
+                1,
+                &successor,
+                accountant.default_cost,
+            )
+            .unwrap();
+        assert_ne!(first, second);
+        assert!(
+            accountant
+                .confirm_reserved_work(&context, first, &work)
+                .is_err()
+        );
+        assert!(
+            accountant
+                .confirm_reserved_work(&context, second, &work)
+                .is_err()
+        );
+        accountant
+            .confirm_reserved_work(&context, second, &successor)
+            .unwrap();
+        accountant.release_in_flight(&context, &work);
+        assert!(accountant.model_work_dispatching(&context, &work).is_err());
+        assert!(
+            accountant
+                .post_model_work(
+                    &context,
+                    &work,
+                    ModelWorkOutcome::Success(brassclaw_turns::run_profile::ModelWorkUsage {
+                        token_usage: Some(LoopModelUsage::default()),
+                        output_bytes: 0,
+                        wall_clock_ms: 0,
+                    })
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            accountant
+                .in_flight
+                .get(&context.run_id)
+                .unwrap()
+                .retained_request
+                .as_ref(),
+            Some(&successor)
+        );
+        assert_eq!(
+            accountant
+                .in_flight
+                .get(&context.run_id)
+                .unwrap()
+                .dispatch_state,
+            DispatchState::Reserved
+        );
+        accountant.release_in_flight(&context, &successor);
+        assert!(!accountant.in_flight.contains_key(&context.run_id));
+        assert!(
+            accountant
+                .reserve_estimate(
+                    &context,
+                    ResourceEstimate::default(),
+                    1,
+                    &work,
+                    accountant.default_cost
+                )
+                .is_err()
+        );
+        let account = ResourceAccount::user(
+            context.scope.tenant_id.clone(),
+            UserId::new("acct-user").unwrap(),
+        );
+        assert_eq!(
+            governor.reserved_for(&account),
+            brassclaw_resources::ResourceTally::default()
+        );
+    }
+
+    #[tokio::test]
+    async fn cancellation_after_dispatch_preserves_hold_and_rejects_another_dispatch() {
+        let governor = Arc::new(InMemoryResourceGovernor::new());
+        let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(ZeroCostTable));
+        let context = run_context();
+        let work = ModelWorkRequest::for_assistant(&context, &sample_request());
+        accountant.pre_model_work(&context, &work).await.unwrap();
+        let mut wrong_work = work.clone();
+        wrong_work.estimated_input_tokens += 1;
+        assert!(
+            accountant
+                .model_work_dispatching(&context, &wrong_work)
+                .is_err()
+        );
+        accountant.model_work_dispatching(&context, &work).unwrap();
+        assert!(accountant.model_work_dispatching(&context, &work).is_err());
+        let id = accountant.in_flight.get(&context.run_id).unwrap().id;
+        let account = ResourceAccount::tenant(context.scope.tenant_id.clone());
+        let before = governor.account_snapshot(&account).unwrap().unwrap().ledger;
+        accountant.release_in_flight(&context, &work);
+        assert_eq!(accountant.in_flight.get(&context.run_id).unwrap().id, id);
+        let after = governor.account_snapshot(&account).unwrap().unwrap().ledger;
+        assert_eq!(after.reserved, before.reserved);
+        assert_eq!(after.spent, before.spent);
+        assert!(accountant.pre_model_work(&context, &work).await.is_err());
+        let failure = ModelWorkOutcome::Failure(AgentLoopHostErrorKind::Unavailable);
+        assert!(
+            accountant
+                .post_model_work(&context, &work, failure)
+                .await
+                .is_err()
+        );
+        assert_eq!(accountant.in_flight.get(&context.run_id).unwrap().id, id);
     }
 
     #[tokio::test]
@@ -1451,13 +2198,20 @@ mod tests {
         let governor: Arc<dyn ResourceGovernor> = Arc::new(InMemoryResourceGovernor::new());
         let accountant = GovernorBackedAccountant::new(governor, Arc::new(ZeroCostTable));
         let context = run_context();
+        let work = ModelWorkRequest::for_assistant(&context, &sample_request());
         let barrier = std::sync::Barrier::new(16);
         let outcomes = std::thread::scope(|scope| {
             let threads = (0..16)
                 .map(|_| {
                     scope.spawn(|| {
                         barrier.wait();
-                        accountant.reserve_estimate(&context, ResourceEstimate::default())
+                        accountant.reserve_estimate(
+                            &context,
+                            ResourceEstimate::default(),
+                            1,
+                            &work,
+                            accountant.default_cost,
+                        )
                     })
                 })
                 .collect::<Vec<_>>();
@@ -1472,12 +2226,19 @@ mod tests {
         }
         assert!(accountant.reserving.is_empty());
         assert_eq!(accountant.in_flight.len(), 1);
-        accountant.release_in_flight(&context);
+        accountant.release_in_flight(&context, &work);
         assert!(accountant.in_flight.is_empty());
+        let successor = ModelWorkRequest::for_assistant(&context, &sample_request());
         accountant
-            .reserve_estimate(&context, ResourceEstimate::default())
+            .reserve_estimate(
+                &context,
+                ResourceEstimate::default(),
+                1,
+                &successor,
+                accountant.default_cost,
+            )
             .unwrap();
-        accountant.release_in_flight(&context);
+        accountant.release_in_flight(&context, &successor);
     }
 
     #[tokio::test]
@@ -1621,22 +2382,33 @@ mod tests {
         ));
         let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(ZeroCostTable));
         let context = run_context();
+        let work = ModelWorkRequest::for_assistant(&context, &sample_request());
         let estimate = ResourceEstimate {
             input_tokens: Some(100),
             ..Default::default()
         };
         assert!(
             accountant
-                .reserve_estimate(&context, estimate.clone())
+                .reserve_estimate(
+                    &context,
+                    estimate.clone(),
+                    1,
+                    &work,
+                    accountant.default_cost
+                )
                 .is_err()
         );
         let retained = accountant.in_flight.get(&context.run_id).unwrap().id;
-        assert!(accountant.reserve_estimate(&context, estimate).is_err());
+        assert!(
+            accountant
+                .reserve_estimate(&context, estimate, 1, &work, accountant.default_cost)
+                .is_err()
+        );
         assert_eq!(
             accountant.in_flight.get(&context.run_id).unwrap().id,
             retained
         );
-        accountant.release_in_flight(&context);
+        accountant.release_in_flight(&context, &work);
         assert!(accountant.in_flight.is_empty());
         let account = ResourceAccount::tenant(context.scope.tenant_id.clone());
         assert_eq!(governor.reserved_for(&account).unwrap().input_tokens, 0);

@@ -30,6 +30,8 @@ use uuid::Uuid;
 #[path = "bootstrap_reply_host.rs"]
 mod host;
 
+pub(super) const NAMESPACE: &str = "bootstrap-validation";
+
 pub(super) async fn start(
     worker: &Path,
     boot: RootBoot,
@@ -117,7 +119,7 @@ pub(super) async fn admit(
     identity: &str,
     answer: &str,
 ) -> Result<Admitted, RebornBuildError> {
-    let tenant = TenantId::new("bootstrap-validation").map_err(invalid)?;
+    let tenant = TenantId::new(NAMESPACE).map_err(invalid)?;
     let agent = AgentId::new(identity).map_err(invalid)?;
     let project = ProjectId::new("contained").map_err(invalid)?;
     let actor = UserId::new("installation-owner").map_err(invalid)?;

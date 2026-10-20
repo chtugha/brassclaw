@@ -52,6 +52,26 @@ pub(super) struct InterceptingModelGateway<G: HostManagedModelGateway + ?Sized> 
 
 #[async_trait]
 impl<G: HostManagedModelGateway + ?Sized> HostManagedModelGateway for InterceptingModelGateway<G> {
+    fn supports_provider_observation(&self) -> bool {
+        self.gateway.supports_provider_observation()
+    }
+    async fn stream_model_observed(
+        &self,
+        request: HostManagedModelRequest,
+        capabilities: Option<Arc<dyn LoopCapabilityPort>>,
+        custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        let (request, packet) = self.prepare(request).await?;
+        // The observer belongs to this Kohai operation only. A Sempai review
+        // keeps its own work identity/accounting and cannot write this record.
+        let result = self
+            .gateway
+            .stream_model_observed(request, capabilities, custodian)
+            .await;
+        self.finish(packet, &result).await;
+        result
+    }
+
     fn supports_tool_exchange(&self) -> bool {
         self.gateway.supports_tool_exchange()
     }
@@ -240,6 +260,7 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
 fn request_snapshot(request: &HostManagedModelRequest) -> Result<String, HostManagedModelError> {
     let messages: Vec<_> = request.messages.iter().map(message_snapshot).collect();
     serde_json::to_string(&serde_json::json!({
+        "dispatch_policy": request.dispatch_policy,
         "model_profile_id": request.model_profile_id, "messages": messages,
         "surface_version": request.surface_version,
         "resolved_model_route": request.resolved_model_route,
@@ -607,6 +628,8 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
             .accounted_review(
                 gateway,
                 HostManagedModelRequest {
+                    dispatch_policy:
+                        brassclaw_turns::run_profile::LoopModelDispatchPolicy::SingleSubmission,
                     model_profile_id,
                     messages,
                     surface_version: None,
@@ -712,6 +735,7 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
                 )
             })?;
         let work = ModelWorkRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
             kind: ModelWorkKind::SempaiReview,
             model_profile_id: request.model_profile_id.clone(),
             resolved_model_route: request.resolved_model_route.clone(),
@@ -729,9 +753,13 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
         let mut guard = ReviewReservationGuard {
             accountant: accountant.as_ref(),
             context: &self.run_context,
+            request: &work,
             armed: true,
         };
         let profile = request.model_profile_id.clone();
+        accountant
+            .model_work_dispatching(&self.run_context, &work)
+            .map_err(review_work_error)?;
         let result = gateway
             .stream_model(request)
             .await
@@ -766,13 +794,15 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
 struct ReviewReservationGuard<'a> {
     accountant: &'a dyn LoopModelBudgetAccountant,
     context: &'a ReviewContext,
+    request: &'a ModelWorkRequest,
     armed: bool,
 }
 #[cfg(feature = "root-llm-provider")]
 impl Drop for ReviewReservationGuard<'_> {
     fn drop(&mut self) {
         if self.armed {
-            self.accountant.release_in_flight(self.context);
+            self.accountant
+                .release_in_flight(self.context, self.request);
         }
     }
 }

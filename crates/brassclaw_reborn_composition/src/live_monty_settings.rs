@@ -416,9 +416,15 @@ pub(crate) fn hosting_deadlines(
     Ok(deadlines)
 }
 
-pub(crate) fn validate_http_defaults(
+pub(crate) fn validate_host_defaults(
     limits: MontyExecutionLimits,
 ) -> Result<(), MontyVmSettingsError> {
+    brassclaw_resources::PgResourceStoreSettings {
+        revision: 1,
+        timeout: Duration::from_millis(limits.resource_store_timeout_millis),
+    }
+    .validate()
+    .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
     brassclaw_network::HttpClientCacheControl::validate_defaults(
         Duration::from_millis(limits.default_http_request_timeout_millis),
         limits.default_http_response_body_bytes,
@@ -465,6 +471,8 @@ fn observed_limits(
         max_mcp_inflight_calls: preparation.max_mcp_inflight_calls,
         max_mcp_request_bytes: preparation.max_mcp_request_bytes,
         max_mcp_response_bytes: preparation.max_mcp_response_bytes,
+        model_quote_output_tokens: preparation.model_quote_output_tokens,
+        resource_store_timeout_millis: preparation.resource_store_timeout_millis,
         default_http_request_timeout_millis: http_cache.default_timeout.as_millis() as u64,
         default_http_response_body_bytes: http_cache.default_response_body_bytes,
         default_memory_tree_depth: preparation.default_memory_tree_depth,
@@ -538,6 +546,22 @@ impl LiveMontySettingsStore {
             observed: self.observed.subscribe(),
             live: self.service.live_task_settings(),
             ownership: self.ownership.clone(),
+        })
+    }
+
+    pub(crate) fn model_quote_policy_source(
+        &self,
+    ) -> Arc<dyn brassclaw_loop_support::ModelQuoteSettingsSource> {
+        Arc::new(EffectiveModelQuotePolicy {
+            observed: self.observed.subscribe(),
+        })
+    }
+
+    pub(crate) fn resource_store_policy_source(
+        &self,
+    ) -> Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource> {
+        Arc::new(EffectiveResourceStorePolicy {
+            observed: self.observed.subscribe(),
         })
     }
 
@@ -622,8 +646,8 @@ impl LiveMontySettingsStore {
         {
             return Err((revision, "ownership_revision_conflict"));
         }
-        validate_http_defaults(desired.execution_limits)
-            .map_err(|_| (revision, "invalid_http_defaults"))?;
+        validate_host_defaults(desired.execution_limits)
+            .map_err(|_| (revision, "invalid_host_defaults"))?;
         let values = execution_bounds(desired.execution_limits)
             .map_err(|_| (revision, "invalid_execution_limits"))?;
         let reserve = adapter_reserve(desired.execution_limits)
@@ -1166,7 +1190,7 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
             ));
         }
         if let Some(limits) = update.execution_limits {
-            validate_http_defaults(limits)?;
+            validate_host_defaults(limits)?;
             adapter_reserve(limits)?;
             admission_limits(limits)?;
             let frame = ipc_frame(limits)?;
@@ -1570,6 +1594,40 @@ impl crate::global_recipe_ports::RecipeCapacitySource for EffectiveRecipeCapacit
 }
 
 struct EffectiveSettings(std::sync::Weak<LiveMontySettingsStore>);
+struct EffectiveModelQuotePolicy {
+    observed: watch::Receiver<Observation>,
+}
+impl brassclaw_loop_support::ModelQuoteSettingsSource for EffectiveModelQuotePolicy {
+    fn snapshot(&self) -> Result<brassclaw_loop_support::ModelQuoteSettings, &'static str> {
+        let snapshot = self.observed.borrow();
+        brassclaw_loop_support::ModelQuoteSettings {
+            revision: snapshot.effective.revision,
+            output_tokens: snapshot
+                .effective
+                .execution_limits
+                .model_quote_output_tokens,
+        }
+        .validate()
+    }
+}
+struct EffectiveResourceStorePolicy {
+    observed: watch::Receiver<Observation>,
+}
+impl brassclaw_resources::PgResourceStoreSettingsSource for EffectiveResourceStorePolicy {
+    fn snapshot(&self) -> Result<brassclaw_resources::PgResourceStoreSettings, &'static str> {
+        let snapshot = self.observed.borrow();
+        brassclaw_resources::PgResourceStoreSettings {
+            revision: snapshot.effective.revision,
+            timeout: Duration::from_millis(
+                snapshot
+                    .effective
+                    .execution_limits
+                    .resource_store_timeout_millis,
+            ),
+        }
+        .validate()
+    }
+}
 struct EffectiveCancellationPolicy {
     observed: watch::Receiver<Observation>,
 }

@@ -104,12 +104,12 @@ pub trait CapabilityPermissionStore: Send + Sync {
 pub use error::{RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind};
 pub use interceptor_config::{
     CapturePrefixModelRequest, ImportPrefixGenerationRequest, InterceptorConfigService,
-    InterceptorConfigServiceError, InterceptorConfigSnapshot, PrefixDesignProposal, PrefixEntry,
-    PrefixGenerationDetail, PrefixGenerationSummary, PrefixJobDetail, PrefixListResponse,
-    PrefixModelArtifactDetail, PrefixModelArtifactFile, PrefixModelArtifactSet,
-    PrefixModelDesignCatalogue, PrefixModelSpecification, PrefixModelTarget,
-    PrefixRegenerateResponse, PrefixSourceInventory, PrefixSourceRegistration, PrefixUsedSource,
-    RegisterPrefixSourceRequest, RetainPrefixDesignProposalRequest,
+    InterceptorConfigServiceError, InterceptorConfigSnapshot, MeasurePrefixRequest,
+    PrefixDesignProposal, PrefixEntry, PrefixGenerationDetail, PrefixGenerationSummary,
+    PrefixJobDetail, PrefixListResponse, PrefixModelArtifactDetail, PrefixModelArtifactFile,
+    PrefixModelArtifactSet, PrefixModelDesignCatalogue, PrefixModelSpecification,
+    PrefixModelTarget, PrefixRegenerateResponse, PrefixSourceInventory, PrefixSourceRegistration,
+    PrefixUsedSource, RegisterPrefixSourceRequest, RetainPrefixDesignProposalRequest,
     RetainPrefixModelArtifactsRequest, UpdateInterceptorConfigRequest,
     interceptor_config_unavailable, map_interceptor_config_error,
 };
@@ -1519,6 +1519,15 @@ pub trait RebornServicesApi: Send + Sync {
         _caller: WebUiAuthenticatedCaller,
         _profile: &str,
         _job: &str,
+    ) -> Result<PrefixJobDetail, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn measure_prefix(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _job: &str,
+        _request: MeasurePrefixRequest,
     ) -> Result<PrefixJobDetail, RebornServicesError> {
         Err(interceptor_config::interceptor_config_unavailable())
     }
@@ -4747,6 +4756,20 @@ impl RebornServicesApi for RebornServices {
             .as_ref()
             .ok_or_else(interceptor_config::interceptor_config_unavailable)?
             .get_job(caller, profile, job)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn measure_prefix(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        job: &str,
+        request: MeasurePrefixRequest,
+    ) -> Result<PrefixJobDetail, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .measure(caller, profile, job, request)
             .await
             .map_err(interceptor_config::map_interceptor_config_error)
     }

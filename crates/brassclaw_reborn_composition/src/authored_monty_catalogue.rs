@@ -425,6 +425,7 @@ impl InstalledMontyCatalogue {
                                 crate::installed_monty_catalogue::BootstrapUsageApproval::Reply(owner)=>owner.usage_approval(binding),
                                 crate::installed_monty_catalogue::BootstrapUsageApproval::Generation(owner)=>owner.usage_approval(binding),
                                 crate::installed_monty_catalogue::BootstrapUsageApproval::Compiler(owner)=>owner.usage_approval(binding),
+                                crate::installed_monty_catalogue::BootstrapUsageApproval::Encoding(owner)=>owner.usage_approval(binding),
                             }.ok_or_else(|| invalid("bootstrap usage differs"))?,
                         );
                     } else {
@@ -451,11 +452,11 @@ impl InstalledMontyCatalogue {
                     if program.inputs().instruction().class() == WorkflowClass::Deterministic
                         && matches!(
                             binding.capability_id(),
-                            "builtin.shell" | "builtin.spawn_subagent"
+                            "builtin.shell" | "builtin.spawn_subagent" | "host.kohai_complete"
                         )
                     {
                         return Err(invalid(
-                            "shell and subagent workflows require the model tier",
+                            "shell, subagent and model workflows require the model tier",
                         ));
                     }
                     self.verify_implementation(tx, &program, binding)
@@ -653,14 +654,17 @@ impl InstalledMontyCatalogue {
         let doc = program.inputs().instruction().snapshot().revisions()[&binding.tool().uuid]
             .draft()
             .document();
-        if binding.capability_id() == "host.post_reply" {
-            if doc["implementation"]
-                != json!({"format":"packaged-task-reply/1", "artifact_checksum":hex::encode(self._image.checksum()), "adapter":"TaskReplyCapability/1"})
-            {
-                return Err(crate::RebornBuildError::InvalidConfig {
-                    reason: "retained reply implementation differs".into(),
-                });
-            }
+        if matches!(
+            binding.capability_id(),
+            "host.post_reply" | "host.kohai_complete"
+        ) {
+            verify_packaged_task_implementation(
+                &self._image,
+                binding.capability_id(),
+                binding.association().callable(),
+                &doc["implementation"],
+            )
+            .await?;
         } else {
             let expected = serde_json::from_value(doc["implementation"]["identity"].clone())
                 .map_err(|_| crate::RebornBuildError::InvalidConfig {
@@ -683,6 +687,35 @@ impl InstalledMontyCatalogue {
         }
         Ok(())
     }
+}
+
+// Task-bound adapters are compiled into the captured executable rather than
+// registered as reusable singleton builtin handlers. Verify their exact ABI
+// declaration AND the retained executable bytes before accepting a selection.
+// This supplies no association approval, activation or Tool permission.
+async fn verify_packaged_task_implementation(
+    image: &Arc<brassclaw_host_runtime::NativeExecutableImage>,
+    capability: &str,
+    callable: &str,
+    implementation: &Value,
+) -> Result<(), crate::RebornBuildError> {
+    let invalid = || crate::RebornBuildError::InvalidConfig {
+        reason: "retained task implementation differs".into(),
+    };
+    let (format, adapter) = match capability {
+        "host.post_reply" => ("packaged-task-reply/1", "TaskReplyCapability/1"),
+        "host.kohai_complete" => ("packaged-task-model/1", "TaskModelCapability/1"),
+        _ => return Err(invalid()),
+    };
+    if callable != capability
+        || implementation
+            != &json!({
+                "format":format, "artifact_checksum":hex::encode(image.checksum()), "adapter":adapter
+            })
+    {
+        return Err(invalid());
+    }
+    image.verify().await.map_err(|_| invalid())
 }
 
 impl InstalledMontyCatalogue {
@@ -779,5 +812,93 @@ impl InstalledMontyCatalogue {
                 .publish_unadvertised_installed(expected, view.generation, &programs),
             Err(error) => Err(error),
         }
+    }
+}
+
+#[cfg(test)]
+mod packaged_task_implementation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn packaged_model_qualification_verifies_actual_image_and_exact_adapter_contract() {
+        let image = brassclaw_host_runtime::NativeExecutableImage::capture(
+            brassclaw_host_api::MontyExecutionLimits::default().max_native_artifact_bytes,
+        )
+        .await
+        .unwrap();
+        let model = brassclaw_skills::model_completion_components::model_completion_tool_draft(
+            Uuid::new_v4(),
+            &hex::encode(image.checksum()),
+        )
+        .unwrap();
+        let declaration = &model.document()["implementation"];
+        verify_packaged_task_implementation(
+            &image,
+            "host.kohai_complete",
+            "host.kohai_complete",
+            declaration,
+        )
+        .await
+        .unwrap();
+        for field in ["format", "artifact_checksum", "adapter"] {
+            let mut wrong = declaration.clone();
+            wrong[field] = json!("different");
+            assert!(
+                verify_packaged_task_implementation(
+                    &image,
+                    "host.kohai_complete",
+                    "host.kohai_complete",
+                    &wrong
+                )
+                .await
+                .is_err()
+            );
+        }
+        let mut extra = declaration.clone();
+        extra["unreviewed"] = json!(true);
+        assert!(
+            verify_packaged_task_implementation(
+                &image,
+                "host.kohai_complete",
+                "host.kohai_complete",
+                &extra
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            verify_packaged_task_implementation(
+                &image,
+                "host.kohai_complete",
+                "host.post_reply",
+                declaration
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            verify_packaged_task_implementation(
+                &image,
+                "host.post_reply",
+                "host.post_reply",
+                declaration
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            verify_packaged_task_implementation(
+                &image,
+                "builtin.model",
+                "builtin.model",
+                declaration
+            )
+            .await
+            .is_err()
+        );
+        let reply = json!({"format":"packaged-task-reply/1", "artifact_checksum":hex::encode(image.checksum()), "adapter":"TaskReplyCapability/1"});
+        verify_packaged_task_implementation(&image, "host.post_reply", "host.post_reply", &reply)
+            .await
+            .unwrap();
     }
 }

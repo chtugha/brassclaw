@@ -6,6 +6,23 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+/// The two shipped usages keep distinct identities while sharing one primitive.
+pub fn usage_ids(
+    tool: uuid::Uuid,
+    effective: bool,
+    mut allocate: impl FnMut(&str) -> uuid::Uuid,
+) -> UsageComponentIds {
+    let name = if effective { "template" } else { "original" };
+    UsageComponentIds {
+        recipe: allocate(&format!("prefix-encoding:{name}:recipe")),
+        python_code: allocate(&format!("prefix-encoding:{name}:code")),
+        skill: allocate(&format!("prefix-encoding:{name}:skill")),
+        tool_skill: allocate(&format!("prefix-encoding:{name}:binding")),
+        tool,
+        formatter: None,
+    }
+}
+
 fn inputs() -> Value {
     let string =
         json!({"type":"string","required":true,"checks":[{"kind":"min_length","value":1}]});

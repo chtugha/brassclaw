@@ -28,8 +28,18 @@ Caller-supplied procedure text does not prove which compiler ran. Keep the compl
 retained graph and original procedures with the task; do not look up latest during
 execution. The compiler preserves originals by content hash, full evidence cards,
 source inventory, rendering/range data, procedure files and immutable manifest.
-Literal v1 and exact-unit-deduplicated v2 are supported; neither silently summarizes
-or clips originals.
+Literal v1, exact-unit-deduplicated v2, v3 with trailing inventory and v4 with
+progressive stable sharing are
+versioned options; none silently summarizes or clips originals. V3 uses the same
+evidence identities and unit map as v2, moving disposition/reason metadata after
+the complete reference cards. Inventory-only changes preserve the reference text
+before that backmatter. Content changes or changed shared-unit grouping can still
+invalidate earlier tokens; measure actual model/template token sequences separately.
+V4 always leaves the first occurrence literal and references it from later exact
+duplicates, so appending a later duplicate does not relabel earlier references.
+Source insertions earlier in canonical order and content edits can still change
+earlier tokens. Every format retains the same complete original/range map.
+Existing defaults and accepted designs are unchanged.
 
 ## Execution
 
@@ -66,7 +76,7 @@ From the repository root on Linux or macOS:
 python3 -m unittest discover -s scripts/prefix -p test_prefix_compile_logic.py -v
 ```
 
-This checks both profiles and both render formats against complete current guides
+This checks both profiles and all four render formats against complete current guides
 and independent SHA-256/original-byte assertions. It is CPython evidence only.
 Native tests additionally inspect and run the same packaged definitions in Monty,
 prepare the exact retained Recipe graph, and exercise registered hashing/retention
@@ -248,3 +258,114 @@ before output/additional-input allowances.
 This qualifies the candidate integration only. Canonical encoding usages still
 need their closed bootstrap behavior/approval evidence and Recipe execution;
 model/design acceptance, serving/cache checks and normal Generate remain open.
+
+
+### Reusable template and capacity components
+
+`prefix_template.py` is the single offline/Recipe injection implementation;
+`prefix_evidence.py` re-exports it. Move the complete compiler directory, not a
+single script. Procedure snapshots and base-compiler provenance retain the
+adapter source with a dynamic hash. Its class-22 export and
+`prefix_capacity.py`'s explicit-argument helper pass real Monty preload inspection
+and execution in `prefix-registry-artifacts-gg8vy9cz/accepted.json`. That batch
+also passes the native model store/handler, 12-context full-reference/HF checks,
+capacity negatives, strict lint, standalone consumers and authenticated routes.
+The earlier `ej4azlex` and full `v9nwiqdb` native runs failed on a default argument
+that the preload loader rejects; they remain failure evidence.
+
+The new measurement Recipe draft composes those pure components with canonical
+JSON digest and model-template encoding usages in ten explicit steps. It checks
+both original and effective template identity and reports capacity without
+truncation. Candidate graph/behavior acceptance, bootstrap qualification and
+generation-job integration remain required; it is not an activated Generate
+workflow.
+
+The ten-step retained graph/preload check now passes in
+`target/validation/prefix-registry-artifacts-9dbqe6sy/accepted.json`, together with
+native model-store/encoding and full-reference/HF checks, strict affected and
+standalone lint, three standalone consumer regressions, routes and the ordinary
+matched/No-Match single-root regression. Full measurement-Recipe execution and
+closed usage qualification are separate acceptance requirements.
+
+### Closed encoding usages and complete measurement execution
+
+`target/validation/prefix-registry-artifacts-8_yma761/accepted.json` passes the
+installation owner's two exact encoding usages through the actual Recipe/native
+dispatcher and immutable journal. Fixed tokenizer fixtures check full token IDs
+despite saved truncation/padding, original/supplied templates, determinism, denial,
+invalid inputs/assets and rendering fuel exhaustion. Proof re-reading and a
+rollback-only incomplete-intent regression establish no replay. Fixture imports
+are private unqualified data, never serving selections or approval claims.
+
+The same batch runs all ten measurement steps with the real complete reference
+and 12 HF-verified probes. It verifies both native dispatches, exact ordered
+report, internal capacity receipt and durable attempt/answer records, without
+publishing a reply or writing approval evidence. Standalone consumers, routes
+and the ordinary single-root regression pass. This is scoped development
+execution; complete production workflow qualification, model/design selection,
+native-library memory containment and generation-job integration remain open.
+
+The installed stable measurement graph also passes
+`target/validation/prefix-registry-artifacts-zxqty2cv/accepted.json`. It uses the
+same canonical digest and template-encoding combinations as their qualified
+usages; it does not create duplicate Skills for measurement. Closed whole-workflow
+qualification now passes `target/validation/prefix-registry-artifacts-3tx1j8xr/accepted.json`
+through the existing selected-variant evidence store. Eight closed cases verify
+every actual step and native invocation, including failure after completed calls,
+proof corruption and no replay. Full-reference/HF, scoped lint, standalone
+consumers, routes and the ordinary single-root regression also pass. This does
+not qualify a serving target, model design, native-library RSS bound or answer
+quality; normal Generate remains gated.
+
+### Retained model/design measurement jobs
+
+The diagnostic measurement boundary resolves an existing compiler-package
+generation, compatible profile design proposal and namespace-bound model artifact
+set. It captures the complete reference, original template, exact ordered chat
+probes and explicit capacity assumptions once. A configured context limit is
+only a ceiling on that diagnostic assumption; an unknown limit is not inferred
+from a model name or an imported tokenizer.
+
+The authenticated API is `POST /api/webchat/v2/prefixes/{name}/jobs/{job}`, with a
+canonical non-nil caller-chosen UUID. Its request fields are:
+
+```json
+{
+  "expected_profile_revision": 1,
+  "generation": "<retained-generation-sha256>",
+  "proposal": "<retained-design-proposal-sha256>",
+  "artifact_set": "<retained-model-artifact-set-sha256>",
+  "probes_json": "<JSON array of at least two chat probes>",
+  "context_window_tokens": 131072,
+  "reserved_additional_input_tokens": 2048
+}
+```
+
+The numbers above are explicit example assumptions, not model-independent
+defaults. Output allowance comes from the selected proposal. Each probe has
+`{"kind":"chat","context_json":"<exact serialized chat render context>"}`;
+text probes are rejected because they bypass the template being measured.
+Probe completeness for the actual provider/consumer remains a separate acceptance
+requirement. The proposal remains unaccepted and imported model files remain
+unverified even when the calculation fits.
+
+The existing GET of the same job URL reports run/admission status, native effect
+counts and the internal capacity receipt. Repeating the same POST retains the
+same capture and ordinary run; changed inputs under that UUID conflict. Reading
+status never retries work. The existing global orchestrator executes the qualified
+ten-step Python Recipe; Rust retains data, binds primitives and verifies the
+correlated native journal. This operation writes no design acceptance, serving
+selection, cache readiness or model-quality verdict. Normal Generate remains
+blocked on its remaining prerequisites.
+
+The native database/global-runtime regression passes in
+`target/validation/prefix-registry-artifacts-62egl9f8/native-registry-export.log`.
+It uses authenticated ingress, the full reference and HF-checked model probes,
+verifies both actual native calls and exact report, and proves repeated POSTs do
+not replay completed work. The supplied reference does not fit the explicit
+131072-token context assumption. The UI adds an Offline measurement panel under
+generation history; its retry/filtering/limit-state tests pass separately. The complete scoped batch passes
+`target/validation/prefix-registry-artifacts-62egl9f8/accepted.json`, including
+affected/standalone lint, standalone consumers, routes and ordinary single-root
+behavior. Embedded/browser UI acceptance and current shared-tree integration
+remain separate checks.

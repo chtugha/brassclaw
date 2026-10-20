@@ -221,7 +221,7 @@ impl ModelEncodingBackend for ContainedModelEncoding {
         let output = json!({"format":"brassclaw-model-encoding-observation/1","specification":specification,"artifact_set":artifact_set,
             "preparation_revision":prepared.revision,"model_chat_template_sha256":original_template_sha256,"template_origin":template_origin,"worker_checksum":hex::encode(prepared.worker.checksum()),"report":report,
             "qualification":"offline-measurement-only"});
-        let bytes = serde_json::to_string(&output).map_err(|_| {
+        let bytes = crate::prefix_generations::canonical(&output).map_err(|_| {
             failure(RuntimeDispatchErrorKind::OperationFailed).with_usage(usage.clone())
         })?;
         let value = Value::String(bytes);

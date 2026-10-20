@@ -85,6 +85,7 @@ pub(crate) enum BootstrapUsageApproval<'a> {
     Reply(&'a crate::bootstrap_reply_approval::BootstrapReplyApproval),
     Generation(&'a crate::bootstrap_generation_approval::BootstrapGenerationApproval),
     Compiler(&'a crate::bootstrap_compiler_approval::BootstrapCompilerApproval),
+    Encoding(&'a crate::bootstrap_encoding_approval::BootstrapEncodingApproval),
 }
 impl BootstrapUsageApproval<'_> {
     pub(crate) fn approval_id(&self) -> Uuid {
@@ -92,6 +93,7 @@ impl BootstrapUsageApproval<'_> {
             Self::Reply(a) => a.approval_id(),
             Self::Generation(a) => a.approval_id(),
             Self::Compiler(a) => a.approval_id(),
+            Self::Encoding(a) => a.approval_id(),
         }
     }
     pub(crate) fn usage_approval(
@@ -102,6 +104,7 @@ impl BootstrapUsageApproval<'_> {
             Self::Reply(a) => a.usage_approval(binding),
             Self::Generation(a) => a.usage_approval(binding),
             Self::Compiler(a) => a.usage_approval(binding),
+            Self::Encoding(a) => a.usage_approval(binding),
         }
     }
     pub(crate) async fn verify_in_transaction(
@@ -112,6 +115,7 @@ impl BootstrapUsageApproval<'_> {
             Self::Reply(a) => a.verify_in_transaction(tx).await,
             Self::Generation(a) => a.verify_in_transaction(tx).await,
             Self::Compiler(a) => a.verify_in_transaction(tx).await,
+            Self::Encoding(a) => a.verify_in_transaction(tx).await,
         }
     }
 }
@@ -143,11 +147,17 @@ pub(crate) struct InstalledMontyCatalogue {
     _public_reply_candidate: Arc<InspectedRetainedProgram>,
     pub(super) _generation_candidates: [Arc<InspectedRetainedProgram>; 2],
     pub(super) _source_compiler_candidates: crate::prefix_compiler_candidates::CompilerCandidates,
+    pub(super) _measurement_candidate: Arc<InspectedRetainedProgram>,
+    pub(super) _measurement_program: Option<Arc<InspectedRetainedProgram>>,
+    pub(super) measurement_qualification:
+        Option<crate::bootstrap_measurement_approval::BootstrapMeasurementQualification>,
     pub(super) _compiler_program: Option<Arc<InspectedRetainedProgram>>,
     pub(crate) compiler_approval:
         Option<crate::bootstrap_compiler_approval::BootstrapCompilerApproval>,
     pub(crate) generation_approvals:
         Vec<crate::bootstrap_generation_approval::BootstrapGenerationApproval>,
+    pub(crate) encoding_approvals:
+        Vec<crate::bootstrap_encoding_approval::BootstrapEncodingApproval>,
     pub(crate) reply_approval: Option<crate::bootstrap_reply_approval::BootstrapReplyApproval>,
     // Retain the actual executable, independently of a mutable source pathname.
     pub(crate) _image: Arc<NativeExecutableImage>,
@@ -174,6 +184,12 @@ impl InstalledMontyCatalogue {
                     .as_ref()
                     .filter(|a| a.usage_approval(binding).is_some())
                     .map(BootstrapUsageApproval::Compiler)
+            })
+            .or_else(|| {
+                self.encoding_approvals
+                    .iter()
+                    .find(|a| a.usage_approval(binding).is_some())
+                    .map(BootstrapUsageApproval::Encoding)
             })
     }
 
@@ -252,6 +268,12 @@ impl InstalledMontyCatalogue {
         }
         for approval in &self.generation_approvals {
             approval
+                .verify_in_transaction(tx)
+                .await
+                .map_err(|_| failed())?;
+        }
+        if let Some(qualification) = &self.measurement_qualification {
+            qualification
                 .verify_in_transaction(tx)
                 .await
                 .map_err(|_| failed())?;
@@ -338,6 +360,35 @@ impl InstalledMontyCatalogue {
             crate::builtin_bootstrap::seed_json_primitive_tool(pool.clone(), &scope.tenant_id)
                 .await
                 .map_err(|error| invalid(error.to_string()))?;
+        kernel
+            .builtin(
+                &CapabilityId::new(brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID)
+                    .map_err(|error| invalid(error.to_string()))?,
+                None,
+            )
+            .map_err(|error| invalid(error.to_string()))?
+            .verify_native_artifact()
+            .await
+            .map_err(|error| invalid(error.to_string()))?;
+        let model_encoding_tool =
+            crate::builtin_bootstrap::seed_model_encoding_tool(pool.clone(), &scope.tenant_id)
+                .await
+                .map_err(|error| invalid(error.to_string()))?;
+        let encoding_candidates = crate::prefix_encoding_candidates::retain(
+            pool.clone(),
+            kernel.as_ref(),
+            model_encoding_tool,
+            worker,
+            preparation,
+        )
+        .await?;
+        let encoding_approvals = Box::pin(crate::bootstrap_encoding_approval::qualify(
+            pool.clone(),
+            kernel.clone(),
+            &encoding_candidates,
+            worker,
+        ))
+        .await?;
         let source_compiler_candidates = crate::prefix_compiler_candidates::retain(
             pool.clone(),
             kernel.as_ref(),
@@ -366,6 +417,27 @@ impl InstalledMontyCatalogue {
             Some(approval) => Some(approval.prepare_private_program().await?),
             None => None,
         };
+        let measurement_candidate = crate::prefix_measurement_candidates::retain(
+            pool.clone(),
+            kernel.as_ref(),
+            json_tool,
+            model_encoding_tool,
+            worker,
+            preparation,
+        )
+        .await?;
+        let measurement_qualification = Box::pin(crate::bootstrap_measurement_approval::qualify(
+            pool.clone(),
+            kernel.clone(),
+            &measurement_candidate,
+            compiler_approval.as_ref(),
+            &encoding_approvals,
+            worker,
+        ))
+        .await?;
+        let measurement_program = measurement_qualification
+            .as_ref()
+            .map(|qualification| qualification.program());
         let store = PgComponentRevisionStore::new(pool.clone());
         let client = pool
             .get()
@@ -666,8 +738,12 @@ impl InstalledMontyCatalogue {
             _public_reply_candidate: public_reply_candidate,
             _generation_candidates: generation_candidates,
             _source_compiler_candidates: source_compiler_candidates,
+            _measurement_candidate: measurement_candidate,
+            _measurement_program: measurement_program,
+            measurement_qualification,
             generation_approvals,
             compiler_approval,
+            encoding_approvals,
             _compiler_program: compiler_program,
             reply_approval: public_reply_approval,
             pool,
@@ -758,6 +834,22 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             return Ok(None);
         };
         let reference = format!("prefix-job:{}", definition.id);
+        if definition.operation == "measure" {
+            if input.user_input != reference
+                || definition.scope != context.scope
+                || definition.created_by
+                    != context.actor.as_ref().ok_or_else(failed)?.user_id.as_str()
+                || definition.mode != "target"
+            {
+                return Err(failed());
+            }
+            return crate::prefix_measurement_capture::select(
+                self, host, admission, definition, reference,
+            )
+            .await
+            .map(Some)
+            .map_err(|_| failed());
+        }
         let revision = definition.revision.to_string();
         if input.user_input != reference
             || definition.scope != context.scope
@@ -1146,8 +1238,181 @@ pub(crate) fn bootstrap_generation_tools(
     bootstrap_builtin_tools(pool, kernel, host, admission, program, denied)
 }
 
+// Same native dispatcher/journal as ordinary selected usages. The installation
+// qualification owner separately proves exact packaged source and behavior.
+pub(super) fn bootstrap_encoding_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+    denied: bool,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    if program.bindings().len() != 1
+        || program.bindings().get("0:2").is_none_or(|b| {
+            b.capability_id() != brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID
+        })
+    {
+        return Err(invalid("encoding qualification binding differs"));
+    }
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, denied)
+}
+
+#[cfg(test)]
+pub(crate) fn response_parser_candidate_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    if program.bindings().len() != 1
+        || program.bindings().get("0:2").is_none_or(|binding| {
+            binding.capability_id() != brassclaw_host_runtime::JSON_CAPABILITY_ID
+        })
+    {
+        return Err(invalid("response parser candidate binding differs"));
+    }
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, false)
+}
+
+pub(super) fn bootstrap_measurement_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+    denied: bool,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    if program.bindings().len() != 2
+        || program
+            .bindings()
+            .get("0:5")
+            .is_none_or(|b| b.capability_id() != brassclaw_host_runtime::JSON_CAPABILITY_ID)
+        || program.bindings().get("0:7").is_none_or(|b| {
+            b.capability_id() != brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID
+        })
+    {
+        return Err(invalid("measurement candidate binding differs"));
+    }
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, denied)
+}
+
 // Transport/policy construction only. The closed producer above checks its exact
 // subject; development tests below cannot manufacture bootstrap approval.
+#[cfg(all(test, feature = "root-llm-provider"))]
+pub(crate) fn model_recipe_candidate_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+    model: (
+        brassclaw_reborn::monty_model_capability::RecipeModelPrefix,
+        Arc<dyn RecipeModelResponseStore>,
+    ),
+    application_checksum: [u8; 32],
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    if program.inputs().instruction().class()
+        != brassclaw_engine::memory::retained_instruction::WorkflowClass::RequiresModel
+        || program.bindings().len() != 4
+        || program
+            .bindings()
+            .values()
+            .filter(|b| b.capability_id() == "builtin.json")
+            .count()
+            != 2
+        || program
+            .bindings()
+            .values()
+            .filter(|b| b.capability_id() == "host.post_reply")
+            .count()
+            != 1
+        || program
+            .bindings()
+            .values()
+            .filter(|b| b.capability_id() == "host.kohai_complete")
+            .count()
+            != 1
+    {
+        return Err(invalid("model candidate bindings differ"));
+    }
+    let (prefix, responses) = model;
+    let mut prefix = Some(prefix);
+    let mut runtimes = BTreeMap::new();
+    for (step, binding) in program.bindings() {
+        let capability = CapabilityId::new(binding.capability_id())
+            .map_err(|error| invalid(error.to_string()))?;
+        let special = matches!(
+            capability.as_str(),
+            "host.post_reply" | "host.kohai_complete"
+        );
+        let descriptor = match capability.as_str() {
+            "host.post_reply" => crate::monty_kernel::reply_package()?
+                .capabilities
+                .into_iter()
+                .next(),
+            "host.kohai_complete" => crate::monty_kernel::model_package()?
+                .capabilities
+                .into_iter()
+                .next(),
+            _ => Some(
+                kernel
+                    .builtin(&capability, None)
+                    .map_err(|error| invalid(error.to_string()))?
+                    .descriptor()
+                    .clone(),
+            ),
+        }
+        .ok_or_else(|| invalid("model candidate descriptor missing"))?;
+        let document = program.inputs().instruction().snapshot().revisions()[&binding.tool().uuid]
+            .draft()
+            .document();
+        if special
+            && document["implementation"]["artifact_checksum"] != hex::encode(application_checksum)
+        {
+            return Err(invalid("model candidate application identity differs"));
+        }
+        let policy = Arc::new(PgSelectedToolPolicy {
+            host: host.clone(),
+            pool: pool.clone(),
+            tool: binding.tool().uuid,
+            capability: capability.clone(),
+            effects: descriptor.effects,
+            mounts: MountView::default(),
+        });
+        let runtime = match capability.as_str() {
+            "host.post_reply" => kernel.reply(host.clone(), policy)?,
+            "host.kohai_complete" => kernel.model(
+                host.clone(),
+                prefix
+                    .take()
+                    .ok_or_else(|| invalid("model candidate prefix already bound"))?,
+                responses.clone(),
+                policy,
+            )?,
+            _ => kernel
+                .builtin_with_policy(
+                    &capability,
+                    serde_json::from_value(document["implementation"]["identity"].clone())
+                        .map_err(|error| invalid(error.to_string()))?,
+                    policy,
+                )
+                .map_err(|error| invalid(error.to_string()))?,
+        };
+        runtimes.insert(step.clone(), Arc::new(runtime));
+    }
+    Ok(Arc::new(SelectedTools {
+        host,
+        admission,
+        program,
+        runtimes,
+        mounts: MountView::default(),
+        answers: tokio::sync::Mutex::new(BTreeMap::new()),
+        model_responses: Some(responses),
+    }))
+}
+
 fn bootstrap_builtin_tools(
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,

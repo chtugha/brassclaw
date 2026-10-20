@@ -8,6 +8,8 @@ publish = false
 [workspace]
 
 [dependencies]
+onig = { version = "=6.5.3", default-features = false }
+onig_sys = { version = "=69.9.3", default-features = false, features = ["brassclaw-global-allocator"] }
 brassclaw_common = { path = "../../crates/brassclaw_common" }
 tracing = "0.1"
 brassclaw_monty_host = { path = "../../crates/brassclaw_monty_host" }
@@ -77,4 +79,5 @@ name = "task_accounting"
 path = "../monty_v1_upgrade/tests/task_accounting.rs"
 
 [patch.crates-io]
+onig_sys = { path = "../../vendor/onig-sys-allocator" }
 minijinja = { path = "../../vendor/minijinja-compat" }

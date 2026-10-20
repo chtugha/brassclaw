@@ -12,6 +12,32 @@ impl RebornRuntime {
         expected_revision: u64,
         caller: brassclaw_product_workflow::WebUiAuthenticatedCaller,
     ) -> Result<Uuid, RebornRuntimeError> {
+        self.submit_current_prefix_snapshot(id, profile, expected_revision, caller, false)
+            .await
+    }
+
+    /// Capture the declared release-document inventory and current eligible
+    /// ordinary catalogue. It remains source-only and quarantined, not complete
+    /// library/model/quality acceptance or normal Generate readiness.
+    pub async fn submit_current_release_prefix_snapshot(
+        &self,
+        id: Uuid,
+        profile: &str,
+        expected_revision: u64,
+        caller: brassclaw_product_workflow::WebUiAuthenticatedCaller,
+    ) -> Result<Uuid, RebornRuntimeError> {
+        self.submit_current_prefix_snapshot(id, profile, expected_revision, caller, true)
+            .await
+    }
+
+    async fn submit_current_prefix_snapshot(
+        &self,
+        id: Uuid,
+        profile: &str,
+        expected_revision: u64,
+        caller: brassclaw_product_workflow::WebUiAuthenticatedCaller,
+        release_documents: bool,
+    ) -> Result<Uuid, RebornRuntimeError> {
         let snapshot =
             if crate::prefix_job_definitions::Store::new(self.installed_catalogue.pool.clone())
                 .get(id)
@@ -25,15 +51,28 @@ impl RebornRuntime {
                 // reconstructs its scopes. A retry never recollects current sources.
                 String::new()
             } else {
-                self.installed_catalogue
-                    .capture_core_prefix_sources(profile)
-                    .await
-                    .map_err(|error| RebornRuntimeError::InvalidArgument {
-                        reason: error.to_string(),
-                    })?
+                let captured = if release_documents {
+                    self.installed_catalogue
+                        .capture_declared_release_prefix_sources(profile)
+                        .await
+                } else {
+                    self.installed_catalogue
+                        .capture_core_prefix_sources(profile)
+                        .await
+                };
+                captured.map_err(|error| RebornRuntimeError::InvalidArgument {
+                    reason: error.to_string(),
+                })?
             };
-        self.submit_prefix_generation_snapshot(id, profile, expected_revision, &snapshot, caller)
-            .await
+        self.submit_prefix_source_snapshot(
+            id,
+            profile,
+            expected_revision,
+            &snapshot,
+            caller,
+            release_documents,
+        )
+        .await
     }
 
     /// Retain a source-only snapshot and asynchronously admit its pinned compiler
@@ -49,6 +88,26 @@ impl RebornRuntime {
         snapshot_bytes: &str,
         caller: brassclaw_product_workflow::WebUiAuthenticatedCaller,
     ) -> Result<Uuid, RebornRuntimeError> {
+        self.submit_prefix_source_snapshot(
+            id,
+            profile,
+            expected_revision,
+            snapshot_bytes,
+            caller,
+            false,
+        )
+        .await
+    }
+
+    async fn submit_prefix_source_snapshot(
+        &self,
+        id: Uuid,
+        profile: &str,
+        expected_revision: u64,
+        snapshot_bytes: &str,
+        caller: brassclaw_product_workflow::WebUiAuthenticatedCaller,
+        release_documents: bool,
+    ) -> Result<Uuid, RebornRuntimeError> {
         use crate::prefix_job_definitions::{Reservation, Store};
         let invalid = |reason: &str| RebornRuntimeError::InvalidArgument {
             reason: reason.into(),
@@ -59,7 +118,10 @@ impl RebornRuntime {
         {
             return Err(invalid("unsupported source-only prefix snapshot request"));
         }
-        let request = serde_json::json!({"profile":profile,"expected_revision":expected_revision,"mode":"source_only"});
+        let mut request = serde_json::json!({"profile":profile,"expected_revision":expected_revision,"mode":"source_only"});
+        if release_documents {
+            request["source_capture"] = serde_json::json!("declared_release");
+        }
         let store = Store::new(self.installed_catalogue.pool.clone());
         let existing = store
             .get(id)
@@ -124,6 +186,105 @@ impl RebornRuntime {
                 .await
                 .map_err(|error| invalid(&error.to_string()))?
         };
+        self.admit_prefix_definition(definition).await
+    }
+
+    /// Offline diagnostic over a retained generation and unaccepted design.
+    /// Completion reports capacity only; it cannot select/activate either one.
+    pub async fn submit_prefix_measurement(
+        &self,
+        id: Uuid,
+        profile: &str,
+        request: brassclaw_product_workflow::MeasurePrefixRequest,
+        caller: brassclaw_product_workflow::WebUiAuthenticatedCaller,
+    ) -> Result<Uuid, RebornRuntimeError> {
+        use crate::prefix_job_definitions::{Reservation, Store};
+        let invalid = |reason: &str| RebornRuntimeError::InvalidArgument {
+            reason: reason.into(),
+        };
+        if id.is_nil()
+            || request.expected_profile_revision == 0
+            || !matches!(profile, "base-prompt" | "prefix-maker")
+            || caller.tenant_id.as_str() != self.webui_tenant_id()
+        {
+            return Err(invalid("invalid offline prefix measurement request"));
+        }
+        let metadata = crate::prefix_measurement_capture::metadata(profile, &request)
+            .map_err(|_| invalid("invalid measurement metadata"))?;
+        let store = Store::new(self.installed_catalogue.pool.clone());
+        let definition =
+            if let Some(existing) = store.get(id).await.map_err(|e| invalid(&e.to_string()))? {
+                if existing.request != metadata
+                    || existing.profile != profile
+                    || existing.revision != request.expected_profile_revision
+                    || existing.operation != "measure"
+                    || existing.mode != "target"
+                    || existing.created_by != caller.user_id.as_str()
+                    || existing.scope.tenant_id != caller.tenant_id
+                    || existing.scope.project_id != caller.project_id
+                {
+                    return Err(invalid(
+                        "prefix job request conflicts with its retained definition",
+                    ));
+                }
+                existing
+            } else {
+                let input = crate::prefix_measurement_capture::capture(
+                    self.installed_catalogue.pool.clone(),
+                    caller.tenant_id.as_str(),
+                    profile,
+                    &request,
+                )
+                .await
+                .map_err(|e| invalid(&e.to_string()))?;
+                let program = self
+                    .installed_catalogue
+                    .measurement_qualification
+                    .as_ref()
+                    .ok_or_else(|| invalid("measurement workflow qualification unavailable"))?
+                    .program();
+                let scope = TurnScope::new_with_owner(
+                    caller.tenant_id.clone(),
+                    Some(self.thread_scope.agent_id.clone()),
+                    caller.project_id.clone(),
+                    ThreadId::new(format!("prefix-job-{id}"))
+                        .map_err(|_| invalid("invalid prefix job identity"))?,
+                    Some(caller.user_id.clone()),
+                );
+                let thread_scope = brassclaw_threads::ThreadScope {
+                    tenant_id: caller.tenant_id,
+                    agent_id: self.thread_scope.agent_id.clone(),
+                    project_id: caller.project_id,
+                    owner_user_id: Some(caller.user_id.clone()),
+                };
+                store
+                    .reserve(Reservation {
+                        id,
+                        profile,
+                        revision: request.expected_profile_revision,
+                        operation: "measure",
+                        mode: "target",
+                        request: &metadata,
+                        program: &program,
+                        input: &input,
+                        scope: &scope,
+                        thread_scope: &thread_scope,
+                        created_by: caller.user_id.as_str(),
+                    })
+                    .await
+                    .map_err(|e| invalid(&e.to_string()))?
+            };
+        self.admit_prefix_definition(definition).await
+    }
+
+    async fn admit_prefix_definition(
+        &self,
+        definition: crate::prefix_job_definitions::Definition,
+    ) -> Result<Uuid, RebornRuntimeError> {
+        let invalid = |reason: &str| RebornRuntimeError::InvalidArgument {
+            reason: reason.into(),
+        };
+        let id = definition.id;
         let conversation = ConversationId(definition.scope.thread_id.clone());
         let send_lock = self.send_lock_for(&conversation).await;
         let _guard = send_lock.lock().await;
@@ -179,7 +340,7 @@ pub(super) async fn assert_global_snapshot_submission(runtime: &Arc<RebornRuntim
     drop(client);
     let fixture = crate::bootstrap_compiler_fixture::CompilerFixture::scoped(
         "base-prompt",
-        "literal-reference/v2-deduplicated",
+        "literal-reference/v4-stable-sharing",
         &format!("global-source-job/{id}"),
     )
     .unwrap();
@@ -382,6 +543,104 @@ pub(super) async fn assert_global_snapshot_submission(runtime: &Arc<RebornRuntim
             .unwrap()
             .get::<_, i64>(0),
         5
+    );
+    let scope_caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
+        runtime.thread_scope.tenant_id.clone(),
+        runtime.actor_user_id.clone(),
+        Some(runtime.thread_scope.agent_id.clone()),
+        runtime.thread_scope.project_id.clone(),
+    );
+    assert!(
+        runtime
+            .submit_current_release_prefix_snapshot(
+                core_id,
+                "base-prompt",
+                revision as u64,
+                scope_caller
+            )
+            .await
+            .is_err(),
+        "a release request cannot silently reuse a core-only capture"
+    );
+    let release_id = Uuid::new_v4();
+    let release_caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
+        runtime.thread_scope.tenant_id.clone(),
+        runtime.actor_user_id.clone(),
+        Some(runtime.thread_scope.agent_id.clone()),
+        runtime.thread_scope.project_id.clone(),
+    );
+    runtime
+        .submit_current_release_prefix_snapshot(
+            release_id,
+            "base-prompt",
+            revision as u64,
+            release_caller.clone(),
+        )
+        .await
+        .unwrap();
+    let release_definition = crate::prefix_job_definitions::Store::new(pool.clone())
+        .get(release_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        runtime
+            .wait_for_terminal(
+                &release_definition.scope,
+                TurnRunId::from_uuid(release_id),
+                &CancellationToken::new()
+            )
+            .await
+            .unwrap(),
+        TurnStatus::Completed
+    );
+    let release_job = runtime
+        .inspect_prefix_job("base-prompt", release_id)
+        .await
+        .unwrap();
+    assert_eq!(release_job.answered_tool_calls, 5);
+    assert_eq!(
+        release_definition.request["source_capture"],
+        "declared_release"
+    );
+
+    let release_capture: Value =
+        serde_json::from_str(release_definition.input["snapshot_bytes"].as_str().unwrap()).unwrap();
+    assert!(
+        release_capture["sources"].as_array().unwrap().len()
+            > source["sources"].as_array().unwrap().len()
+    );
+    assert!(
+        release_capture["sources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|source| source["path"] == "scripts/prefix/release-reference-inventory.json")
+    );
+    runtime
+        .submit_current_release_prefix_snapshot(
+            release_id,
+            "base-prompt",
+            revision as u64,
+            release_caller,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        runtime
+            .inspect_prefix_job("base-prompt", release_id)
+            .await
+            .unwrap()
+            .answered_tool_calls,
+        5
+    );
+    eprintln!(
+        "declared release source job completed: sources={} snapshot_bytes={}; 5 native calls, no replay/activation",
+        release_capture["sources"].as_array().unwrap().len(),
+        release_definition.input["snapshot_bytes"]
+            .as_str()
+            .unwrap()
+            .len()
     );
     assert_eq!(
         runtime.global_monty_owner.client().root_identity(),

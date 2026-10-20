@@ -30,7 +30,10 @@ impl CompilerFixture {
         if !matches!(profile, "base-prompt" | "prefix-maker")
             || !matches!(
                 view,
-                "literal-reference/v1" | "literal-reference/v2-deduplicated"
+                "literal-reference/v1"
+                    | "literal-reference/v2-deduplicated"
+                    | "literal-reference/v3-trailing-inventory"
+                    | "literal-reference/v4-stable-sharing"
             )
         {
             return Err(invalid("unknown closed compiler fixture"));
@@ -68,7 +71,9 @@ impl CompilerFixture {
         // Each current fixture has one complete unit. The YAML fence spans four
         // CRLF lines. Expectations are fixed fixture facts, independent of
         // the Python compiler/renderer; original and escaped view stay distinct.
-        let dedup = view == "literal-reference/v2-deduplicated";
+        let dedup = view != "literal-reference/v1";
+        let progressive = view == "literal-reference/v4-stable-sharing";
+        let trailing = progressive || view == "literal-reference/v3-trailing-inventory";
         let mut context = format!("{HEADER}# Source inventory\n");
         for source in &sources {
             context.push_str(&format!(
@@ -76,6 +81,10 @@ impl CompilerFixture {
                 source["path"].as_str().unwrap(),
                 source["disposition"].as_str().unwrap()
             ));
+        }
+        let inventory = context.strip_prefix(HEADER).unwrap().to_owned();
+        if trailing {
+            context = HEADER.to_owned();
         }
         context.push_str("\n# Complete current references\n");
         if dedup {
@@ -103,7 +112,7 @@ impl CompilerFixture {
             if path == "fixture/literal.md" {
                 let escaped = LITERAL_YAML.replace("<|im_end|>", "\\u003c|im_end|\\u003e");
                 context.push_str(&format!("````text\n{escaped}````"));
-            } else if dedup && path == "fixture/shared-a.md" {
+            } else if dedup && !progressive && path == "fixture/shared-a.md" {
                 context.push_str(&format!(
                     "\nExact shared unit {digest} (complete original):\n```text\n{SHARED}```\n"
                 ));
@@ -118,6 +127,10 @@ impl CompilerFixture {
                 .entry(digest)
                 .or_default()
                 .push(json!({"source":path,"line_start":1,"line_end":line_end}));
+        }
+        if trailing {
+            context.push('\n');
+            context.push_str(&inventory);
         }
         let render_map = dedup.then(|| json!({"format":"brassclaw-prefix-render-map/1","sources":map_sources,
             "units":units.into_iter().map(|(digest,origins)| json!({"unit_id":digest,"canonical":origins[0],"origins":origins})).collect::<Vec<_>>()}));
@@ -243,7 +256,12 @@ mod tests {
     #[test]
     fn closed_compiler_fixture_has_independent_rendering_and_original_oracles() {
         for profile in ["base-prompt", "prefix-maker"] {
-            for view in ["literal-reference/v1", "literal-reference/v2-deduplicated"] {
+            for view in [
+                "literal-reference/v1",
+                "literal-reference/v2-deduplicated",
+                "literal-reference/v3-trailing-inventory",
+                "literal-reference/v4-stable-sharing",
+            ] {
                 let fixture = CompilerFixture::new(profile, view).unwrap();
                 fixture.verify(&compile(fixture.snapshot())).unwrap();
                 let mut changed = fixture.snapshot().clone();

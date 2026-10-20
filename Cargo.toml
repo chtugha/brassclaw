@@ -8,6 +8,7 @@ members = ["crates/brassclaw_model_encoding", "crates/brassclaw_common", "crates
 exclude = [
     "vendor/minijinja-compat",
     # Vendored Monty retains its own upstream workspace and pinned manifests.
+    "vendor/onig-sys-allocator",
     "vendor/monty-control",
     "vendor/monty-control/crates/monty",
     "vendor/monty-control/crates/monty-types",
@@ -425,4 +426,5 @@ aarch64-apple-darwin = "macos-14"
 
 # Python-compatible eager sequence concatenation for exact chat-template encoding.
 [patch.crates-io]
+onig_sys = { path = "vendor/onig-sys-allocator" }
 minijinja = { path = "vendor/minijinja-compat" }

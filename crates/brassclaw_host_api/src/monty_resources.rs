@@ -43,6 +43,14 @@ pub struct MontyExecutionLimits {
     /// each operation. Overflow is an error, never a truncated answer or retry.
     #[serde(default = "default_mcp_message_bytes")]
     pub max_mcp_response_bytes: u32,
+    /// Reservation-only output estimate when neither the work request nor the
+    /// selected cost row supplies an output estimate. Never a response cap.
+    #[serde(default = "default_model_quote_output_tokens")]
+    pub model_quote_output_tokens: u32,
+    /// Deadline per PostgreSQL resource-account or budget-gate exchange.
+    /// A read/CAS-write operation captures one revision for both exchanges.
+    #[serde(default = "default_resource_store_timeout")]
+    pub resource_store_timeout_millis: u64,
     /// Defaults for host HTTP requests that omit explicit bounds.
     #[serde(default = "default_http_request_timeout")]
     pub default_http_request_timeout_millis: u64,
@@ -143,6 +151,8 @@ impl Default for MontyExecutionLimits {
             max_mcp_inflight_calls: default_mcp_inflight_calls(),
             max_mcp_request_bytes: default_mcp_message_bytes(),
             max_mcp_response_bytes: default_mcp_message_bytes(),
+            model_quote_output_tokens: default_model_quote_output_tokens(),
+            resource_store_timeout_millis: default_resource_store_timeout(),
             default_http_request_timeout_millis: default_http_request_timeout(),
             default_http_response_body_bytes: default_http_response_body_bytes(),
             default_memory_tree_depth: default_memory_tree_depth(),
@@ -190,6 +200,8 @@ impl MontyExecutionLimits {
             || self.utility_worker_memory_bytes == u64::MAX
             || self.max_native_artifact_bytes == 0
             || self.max_native_artifact_bytes == u64::MAX
+            || self.model_quote_output_tokens == 0
+            || self.resource_store_timeout_millis == 0
             || self.default_http_request_timeout_millis == 0
             || self.default_memory_tree_depth == 0
             || self.default_memory_tree_depth > self.max_memory_tree_depth
@@ -274,6 +286,14 @@ fn default_workers() -> u32 {
 
 fn default_pending_host_calls() -> u32 {
     128
+}
+
+fn default_model_quote_output_tokens() -> u32 {
+    8192
+}
+
+fn default_resource_store_timeout() -> u64 {
+    2000
 }
 
 fn default_http_request_timeout() -> u64 {

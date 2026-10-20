@@ -135,12 +135,12 @@ pub use policy::{
 pub use reborn_services::CapabilityPermissionStore;
 pub use reborn_services::{
     CapturePrefixModelRequest, ImportPrefixGenerationRequest, InterceptorConfigService,
-    InterceptorConfigServiceError, InterceptorConfigSnapshot, PrefixDesignProposal, PrefixEntry,
-    PrefixGenerationDetail, PrefixGenerationSummary, PrefixJobDetail, PrefixListResponse,
-    PrefixModelArtifactDetail, PrefixModelArtifactFile, PrefixModelArtifactSet,
-    PrefixModelDesignCatalogue, PrefixModelSpecification, PrefixModelTarget,
-    PrefixRegenerateResponse, PrefixSourceInventory, PrefixSourceRegistration, PrefixUsedSource,
-    RegisterPrefixSourceRequest, RetainPrefixDesignProposalRequest,
+    InterceptorConfigServiceError, InterceptorConfigSnapshot, MeasurePrefixRequest,
+    PrefixDesignProposal, PrefixEntry, PrefixGenerationDetail, PrefixGenerationSummary,
+    PrefixJobDetail, PrefixListResponse, PrefixModelArtifactDetail, PrefixModelArtifactFile,
+    PrefixModelArtifactSet, PrefixModelDesignCatalogue, PrefixModelSpecification,
+    PrefixModelTarget, PrefixRegenerateResponse, PrefixSourceInventory, PrefixSourceRegistration,
+    PrefixUsedSource, RegisterPrefixSourceRequest, RetainPrefixDesignProposalRequest,
     RetainPrefixModelArtifactsRequest, UpdateInterceptorConfigRequest,
     interceptor_config_unavailable, map_interceptor_config_error,
 };

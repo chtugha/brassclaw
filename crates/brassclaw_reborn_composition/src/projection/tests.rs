@@ -207,6 +207,7 @@ impl SystemInferencePort for SlowSystemInference {
             task_id: request.task_id,
             output_text: "too late".to_string(),
             elapsed_ms: 2000,
+            usage: None,
         })
     }
 }

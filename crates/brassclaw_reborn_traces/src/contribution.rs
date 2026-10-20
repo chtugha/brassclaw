@@ -1243,10 +1243,12 @@ impl RawTraceContribution {
                         structured_payload: Value::Null,
                         tool_name: None,
                         latency_ms: None,
-                        token_counts: Some(TokenCounts {
-                            input_tokens: *input_tokens,
-                            output_tokens: *output_tokens,
-                        }),
+                        token_counts: (*input_tokens).zip(*output_tokens).map(
+                            |(input_tokens, output_tokens)| TokenCounts {
+                                input_tokens,
+                                output_tokens,
+                            },
+                        ),
                         cost_usd: None,
                     });
                 }
@@ -1276,10 +1278,12 @@ impl RawTraceContribution {
                             structured_payload,
                             tool_name: Some(tool_call.name.clone()),
                             latency_ms: None,
-                            token_counts: Some(TokenCounts {
-                                input_tokens: *input_tokens,
-                                output_tokens: *output_tokens,
-                            }),
+                            token_counts: (*input_tokens).zip(*output_tokens).map(
+                                |(input_tokens, output_tokens)| TokenCounts {
+                                    input_tokens,
+                                    output_tokens,
+                                },
+                            ),
                             cost_usd: None,
                         });
                     }
@@ -8001,8 +8005,8 @@ mod tests {
                                 "path": "/Users/alice/project/secrets.txt"
                             }),
                         }],
-                        input_tokens: 10,
-                        output_tokens: 3,
+                        input_tokens: Some(10),
+                        output_tokens: Some(3),
                     },
                     expected_tool_results: Vec::new(),
                 },

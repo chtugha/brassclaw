@@ -7,6 +7,7 @@ use brassclaw_product_workflow::{
     RetainPrefixModelArtifactsRequest, WebUiAuthenticatedCaller,
 };
 use brassclaw_skills::value_contract::{EXECUTION_DATA_LIMITS, strict_json};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, sync::Arc};
@@ -38,6 +39,66 @@ fn hash(value: &str) -> Result<(), Error> {
         return Err(bad());
     }
     Ok(())
+}
+
+/// Import provenance is data, never a component/usage approval. Only trusted
+/// installation code can choose the fixture variant; public imports always
+/// construct Operator. The qualification owner must still verify actual fixture
+/// bytes, dispatch behavior and its independent immutable approval evidence.
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum ArtifactImportOrigin {
+    Operator {
+        actor: String,
+    },
+    SystemSeedFixture {
+        actor: String,
+        producer: String,
+        source_checksum: String,
+    },
+}
+impl ArtifactImportOrigin {
+    fn validate(&self, namespace: &str) -> Result<(), Error> {
+        let actor = match self {
+            Self::Operator { actor } => actor,
+            Self::SystemSeedFixture {
+                actor,
+                producer,
+                source_checksum,
+            } => {
+                if namespace != crate::bootstrap_validation::NAMESPACE
+                    || producer != "brassclaw-model-encoding-bootstrap/1"
+                {
+                    return Err(bad());
+                }
+                hash(source_checksum)?;
+                actor
+            }
+        };
+        if actor.is_empty() {
+            return Err(bad());
+        }
+        Ok(())
+    }
+}
+
+fn validate_binding(
+    value: &Value,
+    specification: &str,
+    id: &str,
+    namespace: &str,
+) -> Result<(), Error> {
+    if value["format"] != "brassclaw-prefix-model-artifact-binding/1"
+        || value.as_object().is_none_or(|v| v.len() != 5)
+        || value["specification"] != specification
+        || value["artifact_set"] != id
+        || value["qualification"] != "unverified-model-artifacts"
+    {
+        return Err(Error::Unavailable);
+    }
+    let origin: ArtifactImportOrigin =
+        serde_json::from_value(value["origin"].clone()).map_err(|_| Error::Unavailable)?;
+    origin.validate(namespace).map_err(|_| Error::Unavailable)
 }
 fn package(bytes: &str) -> Result<(String, Vec<PrefixModelArtifactFile>), Error> {
     let value = strict_json(bytes, EXECUTION_DATA_LIMITS).map_err(|_| bad())?;
@@ -136,11 +197,28 @@ impl PgPrefixModelArtifacts {
         request: RetainPrefixModelArtifactsRequest,
         caller: &WebUiAuthenticatedCaller,
     ) -> Result<PrefixModelArtifactSet, Error> {
+        self.retain_with_origin(
+            request,
+            ArtifactImportOrigin::Operator {
+                actor: caller.user_id.as_str().to_owned(),
+            },
+        )
+        .await
+    }
+
+    /// Private unqualified-data import shared by operator and installation
+    /// owners. No host/API accepts caller-selected provenance or approval here.
+    pub(super) async fn retain_with_origin(
+        &self,
+        request: RetainPrefixModelArtifactsRequest,
+        origin: ArtifactImportOrigin,
+    ) -> Result<PrefixModelArtifactSet, Error> {
+        origin.validate(&self.namespace)?;
         hash(&request.specification)?;
         let (bytes, files) = package(&request.artifact_set_bytes)?;
         let id = sha(bytes.as_bytes());
         let binding=json!({"format":"brassclaw-prefix-model-artifact-binding/1","specification":request.specification,"artifact_set":id,
-            "origin":{"kind":"operator","actor":caller.user_id.as_str()},"qualification":"unverified-model-artifacts"}).to_string();
+            "origin":origin,"qualification":"unverified-model-artifacts"}).to_string();
         let mut client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
         let tx = client.transaction().await.map_err(|_| Error::Unavailable)?;
         if tx.query_opt("SELECT specification_id FROM reborn_prefix_model_specifications WHERE specification_id=$1 AND provider_namespace=$2",&[&request.specification,&self.namespace]).await.map_err(|_|Error::Unavailable)?.is_none() {return Err(Error::Conflict);}
@@ -189,16 +267,7 @@ impl PgPrefixModelArtifacts {
             brassclaw_skills::component_revision::REVISION_LIMITS,
         )
         .map_err(|_| Error::Unavailable)?;
-        if value["format"] != "brassclaw-prefix-model-artifact-binding/1"
-            || value.as_object().is_none_or(|v| v.len() != 5)
-            || value["specification"] != specification
-            || value["artifact_set"] != id
-            || value["qualification"] != "unverified-model-artifacts"
-            || value["origin"]["kind"] != "operator"
-            || value["origin"]["actor"].as_str().is_none_or(str::is_empty)
-        {
-            return Err(Error::Unavailable);
-        }
+        validate_binding(&value, specification, id, &self.namespace)?;
         Ok(brassclaw_product_workflow::PrefixModelArtifactDetail {
             summary: summary(specification, id.into(), files, binding),
             artifact_set_bytes: bytes,
@@ -227,18 +296,96 @@ impl PgPrefixModelArtifacts {
                 brassclaw_skills::component_revision::REVISION_LIMITS,
             )
             .map_err(|_| Error::Unavailable)?;
-            if value["format"] != "brassclaw-prefix-model-artifact-binding/1"
-                || value.as_object().is_none_or(|v| v.len() != 5)
-                || value["origin"]["kind"] != "operator"
-                || value["origin"]["actor"].as_str().is_none_or(str::is_empty)
-                || value["specification"] != specification
-                || value["artifact_set"] != id
-                || value["qualification"] != "unverified-model-artifacts"
-            {
-                return Err(Error::Unavailable);
-            }
+            validate_binding(&value, &specification, &id, &self.namespace)?;
             output.push(summary(&specification, id, files, binding));
         }
         Ok(output)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn binding(origin: Value) -> Value {
+        json!({"format":"brassclaw-prefix-model-artifact-binding/1",
+            "specification":"spec","artifact_set":"assets",
+            "qualification":"unverified-model-artifacts","origin":origin})
+    }
+
+    #[test]
+    fn model_artifact_origin_preserves_operator_and_contains_seed_fixtures() {
+        let operator = binding(json!({"kind":"operator","actor":"operator"}));
+        for namespace in ["instance", crate::bootstrap_validation::NAMESPACE] {
+            validate_binding(&operator, "spec", "assets", namespace).unwrap();
+        }
+        let fixture = binding(
+            json!({"kind":"system_seed_fixture","actor":"installation-owner",
+            "producer":"brassclaw-model-encoding-bootstrap/1","source_checksum":"a".repeat(64)}),
+        );
+        validate_binding(
+            &fixture,
+            "spec",
+            "assets",
+            crate::bootstrap_validation::NAMESPACE,
+        )
+        .unwrap();
+        assert!(validate_binding(&fixture, "spec", "assets", "instance").is_err());
+        for (field, value) in [
+            ("actor", json!("")),
+            ("producer", json!("untrusted")),
+            ("source_checksum", json!("A".repeat(64))),
+            ("source_checksum", Value::Null),
+            ("q1_ref", json!("fabricated")),
+        ] {
+            let mut changed = fixture.clone();
+            changed["origin"][field] = value;
+            assert!(
+                validate_binding(
+                    &changed,
+                    "spec",
+                    "assets",
+                    crate::bootstrap_validation::NAMESPACE
+                )
+                .is_err(),
+                "{field}"
+            );
+        }
+        let mut changed = operator;
+        changed["origin"]["source_checksum"] = json!("a".repeat(64));
+        assert!(validate_binding(&changed, "spec", "assets", "instance").is_err());
+        let mut changed = fixture;
+        changed["qualification"] = json!("approved");
+        assert!(
+            validate_binding(
+                &changed,
+                "spec",
+                "assets",
+                crate::bootstrap_validation::NAMESPACE
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn model_artifact_package_cannot_supply_origin_or_approval() {
+        let files: serde_json::Map<String, Value> =
+            ["config.json", "tokenizer.json", "tokenizer_config.json"]
+                .into_iter()
+                .map(|name| {
+                    (
+                        name.into(),
+                        json!({"encoding":"base64","data":STANDARD.encode(b"{} ")}),
+                    )
+                })
+                .collect();
+        let mut value =
+            json!({"format":"brassclaw-prefix-model-artifact-import/1","artifacts":files});
+        package(&value.to_string()).unwrap();
+        value["origin"] = json!({"kind":"system_seed_fixture"});
+        assert!(package(&value.to_string()).is_err());
+        value.as_object_mut().unwrap().remove("origin");
+        value["qualification"] = json!("approved");
+        assert!(package(&value.to_string()).is_err());
     }
 }

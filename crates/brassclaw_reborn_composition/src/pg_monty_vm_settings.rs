@@ -372,6 +372,82 @@ mod tests {
     use super::PgMontyVmSettingsStore;
 
     #[tokio::test]
+    async fn native_model_quote_upgrade_preserves_explicit_estimates_and_rejects_invalid() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute("CREATE SCHEMA model_quote_upgrade;
+            CREATE TABLE model_quote_upgrade.reborn_monty_vm_settings (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO model_quote_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_model_quote_output;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+            VALUES('legacy','owner','agent','project',8),('explicit','owner','agent','project',12);
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'model_quote_output_tokens' WHERE tenant_id='legacy';
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"model_quote_output_tokens\":16384}'::jsonb WHERE tenant_id='explicit';").await.unwrap();
+        client
+            .batch_execute(include_str!(
+                "../../brassclaw_pg/migrations/V170__model_quote_output_estimate.sql"
+            ))
+            .await
+            .unwrap();
+        for (tenant, tokens, revision) in [("legacy", 8192u32, 9i64), ("explicit", 16384, 12)] {
+            let row = client.query_one("SELECT execution_limits,revision FROM reborn_monty_vm_settings WHERE tenant_id=$1", &[&tenant]).await.unwrap();
+            let limits: brassclaw_host_api::MontyExecutionLimits =
+                serde_json::from_value(row.get(0)).unwrap();
+            assert_eq!(limits.model_quote_output_tokens, tokens);
+            assert_eq!(row.get::<_, i64>(1), revision);
+        }
+        for value in [
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!(1.5),
+            serde_json::Value::Null,
+            serde_json::json!("1000"),
+            serde_json::json!(4294967296u64),
+        ] {
+            assert!(client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=jsonb_set(execution_limits,'{model_quote_output_tokens}',$1) WHERE tenant_id='explicit'", &[&value]).await.is_err());
+        }
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn native_resource_deadline_upgrade_preserves_values_and_rejects_invalid() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute("CREATE SCHEMA resource_deadline_upgrade;
+            CREATE TABLE resource_deadline_upgrade.reborn_monty_vm_settings (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO resource_deadline_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_resource_store_deadline;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+            VALUES('legacy','owner','agent','project',8),('explicit','owner','agent','project',12);
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'resource_store_timeout_millis' WHERE tenant_id='legacy';
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"resource_store_timeout_millis\":7000}'::jsonb WHERE tenant_id='explicit';").await.unwrap();
+        client
+            .batch_execute(include_str!(
+                "../../brassclaw_pg/migrations/V169__resource_store_deadline.sql"
+            ))
+            .await
+            .unwrap();
+        for (tenant, timeout, revision) in [("legacy", 2000u64, 9i64), ("explicit", 7000, 12)] {
+            let row = client.query_one("SELECT execution_limits,revision FROM reborn_monty_vm_settings WHERE tenant_id=$1", &[&tenant]).await.unwrap();
+            let limits: brassclaw_host_api::MontyExecutionLimits =
+                serde_json::from_value(row.get(0)).unwrap();
+            assert_eq!(limits.resource_store_timeout_millis, timeout);
+            assert_eq!(row.get::<_, i64>(1), revision);
+        }
+        for value in [
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!(1.5),
+            serde_json::Value::Null,
+            serde_json::json!("3000"),
+            serde_json::json!(18446744073709551616.0),
+        ] {
+            assert!(client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=jsonb_set(execution_limits,'{resource_store_timeout_millis}',$1) WHERE tenant_id='explicit'", &[&value]).await.is_err());
+        }
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+
+    #[tokio::test]
     async fn native_http_defaults_upgrade_retains_explicit_values_and_rejects_invalid() {
         let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
         let client = rig.pool.get().await.unwrap();

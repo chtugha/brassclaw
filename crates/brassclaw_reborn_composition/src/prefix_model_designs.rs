@@ -116,48 +116,31 @@ impl PgPrefixModelDesigns {
         }
         specification(&row)
     }
+    pub(crate) async fn get_specification(
+        &self,
+        id: &str,
+    ) -> Result<PrefixModelSpecification, Error> {
+        hash(id)?;
+        let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
+        let row = client.query_opt("SELECT specification_id,provider_id,provider_revision,model,specification_bytes FROM reborn_prefix_model_specifications WHERE specification_id=$1 AND provider_namespace=$2", &[&id, &self.namespace]).await.map_err(|_| Error::Unavailable)?.ok_or(Error::Conflict)?;
+        specification(&row)
+    }
+    pub(crate) async fn get_proposal(
+        &self,
+        profile: &str,
+        id: &str,
+    ) -> Result<PrefixDesignProposal, Error> {
+        hash(id)?;
+        let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
+        let row = client.query_opt("SELECT p.proposal_id,p.profile_name,p.specification_id,p.proposal_bytes FROM reborn_prefix_design_proposals p JOIN reborn_prefix_model_specifications s ON s.specification_id=p.specification_id WHERE p.proposal_id=$1 AND p.profile_name=$2 AND s.provider_namespace=$3", &[&id, &profile, &self.namespace]).await.map_err(|_| Error::Unavailable)?.ok_or(Error::Conflict)?;
+        proposal(&row)
+    }
     pub(crate) async fn retain_proposal(
         &self,
         profile: &str,
         request: RetainPrefixDesignProposalRequest,
     ) -> Result<PrefixDesignProposal, Error> {
-        hash(&request.specification)?;
-        let value = strict_json(
-            &request.proposal_bytes,
-            ContractLimits {
-                max_depth: 32,
-                max_nodes: 32768,
-                max_bytes: 1048576,
-            },
-        )
-        .map_err(|_| bad())?;
-        let fields = ["format", "profile", "specification", "design", "rationale"];
-        let object = value.as_object().ok_or_else(bad)?;
-        if object.len() != fields.len()
-            || fields.iter().any(|key| !object.contains_key(*key))
-            || value["format"] != "brassclaw-prefix-design-proposal/1"
-            || value["profile"] != profile
-            || value["specification"] != request.specification
-            || value["rationale"]
-                .as_str()
-                .is_none_or(|s| s.trim().is_empty())
-        {
-            return Err(bad());
-        }
-        let design = value["design"].as_object().ok_or_else(bad)?;
-        if design.len() != 4
-            || value["design"]["adapter"] != "ornith-qwen-system/1"
-            || !matches!(
-                value["design"]["evidence_view"].as_str(),
-                Some("literal-reference/v1" | "literal-reference/v2-deduplicated")
-            )
-            || value["design"]["source_selection"] != "complete-mandatory"
-            || value["design"]["reserve_tokens"]
-                .as_u64()
-                .is_none_or(|n| !(8192..=9_007_199_254_740_991).contains(&n))
-        {
-            return Err(bad());
-        }
+        validate_proposal(profile, &request.specification, &request.proposal_bytes)?;
         let id = sha(request.proposal_bytes.as_bytes());
         let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
         if client.query_opt("SELECT specification_id FROM reborn_prefix_model_specifications WHERE specification_id=$1 AND provider_namespace=$2",&[&request.specification,&self.namespace]).await.map_err(|_|Error::Unavailable)?.is_none(){return Err(bad());}
@@ -181,6 +164,51 @@ impl PgPrefixModelDesigns {
         }
         proposal(&row)
     }
+}
+fn validate_proposal(profile: &str, specification: &str, bytes: &str) -> Result<Value, Error> {
+    hash(specification)?;
+    let value = strict_json(
+        bytes,
+        ContractLimits {
+            max_depth: 32,
+            max_nodes: 32768,
+            max_bytes: 1048576,
+        },
+    )
+    .map_err(|_| bad())?;
+    let fields = ["format", "profile", "specification", "design", "rationale"];
+    let object = value.as_object().ok_or_else(bad)?;
+    if object.len() != fields.len()
+        || fields.iter().any(|key| !object.contains_key(*key))
+        || value["format"] != "brassclaw-prefix-design-proposal/1"
+        || value["profile"] != profile
+        || value["specification"] != specification
+        || value["rationale"]
+            .as_str()
+            .is_none_or(|s| s.trim().is_empty())
+    {
+        return Err(bad());
+    }
+    let design = value["design"].as_object().ok_or_else(bad)?;
+    if design.len() != 4
+        || value["design"]["adapter"] != "ornith-qwen-system/1"
+        || !matches!(
+            value["design"]["evidence_view"].as_str(),
+            Some(
+                "literal-reference/v1"
+                    | "literal-reference/v2-deduplicated"
+                    | "literal-reference/v3-trailing-inventory"
+                    | "literal-reference/v4-stable-sharing"
+            )
+        )
+        || value["design"]["source_selection"] != "complete-mandatory"
+        || value["design"]["reserve_tokens"]
+            .as_u64()
+            .is_none_or(|n| !(8192..=9_007_199_254_740_991).contains(&n))
+    {
+        return Err(bad());
+    }
+    Ok(value)
 }
 fn specification(row: &tokio_postgres::Row) -> Result<PrefixModelSpecification, Error> {
     let bytes: String = row.get(4);
@@ -212,6 +240,8 @@ fn proposal(row: &tokio_postgres::Row) -> Result<PrefixDesignProposal, Error> {
     if sha(bytes.as_bytes()) != id {
         return Err(Error::Unavailable);
     }
+    validate_proposal(&row.get::<_, String>(1), &row.get::<_, String>(2), &bytes)
+        .map_err(|_| Error::Unavailable)?;
     Ok(PrefixDesignProposal {
         id,
         profile: row.get(1),

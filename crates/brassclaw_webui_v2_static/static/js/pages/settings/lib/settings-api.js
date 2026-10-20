@@ -432,3 +432,12 @@ export function retainPrefixModelArtifacts(request) {
 export function retainPrefixDesignProposal(profile, request) {
   return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/design-proposals`, { method: "POST", body: JSON.stringify(request) });
 }
+
+export function measurePrefix(profile, job, request) {
+  return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/jobs/${encodeURIComponent(job)}`, {
+    method: "POST", body: JSON.stringify(request),
+  });
+}
+export function fetchPrefixJob(profile, job) {
+  return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/jobs/${encodeURIComponent(job)}`);
+}

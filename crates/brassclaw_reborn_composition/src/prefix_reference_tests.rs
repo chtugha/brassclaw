@@ -371,32 +371,40 @@ fn prefix_worker_package_requires_retained_build_adapter_bytes() {
     );
     // Recompute the generic package identity after removing only the worker
     // linkage. File hashes alone cannot establish its procedure declaration.
-    let mut manifest: Value = serde_json::from_slice(
-        &STANDARD
-            .decode(
-                package["artifacts"]["manifest.json"]["data"]
-                    .as_str()
-                    .unwrap(),
-            )
-            .unwrap(),
-    )
-    .unwrap();
-    manifest["compiler"]
-        .as_object_mut()
-        .unwrap()
-        .remove("worker_sha256");
-    let identity = json!({"profile":manifest["profile"],"compiler":manifest["compiler"],"files":manifest["files"],"geometry":manifest["geometry"]});
-    manifest["generation"] = json!(hex::encode(sha2::Sha256::digest(
-        crate::prefix_generations::canonical(&identity)
-            .unwrap()
-            .as_bytes()
-    )));
-    package["artifacts"]["manifest.json"]["data"] =
-        json!(STANDARD.encode(crate::prefix_generations::canonical(&manifest).unwrap()));
-    assert!(
-        crate::prefix_generations::validate_package("base-prompt", &package.to_string()).is_err(),
-        "a retained worker file requires its exact declared procedure checksum"
-    );
+    let original_package = package.clone();
+    for declaration in ["worker_sha256", "template_adapter_sha256"] {
+        package = original_package.clone();
+        let mut manifest: Value = serde_json::from_slice(
+            &STANDARD
+                .decode(
+                    package["artifacts"]["manifest.json"]["data"]
+                        .as_str()
+                        .unwrap(),
+                )
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(
+            manifest["compiler"]
+                .as_object_mut()
+                .unwrap()
+                .remove(declaration)
+                .is_some()
+        );
+        let identity = json!({"profile":manifest["profile"],"compiler":manifest["compiler"],"files":manifest["files"],"geometry":manifest["geometry"]});
+        manifest["generation"] = json!(hex::encode(sha2::Sha256::digest(
+            crate::prefix_generations::canonical(&identity)
+                .unwrap()
+                .as_bytes()
+        )));
+        package["artifacts"]["manifest.json"]["data"] =
+            json!(STANDARD.encode(crate::prefix_generations::canonical(&manifest).unwrap()));
+        assert!(
+            crate::prefix_generations::validate_package("base-prompt", &package.to_string())
+                .is_err(),
+            "a retained executable helper requires its exact declared procedure checksum"
+        );
+    }
 }
 
 #[cfg(feature = "postgres")]
@@ -616,7 +624,12 @@ async fn prefix_compiler_stages_preserve_originals_in_monty() {
     let checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let definitions = format!("{UNIT_SOURCE}\n{REFERENCE_RENDER_SOURCE}\n{COMPILER_SOURCE}\n");
     for profile in ["base-prompt", "prefix-maker"] {
-        for view in ["literal-reference/v1", "literal-reference/v2-deduplicated"] {
+        for view in [
+            "literal-reference/v1",
+            "literal-reference/v2-deduplicated",
+            "literal-reference/v3-trailing-inventory",
+            "literal-reference/v4-stable-sharing",
+        ] {
             let output = std::process::Command::new("python3")
                 .args(["-c", "import json,sys; from test_prefix_compile_logic import native_fixture; print(json.dumps(native_fixture(sys.argv[1],sys.argv[2]),ensure_ascii=False))", profile, view])
                 .env("PYTHONPATH", checkout.join("scripts/prefix")).output().unwrap();
@@ -816,15 +829,32 @@ pub(crate) async fn prepared_prefix_compiler_test() -> (
 #[cfg(feature = "postgres")]
 #[tokio::test]
 async fn prefix_json_registration_preserves_existing_identity_metadata_and_block() {
+    assert_read_primitive_registration(false).await;
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+async fn prefix_model_encoding_registration_preserves_existing_identity_metadata_and_block() {
+    assert_read_primitive_registration(true).await;
+}
+
+#[cfg(feature = "postgres")]
+async fn assert_read_primitive_registration(model: bool) {
     let rig = crate::runtime::test_pg::pg_rig().await;
     let legacy = Uuid::new_v4();
+    let name = if model { "model_encoding" } else { "json" };
+    let capability = if model {
+        brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID
+    } else {
+        brassclaw_host_runtime::JSON_CAPABILITY_ID
+    };
     let store = crate::pg_tool_store::PgToolStore::new(rig.pool.clone());
     let row = crate::pg_tool_store::NewPgTool {
         tenant_id: "default".into(),
         user_id: brassclaw_host_api::SYSTEM_RESERVED_ID.into(),
         agent_id: "default".into(),
         project_id: "system".into(),
-        name: "json".into(),
+        name: name.into(),
         description: "Operator description".into(),
         param_schema: None,
         param_template: None,
@@ -834,7 +864,7 @@ async fn prefix_json_registration_preserves_existing_identity_metadata_and_block
         consumer_tags: vec![],
         source: "authored".into(),
         validation_status: "pending".into(),
-        capability_id: "builtin.json".into(),
+        capability_id: capability.into(),
     };
     assert_eq!(
         store.insert_with_id(row, Some(legacy)).await.unwrap(),
@@ -849,12 +879,14 @@ async fn prefix_json_registration_preserves_existing_identity_metadata_and_block
     .await
     .unwrap();
     let native = registry
-        .native_identity(&brassclaw_host_api::CapabilityId::new("builtin.json").unwrap())
+        .native_identity(&brassclaw_host_api::CapabilityId::new(capability).unwrap())
         .unwrap();
-    let draft = brassclaw_skills::utf8_digest_components::json_text_tool_draft(
-        legacy,
-        serde_json::to_value(native).unwrap(),
-    )
+    let native = serde_json::to_value(native).unwrap();
+    let draft = if model {
+        brassclaw_skills::model_encoding_components::model_encoding_tool_draft(legacy, native)
+    } else {
+        brassclaw_skills::utf8_digest_components::json_text_tool_draft(legacy, native)
+    }
     .unwrap();
     brassclaw_skills::revision_store::PgComponentRevisionStore::new(rig.pool.clone())
         .retain_packaged_draft(&draft)
@@ -870,12 +902,13 @@ async fn prefix_json_registration_preserves_existing_identity_metadata_and_block
         .unwrap();
     drop(client);
     for _ in 0..2 {
-        assert_eq!(
-            crate::builtin_bootstrap::seed_json_primitive_tool(rig.pool.clone(), "default")
-                .await
-                .unwrap(),
-            legacy
-        );
+        let actual = if model {
+            crate::builtin_bootstrap::seed_model_encoding_tool(rig.pool.clone(), "default").await
+        } else {
+            crate::builtin_bootstrap::seed_json_primitive_tool(rig.pool.clone(), "default").await
+        }
+        .unwrap();
+        assert_eq!(actual, legacy);
     }
     let client = rig.pool.get().await.unwrap();
     let row=client.query_one("SELECT t.description,s.enabled FROM reborn_tools t JOIN brassclaw_instance_tool_settings s ON s.tool_id=t.id WHERE t.id=$1",&[&legacy]).await.unwrap();
@@ -884,8 +917,8 @@ async fn prefix_json_registration_preserves_existing_identity_metadata_and_block
     assert_eq!(
         client
             .query_one(
-                "SELECT count(*) FROM reborn_tools WHERE capability_id='builtin.json'",
-                &[]
+                "SELECT count(*) FROM reborn_tools WHERE capability_id=$1",
+                &[&capability]
             )
             .await
             .unwrap()
@@ -1018,4 +1051,115 @@ fn prefix_source_archive_links_reject_resigned_inconsistent_metadata() {
         .remove("input_sources.json");
     prefix_test_resign(&mut legacy);
     crate::prefix_generations::validate_package("base-prompt", &legacy.to_string()).unwrap();
+}
+
+/// Compile/inspect the real candidate before any DB/model measurement. This
+/// catches producer/consumer schema and preload failures without native effects.
+#[tokio::test]
+async fn prefix_measurement_recipe_prepares_exact_typed_preload_graph() {
+    use brassclaw_skills::{
+        global_bootstrap_components::UsageComponentIds,
+        prefix_measurement_components::{MeasurementIds, measurement_drafts},
+    };
+    use std::sync::Arc;
+    let registry = brassclaw_host_runtime::builtin_native_first_party_handlers(
+        brassclaw_host_runtime::BuiltinFirstPartyTools::default(),
+        brassclaw_host_api::MontyExecutionLimits::default().max_native_artifact_bytes,
+        brassclaw_host_runtime::NativeVerificationLimits::new(1024 * 1024, Duration::from_secs(10))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    let usage = |formatter| UsageComponentIds {
+        recipe: Uuid::new_v4(),
+        python_code: Uuid::new_v4(),
+        skill: Uuid::new_v4(),
+        tool_skill: Uuid::new_v4(),
+        tool: Uuid::new_v4(),
+        formatter,
+    };
+    let ids = MeasurementIds {
+        recipe: Uuid::new_v4(),
+        parse: Uuid::new_v4(),
+        template: Uuid::new_v4(),
+        texts: Uuid::new_v4(),
+        verify: Uuid::new_v4(),
+        capacity: Uuid::new_v4(),
+        receipt: Uuid::new_v4(),
+        digest: usage(Some(Uuid::new_v4())),
+        encoding: usage(None),
+    };
+    let mut drafts = measurement_drafts(ids).unwrap();
+    let identity = |capability| {
+        serde_json::to_value(
+            registry
+                .native_identity(&brassclaw_host_api::CapabilityId::new(capability).unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+    };
+    drafts.push(
+        brassclaw_skills::utf8_digest_components::json_text_tool_draft(
+            ids.digest.tool,
+            identity(brassclaw_host_runtime::JSON_CAPABILITY_ID),
+        )
+        .unwrap(),
+    );
+    drafts.push(
+        brassclaw_skills::model_encoding_components::model_encoding_tool_draft(
+            ids.encoding.tool,
+            identity(brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID),
+        )
+        .unwrap(),
+    );
+    let all = brassclaw_skills::component_revision::RetainedComponentSnapshot::new(
+        &[ids.recipe, ids.digest.recipe, ids.encoding.recipe],
+        drafts
+            .into_iter()
+            .map(|draft| draft.at_version(1).unwrap())
+            .collect(),
+    )
+    .unwrap();
+    let graph = Arc::new(all.select_roots(&[ids.recipe]).unwrap());
+    let instruction = brassclaw_engine::memory::retained_instruction::compile_retained_recipe(
+        graph,
+        ids.recipe,
+        "selected",
+        brassclaw_engine::memory::retained_instruction::WorkflowClass::Deterministic,
+    )
+    .unwrap();
+    let program =
+        brassclaw_engine::memory::retained_tools::prepare_retained_tool_program(instruction)
+            .unwrap();
+    assert_eq!(program.bindings().len(), 2);
+    assert_eq!(
+        program.bindings()["0:5"].capability_id(),
+        brassclaw_host_runtime::JSON_CAPABILITY_ID
+    );
+    assert_eq!(
+        program.bindings()["0:7"].capability_id(),
+        brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID
+    );
+    let limits =
+        UtilityLimits::from_execution(brassclaw_host_api::MontyExecutionLimits::default()).unwrap();
+    let inspected =
+        brassclaw_engine::executor::retained_source::InspectedRetainedProgram::inspect_with_limits(
+            brassclaw_engine::executor::retained_recipe::RetainedProgram::Tools(Arc::new(program)),
+            &installed_worker().unwrap(),
+            limits,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        inspected.invocation("0:8"),
+        Some("result = verify_template_measurement(inputs=inputs)")
+    );
+    assert_eq!(
+        inspected.invocation("0:9"),
+        Some("result = assess_prefix_capacity(inputs=inputs)")
+    );
+    assert_eq!(
+        inspected.invocation("0:10"),
+        Some("result = format_prefix_capacity_result(inputs=inputs)")
+    );
 }

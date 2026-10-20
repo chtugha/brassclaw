@@ -65,28 +65,30 @@ class BuildWorkerTests(unittest.TestCase):
             guard = Path(temporary) / 'sitecustomize.py'
             guard.write_text("import sys\ndef guard(event, args):\n    if event == 'socket.connect':\n        raise RuntimeError('network forbidden in compiler check')\nsys.addaudithook(guard)\n")
             env = dict(os.environ, PYTHONPATH=temporary, HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1', HF_HUB_DISABLE_TELEMETRY='1')
-            for profile in ['base-prompt', 'prefix-maker']:
-                data = json.dumps(request(profile), ensure_ascii=False).encode()
-                results = [subprocess.run([sys.executable, str(Path(worker.__file__))],
-                    input=data, capture_output=True, env=env, check=True, timeout=60).stdout for _ in range(2)]
-                self.assertEqual(results[0], results[1])
-                result = json.loads(results[0])
-                self.assertEqual(result['qualification'], 'development-worker-unqualified')
-                self.assertFalse(result['receipt']['activation_eligible'])
-                self.assertEqual(result['receipt']['geometry']['status'], 'unmeasured')
-                package = json.loads(result['generation_bytes'])
-                procedure = base64.b64decode(package['artifacts']['compiler/worker.py']['data'], validate=True)
-                self.assertEqual(procedure, Path(worker.__file__).read_bytes())
-                self.assertEqual(result['receipt']['compiler']['worker_sha256'], worker.digest(procedure))
-                destination = os.getenv('BRASSCLAW_TEST_COMPILER_WORKER_EXPORT')
-                if profile == 'base-prompt' and destination:
-                    Path(destination).write_text(result['generation_bytes'])
-
+            for view in ['literal-reference/v1', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing']:
+                for profile in ['base-prompt', 'prefix-maker']:
+                    value = request(profile)
+                    value['design']['evidence_view'] = view
+                    data = json.dumps(value, ensure_ascii=False).encode()
+                    results = [subprocess.run([sys.executable, str(Path(worker.__file__))],
+                        input=data, capture_output=True, env=env, check=True, timeout=60).stdout for _ in range(2)]
+                    self.assertEqual(results[0], results[1])
+                    result = json.loads(results[0])
+                    self.assertEqual(result['qualification'], 'development-worker-unqualified')
+                    self.assertFalse(result['receipt']['activation_eligible'])
+                    self.assertEqual(result['receipt']['geometry']['status'], 'unmeasured')
+                    package = json.loads(result['generation_bytes'])
+                    procedure = base64.b64decode(package['artifacts']['compiler/worker.py']['data'], validate=True)
+                    self.assertEqual(procedure, Path(worker.__file__).read_bytes())
+                    self.assertEqual(result['receipt']['compiler']['worker_sha256'], worker.digest(procedure))
+                    destination = os.getenv('BRASSCLAW_TEST_COMPILER_WORKER_EXPORT')
+                    if profile == 'base-prompt' and destination:
+                        Path(destination).write_text(result['generation_bytes'])
     @unittest.skipUnless(os.getenv('ORNITH_TEST_TOKENIZER'), 'local exact model/tokenizer artifacts required')
     def test_local_qwen_geometry_has_no_provider_or_deployment_effect(self):
         directory = Path(os.environ['ORNITH_TEST_TOKENIZER'])
         value = request()
-        value['design']['evidence_view'] = 'literal-reference/v2-deduplicated'
+        value['design']['evidence_view'] = 'literal-reference/v3-trailing-inventory'
         value['target'] = {'adapter': 'hf-qwen2-fast/1', 'max_model_len': 131072,
             'artifacts': {name: artifact((directory / name).read_bytes()) for name in worker.TOKENIZER_FILES if (directory / name).is_file()}}
         result = json.loads(worker.build(json.dumps(value).encode()))

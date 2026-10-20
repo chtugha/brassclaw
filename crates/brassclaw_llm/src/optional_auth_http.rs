@@ -135,7 +135,39 @@ fn response_headers(response: &reqwest::Response) -> Result<Response<()>> {
 async fn buffered_response<U: From<Bytes> + WasmCompatSend + 'static>(
     response: reqwest::Response,
     limit: Option<u64>,
+    observer: Option<std::sync::Arc<dyn crate::provider_observation::ProviderWireObserver>>,
 ) -> Result<Response<LazyBody<U>>> {
+    if let Some(observer) = observer {
+        let status = response.status();
+        let retry_after = crate::retry::parse_retry_after_hint(
+            response.headers().get(reqwest::header::RETRY_AFTER),
+        );
+        let (parts, _) = response_headers(&response)?.into_parts();
+        let bytes = crate::response_body::read(response, limit)
+            .await
+            .map_err(body_error)?;
+        observer
+            .receive_response(status.as_u16(), &bytes)
+            .map_err(|error| Error::Instance(Box::new(error)))?;
+        observer
+            .persist_response()
+            .await
+            .map_err(|error| Error::Instance(Box::new(error)))?;
+        if !status.is_success() {
+            let body = if matches!(status.as_u16(), 400 | 413) {
+                String::from_utf8_lossy(&bytes).into_owned()
+            } else {
+                String::new()
+            };
+            return Err(Error::Instance(Box::new(ProviderHttpRejection {
+                status: status.as_u16(),
+                retry_after,
+                body,
+            })));
+        }
+        let body: LazyBody<U> = Box::pin(async move { Ok(U::from(bytes)) });
+        return Ok(Response::from_parts(parts, body));
+    }
     let response = checked_response(response, limit).await?;
     let (parts, _) = response_headers(&response)?.into_parts();
     let body: LazyBody<U> = Box::pin(async move {
@@ -155,6 +187,10 @@ impl HttpClientExt for OptionalAuthHttp {
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
     {
+        let observer = (request.method() == reqwest::Method::POST
+            && request.uri().path().ends_with("/chat/completions"))
+        .then(crate::provider_observation::current)
+        .flatten();
         let prepared = self.prepare(request.map(Into::<Bytes>::into));
         let client = self.client.clone();
         let limit = self.max_response_bytes;
@@ -167,7 +203,7 @@ impl HttpClientExt for OptionalAuthHttp {
                 .send()
                 .await
                 .map_err(|error| Error::Instance(Box::new(error)))?;
-            buffered_response(response, limit).await
+            buffered_response(response, limit, observer).await
         }
     }
     fn send_multipart<U>(
@@ -189,7 +225,7 @@ impl HttpClientExt for OptionalAuthHttp {
                 .send()
                 .await
                 .map_err(|error| Error::Instance(Box::new(error)))?;
-            buffered_response(response, limit).await
+            buffered_response(response, limit, None).await
         }
     }
     fn send_streaming<T>(

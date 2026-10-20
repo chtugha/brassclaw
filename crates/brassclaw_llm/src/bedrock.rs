@@ -130,19 +130,30 @@ impl LlmProvider for BedrockProvider {
             builder = builder.inference_config(config);
         }
 
-        let response = builder.send().await.map_err(|e| map_sdk_error(&e))?;
+        let response = if request.dispatch_policy.allows_resubmission() {
+            builder.send().await
+        } else {
+            builder
+                .customize()
+                .config_override(
+                    aws_sdk_bedrockruntime::config::Builder::new()
+                        .retry_config(aws_smithy_types::retry::RetryConfig::disabled()),
+                )
+                .send()
+                .await
+        }
+        .map_err(|error| map_sdk_error(&error))?;
 
         let (text, _tool_calls) = extract_content_blocks(response.output())?;
-        let (input_tokens, output_tokens) = extract_token_usage(response.usage());
+        let usage = extract_token_usage(response.usage());
 
         Ok(CompletionResponse {
             content: text,
-            input_tokens,
-            output_tokens,
+            usage,
+
             finish_reason: map_stop_reason(response.stop_reason()),
-            cache_creation_input_tokens: 0,
+
             reasoning: None,
-            cache_read_input_tokens: 0,
         })
     }
 
@@ -195,20 +206,31 @@ impl LlmProvider for BedrockProvider {
             builder = builder.inference_config(config);
         }
 
-        let response = builder.send().await.map_err(|e| map_sdk_error(&e))?;
+        let response = if request.dispatch_policy.allows_resubmission() {
+            builder.send().await
+        } else {
+            builder
+                .customize()
+                .config_override(
+                    aws_sdk_bedrockruntime::config::Builder::new()
+                        .retry_config(aws_smithy_types::retry::RetryConfig::disabled()),
+                )
+                .send()
+                .await
+        }
+        .map_err(|error| map_sdk_error(&error))?;
 
         let (text, tool_calls) = extract_content_blocks(response.output())?;
-        let (input_tokens, output_tokens) = extract_token_usage(response.usage());
+        let usage = extract_token_usage(response.usage());
 
         Ok(ToolCompletionResponse {
             content: if text.is_empty() { None } else { Some(text) },
             tool_calls,
-            input_tokens,
-            output_tokens,
+            usage,
+
             finish_reason: map_stop_reason(response.stop_reason()),
-            cache_creation_input_tokens: 0,
+
             reasoning: None,
-            cache_read_input_tokens: 0,
         })
     }
 
@@ -591,15 +613,17 @@ fn extract_content_blocks(
     Ok((text_parts.join(""), tool_calls))
 }
 
-/// Extract token usage from the response, converting i32 → u32 safely.
-fn extract_token_usage(usage: Option<&aws_sdk_bedrockruntime::types::TokenUsage>) -> (u32, u32) {
-    match usage {
-        Some(u) => (
-            u32::try_from(u.input_tokens()).unwrap_or(0),
-            u32::try_from(u.output_tokens()).unwrap_or(0),
-        ),
-        None => (0, 0),
-    }
+/// Missing or invalid counters remain unknown; negative values are not zero.
+fn extract_token_usage(
+    usage: Option<&aws_sdk_bedrockruntime::types::TokenUsage>,
+) -> Option<crate::TokenUsage> {
+    let usage = usage?;
+    crate::TokenUsage::from_reported_counts(
+        Some(u64::try_from(usage.input_tokens()).ok()?),
+        Some(u64::try_from(usage.output_tokens()).ok()?),
+        0,
+        0,
+    )
 }
 
 /// Map Bedrock `StopReason` to BrassClaw `FinishReason`.
@@ -1010,20 +1034,18 @@ mod tests {
             .total_tokens(192)
             .build()
             .unwrap();
-        let (input, output) = extract_token_usage(Some(&usage));
-        assert_eq!(input, 150);
-        assert_eq!(output, 42);
+        let observed = extract_token_usage(Some(&usage)).unwrap();
+        assert_eq!(observed.input_tokens, 150);
+        assert_eq!(observed.output_tokens, 42);
     }
 
     #[test]
     fn test_extract_token_usage_none() {
-        let (input, output) = extract_token_usage(None);
-        assert_eq!(input, 0);
-        assert_eq!(output, 0);
+        assert_eq!(extract_token_usage(None), None);
     }
 
     #[test]
-    fn test_extract_token_usage_negative_clamps_to_zero() {
+    fn test_extract_token_usage_negative_remains_unknown() {
         // Bedrock uses i32; negative values should not panic
         let usage = aws_sdk_bedrockruntime::types::TokenUsage::builder()
             .input_tokens(-1)
@@ -1031,9 +1053,7 @@ mod tests {
             .total_tokens(0)
             .build()
             .unwrap();
-        let (input, output) = extract_token_usage(Some(&usage));
-        assert_eq!(input, 0);
-        assert_eq!(output, 0);
+        assert_eq!(extract_token_usage(Some(&usage)), None);
     }
 
     #[test]

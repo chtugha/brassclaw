@@ -188,6 +188,8 @@ async fn host_managed_model_port_routes_gateway_and_emits_model_milestones() {
 
     let response = port
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: vec![LoopModelMessage {
                 role: "user".to_string(),
                 content_ref: LoopMessageRef::new("msg:user-message").unwrap(),
@@ -243,6 +245,8 @@ async fn host_managed_model_port_returns_response_when_model_started_milestone_f
 
     let response = port
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: Vec::new(),
             surface_version: None,
             model_preference: None,
@@ -284,6 +288,8 @@ async fn host_managed_model_port_returns_response_when_model_completed_milestone
 
     let response = port
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: Vec::new(),
             surface_version: None,
             model_preference: None,
@@ -322,6 +328,8 @@ async fn host_managed_model_port_sanitizes_gateway_errors() {
 
     let error = port
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: Vec::new(),
             surface_version: None,
             model_preference: None,
@@ -2144,6 +2152,8 @@ impl AgentLoopDriver for ReplyDriver {
         assert_eq!(prompt.messages.len(), 1);
         let response = host
             .stream_model(LoopModelRequest {
+                work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+                dispatch_policy: Default::default(),
                 messages: prompt.messages,
                 surface_version: prompt.surface_version,
                 model_preference: Some(
@@ -2888,6 +2898,7 @@ impl LoopModelPolicyGuard for DenyAllPolicyGuard {
 /// A recording budget accountant that tracks pre/post calls and can be
 /// configured to reject pre-call.
 struct RecordingBudgetAccountant {
+    dispatch_called: AtomicBool,
     pre_called: AtomicBool,
     post_called: AtomicBool,
     reject_pre: AtomicBool,
@@ -2898,6 +2909,7 @@ struct RecordingBudgetAccountant {
 impl RecordingBudgetAccountant {
     fn new() -> Self {
         Self {
+            dispatch_called: AtomicBool::new(false),
             pre_called: AtomicBool::new(false),
             post_called: AtomicBool::new(false),
             reject_pre: AtomicBool::new(false),
@@ -2933,6 +2945,17 @@ impl RecordingBudgetAccountant {
 
 #[async_trait]
 impl LoopModelBudgetAccountant for RecordingBudgetAccountant {
+    fn model_work_dispatching(
+        &self,
+        _context: &LoopRunContext,
+        _request: &ModelWorkRequest,
+    ) -> Result<(), LoopModelGatewayError> {
+        assert!(self.was_pre_called());
+        assert!(!self.reject_pre.load(Ordering::SeqCst));
+        self.dispatch_called.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
     async fn pre_model_work(
         &self,
         _context: &LoopRunContext,
@@ -2956,6 +2979,7 @@ impl LoopModelBudgetAccountant for RecordingBudgetAccountant {
         outcome: ModelWorkOutcome,
     ) -> Result<(), LoopModelGatewayError> {
         self.post_called.store(true, Ordering::SeqCst);
+        assert!(self.dispatch_called.load(Ordering::SeqCst));
         if matches!(outcome, ModelWorkOutcome::Failure(_)) {
             self.post_saw_failure.store(true, Ordering::SeqCst);
         }
@@ -2972,6 +2996,8 @@ impl LoopModelBudgetAccountant for RecordingBudgetAccountant {
 
 fn simple_model_request(context: &LoopRunContext) -> LoopModelRequest {
     LoopModelRequest {
+        work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+        dispatch_policy: Default::default(),
         messages: vec![LoopModelMessage {
             role: "user".to_string(),
             content_ref: LoopMessageRef::new("msg:user-message").unwrap(),
@@ -3231,8 +3257,34 @@ async fn budget_accounting_on_success_invokes_pre_and_post() {
     assert_eq!(gateway.requests().len(), 1);
 }
 
-/// Post-call accounting failure after provider success fails closed instead of
-/// returning an unaccounted successful response.
+struct FileResponseCustodian {
+    path: std::path::PathBuf,
+    accountant: Arc<RecordingBudgetAccountant>,
+    received: Mutex<Option<LoopModelResponse>>,
+}
+
+#[async_trait]
+impl brassclaw_turns::run_profile::LoopModelResponseCustodian for FileResponseCustodian {
+    fn receive_response(&self, response: &LoopModelResponse) -> Result<(), AgentLoopHostError> {
+        assert!(self.accountant.was_pre_called());
+        assert!(!self.accountant.was_post_called());
+        *self.received.lock().unwrap() = Some(response.clone());
+        Ok(())
+    }
+
+    async fn persist_response(&self) -> Result<(), AgentLoopHostError> {
+        let bytes = serde_json::to_vec(self.received.lock().unwrap().as_ref().unwrap()).unwrap();
+        std::fs::write(&self.path, bytes).map_err(|_| {
+            AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Internal,
+                "response retention failed",
+            )
+        })
+    }
+}
+
+/// A controlled gateway result exercises temporal accounting semantics here;
+/// actual provider/native PostgreSQL custody is covered in Composition.
 #[tokio::test]
 async fn post_accounting_failure_after_success_fails_closed() {
     let context = claimed_run_context().await;
@@ -3248,8 +3300,15 @@ async fn post_accounting_failure_after_success_fails_closed() {
         accountant.clone(),
     );
 
+    let directory = tempfile::tempdir().unwrap();
+    let custodian = Arc::new(FileResponseCustodian {
+        path: directory.path().join("received.json"),
+        accountant: accountant.clone(),
+        received: Mutex::new(None),
+    });
+
     let error = port
-        .stream_model(simple_model_request(&context))
+        .stream_model_with_custody(simple_model_request(&context), custodian.clone())
         .await
         .unwrap_err();
 
@@ -3259,6 +3318,42 @@ async fn post_accounting_failure_after_success_fails_closed() {
     assert!(accountant.was_post_called());
     assert!(!accountant.post_saw_failure());
     assert_eq!(gateway.requests().len(), 1);
+    let retained: LoopModelResponse =
+        serde_json::from_slice(&std::fs::read(&custodian.path).unwrap()).unwrap();
+    assert_eq!(retained, success_response(&context));
+    assert_eq!(custodian.received.lock().unwrap().as_ref(), Some(&retained));
+}
+
+#[tokio::test]
+async fn response_custody_write_failure_still_accounts_the_observed_success() {
+    let context = claimed_run_context().await;
+    let gateway = Arc::new(RecordingLoopModelGateway::default());
+    gateway.push_response(Ok(success_response(&context)));
+    let accountant = Arc::new(RecordingBudgetAccountant::new());
+    let port = HostManagedLoopModelPort::with_accountant(
+        context.clone(),
+        gateway.clone(),
+        Arc::new(InMemoryLoopHostMilestoneSink::default()),
+        accountant.clone(),
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let custodian = Arc::new(FileResponseCustodian {
+        path: directory.path().to_owned(), // A real filesystem write rejection.
+        accountant: accountant.clone(),
+        received: Mutex::new(None),
+    });
+    let error = port
+        .stream_model_with_custody(simple_model_request(&context), custodian.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, AgentLoopHostErrorKind::Internal);
+    assert!(accountant.was_post_called());
+    assert!(!accountant.post_saw_failure());
+    assert_eq!(gateway.requests().len(), 1);
+    assert_eq!(
+        custodian.received.lock().unwrap().as_ref(),
+        Some(&success_response(&context))
+    );
 }
 
 /// Model-started milestone projection failures are non-fatal; accounting still

@@ -6,7 +6,7 @@
 //! and `complete_with_tools()` to record timing, token counts, and call metadata.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -21,8 +21,8 @@ use brassclaw_llm::{
 /// Metrics captured for a single LLM call.
 #[derive(Debug, Clone)]
 pub struct LlmCallRecord {
-    pub input_tokens: u32,
-    pub output_tokens: u32,
+    pub input_tokens: Option<u32>,
+    pub output_tokens: Option<u32>,
     pub duration_ms: u64,
     pub had_tool_calls: bool,
 }
@@ -34,6 +34,7 @@ pub struct InstrumentedLlm {
     total_input_tokens: AtomicU32,
     total_output_tokens: AtomicU32,
     call_count: AtomicU32,
+    complete_meter: AtomicBool,
 }
 
 impl InstrumentedLlm {
@@ -44,6 +45,7 @@ impl InstrumentedLlm {
             total_input_tokens: AtomicU32::new(0),
             total_output_tokens: AtomicU32::new(0),
             call_count: AtomicU32::new(0),
+            complete_meter: AtomicBool::new(true),
         }
     }
 
@@ -51,21 +53,25 @@ impl InstrumentedLlm {
         self.call_count.load(Ordering::Relaxed)
     }
 
-    pub fn total_input_tokens(&self) -> u32 {
-        self.total_input_tokens.load(Ordering::Relaxed)
+    pub fn total_input_tokens(&self) -> Option<u32> {
+        self.complete_meter
+            .load(Ordering::Relaxed)
+            .then(|| self.total_input_tokens.load(Ordering::Relaxed))
     }
 
-    pub fn total_output_tokens(&self) -> u32 {
-        self.total_output_tokens.load(Ordering::Relaxed)
+    pub fn total_output_tokens(&self) -> Option<u32> {
+        self.complete_meter
+            .load(Ordering::Relaxed)
+            .then(|| self.total_output_tokens.load(Ordering::Relaxed))
     }
 
-    pub fn estimated_cost_usd(&self) -> f64 {
+    pub fn estimated_cost_usd(&self) -> Option<f64> {
         let (input_cost, output_cost) = self.inner.cost_per_token();
-        let input_total = Decimal::from(self.total_input_tokens());
-        let output_total = Decimal::from(self.total_output_tokens());
+        let input_total = Decimal::from(self.total_input_tokens()?);
+        let output_total = Decimal::from(self.total_output_tokens()?);
         let cost = input_cost * input_total + output_cost * output_total;
         use std::str::FromStr;
-        f64::from_str(&cost.to_string()).unwrap_or(0.0)
+        f64::from_str(&cost.to_string()).ok()
     }
 
     pub async fn records(&self) -> Vec<LlmCallRecord> {
@@ -74,16 +80,30 @@ impl InstrumentedLlm {
 
     async fn record_call(
         &self,
-        input_tokens: u32,
-        output_tokens: u32,
+        usage: Option<brassclaw_llm::TokenUsage>,
         duration_ms: u64,
         had_tool_calls: bool,
     ) {
         self.call_count.fetch_add(1, Ordering::Relaxed);
-        self.total_input_tokens
-            .fetch_add(input_tokens, Ordering::Relaxed);
-        self.total_output_tokens
-            .fetch_add(output_tokens, Ordering::Relaxed);
+        let input_tokens = usage.map(|usage| usage.input_tokens);
+        let output_tokens = usage.map(|usage| usage.output_tokens);
+        if let Some(usage) = usage {
+            let input = self.total_input_tokens.fetch_update(
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+                |total| total.checked_add(usage.input_tokens),
+            );
+            let output = self.total_output_tokens.fetch_update(
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+                |total| total.checked_add(usage.output_tokens),
+            );
+            if input.is_err() || output.is_err() {
+                self.complete_meter.store(false, Ordering::Relaxed);
+            }
+        } else {
+            self.complete_meter.store(false, Ordering::Relaxed);
+        }
 
         self.records.lock().await.push(LlmCallRecord {
             input_tokens,
@@ -110,8 +130,7 @@ impl LlmProvider for InstrumentedLlm {
         let elapsed = start.elapsed().as_millis() as u64;
 
         if let Ok(ref resp) = result {
-            self.record_call(resp.input_tokens, resp.output_tokens, elapsed, false)
-                .await;
+            self.record_call(resp.usage, elapsed, false).await;
         }
 
         result
@@ -127,13 +146,7 @@ impl LlmProvider for InstrumentedLlm {
 
         if let Ok(ref resp) = result {
             let had_tool_calls = !resp.tool_calls.is_empty();
-            self.record_call(
-                resp.input_tokens,
-                resp.output_tokens,
-                elapsed,
-                had_tool_calls,
-            )
-            .await;
+            self.record_call(resp.usage, elapsed, had_tool_calls).await;
         }
 
         result

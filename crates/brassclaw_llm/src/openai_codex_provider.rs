@@ -240,12 +240,10 @@ impl LlmProvider for OpenAiCodexProvider {
 
         Ok(CompletionResponse {
             content: parsed.text_content,
-            input_tokens: parsed.input_tokens,
-            output_tokens: parsed.output_tokens,
+            usage: parsed.usage,
+
             finish_reason: parsed.finish_reason,
             reasoning: parsed.reasoning,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
         })
     }
 
@@ -284,11 +282,7 @@ impl LlmProvider for OpenAiCodexProvider {
             }
         }
 
-        let finish_reason = if !parsed.tool_calls.is_empty() {
-            FinishReason::ToolUse
-        } else {
-            parsed.finish_reason
-        };
+        let finish_reason = parsed.finish_reason;
 
         Ok(ToolCompletionResponse {
             content: if parsed.text_content.is_empty() {
@@ -297,11 +291,10 @@ impl LlmProvider for OpenAiCodexProvider {
                 Some(parsed.text_content)
             },
             tool_calls: parsed.tool_calls,
-            input_tokens: parsed.input_tokens,
-            output_tokens: parsed.output_tokens,
+            usage: parsed.usage,
+
             finish_reason,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
+
             reasoning: parsed.reasoning,
         })
     }
@@ -507,8 +500,7 @@ struct ParsedResponse {
     text_content: String,
     reasoning: Option<String>,
     tool_calls: Vec<ToolCall>,
-    input_tokens: u32,
-    output_tokens: u32,
+    usage: Option<crate::TokenUsage>,
     finish_reason: FinishReason,
 }
 
@@ -534,12 +526,12 @@ fn parse_sse_response(body: &str) -> Result<ParsedResponse, LlmError> {
     let mut text_content = String::new();
     let mut reasoning_summary = String::new();
     let mut tool_calls: Vec<ToolCall> = Vec::new();
-    let mut input_tokens: u32 = 0;
-    let mut output_tokens: u32 = 0;
-    let mut finish_reason = FinishReason::Stop;
+    let mut observed_usage = None;
     let mut active_function_calls: std::collections::HashMap<String, FunctionCallState> =
         std::collections::HashMap::new();
     let mut response_status: Option<String> = None;
+    let mut incomplete_reason: Option<String> = None;
+    let mut valid_arguments = true;
 
     for line in body.lines() {
         let line = line.trim();
@@ -655,10 +647,9 @@ fn parse_sse_response(body: &str) -> Result<ParsedResponse, LlmError> {
                     if item_type == "function_call" {
                         let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
                         if let Some(state) = active_function_calls.remove(item_id) {
-                            let arguments: serde_json::Value =
-                                serde_json::from_str(&state.arguments).unwrap_or_else(|_| {
-                                    serde_json::Value::String(state.arguments.clone())
-                                });
+                            let (arguments, valid) =
+                                crate::provider::decode_provider_arguments(&state.arguments);
+                            valid_arguments &= valid;
                             tool_calls.push(ToolCall {
                                 id: state.call_id,
                                 name: state.name,
@@ -678,14 +669,11 @@ fn parse_sse_response(body: &str) -> Result<ParsedResponse, LlmError> {
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
-                            let args_str = item
-                                .get("arguments")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("{}");
-                            let arguments: serde_json::Value = serde_json::from_str(args_str)
-                                .unwrap_or_else(|_| {
-                                    serde_json::Value::String(args_str.to_string())
-                                });
+                            let args_str =
+                                item.get("arguments").and_then(|v| v.as_str()).unwrap_or("");
+                            let (arguments, valid) =
+                                crate::provider::decode_provider_arguments(args_str);
+                            valid_arguments &= valid;
                             tool_calls.push(ToolCall {
                                 id: call_id,
                                 name,
@@ -699,23 +687,26 @@ fn parse_sse_response(body: &str) -> Result<ParsedResponse, LlmError> {
             }
 
             // Response completed
-            "response.completed" => {
+            "response.completed" | "response.incomplete" => {
                 if let Some(response) = event.data.get("response") {
                     // Extract usage
                     if let Some(usage) = response.get("usage") {
-                        input_tokens = usage
-                            .get("input_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0) as u32;
-                        output_tokens = usage
-                            .get("output_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0) as u32;
+                        observed_usage = crate::TokenUsage::from_reported_counts(
+                            usage.get("input_tokens").and_then(|v| v.as_u64()),
+                            usage.get("output_tokens").and_then(|v| v.as_u64()),
+                            0,
+                            0,
+                        );
                     }
                     // Extract status
-                    if let Some(status) = response.get("status").and_then(|s| s.as_str()) {
-                        response_status = Some(status.to_string());
-                    }
+                    response_status =
+                        crate::provider::responses_terminal_status(&event.event_type, response)
+                            .map(str::to_owned);
+                    incomplete_reason = response
+                        .get("incomplete_details")
+                        .and_then(|v| v.get("reason"))
+                        .and_then(|v| v.as_str())
+                        .map(str::to_owned);
                 }
             }
 
@@ -763,8 +754,8 @@ fn parse_sse_response(body: &str) -> Result<ParsedResponse, LlmError> {
     // Finalize any remaining active function calls
     for (_, state) in active_function_calls {
         if !state.name.is_empty() {
-            let arguments: serde_json::Value = serde_json::from_str(&state.arguments)
-                .unwrap_or(serde_json::Value::String(state.arguments));
+            let (arguments, valid) = crate::provider::decode_provider_arguments(&state.arguments);
+            valid_arguments &= valid;
             tool_calls.push(ToolCall {
                 id: state.call_id,
                 name: state.name,
@@ -775,23 +766,21 @@ fn parse_sse_response(body: &str) -> Result<ParsedResponse, LlmError> {
         }
     }
 
-    // Map status to finish reason (matching OpenClaw's mapStopReason)
-    if !tool_calls.is_empty() {
-        finish_reason = FinishReason::ToolUse;
-    } else if let Some(ref status) = response_status {
-        finish_reason = match status.as_str() {
-            "completed" => FinishReason::Stop,
-            "incomplete" => FinishReason::Length,
-            _ => FinishReason::Stop,
-        };
-    }
+    let finish_reason = if valid_arguments {
+        FinishReason::from_responses_status(
+            response_status.as_deref(),
+            incomplete_reason.as_deref(),
+            !tool_calls.is_empty(),
+        )
+    } else {
+        FinishReason::Unknown
+    };
 
     Ok(ParsedResponse {
         text_content,
         reasoning: crate::responses_reasoning::finish_summary(reasoning_summary),
         tool_calls,
-        input_tokens,
-        output_tokens,
+        usage: observed_usage,
         finish_reason,
     })
 }
@@ -993,8 +982,8 @@ data: {"type":"response.completed","response":{"status":"completed","usage":{"in
         assert!(result.is_ok());
         let parsed = result.unwrap();
         assert_eq!(parsed.text_content, "Hello world!");
-        assert_eq!(parsed.input_tokens, 10);
-        assert_eq!(parsed.output_tokens, 5);
+        assert_eq!(parsed.usage.unwrap().input_tokens, 10);
+        assert_eq!(parsed.usage.unwrap().output_tokens, 5);
         assert_eq!(parsed.finish_reason, FinishReason::Stop);
         assert!(parsed.tool_calls.is_empty());
     }
@@ -1071,7 +1060,7 @@ data: {"type":"response.completed","response":{"status":"completed","usage":{"in
     fn test_parse_sse_incomplete_status() {
         let sse_body = r#"data: {"type":"response.output_text.delta","delta":"partial"}
 
-data: {"type":"response.completed","response":{"status":"incomplete","usage":{"input_tokens":5,"output_tokens":2}}}
+data: {"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":5,"output_tokens":2}}}
 
 "#;
         let result = parse_sse_response(sse_body);
@@ -1079,6 +1068,35 @@ data: {"type":"response.completed","response":{"status":"incomplete","usage":{"i
         let parsed = result.unwrap();
         assert_eq!(parsed.text_content, "partial");
         assert_eq!(parsed.finish_reason, FinishReason::Length);
+    }
+
+    #[test]
+    fn incomplete_and_malformed_proposals_keep_their_original_data_without_tool_use() {
+        for (arguments, status, details, expected) in [
+            (
+                r#"{"empty":"","nothing":null}"#,
+                "incomplete",
+                serde_json::json!({"reason":"max_output_tokens"}),
+                FinishReason::Length,
+            ),
+            (
+                "{partial",
+                "completed",
+                serde_json::Value::Null,
+                FinishReason::Unknown,
+            ),
+        ] {
+            let item = serde_json::json!({"type":"response.output_item.done","item":{"type":"function_call","id":"item1","call_id":"call1","name":"search","arguments":arguments}});
+            let terminal = serde_json::json!({"type":if status=="completed" {"response.completed"} else {"response.incomplete"},"response":{"status":status,"incomplete_details":details,"usage":{"input_tokens":8,"output_tokens":1}}});
+            let result =
+                parse_sse_response(&format!("data: {item}\n\ndata: {terminal}\n\n")).unwrap();
+            assert_eq!(result.finish_reason, expected);
+            assert_eq!(result.tool_calls.len(), 1);
+            let expected_args = serde_json::from_str::<serde_json::Value>(arguments)
+                .unwrap_or_else(|_| serde_json::Value::String(arguments.into()));
+            assert_eq!(result.tool_calls[0].arguments, expected_args);
+            assert_eq!(result.usage.unwrap().output_tokens, 1);
+        }
     }
 
     #[test]
@@ -1094,6 +1112,11 @@ data: {"type":"response.output_text.delta","delta":" ignored"}
         assert!(result.is_ok());
         let parsed = result.unwrap();
         assert_eq!(parsed.text_content, "hello");
+        assert_eq!(
+            parsed.finish_reason,
+            FinishReason::Unknown,
+            "DONE is a transport marker, not proof of completion"
+        );
     }
 
     #[tokio::test]

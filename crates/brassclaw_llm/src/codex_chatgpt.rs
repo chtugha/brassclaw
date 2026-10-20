@@ -108,7 +108,7 @@ impl CodexChatGptProvider {
     #[cfg(test)]
     fn new(base_url: &str, api_key: &str, model: &str) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::registry_http_client("codex_chatgpt", 120).expect("fixture HTTP client"),
             base_url: base_url.trim_end_matches('/').to_string(),
             api_key: RwLock::new(SecretString::from(api_key.to_string())),
             configured_model: model.to_string(),
@@ -139,15 +139,15 @@ impl CodexChatGptProvider {
         refresh_token: Option<SecretString>,
         auth_path: Option<PathBuf>,
         request_timeout_secs: u64,
-    ) -> Self {
+    ) -> Result<Self, LlmError> {
         tracing::debug!(
             "Codex ChatGPT provider uses a private, undocumented API \
              (chatgpt.com/backend-api/codex). This may violate OpenAI's \
              Terms of Service and could break without notice."
         );
 
-        Self {
-            client: Client::new(),
+        Ok(Self {
+            client: crate::registry_http_client("codex_chatgpt", request_timeout_secs)?,
             base_url: base_url.trim_end_matches('/').to_string(),
             api_key: RwLock::new(api_key),
             configured_model: configured_model.to_string(),
@@ -156,12 +156,29 @@ impl CodexChatGptProvider {
             auth_path,
             request_timeout: Duration::from_secs(request_timeout_secs),
             refresh_lock: Mutex::new(()),
-        }
+        })
     }
 
-    /// Resolve the model to use, lazily on first call.
-    ///
-    /// Uses `OnceCell` so the `/models` fetch happens at most once.
+    /// Preserve a pinned operation's model; legacy calls retain lazy detection.
+    async fn selected_request_model(
+        &self,
+        requested: Option<&str>,
+        policy: crate::ProviderDispatchPolicy,
+    ) -> Result<String, LlmError> {
+        if policy.allows_resubmission() {
+            return Ok(self.resolve_model().await.to_owned());
+        }
+        // A pinned operation must not auto-detect/fall back to a different model.
+        crate::provider::normalized_model_override(requested)
+            .or_else(|| crate::provider::normalized_model_override(Some(&self.configured_model)))
+            .map(str::to_owned)
+            .ok_or_else(|| LlmError::ModelNotAvailable {
+                provider: "codex_chatgpt".into(),
+                model: self.configured_model.clone(),
+            })
+    }
+
+    /// Resolve legacy model selection lazily; `/models` is read at most once.
     async fn resolve_model(&self) -> &str {
         self.resolved_model
             .get_or_init(|| async {
@@ -396,7 +413,11 @@ impl CodexChatGptProvider {
     ///
     /// On HTTP 401, if a refresh token is available, attempts to refresh
     /// the access token and retry the request once.
-    async fn send_request(&self, body: Value) -> Result<ResponsesResult, LlmError> {
+    async fn send_request(
+        &self,
+        body: Value,
+        dispatch_policy: crate::ProviderDispatchPolicy,
+    ) -> Result<ResponsesResult, LlmError> {
         let url = format!("{}/responses", self.base_url);
 
         tracing::debug!(
@@ -411,7 +432,7 @@ impl CodexChatGptProvider {
                 .await?;
 
         let status = resp.status();
-        if status.as_u16() == 401 {
+        if status.as_u16() == 401 && dispatch_policy.allows_resubmission() {
             // Attempt token refresh if we have a refresh token
             if let Some(ref rt) = self.refresh_token {
                 let _refresh_guard = self.refresh_lock.lock().await;
@@ -431,17 +452,12 @@ impl CodexChatGptProvider {
                     .await?;
                     let retry_status = retry_resp.status();
                     if !retry_status.is_success() {
-                        let body_text =
-                            tokio::time::timeout(Duration::from_secs(5), retry_resp.text())
-                                .await
-                                .unwrap_or(Ok(String::new()))
-                                .unwrap_or_default();
-                        return Err(LlmError::RequestFailed {
-                            provider: "codex_chatgpt".to_string(),
-                            reason: format!(
-                                "HTTP {retry_status} from {url} (after concurrent token refresh): {body_text}"
-                            ),
-                        });
+                        return Err(crate::response_body::rejection(
+                            retry_resp,
+                            None,
+                            "codex_chatgpt",
+                        )
+                        .await);
                     }
                     return Self::parse_sse_response_stream(retry_resp, self.request_timeout).await;
                 }
@@ -467,17 +483,12 @@ impl CodexChatGptProvider {
 
                     let retry_status = retry_resp.status();
                     if !retry_status.is_success() {
-                        let body_text =
-                            tokio::time::timeout(Duration::from_secs(5), retry_resp.text())
-                                .await
-                                .unwrap_or(Ok(String::new()))
-                                .unwrap_or_default();
-                        return Err(LlmError::RequestFailed {
-                            provider: "codex_chatgpt".to_string(),
-                            reason: format!(
-                                "HTTP {retry_status} from {url} (after token refresh): {body_text}"
-                            ),
-                        });
+                        return Err(crate::response_body::rejection(
+                            retry_resp,
+                            None,
+                            "codex_chatgpt",
+                        )
+                        .await);
                     }
 
                     return Self::parse_sse_response_stream(retry_resp, self.request_timeout).await;
@@ -497,15 +508,7 @@ impl CodexChatGptProvider {
         }
 
         if !status.is_success() {
-            // Read the error body with a timeout to avoid hanging
-            let body_text = tokio::time::timeout(Duration::from_secs(5), resp.text())
-                .await
-                .unwrap_or(Ok(String::new()))
-                .unwrap_or_default();
-            return Err(LlmError::RequestFailed {
-                provider: "codex_chatgpt".to_string(),
-                reason: format!("HTTP {status} from {url}: {body_text}",),
-            });
+            return Err(crate::response_body::rejection(resp, None, "codex_chatgpt").await);
         }
 
         Self::parse_sse_response_stream(resp, self.request_timeout).await
@@ -530,7 +533,7 @@ impl CodexChatGptProvider {
             .await
             .map_err(|e| LlmError::RequestFailed {
                 provider: "codex_chatgpt".to_string(),
-                reason: format!("HTTP request failed: {e}"),
+                reason: format!("HTTP request failed: {}", e.without_url()),
             })
     }
 
@@ -715,27 +718,33 @@ impl CodexChatGptProvider {
                     Self::merge_completed_output_item(result, item, result.text.is_empty());
                 }
             }
-            "response.completed" => {
+            "response.completed" | "response.incomplete" | "response.failed" => {
                 if let Some(response) = parsed.get("response")
                     && let Some(usage) = response.get("usage")
                 {
-                    result.input_tokens = usage
-                        .get("input_tokens")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0) as u32;
-                    result.output_tokens = usage
-                        .get("output_tokens")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0) as u32;
+                    result.usage = crate::TokenUsage::from_reported_counts(
+                        usage.get("input_tokens").and_then(|v| v.as_u64()),
+                        usage.get("output_tokens").and_then(|v| v.as_u64()),
+                        0,
+                        0,
+                    );
                 }
-                if let Some(response) = parsed.get("response") {
+                if let Some(response) = parsed.get("response").filter(|r| r.is_object()) {
+                    result.status =
+                        crate::provider::responses_terminal_status(event_type, response)
+                            .map(str::to_owned);
+                    result.incomplete_reason = response
+                        .get("incomplete_details")
+                        .and_then(|v| v.get("reason"))
+                        .and_then(|v| v.as_str())
+                        .map(str::to_owned);
                     Self::merge_completed_response_output(result, response);
                 }
                 tracing::debug!(
                     content_bytes = result.text.len(),
                     tool_call_count = result.pending_tool_calls.len(),
-                    input_tokens = result.input_tokens,
-                    output_tokens = result.output_tokens,
+                    input_tokens = ?result.usage.map(|usage| usage.input_tokens),
+                    output_tokens = ?result.usage.map(|usage| usage.output_tokens),
                     "Codex ChatGPT: parsed completed response"
                 );
                 return true;
@@ -831,26 +840,6 @@ impl CodexChatGptProvider {
             }
         }
     }
-
-    /// Remove keys with empty-string values from a JSON object.
-    ///
-    /// gpt-5.2-codex fills optional tool parameters with `""` (e.g.
-    /// `"timestamp": ""`). BrassClaw's tool validation treats these as
-    /// invalid "non-empty input expected". Stripping them makes the
-    /// tool see only the actually-provided values.
-    fn strip_empty_string_values(value: Value) -> Value {
-        match value {
-            Value::Object(map) => {
-                let cleaned: serde_json::Map<String, Value> = map
-                    .into_iter()
-                    .filter(|(_, v)| !matches!(v, Value::String(s) if s.is_empty()))
-                    .map(|(k, v)| (k, Self::strip_empty_string_values(v)))
-                    .collect();
-                Value::Object(cleaned)
-            }
-            other => other,
-        }
-    }
 }
 
 #[derive(Debug, Default)]
@@ -859,8 +848,9 @@ struct ResponsesResult {
     reasoning: String,
     /// Keyed by item_id (the SSE item identifier, e.g. "fc_...").
     pending_tool_calls: std::collections::HashMap<String, PendingToolCall>,
-    input_tokens: u32,
-    output_tokens: u32,
+    usage: Option<crate::TokenUsage>,
+    status: Option<String>,
+    incomplete_reason: Option<String>,
 }
 
 #[derive(Debug)]
@@ -887,20 +877,24 @@ impl LlmProvider for CodexChatGptProvider {
     }
 
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
-        let model = self.resolve_model().await;
+        let model = self
+            .selected_request_model(request.model.as_deref(), request.dispatch_policy)
+            .await?;
         let mut messages = request.messages;
         crate::provider::sanitize_tool_messages(&mut messages);
-        let body = self.build_request_body(model, &messages, &[], None);
-        let result = self.send_request(body).await?;
+        let body = self.build_request_body(&model, &messages, &[], None);
+        let result = self.send_request(body, request.dispatch_policy).await?;
 
         Ok(CompletionResponse {
             content: result.text,
-            input_tokens: result.input_tokens,
-            output_tokens: result.output_tokens,
-            finish_reason: FinishReason::Stop,
+            usage: result.usage,
+
+            finish_reason: FinishReason::from_responses_status(
+                result.status.as_deref(),
+                result.incomplete_reason.as_deref(),
+                !result.pending_tool_calls.is_empty(),
+            ),
             reasoning: crate::responses_reasoning::finish_summary(result.reasoning),
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
         })
     }
 
@@ -911,15 +905,23 @@ impl LlmProvider for CodexChatGptProvider {
         let mut messages = request.messages;
         crate::provider::sanitize_tool_messages(&mut messages);
         let name_map = build_sanitized_tool_name_map(&request.tools)?;
-        let model = self.resolve_model().await;
+        let model = self
+            .selected_request_model(request.model.as_deref(), request.dispatch_policy)
+            .await?;
         let body = self.build_request_body(
-            model,
+            &model,
             &messages,
             &request.tools,
             request.tool_choice.as_deref(),
         );
-        let result = self.send_request(body).await?;
+        let result = self.send_request(body, request.dispatch_policy).await?;
 
+        let mut finish_reason = FinishReason::from_responses_status(
+            result.status.as_deref(),
+            result.incomplete_reason.as_deref(),
+            !result.pending_tool_calls.is_empty(),
+        );
+        let mut valid_arguments = true;
         let tool_calls: Vec<ToolCall> = result
             .pending_tool_calls
             .into_values()
@@ -929,12 +931,8 @@ impl LlmProvider for CodexChatGptProvider {
                     .get(&returned_name)
                     .cloned()
                     .unwrap_or(returned_name);
-                let args: Value =
-                    serde_json::from_str(&tc.arguments).unwrap_or_else(|_| json!(tc.arguments));
-                // gpt-5.2-codex fills optional parameters with empty strings (e.g.
-                // `"timestamp": ""`), which BrassClaw's tool validation rejects.
-                // Strip them so only actually-provided values reach the tool.
-                let args = Self::strip_empty_string_values(args);
+                let (args, valid) = crate::provider::decode_provider_arguments(&tc.arguments);
+                valid_arguments &= valid;
                 ToolCall {
                     id: tc.call_id,
                     name,
@@ -944,12 +942,9 @@ impl LlmProvider for CodexChatGptProvider {
                 }
             })
             .collect();
-
-        let finish_reason = if tool_calls.is_empty() {
-            FinishReason::Stop
-        } else {
-            FinishReason::ToolUse
-        };
+        if !valid_arguments {
+            finish_reason = FinishReason::Unknown;
+        }
 
         Ok(ToolCompletionResponse {
             content: if result.text.is_empty() {
@@ -958,11 +953,10 @@ impl LlmProvider for CodexChatGptProvider {
                 Some(result.text)
             },
             tool_calls,
-            input_tokens: result.input_tokens,
-            output_tokens: result.output_tokens,
+            usage: result.usage,
+
             finish_reason,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
+
             reasoning: crate::responses_reasoning::finish_summary(result.reasoning),
         })
     }
@@ -973,6 +967,80 @@ mod tests {
     use super::*;
     use bytes::Bytes;
     use futures::stream;
+
+    #[tokio::test]
+    async fn single_submission_uses_the_selected_codex_model_and_private_http_rejections() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let observations = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let recorded = observations.clone();
+        let (stop, mut stopped) = tokio::sync::watch::channel(false);
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = tokio::select! {
+                    _ = stopped.changed() => break,
+                    connection = listener.accept() => connection.unwrap(),
+                };
+                let mut bytes = Vec::new();
+                let mut buffer = [0; 4096];
+                loop {
+                    let count = socket.read(&mut buffer).await.unwrap();
+                    assert_ne!(count, 0);
+                    bytes.extend_from_slice(&buffer[..count]);
+                    if let Some(end) = bytes.windows(4).position(|data| data == b"\r\n\r\n") {
+                        let headers = String::from_utf8_lossy(&bytes[..end]);
+                        let length = headers
+                            .lines()
+                            .find_map(|line| {
+                                let (name, value) = line.split_once(':')?;
+                                name.eq_ignore_ascii_case("content-length")
+                                    .then(|| value.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap_or(0);
+                        if bytes.len() >= end + 4 + length {
+                            break;
+                        }
+                    }
+                }
+                recorded.lock().await.push(bytes);
+                let body = "private-codex-rejection sk-private-body";
+                socket.write_all(format!("HTTP/1.1 401 Unauthorized\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+            }
+        });
+        let provider = CodexChatGptProvider::with_lazy_model(
+            &endpoint,
+            SecretString::from("local-fixture-key"),
+            "configured-other-model",
+            None,
+            None,
+            5,
+        )
+        .unwrap();
+        let mut request =
+            CompletionRequest::new(vec![ChatMessage::user("hello")]).with_model("selected-model");
+        request.dispatch_policy = crate::ProviderDispatchPolicy::SingleSubmission;
+        let error = provider.complete(request).await.unwrap_err();
+        assert!(matches!(error, LlmError::AuthFailed { .. }));
+        assert!(!format!("{error} {error:?}").contains("private-codex"));
+        let requests = observations.lock().await;
+        assert_eq!(
+            requests.len(),
+            1,
+            "no model discovery or fallback submission"
+        );
+        assert!(requests[0].starts_with(b"POST /responses "));
+        let end = requests[0]
+            .windows(4)
+            .position(|data| data == b"\r\n\r\n")
+            .unwrap();
+        let body: Value = serde_json::from_slice(&requests[0][end + 4..]).unwrap();
+        assert_eq!(body["model"], "selected-model");
+        assert!(body.get("dispatch_policy").is_none());
+        drop(requests);
+        stop.send(true).unwrap();
+        server.await.unwrap();
+    }
 
     #[test]
     fn test_message_conversion_user() {
@@ -1120,8 +1188,8 @@ data: {"response":{"usage":{"input_tokens":10,"output_tokens":5}}}
 "#;
         let result = CodexChatGptProvider::parse_sse_response(sse).unwrap();
         assert_eq!(result.text, "Hello world!");
-        assert_eq!(result.input_tokens, 10);
-        assert_eq!(result.output_tokens, 5);
+        assert_eq!(result.usage.unwrap().input_tokens, 10);
+        assert_eq!(result.usage.unwrap().output_tokens, 5);
         assert!(result.pending_tool_calls.is_empty());
     }
 
@@ -1136,8 +1204,8 @@ data: {"type":"response.completed","response":{"usage":{"input_tokens":10,"outpu
 "#;
         let result = CodexChatGptProvider::parse_sse_response(sse).unwrap();
         assert_eq!(result.text, "Hello world!");
-        assert_eq!(result.input_tokens, 10);
-        assert_eq!(result.output_tokens, 5);
+        assert_eq!(result.usage.unwrap().input_tokens, 10);
+        assert_eq!(result.usage.unwrap().output_tokens, 5);
         assert!(result.pending_tool_calls.is_empty());
     }
 
@@ -1150,9 +1218,45 @@ data: {"type":"response.completed","response":{"usage":{"input_tokens":10,"outpu
 "#;
         let result = CodexChatGptProvider::parse_sse_response(sse).unwrap();
         assert_eq!(result.text, "Hello from done.");
-        assert_eq!(result.input_tokens, 10);
-        assert_eq!(result.output_tokens, 5);
+        assert_eq!(result.usage.unwrap().input_tokens, 10);
+        assert_eq!(result.usage.unwrap().output_tokens, 5);
         assert!(result.pending_tool_calls.is_empty());
+    }
+
+    #[test]
+    fn sse_terminal_status_is_required_and_incompletion_does_not_promote_tool_proposals() {
+        let initial = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\ndata: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"id\":\"item1\",\"call_id\":\"call1\",\"name\":\"search\"}}\n\n";
+        for (terminal, expected) in [
+            ("data: [DONE]\n\n", FinishReason::Unknown),
+            (
+                "data: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"usage\":{\"input_tokens\":8,\"output_tokens\":1}}}\n\n",
+                FinishReason::Length,
+            ),
+            (
+                "data: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"content_filter\"}}}\n\n",
+                FinishReason::ContentFilter,
+            ),
+            (
+                "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\"}}\n\n",
+                FinishReason::Unknown,
+            ),
+        ] {
+            let result =
+                CodexChatGptProvider::parse_sse_response(&format!("{initial}{terminal}")).unwrap();
+            assert_eq!(result.text, "partial");
+            assert_eq!(result.pending_tool_calls.len(), 1);
+            assert_eq!(
+                FinishReason::from_responses_status(
+                    result.status.as_deref(),
+                    result.incomplete_reason.as_deref(),
+                    true
+                ),
+                expected
+            );
+            if expected == FinishReason::Length {
+                assert_eq!(result.usage.unwrap().output_tokens, 1);
+            }
+        }
     }
 
     #[test]
@@ -1162,8 +1266,8 @@ data: {"type":"response.completed","response":{"usage":{"input_tokens":10,"outpu
 "#;
         let result = CodexChatGptProvider::parse_sse_response(sse).unwrap();
         assert_eq!(result.text, "Hello from final output.");
-        assert_eq!(result.input_tokens, 10);
-        assert_eq!(result.output_tokens, 5);
+        assert_eq!(result.usage.unwrap().input_tokens, 10);
+        assert_eq!(result.usage.unwrap().output_tokens, 5);
         assert!(result.pending_tool_calls.is_empty());
     }
 
@@ -1174,8 +1278,8 @@ data: {"type":"response.completed","response":{"usage":{"input_tokens":10,"outpu
 "#;
         let result = CodexChatGptProvider::parse_sse_response(sse).unwrap();
         assert_eq!(result.text, "Hello from output_text.");
-        assert_eq!(result.input_tokens, 10);
-        assert_eq!(result.output_tokens, 5);
+        assert_eq!(result.usage.unwrap().input_tokens, 10);
+        assert_eq!(result.usage.unwrap().output_tokens, 5);
         assert!(result.pending_tool_calls.is_empty());
     }
 
@@ -1284,8 +1388,8 @@ data: {"response":{"usage":{"input_tokens":20,"output_tokens":15}}}
             .await
             .unwrap();
         assert_eq!(result.text, "Hello world");
-        assert_eq!(result.input_tokens, 3);
-        assert_eq!(result.output_tokens, 2);
+        assert_eq!(result.usage.unwrap().input_tokens, 3);
+        assert_eq!(result.usage.unwrap().output_tokens, 2);
     }
 
     #[tokio::test]
@@ -1306,8 +1410,8 @@ data: {"response":{"usage":{"input_tokens":20,"output_tokens":15}}}
             .await
             .unwrap();
         assert_eq!(result.text, "Hello world");
-        assert_eq!(result.input_tokens, 3);
-        assert_eq!(result.output_tokens, 2);
+        assert_eq!(result.usage.unwrap().input_tokens, 3);
+        assert_eq!(result.usage.unwrap().output_tokens, 2);
     }
 
     #[tokio::test]
@@ -1414,6 +1518,43 @@ data: {"type":"response.completed","response":{"usage":{"input_tokens":3,"output
     }
 
     #[tokio::test]
+    async fn complete_with_tools_preserves_empty_and_null_argument_values_and_rejects_malformed_arguments()
+     {
+        for arguments in [
+            r#"{"empty":"","nothing":null,"nested":{"literal":""}}"#,
+            "{incomplete",
+        ] {
+            let response = serde_json::json!({"type":"response.completed","response":{"status":"completed","output":[{"type":"function_call","id":"item1","call_id":"call1","name":"builtin_echo","arguments":arguments}],"usage":{"input_tokens":5,"output_tokens":2}}});
+            let sse = format!("data: {response}\n\n");
+            let base_url = responses_api_test_server::spawn(sse).await;
+            let provider = CodexChatGptProvider::new(&base_url, "test-key", "gpt-4o");
+            let result = provider
+                .complete_with_tools(ToolCompletionRequest::new(
+                    vec![ChatMessage::user("use literal arguments")],
+                    vec![ToolDefinition {
+                        name: "builtin.echo".into(),
+                        description: "Echo data".into(),
+                        parameters: json!({"type":"object"}),
+                    }],
+                ))
+                .await
+                .unwrap();
+            assert_eq!(result.tool_calls.len(), 1);
+            assert_eq!(result.tool_calls[0].name, "builtin.echo");
+            if let Ok(expected) = serde_json::from_str::<Value>(arguments) {
+                assert_eq!(result.finish_reason, FinishReason::ToolUse);
+                assert_eq!(result.tool_calls[0].arguments, expected);
+            } else {
+                assert_eq!(result.finish_reason, FinishReason::Unknown);
+                assert_eq!(
+                    result.tool_calls[0].arguments,
+                    Value::String(arguments.into())
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn complete_with_tools_rejects_colliding_sanitized_tool_names_before_request() {
         let provider = CodexChatGptProvider::new("http://127.0.0.1:9", "test-key", "gpt-4o");
         let request = ToolCompletionRequest::new(
@@ -1445,18 +1586,6 @@ data: {"type":"response.completed","response":{"usage":{"input_tokens":3,"output
         );
     }
 
-    #[test]
-    fn test_strip_empty_string_values() {
-        let input = json!({
-            "format": "%Y-%m-%d",
-            "operation": "now",
-            "timestamp": "",
-            "timestamp2": "",
-        });
-        let cleaned = CodexChatGptProvider::strip_empty_string_values(input);
-        assert_eq!(cleaned, json!({"format": "%Y-%m-%d", "operation": "now"}));
-    }
-
     mod responses_api_test_server {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::TcpListener;
@@ -1464,7 +1593,8 @@ data: {"type":"response.completed","response":{"usage":{"input_tokens":3,"output
         /// Tiny in-process Responses API fixture for caller-level provider tests.
         /// The test must exercise model resolution plus `/responses`, so a real
         /// loopback HTTP boundary is intentional here.
-        pub(super) async fn spawn(sse_body: &'static str) -> String {
+        pub(super) async fn spawn(sse_body: impl Into<String>) -> String {
+            let sse_body = sse_body.into();
             let listener = TcpListener::bind("127.0.0.1:0")
                 .await
                 .expect("bind test server");
@@ -1486,7 +1616,7 @@ data: {"type":"response.completed","response":{"usage":{"input_tokens":3,"output
                         )
                         .await;
                     } else if request.starts_with("POST /responses") {
-                        write_response(&mut socket, "text/event-stream", sse_body).await;
+                        write_response(&mut socket, "text/event-stream", &sse_body).await;
                     } else {
                         write_response(&mut socket, "text/plain", "not found").await;
                     }

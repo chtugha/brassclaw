@@ -21,10 +21,10 @@
 //! | D2 | Period rollover: usage resets at the next period boundary |
 //! | D3 | Seeding policy installs default limit on first touch |
 //!
-//! F7 (cancellation mid-stream) is covered by the in-crate
-//! `budget_accountant::release_in_flight_drains_orphan_reservation_on_cancellation`
-//! unit test, which exercises the same Drop-guard path with less
-//! orchestration noise.
+//! Accountant unit tests distinguish cancellation before dispatch (release)
+//! from cancellation after dispatch may have begun (retain unknown spend).
+//! Those helper checks do not establish this product's full cancellation,
+//! response-custody or restart-reconciliation acceptance.
 //!
 //! F3 / F4 / F5 (approval / cancel / expire flows) and B-series
 //! (background ticks) live in `budget_approval_e2e.rs` and

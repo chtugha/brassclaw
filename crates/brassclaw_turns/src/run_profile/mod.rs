@@ -63,9 +63,10 @@ pub use host::{
     LoopContextRequest, LoopContextSnippet, LoopContextSnippetMetadata, LoopDriverNoteKind,
     LoopGateKind, LoopInlineMessage, LoopInlineMessageRole, LoopInput, LoopInputAck,
     LoopInputAckToken, LoopInputBatch, LoopInputCursor, LoopInputCursorToken, LoopInputPort,
-    LoopInterceptorPort, LoopInterruptKind, LoopModelCapabilityView, LoopModelMessage,
-    LoopModelPort, LoopModelRequest, LoopModelResponse, LoopModelRouteSnapshot, LoopModelUsage,
-    LoopOrchestratorPort, LoopProcessRef, LoopProgressEvent, LoopProgressPort, LoopPromptBundle,
+    LoopInterceptorPort, LoopInterruptKind, LoopModelCapabilityView, LoopModelDispatchPolicy,
+    LoopModelMessage, LoopModelPort, LoopModelRequest, LoopModelResponse,
+    LoopModelResponseCustodian, LoopModelRouteSnapshot, LoopModelUsage, LoopOrchestratorPort,
+    LoopProcessRef, LoopProgressEvent, LoopProgressPort, LoopPromptBundle,
     LoopPromptBundleAuthority, LoopPromptBundleGrant, LoopPromptBundleRef, LoopPromptBundleRequest,
     LoopPromptPort, LoopRecipePort, LoopRetrievalPort, LoopRunContext, LoopRunInfoPort,
     LoopSafeSummary, LoopSecurityPort, LoopTranscriptPort, ModelStreamChunk, NoInterceptor,
@@ -103,7 +104,9 @@ pub use model_observation::{
     ModelVisibleToolObservation, ObservationTrust, SameCallRetryConstraint, ToolObservationDetail,
     ToolObservationStatus, ToolRecoveryObservation,
 };
-pub use model_work::{ModelWorkKind, ModelWorkOutcome, ModelWorkRequest, ModelWorkUsage};
+pub use model_work::{
+    ModelWorkId, ModelWorkKind, ModelWorkOutcome, ModelWorkRequest, ModelWorkUsage,
+};
 pub use orchestrator_lookup::{OrchestratorLookup, PriorKnowledgeBundle, TierZeroReply};
 pub use policy::{
     CancellationPolicy, CheckpointPolicy, PersonalContextAuthority, PrivilegedRunProfileDimension,

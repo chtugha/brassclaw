@@ -1412,6 +1412,7 @@ mod tests {
             Arc::new(LocalDevCapabilityIo::default()),
         );
         let request = HostManagedModelRequest {
+            dispatch_policy: Default::default(),
             model_profile_id: ModelProfileId::new("interactive_model").expect("model profile"),
             messages: vec![HostManagedModelMessage {
                 role: HostManagedModelMessageRole::ToolResult,

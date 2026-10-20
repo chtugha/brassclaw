@@ -664,6 +664,23 @@ pub(crate) async fn seed_prefix_generation_tool(
         crate::installed_monty_catalogue::id("prefix-generation:tool")).await
 }
 
+/// Register the exact offline encoding primitive without approving any usage.
+/// Reuse the same identity/alias preservation and operator-policy owner as the
+/// other native primitives; a pending Tool row is never an activated Recipe.
+#[cfg(feature = "skills-db")]
+pub(crate) async fn seed_model_encoding_tool(
+    pool: Arc<PgPool>,
+    tenant_id: &str,
+) -> Result<Uuid, SeedBuiltinBootstrapError> {
+    seed_primitive_registration(
+        pool, tenant_id,
+        registered_primitive_row(tenant_id,"model_encoding",
+            "Render and encode exact frozen probes with immutable model assets; no design, serving change, cache or quality approval.",
+            "read",brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID),
+        crate::installed_monty_catalogue::id("model-encoding:tool"),
+    ).await
+}
+
 #[cfg(feature = "skills-db")]
 pub(crate) async fn seed_json_primitive_tool(
     pool: Arc<PgPool>,

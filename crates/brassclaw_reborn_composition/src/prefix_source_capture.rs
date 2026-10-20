@@ -20,30 +20,46 @@ impl InstalledMontyCatalogue {
         &self,
         profile: &str,
     ) -> Result<String, RecipeStoreError> {
+        self.capture_prefix_sources(profile, false).await
+    }
+    pub(crate) async fn capture_declared_release_prefix_sources(
+        &self,
+        profile: &str,
+    ) -> Result<String, RecipeStoreError> {
+        self.capture_prefix_sources(profile, true).await
+    }
+    async fn capture_prefix_sources(
+        &self,
+        profile: &str,
+        release_documents: bool,
+    ) -> Result<String, RecipeStoreError> {
         if !matches!(profile, "base-prompt" | "prefix-maker") {
             return Err(RecipeStoreError::Invalid(
                 "unsupported core source profile".into(),
             ));
         }
         self.reference_sources.verify().map_err(|_| invalid())?;
+        let packaged = if release_documents {
+            self.reference_sources.snapshot.clone()
+        } else {
+            self.reference_sources
+                .core_snapshot()
+                .map_err(|_| invalid())?
+        };
         let generation = self.active.read().await.generation.to_string();
         // The catalogue owner checks one coherent active view and exact sources.
         // Immutable packaged documents are pinned independently of editable Docs.
-        let catalogue = self.export_sources(&generation).await?;
-        let refs = self
-            .reference_sources
-            .snapshot
+        let catalogue = if release_documents {
+            self.export_prefix_workflow_sources(&generation).await?
+        } else {
+            self.export_sources(&generation).await?
+        };
+        let refs = packaged
             .revisions()
             .values()
             .map(|revision| revision.reference())
             .collect::<Vec<_>>();
-        let roots = self
-            .reference_sources
-            .snapshot
-            .roots()
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
+        let roots = packaged.roots().iter().copied().collect::<Vec<_>>();
         let mut client = self.pool.get().await.map_err(|_| invalid())?;
         let tx = client
             .build_transaction()
@@ -55,13 +71,21 @@ impl InstalledMontyCatalogue {
         let snapshot = PgComponentRevisionStore::read_exact_in_transaction(&tx, &roots, &refs)
             .await
             .map_err(|_| invalid())?;
-        let package = crate::prefix_reference_seeds::Package {
-            snapshot: std::sync::Arc::new(snapshot),
-        };
-        package.verify().map_err(|_| invalid())?;
+        if snapshot.revisions().len() != packaged.revisions().len() {
+            return Err(invalid());
+        }
+        for (uuid, expected) in packaged.revisions() {
+            if snapshot
+                .revisions()
+                .get(uuid)
+                .is_none_or(|actual| actual.draft().exact_bytes() != expected.draft().exact_bytes())
+            {
+                return Err(invalid());
+            }
+        }
+        let selected = std::sync::Arc::new(snapshot);
         tx.commit().await.map_err(|_| invalid())?;
-        let design_record = package
-            .snapshot
+        let design_record = selected
             .revisions()
             .values()
             .find(|revision| {
@@ -81,12 +105,16 @@ impl InstalledMontyCatalogue {
         }
         let mut sources = Vec::new();
         let mut documents = Vec::new();
-        for revision in package.snapshot.revisions().values() {
+        for revision in selected.revisions().values() {
             let reference = revision.reference();
             let document = revision.draft().document();
             let path = document["path"].as_str().ok_or_else(invalid)?;
             let text = document["content"].as_str().ok_or_else(invalid)?;
-            let selection = &design["sources"][path];
+            let selection = if design["sources"].get(path).is_some() {
+                &design["sources"][path]
+            } else {
+                document
+            };
             sources.push(record(
                 path.into(),
                 "document",
@@ -96,9 +124,9 @@ impl InstalledMontyCatalogue {
             ));
             documents.push(json!({"uuid":reference.uuid,"class_code":reference.class_code,"version":reference.version,"checksum":hex::encode(reference.checksum),"revision_bytes":revision.draft().exact_bytes()}));
         }
-        let reference_manifest = crate::prefix_generations::canonical(&json!({"format":"brassclaw-core-reference-capture/1","coverage":"core-guides-only","components":documents})).map_err(|_| invalid())?;
+        let reference_manifest = crate::prefix_generations::canonical(&json!({"format":"brassclaw-core-reference-capture/1","coverage":if release_documents { "declared-release-document-inventory" } else { "core-guides-only" },"components":documents})).map_err(|_| invalid())?;
         for component in &catalogue.components {
-            sources.push(record(format!("catalogue/components/{}/v{}.json", component.reference.uuid, component.reference.version), "component", "included", "Exact owner-selected ordinary-workflow/root source; imported integrity alone is not approval", component.revision_bytes.clone()));
+            sources.push(record(format!("catalogue/components/{}/v{}.json", component.reference.uuid, component.reference.version), "component", "included", if release_documents { "Exact owner-selected ordinary/root or qualified prefix-workflow source; retain each selected revision combination, not a synthesized latest combination" } else { "Exact owner-selected ordinary-workflow/root source; imported integrity alone is not approval" }, component.revision_bytes.clone()));
         }
         sources.push(record("catalogue/catalogue.json".into(), "document", "included", "Exact coherent routing catalogue, including disabled Recipe metadata; current Tool policy remains independent", catalogue.catalogue_bytes.clone()));
         for selection in &catalogue.selections {
@@ -114,10 +142,10 @@ impl InstalledMontyCatalogue {
             &serde_json::to_value(&catalogue).map_err(|_| invalid())?,
         )
         .map_err(|_| invalid())?;
-        sources.push(record("capture/core-reference-revisions.json".into(), "document", "development-only", "Complete provenance envelope; document originals are separately included in the model view", reference_manifest.clone()));
+        sources.push(record("capture/core-reference-revisions.json".into(), "document", "development-only", "Complete provenance envelope; originals and dispositions are archived separately, and only selected included records enter the model view", reference_manifest.clone()));
         sources.push(record("capture/catalogue-export.json".into(), "document", "development-only", "Complete transfer envelope; component/selection originals are separately included in the model view", catalogue_manifest));
-        let release = crate::prefix_generations::canonical(&json!({"format":"brassclaw-core-source-release/1","reference_manifest_sha256":sha(&reference_manifest),"catalogue_generation":catalogue.generation,"catalogue_checksum":catalogue.catalogue_checksum,"coverage":"core-guides-and-active-ordinary-workflows-with-retained-root"})).map_err(|_| invalid())?;
-        let capture = json!({"format":"brassclaw-prefix-source-snapshot/1","profile":profile,"release":release,"header":design["header"],"evidence_view":design["evidence_view"],"sources":sources,
+        let release = crate::prefix_generations::canonical(&json!({"format":"brassclaw-core-source-release/1","reference_manifest_sha256":sha(&reference_manifest),"catalogue_generation":catalogue.generation,"catalogue_checksum":catalogue.catalogue_checksum,"coverage":if release_documents { "declared-release-documents-and-active-ordinary-workflows-with-retained-root" } else { "core-guides-and-active-ordinary-workflows-with-retained-root" }})).map_err(|_| invalid())?;
+        let capture = json!({"format":"brassclaw-prefix-source-snapshot/1","profile":profile,"release":release,"header":design[if release_documents { "release_header" } else { "header" }],"evidence_view":design["evidence_view"],"sources":sources,
             "procedures":{"compiler/entry.py":brassclaw_skills::prefix_compiler_components::COMPILER_SOURCE,"compiler/prefix_render.py":brassclaw_skills::prefix_reference_components::REFERENCE_RENDER_SOURCE,"compiler/prefix_units.py":brassclaw_skills::prefix_compiler_components::UNIT_SOURCE}});
         let bytes = crate::prefix_generations::canonical(&capture).map_err(|_| invalid())?;
         crate::prefix_job_execution::validate_snapshot(profile, &bytes).map_err(|_| invalid())?;

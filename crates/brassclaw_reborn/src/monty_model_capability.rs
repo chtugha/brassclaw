@@ -48,15 +48,24 @@ pub trait RecipeModelResponseStore: Send + Sync {
 
 #[async_trait]
 pub trait RecipeModelResponseRecord: Send + Sync {
+    fn receive_provider_wire_observation(&self, response: Value) -> Result<(), AgentLoopHostError>;
+    async fn persist_provider_wire_observation(&self) -> Result<(), AgentLoopHostError>;
+
+    /// Own the original provider adapter response before interpretation, including
+    /// length/policy/validation failures. No fabricated LoopModelResponse.
+    fn receive_provider_observation(&self, response: Value) -> Result<(), AgentLoopHostError>;
+    async fn persist_provider_observation(&self) -> Result<(), AgentLoopHostError>;
+
     /// Take custody of the complete actual response, including proposals and
-    /// unknown usage, before encoding/output validation. Return exact encoded
-    /// response bytes only after durable retention. On failure the owner must
+    /// unknown usage, synchronously before any persistence await. The owner must
     /// keep the actual response for reconciliation; never manufacture success
     /// or authorize another provider call. Memory alone is no crash checkpoint.
-    async fn retain_response(
-        &self,
-        response: LoopModelResponse,
-    ) -> Result<String, AgentLoopHostError>;
+    fn receive_response(&self, response: LoopModelResponse) -> Result<(), AgentLoopHostError>;
+
+    /// Persist the synchronously owned observation. Cancelling this future
+    /// retains it with the record's owner for supervised reconciliation. Return
+    /// exact encoded response bytes only after durable retention.
+    async fn persist_response(&self) -> Result<String, AgentLoopHostError>;
 }
 
 /// Captured catalogue data. Construction does not approve or activate a Skill.
@@ -125,6 +134,13 @@ fn invalid_input() -> FirstPartyCapabilityError {
     FirstPartyCapabilityError::new(RuntimeDispatchErrorKind::InputEncode)
 }
 fn host_error(error: AgentLoopHostError, usage: ResourceUsage) -> FirstPartyCapabilityError {
+    if let Some(diagnostic_ref) = &error.diagnostic_ref {
+        tracing::warn!(
+            kind = ?error.kind,
+            ?diagnostic_ref,
+            "selected model host failure retains its private diagnostic reference"
+        );
+    }
     FirstPartyCapabilityError::with_safe_summary(
         RuntimeDispatchErrorKind::OperationFailed,
         error.kind.as_str(),
@@ -171,72 +187,82 @@ impl FirstPartyCapabilityHandler for TaskModelCapability {
         // placeholder/empty-default bridge. Unknown roles/fields fail as a whole.
         let Arguments { prompt } =
             Arguments::deserialize(&request.input).map_err(|_| invalid_input())?;
-        let response_owner = self
-            .responses
-            .prepare(
-                request.scope.invocation_id,
-                &request.input,
-                &self.prefix.reference,
-            )
-            .await
-            .map_err(|e| host_error(e, ResourceUsage::default()))?;
+        let response_owner: Arc<dyn RecipeModelResponseRecord> = Arc::from(
+            self.responses
+                .prepare(
+                    request.scope.invocation_id,
+                    &request.input,
+                    &self.prefix.reference,
+                )
+                .await
+                .map_err(|e| host_error(e, ResourceUsage::default()))?,
+        );
         let invocation = request.scope.invocation_id;
+        let work_id = brassclaw_turns::run_profile::ModelWorkId::try_from(invocation.as_uuid())
+            .map_err(|_| invalid_input())?;
         drop(request);
         let started = Instant::now();
-        let result =
-            async {
-                let surface = self.host.visible_capabilities().await?;
-                let count = prompt
-                    .chat_history
-                    .len()
-                    .checked_add(2)
-                    .ok_or_else(capacity)?;
-                let mut messages = Vec::new();
-                messages.try_reserve_exact(count).map_err(|_| capacity())?;
-                messages.push(PreparedLoopPromptMessage {
-                    role: LoopInlineMessageRole::System,
-                    content: self.prefix.content.to_string(),
-                });
-                messages.extend(prompt.chat_history.into_iter().map(|message| {
-                    PreparedLoopPromptMessage {
-                        role: message.role,
-                        content: message.content,
-                    }
-                }));
-                messages.push(PreparedLoopPromptMessage {
-                    role: LoopInlineMessageRole::User,
-                    content: prompt.user_query,
-                });
-                let bundle = self
-                    .host
-                    .build_prepared_prompt_bundle(PreparedLoopPromptRequest {
-                        invocation_id: invocation,
-                        metadata: LoopPromptBundleRequest {
-                            mode: PromptMode::TextOnly,
-                            context_cursor: None,
-                            surface_version: Some(surface.version),
-                            checkpoint_state_ref: None,
-                            max_messages: None,
-                            capability_view: None,
-                            inline_messages: vec![],
-                            recipe_hint: None,
-                        },
-                        messages,
-                    })
-                    .await?;
-                // Existing host mediation retains hooks, provider/model policy,
-                // accounting, interceptor, prompt authority and cancellation fences.
-                // Proposals remain data; this adapter executes no requested Tools.
-                self.host.stream_model_retaining(
-                invocation,
-                LoopModelRequest {
-                    messages: bundle.messages, surface_version: bundle.surface_version,
-                    ..LoopModelRequest::default()
-                },
-                move |response| async move { response_owner.retain_response(response).await },
-            ).await
-            }
-            .await;
+        let result = async {
+            let surface = self.host.visible_capabilities().await?;
+            let count = prompt
+                .chat_history
+                .len()
+                .checked_add(2)
+                .ok_or_else(capacity)?;
+            let mut messages = Vec::new();
+            messages.try_reserve_exact(count).map_err(|_| capacity())?;
+            messages.push(PreparedLoopPromptMessage {
+                role: LoopInlineMessageRole::System,
+                content: self.prefix.content.to_string(),
+            });
+            messages.extend(prompt.chat_history.into_iter().map(|message| {
+                PreparedLoopPromptMessage {
+                    role: message.role,
+                    content: message.content,
+                }
+            }));
+            messages.push(PreparedLoopPromptMessage {
+                role: LoopInlineMessageRole::User,
+                content: prompt.user_query,
+            });
+            let bundle = self
+                .host
+                .build_prepared_prompt_bundle(PreparedLoopPromptRequest {
+                    invocation_id: invocation,
+                    metadata: LoopPromptBundleRequest {
+                        mode: PromptMode::TextOnly,
+                        context_cursor: None,
+                        surface_version: Some(surface.version),
+                        checkpoint_state_ref: None,
+                        max_messages: None,
+                        capability_view: None,
+                        inline_messages: vec![],
+                        recipe_hint: None,
+                    },
+                    messages,
+                })
+                .await?;
+            // Existing host mediation retains hooks, provider/model policy,
+            // accounting, interceptor, prompt authority and cancellation fences.
+            // Proposals remain data; this adapter executes no requested Tools.
+            self.host
+                .stream_model_retaining(
+                    invocation,
+                    LoopModelRequest {
+                        work_id: Some(work_id),
+                        dispatch_policy:
+                            brassclaw_turns::run_profile::LoopModelDispatchPolicy::SingleSubmission,
+                        messages: bundle.messages,
+                        surface_version: bundle.surface_version,
+                        model_preference: None,
+                        capability_view: None,
+                        resolved_messages: None,
+                    },
+                    response_owner,
+                )
+                .await
+        }
+        .await;
         let usage = ResourceUsage {
             wall_clock_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
             ..ResourceUsage::default()

@@ -229,22 +229,7 @@ pub struct ToolSelection {
     pub tool_call_id: String,
 }
 
-/// Token usage from a single LLM call.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct TokenUsage {
-    pub input_tokens: u32,
-    pub output_tokens: u32,
-    /// Tokens served from the provider's server-side prompt cache (Anthropic).
-    pub cache_read_input_tokens: u32,
-    /// Tokens written to the provider's prompt cache (Anthropic).
-    pub cache_creation_input_tokens: u32,
-}
-
-impl TokenUsage {
-    pub fn total(&self) -> u32 {
-        self.input_tokens + self.output_tokens
-    }
-}
+pub use crate::provider::TokenUsage;
 
 /// Structured anomaly classification for LLM responses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -289,7 +274,7 @@ pub enum RespondResult {
 #[derive(Debug, Clone)]
 pub struct RespondOutput {
     pub result: RespondResult,
-    pub usage: TokenUsage,
+    pub usage: Option<TokenUsage>,
     pub finish_reason: FinishReason,
     pub metadata: ResponseMetadata,
 }
@@ -416,14 +401,9 @@ impl Reasoning {
     pub async fn complete(
         &self,
         request: CompletionRequest,
-    ) -> Result<(String, TokenUsage), LlmError> {
+    ) -> Result<(String, Option<TokenUsage>), LlmError> {
         let response = self.llm.complete(request).await?;
-        let usage = TokenUsage {
-            input_tokens: response.input_tokens,
-            output_tokens: response.output_tokens,
-            cache_read_input_tokens: response.cache_read_input_tokens,
-            cache_creation_input_tokens: response.cache_creation_input_tokens,
-        };
+        let usage = response.usage;
         let pre_truncated = truncate_at_tool_tags(&response.content);
         Ok((clean_response(&pre_truncated), usage))
     }
@@ -659,12 +639,7 @@ Respond in JSON format:
             }
 
             let response = self.llm.complete_with_tools(request).await?;
-            let usage = TokenUsage {
-                input_tokens: response.input_tokens,
-                output_tokens: response.output_tokens,
-                cache_read_input_tokens: response.cache_read_input_tokens,
-                cache_creation_input_tokens: response.cache_creation_input_tokens,
-            };
+            let usage = response.usage;
 
             // If there were tool calls, return them for execution
             if !response.tool_calls.is_empty() {
@@ -801,12 +776,7 @@ Respond in JSON format:
             };
             Ok(RespondOutput {
                 result: RespondResult::Text(final_text),
-                usage: TokenUsage {
-                    input_tokens: response.input_tokens,
-                    output_tokens: response.output_tokens,
-                    cache_read_input_tokens: response.cache_read_input_tokens,
-                    cache_creation_input_tokens: response.cache_creation_input_tokens,
-                },
+                usage: response.usage,
                 finish_reason: response.finish_reason,
                 metadata,
             })
@@ -3697,11 +3667,15 @@ That's my plan."#;
                 Ok(ToolCompletionResponse {
                     content: None,
                     tool_calls: Vec::new(),
-                    input_tokens: 0,
-                    output_tokens: 0,
+                    usage: Some(crate::TokenUsage {
+                        input_tokens: 0,
+                        output_tokens: 0,
+                        cache_read_input_tokens: 0,
+                        cache_creation_input_tokens: 0,
+                    }),
+
                     finish_reason: FinishReason::Stop,
-                    cache_read_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
+
                     reasoning: None,
                 })
             }
@@ -4052,11 +4026,15 @@ That's my plan."#;
                     reasoning: None,
                     signature: None,
                 }],
-                input_tokens: 5000,
-                output_tokens: 1024,
+                usage: Some(crate::TokenUsage {
+                    input_tokens: 5000,
+                    output_tokens: 1024,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                }),
+
                 finish_reason: self.finish_reason,
-                cache_read_input_tokens: 0,
-                cache_creation_input_tokens: 0,
+
                 reasoning: None,
             })
         }

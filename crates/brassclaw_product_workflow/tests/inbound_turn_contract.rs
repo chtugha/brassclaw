@@ -340,6 +340,8 @@ impl MontyTurnDriverPort for ReplyMontyDriver {
             })?;
         let model_response = host
             .stream_model(LoopModelRequest {
+                work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+                dispatch_policy: Default::default(),
                 messages: prompt_bundle.messages,
                 surface_version: Some(surface.version),
                 model_preference: None,

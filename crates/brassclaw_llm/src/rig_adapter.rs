@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use rig::OneOrMany;
 use rig::completion::{
     AssistantContent, CompletionModel, CompletionRequest as RigRequest,
-    ToolDefinition as RigToolDefinition, Usage as RigUsage,
+    ToolDefinition as RigToolDefinition,
 };
 use rig::message::{
     DocumentSourceKind, Image, ImageDetail, ImageMediaType, Message as RigMessage, MimeType,
@@ -36,10 +36,25 @@ use crate::tool_schema::{ToolSchemaPolicy, shape_tool_schema};
 #[cfg(test)]
 use crate::tool_schema::{normalize_schema_strict, serialize_json_capped};
 
+/// Wire contract selected by trusted provider construction, never by model name.
+#[derive(Debug, Clone, Copy, Default)]
+pub enum RigUsageFormat {
+    #[default]
+    Unknown,
+    OpenAi,
+    Anthropic,
+    Ollama,
+    Gemini,
+}
+
 /// Adapter that wraps a rig-core `CompletionModel` and implements `LlmProvider`.
 pub struct RigAdapter<M: CompletionModel> {
     model: M,
     model_name: String,
+    usage_format: RigUsageFormat,
+    /// Rig 0.30's OpenAI chat request drops CoreCompletionRequest.max_tokens.
+    /// Only that transport needs the modern wire field in additional_params.
+    openai_chat_output_limit: bool,
     input_cost: Decimal,
     output_cost: Decimal,
     /// Prompt cache retention policy (Anthropic only).
@@ -64,12 +79,49 @@ impl<M: CompletionModel> RigAdapter<M> {
         Self {
             model,
             model_name: name,
+            usage_format: RigUsageFormat::Unknown,
+            openai_chat_output_limit: false,
             input_cost,
             output_cost,
             cache_retention: CacheRetention::None,
             unsupported_params: HashSet::new(),
             default_additional_params: None,
         }
+    }
+
+    pub fn with_usage_format(mut self, format: RigUsageFormat) -> Self {
+        self.usage_format = format;
+        self
+    }
+
+    /// Select the actual OpenAI Chat Completions transport, independently of
+    /// its response-meter format (also used by DeepSeek/OpenRouter SDKs).
+    pub(crate) fn with_openai_chat_output_limit(mut self) -> Self {
+        self.openai_chat_output_limit = true;
+        self
+    }
+
+    fn apply_output_limit(&self, request: &mut RigRequest) -> Result<(), LlmError> {
+        if !self.openai_chat_output_limit {
+            return Ok(());
+        }
+        let Some(limit) = request.max_tokens else {
+            return Ok(());
+        };
+        let params = request
+            .additional_params
+            .get_or_insert_with(|| serde_json::json!({}));
+        let params = params
+            .as_object_mut()
+            .ok_or_else(|| LlmError::RequestFailed {
+                provider: self.model_name.clone(),
+                reason: "provider additional parameters must be an object".into(),
+            })?;
+        // The captured per-call ceiling wins over transport defaults. Do not
+        // transmit competing deprecated and modern limit fields.
+        params.remove("max_tokens");
+        params.insert("max_completion_tokens".into(), limit.into());
+        Ok(())
     }
 
     /// Set Anthropic prompt cache retention policy.
@@ -413,13 +465,7 @@ fn convert_tool_choice(choice: Option<&str>) -> Option<RigToolChoice> {
 /// of the next request.
 fn extract_response(
     choice: &OneOrMany<AssistantContent>,
-    _usage: &RigUsage,
-) -> (
-    Option<String>,
-    Vec<IronToolCall>,
-    FinishReason,
-    Option<String>,
-) {
+) -> (Option<String>, Vec<IronToolCall>, Option<String>) {
     let mut text_parts: Vec<String> = Vec::new();
     let mut tool_calls: Vec<IronToolCall> = Vec::new();
     let mut reasoning_parts: Vec<String> = Vec::new();
@@ -463,18 +509,7 @@ fn extract_response(
         Some(reasoning_parts.join("\n"))
     };
 
-    let finish = if !tool_calls.is_empty() {
-        FinishReason::ToolUse
-    } else {
-        FinishReason::Stop
-    };
-
-    (text, tool_calls, finish, reasoning)
-}
-
-/// Saturate u64 to u32 for token counts.
-fn saturate_u32(val: u64) -> u32 {
-    val.min(u32::MAX as u64) as u32
+    (text, tool_calls, reasoning)
 }
 
 /// Returns `true` if the model supports Anthropic prompt caching.
@@ -493,17 +528,130 @@ pub(crate) fn supports_prompt_cache(name: &str) -> bool {
         || model.starts_with("claude-haiku")
 }
 
-/// Extract `cache_creation_input_tokens` from the raw provider response.
-///
-/// Rig-core's unified `Usage` does not surface this field, but Anthropic's raw
-/// response includes it at `usage.cache_creation_input_tokens`. We serialize the
-/// raw response to JSON and attempt to read the value.
-fn extract_cache_creation<T: Serialize>(raw: &T) -> u32 {
-    serde_json::to_value(raw)
-        .ok()
-        .and_then(|v| v.get("usage")?.get("cache_creation_input_tokens")?.as_u64())
-        .map(|n| n.min(u32::MAX as u64) as u32)
-        .unwrap_or(0)
+/// Use native structured presence. Rig's normalized numeric defaults cannot
+/// establish that a provider actually sent usage. Invalid/oversized meters stay
+/// unknown without discarding or resubmitting the received answer.
+fn extract_reported_usage(
+    raw: &serde_json::Value,
+    format: RigUsageFormat,
+) -> Option<crate::TokenUsage> {
+    let number = |value: &serde_json::Value, name: &str| value.get(name)?.as_u64();
+    let optional_cache = |value: &serde_json::Value, name: &str| -> Option<u64> {
+        match value.get(name) {
+            None | Some(serde_json::Value::Null) => Some(0),
+            Some(value) => value.as_u64(),
+        }
+    };
+    let (input, output, read, creation) = match format {
+        RigUsageFormat::Unknown => return None,
+        RigUsageFormat::OpenAi => {
+            let usage = raw.get("usage")?;
+            usage.as_object()?;
+            let input = number(usage, "prompt_tokens")?;
+            // Rig 0.30's OpenAI raw DTO retains prompt/total, not completion.
+            // This exact protocol relation requires both reported counters.
+            let output = match usage.get("completion_tokens") {
+                Some(value) => value.as_u64()?,
+                None => number(usage, "total_tokens")?.checked_sub(input)?,
+            };
+            if let Some(total) = usage.get("total_tokens")
+                && input.checked_add(output)? != total.as_u64()?
+            {
+                return None;
+            }
+            let read = match usage.get("prompt_tokens_details") {
+                None | Some(serde_json::Value::Null) => 0,
+                Some(details) => {
+                    details.as_object()?;
+                    optional_cache(details, "cached_tokens")?
+                }
+            };
+            if read > input {
+                return None;
+            }
+            (input, output, read, 0)
+        }
+        RigUsageFormat::Anthropic => {
+            let usage = raw.get("usage")?;
+            (
+                number(usage, "input_tokens")?,
+                number(usage, "output_tokens")?,
+                optional_cache(usage, "cache_read_input_tokens")?,
+                optional_cache(usage, "cache_creation_input_tokens")?,
+            )
+        }
+        RigUsageFormat::Ollama => (
+            number(raw, "prompt_eval_count")?,
+            number(raw, "eval_count")?,
+            0,
+            0,
+        ),
+        RigUsageFormat::Gemini => {
+            let usage = raw.get("usageMetadata")?;
+            (
+                number(usage, "promptTokenCount")?,
+                number(usage, "candidatesTokenCount")?,
+                optional_cache(usage, "cachedContentTokenCount")?,
+                0,
+            )
+        }
+    };
+    crate::TokenUsage::from_reported_counts(Some(input), Some(output), read, creation)
+}
+
+/// Completion is reported by the provider, never inferred from text or Tool
+/// content. Match the same first candidate selected by Rig's conversion.
+fn extract_reported_finish(
+    raw: &serde_json::Value,
+    format: RigUsageFormat,
+    has_tools: bool,
+) -> FinishReason {
+    use RigUsageFormat::*;
+    match format {
+        Unknown => FinishReason::Unknown,
+        OpenAi => FinishReason::from_chat_reason(
+            raw.get("choices")
+                .and_then(|v| v.as_array())
+                .and_then(|v| v.first())
+                .and_then(|v| v.get("finish_reason"))
+                .and_then(|v| v.as_str()),
+        ),
+        Anthropic => {
+            FinishReason::from_anthropic_reason(raw.get("stop_reason").and_then(|v| v.as_str()))
+        }
+        Ollama => FinishReason::from_ollama_reason(
+            raw.get("done").and_then(|v| v.as_bool()) == Some(true),
+            raw.get("done_reason").and_then(|v| v.as_str()),
+            has_tools,
+        ),
+        Gemini => FinishReason::from_gemini_reason(
+            raw.get("candidates")
+                .and_then(|v| v.as_array())
+                .and_then(|v| v.first())
+                .and_then(|v| v.get("finishReason"))
+                .and_then(|v| v.as_str()),
+            has_tools,
+        ),
+    }
+}
+fn extract_provider_observations<T: Serialize>(
+    raw: &T,
+    format: RigUsageFormat,
+    has_tools: bool,
+) -> (Option<crate::TokenUsage>, FinishReason) {
+    match serde_json::to_value(raw) {
+        Ok(raw) => (
+            extract_reported_usage(&raw, format),
+            extract_reported_finish(&raw, format, has_tools),
+        ),
+        Err(_) => {
+            tracing::warn!(
+                ?format,
+                "provider completion metadata could not be observed; usage and finish remain unknown"
+            );
+            (None, FinishReason::Unknown)
+        }
+    }
 }
 
 /// Merge default additional parameters into the rig-core request.
@@ -661,6 +809,7 @@ where
         )?;
 
         merge_additional_params(&mut rig_req, self.default_additional_params.as_ref());
+        self.apply_output_limit(&mut rig_req)?;
         inject_model_override(&mut rig_req, model_override.as_deref());
 
         let response = self
@@ -669,25 +818,27 @@ where
             .await
             .map_err(|e| map_completion_error(&self.model_name, e))?;
 
-        let (text, _tool_calls, finish, _reasoning) =
-            extract_response(&response.choice, &response.usage);
+        let (text, tool_calls, reasoning) = extract_response(&response.choice);
+        let (usage, finish) = extract_provider_observations(
+            &response.raw_response,
+            self.usage_format,
+            !tool_calls.is_empty(),
+        );
 
         let resp = CompletionResponse {
             content: text.unwrap_or_default(),
-            input_tokens: saturate_u32(response.usage.input_tokens),
-            output_tokens: saturate_u32(response.usage.output_tokens),
+            usage,
+
             finish_reason: finish,
-            reasoning: None,
-            cache_read_input_tokens: saturate_u32(response.usage.cached_input_tokens),
-            cache_creation_input_tokens: extract_cache_creation(&response.raw_response),
+            reasoning,
         };
 
-        if resp.cache_read_input_tokens > 0 {
+        if let Some(usage) = resp.usage.filter(|usage| usage.cache_read_input_tokens > 0) {
             tracing::debug!(
                 model = %self.model_name,
-                input = resp.input_tokens,
-                output = resp.output_tokens,
-                cache_read = resp.cache_read_input_tokens,
+                input = usage.input_tokens,
+                output = usage.output_tokens,
+                cache_read = usage.cache_read_input_tokens,
                 "prompt cache hit",
             );
         }
@@ -723,6 +874,7 @@ where
         )?;
 
         merge_additional_params(&mut rig_req, self.default_additional_params.as_ref());
+        self.apply_output_limit(&mut rig_req)?;
         inject_model_override(&mut rig_req, model_override.as_deref());
 
         let response = self
@@ -731,8 +883,12 @@ where
             .await
             .map_err(|e| map_completion_error(&self.model_name, e))?;
 
-        let (text, mut tool_calls, finish, reasoning) =
-            extract_response(&response.choice, &response.usage);
+        let (text, mut tool_calls, reasoning) = extract_response(&response.choice);
+        let (usage, finish) = extract_provider_observations(
+            &response.raw_response,
+            self.usage_format,
+            !tool_calls.is_empty(),
+        );
 
         // Normalize tool call names: some proxies prepend "proxy_" prefixes.
         for tc in &mut tool_calls {
@@ -750,20 +906,19 @@ where
         let resp = ToolCompletionResponse {
             content: text,
             tool_calls,
-            input_tokens: saturate_u32(response.usage.input_tokens),
-            output_tokens: saturate_u32(response.usage.output_tokens),
+            usage,
+
             finish_reason: finish,
-            cache_read_input_tokens: saturate_u32(response.usage.cached_input_tokens),
-            cache_creation_input_tokens: extract_cache_creation(&response.raw_response),
+
             reasoning,
         };
 
-        if resp.cache_read_input_tokens > 0 {
+        if let Some(usage) = resp.usage.filter(|usage| usage.cache_read_input_tokens > 0) {
             tracing::debug!(
                 model = %self.model_name,
-                input = resp.input_tokens,
-                output = resp.output_tokens,
-                cache_read = resp.cache_read_input_tokens,
+                input = usage.input_tokens,
+                output = usage.output_tokens,
+                cache_read = usage.cache_read_input_tokens,
                 "prompt cache hit",
             );
         }
@@ -1860,25 +2015,131 @@ mod tests {
     }
 
     #[test]
+    fn reported_finish_never_promotes_incomplete_or_missing_metadata_from_content() {
+        use RigUsageFormat::*;
+        let cases = [
+            (
+                OpenAi,
+                serde_json::json!({"choices":[{"finish_reason":"length"}]}),
+                false,
+                FinishReason::Length,
+            ),
+            (
+                OpenAi,
+                serde_json::json!({"choices":[{"finish_reason":"length"}]}),
+                true,
+                FinishReason::Length,
+            ),
+            (
+                OpenAi,
+                serde_json::json!({"choices":[{"finish_reason":"stop"},{"finish_reason":"length"}]}),
+                false,
+                FinishReason::Stop,
+            ),
+            (
+                OpenAi,
+                serde_json::json!({"choices":[{"finish_reason":"content_filter"}]}),
+                true,
+                FinishReason::ContentFilter,
+            ),
+            (
+                OpenAi,
+                serde_json::json!({"choices":[{"finish_reason":"tool_calls"}]}),
+                true,
+                FinishReason::ToolUse,
+            ),
+            (
+                OpenAi,
+                serde_json::json!({"choices":[{"message":{"content":"partial"}}]}),
+                false,
+                FinishReason::Unknown,
+            ),
+            (
+                Anthropic,
+                serde_json::json!({"stop_reason":"max_tokens"}),
+                true,
+                FinishReason::Length,
+            ),
+            (
+                Anthropic,
+                serde_json::json!({"stop_reason":"pause_turn"}),
+                true,
+                FinishReason::Unknown,
+            ),
+            (
+                Anthropic,
+                serde_json::json!({"stop_reason":"refusal"}),
+                false,
+                FinishReason::ContentFilter,
+            ),
+            (
+                Ollama,
+                serde_json::json!({"done":false,"done_reason":"stop"}),
+                true,
+                FinishReason::Unknown,
+            ),
+            (
+                Ollama,
+                serde_json::json!({"done":true,"done_reason":"length"}),
+                true,
+                FinishReason::Length,
+            ),
+            (
+                Ollama,
+                serde_json::json!({"done":true,"done_reason":"stop"}),
+                true,
+                FinishReason::ToolUse,
+            ),
+            (
+                Gemini,
+                serde_json::json!({"candidates":[{"finishReason":"MAX_TOKENS"}]}),
+                true,
+                FinishReason::Length,
+            ),
+            (
+                Gemini,
+                serde_json::json!({"candidates":[{"finishReason":"STOP"}]}),
+                true,
+                FinishReason::ToolUse,
+            ),
+            (
+                Gemini,
+                serde_json::json!({"candidates":[{"finishReason":"SAFETY"}]}),
+                false,
+                FinishReason::ContentFilter,
+            ),
+            (
+                Unknown,
+                serde_json::json!({"choices":[{"finish_reason":"stop"}]}),
+                false,
+                FinishReason::Unknown,
+            ),
+        ];
+        for (format, raw, tools, expected) in cases {
+            assert_eq!(
+                extract_reported_finish(&raw, format, tools),
+                expected,
+                "{format:?} {raw}"
+            );
+        }
+    }
+
+    #[test]
     fn test_extract_response_text_only() {
         let content = OneOrMany::one(AssistantContent::text("Hello world"));
-        let usage = RigUsage::new();
-        let (text, calls, finish, _reasoning) = extract_response(&content, &usage);
+        let (text, calls, _reasoning) = extract_response(&content);
         assert_eq!(text, Some("Hello world".to_string()));
         assert!(calls.is_empty());
-        assert_eq!(finish, FinishReason::Stop);
     }
 
     #[test]
     fn test_extract_response_tool_call() {
         let tc = AssistantContent::tool_call("call_1", "search", serde_json::json!({"q": "test"}));
         let content = OneOrMany::one(tc);
-        let usage = RigUsage::new();
-        let (text, calls, finish, _reasoning) = extract_response(&content, &usage);
+        let (text, calls, _reasoning) = extract_response(&content);
         assert!(text.is_none());
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].name, "search");
-        assert_eq!(finish, FinishReason::ToolUse);
     }
 
     #[test]
@@ -2018,13 +2279,49 @@ mod tests {
     }
 
     #[test]
-    fn test_saturate_u32() {
-        assert_eq!(saturate_u32(100), 100);
-        assert_eq!(saturate_u32(u64::MAX), u32::MAX);
-        assert_eq!(saturate_u32(u32::MAX as u64), u32::MAX);
+    fn reported_usage_keeps_unknown_zero_and_overflow_distinct() {
+        use RigUsageFormat::*;
+        for raw in [
+            serde_json::json!({}),
+            serde_json::json!({"usage":null}),
+            serde_json::json!({"usage":{"prompt_tokens":3}}),
+            serde_json::json!({"usage":{"prompt_tokens":3,"total_tokens":2}}),
+            serde_json::json!({"usage":{"prompt_tokens":u64::MAX,"total_tokens":u64::MAX}}),
+        ] {
+            assert_eq!(extract_reported_usage(&raw, OpenAi), None);
+        }
+        let raw = serde_json::json!({"usage":{"prompt_tokens":0,"total_tokens":0}});
+        assert_eq!(
+            extract_reported_usage(&raw, OpenAi),
+            Some(crate::TokenUsage::default())
+        );
+        assert_eq!(extract_reported_usage(&raw, Unknown), None);
+        let raw = serde_json::json!({"usage":{"input_tokens":7,"output_tokens":3,"cache_read_input_tokens":11,"cache_creation_input_tokens":5}});
+        let usage = extract_reported_usage(&raw, Anthropic).unwrap();
+        assert_eq!(
+            (
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.cache_read_input_tokens,
+                usage.cache_creation_input_tokens
+            ),
+            (7, 3, 11, 5)
+        );
+        assert_eq!(
+            extract_reported_usage(
+                &serde_json::json!({"prompt_eval_count":0,"eval_count":0}),
+                Ollama
+            ),
+            Some(crate::TokenUsage::default())
+        );
+        assert_eq!(
+            extract_reported_usage(
+                &serde_json::json!({"usageMetadata":{"promptTokenCount":2}}),
+                Gemini
+            ),
+            None
+        );
     }
-
-    // -- normalize_tool_name tests --
 
     #[test]
     fn test_normalize_tool_name_exact_match() {
@@ -2717,10 +3014,8 @@ mod tests {
             ),
         ])
         .unwrap();
-        let usage = RigUsage::new();
-        let (text, tool_calls, finish, reasoning) = extract_response(&rig_response, &usage);
+        let (text, tool_calls, reasoning) = extract_response(&rig_response);
 
-        assert_eq!(finish, FinishReason::ToolUse);
         assert_eq!(text, None);
         assert_eq!(
             reasoning.as_deref(),

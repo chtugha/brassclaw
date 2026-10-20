@@ -323,6 +323,9 @@ impl LlmProvider for RetryProvider {
     }
 
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        if !request.dispatch_policy.allows_resubmission() {
+            return self.inner.complete(request).await;
+        }
         let inner = &self.inner;
         self.retry_loop(
             || {
@@ -338,6 +341,9 @@ impl LlmProvider for RetryProvider {
         &self,
         request: ToolCompletionRequest,
     ) -> Result<ToolCompletionResponse, LlmError> {
+        if !request.dispatch_policy.allows_resubmission() {
+            return self.inner.complete_with_tools(request).await;
+        }
         let inner = &self.inner;
         self.retry_loop(
             || {

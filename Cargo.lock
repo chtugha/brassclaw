@@ -2028,6 +2028,7 @@ dependencies = [
  "indexmap 2.14.2",
  "minijinja",
  "minijinja-contrib",
+ "onig_sys",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2670,6 +2671,7 @@ name = "brassclaw_skills"
 version = "0.3.0"
 dependencies = [
  "async-trait",
+ "brassclaw_common",
  "brassclaw_filesystem",
  "brassclaw_host_api",
  "brassclaw_pg",
@@ -2677,7 +2679,6 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "serde_stacker",
  "serde_yml",
  "sha2 0.10.9",
  "tempfile",
@@ -6599,8 +6600,6 @@ dependencies = [
 [[package]]
 name = "onig_sys"
 version = "69.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e68317604e77e53b85896388e1a803c1d21b74c899ec9e5e1112db90735edd7"
 dependencies = [
  "cc",
  "pkg-config",
@@ -9406,7 +9405,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",

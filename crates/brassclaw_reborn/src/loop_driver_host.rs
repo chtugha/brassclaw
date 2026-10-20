@@ -2156,6 +2156,16 @@ impl LoopInputPort for RebornLoopDriverHost {
 
 #[async_trait]
 impl LoopModelPort for RebornLoopDriverHost {
+    async fn stream_model_with_custody(
+        &self,
+        request: LoopModelRequest,
+        custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    ) -> Result<LoopModelResponse, AgentLoopHostError> {
+        self.model
+            .stream_model_with_custody(request, custodian)
+            .await
+    }
+
     async fn stream_model(
         &self,
         request: LoopModelRequest,

@@ -8,8 +8,8 @@ use crate::LoopDiagnosticRef;
 
 use super::host::{
     AgentLoopHostError, AgentLoopHostErrorKind, AgentLoopHostErrorReasonKind, LoopModelPort,
-    LoopModelRequest, LoopModelResponse, LoopRunContext, LoopSafeSummary, ParentLoopOutput,
-    sanitize_model_visible_text,
+    LoopModelRequest, LoopModelResponse, LoopModelResponseCustodian, LoopRunContext,
+    LoopSafeSummary, ParentLoopOutput, sanitize_model_visible_text,
 };
 use super::milestones::{LoopHostMilestoneEmitter, LoopHostMilestoneSink};
 use super::model_work::{ModelWorkOutcome, ModelWorkRequest};
@@ -46,6 +46,18 @@ pub trait LoopModelBudgetAccountant: Send + Sync {
         context: &LoopRunContext,
         request: &ModelWorkRequest,
     ) -> Result<(), LoopModelGatewayError>;
+
+    /// Mark the boundary after which external work may have begun. Call this
+    /// synchronously before entering the provider/worker future, after admission.
+    /// Cancellation or an error after this boundary is not evidence of zero
+    /// spend. Accountants retaining reservations must preserve that uncertainty.
+    fn model_work_dispatching(
+        &self,
+        _context: &LoopRunContext,
+        _request: &ModelWorkRequest,
+    ) -> Result<(), LoopModelGatewayError> {
+        Ok(())
+    }
 
     /// Called after model-backed work succeeds or fails.
     async fn post_model_work(
@@ -91,9 +103,9 @@ pub trait LoopModelBudgetAccountant: Send + Sync {
     }
 
     /// Called **after** the model call completes (or fails). Implementations
-    /// should record success usage and reconcile or release any pre-call
-    /// reservation for provider failures. Any durable accounting/reconciliation
-    /// failure must be returned so callers fail closed instead of hiding stuck
+    /// should record success usage and retain reservations for unknown provider
+    /// outcomes. A gateway failure alone never proves zero spend. Accounting
+    /// failures must be returned so callers fail closed instead of hiding stuck
     /// reservations or missing failed-call accounting behind the provider error.
     async fn post_model_call(
         &self,
@@ -109,16 +121,13 @@ pub trait LoopModelBudgetAccountant: Send + Sync {
         .await
     }
 
-    /// Best-effort synchronous release of any in-flight reservation for this
-    /// run. Invoked from cancellation paths (parent task drop, timeout)
-    /// where awaiting [`Self::post_model_call`] is impossible. Default impl
-    /// is a no-op for accountants that do not hold per-run state.
-    ///
-    /// This is *the* cancellation-safety hook: when the model future is
-    /// dropped mid-await, the surrounding port's [`Drop`] runs synchronously
-    /// and calls `release_in_flight` so the reservation does not orphan
-    /// until period rollover.
-    fn release_in_flight(&self, _context: &LoopRunContext) {}
+    /// Synchronous cancellation cleanup. Release only when the accountant can
+    /// prove dispatch never began; otherwise retain the original hold and any
+    /// observed result for reconciliation. Dropping a future, including during
+    /// settlement, does not prove the provider performed no work. The legacy
+    /// method name does not require unconditional release. The exact admitted
+    /// request fences delayed cleanup from a successor operation in the same run.
+    fn release_in_flight(&self, _context: &LoopRunContext, _request: &ModelWorkRequest) {}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -189,6 +198,19 @@ pub trait PreparedLoopModelCall: Send {
 
 #[async_trait]
 pub trait LoopModelGateway: Send + Sync {
+    /// Selected native usage: unsupported adapters fail before provider I/O.
+    async fn prepare_model_call_with_observation(
+        &self,
+        _request: LoopModelGatewayRequest,
+        _custodian: Arc<dyn LoopModelResponseCustodian>,
+    ) -> Result<Box<dyn PreparedLoopModelCall>, LoopModelGatewayError> {
+        Err(LoopModelGatewayError::new(
+            AgentLoopHostErrorKind::Unimplemented,
+            "provider response custody is unavailable",
+        )
+        .expect("classified summary"))
+    }
+
     /// Resolve and retain an authorized prompt before policy/accounting. Legacy
     /// gateways without reference resolution may use the default None path.
     async fn prepare_model_call(
@@ -348,29 +370,53 @@ where
     }
 }
 
-#[async_trait]
-impl<G, S> LoopModelPort for HostManagedLoopModelPort<G, S>
+impl<G, S> HostManagedLoopModelPort<G, S>
 where
     G: LoopModelGateway + ?Sized,
     S: LoopHostMilestoneSink + ?Sized,
 {
-    async fn stream_model(
+    async fn stream_model_inner(
         &self,
         request: LoopModelRequest,
+        custodian: Option<Arc<dyn LoopModelResponseCustodian>>,
     ) -> Result<LoopModelResponse, AgentLoopHostError> {
-        let prepared = self
-            .gateway
-            .prepare_model_call(LoopModelGatewayRequest {
-                context: self.context.clone(),
-                request: request.clone(),
-            })
-            .await
-            .map_err(LoopModelGatewayError::into_host_error)?;
+        if request.work_id.is_none() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "model work identity is missing",
+            ));
+        }
+        let preparation = LoopModelGatewayRequest {
+            context: self.context.clone(),
+            request: request.clone(),
+        };
+        let prepared = if let Some(custodian) = custodian
+            .as_ref()
+            .filter(|c| c.requires_provider_observation())
+        {
+            Some(
+                self.gateway
+                    .prepare_model_call_with_observation(preparation, custodian.clone())
+                    .await
+                    .map_err(LoopModelGatewayError::into_host_error)?,
+            )
+        } else {
+            self.gateway
+                .prepare_model_call(preparation)
+                .await
+                .map_err(LoopModelGatewayError::into_host_error)?
+        };
         let work_request = prepared.as_ref().map_or_else(
             || ModelWorkRequest::for_assistant(&self.context, &request),
             |prepared| prepared.work_request().clone(),
         );
         let is_prepared = prepared.is_some();
+        if work_request.work_id != request.work_id {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "prepared model work identity differs",
+            ));
+        }
 
         // Policy check — rejects before any provider or credential is touched.
         if let Err(policy_error) = self
@@ -390,12 +436,10 @@ where
             return Err(budget_error.into_host_error());
         }
 
-        // From here forward, a reservation has been taken. The guard below
-        // ensures it is released if `stream_model` is cancelled mid-await
-        // (tokio drop, parent timeout) without ever reaching the explicit
-        // `post_model_call` below.
+        // The guard can release an unsubmitted reservation. Once dispatch may
+        // begin, cancellation must preserve unknown or already completed spend.
         let mut release_guard =
-            ReservationReleaseGuard::new(self.accountant.as_ref(), &self.context);
+            ReservationReleaseGuard::new(self.accountant.as_ref(), &self.context, &work_request);
 
         if let Err(error) = self
             .milestones
@@ -409,6 +453,9 @@ where
             );
         }
 
+        self.accountant
+            .model_work_dispatching(&self.context, &work_request)
+            .map_err(LoopModelGatewayError::into_host_error)?;
         let gateway_result = if let Some(prepared) = prepared {
             prepared.dispatch().await
         } else {
@@ -421,14 +468,21 @@ where
         }
         .map(sanitize_model_response);
 
+        // A received response belongs to its original invocation even if
+        // accounting subsequently fails. Always account the provider outcome,
+        // including when custody persistence itself returns an error.
+        let custody_result = match (&gateway_result, custodian) {
+            (Ok(response), Some(custodian)) => match custodian.receive_response(response) {
+                Ok(()) => custodian.persist_response().await,
+                Err(error) => Err(error),
+            },
+            _ => Ok(()),
+        };
+
         // Post-call accounting fires on BOTH success and failure. The
         // RAII guard stays armed across this await — if the future is
-        // cancelled mid-`post_model_call`, the Drop path calls
-        // `release_in_flight` to clean up. `release_in_flight` is
-        // idempotent against a successful post-call (the in-flight
-        // entry is already gone), so disarming after success isn't
-        // strictly required — but we still disarm on the happy path so
-        // the Drop log doesn't fire on every successful run.
+        // cancelled mid-`post_model_call`, cancellation cleanup preserves the
+        // original reservation. Successful accounting removes its own entry.
         let outcome = match &gateway_result {
             Ok(response) => ModelCallOutcome::Success(response),
             Err(error) => ModelCallOutcome::Failure(error),
@@ -443,11 +497,16 @@ where
                 .await
         };
         // Disarm only AFTER post_model_call returns. If we're past this
-        // line the in-flight entry is either reconciled, released, or
-        // retained on a storage error — in any of those cases the
-        // guard's Drop call would be a no-op against the same entry.
+        // line accounting owns the reconciled or unresolved reservation.
         release_guard.disarm();
         if let Err(post_error) = post_result {
+            if let Err(custody_error) = &custody_result {
+                tracing::warn!(
+                    kind = ?custody_error.kind,
+                    diagnostic_ref = ?custody_error.diagnostic_ref,
+                    "model response custody and accounting both require reconciliation"
+                );
+            }
             let host_error = post_error.into_host_error();
             if let Err(milestone_error) = self.milestones.model_failed(host_error.kind).await {
                 tracing::debug!(
@@ -457,6 +516,16 @@ where
                 );
             }
             return Err(host_error);
+        }
+        if let Err(error) = custody_result {
+            if let Err(milestone_error) = self.milestones.model_failed(error.kind).await {
+                tracing::debug!(
+                    kind = ?milestone_error.kind,
+                    diagnostic_ref = ?milestone_error.diagnostic_ref,
+                    "loop model_failed milestone failed after custody error"
+                );
+            }
+            return Err(error);
         }
 
         let response = match gateway_result {
@@ -502,26 +571,48 @@ where
     }
 }
 
-/// RAII guard that releases the in-flight reservation if the surrounding
-/// future is cancelled before `post_model_call` runs.
-///
-/// On Drop, when still armed, the guard calls
-/// [`LoopModelBudgetAccountant::release_in_flight`] — a synchronous
-/// best-effort path that the accountant uses to drop the per-run reservation
-/// id and call `governor.release` without awaiting. Callers MUST `disarm()`
-/// the guard before delegating cleanup to the async `post_model_call` path,
-/// otherwise the release would fire twice.
+#[async_trait]
+impl<G, S> LoopModelPort for HostManagedLoopModelPort<G, S>
+where
+    G: LoopModelGateway + ?Sized,
+    S: LoopHostMilestoneSink + ?Sized,
+{
+    async fn stream_model(
+        &self,
+        request: LoopModelRequest,
+    ) -> Result<LoopModelResponse, AgentLoopHostError> {
+        self.stream_model_inner(request, None).await
+    }
+
+    async fn stream_model_with_custody(
+        &self,
+        request: LoopModelRequest,
+        custodian: Arc<dyn LoopModelResponseCustodian>,
+    ) -> Result<LoopModelResponse, AgentLoopHostError> {
+        self.stream_model_inner(request, Some(custodian)).await
+    }
+}
+
+/// Cancellation cleanup delegates to the accountant, which knows whether
+/// dispatch could have begun. Keep it armed through settlement: cancellation
+/// during a lost acknowledgement must not release completed spend.
 struct ReservationReleaseGuard<'a> {
     accountant: &'a dyn LoopModelBudgetAccountant,
     context: &'a LoopRunContext,
+    request: &'a ModelWorkRequest,
     armed: bool,
 }
 
 impl<'a> ReservationReleaseGuard<'a> {
-    fn new(accountant: &'a dyn LoopModelBudgetAccountant, context: &'a LoopRunContext) -> Self {
+    fn new(
+        accountant: &'a dyn LoopModelBudgetAccountant,
+        context: &'a LoopRunContext,
+        request: &'a ModelWorkRequest,
+    ) -> Self {
         Self {
             accountant,
             context,
+            request,
             armed: true,
         }
     }
@@ -534,7 +625,8 @@ impl<'a> ReservationReleaseGuard<'a> {
 impl Drop for ReservationReleaseGuard<'_> {
     fn drop(&mut self) {
         if self.armed {
-            self.accountant.release_in_flight(self.context);
+            self.accountant
+                .release_in_flight(self.context, self.request);
         }
     }
 }

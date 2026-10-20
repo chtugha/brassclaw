@@ -175,7 +175,8 @@ fn cache_key(model: &str, request: &CompletionRequest) -> Result<String, LlmErro
     // for embedded separators/NULs. Preserve floating-point bits rather than
     // silently normalizing non-finite values to JSON null in the key.
     let encoded = serde_json::to_vec(&(
-        "brassclaw-response-cache/2",
+        "brassclaw-response-cache/3",
+        request.dispatch_policy,
         model,
         &request.messages,
         request.max_tokens,
@@ -232,10 +233,7 @@ impl LlmProvider for CachedProvider {
                     // preceding call's billed usage would charge/count it twice.
                     // Keep the stored original intact; only this exchange has
                     // zero upstream usage. Content/reasoning remain observable.
-                    cached_response.input_tokens = 0;
-                    cached_response.output_tokens = 0;
-                    cached_response.cache_read_input_tokens = 0;
-                    cached_response.cache_creation_input_tokens = 0;
+                    cached_response.usage = Some(crate::TokenUsage::default());
                     tracing::trace!(hits = hit_count, "response cache hit");
                     // Drop the mutable borrow of `entry` before reading `guard` immutably.
                     let _ = entry;
@@ -264,6 +262,12 @@ impl LlmProvider for CachedProvider {
                 Err(e) => {
                     Self::maybe_log_stats(&guard, req_no, total_hits);
                     return Err(e);
+                }
+                Ok(r) if r.finish_reason != crate::FinishReason::Stop => {
+                    // An HTTP-successful but incomplete/filtered/unknown reply
+                    // is not a completed reusable answer. Keep its real usage.
+                    Self::maybe_log_stats(&guard, req_no, total_hits);
+                    return Ok(r);
                 }
                 Ok(r) => r,
             };
@@ -394,12 +398,15 @@ mod tests {
             self.call_count.fetch_add(1, Ordering::Relaxed);
             Ok(CompletionResponse {
                 content: "ok".into(),
-                input_tokens: 1,
-                output_tokens: 1,
+                usage: Some(crate::TokenUsage {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                }),
+
                 finish_reason: FinishReason::Stop,
                 reasoning: None,
-                cache_read_input_tokens: 0,
-                cache_creation_input_tokens: 0,
             })
         }
 
@@ -410,11 +417,15 @@ mod tests {
             Ok(ToolCompletionResponse {
                 content: Some("ok".into()),
                 tool_calls: vec![],
-                input_tokens: 1,
-                output_tokens: 1,
+                usage: Some(crate::TokenUsage {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                }),
+
                 finish_reason: FinishReason::Stop,
-                cache_read_input_tokens: 0,
-                cache_creation_input_tokens: 0,
+
                 reasoning: None,
             })
         }
@@ -422,6 +433,7 @@ mod tests {
 
     fn simple_request() -> CompletionRequest {
         CompletionRequest {
+            dispatch_policy: Default::default(),
             messages: vec![ChatMessage::user("hello")],
             model: None,
             max_tokens: None,
@@ -433,6 +445,7 @@ mod tests {
 
     fn different_request() -> CompletionRequest {
         CompletionRequest {
+            dispatch_policy: Default::default(),
             messages: vec![ChatMessage::user("goodbye")],
             model: None,
             max_tokens: None,
@@ -440,6 +453,23 @@ mod tests {
             stop_sequences: None,
             metadata: Default::default(),
         }
+    }
+
+    #[test]
+    fn cache_and_tool_conversion_preserve_the_operation_submission_bound() {
+        let configured = simple_request();
+        let mut single = configured.clone();
+        single.dispatch_policy = crate::ProviderDispatchPolicy::SingleSubmission;
+        assert_ne!(
+            cache_key("selected-model", &configured).unwrap(),
+            cache_key("selected-model", &single).unwrap(),
+            "a legacy cheap/failover response cannot satisfy a pinned single-submission operation"
+        );
+        let tools = ToolCompletionRequest::from_completion_request(single, vec![]);
+        assert_eq!(
+            tools.dispatch_policy,
+            crate::ProviderDispatchPolicy::SingleSubmission
+        );
     }
 
     #[test]
@@ -532,6 +562,11 @@ mod tests {
         let r2 = cached.complete(simple_request()).await.unwrap();
         assert_eq!(stub.calls(), 1); // still 1
         assert_eq!(r2.content, "cached response");
+        assert!(r1.usage.unwrap().input_tokens > 0);
+        assert_eq!(r2.usage, Some(crate::TokenUsage::default()));
+        let stored = cached.cache.lock().unwrap();
+        assert_eq!(stored.values().next().unwrap().response.usage, r1.usage);
+        drop(stored);
 
         assert_eq!(cached.total_hits(), 1);
     }
@@ -588,6 +623,7 @@ mod tests {
 
         // Add a third: should evict the oldest
         let third = CompletionRequest {
+            dispatch_policy: Default::default(),
             messages: vec![ChatMessage::user("third")],
             model: None,
             max_tokens: None,
@@ -606,6 +642,7 @@ mod tests {
         let cached = CachedProvider::new(stub.clone(), ResponseCacheConfig::default());
 
         let req = ToolCompletionRequest {
+            dispatch_policy: Default::default(),
             messages: vec![ChatMessage::user("use tool")],
             tools: vec![],
             model: None,
@@ -782,6 +819,7 @@ mod tests {
         // 99 distinct requests — no stats line yet.
         for i in 0..99u32 {
             let req = CompletionRequest {
+                dispatch_policy: Default::default(),
                 messages: vec![ChatMessage::user(format!("request {i}"))],
                 model: None,
                 max_tokens: None,
@@ -798,6 +836,7 @@ mod tests {
 
         // 100th request triggers the first stats line.
         let req = CompletionRequest {
+            dispatch_policy: Default::default(),
             messages: vec![ChatMessage::user("request 99")],
             model: None,
             max_tokens: None,
@@ -828,6 +867,7 @@ mod tests {
         // 99 successful requests.
         for i in 0..99u32 {
             let req = CompletionRequest {
+                dispatch_policy: Default::default(),
                 messages: vec![ChatMessage::user(format!("req {i}"))],
                 model: None,
                 max_tokens: None,
@@ -841,6 +881,7 @@ mod tests {
         // 100th request fails — stats must still be logged.
         stub.set_failing(true);
         let req = CompletionRequest {
+            dispatch_policy: Default::default(),
             messages: vec![ChatMessage::user("req 99")],
             model: None,
             max_tokens: None,

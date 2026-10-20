@@ -13,6 +13,24 @@ sources; Recipe dispatch, trusted seeding and prefix activation remain separate 
 Run from the BrassClaw repository root. Commands work in Linux/macOS terminals.
 Python and transformers/tokenizers are required only for target compilation.
 
+The repository also supplies scripts/prefix/release-reference-inventory.json.
+It declares 201 documents from its documented roots and conservatively selects
+13 references; other material is archived, not silently fed into the model view.
+Read scripts/prefix/release-reference-inventory.md for scope and remaining gaps.
+For a document snapshot using that inventory, in a fixed release checkout:
+
+SNAPSHOT_JSON=$(python3 scripts/prefix/base-promt-compiler.py \
+  --inventory scripts/prefix/release-reference-inventory.json --source-root . \
+  --output prefix-build/release-sources)
+PACKAGE_ID=$(printf '%s' "$SNAPSHOT_JSON" | python3 -c \
+  'import json,sys; print(json.load(sys.stdin)["source_package"])')
+
+This command creates a source package only. Add --catalogue-export as shown below
+for the owner-selected catalogue from the same tested release. Use that package
+path for step 3 instead of prefix-build/sources/$PACKAGE_ID. The installed release
+source capture is a separate qualified path; a successful offline snapshot is not
+normal Generate readiness, model knowledge qualification or serving activation.
+
 1. Create an explicit reviewed source inventory (minimum document-only example).
    This is NOT the complete production catalogue export. Include all other current
    reference documents and complete components in a production inventory; classify
@@ -135,3 +153,23 @@ range references, preserves every original and emits render_map.json. Different
 text is never merged, summarized or clipped. Keep literal-reference/v1 for an
 accepted v1 design; switching views is a design change, not a hidden Generate
 optimization. Both views remain quarantined pending runtime/design acceptance.
+
+Versioned trailing-inventory layout (development candidate):
+
+python3 scripts/prefix/base-promt-compiler.py \
+  --package "prefix-build/sources/$PACKAGE_ID" --output prefix-build/trailing-inventory \
+  --evidence-view literal-reference/v3-trailing-inventory
+
+This uses the exact-unit rendering and original evidence map, with the source
+inventory after all reference cards. An inventory-only edit leaves earlier
+reference bytes unchanged. Content and shared-unit changes can still alter earlier
+tokens. Defaults are unchanged; this does not accept a design or activate a prefix.
+Use the same retained tokenizer/template and complete probes to measure benefits.
+
+For append-stable exact-unit sharing, use the same command with:
+  --evidence-view literal-reference/v4-stable-sharing
+
+V4 always keeps the first occurrence literal; later exact duplicates refer to its
+original source/range. Appending a later duplicate no longer rewrites earlier
+reference cards. Earlier source insertions or content edits can still change the
+prefix. Complete original archives and the exact-unit map remain available.

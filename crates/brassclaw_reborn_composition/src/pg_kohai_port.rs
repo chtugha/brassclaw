@@ -234,6 +234,7 @@ fn build_gateway_request(
         });
     }
     Ok(HostManagedModelRequest {
+        dispatch_policy: brassclaw_turns::run_profile::LoopModelDispatchPolicy::SingleSubmission,
         model_profile_id,
         messages,
         surface_version: None,

@@ -163,6 +163,7 @@ impl AnthropicOAuthProvider {
     async fn send_request<R: for<'de> Deserialize<'de>>(
         &self,
         body: &AnthropicRequest,
+        dispatch_policy: crate::ProviderDispatchPolicy,
     ) -> Result<R, LlmError> {
         let url = self.api_url();
 
@@ -186,7 +187,7 @@ impl AnthropicOAuthProvider {
         let status = response.status();
 
         if !status.is_success() {
-            if status.as_u16() == 401 {
+            if status.as_u16() == 401 && dispatch_policy.allows_resubmission() {
                 drop(response);
                 // OAuth tokens from `claude login` expire in ~8-12h. Attempt
                 // to re-extract a fresh token from the OS credential store
@@ -301,24 +302,22 @@ impl LlmProvider for AnthropicOAuthProvider {
             tool_choice: None,
         };
 
-        let response: AnthropicResponse = self.send_request(&request).await?;
+        let response: AnthropicResponse = self.send_request(&request, req.dispatch_policy).await?;
         let extracted = extract_response_content(&response);
 
-        let finish_reason = match response.stop_reason.as_deref() {
-            Some("end_turn") | Some("stop") => FinishReason::Stop,
-            Some("max_tokens") => FinishReason::Length,
-            Some("tool_use") => FinishReason::ToolUse,
-            _ => FinishReason::Unknown,
-        };
+        let finish_reason = FinishReason::from_anthropic_reason(response.stop_reason.as_deref());
 
         Ok(CompletionResponse {
             content: extracted.content.unwrap_or_default(),
             finish_reason,
-            input_tokens: response.usage.input_tokens,
-            output_tokens: response.usage.output_tokens,
+            usage: crate::TokenUsage::from_reported_counts(
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+                response.usage.cache_read_input_tokens,
+                response.usage.cache_creation_input_tokens,
+            ),
+
             reasoning: extracted.reasoning,
-            cache_creation_input_tokens: response.usage.cache_creation_input_tokens,
-            cache_read_input_tokens: response.usage.cache_read_input_tokens,
         })
     }
 
@@ -385,31 +384,23 @@ impl LlmProvider for AnthropicOAuthProvider {
             tool_choice,
         };
 
-        let response: AnthropicResponse = self.send_request(&request).await?;
+        let response: AnthropicResponse = self.send_request(&request, req.dispatch_policy).await?;
         let extracted = extract_response_content(&response);
 
-        let finish_reason = match response.stop_reason.as_deref() {
-            Some("end_turn") | Some("stop") => FinishReason::Stop,
-            Some("max_tokens") => FinishReason::Length,
-            Some("tool_use") => FinishReason::ToolUse,
-            _ => {
-                if !extracted.tool_calls.is_empty() {
-                    FinishReason::ToolUse
-                } else {
-                    FinishReason::Unknown
-                }
-            }
-        };
+        let finish_reason = FinishReason::from_anthropic_reason(response.stop_reason.as_deref());
 
         Ok(ToolCompletionResponse {
             content: extracted.content,
             tool_calls: extracted.tool_calls,
             finish_reason,
-            input_tokens: response.usage.input_tokens,
-            output_tokens: response.usage.output_tokens,
-            cache_creation_input_tokens: response.usage.cache_creation_input_tokens,
+            usage: crate::TokenUsage::from_reported_counts(
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+                response.usage.cache_read_input_tokens,
+                response.usage.cache_creation_input_tokens,
+            ),
+
             reasoning: extracted.reasoning,
-            cache_read_input_tokens: response.usage.cache_read_input_tokens,
         })
     }
 
@@ -545,13 +536,13 @@ enum AnthropicResponseBlock {
 #[derive(Debug, Deserialize)]
 struct AnthropicUsage {
     #[serde(default)]
-    input_tokens: u32,
+    input_tokens: Option<u64>,
     #[serde(default)]
-    output_tokens: u32,
+    output_tokens: Option<u64>,
     #[serde(default)]
-    cache_creation_input_tokens: u32,
+    cache_creation_input_tokens: u64,
     #[serde(default)]
-    cache_read_input_tokens: u32,
+    cache_read_input_tokens: u64,
 }
 
 /// Convert ChatMessage list to Anthropic format.
@@ -764,8 +755,8 @@ mod tests {
             }],
             stop_reason: Some("end_turn".to_string()),
             usage: AnthropicUsage {
-                input_tokens: 10,
-                output_tokens: 5,
+                input_tokens: Some(10),
+                output_tokens: Some(5),
                 cache_creation_input_tokens: 0,
                 cache_read_input_tokens: 0,
             },
@@ -790,8 +781,8 @@ mod tests {
             ],
             stop_reason: Some("tool_use".to_string()),
             usage: AnthropicUsage {
-                input_tokens: 20,
-                output_tokens: 15,
+                input_tokens: Some(20),
+                output_tokens: Some(15),
                 cache_creation_input_tokens: 0,
                 cache_read_input_tokens: 0,
             },
@@ -817,8 +808,8 @@ mod tests {
             ],
             stop_reason: Some("end_turn".to_string()),
             usage: AnthropicUsage {
-                input_tokens: 20,
-                output_tokens: 15,
+                input_tokens: Some(20),
+                output_tokens: Some(15),
                 cache_creation_input_tokens: 0,
                 cache_read_input_tokens: 0,
             },
@@ -843,8 +834,8 @@ mod tests {
             ],
             stop_reason: Some("end_turn".to_string()),
             usage: AnthropicUsage {
-                input_tokens: 20,
-                output_tokens: 15,
+                input_tokens: Some(20),
+                output_tokens: Some(15),
                 cache_creation_input_tokens: 0,
                 cache_read_input_tokens: 0,
             },

@@ -87,6 +87,10 @@ impl SystemInferencePort for GuardedSystemInferencePort {
         let run_context = self.run_context.clone();
         let worker_request = work_request.clone();
         tokio::spawn(async move {
+            if let Err(error) = accountant.model_work_dispatching(&run_context, &worker_request) {
+                accountant.release_in_flight(&run_context, &worker_request);
+                return Err(map_gateway_error(error));
+            }
             let result = inner.call_system_inference(request).await;
             let outcome = ModelWorkOutcome::from_system_inference_result(&result);
             if let Err(error) = accountant
@@ -127,6 +131,11 @@ where
         let system_ref = system_inference_ref(request.task_id.as_uuid(), "system-prompt")?;
         let input_ref = system_inference_ref(request.task_id.as_uuid(), "input")?;
         let model_request = HostManagedModelRequest {
+            // This admitted work owns one reservation/attempt. Configured
+            // provider retries/cascades could create unrecorded extra effects
+            // or switch away from its retained route after an unknown outcome.
+            dispatch_policy:
+                brassclaw_turns::run_profile::LoopModelDispatchPolicy::SingleSubmission,
             model_profile_id: self
                 .run_context
                 .resolved_run_profile
@@ -175,6 +184,7 @@ where
             task_id: request.task_id,
             output_text,
             elapsed_ms: started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+            usage: response.usage,
         })
     }
 }
@@ -402,6 +412,19 @@ mod tests {
 
     #[async_trait]
     impl LoopModelBudgetAccountant for RecordingBudgetAccountant {
+        fn model_work_dispatching(
+            &self,
+            _context: &LoopRunContext,
+            request: &ModelWorkRequest,
+        ) -> Result<(), LoopModelGatewayError> {
+            assert!(*self.pre_called.lock().expect("lock"));
+            assert!(matches!(
+                request.kind,
+                brassclaw_turns::run_profile::ModelWorkKind::SystemInference { .. }
+            ));
+            Ok(())
+        }
+
         async fn pre_model_work(
             &self,
             _context: &LoopRunContext,
@@ -449,8 +472,14 @@ mod tests {
     #[tokio::test]
     async fn dispatches_direct_gateway_request_without_prompt_materialization() {
         let context = test_run_context("system-inference-direct").await;
+        let usage = brassclaw_turns::run_profile::LoopModelUsage {
+            input_tokens: 17,
+            output_tokens: 3,
+            cache_read_input_tokens: 11,
+            cache_creation_input_tokens: 5,
+        };
         let gateway = Arc::new(RecordingGateway::new(
-            crate::HostManagedModelResponse::assistant_reply("summary"),
+            crate::HostManagedModelResponse::assistant_reply("summary").with_usage(usage),
         ));
         let port = ModelGatewayBackedSystemInferencePort::new(gateway.clone(), context.clone());
         let task_id = SystemInferenceTaskId::new();
@@ -473,7 +502,12 @@ mod tests {
             .expect("system inference succeeds");
 
         assert_eq!(response.output_text, "summary");
+        assert_eq!(response.usage, Some(usage));
         let request = gateway.request();
+        assert_eq!(
+            request.dispatch_policy,
+            brassclaw_turns::run_profile::LoopModelDispatchPolicy::SingleSubmission
+        );
         assert_eq!(
             request.model_profile_id,
             context.resolved_run_profile.model_profile_id

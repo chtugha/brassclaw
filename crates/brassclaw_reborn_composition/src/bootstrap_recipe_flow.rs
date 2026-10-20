@@ -26,6 +26,75 @@ pub(super) struct Request {
     pub(super) capacity: RecipeCapacity,
     pub(super) source: Arc<dyn InternalRecipeSource>,
 }
+impl Request {
+    /// Shared physical containment for small closed installation fixtures. The
+    /// caller supplies the retained root and exact selection; this constructs
+    /// transport limits only and cannot choose/approve a workflow.
+    pub(super) fn contained(
+        worker: PathBuf,
+        limits: brassclaw_monty_host::utility::UtilityLimits,
+        root: &brassclaw_skills::orchestrator_contract::GlobalRootDefinition,
+        source: Arc<dyn InternalRecipeSource>,
+    ) -> Result<Self, RebornBuildError> {
+        let mut process = limits.process;
+        let frame = (8 * 1024 * 1024)
+            .min(process.max_frame_bytes)
+            .min(limits.bounds.max_value_bytes);
+        if limits.bounds.max_source_bytes > frame || limits.bounds.max_stdout_bytes > frame {
+            return Err(invalid("closed fixture exceeds configured transport"));
+        }
+        process.max_frame_bytes = frame;
+        let adapter = brassclaw_host_api::DEFAULT_MONTY_ADAPTER_RESERVE_BYTES as usize;
+        let heap = process
+            .hard_memory_bytes
+            .checked_sub(2 * frame + adapter)
+            .filter(|n| *n > frame)
+            .ok_or_else(|| invalid("closed fixture exceeds configured memory"))?;
+        let mut bounds = limits.bounds;
+        bounds.max_value_bytes = frame;
+        Ok(Self {
+            worker,
+            process,
+            source,
+            actor: ActorLimits {
+                max_unclaimed: 8,
+                max_reserved_frame_bytes: 2 * frame,
+                max_control_unclaimed: 8,
+                max_control_reserved_frame_bytes: 2 * frame,
+            },
+            capacity: RecipeCapacity {
+                revision: 1,
+                max_recipes: 8,
+                data_limits: brassclaw_skills::value_contract::ContractLimits {
+                    max_bytes: frame,
+                    ..brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS
+                },
+            },
+            boot: RootBoot {
+                source: root.source().to_owned(),
+                checksum: root.source_checksum(),
+                aliases: root.ports().iter().cloned().collect(),
+                bounds: brassclaw_monty_host::global::GlobalBounds {
+                    values: bounds,
+                    workers: 1,
+                    max_pending_calls: 8,
+                },
+                heap_settings: Some(brassclaw_monty_host::heap::HeapSettings {
+                    revision: 1,
+                    max_vm_bytes: heap,
+                }),
+                adapter_reserve_bytes: adapter,
+                startup_timeout: std::time::Duration::from_secs(10),
+                task_settings: brassclaw_monty_host::process::TaskSettings {
+                    revision: 1,
+                    max_compute_time: std::time::Duration::from_secs(30),
+                    token_budgets_enabled: false,
+                },
+                max_recipe_contexts: 8,
+            },
+        })
+    }
+}
 struct Capacity(RecipeCapacity);
 #[async_trait]
 impl RecipeCapacitySource for Capacity {

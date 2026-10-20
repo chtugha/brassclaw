@@ -18,7 +18,7 @@ import tempfile
 import uuid
 
 from prefix_evidence import inject_reference, source_units, template_probe_tokens
-from prefix_render import render_prefix_reference, render_deduplicated_prefix_reference
+from prefix_render import render_prefix_reference, render_deduplicated_prefix_reference, render_trailing_inventory_prefix_reference, render_stable_sharing_prefix_reference
 
 FORMAT = 'brassclaw-prefix-source-package/1'
 MANDATORY = ('skills.md', 'recipe.md', 'tools.md', 'toolskills.md', 'CLAUDE.md', 'AGENTS.md', 'simplified_v3.md')
@@ -124,7 +124,7 @@ def compile_package(package, output, *, tokenizer_dir=None, max_model_len=None, 
         raise ValueError('unsupported compiled profile')
     if profile != 'base-prompt' and (adapter_path is None or required_sources == MANDATORY):
         raise ValueError('registered profile adapter and explicit coverage required')
-    if evidence_view not in {'literal-reference/v1', 'literal-reference/v2-deduplicated'}:
+    if evidence_view not in {'literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing'}:
         raise ValueError('unsupported evidence view')
     procedure_paths = {
         'compiler/entry.py': Path(__file__),
@@ -186,8 +186,11 @@ def compile_package(package, output, *, tokenizer_dir=None, max_model_len=None, 
     if len({entry['id'][:12] for entry in evidence}) != len(evidence):
         raise ValueError('compact evidence identifiers collided')
     render_map = None
-    if evidence_view == 'literal-reference/v2-deduplicated':
-        rendered = render_deduplicated_prefix_reference(header, rendering_sources, special)
+    if evidence_view in ('literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing'):
+        renderer = render_trailing_inventory_prefix_reference if evidence_view == 'literal-reference/v3-trailing-inventory' else render_deduplicated_prefix_reference
+        if evidence_view == 'literal-reference/v4-stable-sharing':
+            renderer = render_stable_sharing_prefix_reference
+        rendered = renderer(header, rendering_sources, special)
         full = rendered['context']
         render_map = rendered['render_map']
     else:
@@ -322,10 +325,15 @@ def catalogue_records(export_path):
     export = strict_json(raw)
     keys = {'format', 'generation', 'coverage', 'catalogue_bytes', 'catalogue_checksum',
             'root', 'components', 'selections'}
-    if not isinstance(export, dict) or set(export) != keys or export['format'] != 'brassclaw-catalogue-source-export/1':
+    if not isinstance(export, dict) or set(export) != keys:
         raise ValueError('unsupported catalogue export')
-    if export['coverage'] != 'active-ordinary-workflows-and-retained-root':
+    contracts = {
+        'brassclaw-catalogue-source-export/1': 'active-ordinary-workflows-and-retained-root',
+        'brassclaw-catalogue-source-export/2': 'active-ordinary-plus-source-compiler-and-measurement-with-retained-root',
+    }
+    if not isinstance(export.get('format'), str) or export['format'] not in contracts or export['coverage'] != contracts[export['format']]:
         raise ValueError('unsupported catalogue coverage')
+    versioned = export['format'] == 'brassclaw-catalogue-source-export/2'
     generation = export['generation']
     if not isinstance(generation, str) or str(uuid.UUID(generation)) != generation or uuid.UUID(generation).int == 0:
         raise ValueError('canonical catalogue generation required')
@@ -350,15 +358,22 @@ def catalogue_records(export_path):
 
     if not isinstance(export['components'], list) or not export['components']:
         raise ValueError('complete catalogue components required')
-    references, documents, records = {}, {}, []
+    references, documents, classes, records = {}, {}, {}, []
+    def key(reference):
+        identifier = pinned(reference)
+        return (identifier, reference['version']) if versioned else identifier
     for entry in export['components']:
         if not isinstance(entry, dict) or set(entry) != {'reference', 'revision_bytes'}:
             raise ValueError('exact component source required')
         ref = entry['reference']
         identifier = pinned(ref)
         source = entry['revision_bytes']
-        if identifier in references:
-            raise ValueError('duplicate component UUID')
+        identity = key(ref)
+        if identity in references:
+            raise ValueError('duplicate component revision' if versioned else 'duplicate component UUID')
+        if identifier in classes and classes[identifier] != ref['class_code']:
+            raise ValueError('component UUID class changed across revisions')
+        classes[identifier] = ref['class_code']
         if not isinstance(source, str) or sha(source.encode()) != ref['checksum']:
             raise ValueError('component source checksum differs')
         document = strict_json(source)
@@ -366,15 +381,21 @@ def catalogue_records(export_path):
             raise ValueError('component envelope identity differs')
         if not isinstance(document.get('dependencies'), list) or any(not isinstance(dep, str) for dep in document['dependencies']):
             raise ValueError('component dependencies required')
-        references[identifier], documents[identifier] = ref, document
+        references[identity], documents[identity] = ref, document
         records.append((f"catalogue/components/{identifier}/v{ref['version']}.json", source.encode(), 'component', 'included',
                         'exact owner-selected source; imported integrity is not approval'))
-    root_id = pinned(export['root'])
+    root_id = key(export['root'])
     if references.get(root_id) != export['root']:
         raise ValueError('retained root source missing or mismatched')
-    for document in documents.values():
-        if any(dep not in references for dep in document['dependencies']):
-            raise ValueError('component dependency source missing')
+    if versioned:
+        # The separately retained global root currently has no component
+        # dependencies. Do not guess versions outside a workflow selection.
+        if documents[root_id]['dependencies']:
+            raise ValueError('versioned root dependencies require an explicit selection contract')
+    else:
+        for document in documents.values():
+            if any(dep not in references for dep in document['dependencies']):
+                raise ValueError('component dependency source missing')
     if not isinstance(export['selections'], list) or not export['selections']:
         raise ValueError('complete workflow selections required')
     selected_ids, seen = {root_id}, set()
@@ -385,15 +406,21 @@ def catalogue_records(export_path):
         selection = strict_json(source)
         if not isinstance(selection, dict) or selection.get('format') != 'monty-retained-recipe-selection/1' or not isinstance(selection.get('components'), list):
             raise ValueError('unsupported retained selection')
-        local_ids = set()
+        local_ids, local_uuids = set(), set()
         for ref in selection['components']:
             identifier = pinned(ref)
-            if identifier in local_ids or references.get(identifier) != ref:
+            identity = key(ref)
+            if identifier in local_uuids or references.get(identity) != ref:
                 raise ValueError('selected component source missing or conflicting')
-            local_ids.add(identifier)
-        recipe_id = pinned(selection.get('recipe'))
+            local_uuids.add(identifier)
+            local_ids.add(identity)
+        recipe_id = key(selection.get('recipe'))
         if recipe_id not in local_ids or selection['recipe'] != references[recipe_id]:
             raise ValueError('selected Recipe source missing or conflicting')
+        if versioned:
+            for identity in local_ids:
+                if any(dep not in local_uuids for dep in documents[identity]['dependencies']):
+                    raise ValueError('selected dependency revision source missing')
         selected_ids.update(local_ids)
         records.append((f"catalogue/selections/{sha(source.encode())}.json", source.encode(), 'document', 'included',
                         'exact variant/input/export/approval pins; not activation authority'))
@@ -464,7 +491,7 @@ def main(*, profile='base-prompt', header=HEADER, required_sources=MANDATORY, ad
     parser.add_argument('--tokenizer-dir', type=Path)
     parser.add_argument('--max-model-len', type=int)
     parser.add_argument('--reserve-tokens', type=int, default=8192)
-    parser.add_argument('--evidence-view', choices=('literal-reference/v1', 'literal-reference/v2-deduplicated'), default='literal-reference/v1')
+    parser.add_argument('--evidence-view', choices=('literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing'), default='literal-reference/v1')
     args = parser.parse_args()
     if (args.export_generation is not None or args.inventory is not None) and args.evidence_view != 'literal-reference/v1':
         parser.error('--evidence-view is a compile option, not a snapshot/export transformation')

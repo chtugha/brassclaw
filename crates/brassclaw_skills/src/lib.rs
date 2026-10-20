@@ -62,6 +62,10 @@ pub mod utf8_digest_components;
 pub mod prefix_generation_components;
 /// Canonical single-usage offline encoding drafts; qualification is separate.
 pub mod model_encoding_components;
+pub mod prefix_measurement_components;
+
+/// Typed explicit model usage and its finite JSON command-input profile.
+pub mod model_completion_components;
 
 /// Immutable class-10 root source/compiler/port definitions. Parsing is neither
 /// protected-root review nor a system-seed provenance/activation shortcut.

@@ -944,6 +944,10 @@ impl LlmProvider for SmartRoutingProvider {
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
         self.stats.total_requests.fetch_add(1, Ordering::Relaxed);
 
+        if !request.dispatch_policy.allows_resubmission() {
+            self.stats.primary_requests.fetch_add(1, Ordering::Relaxed);
+            return self.primary.complete(request).await;
+        }
         let complexity = self.classify(&request);
 
         match complexity {
@@ -1612,12 +1616,15 @@ mod tests {
     fn detects_uncertain_short_response() {
         let response = CompletionResponse {
             content: "I'm not sure.".to_string(),
-            input_tokens: 10,
-            output_tokens: 5,
+            usage: Some(crate::TokenUsage {
+                input_tokens: 10,
+                output_tokens: 5,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            }),
+
             finish_reason: crate::FinishReason::Stop,
             reasoning: None,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
         };
         assert!(SmartRoutingProvider::response_is_uncertain(&response));
     }
@@ -1626,12 +1633,15 @@ mod tests {
     fn detects_empty_response_as_uncertain() {
         let response = CompletionResponse {
             content: "".to_string(),
-            input_tokens: 10,
-            output_tokens: 0,
+            usage: Some(crate::TokenUsage {
+                input_tokens: 10,
+                output_tokens: 0,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            }),
+
             finish_reason: crate::FinishReason::Stop,
             reasoning: None,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
         };
         assert!(SmartRoutingProvider::response_is_uncertain(&response));
     }
@@ -1640,12 +1650,15 @@ mod tests {
     fn short_confident_response_is_not_uncertain() {
         let response = CompletionResponse {
             content: "Yes.".to_string(),
-            input_tokens: 10,
-            output_tokens: 1,
+            usage: Some(crate::TokenUsage {
+                input_tokens: 10,
+                output_tokens: 1,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            }),
+
             finish_reason: crate::FinishReason::Stop,
             reasoning: None,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
         };
         assert!(!SmartRoutingProvider::response_is_uncertain(&response));
     }
@@ -1655,12 +1668,15 @@ mod tests {
         let response = CompletionResponse {
             content: "The answer is 42. This is a well-known constant from the Hitchhiker's Guide."
                 .to_string(),
-            input_tokens: 10,
-            output_tokens: 20,
+            usage: Some(crate::TokenUsage {
+                input_tokens: 10,
+                output_tokens: 20,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            }),
+
             finish_reason: crate::FinishReason::Stop,
             reasoning: None,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
         };
         assert!(!SmartRoutingProvider::response_is_uncertain(&response));
     }

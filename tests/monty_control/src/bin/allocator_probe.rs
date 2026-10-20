@@ -78,6 +78,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             println!("finite worker limits resized without resetting ownership");
         }
+        "onig-c-memory" => {
+            // Region::reserve calls actual embedded Oniguruma C mallocs. Rust's
+            // small stack wrapper cannot account for the 128 MiB C request itself.
+            let region = onig::Region::with_capacity(16 * 1024 * 1024);
+            std::hint::black_box(region);
+            return Err("Oniguruma C allocation escaped the finite worker limit".into());
+        }
+        "onig-c-ownership" => {
+            monty_alloc::enable_vm_accounting()?;
+            assert_eq!(monty_alloc::vm_live_bytes(), 0);
+            let mut region = {
+                let _scope = monty_alloc::VmAllocationScope::enter()?;
+                onig::Region::with_capacity(128)
+            };
+            let first = monty_alloc::vm_live_bytes();
+            assert!(first >= 2 * 128 * std::mem::size_of::<i32>());
+            region.reserve(1024); // actual C reallocs outside the original VM scope
+            assert!(monty_alloc::vm_live_bytes() > first);
+            assert!(region.capacity() >= 1024);
+            drop(region); // C frees refund the original owner outside its scope
+            assert_eq!(monty_alloc::vm_live_bytes(), 0);
+            println!("Oniguruma C allocation ownership preserved");
+        }
         "ownership" => {
             monty_alloc::enable_vm_accounting()?;
             assert_eq!(monty_alloc::vm_live_bytes(), 0);

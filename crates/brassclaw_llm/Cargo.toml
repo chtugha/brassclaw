@@ -38,7 +38,7 @@ open = "5"
 rand = "0.8"
 urlencoding = "2"
 regex = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls-native-roots", "stream"] }
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "multipart", "rustls-tls-native-roots", "stream"] }
 rig-core = { version = "0.30", default-features = false, features = ["reqwest-rustls"] }
 rust_decimal = { version = "1", features = ["serde", "serde-with-str", "maths"] }
 rust_decimal_macros = "1"

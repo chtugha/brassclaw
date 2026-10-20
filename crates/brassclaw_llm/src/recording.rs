@@ -110,13 +110,17 @@ pub struct RequestHint {
 pub enum TraceResponse {
     Text {
         content: String,
-        input_tokens: u32,
-        output_tokens: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_tokens: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_tokens: Option<u32>,
     },
     ToolCalls {
         tool_calls: Vec<TraceToolCall>,
-        input_tokens: u32,
-        output_tokens: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_tokens: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_tokens: Option<u32>,
     },
     /// Marker for a user message that triggered subsequent LLM calls.
     /// Not an LLM response — replay providers must skip these.
@@ -1040,8 +1044,8 @@ impl LlmProvider for RecordingLlm {
             request_hint: hint,
             response: TraceResponse::Text {
                 content: response.content.clone(),
-                input_tokens: response.input_tokens,
-                output_tokens: response.output_tokens,
+                input_tokens: response.usage.map(|usage| usage.input_tokens),
+                output_tokens: response.usage.map(|usage| usage.output_tokens),
             },
             expected_tool_results: tool_results,
         });
@@ -1069,8 +1073,8 @@ impl LlmProvider for RecordingLlm {
                 request_hint: hint,
                 response: TraceResponse::Text {
                     content: response.content.clone().unwrap_or_default(),
-                    input_tokens: response.input_tokens,
-                    output_tokens: response.output_tokens,
+                    input_tokens: response.usage.map(|usage| usage.input_tokens),
+                    output_tokens: response.usage.map(|usage| usage.output_tokens),
                 },
                 expected_tool_results: tool_results,
             }
@@ -1091,8 +1095,8 @@ impl LlmProvider for RecordingLlm {
                             }
                         })
                         .collect(),
-                    input_tokens: response.input_tokens,
-                    output_tokens: response.output_tokens,
+                    input_tokens: response.usage.map(|usage| usage.input_tokens),
+                    output_tokens: response.usage.map(|usage| usage.output_tokens),
                 },
                 expected_tool_results: tool_results,
             }
@@ -1189,6 +1193,39 @@ mod tests {
             }
             _ => panic!("Expected Text response"),
         }
+    }
+
+    #[test]
+    fn trace_wire_keeps_unknown_counts_distinct_from_explicit_zero() {
+        let unknown: TraceResponse = serde_json::from_value(serde_json::json!({
+            "type":"text", "content":"received answer",
+        }))
+        .unwrap();
+        let TraceResponse::Text {
+            input_tokens,
+            output_tokens,
+            ..
+        } = &unknown
+        else {
+            panic!("text");
+        };
+        assert_eq!((*input_tokens, *output_tokens), (None, None));
+        let encoded = serde_json::to_value(&unknown).unwrap();
+        assert!(encoded.get("input_tokens").is_none());
+        assert!(encoded.get("output_tokens").is_none());
+        let known: TraceResponse = serde_json::from_value(serde_json::json!({
+            "type":"text", "content":"received answer", "input_tokens":0,"output_tokens":0,
+        }))
+        .unwrap();
+        let TraceResponse::Text {
+            input_tokens,
+            output_tokens,
+            ..
+        } = known
+        else {
+            panic!("text");
+        };
+        assert_eq!((input_tokens, output_tokens), (Some(0), Some(0)));
     }
 
     #[tokio::test]
@@ -1559,8 +1596,8 @@ mod tests {
                             name: "echo".to_string(),
                             arguments: serde_json::json!({"message": "hi"}),
                         }],
-                        input_tokens: 50,
-                        output_tokens: 20,
+                        input_tokens: Some(50),
+                        output_tokens: Some(20),
                     },
                     expected_tool_results: Vec::new(),
                 },
@@ -1568,8 +1605,8 @@ mod tests {
                     request_hint: None,
                     response: TraceResponse::Text {
                         content: "done".to_string(),
-                        input_tokens: 80,
-                        output_tokens: 10,
+                        input_tokens: Some(80),
+                        output_tokens: Some(10),
                     },
                     expected_tool_results: vec![ExpectedToolResult {
                         tool_call_id: "call_1".to_string(),

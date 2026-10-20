@@ -26,7 +26,7 @@ const EXECUTION_FIELDS = [
   "max_workers", "max_recipe_contexts", "max_pending_host_calls", "max_queued_tasks", "max_queued_bytes", "max_pending_settings", "max_retained_attempts",
   "max_actor_requests", "max_actor_reserved_bytes", "max_actor_control_requests", "max_actor_control_reserved_bytes",
   "startup_timeout_millis", "response_timeout_millis",
-  "settings_source_timeout_millis", "settings_uptake_timeout_millis",
+  "model_quote_output_tokens", "resource_store_timeout_millis", "settings_source_timeout_millis", "settings_uptake_timeout_millis",
   "ownership_check_timeout_millis", "ownership_heartbeat_interval_millis", "max_pending_ownership_checks",
   "cancellation_ack_timeout_millis", "settings_reconcile_interval_millis", "status_poll_interval_millis",
   "max_source_bytes", "max_compiled_source_bytes", "max_feeds", "max_stdout_bytes",
@@ -178,7 +178,7 @@ export function MontyVmTab({ searchQuery = "" }) {
         if (String(settings.execution_limits?.[key] ?? "").trim() === "") throw new Error(t("montyVm.executionLimitsInvalid"));
         const value = Number(settings.execution_limits?.[key]);
         if (!Number.isSafeInteger(value) || value < (["worker_adapter_reserve_bytes", "max_http_client_cache_entries"].includes(key) ? 0 : 1)) throw new Error(t("montyVm.executionLimitsInvalid"));
-        if (["max_http_client_cache_entries", "max_mcp_inflight_calls", "max_mcp_request_bytes", "max_mcp_response_bytes", "default_http_request_timeout_millis", "default_http_response_body_bytes", "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes", "max_workers", "max_recipe_contexts", "max_pending_host_calls", "max_queued_tasks", "max_pending_settings", "max_retained_attempts", "max_actor_requests", "max_actor_control_requests", "max_pending_ownership_checks"].includes(key) && value > 4294967295) throw new Error(t("montyVm.executionLimitsInvalid"));
+        if (["model_quote_output_tokens", "max_http_client_cache_entries", "max_mcp_inflight_calls", "max_mcp_request_bytes", "max_mcp_response_bytes", "default_http_request_timeout_millis", "default_http_response_body_bytes", "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes", "max_workers", "max_recipe_contexts", "max_pending_host_calls", "max_queued_tasks", "max_pending_settings", "max_retained_attempts", "max_actor_requests", "max_actor_control_requests", "max_pending_ownership_checks"].includes(key) && value > 4294967295) throw new Error(t("montyVm.executionLimitsInvalid"));
         if (key === "status_poll_interval_millis" && value > 2147483647) throw new Error(t("montyVm.statusPollInvalid"));
         executionLimits[key] = value;
       }

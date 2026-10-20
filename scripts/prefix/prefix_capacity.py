@@ -10,7 +10,7 @@ def capacity_fields(value, names):
         raise ValueError('capacity observation fields differ')
 
 
-def capacity_integer(value, minimum=0):
+def capacity_integer(value, minimum):
     if type(value) is not int or value < minimum or value > 9007199254740991:
         raise ValueError('exact supported capacity integer required')
     return value
@@ -52,21 +52,21 @@ def assess_prefix_capacity(inputs):
     probes = report['probes']
     if not isinstance(probes, list) or not probes or len(probes) > 64:
         raise ValueError('complete supported probe bank required')
-    shared = capacity_integer(report['common_prefix_tokens'])
+    shared = capacity_integer(report['common_prefix_tokens'], 0)
     largest = 0
     for probe in probes:
         capacity_fields(probe, ['rendered_sha256', 'rendered_bytes', 'token_count', 'token_ids_sha256'])
         capacity_hash(probe['rendered_sha256'])
         capacity_hash(probe['token_ids_sha256'])
-        capacity_integer(probe['rendered_bytes'])
-        tokens = capacity_integer(probe['token_count'])
+        capacity_integer(probe['rendered_bytes'], 0)
+        tokens = capacity_integer(probe['token_count'], 0)
         if shared > tokens:
             raise ValueError('shared prefix exceeds a complete request')
         largest = max(largest, tokens)
     context = capacity_integer(inputs['context_window_tokens'], 1)
     output = capacity_integer(inputs['reserved_output_tokens'], 1)
-    additional = capacity_integer(inputs['reserved_additional_input_tokens'])
-    required = capacity_integer(largest + output + additional)
+    additional = capacity_integer(inputs['reserved_additional_input_tokens'], 0)
+    required = capacity_integer(largest + output + additional, 0)
     limits_ref = inputs['limits_ref']
     if not isinstance(limits_ref, str) or not limits_ref:
         raise ValueError('retained capacity limits reference required')

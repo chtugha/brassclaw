@@ -1052,6 +1052,8 @@ mod prefix_job_definitions;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_job_execution;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_measurement_capture;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_reference_seeds;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_source_capture;
@@ -1068,12 +1070,20 @@ mod bootstrap_compiler_approval;
 mod bootstrap_compiler_fixture;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_compiler_validation;
+#[cfg(feature = "skills-db")]
+mod bootstrap_encoding_approval;
+#[cfg(feature = "skills-db")]
+mod bootstrap_encoding_fixture;
+#[cfg(feature = "skills-db")]
+mod bootstrap_encoding_validation;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_evidence;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_generation_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_generation_validation;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_measurement_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_recipe_flow;
 #[cfg(feature = "skills-db")]
@@ -1099,7 +1109,11 @@ mod host_primitive_settings;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod model_encoding;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod model_quote_settings;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod monty_kernel;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod resource_store_settings;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod source_inspection;
 
@@ -1116,6 +1130,8 @@ mod component_deployment;
 mod pg_prefix_generation_backend;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_compiler_candidates;
+#[cfg(feature = "skills-db")]
+mod prefix_encoding_candidates;
 #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
 mod prefix_generation_behavior_tests;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
@@ -1124,6 +1140,8 @@ mod prefix_generation_candidates;
 mod prefix_generations;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub mod prefix_installation_baseline;
+#[cfg(feature = "skills-db")]
+mod prefix_measurement_candidates;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_model_artifacts;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]

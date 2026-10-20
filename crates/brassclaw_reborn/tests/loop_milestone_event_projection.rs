@@ -295,6 +295,8 @@ async fn drive_model_reply_milestones_and_assert_projection(
         .unwrap();
     let model_response = success_host
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: success_prompt.messages,
             surface_version: None,
             model_preference: None,
@@ -372,6 +374,8 @@ async fn drive_model_reply_milestones_and_assert_projection(
         .unwrap();
     let error = failure_host
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: failure_prompt.messages,
             surface_version: None,
             model_preference: None,

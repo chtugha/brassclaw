@@ -55,6 +55,19 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     });
     let runtime = Arc::new(Box::pin(build_reborn_runtime(input)).await.unwrap());
     let catalogue = runtime.installed_catalogue.clone();
+    crate::bootstrap_encoding_approval::assert_retained_proof_checks_actual_journal(
+        catalogue.pool.clone(),
+        &catalogue.encoding_approvals,
+    )
+    .await;
+    crate::bootstrap_measurement_approval::assert_retained_proof_checks_journal(
+        catalogue.pool.clone(),
+        catalogue
+            .measurement_qualification
+            .as_ref()
+            .expect("closed measurement qualification before readiness"),
+    )
+    .await;
     assert!(
         brassclaw_loop_support::SystemBundleSource::get_system_bundle_for_run(
             catalogue.as_ref(),
@@ -336,7 +349,28 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     )
     .await
     .unwrap();
-    assert_eq!(source_behavior["cases"].as_array().unwrap().len(), 8);
+    assert_eq!(
+        source_behavior["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|record| record["case"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            "base-literal",
+            "base-deduplicated",
+            "maker-literal",
+            "maker-deduplicated",
+            "base-trailing-inventory",
+            "maker-trailing-inventory",
+            "base-stable-sharing",
+            "maker-stable-sharing",
+            "duplicate",
+            "missing-guide",
+            "denied",
+            "invalid-revision"
+        ]
+    );
     let mut proof_client = catalogue.pool.get().await.unwrap();
     let proof_tx = proof_client
         .build_transaction()
@@ -456,7 +490,8 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
             crate::interceptor_config_service::RebornInterceptorConfigService::new(
                 rig.pool.clone(),
                 runtime.webui_tenant_id(),
-            ),
+            )
+            .with_runtime(runtime.clone()),
         )),
     );
     let model_app = crate::webui_v2_app(
@@ -1468,7 +1503,14 @@ async fn exercise_prefix_model_records(
     let (status, catalogue) = at(app, "GET", catalogue_route, None, true).await;
     assert_eq!(status, StatusCode::OK, "{catalogue}");
     assert_eq!(catalogue["specifications"][0], specification);
-    assert_eq!(catalogue["proposals"][0], proposal);
+    assert_eq!(
+        catalogue["proposals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["id"] == proposal["id"]),
+        Some(&proposal)
+    );
     let target = catalogue["targets"]
         .as_array()
         .unwrap()
@@ -1933,6 +1975,7 @@ async fn exercise_prefix_model_artifacts(
     }
     super::model_encoding_tests::assert_registered_encoding(
         runtime,
+        app,
         specification["id"].as_str().unwrap(),
         stored["id"].as_str().unwrap(),
         prefix_job_id,
@@ -1979,8 +2022,8 @@ async fn exercise_prefix_model_artifacts(
     assert_eq!(
         client
             .query_one(
-                "SELECT count(*) FROM reborn_prefix_model_artifact_sets",
-                &[]
+                "SELECT count(*) FROM reborn_prefix_model_artifact_bindings b JOIN reborn_prefix_model_specifications s USING(specification_id) WHERE s.provider_namespace=$1",
+                &[&runtime.webui_tenant_id()]
             )
             .await
             .unwrap()

@@ -51,22 +51,108 @@ impl PgRecipeModelResponses {
 struct Record {
     invocation: PgMontyInvocation,
     prefix_reference: String,
-    state: tokio::sync::Mutex<State>,
-    pending: AtomicBool,
+    wire: Observation<Value>,
+    provider: Observation<Value>,
+    response: Observation<Box<LoopModelResponse>>,
 }
-enum State {
-    Awaiting,
-    Received(Box<LoopModelResponse>),
-    Persisted,
+
+/// Separate immutable stages: original HTTP bytes, adapter DTO and validated
+/// LoopModelResponse. Each may need persistence after cancellation/failure.
+struct Observation<T> {
+    persisted: tokio::sync::Mutex<bool>,
+    pending: AtomicBool,
+    observed: AtomicBool,
+    value: Mutex<Option<T>>,
+}
+impl<T> Observation<T> {
+    fn new() -> Self {
+        Self {
+            persisted: tokio::sync::Mutex::new(false),
+            pending: AtomicBool::new(false),
+            observed: AtomicBool::new(false),
+            value: Mutex::new(None),
+        }
+    }
+    fn receive(&self, value: T) -> Result<(), AgentLoopHostError> {
+        if self
+            .observed
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err(error());
+        }
+        self.pending.store(true, Ordering::Release);
+        *self.value.lock().map_err(|_| error())? = Some(value);
+        Ok(())
+    }
+}
+impl<T: serde::Serialize + Send + Sync> Observation<T> {
+    async fn persist(
+        &self,
+        record: &Record,
+        kind: EvidenceKind,
+    ) -> Result<Option<String>, AgentLoopHostError> {
+        let mut persisted = self.persisted.lock().await;
+        if *persisted || !self.observed.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+        let bytes = {
+            let value = self.value.lock().map_err(|_| error())?;
+            encode_json(
+                value.as_ref().ok_or_else(error)?,
+                record.invocation.data_limits.max_bytes,
+            )
+            .map_err(|_| error())?
+        };
+        record
+            .invocation
+            .record_model_evidence(kind, &record.prefix_reference, &bytes)
+            .await?;
+        // Release potentially large completed data after the immutable durable
+        // write; retain only the observation fence and persisted state.
+        let value = self.value.lock().map_err(|_| error())?.take();
+        drop(value);
+        self.pending.store(false, Ordering::Release);
+        *persisted = true;
+        Ok(Some(bytes))
+    }
 }
 struct Handle(Arc<Record>);
+#[derive(Clone, Copy)]
+enum EvidenceKind {
+    Wire,
+    Provider,
+    Loop,
+}
+impl EvidenceKind {
+    fn table(self) -> &'static str {
+        match self {
+            Self::Wire => "brassclaw_monty_provider_wire_observations",
+            Self::Provider => "brassclaw_monty_provider_observations",
+            Self::Loop => "brassclaw_monty_model_responses",
+        }
+    }
+    fn format(self) -> &'static str {
+        match self {
+            Self::Wire => "provider-wire-observation/1",
+            Self::Provider => "provider-model-observation/1",
+            Self::Loop => "loop-model-response/1",
+        }
+    }
+}
 
 #[async_trait]
 impl RecipeModelResponseStore for PgRecipeModelResponses {
     fn has_uncommitted_results(&self) -> bool {
         self.records
             .lock()
-            .map(|records| records.values().any(|r| r.pending.load(Ordering::Acquire)))
+            .map(|records| {
+                records.values().any(|r| {
+                    r.wire.pending.load(Ordering::Acquire)
+                        || r.provider.pending.load(Ordering::Acquire)
+                        || r.response.pending.load(Ordering::Acquire)
+                })
+            })
             .unwrap_or(true)
     }
     async fn reconcile_received_response(
@@ -80,25 +166,15 @@ impl RecipeModelResponseStore for PgRecipeModelResponses {
             .get(&invocation)
             .cloned()
             .ok_or_else(error)?;
-        let mut state = record.state.lock().await;
-        match &*state {
-            State::Persisted => return Ok(()),
-            State::Awaiting => return Err(error()),
-            State::Received(_) => {}
-        }
-        let State::Received(response) = &*state else {
-            return Err(error());
-        };
-        let bytes =
-            encode_json(response, record.invocation.data_limits.max_bytes).map_err(|_| error())?;
+        record.wire.persist(&record, EvidenceKind::Wire).await?;
         record
-            .invocation
-            .record_native_model_response(&record.prefix_reference, &bytes)
+            .provider
+            .persist(&record, EvidenceKind::Provider)
             .await?;
-        *state = State::Persisted;
-        record.pending.store(false, Ordering::Release);
+        record.response.persist(&record, EvidenceKind::Loop).await?;
         Ok(())
     }
+
     async fn prepare(
         &self,
         invocation: InvocationId,
@@ -120,7 +196,9 @@ impl RecipeModelResponseStore for PgRecipeModelResponses {
         let row = tx.query_opt(
             "SELECT i.invocation_key,i.selection_bytes,i.arguments_bytes,i.phase,
                     i.data_max_depth,i.data_max_nodes,i.data_max_bytes,
-                    EXISTS(SELECT 1 FROM brassclaw_monty_model_responses r WHERE r.invocation_id=i.invocation_id)
+                    (EXISTS(SELECT 1 FROM brassclaw_monty_provider_wire_observations r WHERE r.invocation_id=i.invocation_id)
+                     OR EXISTS(SELECT 1 FROM brassclaw_monty_model_responses r WHERE r.invocation_id=i.invocation_id)
+                     OR EXISTS(SELECT 1 FROM brassclaw_monty_provider_observations r WHERE r.invocation_id=i.invocation_id))
              FROM brassclaw_monty_tool_invocations i
              WHERE i.invocation_id=$1 AND i.run_id=$2 AND i.admission_key=$3",
             &[&invocation.as_uuid(),&self.admission.attempt.run_id.as_uuid(),&&self.admission.key[..]],
@@ -154,8 +232,9 @@ impl RecipeModelResponseStore for PgRecipeModelResponses {
                 data_limits: limits,
             },
             prefix_reference: prefix_reference.to_owned(),
-            state: tokio::sync::Mutex::new(State::Awaiting),
-            pending: AtomicBool::new(false),
+            wire: Observation::new(),
+            provider: Observation::new(),
+            response: Observation::new(),
         });
         let mut records = self.records.lock().map_err(|_| error())?;
         if records.contains_key(&invocation) {
@@ -169,36 +248,70 @@ impl RecipeModelResponseStore for PgRecipeModelResponses {
 
 #[async_trait]
 impl RecipeModelResponseRecord for Handle {
-    async fn retain_response(
-        &self,
-        response: LoopModelResponse,
-    ) -> Result<String, AgentLoopHostError> {
-        let mut state = self.0.state.lock().await;
-        if !matches!(*state, State::Awaiting) {
+    fn receive_provider_wire_observation(&self, response: Value) -> Result<(), AgentLoopHostError> {
+        if response["format"] != "provider-wire-observation/1"
+            || response["provider_id"].as_str().is_none_or(str::is_empty)
+            || response["model_id"].as_str().is_none_or(str::is_empty)
+            || response["body_encoding"] != "base64"
+            || !response["body"].is_string()
+            || response["status"]
+                .as_u64()
+                .is_none_or(|status| !(100..=599).contains(&status))
+        {
             return Err(error());
         }
-        // Take custody before any encoding/DB work. A failed or ambiguous write
-        // retains these actual bytes' source; it never resets Awaiting/replays.
-        *state = State::Received(Box::new(response));
-        self.0.pending.store(true, Ordering::Release);
-        let State::Received(response) = &*state else {
-            return Err(error());
-        };
-        let bytes =
-            encode_json(response, self.0.invocation.data_limits.max_bytes).map_err(|_| error())?;
+        self.0.wire.receive(response)
+    }
+    async fn persist_provider_wire_observation(&self) -> Result<(), AgentLoopHostError> {
         self.0
-            .invocation
-            .record_native_model_response(&self.0.prefix_reference, &bytes)
-            .await?;
-        *state = State::Persisted;
-        self.0.pending.store(false, Ordering::Release);
-        Ok(bytes)
+            .wire
+            .persist(&self.0, EvidenceKind::Wire)
+            .await?
+            .ok_or_else(error)
+            .map(|_| ())
+    }
+
+    fn receive_provider_observation(&self, response: Value) -> Result<(), AgentLoopHostError> {
+        // This is a host-private adapter envelope. It cannot be supplied by
+        // Python; basic envelope checks also reject accidental wrong-stage data.
+        if response["format"] != "provider-model-observation/1"
+            || response["provider_id"].as_str().is_none_or(str::is_empty)
+            || response["model_id"].as_str().is_none_or(str::is_empty)
+            || !response["response"].is_object()
+        {
+            return Err(error());
+        }
+        self.0.provider.receive(response)
+    }
+    async fn persist_provider_observation(&self) -> Result<(), AgentLoopHostError> {
+        self.0
+            .provider
+            .persist(&self.0, EvidenceKind::Provider)
+            .await?
+            .ok_or_else(error)
+            .map(|_| ())
+    }
+    fn receive_response(&self, response: LoopModelResponse) -> Result<(), AgentLoopHostError> {
+        if !self.0.provider.observed.load(Ordering::Acquire)
+            || self.0.provider.pending.load(Ordering::Acquire)
+        {
+            return Err(error());
+        }
+        self.0.response.receive(Box::new(response))
+    }
+    async fn persist_response(&self) -> Result<String, AgentLoopHostError> {
+        self.0
+            .response
+            .persist(&self.0, EvidenceKind::Loop)
+            .await?
+            .ok_or_else(error)
     }
 }
 
 impl PgMontyInvocation {
-    async fn record_native_model_response(
+    async fn record_model_evidence(
         &self,
+        kind: EvidenceKind,
         prefix: &str,
         bytes: &str,
     ) -> Result<(), AgentLoopHostError> {
@@ -224,16 +337,23 @@ impl PgMontyInvocation {
         if !valid || bytes.len() > self.data_limits.max_bytes {
             return Err(error());
         }
+        // Only enum-owned table names enter SQL; all runtime values are bound.
         tx.execute(
-            "INSERT INTO brassclaw_monty_model_responses(invocation_id,format,prefix_reference,response_bytes,response_checksum)
-             VALUES($1,'loop-model-response/1',$2,$3,$4) ON CONFLICT(invocation_id) DO NOTHING",
-            &[&self.id,&prefix,&bytes,&digest(bytes)],
+            &format!("INSERT INTO {}(invocation_id,format,prefix_reference,response_bytes,response_checksum)
+             VALUES($1,$2,$3,$4,$5) ON CONFLICT(invocation_id) DO NOTHING",kind.table()),
+            &[&self.id,&kind.format(),&prefix,&bytes,&digest(bytes)],
         ).await.map_err(|_| error())?;
-        let row = tx.query_one(
-            "SELECT format,prefix_reference,response_bytes FROM brassclaw_monty_model_responses WHERE invocation_id=$1",
-            &[&self.id],
-        ).await.map_err(|_| error())?;
-        if row.get::<_, &str>(0) != "loop-model-response/1"
+        let row = tx
+            .query_one(
+                &format!(
+                    "SELECT format,prefix_reference,response_bytes FROM {} WHERE invocation_id=$1",
+                    kind.table()
+                ),
+                &[&self.id],
+            )
+            .await
+            .map_err(|_| error())?;
+        if row.get::<_, &str>(0) != kind.format()
             || row.get::<_, &str>(1) != prefix
             || row.get::<_, &str>(2) != bytes
         {

@@ -147,7 +147,9 @@ impl RegistryProviderConfig {
 #[serde(deny_unknown_fields)]
 pub struct ProviderRequestPolicy {
     pub timeout_secs: u64,
-    /// Additional attempts after the initial model request; zero disables retries.
+    /// Upper bound for additional connection attempts when permitted by the
+    /// operation. Single-submission model usages take precedence; zero disables
+    /// this configured retry layer.
     pub max_retries: u32,
     /// None disables the circuit breaker. A configured threshold is positive.
     pub circuit_breaker_threshold: Option<u32>,

@@ -746,7 +746,23 @@ Use one predictable envelope: trusted role/authority and precedence, navigation,
 applicability/contracts, literal evidence units, verified general teaching units,
 then one short task-independent dispatch/checklist boundary before volatile input.
 Keep the shared base spine stable; consumer instructions belong to the registered
-trusted envelope, not duplicated personas inside factual source units. Only the
+trusted envelope, not duplicated personas inside factual source units.
+Test stability across knowledge updates as well as request variants. The current
+renderer places the complete source inventory and version-dependent document-card
+IDs before their evidence text; a new component or a late document edit can
+therefore invalidate an otherwise unchanged leading core. A successor accepted
+model design should place stable core material before changing catalogue/control
+metadata and move versioned citation/provenance indexing after the relevant stable
+text where the supported renderer permits it. Preserve version-bound citations
+and exact origin reconstruction; do not substitute path-only identities to inflate
+hit counts. Trial an appended component and a late-source edit with unchanged
+mandatory knowledge, record full framed token-prefix changes, and qualify hybrid
+reuse separately. Implement a new versioned renderer/design contract; do not alter
+frozen literal/v1 or v2 semantics silently. Repeated transfer envelopes may use a
+lossless reference index only when every original value/definition is retained,
+references resolve exactly and the complete raw envelope remains archived. The explicit v3 trailing-inventory and v4 stable-sharing options below address
+parts of this requirement; accepted per-model selection, stable placement of all
+citation metadata and full serving/cache qualification remain separate work. Only the
 trusted envelope establishes authority; quoted source instructions remain data.
 Clearly delimit reference data. Preserve complete programs, YAML blocks,
 qualifications and related prerequisites together; nested source examples must not
@@ -1215,7 +1231,8 @@ Retain the current API family. Proposed extensions, subject to final DTO review:
 | Model design acceptance/binding | Proposed detail/acceptance and profile-model binding mutations under that API family; exact model/design/schema revisions, compatibility evidence and compare-and-swap, never browser-authored runtime facts. |
 | Source inventory/registration | Proposed `GET /api/webchat/v2/prefixes/{name}/sources` and `POST /api/webchat/v2/prefixes/{name}/sources`; return generation provenance plus current registered sources, or save a validated new source registration. |
 | Source availability check | Proposed `POST /api/webchat/v2/prefixes/{name}/source-check-jobs`; admit a bounded check of pinned registered source identities and return job/progress/result references, rather than performing network I/O in a GET handler. |
-| Observe/cancel | `GET /api/webchat/v2/prefix-jobs/{id}` and `POST /api/webchat/v2/prefix-jobs/{id}/cancel`; reuse runtime events where available. |
+| Observe/cancel | Implemented `GET /api/webchat/v2/prefixes/{name}/jobs/{job}` projects the existing run/admission/effect records. Use its opaque `thread_id` and `job_id` with the existing run/event/cancel APIs; do not add another prefix-job lifecycle or cancellation store. |
+| Offline model/design measurement | Implemented `POST /api/webchat/v2/prefixes/{name}/jobs/{job}` admits `operation=measure` through the same run owner and returns the current job projection. Explicit retained generation/proposal/artifact IDs and probe/limit assumptions; no acceptance or activation. |
 | Generation details | `GET /api/webchat/v2/prefixes/{name}/generations/{id}` with manifest, source and quality projection. |
 | Activation/warm | Explicit mutation operations under the same profile family with registered target identity and exact generation, not arbitrary host paths or shell commands. |
 
@@ -1455,8 +1472,9 @@ and metrics stay in manifests rather than the leading reference text. Stable sou
 identity/content stays in the evidence rendering.
 
 The current Ornith compiler profile distinguishes 24 linear-attention layers and
-8 full-attention layers, AWQ INT4 weights, attention KV dtype and recurrent-state
-dtype. Preserve that distinction: INT4 weights do not mean INT4 KV or recurrent
+8 full-attention layers, 4-bit weight configuration, attention KV dtype and
+recurrent-state dtype. Read quantization configuration rather than inferring its
+method from the model name (the retained artifact reports compressed-tensors). Preserve that distinction: INT4 weights do not mean INT4 KV or recurrent
 state. Parameterize provider/model adapters rather than assuming every model has
 this geometry. Derive hybrid block/chunk compatibility from the actual pinned
 configuration and runtime. Treat previous 1056-token-block/99264-token reuse
@@ -1491,8 +1509,9 @@ separate measured experiment, never automatic adjustment by Generate.
 
 For GDN/linear-attention hybrids, qualify behavior as well as cache-hit counts.
 The inspected Ornith release has 24 linear-attention and eight full-attention
-layers; its current unified block is 1,056 tokens. These facts are model/runtime
-specific, not universal defaults. `--no-disable-hybrid-kv-cache-manager` keeps the
+layers; the historically inspected deployment used a 1,056-token unified block.
+Architecture and deployment block layout are separate evidence, not universal
+defaults. Refresh runtime layout before applying those historical measurements. `--no-disable-hybrid-kv-cache-manager` keeps the
 manager enabled but cannot prove recurrent-state restoration. Record effective
 Mamba cache mode, attention/recurrent dtypes, page layout, group separation and
 checkpoint granularity separately from INT4 weight quantization. Do not infer
@@ -2660,7 +2679,12 @@ That frozen core source build used literal-reference/v1: its model view containe
 620,802 UTF-8 bytes; the two framed Ornith request probes each contained 144,778
 tokens, with 144,767 common leading tokens for those two particular questions.
 The measured request is larger than the historical 131,072-token serving setting
-before any response/history reserve. Do not activate it by ignoring that limit,
+before any response/history reserve. A fresh read-only discovery on 2026-10-19
+from brassclaw2 to the model endpoint still advertises 131,072 for the same model
+ID (`/Volumes/SSDE/brassclaw/target/validation/prefix-runtime-discovery-a3co1off/observation.json`). This confirms only the reported upper limit, not
+long inference or current KV/recurrent layout. Preserve the complete candidate
+and report Capacity blocked until a compatible target/design is qualified;
+Generate must not change the operator's inference deployment. Do not activate it by ignoring that limit,
 clipping text or relabeling the configured/architectural context. A larger
 architecture limit is not evidence that the deployment has that capacity.
 The complete retained package is in that receipt directory's
@@ -2759,6 +2783,391 @@ and negative additional-input cases stop. The same batch passes strict affected
 library lint, compiler/result fixtures, authenticated routes and native candidate
 integration. The component remains a packaged draft pending workflow/bootstrap
 integration, not an activated Generate path.
+
+#### Shared template adapter and preload acceptance (2026-10-19)
+
+The offline `inject_reference` implementation now lives in the pure
+`scripts/prefix/prefix_template.py` module, re-exported by `prefix_evidence.py`.
+Its class-22 `template_adapter_draft` exposes `build_prefix_template(inputs)`;
+there is no host call, serving edit or inference process. Offline compiler
+procedure snapshots retain the new helper and the base compiler records/verifies
+its dynamic `template_adapter_sha256`. Old archived packages remain readable.
+Keep the entire compiler directory when moving offline scripts between machines.
+
+Monty and CPython return byte-identical effective templates for the full retained
+reference (`target/validation/prefix-template-component-i_u3awfl/accepted.json`).
+The independent oracle now also requires the complete literal reference at the
+start of every rendered request, rather than comparing token hashes alone.
+It rejects a deliberately incorrect reference; all 12 retained contexts pass
+(`target/validation/prefix-full-reference-oracle-ok9vbgv7/accepted.json`). The
+model template trims trailing separator whitespace in some empty-system cases;
+this does not remove reference bytes and is not a promised stable separator.
+
+Native receipt `target/validation/prefix-registry-artifacts-gg8vy9cz/accepted.json`
+passes both pure components' real preload inspection and execution, the exact
+native model store/encoding path, complete-reference and HF checks, explicit
+negative cases, affected strict lint, payload-serialization capacity regression,
+three standalone consumer regressions and authenticated routes. Its parent
+`prefix-registry-artifacts-v9nwiqdb` separately passed the four engine tests,
+full offline HF oracle, contained worker and both dependency-boundary checks;
+that parent's full native run failed on the subsequently corrected preload
+issue and is not a full native acceptance receipt. Preserve both failed runs
+(`ej4azlex` and `v9nwiqdb`) as failure evidence.
+
+The preload loader currently rejects default arguments, including immutable
+ones. `capacity_integer` therefore receives an explicit lower bound at every
+call. Successful utility evaluation alone had not established loadability;
+retain actual preload inspection in the candidate acceptance path. This change
+does not loosen the loader, approve a Skill combination or activate Generate.
+Native request serialization also counts escaped JSON bytes against captured
+worker/frame limits before allocating another complete request string; oversize
+requests fail as resource errors without truncation or an attempted child process.
+Native-library memory containment remains a separate activation prerequisite.
+
+The next candidate workflow is `prefix_measurement_components::measurement_drafts`:
+ten explicit Recipe steps compose canonical JSON-digest and template-encoding
+usages with pure parsing, template preparation, identity verification and capacity
+comparison. It verifies that the supplied original template belongs to the model
+artifact observation, and checks the effective template against its independently
+computed digest. The Recipe serializes its exact calculation as the nonempty string required
+by internal result-only completion; it does not publish a chat reply or qualify
+as an ordinary chat route. Its owner must verify the resulting receipt.
+It does not choose accepted
+designs, validate deployed limits, bless cache/quality or publish a generation.
+It still needs retained-graph/behavioral acceptance, closed first-party usage
+qualification and integration with the pinned generation job before exposure.
+The first graph test rejected a result-root `required` field and then a producer
+that did not guarantee the encoding consumer's nonempty strings. Correct the
+producer/result declarations; never weaken native validation to make composition
+pass. Keep the fast full-graph/preload check ahead of native model measurements.
+
+The ten-step candidate now passes full retained-graph/preload inspection in
+`target/validation/prefix-registry-artifacts-9dbqe6sy/accepted.json` (frozen source
+`prefix-registry-source-xpnr6fsq`). The same scoped batch passes strict affected
+and standalone lint, native model-asset/store/handler and full-reference HF
+checks, three standalone consumer regressions, route contracts and the ordinary
+matched/No-Match single-root regression. The formatter input needs explicit
+`required` and `checks` declarations; the pure-component constructor validates
+input/result declarations before producing drafts. This establishes loadability,
+not execution/approval of the complete ten-step measurement workflow.
+
+The registration slice uses the existing primitive seeder for
+`model_encoding`, including native-image verification, preservation of legacy
+UUIDs/operator metadata and current blocks. It leaves the Tool pending and does
+not approve or activate usages. Its registration/upgrade tests pass in the
+`9dbqe6sy` scoped receipt above, including preservation of existing native
+identities, metadata and operator blocks.
+
+For closed bootstrap qualification, reuse `AcknowledgedPrimitiveSettings` and
+`HostPrimitiveSettingsSource`. Source inspection and model encoding share that
+same settings owner and one retained preparation worker; do not add another
+bootstrap settings table, provider pool or per-model preparation supervisor.
+The installation owner selects and validates startup limits, binds the contained
+preparation backend before component qualification, and transitions that shared
+owner once to the actual acknowledged live view before ingress. Each operation
+captures one limits revision; candidate data cannot choose a worker or raise its
+limits. Verify startup preparation, prohibited rebinding, live revision uptake
+and ordinary matched/No-Match single-root behavior. This lifecycle slice passes
+the `9dbqe6sy` scoped batch; it is not itself model-usage approval.
+
+Implement the encoding usage's noncircular system-seed qualification separately:
+exact packaged source/associations/native images, Q1 intent before behavioral
+Tool calls, deterministic closed tokenizer/template fixtures with independently
+known token-ID/count/hash outcomes, actual store/binding/kernel/dispatch evidence,
+negative/policy/resource cases, durable effect accounting and exact immutable
+approval records. Fixture model/provider records must be unmistakably private
+qualification data in the existing owners, not active consumer selections or a
+second registry. The selected preparation owner must already be usable for this
+pre-readiness qualification; do not bypass its limits or invent caller-provided
+success evidence. Qualified primitive usages do not establish real-model HF
+compatibility, deployed context capacity, hybrid cache or answer quality.
+Preserve incomplete qualification intents and fail closed without replay.
+
+The closed owner is now implemented in `bootstrap_encoding_approval.rs`, using
+`prefix_encoding_candidates.rs`, `bootstrap_encoding_fixture.rs` and
+`bootstrap_encoding_validation.rs`. Its scoped behavioral acceptance is
+`target/validation/prefix-registry-artifacts-8_yma761/accepted.json` (source
+`prefix-registry-source-om94oqsa`).
+It retains both exact canonical usages, verifies native and worker images,
+records group Q1 intent before dispatch, executes the actual global Python
+Recipe path and rereads its immutable selection/attempt/answer journal before
+writing or reusing approval. Fixtures have explicit private, data-only provenance
+in the existing model/provider/artifact stores; their imports remain unqualified.
+Operator imports cannot supply this origin or approval fields. Original and
+supplied-template cases include known full token arrays despite saved
+padding/truncation settings, duplicate determinism, policy rejection, invalid
+identities/assets/tokenizer/probes/template and render-fuel exhaustion.
+Proof re-reading and incomplete-intent checks must establish no additional
+dispatch. The existing source-compiler qualification shares the same contained
+Recipe transport builder; it cannot increase selected value/frame bounds.
+Keep these usage proofs separate from whole measurement-Recipe qualification,
+native-library memory containment, model/design capacity, HF compatibility,
+cache correctness, held-out model behavior and production Generate activation.
+
+That same scoped batch executes the complete ten-step measurement candidate
+through the actual global Python Recipe path: eight executable steps plus two
+binding steps, exactly two native dispatches, the full ordered report equal to
+the independent HF-verified report, and the exact internal capacity receipt.
+It checks actual journal selections/arguments/answers, one attempt per dispatch,
+child containment/reaping and no new approval evidence or chat reply. The full
+source reference remains retained and capacity-blocked at the fixture's 131,072
+context limit. This is development execution evidence, not a production workflow
+approval or target/cache acceptance. The batch also passes strict affected and
+standalone lint, three standalone consumer regressions, routes and ordinary
+matched/No-Match single-root behavior.
+
+Preserve earlier `xd_ryxoy` and `fom8q98m` failures: the old test counted all
+artifact sets globally and rejected the two additional private data fixtures.
+The corrected check counts the operator namespace's bindings; the authenticated
+catalogue still must return exactly its one imported set. No fixture or evidence
+was deleted to make that check pass.
+
+The next retention slice, `prefix_measurement_candidates.rs`, gives this workflow
+one installed stable graph, reusing the canonical digest and supplied-template
+encoding identities instead of allocating another pair of usages. The source
+compiler shares the digest identity allocator. Verify that the installed graph
+matches both existing leaf approvals and retains its separate unapproved workflow
+state, then qualify its complete pure logic and integrate the selected model/design
+and generation job. Retention/inspection alone must not enable Generate.
+
+That installed-graph retention slice passes
+`target/validation/prefix-registry-artifacts-zxqty2cv/accepted.json`, source
+`prefix-registry-source-cyg4wek4`, including execution of the actual installed
+candidate and both canonical combination checks. The same scoped batch passes
+native/HF checks, strict affected and standalone lint, standalone consumers,
+routes and ordinary single-root behavior. Its two leaf associations remain
+separate from whole-workflow qualification.
+
+The new whole-workflow owner is `bootstrap_measurement_approval.rs`, with closed
+fixture/validation helpers and storage-only `bootstrap_workflow_evidence.rs`.
+It reuses `reborn_workflow_review_evidence` rather than inventing association
+proof for pure logic or another approval store. The private selection pins both
+existing leaf approvals before Q1/behavior; complete reviewed packaged workflow
+qualification remains distinct from target/model/design acceptance. Expected
+cases include fit/nonfit, duplicate determinism, pure rejection before effects,
+policy and asset failure, and original-template mismatch after both completed
+native calls. Verify every actual step input/result and durable invocation, preserve
+incomplete intents and prove readback never replays. This slice passes
+`target/validation/prefix-registry-artifacts-3tx1j8xr/accepted.json` (frozen source
+`prefix-registry-source-hl_i7tx8`): all eight closed cases, proof corruption and
+no-replay checks, full-reference/HF execution, affected/standalone lint, consumers,
+routes and ordinary single-root regression. This scopes qualification to the
+packaged workflow; no normal Generate, model quality, native-library memory
+ceiling or activation claim follows.
+
+#### Retained model/design measurement jobs (2026-10-19)
+
+The model-specific validation prerequisite now uses the existing immutable
+`brassclaw_prefix_job_definitions` and ordinary durable turn admission with
+`operation=measure`, `mode=target` (V171). This is an offline diagnostic operation,
+not Generate, design acceptance, a provider-capability claim or serving activation.
+The caller selects an immutable source generation, profile/model design proposal,
+model artifact set and explicit complete chat probes/capacity assumptions. The
+storage adapter resolves each existing owner and rejects a different profile,
+namespace, source evidence-view or model binding. Original bytes stay retained;
+no filesystem/latest-provider lookup or source trimming substitutes inputs.
+
+The definition stores source/design/artifact identities and the exact probe hash;
+large probe/reference/template data live in its existing immutable input capture.
+A lost-response retry retains the first definition; altered requests conflict.
+Before dispatch, reconstruct and compare the exact capture and revalidate the
+packaged whole-workflow proof and selection. The qualified ten-step Python Recipe
+owns template preparation, measurements, identity checks and capacity arithmetic.
+The host only admits, binds, enforces live policy and verifies the actual receipt
+and immutable two-invocation journal. Completion stays an internal result with
+Unknown/unverified quality/cache state; it writes no design acceptance or serving
+selection. The source generation can remain quarantined or capacity-blocked.
+
+`POST /api/webchat/v2/prefixes/{name}/jobs/{job}` accepts a measurement request
+with a caller-chosen canonical non-nil UUID; the existing GET of that URL reports
+progress/result and existing run APIs own cancellation. Keep authenticated route,
+retained scope, no-replay, incompatible-input and full-reference/HF regressions.
+The native production-path regression now passes in
+`target/validation/prefix-registry-artifacts-62egl9f8/native-registry-export.log`
+(frozen source `prefix-registry-source-qxi5edxv`): authenticated POST, retained
+subjects, exact full-reference/HF result, two actual dispatches, duplicate POST
+without replay, conflicting-request rejection, no reply or design-acceptance
+write and unchanged global root. The complete scoped batch passes
+`target/validation/prefix-registry-artifacts-62egl9f8/accepted.json`, including
+strict affected/standalone lint, standalone consumers, route contracts and the
+ordinary matched/No-Match single-root regression. The supplied full
+reference requires over 142k input tokens before output/additional allowances and
+fails the explicit 131072 context assumption. No content was dropped or deployed.
+
+The generation-history UI now includes an Offline measurement panel with explicit
+proposal/model-file selection, context/input assumptions, exact chat probes,
+correlated job status and result. A failed POST retains the UUID/request/revision
+for retry; session storage keeps only the job UUID. New-request editing is
+explicit and does not cancel the old job. Frontend state regressions check retry
+identity, rejected numeric coercion, model/profile filtering and terminal polling;
+this is separate from browser/embedded-product acceptance.
+
+This does not complete accepted-design selection, normal model-aware Generate,
+Sources/Redesign/Create, domain migration, complete library/release coverage,
+native-library memory containment or target/cache/held-out answer-quality
+acceptance.
+
+#### Declared release-document package (2026-10-20)
+
+`scripts/prefix/release-reference-inventory.json` uses the existing offline source
+inventory schema and compiler adapter. It declares root Markdown (excluding the
+private local test configuration), `docs/reborn/` Markdown and crate agent/spec
+maps, plus the packaged authoring/design references. The initial 201-document
+inventory selects 13 references; unreconciled material is archived as
+`development-only` and the explicitly superseded storage document is `superseded`.
+These are conservative source dispositions, not a statement that every subsystem
+has been reviewed or that all release documentation/private workflows are covered.
+The accompanying inventory procedure declares the exact scope and remaining gaps.
+
+`target/validation/prefix-release-document-package-k_cyzsry/accepted.json` verifies
+two identical offline snapshots through the existing adapter, all 201 original
+byte hashes and the same tested source/catalogue snapshot. The result contains
+218 sources including catalogue records. This establishes reproducible package
+integrity, not installation uptake, content quality or serving readiness.
+
+The installed follow-up extends the existing class-17 reference revision owner
+with compile-time embedded declared documents, exact inventory membership and
+byte verification. It creates no new document/provider/approval registry and
+performs no checkout reads at runtime. Existing core records and compatibility
+projections stay distinct: extra archived/review-pending documents must not enter
+`reborn_docus` as validated retrieval rows. Preserve operator edits and old exact
+revisions through the existing revision store. Core-only source capture retains
+its explicit nine-document selection; the declared-release capture selects the
+broader package, preserving dispositions and original bytes. Both reuse the same
+source compiler and durable job path, with quarantined output and no activation.
+
+Installed acceptance passes
+`target/validation/prefix-registry-artifacts-mn40lntp/accepted.json` (frozen source
+`prefix-registry-source-b85d9bsh`): stored/compiled equality, stable distinct core/
+release selections, no additional legacy projections, complete 6,339,248-byte
+release snapshot compilation through the actual global orchestrator, five actual
+native calls, exact archive receipt and reconnect without replay. A release request
+cannot reuse a core-only job UUID; its immutable request records the distinct
+capture scope. Strict affected/standalone lint, consumers, routes, HF/core
+measurement and ordinary single-root behavior also pass. This does not close
+missing private-library export, remaining source reconciliation/domain migrations,
+per-model design acceptance or the normal Generate/serving cutover.
+
+#### Version-aware qualified prefix workflow sources (2026-10-20)
+
+The next source-export scope reuses the existing catalogue source owner, lock,
+repeatable-read verification and DTO. The existing `/1` ordinary export remains
+monoversion. The `/2` transfer additionally includes the already-qualified source
+compiler and complete measurement selections; source visibility neither advertises
+a callable nor activates a Recipe. Their owners must verify their actual
+qualification before exporting. Missing qualification fails the expanded export,
+not a partial-success claim. Other private workflows remain outside this scope.
+
+An expanded transfer can contain different retained revisions of one stable UUID
+across independent approved selections. Key records by UUID/version, verify exact
+class/checksum/bytes and retain each selection's own closed dependency combination.
+Reject conflicting bytes for one revision, class changes for one UUID, mixed
+versions within a selection, missing dependency sources and unused source records.
+Do not synthesize a latest combination. Keep version-specific logical source paths
+and complete original transfer evidence. The separately retained global root has
+no component dependencies today; future versioned root dependencies require an
+explicit selection contract rather than guessing their revisions.
+
+The offline adapter accepts both declared transfer contracts and keeps transfer
+integrity separate from approval. The full native batch passes in
+`target/validation/prefix-registry-artifacts-yvy49l3l/accepted.json` (frozen source
+`prefix-registry-source-dxoiu78a`): actual `/2` export, both qualified private
+selections, complete 250-source/6,602,089-byte release compilation, five native
+calls and reconnect without replay. HF/core measurement, affected/standalone
+lint, consumers, routes and ordinary single-root behavior also pass. Eight offline
+importer/compiler tests pass against that emitted transfer, with one tokenizer
+case skipped. The observed catalogue has no multi-version UUID; focused parser
+mutations and the separate collector regression cover revision conflicts without
+claiming those mutations are approved executable combinations. The independent
+collector check passes in
+`target/validation/prefix-registry-artifacts-2zj4l9zc/accepted.json` (frozen source
+`prefix-registry-source-eqd7oucr`), explicitly scoped to source-transfer records
+only; it is not another production-path qualification. The declared-release capture uses the expanded
+scope; the core-only capture and existing public ordinary-source route retain
+their narrower contract. This does not complete all private-library coverage or
+model/quality/activation acceptance.
+
+#### Versioned trailing-inventory layout (2026-10-20)
+
+`literal-reference/v3-trailing-inventory` reuses the exact-unit renderer and
+`brassclaw-prefix-render-map/1`, retaining complete original bytes, line ranges,
+content-derived evidence identities and per-source dispositions. It moves the
+volatile source inventory after all complete reference cards. This keeps the
+leading reference bytes unchanged for inventory-only edits without hiding the
+changed source decision or its generation identity. It does not guarantee stable
+leading tokens after content edits or changes to shared-unit grouping.
+
+The existing Recipe-owned compiler stages, offline adapter/worker, closed model-
+design proposal schema and archive validator recognize the explicit option.
+Existing defaults and accepted designs are unchanged. Qualify both profiles with
+independent closed rendering oracles, exercise the option through the actual
+retained global source job, preserve v1/v2 byte equivalence, and compare actual
+model/template token sequences before selecting this layout for a model. This is
+one formatting prerequisite; it does not solve JSON-escaped embedded programs,
+capacity, native-library memory bounds, model quality or serving activation.
+
+Offline exact-token evidence is retained in
+`target/validation/prefix-layout-token-stability-lg9kms6d/evidence.json`.
+Using the retained full core source package, exact local tokenizer/template and
+one plain chat, changing only an excluded source's disposition reason preserves
+311 leading tokens under v2 versus 140,773 under v3. Total input counts are the
+same for both layouts (141,768 before, 141,774 after). Original evidence/maps stay
+identical and v2 rendering equals the retained original context. This is one
+metadata-mutation/tokenization observation, not inference, provider-envelope/cache
+qualification, held-out answer quality or a claim that the full reference fits the
+explicit 131072 context assumption.
+
+#### Progressive stable-sharing layout (2026-10-20)
+
+`literal-reference/v4-stable-sharing` uses the same exact original/range map and
+trailing inventory. Its first occurrence of each complete unit remains literal;
+later occurrences point to that original source/range. Unlike v2/v3, discovering
+a later duplicate does not change how the earlier occurrence is displayed. No
+near-duplicate matching, summary or clipping is introduced. Canonical source order
+still matters: earlier insertions and content edits can change earlier tokens.
+
+An offline regression appends a complete exact duplicate of a mandatory guide.
+All earlier reference bytes stay identical under v4, whereas v3 changes earlier
+sharing labels. Every mapped source, including the appended duplicate, reconstructs
+byte-for-byte from its original units. The shared compiler, offline worker,
+archive/design contracts and independent closed fixtures recognize the new option;
+existing view semantics/defaults remain unchanged. Bootstrap now has twelve closed
+cases, checked by exact case names rather than the obsolete integration count of
+eight. V3's batch `prefix-registry-artifacts-e0tug_1k` completed source jobs and
+closed oracles but failed that stale count assertion; preserve it as failed batch
+evidence. A successor must pass the full required native checks before claiming
+qualification. These layouts do not establish accepted design, context fit,
+provider/cache behavior, source quality or model accuracy.
+
+The full successor batch passes in
+`target/validation/prefix-registry-artifacts-273hlb17/accepted.json` (frozen source
+`prefix-registry-source-99sk8rmh`): all twelve closed qualification cases, both
+profiles/four independent rendering oracles, actual v4 global source job, complete
+250-source/6,613,880-byte declared-release job with five calls and no replay,
+retained measurement/API/HF checks, strict affected/standalone lint, standalone
+consumers, route contracts and the ordinary single-root regression. The source
+jobs stay quarantined; installed profile defaults remain v2. This covers the
+frozen integration, not subsequent concurrent provider/model changes.
+
+The retained offline update comparison is
+`target/validation/prefix-layout-update-token-stability-4ik5nu12/evidence.json`.
+It uses the exact same retained core source and local tokenizer/template, one plain
+chat and three explicitly experimental mutations (reason-only, appended complete
+exact duplicate, late-guide newline). Earlier v2/v3 rendering remains byte-identical
+to the previous renderer for all cases. Token-prefix observations are:
+
+| Layout | Reason-only edit | Appended later duplicate | Late-guide newline |
+| --- | ---: | ---: | ---: |
+| v2 | 311 | 1,282 | 80,584 |
+| v3 | 140,773 | 189 | 79,430 |
+| v4 | 140,346 | 140,164 | 79,003 |
+
+V4's unchanged full input uses 141,341 tokens versus 141,768 for v2/v3; the lower
+late-guide token position reflects this shorter earlier rendering, not a cache
+regression at a different source. Appending the duplicate uses 144,881 tokens in
+v4 versus 148,078 in v2/v3. All exceed the explicit 131072 context assumption;
+these are complete offline token observations, not approved content changes,
+serving hits, inference quality or evidence that model capacity was increased.
 
 ### Phase C1 — Sempai reference, review packet and component proposals
 

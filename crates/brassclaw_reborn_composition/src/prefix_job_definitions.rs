@@ -173,7 +173,7 @@ impl Store {
             || r.created_by.len() > 512
             || !matches!(
                 r.operation,
-                "generate" | "redesign" | "model_design" | "create"
+                "generate" | "redesign" | "model_design" | "create" | "measure"
             )
             || !matches!(r.mode, "source_only" | "target")
         {

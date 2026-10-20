@@ -152,3 +152,57 @@ If source, design, provider/model or runtime changed meanwhile, retain the propo
 as stale and require rebase/review. Running tasks retain their pinned references;
 live Tool policy remains checked before every dispatch. Never replay confirmed
 publication, compilation or provider effects after a lost response.
+
+## Retained compiler and measurement constraints (2026-10-19)
+
+Designs must fit the implemented loader and recursive contracts. The current
+preload inspector rejects default arguments, including immutable defaults; use
+explicit arguments in new reusable definitions. A successful utility evaluation
+does not establish that those definitions can be preloaded. Compile the complete
+retained Recipe, validate every producer/consumer handoff and inspect the actual
+exports before any effect. In BrassClaw recursive usage contracts, input,
+object-field and Tool-parameter schemas require an explicit `required` boolean
+and an explicit `checks` list, even when it is empty. When reusing a result
+schema as a consumer input, supply those input annotations deliberately.
+Result roots and list-item schemas do not accept `required` or consumer defaults.
+Do not apply this private contract grammar to native/external JSON Schema, which
+uses its own `required` syntax. Unknown/misplaced fields are errors, not hints.
+These are current implementation constraints; consult the component guides for
+the binding architecture and verify support before proposing a successor.
+
+Reuse the shared `prefix_template.py` adapter and `prefix_capacity.py` comparison
+rather than generating a second injection implementation or moving workflow
+logic into Rust. The candidate measurement Recipe explicitly prepares the
+supported template, hashes its effective/original bytes with the canonical JSON
+usage, measures frozen complete provider contexts, verifies both template
+identities and calculates headroom. Its definitions still need the applicable
+bootstrap/workflow acceptance before installation can expose them as Generate.
+A pending Tool registration, a draft Recipe and a successful tokenizer probe do
+not supply that evidence.
+
+Preserve all reference bytes in the real rendered leading content. Compare the
+complete framed requests and their token-ID hashes across the actual tools,
+roles/content, history and thinking variations. Preserve ordered nested JSON
+keys. Do not add independently tokenized prefix and suffix lengths. Model
+chat-template trimming can change separator whitespace after the reference;
+assert reference preservation separately from measured common-prefix length.
+Monty/CPython adapter equality and a finite Hugging Face oracle qualify only the
+exact tested artifacts and contexts. They establish no universal renderer
+compatibility, cache residency, recurrent-state reuse or answer quality.
+
+Keep configured model limits, architecture metadata and deployed runtime/cache
+limits separate. A fit against a hypothetical 262,144-token window does not
+establish that a server configured for 131,072 tokens can serve the package.
+Retain the full maximum measured request plus explicit additional-input/output
+allowances. Report overflow without clipping mandatory sources or disabling
+those allowances. Keep the failed package and its measurements for redesign.
+
+Never infer cache representation from a model's friendly name. In particular,
+INT4 weight metadata does not establish an INT4 KV cache. Read the exact retained
+configuration, including quantization configuration and per-layer architecture;
+a name containing AWQ is not proof of the configuration's quantization method.
+A configured SSM dtype or `use_cache` value is not an observation of the serving
+runtime's recurrent-state dtype or caching flags. Record deployment/backend,
+attention KV dtype, recurrent/checkpoint layout, object/group separation and
+cache-salt semantics from their own versioned runtime evidence. Preserve Unknown
+when that evidence is absent. Cache and source quality are independent gates.

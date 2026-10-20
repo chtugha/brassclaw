@@ -84,6 +84,8 @@ impl AgentLoopDriver for TextOnlyModelReplyDriver {
 
         let model_response = host
             .stream_model(LoopModelRequest {
+                work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+                dispatch_policy: Default::default(),
                 messages: prompt_bundle.messages,
                 surface_version: prompt_bundle.surface_version,
                 model_preference: None,

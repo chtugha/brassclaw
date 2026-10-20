@@ -55,3 +55,25 @@ fn finite_allocator_rejects_overflow_and_still_stops_native_monty_allocation() {
     assert!(String::from_utf8_lossy(&stopped.stderr).contains("exceeds the memory limit"));
     assert!(stopped.stdout.is_empty());
 }
+
+#[test]
+fn actual_oniguruma_c_allocations_obey_the_existing_worker_allocator() {
+    let worker = env!("CARGO_BIN_EXE_allocator_probe");
+    let observed = Command::new(worker)
+        .arg("onig-c-ownership")
+        .output()
+        .unwrap();
+    assert!(
+        observed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&observed.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(observed.stdout).unwrap().trim(),
+        "Oniguruma C allocation ownership preserved"
+    );
+    let stopped = Command::new(worker).arg("onig-c-memory").output().unwrap();
+    assert_eq!(stopped.status.code(), Some(monty_types::OOM_EXIT_CODE));
+    assert!(String::from_utf8_lossy(&stopped.stderr).contains("exceeds the memory limit"));
+    assert!(stopped.stdout.is_empty());
+}

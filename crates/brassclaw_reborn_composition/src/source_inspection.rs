@@ -8,18 +8,17 @@ use std::{
 use async_trait::async_trait;
 use brassclaw_host_api::{ResourceUsage, RuntimeDispatchErrorKind};
 use brassclaw_host_runtime::{
-    FirstPartyCapabilityError, FirstPartyCapabilityResult, PackagedExecutableImage,
-    SourceInspectionBackend,
+    FirstPartyCapabilityError, FirstPartyCapabilityResult, HostPrimitiveSettingsSource,
+    PackagedExecutableImage, SourceInspectionBackend,
 };
 use brassclaw_monty_host::{
     process::installed_worker,
     utility::{self, UtilityLimits, UtilityOutput, UtilityRequest},
 };
-use brassclaw_product_workflow::MontyVmSettingsStore;
 use serde_json::json;
 
 struct Bound {
-    settings: Arc<dyn MontyVmSettingsStore>,
+    settings: Arc<dyn HostPrimitiveSettingsSource>,
     worker: Arc<PackagedExecutableImage>,
 }
 
@@ -36,20 +35,21 @@ impl ContainedSourceInspection {
         }
     }
 
-    /// Installation owner binds after actual global settings acknowledgement,
-    /// before ingress. Candidate/model data cannot choose a worker or policy.
+    /// Bind the installation-owned settings source before qualification. It
+    /// supplies the exact selected bootstrap limits, then transitions to the
+    /// acknowledged live view before ingress. Candidate data chooses neither.
     pub(crate) async fn bind(
         &self,
-        settings: Arc<dyn MontyVmSettingsStore>,
+        settings: Arc<dyn HostPrimitiveSettingsSource>,
     ) -> Result<(), crate::RebornBuildError> {
         let fail = || crate::RebornBuildError::InvalidConfig {
             reason: "source inspection initialization failed".into(),
         };
-        let current = settings
-            .get("default", "default")
-            .await
-            .map_err(|_| fail())?;
-        let limits = UtilityLimits::from_execution(current.execution_limits).map_err(|_| fail())?;
+        if self.bound.read().map_err(|_| fail())?.is_some() {
+            return Err(fail());
+        }
+        let current = settings.snapshot().await.map_err(|_| fail())?;
+        let limits = UtilityLimits::from_execution(current.limits).map_err(|_| fail())?;
         let worker = Arc::new(
             PackagedExecutableImage::capture(
                 &installed_worker().map_err(|_| fail())?,
@@ -189,8 +189,8 @@ pub(crate) struct PreparedUtility {
     pub(crate) revision: u64,
 }
 impl ContainedSourceInspection {
-    /// Share the already retained worker and acknowledged settings with other
-    /// fixed preparation primitives. This exposes no arbitrary process command.
+    /// Share one retained worker/settings owner with fixed preparation
+    /// primitives. Bootstrap selection is private; ingress sees live ack limits.
     pub(crate) async fn prepare(&self) -> Result<PreparedUtility, FirstPartyCapabilityError> {
         let (settings, worker) = {
             let bound = self
@@ -203,15 +203,50 @@ impl ContainedSourceInspection {
             (bound.settings.clone(), bound.worker.clone())
         };
         let current = settings
-            .get("default", "default")
+            .snapshot()
             .await
             .map_err(|_| error(RuntimeDispatchErrorKind::OperationFailed))?;
-        let limits = UtilityLimits::from_execution(current.execution_limits)
+        let limits = UtilityLimits::from_execution(current.limits)
             .map_err(|_| error(RuntimeDispatchErrorKind::Resource))?;
         Ok(PreparedUtility {
             worker,
             limits,
             revision: current.revision,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn source_bootstrap_preparation_uses_the_selected_shared_settings_owner() {
+        let source = ContainedSourceInspection::new();
+        assert!(source.prepare().await.is_err());
+        let settings =
+            Arc::new(crate::host_primitive_settings::AcknowledgedPrimitiveSettings::new());
+        let limits = brassclaw_host_api::MontyExecutionLimits {
+            max_source_bytes: 4096,
+            max_compiled_source_bytes: 8192,
+            ..brassclaw_host_api::MontyExecutionLimits::default()
+        };
+        settings
+            .prepare_bootstrap(brassclaw_host_runtime::HostPrimitiveSettings {
+                revision: 7,
+                limits,
+            })
+            .unwrap();
+        source.bind(settings.clone()).await.unwrap();
+        let prepared = source.prepare().await.unwrap();
+        assert_eq!(prepared.revision, 7);
+        assert_eq!(prepared.limits.bounds.max_source_bytes, 4096);
+        assert_eq!(prepared.limits.bounds.max_compiled_source_bytes, 8192);
+        let identity = prepared.worker.checksum();
+        assert!(
+            source.bind(settings).await.is_err(),
+            "a retained preparation worker cannot be replaced"
+        );
+        assert_eq!(source.prepare().await.unwrap().worker.checksum(), identity);
     }
 }

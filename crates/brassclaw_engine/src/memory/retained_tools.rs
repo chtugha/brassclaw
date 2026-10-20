@@ -273,6 +273,16 @@ pub fn prepare_retained_tool_program(
             .and_then(Value::as_str)
             .filter(|id| !id.trim().is_empty())
             .ok_or_else(|| invalid("Tool capability identity required"))?;
+        if instruction.class() == super::retained_instruction::WorkflowClass::Deterministic
+            && matches!(
+                capability_id,
+                "builtin.shell" | "builtin.spawn_subagent" | "host.kohai_complete"
+            )
+        {
+            return Err(invalid(
+                "shell, subagent and model usages require the model tier",
+            ));
+        }
         if raw["format"] != "tool-skill-binding/1"
             || raw["tool_uuid"]
                 .as_str()

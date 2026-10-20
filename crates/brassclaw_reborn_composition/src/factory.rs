@@ -364,6 +364,9 @@ impl RebornLocalRuntimeServices {
 /// in `build_reborn_runtime` instead of `RebornLocalRuntimeServices`.
 #[cfg(feature = "postgres")]
 pub(crate) struct PgRuntimeStores {
+    #[cfg(feature = "skills-db")]
+    pub(crate) resource_store_settings:
+        Arc<crate::resource_store_settings::AcknowledgedResourceStoreSettings>,
     pub(crate) turn_state: Arc<brassclaw_turns::PgTurnStateStore>,
     pub(crate) checkpoint_state_store: Arc<dyn brassclaw_turns::CheckpointStateStore>,
     pub(crate) loop_checkpoint_store: Arc<dyn brassclaw_turns::LoopCheckpointStore>,
@@ -416,15 +419,21 @@ pub(crate) async fn build_pg_runtime_stores(
     } = build_budget_sinks();
     #[cfg(not(any(test, feature = "test-support")))]
     drop(in_memory_budget_event_sink);
+    #[cfg(feature = "skills-db")]
+    let resource_store_settings =
+        Arc::new(crate::resource_store_settings::AcknowledgedResourceStoreSettings::new());
     let pg_governor_store =
         brassclaw_resources::PgResourceGovernorStore::new(Arc::clone(&pool), tenant_id);
+    #[cfg(feature = "skills-db")]
+    let pg_governor_store = pg_governor_store.with_settings_source(resource_store_settings.clone());
     let resource_governor: Arc<dyn brassclaw_resources::ResourceGovernor> = Arc::new(
         brassclaw_resources::PersistentResourceGovernor::new(pg_governor_store)
             .with_event_sink(Arc::clone(&budget_event_sink)),
     );
-    let budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore> = Arc::new(
-        brassclaw_resources::PgBudgetGateStore::new(Arc::clone(&pool), tenant_id),
-    );
+    let pg_gate_store = brassclaw_resources::PgBudgetGateStore::new(Arc::clone(&pool), tenant_id);
+    #[cfg(feature = "skills-db")]
+    let pg_gate_store = pg_gate_store.with_settings_source(resource_store_settings.clone());
+    let budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore> = Arc::new(pg_gate_store);
     let event_log: Arc<dyn brassclaw_events::DurableEventLog> = Arc::new(
         brassclaw_reborn_event_store::PgDurableEventLog::new(Arc::clone(&pool), tenant_id),
     );
@@ -445,6 +454,8 @@ pub(crate) async fn build_pg_runtime_stores(
         (*pool).clone(),
     ));
     Ok(PgRuntimeStores {
+        #[cfg(feature = "skills-db")]
+        resource_store_settings,
         turn_state,
         checkpoint_state_store,
         loop_checkpoint_store,

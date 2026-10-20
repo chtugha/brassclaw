@@ -164,6 +164,20 @@ pub struct RetainPrefixDesignProposalRequest {
     pub proposal_bytes: String,
 }
 
+/// Offline evaluation of exact retained inputs. These explicit probe/limit
+/// assumptions are not verified provider capabilities or serving acceptance.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MeasurePrefixRequest {
+    pub expected_profile_revision: u64,
+    pub generation: String,
+    pub proposal: String,
+    pub artifact_set: String,
+    pub probes_json: String,
+    pub context_window_tokens: u64,
+    pub reserved_additional_input_tokens: u64,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegisterPrefixSourceRequest {
@@ -256,6 +270,15 @@ pub struct PrefixJobDetail {
 /// Interceptor configuration + control service (product-layer port).
 #[async_trait]
 pub trait InterceptorConfigService: Send + Sync {
+    async fn measure(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _job: &str,
+        _request: MeasurePrefixRequest,
+    ) -> Result<PrefixJobDetail, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
     async fn get_job(
         &self,
         _caller: WebUiAuthenticatedCaller,

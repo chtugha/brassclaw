@@ -195,9 +195,27 @@ impl ChatMessage {
     }
 }
 
+/// Submission bound selected by the operation owner, independent of provider
+/// connection defaults. This is no permission, retry approval or deduplication
+/// evidence. SingleSubmission permits at most one model request on the selected
+/// provider/model; decorators and SDK adapters must not resend or reroute it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderDispatchPolicy {
+    #[default]
+    Configured,
+    SingleSubmission,
+}
+impl ProviderDispatchPolicy {
+    pub fn allows_resubmission(self) -> bool {
+        self == Self::Configured
+    }
+}
+
 /// Request for a chat completion.
 #[derive(Debug, Clone)]
 pub struct CompletionRequest {
+    pub dispatch_policy: ProviderDispatchPolicy,
     pub messages: Vec<ChatMessage>,
     /// Optional per-request model override.
     pub model: Option<String>,
@@ -212,6 +230,7 @@ impl CompletionRequest {
     /// Create a new completion request.
     pub fn new(messages: Vec<ChatMessage>) -> Self {
         Self {
+            dispatch_policy: ProviderDispatchPolicy::Configured,
             messages,
             model: None,
             max_tokens: None,
@@ -247,22 +266,50 @@ impl CompletionRequest {
     }
 }
 
+/// Token usage from a single LLM call.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    /// Tokens served from the provider's server-side prompt cache (Anthropic).
+    pub cache_read_input_tokens: u32,
+    /// Tokens written to the provider's prompt cache (Anthropic).
+    pub cache_creation_input_tokens: u32,
+}
+
+impl TokenUsage {
+    /// Only complete representable observations become a known meter. Never
+    /// saturate an oversized counter or turn missing provider data into zero.
+    pub(crate) fn from_reported_counts(
+        input: Option<u64>,
+        output: Option<u64>,
+        cache_read: u64,
+        cache_creation: u64,
+    ) -> Option<Self> {
+        Some(Self {
+            input_tokens: u32::try_from(input?).ok()?,
+            output_tokens: u32::try_from(output?).ok()?,
+            cache_read_input_tokens: u32::try_from(cache_read).ok()?,
+            cache_creation_input_tokens: u32::try_from(cache_creation).ok()?,
+        })
+    }
+
+    pub fn total(&self) -> u64 {
+        u64::from(self.input_tokens) + u64::from(self.output_tokens)
+    }
+}
+
 /// Response from a chat completion.
 #[derive(Debug, Clone)]
 pub struct CompletionResponse {
     pub content: String,
-    pub input_tokens: u32,
-    pub output_tokens: u32,
+    /// None means that this exchange has no complete trustworthy meter.
+    /// Reported zero and a local cache hit remain explicit Some(zero).
+    pub usage: Option<TokenUsage>,
     pub finish_reason: FinishReason,
     /// Provider-emitted reasoning content, when the text-completion API returns
     /// a separate reasoning artifact.
     pub reasoning: Option<String>,
-    /// Tokens read from the provider's server-side prompt cache (Anthropic).
-    /// Zero when caching is not supported or on a cache miss.
-    pub cache_read_input_tokens: u32,
-    /// Tokens written to the provider's server-side prompt cache (Anthropic).
-    /// Zero when caching is not supported or no new prefix was cached.
-    pub cache_creation_input_tokens: u32,
 }
 
 /// Why the completion finished.
@@ -274,6 +321,115 @@ pub enum FinishReason {
     ContentFilter,
     #[default]
     Unknown,
+}
+
+impl FinishReason {
+    /// A completed terminal response can expose Tool proposals. Incomplete,
+    /// failed, missing and unknown status never become completion from content.
+    pub(crate) fn from_responses_status(
+        status: Option<&str>,
+        incomplete_reason: Option<&str>,
+        tools: bool,
+    ) -> Self {
+        match status {
+            Some("completed") => {
+                if tools {
+                    Self::ToolUse
+                } else {
+                    Self::Stop
+                }
+            }
+            Some("incomplete") => match incomplete_reason {
+                Some("max_output_tokens") => Self::Length,
+                Some("content_filter") => Self::ContentFilter,
+                _ => Self::Unknown,
+            },
+            _ => Self::Unknown,
+        }
+    }
+    pub(crate) fn from_chat_reason(reason: Option<&str>) -> Self {
+        match reason {
+            Some("stop") => Self::Stop,
+            Some("length") => Self::Length,
+            Some("tool_calls") => Self::ToolUse,
+            Some("content_filter") => Self::ContentFilter,
+            _ => Self::Unknown,
+        }
+    }
+    pub(crate) fn from_anthropic_reason(reason: Option<&str>) -> Self {
+        match reason {
+            Some("end_turn" | "stop_sequence") => Self::Stop,
+            Some("max_tokens" | "model_context_window_exceeded") => Self::Length,
+            Some("tool_use") => Self::ToolUse,
+            Some("refusal") => Self::ContentFilter,
+            _ => Self::Unknown,
+        }
+    }
+    pub(crate) fn from_ollama_reason(done: bool, reason: Option<&str>, tools: bool) -> Self {
+        if !done {
+            return Self::Unknown;
+        }
+        match reason {
+            Some("length") => Self::Length,
+            Some("stop") => {
+                if tools {
+                    Self::ToolUse
+                } else {
+                    Self::Stop
+                }
+            }
+            _ => Self::Unknown,
+        }
+    }
+    pub(crate) fn from_gemini_reason(reason: Option<&str>, tools: bool) -> Self {
+        match reason {
+            Some("STOP") => {
+                if tools {
+                    Self::ToolUse
+                } else {
+                    Self::Stop
+                }
+            }
+            Some("MAX_TOKENS") => Self::Length,
+            Some(
+                "SAFETY" | "RECITATION" | "LANGUAGE" | "BLOCKLIST" | "PROHIBITED_CONTENT" | "SPII"
+                | "IMAGE_SAFETY",
+            ) => Self::ContentFilter,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+/// A terminal event and an explicit status must agree. The typed event proves
+/// its status when that optional field is absent, but cannot override a null,
+/// unknown or conflicting status from the same response.
+pub(crate) fn responses_terminal_status(
+    event: &str,
+    response: &serde_json::Value,
+) -> Option<&'static str> {
+    if !response.is_object() {
+        return None;
+    }
+    let expected = match event {
+        "response.completed" => "completed",
+        "response.incomplete" => "incomplete",
+        "response.failed" => "failed",
+        _ => return None,
+    };
+    match response.get("status") {
+        None => Some(expected),
+        Some(value) if value.as_str() == Some(expected) => Some(expected),
+        _ => None,
+    }
+}
+
+/// Preserve malformed provider text as evidence, while the false flag prevents
+/// promotion to executable Tool proposals. Never substitute an empty object.
+pub(crate) fn decode_provider_arguments(raw: &str) -> (serde_json::Value, bool) {
+    match serde_json::from_str(raw) {
+        Ok(value) => (value, true),
+        Err(_) => (serde_json::Value::String(raw.to_owned()), false),
+    }
 }
 
 /// Definition of a tool for the LLM.
@@ -344,6 +500,7 @@ pub struct ToolResult {
 /// Request for a completion with tool use.
 #[derive(Debug, Clone)]
 pub struct ToolCompletionRequest {
+    pub dispatch_policy: ProviderDispatchPolicy,
     pub messages: Vec<ChatMessage>,
     pub tools: Vec<ToolDefinition>,
     /// Optional per-request model override.
@@ -361,6 +518,7 @@ impl ToolCompletionRequest {
     /// Create a new tool completion request.
     pub fn new(messages: Vec<ChatMessage>, tools: Vec<ToolDefinition>) -> Self {
         Self {
+            dispatch_policy: ProviderDispatchPolicy::Configured,
             messages,
             tools,
             model: None,
@@ -375,6 +533,7 @@ impl ToolCompletionRequest {
     /// Create a tool-aware request from the common completion envelope.
     pub fn from_completion_request(request: CompletionRequest, tools: Vec<ToolDefinition>) -> Self {
         let CompletionRequest {
+            dispatch_policy,
             messages,
             model,
             max_tokens,
@@ -383,6 +542,7 @@ impl ToolCompletionRequest {
             metadata,
         } = request;
         Self {
+            dispatch_policy,
             messages,
             tools,
             model,
@@ -450,13 +610,10 @@ pub struct ToolCompletionResponse {
     pub content: Option<String>,
     /// Tool calls requested by the model.
     pub tool_calls: Vec<ToolCall>,
-    pub input_tokens: u32,
-    pub output_tokens: u32,
+    /// None means that this exchange has no complete trustworthy meter.
+    /// Reported zero and a local cache hit remain explicit Some(zero).
+    pub usage: Option<TokenUsage>,
     pub finish_reason: FinishReason,
-    /// Tokens read from the provider's server-side prompt cache (Anthropic).
-    pub cache_read_input_tokens: u32,
-    /// Tokens written to the provider's server-side prompt cache (Anthropic).
-    pub cache_creation_input_tokens: u32,
     /// Provider-emitted reasoning content (DeepSeek `reasoning_content`,
     /// Gemini `thought_signature` parts, OpenRouter `reasoning_details`).
     /// Callers MUST attach this to the assistant `ChatMessage` they store

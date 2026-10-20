@@ -528,6 +528,7 @@ impl Backend {
             .collect::<Result<Vec<_>, FirstPartyCapabilityError>>()?;
         let profile = ModelProfileId::new("sempai_model").map_err(|_| error())?;
         let work = ModelWorkRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
             kind: ModelWorkKind::SempaiReview,
             model_profile_id: profile.clone(),
             resolved_model_route: None,
@@ -547,6 +548,7 @@ impl Backend {
         let mut reservation = Reservation {
             accountant: self.model.accountant.clone(),
             context: self.context.clone(),
+            request: work.clone(),
             armed: true,
         };
         let changed=self.pool.get().await.map_err(|_|error())?.execute(
@@ -557,6 +559,10 @@ impl Backend {
             return Err(error());
         }
         self.check().await?;
+        self.model
+            .accountant
+            .model_work_dispatching(&self.context, &work)
+            .map_err(|_| error())?;
         // Disarm before entering the gateway: dropping the provider future
         // after entry must never release an unknown-spend reservation.
         reservation.armed = false;
@@ -564,6 +570,8 @@ impl Backend {
             .model
             .gateway
             .stream_model(HostManagedModelRequest {
+                dispatch_policy:
+                    brassclaw_turns::run_profile::LoopModelDispatchPolicy::SingleSubmission,
                 model_profile_id: profile.clone(),
                 messages,
                 surface_version: None,
@@ -636,12 +644,14 @@ impl Backend {
 struct Reservation {
     accountant: Arc<dyn LoopModelBudgetAccountant>,
     context: LoopRunContext,
+    request: ModelWorkRequest,
     armed: bool,
 }
 impl Drop for Reservation {
     fn drop(&mut self) {
         if self.armed {
-            self.accountant.release_in_flight(&self.context);
+            self.accountant
+                .release_in_flight(&self.context, &self.request);
         }
     }
 }

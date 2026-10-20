@@ -153,6 +153,58 @@ class BaseCompilerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'partition'):
             render_deduplicated_prefix_reference('header', [{'path':'wrong','disposition':'included','reason':'test','text':'missing','units':[]}], [])
 
+    def test_trailing_inventory_keeps_metadata_changes_after_complete_reference(self):
+        view = 'literal-reference/v3-trailing-inventory'
+        def build(name, selected):
+            result = c.compile_package(self.package, self.root / name, evidence_view=selected)
+            directory = self.root / name / result['generation']
+            return result, directory, (directory / 'context.md').read_bytes()
+        first, directory, before = build('before', view)
+        _, _, old_before = build('old-before', 'literal-reference/v2-deduplicated')
+        self.records[-1]['reason'] = 'Re-reviewed historical source; original remains excluded.'
+        self.save()
+        second, after_directory, after = build('after', view)
+        _, _, old_after = build('old-after', 'literal-reference/v2-deduplicated')
+        boundary = before.index(b'# Source inventory\n')
+        self.assertGreater(boundary, before.rindex(b'<!-- END-EVIDENCE-CARD -->'))
+        self.assertEqual(before[:boundary], after[:boundary])
+        self.assertNotEqual(old_before.split(b'# Complete current references')[0], old_after.split(b'# Complete current references')[0])
+        self.assertNotEqual(first['generation'], second['generation'])
+        self.assertNotEqual(before[boundary:], after[boundary:])
+        self.assertEqual((directory / 'evidence.json').read_bytes(), (after_directory / 'evidence.json').read_bytes())
+        self.assertEqual((directory / 'render_map.json').read_bytes(), (after_directory / 'render_map.json').read_bytes())
+        for source in self.records:
+            raw = 'raw/' + source['sha256']
+            self.assertEqual((after_directory / raw).read_bytes(), (self.package / source['artifact']).read_bytes())
+
+    def test_stable_sharing_does_not_relabel_existing_units_for_appended_duplicate(self):
+        def build(name, view):
+            receipt = c.compile_package(self.package, self.root / name, evidence_view=view)
+            directory = self.root / name / receipt['generation']
+            return directory, (directory / 'context.md').read_bytes()
+        _, before = build('stable-before', 'literal-reference/v4-stable-sharing')
+        _, prior_before = build('trailing-before', 'literal-reference/v3-trailing-inventory')
+        self.add('zz/reused-guide.md', (ROOT / c.MANDATORY[0]).read_bytes())
+        self.save()
+        directory, after = build('stable-after', 'literal-reference/v4-stable-sharing')
+        _, prior_after = build('trailing-after', 'literal-reference/v3-trailing-inventory')
+        boundary = before.index(b'# Source inventory\n')
+        self.assertEqual(before[:boundary], after[:boundary])
+        self.assertNotEqual(prior_before[:prior_before.index(b'# Source inventory\n')], prior_after[:prior_before.index(b'# Source inventory\n')])
+        mapping = c.strict_json((directory / 'render_map.json').read_bytes())
+        cards = {card['path']: card for card in c.strict_json((directory / 'evidence.json').read_bytes())}
+        units = {unit['unit_id']: unit for unit in mapping['units']}
+        for source in mapping['sources']:
+            recovered = []
+            for part in source['parts']:
+                origin = units[part['unit_id']]['canonical']
+                original = cards[origin['source']]['excerpt'].splitlines(keepends=True)
+                text = ''.join(original[origin['line_start'] - 1:origin['line_end']])
+                self.assertEqual(c.sha(text.encode()), part['unit_id'])
+                recovered.append(text)
+            self.assertEqual(''.join(recovered), cards[source['source']]['excerpt'])
+        self.assertEqual(cards['zz/reused-guide.md']['excerpt'], cards[c.MANDATORY[0]]['excerpt'])
+
     def test_snapshot_uses_explicit_inventory_and_preserves_original_bytes(self):
         inventory = self.root / 'inventory.json'
         inventory.write_bytes(c.canonical({'format': 'brassclaw-prefix-source-inventory/1',
@@ -203,7 +255,7 @@ class BaseCompilerTests(unittest.TestCase):
         altered = json.loads(json.dumps(export))
         altered['components'].append(altered['components'][0])
         corrupt.write_bytes(c.canonical(altered))
-        with self.assertRaisesRegex(ValueError, 'duplicate component UUID'):
+        with self.assertRaisesRegex(ValueError, 'duplicate component (UUID|revision)'):
             c.catalogue_records(corrupt)
         altered = json.loads(json.dumps(export))
         altered['catalogue_bytes'] += ' '
@@ -216,6 +268,63 @@ class BaseCompilerTests(unittest.TestCase):
         # evidence: source identity changes, without manufacturing approval.
         corrupt.write_bytes(c.canonical(altered))
         self.assertNotEqual(c.catalogue_records(corrupt), c.catalogue_records(export_path))
+
+    @unittest.skipUnless(os.getenv('BRASSCLAW_TEST_CATALOGUE_EXPORT'), 'actual source transfer fixture required')
+    def test_versioned_transfer_preserves_revisions_without_approving_new_combinations(self):
+        # Parser-only mutation of actual transfer data. This does not manufacture
+        # approval, an activated catalogue or an execution result.
+        export = c.strict_json(Path(os.environ['BRASSCLAW_TEST_CATALOGUE_EXPORT']).read_bytes())
+        export['format'] = 'brassclaw-catalogue-source-export/2'
+        export['coverage'] = 'active-ordinary-plus-source-compiler-and-measurement-with-retained-root'
+        selections = [c.strict_json(source) for source in export['selections']]
+        counts = {}
+        for selection in selections:
+            for ref in selection['components']:
+                counts[ref['uuid']] = counts.get(ref['uuid'], 0) + 1
+        original = next(entry for entry in export['components']
+                        if counts.get(entry['reference']['uuid'], 0) > 1
+                        and entry['reference']['class_code'] == 0
+                        and not c.strict_json(entry['revision_bytes'])['dependencies'])
+        successor = json.loads(json.dumps(original))
+        document = c.strict_json(successor['revision_bytes'])
+        document['document']['transfer_fixture_note'] = 'new unapproved metadata, parser evidence only'
+        successor['revision_bytes'] = c.canonical(document).decode()
+        successor['reference']['version'] = 1 + max(entry['reference']['version'] for entry in export['components'] if entry['reference']['uuid'] == original['reference']['uuid'])
+        successor['reference']['checksum'] = c.sha(successor['revision_bytes'].encode())
+        export['components'].append(successor)
+        selected = next(selection for selection in selections
+                        if original['reference'] in selection['components'])
+        selected['components'] = [successor['reference'] if ref == original['reference'] else ref
+                                  for ref in selected['components']]
+        export['selections'] = [c.canonical(selection).decode() for selection in selections]
+        path = self.root / 'versioned-export.json'
+        path.write_bytes(c.canonical(export))
+        records = {name: body for name, body, *_ in c.catalogue_records(path)}
+        for entry in [original, successor]:
+            ref = entry['reference']
+            self.assertEqual(records[f"catalogue/components/{ref['uuid']}/v{ref['version']}.json"],
+                             entry['revision_bytes'].encode())
+        altered = json.loads(json.dumps(export))
+        altered['components'].append(successor)
+        path.write_bytes(c.canonical(altered))
+        with self.assertRaisesRegex(ValueError, 'duplicate component revision'):
+            c.catalogue_records(path)
+        altered = json.loads(json.dumps(export))
+        target = next(i for i, source in enumerate(altered['selections'])
+                      if successor['reference'] in c.strict_json(source)['components'])
+        mixed = c.strict_json(altered['selections'][target])
+        mixed['components'].append(original['reference'])
+        altered['selections'][target] = c.canonical(mixed).decode()
+        path.write_bytes(c.canonical(altered))
+        with self.assertRaisesRegex(ValueError, 'selected component source missing or conflicting'):
+            c.catalogue_records(path)
+        # The old monoversion contract still fails closed on this transfer.
+        altered = json.loads(json.dumps(export))
+        altered['format'] = 'brassclaw-catalogue-source-export/1'
+        altered['coverage'] = 'active-ordinary-workflows-and-retained-root'
+        path.write_bytes(c.canonical(altered))
+        with self.assertRaisesRegex(ValueError, 'duplicate component UUID'):
+            c.catalogue_records(path)
 
     @unittest.skipUnless(os.getenv('ORNITH_TEST_TOKENIZER'), 'actual local tokenizer required')
     def test_actual_cli_token_geometry_capacity_and_no_publication_on_failure(self):

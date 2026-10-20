@@ -74,6 +74,8 @@ impl ExecutorStage<ModelInput> for ModelStage {
         let surface_version = input.surface_version;
         let capability_view = input.capability_view;
         let mut request = LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: input.messages,
             surface_version: Some(surface_version.clone()),
             model_preference,

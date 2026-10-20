@@ -2638,6 +2638,9 @@ pub async fn build_reborn_runtime(
     // Nuclear #1: defaults resolve once at the composition root with
     // explicit precedence and a `validate()` call instead of being
     // re-read by the wiring helper).
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let model_quote_settings =
+        Arc::new(crate::model_quote_settings::AcknowledgedModelQuoteSettings::new());
     let model_budget_accountant: Option<
         Arc<dyn brassclaw_turns::run_profile::LoopModelBudgetAccountant>,
     > = match trusted_laptop_access {
@@ -2676,12 +2679,22 @@ pub async fn build_reborn_runtime(
             // the governor writes to, so `BudgetEvent::GateOpened`
             // (emitted by the accountant) lands on the same downstream
             // projection as the governor's `Warned` / `Denied` events.
-            let accountant = crate::build_default_budget_accountant(
+            let accountant = crate::budget::build_default_budget_accountant_with_quote_settings(
                 Arc::clone(&resource_governor_for_accountant),
                 cost_table,
                 Arc::clone(&budget_gate_store_for_accountant),
                 Arc::clone(&budget_event_sink_for_accountant),
                 &resolved_budget_defaults,
+                {
+                    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+                    {
+                        Some(model_quote_settings.clone())
+                    }
+                    #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
+                    {
+                        None
+                    }
+                },
             );
             Some(accountant)
         }
@@ -2831,6 +2844,17 @@ pub async fn build_reborn_runtime(
                 .map(ToString::to_string)
                 .unwrap_or_else(|| "default".into()),
         };
+        let primitive_settings = services.primitive_settings.as_ref().ok_or_else(|| {
+            RebornRuntimeError::InvalidArgument {
+                reason: "Host primitives require their acknowledged settings source".into(),
+            }
+        })?;
+        let resource_store_settings = &pg_stores
+            .as_ref()
+            .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                reason: "global Monty requires PostgreSQL resource stores".into(),
+            })?
+            .resource_store_settings;
         let (owner, catalogue, initial_settings, memory_measurement_status) =
             crate::global_monty_startup::start(
                 pool.clone(),
@@ -2841,6 +2865,14 @@ pub async fn build_reborn_runtime(
                 })?,
                 &scope,
                 substrate_memory_mounts.clone(),
+                primitive_settings,
+                services.source_inspection.as_ref().ok_or_else(|| {
+                    RebornRuntimeError::InvalidArgument {
+                        reason: "source inspection requires its registered contained backend"
+                            .into(),
+                    }
+                })?,
+                resource_store_settings,
             )
             .await?;
         let settings_owner = crate::live_monty_settings::MontySettingsOwner::start(
@@ -2859,12 +2891,17 @@ pub async fn build_reborn_runtime(
         .map_err(|error| RebornRuntimeError::InvalidArgument {
             reason: error.to_string(),
         })?;
-        services
-            .primitive_settings
-            .as_ref()
-            .ok_or_else(|| RebornRuntimeError::InvalidArgument {
-                reason: "Memory primitives require their acknowledged settings source".into(),
-            })?
+        model_quote_settings
+            .bind(settings_owner.store().model_quote_policy_source())
+            .map_err(|reason| RebornRuntimeError::InvalidArgument {
+                reason: reason.into(),
+            })?;
+        resource_store_settings
+            .bind(settings_owner.store().resource_store_policy_source())
+            .map_err(|reason| RebornRuntimeError::InvalidArgument {
+                reason: reason.into(),
+            })?;
+        primitive_settings
             .bind(settings_owner.store().effective_view())
             .await
             .map_err(|error| RebornRuntimeError::InvalidArgument {
@@ -2872,17 +2909,6 @@ pub async fn build_reborn_runtime(
             })?;
         catalogue
             .bind_preparation_settings(settings_owner.store().effective_view())
-            .map_err(|error| RebornRuntimeError::InvalidArgument {
-                reason: error.to_string(),
-            })?;
-        services
-            .source_inspection
-            .as_ref()
-            .ok_or_else(|| RebornRuntimeError::InvalidArgument {
-                reason: "source inspection requires its registered contained backend".into(),
-            })?
-            .bind(settings_owner.store().effective_view())
-            .await
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
             })?;
@@ -4080,11 +4106,31 @@ mod tests {
         feature = "skills-db",
         feature = "root-llm-provider"
     ))]
+    #[path = "canonical_model_usage_tests.rs"]
+    mod canonical_model_usage_tests;
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    #[path = "json_primitive_tests.rs"]
+    mod json_primitive_tests;
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
     #[path = "model_discovery_tests.rs"]
     mod model_discovery_tests;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "model_encoding_tests.rs"]
     mod model_encoding_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "model_quote_settings_tests.rs"]
+    mod model_quote_settings_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "model_response_usage_tests.rs"]
+    mod model_response_usage_tests;
     #[path = "../../../tests/common/native_http.rs"]
     mod native_http;
     #[cfg(all(
@@ -4101,6 +4147,9 @@ mod tests {
     ))]
     #[path = "provider_request_policy_tests.rs"]
     mod provider_request_policy_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "resource_store_settings_tests.rs"]
+    mod resource_store_settings_tests;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "source_inspection_tests.rs"]
     mod source_inspection_tests;
@@ -4260,12 +4309,15 @@ mod tests {
                 assert!(bundle["transcript"].as_array().unwrap().len() >= 2);
                 Ok(CompletionResponse {
                     content: self.response.clone(),
-                    input_tokens: 123,
-                    output_tokens: 45,
+                    usage: Some(brassclaw_llm::TokenUsage {
+                        input_tokens: 123,
+                        output_tokens: 45,
+                        cache_read_input_tokens: 0,
+                        cache_creation_input_tokens: 0,
+                    }),
+
                     finish_reason: FinishReason::Stop,
                     reasoning: None,
-                    cache_read_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
                 })
             }
             async fn complete_with_tools(
@@ -6615,6 +6667,7 @@ mod tests {
     #[cfg(feature = "root-llm-provider")]
     fn nearai_gateway_test_request() -> HostManagedModelRequest {
         HostManagedModelRequest {
+            dispatch_policy: Default::default(),
             model_profile_id: brassclaw_turns::run_profile::ModelProfileId::new(
                 "interactive_model",
             )

@@ -48,7 +48,10 @@ pub use period::{
     BudgetPeriod, BudgetThresholds, BudgetThresholdsError, PeriodUnit, period_bounds,
     period_has_rolled_over,
 };
-pub use pg_store::{PgBudgetGateStore, PgResourceGovernorStore};
+pub use pg_store::{
+    PgBudgetGateStore, PgResourceGovernorStore, PgResourceStoreSettings,
+    PgResourceStoreSettingsSource,
+};
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -795,16 +798,46 @@ fn current_resource_governor_snapshot_schema_version() -> u32 {
     RESOURCE_GOVERNOR_SNAPSHOT_SCHEMA_VERSION
 }
 
+/// A trusted snapshot inspection declares whether its result needs a write.
+#[derive(Debug)]
+pub enum ResourceSnapshotUpdate<T> {
+    /// The closure made no change requiring persistence.
+    Unchanged(T),
+    /// Persist the modified snapshot before returning its result.
+    Changed(T),
+}
+
 /// Transactional storage primitive for [`PersistentResourceGovernor`].
 ///
-/// Implementations must serialize the whole closure with any other readers or
-/// writers over the same account-wide ledger before writing the updated
-/// snapshot back durably.
+/// Changed snapshots require serialization or a version-checked commit;
+/// conflicts fail without replaying the closure. An unchanged inspection may
+/// return the consistent generation it read without acquiring a write/CAS.
 pub trait ResourceGovernorStore: Send + Sync + 'static {
     fn update<T, F>(&self, update: F) -> Result<T, ResourceError>
     where
         T: Send + 'static,
         F: FnOnce(&mut ResourceGovernorSnapshot) -> Result<T, ResourceError> + Send + 'static;
+
+    /// Trusted inspection that may advance a ledger period. Returning
+    /// `Unchanged` permits a backend to omit its write/CAS; the result must
+    /// then describe the snapshot it read, without requiring any mutation.
+    /// The default preserves existing stores' transactional write behavior.
+    fn update_if_changed<T, F>(&self, update: F) -> Result<T, ResourceError>
+    where
+        T: Send + 'static,
+        F: FnOnce(
+                &mut ResourceGovernorSnapshot,
+            ) -> Result<ResourceSnapshotUpdate<T>, ResourceError>
+            + Send
+            + 'static,
+    {
+        self.update(move |snapshot| {
+            update(snapshot).map(|result| match result {
+                ResourceSnapshotUpdate::Unchanged(value)
+                | ResourceSnapshotUpdate::Changed(value) => value,
+            })
+        })
+    }
 }
 
 /// File-backed resource-governor store using a stable sidecar lock file around
@@ -1296,12 +1329,19 @@ where
     ) -> Result<Option<AccountSnapshot>, ResourceError> {
         let account = account.clone();
         let now = self.clock.now();
-        self.store.update(move |snapshot| {
-            Ok(account_snapshot_in_state(
-                &mut snapshot.state,
-                &account,
-                now,
-            ))
+        self.store.update_if_changed(move |snapshot| {
+            let prior_anchor = snapshot.state.period_anchors.get(&account).copied();
+            let result = account_snapshot_in_state(&mut snapshot.state, &account, now);
+            // Inspection only mutates state when advance_period_if_rolled_over
+            // installs a successor anchor (including a formerly missing one).
+            // A rollover must still commit; ordinary status reads need no CAS.
+            Ok(
+                if snapshot.state.period_anchors.get(&account).copied() == prior_anchor {
+                    ResourceSnapshotUpdate::Unchanged(result)
+                } else {
+                    ResourceSnapshotUpdate::Changed(result)
+                },
+            )
         })
     }
 }
@@ -1809,11 +1849,27 @@ fn set_limit_in_state(
     if prior_period.as_ref() != Some(&new_period) {
         state.usage_by_account.remove(&account);
         state.period_anchors.remove(&account);
+    } else {
+        // Changing a cap does not restart its current accounting window. An
+        // already expired window must advance before the new cap is installed,
+        // rather than carrying old spend into a freshly extended period.
+        advance_period_if_rolled_over(state, &account, now);
     }
     state.limits.insert(account.clone(), limits);
-    // Set initial period anchor so subsequent reserves see correct bounds.
-    let (_, period_end) = period_bounds(&new_period, now);
-    state.period_anchors.insert(account, period_end);
+    if matches!(&new_period, BudgetPeriod::PerInvocation) {
+        // Preserve the legacy per-invocation metadata behavior. This change
+        // does not reinterpret or weaken those existing limits.
+        state
+            .period_anchors
+            .insert(account, period_bounds(&new_period, now).1);
+    } else {
+        // New/changed timed periods need an initial anchor; an active unchanged
+        // period keeps it and a rollover already installed its successor.
+        state
+            .period_anchors
+            .entry(account)
+            .or_insert_with(|| period_bounds(&new_period, now).1);
+    }
 }
 
 fn advance_period_if_rolled_over(

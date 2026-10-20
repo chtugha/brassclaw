@@ -60,6 +60,19 @@ pub fn build_default_budget_accountant(
     event_sink: Arc<dyn BudgetEventSink>,
     defaults: &BudgetDefaults,
 ) -> Arc<dyn LoopModelBudgetAccountant> {
+    build_default_budget_accountant_with_quote_settings(
+        governor, cost_table, gate_store, event_sink, defaults, None,
+    )
+}
+
+pub(crate) fn build_default_budget_accountant_with_quote_settings(
+    governor: Arc<dyn ResourceGovernor>,
+    cost_table: Arc<dyn ModelCostTable>,
+    gate_store: Arc<dyn BudgetGateStore>,
+    event_sink: Arc<dyn BudgetEventSink>,
+    defaults: &BudgetDefaults,
+    quote_settings: Option<Arc<dyn brassclaw_loop_support::ModelQuoteSettingsSource>>,
+) -> Arc<dyn LoopModelBudgetAccountant> {
     let user_daily_usd = Decimal::from_f64_retain(defaults.user_daily_usd).unwrap_or_default();
     let project_daily_usd =
         Decimal::from_f64_retain(defaults.project_daily_usd).unwrap_or_default();
@@ -79,6 +92,10 @@ pub fn build_default_budget_accountant(
         .with_seeding_policy(seeding_policy)
         .with_gate_store(gate_store)
         .with_event_sink(event_sink);
+    let accountant = match quote_settings {
+        Some(source) => accountant.with_quote_settings(source),
+        None => accountant,
+    };
     Arc::new(accountant)
 }
 
@@ -116,6 +133,8 @@ mod tests {
         // Drive one `pre_model_call` to fire the seeding policy.
         let context = test_run_context("tenant-shared-helper", "alice-shared-helper");
         let request = brassclaw_turns::run_profile::LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: vec![],
             surface_version: None,
             model_preference: None,

@@ -308,9 +308,13 @@ Follow this short workflow before reading domain examples as implementation idea
    invocation body, find the actual module-level `result =` statement: a comment promising it
    or `return` inside a helper is insufficient. Prefer a direct result assignment
    for a small pure-logic guard. If a helper is used, include its definition AND
-   the call that supplies this task's inputs and assigns result. Emit proposed
-   components before the final summary where the host schema permits field order;
-   describe only what the emitted body actually contains. Do not call a missing
+   the call that supplies this task's inputs and assigns result. Construct and check
+   the complete proposed component list internally, then serialize the host's exact
+   field order. When the decoder requires composition_summary before
+   proposed_components, emit the summary first; internal planning order does not
+   change serialization order. An empty component array means no component was
+   proposed, so never claim an export or component exists when that array is empty.
+   Describe only what the emitted body actually contains. Do not call a missing
    helper or claim that a helper-only body is a runnable invocation. A preload-only
    artifact instead exposes the declared function without calling it during load.
    A Recipe constructor contains the workflow metadata and references, not host

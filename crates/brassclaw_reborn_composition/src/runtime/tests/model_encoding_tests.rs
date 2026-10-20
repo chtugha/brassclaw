@@ -1,4 +1,8 @@
 //! Actual native registration + immutable model store + retained worker boundary.
+#[path = "prefix_measurement_execution_tests.rs"]
+mod prefix_measurement_execution_tests;
+#[path = "prefix_measurement_job_tests.rs"]
+mod prefix_measurement_job_tests;
 use super::*;
 use crate::runtime::RebornRuntime;
 use brassclaw_authorization::{
@@ -20,6 +24,7 @@ use uuid::Uuid;
 
 pub(super) async fn assert_registered_encoding(
     runtime: &Arc<RebornRuntime>,
+    app: &axum::Router,
     specification: &str,
     artifact_set: &str,
     prefix_job_id: Uuid,
@@ -36,7 +41,22 @@ pub(super) async fn assert_registered_encoding(
         native.native_input_schema().unwrap()["additionalProperties"],
         false
     );
-    let tool = Uuid::new_v4();
+    let tool = crate::builtin_bootstrap::seed_model_encoding_tool(
+        runtime.installed_catalogue.pool.clone(),
+        runtime.webui_tenant_id(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        tool,
+        crate::builtin_bootstrap::seed_model_encoding_tool(
+            runtime.installed_catalogue.pool.clone(),
+            runtime.webui_tenant_id()
+        )
+        .await
+        .unwrap(),
+        "registration must preserve the existing stable identity"
+    );
     let snapshot = |revision, enabled| StableToolPolicySnapshot {
         revision,
         tools: HashMap::from([(
@@ -318,6 +338,24 @@ pub(super) async fn assert_registered_encoding(
             .join(",")
     );
     assert_capacity_comparison(runtime, measured.output.as_str().unwrap()).await;
+    let measurement = inspect_measurement_recipe(runtime, tool, identity).await;
+    prefix_measurement_execution_tests::execute_candidate(
+        runtime,
+        measurement,
+        &template_input,
+        &prefix,
+        &original_template,
+        &effective,
+    )
+    .await;
+    prefix_measurement_job_tests::assert_durable_measurement(
+        runtime,
+        app,
+        generation,
+        &template_input,
+        &effective,
+    )
+    .await;
     let mut invalid_template = template_input;
     invalid_template["template_utf8"] = json!("{{ raise_exception('reject supplied template') }}");
     assert!(
@@ -574,4 +612,90 @@ async fn inspect_pure_prefix_draft(
     assert!(structure.direct_host_calls.is_empty());
     assert_eq!(structure.host_value_references, 0);
     assert!(structure.preload.is_some());
+}
+
+async fn inspect_measurement_recipe(
+    runtime: &Arc<RebornRuntime>,
+    model_tool: Uuid,
+    model_identity: brassclaw_host_runtime::NativeImplementationRef,
+) -> Arc<brassclaw_engine::executor::retained_source::InspectedRetainedProgram> {
+    let inspected = runtime.installed_catalogue._measurement_candidate.clone();
+    let brassclaw_engine::executor::retained_recipe::RetainedProgram::Tools(program) =
+        inspected.program()
+    else {
+        panic!("measurement Tool program required");
+    };
+    assert_eq!(
+        program.inputs().instruction().recipe().uuid,
+        crate::installed_monty_catalogue::id("prefix-measurement:recipe")
+    );
+    assert_eq!(program.bindings().len(), 2);
+    let digest = &program.bindings()["0:5"];
+    let encoding = &program.bindings()["0:7"];
+    assert_eq!(
+        digest.capability_id(),
+        brassclaw_host_runtime::JSON_CAPABILITY_ID
+    );
+    assert_eq!(encoding.capability_id(), MODEL_ENCODING_CAPABILITY_ID);
+    assert_eq!(encoding.tool().uuid, model_tool);
+    assert_eq!(
+        program.inputs().instruction().snapshot().revisions()[&model_tool]
+            .draft()
+            .document()["implementation"]["identity"],
+        serde_json::to_value(model_identity).unwrap()
+    );
+    assert!(
+        runtime
+            .installed_catalogue
+            .compiler_approval
+            .as_ref()
+            .unwrap()
+            .usage_approval(digest)
+            .is_some(),
+        "reuse the exact qualified digest combination"
+    );
+    assert!(
+        runtime
+            .installed_catalogue
+            .encoding_approvals
+            .iter()
+            .any(|approval| approval.usage_approval(encoding).is_some()),
+        "reuse the exact qualified template-encoding combination"
+    );
+    assert!(
+        program
+            .inputs()
+            .instruction()
+            .association_approvals()
+            .is_empty(),
+        "leaf qualification alone cannot approve the measurement workflow"
+    );
+    assert_eq!(
+        inspected.invocation("0:8"),
+        Some("result = verify_template_measurement(inputs=inputs)")
+    );
+    assert_eq!(
+        inspected.invocation("0:9"),
+        Some("result = assess_prefix_capacity(inputs=inputs)")
+    );
+    assert_eq!(
+        inspected.invocation("0:10"),
+        Some("result = format_prefix_capacity_result(inputs=inputs)")
+    );
+    let qualified = runtime
+        .installed_catalogue
+        ._measurement_program
+        .as_ref()
+        .expect("qualified private measurement program")
+        .clone();
+    assert_eq!(
+        qualified
+            .program()
+            .inputs()
+            .instruction()
+            .association_approvals()
+            .len(),
+        2
+    );
+    qualified
 }

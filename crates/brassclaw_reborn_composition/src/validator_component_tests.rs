@@ -851,3 +851,136 @@ async fn validator_aggregation_requires_exact_coverage_and_consistent_results_in
     );
     assert!(output.validate(&json!({"pass":1,"errors":[]})).is_err());
 }
+
+/// Development qualification of R03's pure projection using the actual worker.
+/// This is not an activated Recipe or the protected root's response handler.
+pub(crate) async fn assert_model_answer_projection(response: Value, expected: &str) {
+    use brassclaw_skills::model_completion_components::{
+        MODEL_ANSWER_TEXT_SOURCE, model_answer_text_draft,
+    };
+    let draft = model_answer_text_draft(Uuid::new_v4()).unwrap();
+    let checksum = draft.checksum();
+    let inputs =
+        InputContract::from_value(&draft.document()["input_contract"], REVISION_LIMITS).unwrap();
+    let output =
+        ValueContract::result_from_value(&draft.document()["result_contract"], REVISION_LIMITS)
+            .unwrap();
+    let value = json!({"response":response});
+    inputs.bind(&value).unwrap();
+    let limits =
+        UtilityLimits::from_execution(brassclaw_host_api::MontyExecutionLimits::default()).unwrap();
+    let UtilityOutput::Evaluated {
+        value: actual,
+        stdout,
+    } = utility::execute(
+        &installed_worker().unwrap(),
+        UtilityRequest::Evaluate {
+            source: format!("{MODEL_ANSWER_TEXT_SOURCE}\nextract_model_answer(inputs)\n"),
+            inputs: BTreeMap::from([("inputs".into(), value)]),
+            bounds: limits.bounds,
+            max_compute_time: Duration::from_secs(5),
+        },
+        limits.process,
+    )
+    .await
+    .unwrap()
+    else {
+        panic!("actual typed Monty projection required")
+    };
+    assert!(stdout.is_empty());
+    output.validate(&actual).unwrap();
+    assert_eq!(actual, json!(expected));
+    assert_eq!(draft.checksum(), checksum);
+}
+
+#[tokio::test]
+async fn model_answer_projection_checks_actual_wire_profile_without_erasing_unknown_usage() {
+    use brassclaw_skills::model_completion_components::{
+        assistant_model_response_schema, model_answer_text_draft,
+    };
+    use brassclaw_turns::run_profile::{
+        AssistantReply, LoopModelResponse, LoopModelUsage, ModelProfileId, ModelStreamChunk,
+        ParentLoopOutput,
+    };
+    let text = "' ü\n{{vars.answer}} {\"ok\":false}\nraise RuntimeError('data')";
+    let mut response = LoopModelResponse {
+        chunks: vec![ModelStreamChunk {
+            safe_text_delta: text.into(),
+        }],
+        safe_reasoning_deltas: vec![],
+        output: ParentLoopOutput::AssistantReply(AssistantReply {
+            content: text.into(),
+        }),
+        effective_model_profile_id: ModelProfileId::new("selected_model").unwrap(),
+        usage: None,
+    };
+    let wire = serde_json::to_value(&response).unwrap();
+    assert!(!wire.as_object().unwrap().contains_key("usage"));
+    assert_model_answer_projection(wire.clone(), text).await;
+    response.output = ParentLoopOutput::AssistantReply(AssistantReply { content: "".into() });
+    response.safe_reasoning_deltas = vec!["retained observation".into()];
+    response.usage = Some(LoopModelUsage {
+        input_tokens: 17,
+        output_tokens: 3,
+        cache_read_input_tokens: u32::MAX,
+        cache_creation_input_tokens: 0,
+    });
+    assert_model_answer_projection(serde_json::to_value(&response).unwrap(), "").await;
+    let profile =
+        ValueContract::result_from_value(&assistant_model_response_schema(), REVISION_LIMITS)
+            .unwrap();
+    let draft = model_answer_text_draft(Uuid::new_v4()).unwrap();
+    let input =
+        InputContract::from_value(&draft.document()["input_contract"], REVISION_LIMITS).unwrap();
+    profile
+        .require_compatible_input(&input, "response")
+        .unwrap();
+    let original = wire.clone();
+    for path in [
+        "/chunks",
+        "/chunks/0/safe_text_delta",
+        "/output",
+        "/output/assistant_reply",
+        "/output/assistant_reply/content",
+        "/effective_model_profile_id",
+    ] {
+        let mut invalid = wire.clone();
+        *invalid.pointer_mut(path).unwrap() = Value::Null;
+        assert!(profile.validate(&invalid).is_err(), "{path}");
+    }
+    for key in ["chunks", "output", "effective_model_profile_id"] {
+        let mut invalid = wire.clone();
+        invalid.as_object_mut().unwrap().remove(key);
+        assert!(profile.validate(&invalid).is_err(), "{key}");
+    }
+    for (key, value) in [
+        ("usage", Value::Null),
+        ("safe_reasoning_deltas", Value::Null),
+        ("unknown", json!(true)),
+    ] {
+        let mut invalid = wire.clone();
+        invalid[key] = value;
+        assert!(profile.validate(&invalid).is_err(), "{key}");
+    }
+    let known = serde_json::to_value(&response).unwrap();
+    for value in [
+        json!(-1),
+        json!(4294967296_u64),
+        json!(true),
+        json!(1.5),
+        Value::Null,
+    ] {
+        let mut invalid = known.clone();
+        invalid["usage"]["input_tokens"] = value;
+        assert!(profile.validate(&invalid).is_err());
+    }
+    response.output = ParentLoopOutput::CapabilityCalls(vec![]);
+    assert!(
+        profile
+            .validate(&serde_json::to_value(&response).unwrap())
+            .is_err()
+    );
+    profile.validate(&wire).unwrap();
+    assert_eq!(wire, original);
+    assert!(model_answer_text_draft(Uuid::nil()).is_err());
+}

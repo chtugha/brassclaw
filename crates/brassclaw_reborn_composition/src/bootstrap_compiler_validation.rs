@@ -7,7 +7,7 @@ use crate::{
     bootstrap_recipe_flow::{self, Request},
     bootstrap_reply_validation::invalid,
     bootstrap_validation,
-    global_recipe_ports::{InternalRecipeSource, RecipeCapacity, SelectedMontyRecipe},
+    global_recipe_ports::{InternalRecipeSource, SelectedMontyRecipe},
     monty_kernel::MontyKernelSnapshot,
 };
 use async_trait::async_trait;
@@ -20,11 +20,9 @@ use brassclaw_engine::executor::{
 };
 use brassclaw_monty_host::{
     VmFailure,
-    global::{GlobalBounds, Lifecycle},
-    heap::HeapSettings,
-    process::{PortAnswer, ProcessFailure, RecipeCommand, RootBoot, TaskSettings, WorkerCommand},
+    global::Lifecycle,
+    process::{PortAnswer, ProcessFailure, RecipeCommand, WorkerCommand},
     service::{PortFailure, TaskOutcome},
-    transport_actor::ActorLimits,
 };
 use brassclaw_pg::PgPool;
 use brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS;
@@ -34,7 +32,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,
     sync::Arc,
-    time::Duration,
 };
 use tokio_postgres::Transaction;
 
@@ -50,6 +47,26 @@ const CASES: &[(&str, &str, &str)] = &[
         "maker-deduplicated",
         "prefix-maker",
         "literal-reference/v2-deduplicated",
+    ),
+    (
+        "base-trailing-inventory",
+        "base-prompt",
+        "literal-reference/v3-trailing-inventory",
+    ),
+    (
+        "maker-trailing-inventory",
+        "prefix-maker",
+        "literal-reference/v3-trailing-inventory",
+    ),
+    (
+        "base-stable-sharing",
+        "base-prompt",
+        "literal-reference/v4-stable-sharing",
+    ),
+    (
+        "maker-stable-sharing",
+        "prefix-maker",
+        "literal-reference/v4-stable-sharing",
     ),
     ("duplicate", "base-prompt", "literal-reference/v1"),
     ("missing-guide", "base-prompt", "literal-reference/v1"),
@@ -142,23 +159,6 @@ pub(super) async fn execute(
     .await
     .map_err(invalid)?;
     let limits = inspected.preparation_limits();
-    let mut process = limits.process;
-    let frame = 8 * 1024 * 1024;
-    check(
-        frame <= process.max_frame_bytes
-            && limits.bounds.max_source_bytes <= frame
-            && limits.bounds.max_stdout_bytes <= frame,
-        "closed compiler fixtures exceed configured frame",
-    )?;
-    process.max_frame_bytes = frame;
-    let adapter = brassclaw_host_api::DEFAULT_MONTY_ADAPTER_RESERVE_BYTES as usize;
-    let heap = process
-        .hard_memory_bytes
-        .checked_sub(2 * frame + adapter)
-        .filter(|heap| *heap > frame)
-        .ok_or_else(|| invalid("compiler fixture containment exceeds configured memory"))?;
-    let mut bounds = limits.bounds;
-    bounds.max_value_bytes = frame;
     let client = pool.get().await.map_err(invalid)?;
     let serving: Value = client.query_one("SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY to_jsonb(s)::text),'[]'::jsonb) FROM reborn_basic_prompt_store s",&[]).await.map_err(invalid)?.get(0);
     drop(client);
@@ -201,46 +201,11 @@ pub(super) async fn execute(
         )?;
         let observed = bootstrap_recipe_flow::execute(
             &admitted,
-            Request {
-                worker: worker.to_owned(),
-                process,
-                actor: ActorLimits {
-                    max_unclaimed: 8,
-                    max_reserved_frame_bytes: 2 * frame,
-                    max_control_unclaimed: 8,
-                    max_control_reserved_frame_bytes: 2 * frame,
-                },
-                capacity: RecipeCapacity {
-                    revision: 1,
-                    max_recipes: 8,
-                    data_limits: brassclaw_skills::value_contract::ContractLimits {
-                        max_bytes: frame,
-                        ..EXECUTION_DATA_LIMITS
-                    },
-                },
-                boot: RootBoot {
-                    source: root.source().to_owned(),
-                    checksum: root.source_checksum(),
-                    aliases: root.ports().iter().cloned().collect(),
-                    bounds: GlobalBounds {
-                        values: bounds,
-                        workers: 1,
-                        max_pending_calls: 8,
-                    },
-                    heap_settings: Some(HeapSettings {
-                        revision: 1,
-                        max_vm_bytes: heap,
-                    }),
-                    adapter_reserve_bytes: adapter,
-                    startup_timeout: Duration::from_secs(10),
-                    task_settings: TaskSettings {
-                        revision: 1,
-                        max_compute_time: Duration::from_secs(30),
-                        token_budgets_enabled: false,
-                    },
-                    max_recipe_contexts: 8,
-                },
-                source: Arc::new(Invocation {
+            Request::contained(
+                worker.to_owned(),
+                limits,
+                &root,
+                Arc::new(Invocation {
                     reference,
                     inputs: inputs.clone(),
                     fixture: fixture.clone(),
@@ -248,7 +213,7 @@ pub(super) async fn execute(
                     tools,
                     pool: pool.clone(),
                 }),
-            },
+            )?,
         )
         .await?;
         let success = !matches!(name, "missing-guide" | "denied" | "invalid-revision");

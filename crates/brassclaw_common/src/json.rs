@@ -1,6 +1,12 @@
 //! Shared JSON serialization mechanics. Callers own admission, resource policy
 //! and writer bounds. Stack growth protects Serde callbacks only; it does not
 //! make a value's Clone, Drop, Display or arbitrary application traversal safe.
+mod read;
+pub use read::{
+    DuplicateKeys, JsonDocument, JsonReadError, JsonReadLimits, check_json_value, clone_json,
+    read_json,
+};
+
 use std::io::{self, Write};
 
 use serde::Serialize;
@@ -22,6 +28,17 @@ pub fn write_json<W: Write, T: Serialize + ?Sized>(
     value: &T,
 ) -> Result<(), JsonWriteError> {
     let mut serializer = serde_json::Serializer::new(writer);
+    value
+        .serialize(serde_stacker::Serializer::new(&mut serializer))
+        .map_err(|_| JsonWriteError::Encoding)
+}
+
+/// Pretty encoding with the same guarded callbacks as compact encoding.
+pub fn write_json_pretty<W: Write, T: Serialize + ?Sized>(
+    writer: W,
+    value: &T,
+) -> Result<(), JsonWriteError> {
+    let mut serializer = serde_json::Serializer::pretty(writer);
     value
         .serialize(serde_stacker::Serializer::new(&mut serializer))
         .map_err(|_| JsonWriteError::Encoding)

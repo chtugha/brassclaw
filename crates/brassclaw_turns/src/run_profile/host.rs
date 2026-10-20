@@ -21,6 +21,7 @@ use super::{
     compaction::{CompactionInitiator, LoopCompactionPort},
     instruction_bundle::InstructionBundleFingerprint,
     model_observation::{CapabilityFailureDetail, ModelVisibleToolObservation},
+    model_work::ModelWorkId,
     refs::{CheckpointSchemaId, LoopDriverId, ModelProfileId},
     snapshot::ResolvedRunProfile,
     system_inference::SystemInferenceTaskId,
@@ -957,8 +958,32 @@ pub struct LoopModelCapabilityView {
     pub visible_capability_ids: Vec<CapabilityId>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+/// Host-owned submission bound, preserved through prompt materialization.
+/// This does not grant model/Tool authority or authorize a later retry.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoopModelDispatchPolicy {
+    #[default]
+    Configured,
+    SingleSubmission,
+}
+impl LoopModelDispatchPolicy {
+    pub fn is_configured(&self) -> bool {
+        *self == Self::Configured
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoopModelRequest {
+    /// Issued by the admitted host, not the Python task port. Serialize existing
+    /// identities; legacy missing data stays absent rather than becoming work.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_id: Option<ModelWorkId>,
+    #[serde(
+        default,
+        skip_serializing_if = "LoopModelDispatchPolicy::is_configured"
+    )]
+    pub dispatch_policy: LoopModelDispatchPolicy,
     pub messages: Vec<LoopModelMessage>,
     pub surface_version: Option<CapabilitySurfaceVersion>,
     pub model_preference: Option<ModelProfileId>,
@@ -970,6 +995,20 @@ pub struct LoopModelRequest {
     /// retains the selected prefix and provider replay metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_messages: Option<Vec<(String, String)>>,
+}
+
+impl Default for LoopModelRequest {
+    fn default() -> Self {
+        Self {
+            work_id: Some(ModelWorkId::new()),
+            dispatch_policy: Default::default(),
+            messages: Vec::new(),
+            surface_version: None,
+            model_preference: None,
+            capability_view: None,
+            resolved_messages: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1344,12 +1383,82 @@ pub struct ProviderToolCallReplay {
     pub signature: Option<String>,
 }
 
+/// Host-owned custody of one observed model response before settlement.
+#[async_trait]
+pub trait LoopModelResponseCustodian: Send + Sync {
+    /// Native selected usages require the provider adapter's actual response
+    /// before recovery, cleaning or loop classification. Legacy response-only
+    /// observers retain their existing narrower contract.
+    fn requires_provider_observation(&self) -> bool {
+        false
+    }
+
+    /// Original HTTP bytes, separately retained before the SDK can reject them.
+    fn receive_provider_wire_observation(
+        &self,
+        _response: serde_json::Value,
+    ) -> Result<(), AgentLoopHostError> {
+        Err(AgentLoopHostError::new(
+            AgentLoopHostErrorKind::Unimplemented,
+            "provider wire custody is unavailable",
+        ))
+    }
+    async fn persist_provider_wire_observation(&self) -> Result<(), AgentLoopHostError> {
+        Err(AgentLoopHostError::new(
+            AgentLoopHostErrorKind::Unimplemented,
+            "provider wire custody is unavailable",
+        ))
+    }
+
+    /// Host-private adapter observation, bound by this custodian to its original
+    /// admitted occurrence. It is evidence, never executable/reply content.
+    fn receive_provider_observation(
+        &self,
+        _response: serde_json::Value,
+    ) -> Result<(), AgentLoopHostError> {
+        Err(AgentLoopHostError::new(
+            AgentLoopHostErrorKind::Unimplemented,
+            "provider response custody is unavailable",
+        ))
+    }
+
+    async fn persist_provider_observation(&self) -> Result<(), AgentLoopHostError> {
+        Err(AgentLoopHostError::new(
+            AgentLoopHostErrorKind::Unimplemented,
+            "provider response custody is unavailable",
+        ))
+    }
+
+    /// Take custody of the observed response before accounting/delivery can
+    /// fail. This host-private sink cannot submit work or resume a Recipe.
+    /// A failed write must retain the actual observation for reconciliation.
+    fn receive_response(&self, response: &LoopModelResponse) -> Result<(), AgentLoopHostError>;
+
+    /// Persist the already-owned observation. Cancellation at this await must
+    /// leave that observation with its original owner, not in the dropped future.
+    async fn persist_response(&self) -> Result<(), AgentLoopHostError>;
+}
+
 #[async_trait]
 pub trait LoopModelPort: Send + Sync {
     async fn stream_model(
         &self,
         request: LoopModelRequest,
     ) -> Result<LoopModelResponse, AgentLoopHostError>;
+
+    /// Opt-in custody before post-provider accounting. Unsupported hosts fail
+    /// before dispatch; retaining only after stream_model returns is too late
+    /// when accounting fails after a successful provider operation.
+    async fn stream_model_with_custody(
+        &self,
+        _request: LoopModelRequest,
+        _custodian: Arc<dyn LoopModelResponseCustodian>,
+    ) -> Result<LoopModelResponse, AgentLoopHostError> {
+        Err(AgentLoopHostError::new(
+            AgentLoopHostErrorKind::Unimplemented,
+            "model response custody is unavailable",
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

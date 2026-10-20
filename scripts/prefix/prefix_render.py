@@ -103,6 +103,50 @@ def render_prefix_reference(header, sources, special_tokens):
 
 
 def render_deduplicated_prefix_reference(header, sources, special_tokens):
+    return prefix_render_units(header, sources, special_tokens, False)
+
+
+def render_trailing_inventory_prefix_reference(header, sources, special_tokens):
+    """Versioned layout: complete references precede volatile inventory metadata.
+
+    Evidence identities, original ranges and exact-unit deduplication are unchanged.
+    This improves stability for inventory-only edits, not arbitrary content edits
+    or later duplicates which change shared-unit grouping. Cache reuse is measured
+    separately with the selected model/template, never inferred from this layout.
+    """
+    return prefix_render_units(header, sources, special_tokens, True)
+
+
+def render_stable_sharing_prefix_reference(header, sources, special_tokens):
+    """Append-stable sharing: later duplicates never relabel the first occurrence.
+
+    Canonical source ordering is still required. Inserts before an existing source
+    and changes to that source can alter its leading tokens; no arbitrary cache hit
+    is promised. The complete original/range map is the same as v2 and v3.
+    """
+    return prefix_render_units(header, sources, special_tokens, 2)
+
+
+def prefix_progressive_units(source, groups, emitted, special_tokens):
+    rendered = []
+    pending = []
+    for unit in source['units']:
+        identifier = unit['id']
+        if identifier not in emitted:
+            emitted.append(identifier)
+            pending.append(unit['text'])
+        else:
+            if pending:
+                rendered.append(prefix_literal(prefix_escape_controls(''.join(pending), special_tokens)) + '\n')
+                pending = []
+            canonical = groups[identifier]['origins'][0]
+            rendered.append('\nExact shared unit ' + identifier + ': see ' + prefix_escape_controls(canonical['source'], special_tokens) + ' lines ' + str(canonical['line_start']) + '-' + str(canonical['line_end']) + '. Original here: lines ' + str(unit['line_start']) + '-' + str(unit['line_end']) + '.\n')
+    if pending:
+        rendered.append(prefix_literal(prefix_escape_controls(''.join(pending), special_tokens)))
+    return rendered
+
+
+def prefix_render_units(header, sources, special_tokens, inventory_last):
     """Deduplicate byte-identical complete units; retain an ordered origin map.
 
     Verified unit digests/ranges come from the source-package owner. Equality of
@@ -110,7 +154,8 @@ def render_deduplicated_prefix_reference(header, sources, special_tokens):
     No near-duplicate matching, summary, clipping or optional coverage removal.
     """
     # Reuse validation/inventory rendering without falsely relabeling originals.
-    rendered = prefix_source_inventory(header, sources, special_tokens)
+    inventory = prefix_source_inventory(header, sources, special_tokens)
+    rendered = [header, '\n# Complete current references\n'] if inventory_last else inventory
     rendered.append('Shared-unit hashes identify rendering reuse, not document citations. Cite the original Evidence-card ID and original source line range; validate against the complete archived original.\n')
     groups = {}
     ordered_sources = []
@@ -142,7 +187,9 @@ def render_deduplicated_prefix_reference(header, sources, special_tokens):
             continue
         rendered.append('\n<!-- EVIDENCE-CARD ' + source['evidence_id'][:12] + ' -->\nSource: ' + prefix_escape_controls(source['path'], special_tokens) + '\n')
         pending = []
-        if all(len(groups[unit['id']]['origins']) == 1 for unit in source['units']):
+        if inventory_last == 2:
+            rendered.extend(prefix_progressive_units(source, groups, emitted, special_tokens))
+        elif all(len(groups[unit['id']]['origins']) == 1 for unit in source['units']):
             rendered.append(prefix_literal(prefix_escape_controls(source['text'], special_tokens)))
         else:
             for unit in source['units']:
@@ -164,6 +211,9 @@ def render_deduplicated_prefix_reference(header, sources, special_tokens):
             rendered.append(prefix_literal(prefix_escape_controls(''.join(pending), special_tokens)))
             pending = []
         rendered.append('\n<!-- END-EVIDENCE-CARD -->\n')
+    if inventory_last:
+        rendered.append('\n')
+        rendered.extend(inventory[1:-1])
     index = []
     for identifier in sorted(groups):
         group = groups[identifier]

@@ -1012,89 +1012,6 @@ impl GeminiOauthProvider {
         curated
     }
 
-    /// Count tokens for the given messages using the Gemini countTokens API.
-    // Unused after module privatization; see `get_valid_access_token` above.
-    #[allow(dead_code)]
-    pub(crate) async fn count_tokens(&self, messages: &[ChatMessage]) -> Result<u32, LlmError> {
-        let sigs = self
-            .thought_signatures
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let req = Self::to_gemini_request(
-            messages,
-            None,
-            None,
-            None,
-            None,
-            None,
-            &self.config.model,
-            &sigs,
-        );
-        let contents = req
-            .get("contents")
-            .cloned()
-            .unwrap_or(serde_json::json!([]));
-
-        let credential = self
-            .cred_manager
-            .get_valid_credential()
-            .await
-            .map_err(|_e| LlmError::AuthFailed {
-                provider: "gemini_oauth".to_string(),
-            })?;
-
-        let (url, request_body) = if self.uses_cloud_code_api() {
-            let url = "https://cloudcode-pa.googleapis.com/v1internal:countTokens".to_string();
-            let mut req = serde_json::json!({
-                "request": {
-                    "model": format!("models/{}", self.config.model),
-                    "contents": contents,
-                }
-            });
-            if let Some(ref pid) = credential.project_id {
-                req["project"] = serde_json::Value::String(pid.clone());
-            }
-            (url, req)
-        } else {
-            let url = format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/{}:countTokens",
-                self.config.model
-            );
-            (url, serde_json::json!({ "contents": contents }))
-        };
-
-        let response = self
-            .http_client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .header(
-                "Authorization",
-                format!("Bearer {}", credential.access_token),
-            )
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| LlmError::RequestFailed {
-                provider: "gemini_oauth".to_string(),
-                reason: e.to_string(),
-            })?;
-
-        let body: serde_json::Value =
-            response.json().await.map_err(|e| LlmError::RequestFailed {
-                provider: "gemini_oauth".to_string(),
-                reason: format!("Failed to parse countTokens response: {}", e),
-            })?;
-
-        let total = body
-            .get("totalTokens")
-            .or_else(|| body.get("totalTokenCount"))
-            .and_then(|t| t.as_u64())
-            .unwrap_or(0) as u32;
-
-        Ok(total)
-    }
-
     /// Determine whether to use Cloud Code API vs legacy generativelanguage API.
     ///
     /// Gemini 2.0+ models use the Cloud Code API endpoint.
@@ -1132,8 +1049,9 @@ impl GeminiOauthProvider {
     async fn send_request(
         &self,
         original_request: &serde_json::Value,
+        dispatch_policy: crate::ProviderDispatchPolicy,
     ) -> Result<serde_json::Value, LlmError> {
-        let mut allow_retry = true;
+        let mut allow_retry = dispatch_policy.allows_resubmission();
         loop {
             let credential = self
                 .cred_manager
@@ -1266,9 +1184,8 @@ impl GeminiOauthProvider {
             let mut success = false;
             if self.uses_cloud_code_api() {
                 let mut combined_text = String::new();
-                let mut finish_reason = "STOP".to_string();
-                let mut prompt_tokens: i64 = 0;
-                let mut candidates_tokens: i64 = 0;
+                let mut finish_reason = String::new();
+                let mut observed_usage: Option<serde_json::Value> = None;
                 let mut tool_calls_parts = Vec::<serde_json::Value>::new();
 
                 // Metadata (collected in the same pass)
@@ -1366,22 +1283,26 @@ impl GeminiOauthProvider {
                         prompt_feedback = Some(pf.clone());
                     }
                     if let Some(usage) = resp.get("usageMetadata") {
-                        if let Some(pt) = usage.get("promptTokenCount").and_then(|pt| pt.as_i64()) {
-                            prompt_tokens = pt;
-                        }
-                        if let Some(ct) =
-                            usage.get("candidatesTokenCount").and_then(|ct| ct.as_i64())
-                        {
-                            candidates_tokens = ct;
+                        // Cumulative stream chunks may report different fields.
+                        // Merge only actual fields; never synthesize zero counters.
+                        match (observed_usage.as_mut(), usage.as_object()) {
+                            (Some(serde_json::Value::Object(previous)), Some(fields)) => {
+                                previous.extend(
+                                    fields
+                                        .iter()
+                                        .map(|(key, value)| (key.clone(), value.clone())),
+                                );
+                            }
+                            _ => observed_usage = Some(usage.clone()),
                         }
                         if let Some(ct) = usage
                             .get("cachedContentTokenCount")
                             .and_then(|t| t.as_u64())
                         {
-                            cached_content_token_count = Some(ct as u32);
+                            cached_content_token_count = u32::try_from(ct).ok();
                         }
                         if let Some(tt) = usage.get("totalTokenCount").and_then(|t| t.as_u64()) {
-                            total_token_count = Some(tt as u32);
+                            total_token_count = u32::try_from(tt).ok();
                         }
                     }
                 }
@@ -1426,10 +1347,7 @@ impl GeminiOauthProvider {
                             },
                             "finishReason": finish_reason
                         }],
-                        "usageMetadata": {
-                            "promptTokenCount": prompt_tokens,
-                            "candidatesTokenCount": candidates_tokens
-                        }
+                        "usageMetadata": observed_usage
                     });
                     success = true;
                 }
@@ -1776,7 +1694,7 @@ impl GeminiOauthProvider {
         let finish_reason = candidate
             .get("finishReason")
             .and_then(|r| r.as_str())
-            .unwrap_or("STOP");
+            .unwrap_or("");
 
         // Invalid content detection (mirrors Gemini CLI InvalidStreamError types).
         // Log warnings for known problematic finish reasons.
@@ -1808,41 +1726,21 @@ impl GeminiOauthProvider {
             );
         }
 
-        let stop_reason = match finish_reason {
-            "STOP" => {
-                if !tool_calls.is_empty() {
-                    FinishReason::ToolUse
-                } else {
-                    FinishReason::Stop
-                }
-            }
-            "MAX_TOKENS" => FinishReason::Length,
-            "MALFORMED_FUNCTION_CALL" | "UNEXPECTED_TOOL_CALL" => {
-                // Treat as Stop — the caller's retry layer will handle retries
-                FinishReason::Stop
-            }
-            _ => {
-                if !tool_calls.is_empty() {
-                    FinishReason::ToolUse
-                } else {
-                    FinishReason::Stop
-                }
-            }
-        };
+        let stop_reason =
+            FinishReason::from_gemini_reason(Some(finish_reason), !tool_calls.is_empty());
 
         let usage = body.get("usageMetadata");
-        let input_tokens = usage
-            .and_then(|u| u.get("promptTokenCount"))
-            .and_then(|c| c.as_u64())
-            .unwrap_or(0) as u32;
-        let output_tokens = usage
-            .and_then(|u| u.get("candidatesTokenCount"))
-            .and_then(|c| c.as_u64())
-            .unwrap_or(0) as u32;
-        let cached_content_tokens = usage
-            .and_then(|u| u.get("cachedContentTokenCount"))
-            .and_then(|c| c.as_u64())
-            .unwrap_or(0) as u32;
+        let observed_usage = usage.and_then(|usage| {
+            crate::TokenUsage::from_reported_counts(
+                usage.get("promptTokenCount").and_then(|v| v.as_u64()),
+                usage.get("candidatesTokenCount").and_then(|v| v.as_u64()),
+                usage
+                    .get("cachedContentTokenCount")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0),
+                0,
+            )
+        });
 
         // Extract additional metadata from non-SSE (legacy) responses.
         let _model_version = body
@@ -1867,11 +1765,9 @@ impl GeminiOauthProvider {
             CompletionResponse {
                 content: text_content,
                 finish_reason: stop_reason,
-                input_tokens,
-                output_tokens,
+                usage: observed_usage,
+
                 reasoning: None,
-                cache_read_input_tokens: cached_content_tokens,
-                cache_creation_input_tokens: 0,
             },
             tool_calls,
             thought_sigs,
@@ -1928,7 +1824,9 @@ impl LlmProvider for GeminiOauthProvider {
             &self.config.model,
             &sigs,
         );
-        let resp_json = self.send_request(&req_json).await?;
+        let resp_json = self
+            .send_request(&req_json, request.dispatch_policy)
+            .await?;
         let (response, _tool_calls, _new_sigs) = Self::from_gemini_response(resp_json)?;
         Ok(response)
     }
@@ -1958,7 +1856,9 @@ impl LlmProvider for GeminiOauthProvider {
             &self.config.model,
             &sigs,
         );
-        let resp_json = self.send_request(&req_json).await?;
+        let resp_json = self
+            .send_request(&req_json, request.dispatch_policy)
+            .await?;
         let (response, tool_calls, new_sigs) = Self::from_gemini_response(resp_json)?;
         // Store captured thought signatures, pruning stale entries to prevent
         // unbounded growth over long-running processes. Only keep IDs that
@@ -1987,11 +1887,10 @@ impl LlmProvider for GeminiOauthProvider {
                 Some(response.content)
             },
             finish_reason: response.finish_reason,
-            input_tokens: response.input_tokens,
-            output_tokens: response.output_tokens,
+            usage: response.usage,
+
             tool_calls,
-            cache_read_input_tokens: response.cache_read_input_tokens,
-            cache_creation_input_tokens: response.cache_creation_input_tokens,
+
             reasoning: None,
         })
     }
@@ -2228,8 +2127,8 @@ mod tests {
         let (resp, tool_calls, _sigs) = GeminiOauthProvider::from_gemini_response(body).unwrap();
 
         assert_eq!(resp.content, "Hello world");
-        assert_eq!(resp.input_tokens, 10);
-        assert_eq!(resp.output_tokens, 5);
+        assert_eq!(resp.usage.unwrap().input_tokens, 10);
+        assert_eq!(resp.usage.unwrap().output_tokens, 5);
         assert!(tool_calls.is_empty());
     }
 

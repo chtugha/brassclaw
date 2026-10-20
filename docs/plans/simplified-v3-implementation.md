@@ -11177,3 +11177,812 @@ real Monty invocation of the canonical export, exact packaged artifact and
 association/bootstrap qualification, coherent activation, complete structured
 history, real R09 child admission, recovery, platform/release and installed QA
 remain required. Do not mark the complete model/Recipe or full-v3 plan finished.
+
+### 2026-10-19 — Canonical model drafts and the model-tier invariant
+
+Candidate implementation in `brassclaw_skills::model_completion_components`
+defines the existing Kohai usage's typed successor, a finite N06 JSON-prompt
+usage, and canonical parse/model commands. Resolve the existing Kohai Tool,
+ToolSkill, Skill and PythonCode UUIDs before staging successor revisions; the
+constructors do not allocate replacement identities or establish provenance.
+The parser reuses `builtin.json` with the fixed parse operation and a concrete
+three-text-role result contract. Its specialized result profile is a distinct
+usage of that existing primitive, not another JSON executor. Each usage declares
+its preload exports, recursive inputs/results, exact association, dependencies
+and one-attempt stop contract. Loading definitions performs no dispatch.
+
+The model command captures one complete `prompt_json` string, parses it in a
+separate binding/executable pair, passes the resulting object as typed data to
+the pinned model export, and publishes its complete response JSON through the
+existing reply usage. It does not infer answer text, run proposals or hide
+normal chat history ownership. The parser's own canonical command separately
+renders the validated object and publishes it. Both workflows use one UUID per
+component step, actual `knowledge`/`stepnumber` syntax and explicit result edges.
+Neither constructor activates a route or bypasses Q1/combination/bootstrap checks.
+
+Binding preparation now rejects `host.kohai_complete`, `builtin.shell` and
+`builtin.spawn_subagent` in a deterministic workflow, before any effect or
+component approval can be treated as execution authority. The catalogue keeps
+the same check. Explicit model workflows require RequiresModel/Tier 1.
+
+The R1 validation batch passed. Its new real PostgreSQL regression stages
+one immutable graph, selects exact rooted views, checks parse/model/reply
+bindings and hostile text as data, rejects deterministic model classification,
+and inspects the actual preload sources/interfaces with the packaged Monty
+worker while verifying that inspection creates no invocation intent. It is
+structural preparation evidence, not observed model-Recipe execution, trusted
+combination approval or production activation.
+
+Evidence: two retained-Tool preparation tests passed (4.817 seconds), seven
+retained-input regressions passed (8.959 seconds), strict Engine and Skills lint
+passed (19.189/5.686 seconds), and the ordinary global runtime regression and
+strict Composition test lint passed (53.885/129.034 seconds). The worker was
+rebuilt from the same frozen cohort. Receipt:
+`/private/tmp/brassclaw-canonical-model-definition-accepted.json`, with retained
+sources/executables under `target/validation/canonical-model-definition-*20261019-r1`.
+Four owning current files match that cohort exactly. The Skills module index
+retains the same model export but gained the prefix owner's separate
+prefix_measurement_components declaration during validation. That module and
+its dependency cohort are excluded from R1's acceptance; its code was preserved.
+The exact source-applicability check is recorded separately. No component
+activation or external approval shortcut follows from these checks.
+
+Close these implementation dependencies before canonical model activation:
+
+1. Replace/migrate the JSON Tool's shared fixed 1 MiB input/output and static
+   resource ceilings with the actual acknowledged resource/admission contract.
+   Preserve bounded parsing/allocation and kernel enforcement; simply replacing
+   the limit with an unlimited allocation is insufficient. The canonical parser
+   must accept complete eligible data within the selected adjustable profile,
+   including a real regression above the former cap. Its finite three-role
+   profile does not implement structured provider Tool-result replay history.
+2. Execute the canonical commands through Monty's retained workflow, real
+   matching, native JSON/model/reply ports and normal history/completion. Cover
+   invalid role/shape before any provider submission, live Tool blocking,
+   missing model/prefix, exact retained artifacts/associations, cancellation,
+   post-effect persistence failure and recovery without replay. Qualify the
+   model's packaged implementation identity in the actual catalogue verifier;
+   the constructor's checksum string is not executable-integrity evidence.
+   Implement the controlled installation-owned bootstrap without an external
+   maintainer or installed-instance human-Q2 gate. Preserve authored Q1/behavior/
+   human-Q2 and immutable overrides separately.
+3. Qualify the complete configured provider chain and accounting/recovery, not
+   only the raw registry-provider fixture used for native custody. In particular,
+   `RetryProvider` currently treats unknown request/response failures as retryable
+   and the connection default has additional retries. A one-attempt model usage
+   must not acquire unrecorded provider resubmissions/failover after an unknown
+   outcome. Trace SDK/decorator retries through actual submission and durable
+   invocation/count ownership; enforce the exact approved retry/deduplication
+   contract and current policy before another submission. Include the protected
+   root's model ports/aliases in the live-policy and durable response audit:
+   keeping those control ports private does not establish kernel Tool-policy
+   uptake or durable outcome retention. The host factory's default model policy
+   guard is currently NoOpPolicyGuard; prove actual production wiring rather
+   than inferring it from the new canonical Tool's kernel checks. Disabled token budgets
+   do not disable this effect fencing. R03 now specifies the actual response
+   profile instead of the retired ok/answer wrapper; its concrete extractor,
+   structured proposal/history consumers and real R09 child admission remain
+   implementation work.
+
+### Acknowledged JSON primitive limits — implementation and acceptance scope (2026-10-19)
+
+The native JSON Tool now captures the existing acknowledged `max_value_depth`,
+`max_value_nodes` and `max_value_bytes` profile once per operation. Its separate
+shared 1 MiB input/output fallback and five-second static resource ceiling are
+removed. Kernel Tool policy and any explicit current Tool ceiling still apply.
+The EN/DE settings help names JSON and complete encoded request/result bytes;
+there is no second JSON-only settings publisher or cosmetic quota.
+
+A common bounded reader constructs values under depth/node/byte admission,
+protects Serde callbacks and keeps partial/temporary trees under iterative
+ownership through syntax, resource, duplicate replacement and trailing-data
+failures. Component contracts reuse it with their existing strict duplicate-key
+rejection and public schema depth profile; the general JSON Tool preserves its
+native last-value-wins behavior. Query clones only its selected result and
+stringify borrows structured data with a bounded pretty writer. JSON parsing
+runs outside the async executor. A resource failure in `validate` remains an
+error, never a fabricated `valid=false` syntax result. Literal `"null"` JSON
+paths remain literal data instead of being normalized to omitted arguments.
+This does not raise the existing whole-transport depth support gate or remove
+an authored usage's explicit finite data contract.
+
+Installation qualification itself uses JSON before the live settings owner
+exists. The installation owner prepares one private bootstrap snapshot from
+exactly the selected startup settings revision, then transitions once to the
+acknowledged read-only live view before ingress. Unbound access, a second
+bootstrap/binding, revision rollback or conflicting same-revision limits fail.
+This is resource selection, not a Tool permission, authored approval or VM.
+
+Scoped local acceptance is recorded in
+`/private/tmp/brassclaw-json-acknowledged-accepted.json`, with immutable sources,
+executables, logs and the combined receipt under
+`target/validation/json-acknowledged-*20261019-r1/r2`. R1 passed the four shared
+JSON cases, thirteen typed-contract cases, two JSON operation checks, five
+registered JSON cases and retained live-policy case; its native fixture stopped
+before startup because it incorrectly used a single-thread Tokio runtime. It
+is not a passing full batch. R2 corrects that fixture, the resource-surface
+expectation and bootstrap-state allocation. Its actual registered JSON/PG test
+passed in 38.597 seconds: complete escaped/Unicode result of 1,440,076 bytes
+(request 2,340,121 bytes), live 4 MiB/1 MiB limits, rejected PostgreSQL write with
+unchanged persisted/effective limits, later increase, retained live Tool block,
+literal null path and unchanged global VM identity. Ordinary global matched/
+unmatched workflow passed in 51.869 seconds; the dependency boundary passed in
+0.215 seconds. Strict Common/Skills/Host/Composition test-target lint passed in
+3.808/6.967/19.585/121.739 seconds with the recorded features and toolchain.
+These are check durations, not product performance claims. Unchanged R1 cases
+are reused with their exact source/artifact provenance; no redundant rerun is
+claimed. EN/DE JavaScript syntax and the diff also pass inspection.
+
+Thirteen current JSON implementation/test/dependency/help inputs match the
+accepted R2 snapshot exactly. Concurrent prefix-owner changes to
+`global_monty_startup.rs`, `runtime.rs` and `source_inspection.rs` are preserved
+and separately recorded in
+`/private/tmp/brassclaw-json-acknowledged-current-source-verification.json`.
+They bind source inspection to the same bootstrap/live primitive source before
+catalogue qualification; R2 does not certify that later integration or the whole
+current checkout. Qualify the final shared startup cohort before release.
+Canonical model workflow qualification/activation, configured provider
+retry/durable fencing, root model policy and release/platform acceptance remain
+separate work.
+
+### Bound one-submission model operations — implementation candidate (2026-10-19)
+
+The existing canonical model usage declares stop/max_attempts=1. Its native
+adapter now supplies a typed `SingleSubmission` restriction through
+LoopModelRequest, authorized prompt materialization, HostManagedModelRequest
+and both provider gateways. The loop and provider layers own separate enums
+with one explicit conversion. This is infrastructure for the existing usage,
+not a new Rust workflow or Tool. Public Monty task-port payloads cannot inject
+or weaken the host-only policy. Existing unbound callers retain their configured
+mode until their separately required cutover.
+
+Retry, failover and smart routing consume the restriction. A bound operation
+uses its primary provider/model once; an unavailable primary remains an error,
+never an excuse to substitute another route. Existing health accounting remains
+active and its failure counter now saturates instead of overflowing. OAuth
+adapters cannot hide a model resend after authentication rejection; normal
+preflight authentication remains distinct. Bedrock applies a per-operation SDK
+retry override. Shared provider HTTP clients disable protocol-level hidden
+retries, and the legacy Codex client uses that same deadline/redirect transport.
+A bound Codex request uses its selected model instead of lazy fallback. Codex
+HTTP rejections use the private shared classifier rather than leaking upstream
+bodies/URLs. Response-cache keys distinguish submission policies, Tool-request
+conversion preserves the restriction, and forensic request evidence records it.
+EN/DE retry help explains the precedence without claiming that connection
+settings authorize a Recipe replay.
+
+Validation is pending in `model-single-submission-20261019-r1`. The new physical
+HTTP error regression exercises the real SDK plus retry/routing/failover stack.
+The native PostgreSQL candidate now uses the actual configured provider-chain
+factory with additional retries, a separate cheap model and a circuit breaker.
+Its relay forwards to the operator-selected real model, loses an actual completed
+answer, and must observe exactly one submission plus the original durable
+attempt/error receipt and refusal to replay that occurrence. Subsequent existing
+actual-response, output-validation, persistence-only reconciliation and late
+cancellation cases remain. Relay-only observations must never be manufactured
+into a received native answer. These checks must actually pass before acceptance.
+
+This does not qualify/activate the canonical commands or prove general retries,
+full accounting/recovery, all cloud authentication profiles, protected-root
+model policy/durability or the final v3 cutover. Those requirements remain open;
+no guard-only Boolean check or Rust-loop fallback substitutes for them.
+
+
+### Unknown model-spend holds — implementation candidate (2026-10-19)
+
+The resource accountant previously released model reservations on any provider
+failure and on cancellation, including after the provider could have completed
+work or after a settlement acknowledgement was lost. The existing model usage
+still owns one operation; this repair adds no workflow Tool or Rust Recipe loop.
+A synchronous host-private dispatch boundary now follows reservation and precedes
+entry into the assistant, Sempai-review and system-inference provider work.
+The completed-turn review adapter uses the same boundary. Cancellation claims an
+unsubmitted reservation before governor I/O, fencing concurrent dispatch. After
+possible dispatch, failure/cancellation retains the original hold and returns a
+classified accounting error with its opaque reservation reference. Generic
+provider errors cannot establish zero spend. Observed successful responses remain
+eligible for exact retained reconciliation without resubmission or double charge.
+
+Validation is pending. Focused regressions cover unsubmitted cancellation,
+post-dispatch cancellation, duplicate dispatch refusal, unknown accounting commits
+and a real file-backed governor reopened while its unresolved hold remains.
+This is not restoration of accountant ownership after restart, provider billing
+reconciliation or complete durable recovery. Those gates remain open. Existing
+real-model/native results from `model-single-submission-20261019-r1` passed, but
+that batch stopped at strict Composition lint because a new source-inspection
+test module preceded production items. Moving that unchanged module to the end
+repairs the lint without suppressing it; the successor snapshot must qualify
+that move and the new accountant integration before acceptance.
+
+
+### Observed model custody before accounting — implementation candidate (2026-10-19)
+
+Native model retention previously began only after the host model port returned
+success. A successful provider operation followed by an accounting error could
+therefore miss the original native response journal. A new host-private
+LoopModelResponseCustodian boundary takes the actual sanitized host response
+before post-provider accounting. Accounting still receives the actual success
+when the custody write fails; neither error permits another provider operation.
+The real Reborn host and hook model wrapper forward this explicit contract.
+Unsupported hosts reject custody before provider dispatch, without a legacy
+stream_model fallback. The selected native callback is consumed once and only
+its successfully retained bytes may return to Monty; task/attempt delivery
+fencing remains after custody and accounting.
+
+The R03 pure component candidate adds the finite actual assistant-response
+schema and an extract_model_answer export. It preserves optional usage and
+reasoning observations, rejects proposals and incomplete/wrong-shaped data, and
+returns assistant text as data. A consuming Recipe must still select a separately
+bound JSON usage with that profile; no parser binding, approval or activation is
+manufactured here. Pending tests cover the actual wire serializer and contained
+Monty projection, including a real native model answer. The real-model fixture
+now installs a fresh per-build hook dispatcher so response custody crosses the
+actual hook wrapper too. Controlled caller tests exercise accounting rejection
+after response custody and a real file-write rejection with successful-outcome
+accounting. These do not substitute for complete PostgreSQL accounting/recovery,
+provider billing reconciliation or restoration of accounting ownership on restart.
+
+
+Unknown-spend R2 validation passed for its frozen source cohort:
+`/private/tmp/brassclaw-model-accounting-accepted.json`, artifacts under
+`target/validation/model-accounting-artifacts-20261019-r2`. All nineteen accountant
+and nine system-inference tests, all67 neutral host contracts, the strict task-port
+input test, gateway/task-host/hooks/milestone contracts, actual configured-model
+loss/custody, native global Monty/JSON/bootstrap callers and the independent
+PostgreSQL invocation-journal test passed. Strict affected-package, Composition
+and standalone test-target lints passed. Unchanged SDK/retry/failover/cache cases
+reuse their exact R1 source/dependency/artifact evidence. This does not certify
+the later pre-accounting custody/R03 edits or general recovery/activation.
+
+The successor custody candidate now takes ownership synchronously before the
+first persistence await, including in PgRecipeModelResponses. Pending observations
+survive cancellation before or during that await. Confirmed persistence frees the
+held response data while retaining a small receive-once fence; duplicate receive
+cannot replace an original observation. Reconciliation persists only the already
+owned response and never submits provider work. Validation remains pending for
+this successor cohort. Full durable accountant ownership/billing reconciliation,
+canonical command qualification/activation and protected-root policy/custody remain
+open as specified above.
+
+
+Synchronous custody/R03 validation passed in the corrected R4 source cohort:
+`/private/tmp/brassclaw-model-custody-accepted.json`, artifacts under
+`target/validation/model-custody-artifacts-20261019-r4b`. R3 had already passed
+all68 neutral host contracts and the gateway/task-host/hooks/milestone targets,
+but its native build exposed a missing direct Mutex dependency. R4 uses the
+existing standard-library mutex with explicit poison errors, without a new
+dependency or warning suppression. Unchanged R3 host evidence is reused after
+complete affected source/dependency and retained executable hash verification.
+The actual R03 worker projection passed in2.315s, configured real-model/native
+custody in25.232s and ordinary global Monty in74.145s. Strict affected-package,
+Composition and separate workspace test-target lints passed in33.617/122.210/
+40.916s. These are test durations, not product performance claims. R4 does not
+claim canonical activation, full restart/accounting recovery or root cutover.
+
+A separate admitted-run regression now targets the remaining combined physical
+accounting case. It uses the real configured model, native kernel/response
+journal and PostgreSQL governor/accountant, with an explicit free/local pricing
+policy. A transparent test observer forwards the real accounting hooks and
+captures their actual request/response; it fabricates no admission, response or
+settlement. A PostgreSQL trigger rejects settlement after the actual answer has
+been durably received. Pending validation must prove the outward failure, exact
+stored answer, retained original hold, fenced same-occurrence replay and exact
+settlement from those observations after rejection is removed. Reopened governor
+state must retain that settlement. Host exchange counts measure the host boundary;
+physical SDK resubmission evidence remains the separately recorded R1/R2 scope.
+No synthetic reply/completion, new attempt or provider replay is permitted.
+This is an in-process original-owner reconciliation case, not restoration of
+accountant ownership after restart or verification of an external paid bill.
+The remaining fixed model-quote fallback and PostgreSQL deadline are recorded
+with their required settings/uptake semantics in runtime-limits-audit.md.
+
+
+### 2026-10-19 — actual model/accounting integration accepted; resource-store policy in progress
+
+R5 passed the separate admitted-run test through the actual configured model,
+immutable native response store and PostgreSQL resource accountant. A rejected
+settlement retained both actual answer and original hold; original-owner
+reconciliation settled observed usage without another model exchange (8.125 s).
+Global startup/ordinary chat integration passed (58.430 s), with the concurrently
+implemented prefix bootstrap cohort included. Strict affected full-feature
+Skills/Composition lint passed (123.717 s). This does not certify complete
+restart recovery, canonical model Recipe activation or the full prefix upgrade.
+
+The next implementation replaces the fixed PostgreSQL governor/gate timeout
+with `resource_store_timeout_millis` in the existing WebUI execution settings,
+including EN/DE help, upgrade preservation and acknowledged live capture. Both
+stores share the actual selected source. One read/CAS-write retains its starting
+policy; post-fatal settlement can use the last acknowledged revision without
+retaining the global service. A timeout remains an unknown write outcome, never
+zero spend or replay permission. Behavioral/migration validation is pending.
+
+
+### Model usage observation audit — remaining accounting migration
+
+The neutral `ModelWorkOutcome::from_model_call` adapter previously counted
+transport chunks as output tokens. Its successor takes the actual optional
+provider output-token observation: unknown stays `None`, reported zero stays
+`Some(0)`, and repartitioning identical text into chunks does not change usage.
+A focused regression covers all three cases; validation is pending. This edit
+is separate from the frozen resource-store-policy validation cohort.
+
+Further confirmed work is required in `budget_accountant.rs`: both
+`usage_for_response` (absent provider usage) and `usage_for_model_work` currently
+settle reservation estimates as spent input/USD. The richer assistant path also
+uses chunks as its missing-usage output fallback. Remove this conflation through
+an explicit observed/estimated/unknown durable accounting contract; retain actual
+received response and original unresolved reservation without provider replay.
+The generic system-inference response currently loses provider usage before
+its outer guard receives it, so the migration must carry the genuine observation
+through that supported boundary as well. Do not make an absent usage object mean
+zero spend, manufacture tokens, or declare an estimate to be an actual bill.
+Known free-model pricing and disabled token caps do not establish unknown token
+usage. Keep original pricing/route/config evidence with each retained quote and
+reconciliation; live settings must not reprice an earlier operation. Complete
+the actual PostgreSQL/native-owner acceptance, including recovery and reported
+versus unknown usage, before claiming this accounting migration complete.
+
+
+### Packaged task model implementation verification — in progress
+
+The catalogue implementation verifier now recognizes the existing task-bound
+`host.kohai_complete` adapter's exact `packaged-task-model/1` /
+`TaskModelCapability/1` declaration, alongside the reply adapter. Both require
+the exact callable and retained executable checksum, reject extra/mismatched
+ABI fields, and rehash the actual retained executable before selection. The
+existing stable Tool identity query and trusted exact association/activation
+checks still apply. An actual-executable regression is added; validation is
+pending after the resource policy batch. This prerequisite does not seed,
+approve, activate or qualify a complete canonical model Recipe, nor replace
+the protected-root model path. Full matching/IBS/JSON/model/reply/history and
+controlled system_seed behavioral qualification remain required.
+
+
+### Resource-store deadline acceptance — 2026-10-19
+
+The frozen `resource-store-policy-20261019-r1` cohort passed: actual ordinary
+runtime/governor/gate policy test (27.025 s), real PostgreSQL migration test
+(1.926 s), global matched/unmatched runtime regression (49.998 s), strict
+affected HostAPI/Resources/ProductWorkflow/Composition tests lint (87.815 s),
+and standalone model/retained-execution/Q1 host compilation and strict lint
+(33.896 s). Strict full-field settings replacement also passed (0.307 s).
+The delayed write committed exactly once after the client timeout; readback
+confirmed that outcome without repeating the mutation. The live setting changed
+both actual stores without replacing global Monty. The EN/DE settings modules
+and UI field passed JavaScript syntax checks. These results do not include the
+later token-observation and task-adapter verifier edits, full restart recovery,
+canonical model qualification/activation or complete plan acceptance.
+
+
+### Configurable model reservation fallback — implementation in progress
+
+`model_quote_output_tokens` replaces the separate fixed 8192-token fallback in
+the accountant. The existing WebUI execution settings expose it with EN/DE help
+that distinguishes reservation estimates from response limits. The precedence
+is explicit work estimate, selected cost row maximum, then this acknowledged
+fallback. A configured value never truncates a response or reinstates disabled
+token caps. V170 preserves explicit values, fills missing values, advances only
+incomplete revisions and checks positive u32 representation.
+
+The production accountant is constructed with an initially unbound host source
+that must bind the actual acknowledged watch before ingress. Estimates fail
+before reservation while unbound; nested accountants share the same source.
+Each accepted hold keeps its original estimate and revision despite later edits.
+Standalone/test composers retain the canonical default unless explicitly bound.
+The public budget-composition helper remains source-compatible; the ordinary
+runtime uses its shared internal variant with the actual live source.
+
+Focused actual global-settings/PostgreSQL quote and migration regressions are
+added, pending validation after the model-contract batch. They submit no model
+requests and claim no provider usage. Exact selected-model technical maximum
+propagation, original pricing/route persistence, explicit unknown/estimated
+versus observed settlement and restart accounting ownership remain open.
+
+
+### Model adapter contract acceptance — 2026-10-19
+
+Frozen `model-contract-20261019-r1` passed the token-observation invariance
+regression (0.179 s), actual retained-executable/model-adapter verification
+(3.327 s), real authored catalogue activation regression (33.082 s) and strict
+Turns/Composition full-feature test lint (148.941 s). Worker reuse was verified
+against its complete normal/build/vendor/source graph and emitted binary hash.
+These checks preserve the existing reply path and verify the model adapter
+implementation prerequisite. They do not activate a canonical model workflow
+or cover the later reservation-estimate setting, unknown-usage settlement or
+restart recovery.
+
+
+### Resource status persistence — implementation in progress
+
+`PersistentResourceGovernor::account_snapshot` previously ran every status read
+through an unconditional whole-snapshot write/CAS, including unchanged state.
+A typed `ResourceSnapshotUpdate` store operation now distinguishes unchanged
+inspection from a period rollover requiring persistence. PostgreSQL omits the
+write and version increment for an unchanged snapshot; actual mutations retain
+the same captured exchange policy, CAS/conflict and unknown-outcome behavior.
+Other stores keep their existing transactional behavior through the default
+trait method. No new polling, pressure counter, quota or receipt eviction is
+introduced.
+
+Period advancement remains durable: only a changed anchor selects the write
+path, and a rejected rollover write returns an error rather than a reset ledger.
+An actual PostgreSQL regression rejects writes while unchanged reads succeed,
+checks unchanged CAS versions, preserves failed release state, verifies a real
+expired period requires a successful write and retains active holds, and checks
+that an absent status read creates no row. Source review and formatting are
+complete; executable acceptance is pending after the quote-policy batch. This
+removes redundant writes, with no measured latency or full normalized-ledger
+scaling claim. Full-snapshot mutation cost/history growth remains separate.
+
+
+### Reservation estimate acceptance — 2026-10-19
+
+Frozen `model-quote-20261019-r1` passed all accountant units (0.680 s), strict
+full-field settings replacement (0.232 s), actual global-settings/PostgreSQL
+quote behavior (27.866 s), V170 migration (1.875 s), ordinary global runtime
+(53.289 s), actual configured model/native-answer/PostgreSQL accounting-error
+reconciliation (21.416 s), strict affected full-feature tests lint (110.082 s)
+and standalone host compilation/strict lint (33.604 s). The actual worker was
+rebuilt for the changed neutral settings contract. The frozen source includes
+concurrent prefix-candidate changes; global startup integration is covered,
+not complete prefix qualification. The later status-write optimization is not
+covered by this cohort. Pricing/unknown-usage/restart/canonical activation gates
+remain open as documented above.
+
+
+### PostgreSQL status-read acceptance — 2026-10-19
+
+Frozen `resource-status-read-20261019-r1` passed Resources units/contracts
+(0.255/0.430 s), actual PostgreSQL unchanged-read/durable-rollover regression
+(4.368 s), live database deadline (25.505 s), preserved live quotes (24.211 s),
+ordinary global runtime (51.828 s), real model/native-answer/accounting-error
+reconciliation (7.401 s), affected strict test lint (108.467 s) and standalone
+host compilation/strict lint (33.652 s). Unchanged reads do not write or advance
+the CAS version; failed rollover writes return errors and retain stored state.
+This establishes removed writes, not a measured latency improvement or complete
+normalized-ledger scaling. Later timed-limit setter changes remain separate.
+
+### Timed resource cap edits — implementation in progress
+
+The shared limit setter previously replaced the period anchor on every edit.
+For an active rolling/calendar period, a cap-only change must preserve its
+original window and spent/held usage. If the old window already expired, advance
+it before installing the new cap, preserving active holds. An explicit period
+change retains the existing usage-reset behavior. Legacy `PerInvocation`
+metadata/enforcement is deliberately preserved, avoiding an implicit weakening
+or reinterpretation of existing limits during this repair.
+
+The setter now follows that sequence. An actual PostgreSQL regression covers
+active cap changes, expired ledgers, explicit calendar changes, pending holds
+and retained original receipts. Source review and formatting are complete;
+focused Resources/default-store and PostgreSQL acceptance is pending. This
+repairs kernel accounting semantics, without claiming the legacy money defaults
+or gate configuration have acquired a complete live WebUI owner.
+
+
+### Timed resource cap acceptance — 2026-10-19
+
+Frozen `resource-cap-period-20261019-r1` passed Resources units/contracts
+(0.256/0.443 s), actual PostgreSQL active/expired/cross-period cap changes
+(4.397 s), unchanged-read/committed-rollover regression (1.849 s), and affected
+strict full-feature test lint (108.578 s). Active timed windows keep their
+anchor; expired usage advances before a cap edit; explicit calendar changes
+retain reset semantics, pending holds and original receipts. Legacy per-call
+metadata/enforcement remains unchanged. No Monty worker/provider execution was
+needed for these owner-level cases; this cohort makes no successor global or
+provider execution claim. The preceding broader accepted integration evidence
+retains its stated source scope. Financial defaults, unknown/estimated usage,
+original pricing/route ownership, canonical model/root cutover and complete-plan
+acceptance remain open.
+
+### Finite model-response parsing and explicit answer consumer (2026-10-19; candidate)
+
+The missing N06 assistant-response usage now reuses the existing JSON Tool with
+its exact recursive actual wire profile, separately from prompt parsing and pure
+R03 extraction. Its canonical command is `parse assistant model response json=%`
+with a `response_json:string` capture and complete JSON rendering/reply. Loading
+only defines `parse_assistant_model_response(inputs)`; each invocation parses
+once, with no model call, source interpolation, usage defaults or proposal effects.
+
+A separate `answer model prompt json=%` candidate orders prompt parsing, one
+selected model operation, complete response parsing, R03 and the existing reply
+usage. It retains every binding/input/result edge and shares only the JSON Tool
+identity between the two distinct parsing usages. The raw completion command
+continues to publish the complete native response JSON. Empty answer text is
+valid for parsing/extraction; the existing reply primitive rejects blank
+publication, which must never replay the completed model operation or enter
+Tier 2. Structured capability proposals require their own approved profile.
+
+New source-level/retention and actual contained global-Recipe regressions are
+being validated. The contained consumer uses the actual JSON kernel and durable
+PostgreSQL invocation journal, with pure observation rendering rather than a
+model/reply substitute. It cannot issue approval records or activate routing.
+Canonical model qualification/activation, original pricing/accounting ownership,
+restart recovery and the protected root cutover remain open.
+
+### Host-reported system-work metering handoff (2026-10-19; validation pending)
+
+`SystemInferenceResponse` now preserves the host gateway's optional complete
+`LoopModelUsage`; old serialized responses without the field still decode as
+unknown. `ModelWorkUsage.token_usage` carries all input/output/cache counters,
+including reported zero, across assistant and system-work handoffs. The generic
+accountant uses those observations with the work's selected model-profile rate
+row, plus the actual returned text bytes and elapsed time, instead of always
+charging its input/output/USD reservation estimate. The shared pricing helper
+also serves assistant-response accounting. A failed governor write retains the
+chosen numerical settlement in the original in-flight entry.
+
+This repairs a loss of observations, not the complete accounting migration.
+In particular, the older LLM `CompletionResponse`/`ToolCompletionResponse` still
+carry four unconditional numeric token fields, and the Reborn gateway constructs
+a present usage object from them. Provider parsing can therefore already have
+lost the distinction between absent usage and reported zero before this handoff.
+That upstream presence/provenance repair needs complete provider/wrapper/cache
+coverage and actual missing-meter responses; never infer absence from zero or
+change real zero to an estimate. Successful unknown-meter budget debits still
+use the legacy estimate without sufficient durable provenance. Pricing/route
+snapshots, original reservation-to-native-invocation correlation, crash recovery
+and the instance-budget/legacy-gate cutover remain required. No new fallback,
+provider retry, generated token count or canonical model activation is added.
+
+Validation adds complete/zero/absent DTO and pricing regressions, an additional
+real system-inference call in the existing selected-model fixture, comparison
+with its actual upstream usage, and reopened PostgreSQL ledger checks. The
+finite-response parser regression is also rerun with the exact expected native
+policy rejection: its original Python worker error/ResumeHost command and root
+identity must be retained, while schema rejections retain a distinct result-
+contract failure. The previous R1 run passed Engine/Skills preparation/lint but
+failed the test's incorrect blanket assertion of no worker error on a denied
+Tool; it is not accepted as passing native-parser evidence.
+
+The same source review found run-keyed cleanup that could forget a successor
+hold after an overlapping old settlement/release. Cleanup now compares the exact
+reservation ID atomically; mutation/recovery reacquires and checks that same
+owner, and rejects mismatched work before marking it dispatched. This is a
+local in-flight fence, not durable model-work/invocation identity or crash
+recovery. The focused meter regression also retains a new hold across an old
+cleanup and verifies that mismatched work cannot mutate its dispatch state.
+
+System-inference now requests `SingleSubmission` as well. Its former configured
+provider policy could retry an uncertain external operation or use a cheap-model
+cascade under one recorded work reservation. The actual selected-model fixture
+keeps retries and an intentionally unrelated cheap model configured; the system
+call must still submit exactly once to the retained model. This does not add a
+Recipe retry policy or treat a provider error as no effect.
+
+### Exact work binding after model reservation (2026-10-19; successor pending)
+
+Source review also found an admission handoff race: `reserve_estimate` returned
+only unit, and `pre_model_work` then assigned its request to whichever run-keyed
+entry existed. An unsubmitted cancellation/release and successor reservation
+could intervene. The private reservation helper now returns the exact hold ID;
+a single-write binder requires that ID, Reserved state and no previous work
+binding before attaching the request. Missing, released, dispatched or successor
+holds fail closed without modifying another request. No new model call, retry,
+resource grant or durable-recovery identity is introduced.
+
+A focused actual in-memory governor regression covers release before binding,
+a same-run successor, immutable request binding and final hold cleanup. This
+successor is outside the currently running frozen system-meter-handoff R2
+cohort; it needs its own affected-package and actual PostgreSQL admission
+acceptance before a current-source claim. The earlier cleanup/meter observations
+retain their exact R2 source/artifact scope.
+
+### Accepted scope of the response-parser/system-meter cohort (2026-10-19)
+
+Frozen `system-meter-handoff-20261019-r2` passed the corrected finite parser's
+actual global Recipe/JSON kernel/PostgreSQL path (26.324 s), pure R03 (0.018 s),
+retained canonical parse/model/answer graph preparation (4.925 s), configured
+actual-model/native-custody plus system-meter/reopened-ledger acceptance
+(35.010 s), native accounting failure/original-hold reconciliation (12.128 s),
+and ordinary matched/unmatched global Monty (50.834 s). Strict affected-package
+and standalone Monty-control test lint passed (111.207/27.926 s).
+
+The corrected meter/state regression, system-inference units, compaction and
+thread consumers passed (0.414/0.042/0.196/0.283 s). Two unchanged meter contract
+regressions and nineteen unchanged accountant cases retain their passing R1
+source scope; R1's invalid snake_case test fixture is excluded, corrected and
+passed in R2. The earlier parser R1's incorrect native-denial expectation remains
+recorded as a failure, superseded by the actual R2 evidence; no warning/error was
+suppressed. Source inventories/hashes/modes and regenerated changed inputs were
+verified before/after; actual executable artifacts were retained before mandatory
+own-target cleanup. Receipt: `/private/tmp/brassclaw-system-meter-handoff-accepted.json`.
+
+This accepts the finite candidate and host-meter transfer/local cleanup fence,
+not canonical model approval/activation, the protected root cutover, upstream
+absent-meter provenance, complete billing/pricing/route recovery, or whole-plan
+completion. The subsequent exact reservation-to-work binder is a distinct
+current-source successor and remains outside this R2 evidence until validated.
+
+### Accepted exact reservation/work handoff (2026-10-19)
+
+Frozen `reservation-work-binding-20261019-r1` passes all21 accountant regressions
+(0.686 s), actual acknowledged-policy/PostgreSQL reservation consumers (27.204 s),
+ordinary matched/unmatched global Monty (51.673 s) and strict affected test lint
+(108.696 s). The test build covers LoopSupport and Composition together with the
+same full feature profile. The worker is reused from the prior exact unchanged
+source inventory; current executables are retained with verified source hashes,
+modes and regenerated input timestamps. Receipt:
+`/private/tmp/brassclaw-reservation-work-binding-accepted.json`.
+
+This completes the local admission publication fence described above. It does
+not add durable model-work identity, original native-invocation correlation,
+pricing provenance, upstream absent-meter support, canonical activation or
+whole-plan acceptance. The preceding real-model/system-meter and standalone
+checks retain their R2 source scope; no successor provider run is claimed here.
+
+### Model operation identity and reservation acknowledgement (2026-10-19, validation pending)
+
+A host-issued, non-nil `ModelWorkId` now follows assistant preparation and
+system-inference accounting. The native model usage uses its already-admitted
+invocation UUID; the private legacy root codec creates its identity at ingress
+and rejects caller-supplied identities. Existing serialized identities survive
+round trips. Missing legacy metadata stays unidentified and cannot enter new
+accounted dispatch; restoration never invents a replacement identity.
+
+Model budget reservation IDs derive from the logical operation and run with a
+versioned namespace, separate from the kernel's native Tool reservation. Closed
+governor records prevent a second admission of the same logical operation. A new
+operation requires a new identity even when prompt sizes and route are equal.
+Admission retains the original request before durable reserve I/O; the explicit
+`Reserving` state forbids dispatch until acknowledgement. A successful reserve
+cannot resurrect an entry cancelled while the governor was committing. Cleanup,
+dispatch and outcome handling check the exact admitted request; delayed cleanup
+must not release an equal-sized successor in the same run. Production guards
+carry that original request through cancellation.
+
+This is accounting infrastructure, not a new workflow Tool or permission grant.
+It does not complete durable restoration of the quote/rate/request owner, native
+failure custody, canonical model activation, structured model replay or global
+root cutover. Targeted checks must cover the actual governor commit/cancellation
+boundary, equal-sized successor isolation, PostgreSQL holds and the native
+invocation identity through the real provider path before claiming acceptance.
+
+### Provider meter presence (2026-10-19; source implementation, unvalidated)
+
+`CompletionResponse` and `ToolCompletionResponse` carry an optional complete
+`TokenUsage` instead of four unconditional numeric counters. Reasoning,
+decorators, the Reborn gateway, trace recording/replay and test instrumentation
+preserve absence. The local response cache explicitly reports known zero for
+its no-provider-dispatch exchange while retaining its stored original meter.
+A missing, partial, inconsistent or unrepresentable provider meter does not
+become a reported zero, a wrapped integer or a saturated count. It also does
+not discard a received answer or justify another provider submission.
+
+Dedicated NEAR AI, Anthropic OAuth, Copilot, Codex and Gemini adapters check
+native observation presence. Gemini stream assembly merges only supplied usage
+fields. Bedrock's absent/negative observations remain unknown. Rig construction
+selects the wire-usage contract explicitly; its normalized numeric defaults
+cannot establish presence. OpenAI's Rig 0.30 raw DTO retains prompt/total but
+not completion counts; checked subtraction is permitted only from those two
+reported counters under that protocol's documented relation. Direct adapters
+retain explicit completion-counter presence. Unknown custom Rig contracts
+report unknown usage until their structured contract is declared.
+
+Limits of this batch: it does not normalize provider-specific cache billing
+semantics or establish retained price/route provenance. The existing governor
+still has a conservative estimated-debit path when usage is unknown; that is
+not reported consumption. Its former transport-chunk output count is replaced
+by the captured output estimate. Durable known/estimated/unresolved accounting,
+partial/raw failure custody and safe recovery remain mandatory subsequent
+cutover work. No complete pricing or recovery claim is made here.
+
+The cache semantic distinction is confirmed by primary contracts:
+[OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/retrieve)
+defines prompt tokens and a cached subset; [Anthropic prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)
+uses separate fresh/read/write input counts. Those meanings must be normalized
+explicitly with retained provenance before the pricing cutover; compatible JSON
+field names alone do not establish the same billing semantics. Bedrock's
+[TokenUsage contract](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_TokenUsage.html)
+also defines separate optional cache observations. Live provider acceptance is
+limited to the explicitly selected local model; no AWS/OAuth account execution
+is manufactured.
+
+Model-operation identity acceptance: `model-work-identity-20261019-r2` passed
+its corrected actual-governor cancellation boundary, PostgreSQL same-size
+successor/closed-operation checks (28.49 s), ordinary global Monty (53.82 s),
+compaction/thread/turn/product consumers, and the real provider accounting
+reconciliation with work UUID equal to the admitted native invocation (9.94 s).
+Strict affected test lint (108.08 s) and the separate Monty-control workspace
+lint (39.59 s) passed. Unchanged work-ID wire tests and 21 accountant cases
+retain exact R1 evidence; R1's new fixture queried a nonexistent unrestricted
+account snapshot and failed, then R2 explicitly configured that real account.
+No warning or runtime condition was suppressed. Receipts and exact sources are
+in `/private/tmp/brassclaw-model-work-identity-accepted.json` and
+`target/validation/model-work-identity-20261019-r2`. Subsequent provider DTO edits
+are a separate, still unvalidated cohort. The shared prefix chat's newer edits
+are outside this frozen acceptance. Full durable owner/price restoration,
+canonical model activation and whole-plan acceptance remain open.
+
+Provider-meter presence acceptance: `provider-meter-presence-20261019-r3`
+passed strict affected test lint, including the root package (87.04 s).
+R1's unchanged provider and Reborn checks passed; its Composition build exposed
+ten old scalar accesses in provider boot/cache tests, repaired in R2 without
+changing their expected known observations. R2 then passed all 22 accountant
+cases (0.67 s), trace contribution (5.99 s), actual PostgreSQL cache TTL (3.88 s)
+and live role-cache settings (71.05 s), finite native JSON parsing (25.22 s),
+ordinary global execution (60.71 s), actual model custody/system usage including
+metadata-only transport omission (44.42 s), and original-reservation accounting
+reconciliation (10.42 s). R2's strict lint identified one obsolete doc comment
+left above the deleted saturation helper; R3 removes only that comment and
+reuses the unchanged runtime results. No lint allowance or warning suppression
+was added. The receipt `/private/tmp/brassclaw-provider-meter-presence-accepted.json`
+links all scopes, sources and retained binaries. This freeze intentionally
+excludes the other chat's newer prefix changes; combined final integration
+remains required. Cache billing semantics, durable known/estimated/unresolved
+cost provenance, raw conversion-failure custody and canonical activation remain
+open; these results establish none of those unfinished gates.
+
+Canonical model-answer candidate acceptance (2026-10-20):
+`canonical-model-20261020-r2` ran the complete nine-step prompt-JSON -> explicit
+model usage -> finite response-JSON -> pure R03 -> existing reply workflow on
+that runtime's already-running global Monty service. The actual selected
+`cyankiwi/Ornith-1.5-9B-AWQ-INT4` endpoint answered; PostgreSQL retained the
+original response, prefix and single invocation attempt, exactly one assistant
+message was stored, and the instance root identity stayed unchanged. Existing
+installation model Tool/ToolSkill/Skill/PythonCode UUIDs were reused for retained
+successors. Quotes, Unicode and source-looking history remained typed input.
+Actual caller acceptance passed in 31.24 s and strict Composition test lint in
+149.59 s. R1 found three test-construction errors (settings-store accessor,
+heartbeat's cursor return, shutdown Arc); R2 repairs those test-only issues.
+The receipt `/private/tmp/brassclaw-canonical-model-accepted.json` retains exact
+source/artifacts and limitations. This development execution does not create
+combination approval, activate a catalogue route, exercise ordinary matching or
+certify the managed turn's final settlement. Newer shared prefix work remains
+outside this frozen scope. The provider-observation successor currently under
+validation changes the custody boundary and has no acceptance claim yet.
+
+Completion-status correction discovered during the provider-observation
+successor (2026-10-20; not yet accepted): the real one-token truncation test
+returned a successful internal receipt in `provider-observation-20261020-r3`.
+Source inspection found that Rig inferred Stop from text instead of its raw
+provider `finish_reason`. A direct call to the selected real endpoint reported
+`length` with exactly one completion token. Earlier model-answer observations
+remain evidence that the selected steps and custody/reply ports ran; they do
+not establish faithful natural-completion classification or canonical activation.
+The successor reads actual provider-specific terminal fields, preserves unknown
+and incomplete states, prevents textual Tool recovery from promoting an
+incomplete response, and excludes incomplete replies from completed-response
+caching. Related OAuth/Responses adapters now require coherent terminal status;
+Tool proposals cannot establish completion by their presence alone. Invalid JSON
+arguments retain their original text and prevent executable classification;
+Codex no longer removes explicit empty argument values. Cloud-code Gemini no
+longer invents STOP before a terminal field arrives. These changes need their
+new parser/caller regressions, real endpoint acceptance and affected strict lint
+before any completion claim. The native provider-observation table remains
+separate from a successful LoopModelResponse, with the original invocation's
+captured capacity and immutable provenance. Auxiliary Sempai/system observations,
+unparsed HTTP/parser-error custody and durable observed-failure spend/price
+reconciliation remain distinct required work.
+
+
+Provider-observation follow-up under validation (2026-10-20): R5 compiled and
+passed adapter/parser/cache checks, but its real one-token candidate still
+completed. Source inspection then found Rig 0.30's OpenAI Chat Completions
+serializer drops the core request's `max_tokens`. R6 maps that exact transport
+to `max_completion_tokens`; real registry/SDK HTTP text, Tool and omitted-limit
+requests pass. Its real one-token call now exposes an earlier SDK conversion
+failure: an empty-content truncated response produces no adapter DTO. R6 is
+not an accepted candidate run; absence of that DTO must not be treated as a
+successful answer or replaced with invented content.
+
+The successor adds a separate immutable native wire-observation stage before
+OpenAI-compatible Chat Completions SDK parsing, retaining original status and
+lossless bytes (base64), correlated with the same admitted invocation/prefix.
+The existing captured `max_value_bytes` bounds its encoded envelope; failed
+persistence retains the original observation for supervised persistence only.
+Cancellation and parallel calls keep separate owners. Full response bodies are
+freed after durable retention. No unparsed bytes become executable code or a
+public reply. The actual-model candidate now checks completed, one-token,
+adapter-evidence write failure and wire-evidence write failure cases, without
+replaying any model effect. Other provider protocols/streaming and partial
+transport failure custody still need their own implementation and acceptance.
+
+In the same pending validation batch, each model reservation captures its
+configured ModelCost once. Assistant, auxiliary and retained reconciliation
+use that captured rate and reject an incompatible effective profile, avoiding
+repricing an admitted operation through a later table read. This is in-process
+quote ownership, not durable rate/version provenance or live provider-price
+configuration. The legacy conservative estimated debit when a meter is absent,
+observed-failure settlement and crash-restored pricing remain required work.
+No source in this follow-up is marked accepted before actual execution/lint.

@@ -280,16 +280,12 @@ impl MontyTaskHost {
     /// A selected native usage takes custody of a received response before the
     /// final delivery fence. A late result may be journaled for the original
     /// effect, but can never resume Python or authorize another dispatch.
-    pub(crate) async fn stream_model_retaining<F, Fut>(
+    pub(crate) async fn stream_model_retaining(
         &self,
         invocation_id: brassclaw_host_api::InvocationId,
         request: LoopModelRequest,
-        retain: F,
-    ) -> Result<String, AgentLoopHostError>
-    where
-        F: FnOnce(LoopModelResponse) -> Fut + Send,
-        Fut: std::future::Future<Output = Result<String, AgentLoopHostError>> + Send,
-    {
+        record: Arc<dyn crate::monty_model_capability::RecipeModelResponseRecord>,
+    ) -> Result<String, AgentLoopHostError> {
         if invocation_id.as_uuid().is_nil() {
             return Err(AgentLoopHostError::new(
                 AgentLoopHostErrorKind::InvalidInvocation,
@@ -297,10 +293,22 @@ impl MontyTaskHost {
             ));
         }
         let call = self.begin_model_call(&request)?;
-        let result = match self.host.stream_model(request).await {
-            Ok(response) => retain(response).await,
-            Err(error) => Err(error),
-        };
+        let custodian = Arc::new(SelectedModelResponseCustodian {
+            record,
+            bytes: Mutex::new(None),
+        });
+        let result = async {
+            self.host
+                .stream_model_with_custody(request, custodian.clone())
+                .await?;
+            // Only bytes durably retained by the original record may be delivered.
+            custodian
+                .bytes
+                .lock()
+                .take()
+                .ok_or_else(missing_model_custody)
+        }
+        .await;
         self.finish_call(call, result, |response_bytes| {
             WithheldTaskPortValue::RecordedModelResponse {
                 invocation_id,
@@ -392,4 +400,52 @@ impl MontyTaskHost {
             .as_ref()
             .map(|reply| reply.reference.clone())
     }
+}
+
+/// Bridge one selected native record into both neutral custody stages. The
+/// original record owns pending data independently of dropped futures; neither
+/// stage can submit provider work, change an identity or authorize a retry.
+struct SelectedModelResponseCustodian {
+    record: Arc<dyn crate::monty_model_capability::RecipeModelResponseRecord>,
+    bytes: Mutex<Option<String>>,
+}
+
+#[async_trait::async_trait]
+impl brassclaw_turns::run_profile::LoopModelResponseCustodian for SelectedModelResponseCustodian {
+    fn requires_provider_observation(&self) -> bool {
+        true
+    }
+    fn receive_provider_wire_observation(
+        &self,
+        response: serde_json::Value,
+    ) -> Result<(), AgentLoopHostError> {
+        self.record.receive_provider_wire_observation(response)
+    }
+    async fn persist_provider_wire_observation(&self) -> Result<(), AgentLoopHostError> {
+        self.record.persist_provider_wire_observation().await
+    }
+    fn receive_provider_observation(
+        &self,
+        response: serde_json::Value,
+    ) -> Result<(), AgentLoopHostError> {
+        self.record.receive_provider_observation(response)
+    }
+    async fn persist_provider_observation(&self) -> Result<(), AgentLoopHostError> {
+        self.record.persist_provider_observation().await
+    }
+    fn receive_response(&self, response: &LoopModelResponse) -> Result<(), AgentLoopHostError> {
+        self.record.receive_response(response.clone())
+    }
+    async fn persist_response(&self) -> Result<(), AgentLoopHostError> {
+        let bytes = self.record.persist_response().await?;
+        *self.bytes.lock() = Some(bytes);
+        Ok(())
+    }
+}
+
+fn missing_model_custody() -> AgentLoopHostError {
+    AgentLoopHostError::new(
+        AgentLoopHostErrorKind::Internal,
+        "selected model response custody is incomplete",
+    )
 }

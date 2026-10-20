@@ -240,10 +240,13 @@ impl NearAiChatProvider {
     async fn send_request<T: Serialize, R: for<'de> Deserialize<'de>>(
         &self,
         body: &T,
+        dispatch_policy: crate::ProviderDispatchPolicy,
     ) -> Result<R, LlmError> {
         match self.send_request_inner(body).await {
             Ok(result) => Ok(result),
-            Err(LlmError::SessionExpired { .. }) if !self.uses_api_key() => {
+            Err(LlmError::SessionExpired { .. })
+                if !self.uses_api_key() && dispatch_policy.allows_resubmission() =>
+            {
                 // Session expired, attempt renewal and retry once
                 self.session.handle_auth_failure().await?;
                 self.send_request_inner(body).await
@@ -541,7 +544,8 @@ impl LlmProvider for NearAiChatProvider {
             tool_choice: None,
         };
 
-        let response: ChatCompletionResponse = self.send_request(&request).await?;
+        let response: ChatCompletionResponse =
+            self.send_request(&request, req.dispatch_policy).await?;
 
         let choice =
             response
@@ -566,24 +570,16 @@ impl LlmProvider for NearAiChatProvider {
         emit_reasoning_trace(reasoning_fallback.as_deref());
         let provider_reasoning = reasoning_fallback.clone();
         let content = content.or(reasoning_fallback).unwrap_or_default();
-        let finish_reason = match choice.finish_reason.as_deref() {
-            Some("stop") => FinishReason::Stop,
-            Some("length") => FinishReason::Length,
-            Some("tool_calls") => FinishReason::ToolUse,
-            Some("content_filter") => FinishReason::ContentFilter,
-            _ => FinishReason::Unknown,
-        };
+        let finish_reason = FinishReason::from_chat_reason(choice.finish_reason.as_deref());
 
-        let (input_tokens, output_tokens) = parse_usage(response.usage.as_ref());
+        let usage = parse_usage(response.usage.as_ref());
 
         Ok(CompletionResponse {
             content,
             finish_reason,
-            input_tokens,
-            output_tokens,
+            usage,
+
             reasoning: provider_reasoning,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
         })
     }
 
@@ -617,7 +613,8 @@ impl LlmProvider for NearAiChatProvider {
             req.tool_choice,
         );
 
-        let response: ChatCompletionResponse = self.send_request(&request).await?;
+        let response: ChatCompletionResponse =
+            self.send_request(&request, req.dispatch_policy).await?;
 
         let choice =
             response
@@ -641,12 +638,14 @@ impl LlmProvider for NearAiChatProvider {
         emit_reasoning_trace(reasoning_fallback.as_deref());
         let provider_reasoning = reasoning_fallback.clone();
 
+        let mut valid_arguments = true;
         let tool_calls: Vec<ToolCall> = message_tool_calls
             .unwrap_or_default()
             .into_iter()
             .map(|tc| {
-                let arguments = serde_json::from_str(&tc.function.arguments)
-                    .unwrap_or(serde_json::Value::Object(Default::default()));
+                let (arguments, valid) =
+                    crate::provider::decode_provider_arguments(&tc.function.arguments);
+                valid_arguments &= valid;
                 ToolCall {
                     id: tc.id,
                     name: tc.function.name,
@@ -669,30 +668,20 @@ impl LlmProvider for NearAiChatProvider {
             message_content
         };
 
-        let finish_reason = match choice.finish_reason.as_deref() {
-            Some("stop") => FinishReason::Stop,
-            Some("length") => FinishReason::Length,
-            Some("tool_calls") => FinishReason::ToolUse,
-            Some("content_filter") => FinishReason::ContentFilter,
-            _ => {
-                if !tool_calls.is_empty() {
-                    FinishReason::ToolUse
-                } else {
-                    FinishReason::Unknown
-                }
-            }
+        let finish_reason = if valid_arguments {
+            FinishReason::from_chat_reason(choice.finish_reason.as_deref())
+        } else {
+            FinishReason::Unknown
         };
 
-        let (input_tokens, output_tokens) = parse_usage(response.usage.as_ref());
+        let usage = parse_usage(response.usage.as_ref());
 
         Ok(ToolCompletionResponse {
             content,
             tool_calls,
             finish_reason,
-            input_tokens,
-            output_tokens,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
+            usage,
+
             reasoning: provider_reasoning,
         })
     }
@@ -1130,10 +1119,6 @@ struct ChatCompletionUsage {
     total_tokens: Option<u64>,
 }
 
-fn saturate_u32(val: u64) -> u32 {
-    val.min(u32::MAX as u64) as u32
-}
-
 /// Emit reasoning content (chain-of-thought from reasoning models — GLM-5,
 /// DeepSeek, OpenAI o-series, Qwen reasoning variants) on a dedicated tracing
 /// target so observability layers can capture it without coupling to the
@@ -1150,20 +1135,15 @@ fn emit_reasoning_trace(reasoning: Option<&str>) {
     }
 }
 
-fn parse_usage(usage: Option<&ChatCompletionUsage>) -> (u32, u32) {
-    let Some(u) = usage else {
-        return (0, 0);
-    };
-    let input = u.prompt_tokens.map(saturate_u32).unwrap_or(0);
-    let output = u.completion_tokens.map(saturate_u32).unwrap_or_else(|| {
-        // Fall back to total - prompt if completion is missing.
-        match (u.total_tokens, u.prompt_tokens) {
-            (Some(total), Some(prompt)) => saturate_u32(total.saturating_sub(prompt)),
-            (Some(total), None) => saturate_u32(total),
-            _ => 0,
+fn parse_usage(usage: Option<&ChatCompletionUsage>) -> Option<crate::TokenUsage> {
+    let usage = usage?;
+    if let Some(total) = usage.total_tokens {
+        let complete = usage.prompt_tokens?.checked_add(usage.completion_tokens?)?;
+        if complete != total {
+            return None;
         }
-    });
-    (input, output)
+    }
+    crate::TokenUsage::from_reported_counts(usage.prompt_tokens, usage.completion_tokens, 0, 0)
 }
 
 #[cfg(test)]
@@ -2430,69 +2410,50 @@ mod tests {
         assert_eq!(resp.choices[0].message.content, Some("ok".to_string()));
     }
 
-    // -- parse_usage and saturate_u32 -----------------------------------------
-
     #[test]
-    fn test_parse_usage_with_all_fields() {
-        let usage = ChatCompletionUsage {
-            prompt_tokens: Some(100),
-            completion_tokens: Some(50),
-            total_tokens: Some(150),
-        };
-        assert_eq!(parse_usage(Some(&usage)), (100, 50));
+    fn reported_usage_distinguishes_unknown_partial_zero_and_overflow() {
+        assert_eq!(parse_usage(None), None);
+        for usage in [
+            ChatCompletionUsage::default(),
+            ChatCompletionUsage {
+                prompt_tokens: Some(100),
+                completion_tokens: None,
+                total_tokens: Some(180),
+            },
+            ChatCompletionUsage {
+                prompt_tokens: None,
+                completion_tokens: None,
+                total_tokens: Some(200),
+            },
+            ChatCompletionUsage {
+                prompt_tokens: Some(2),
+                completion_tokens: Some(3),
+                total_tokens: Some(4),
+            },
+            ChatCompletionUsage {
+                prompt_tokens: Some(u64::MAX),
+                completion_tokens: Some(0),
+                total_tokens: Some(u64::MAX),
+            },
+        ] {
+            assert_eq!(parse_usage(Some(&usage)), None);
+        }
+        for (input, output) in [(0, 0), (100, 50)] {
+            let usage = ChatCompletionUsage {
+                prompt_tokens: Some(input),
+                completion_tokens: Some(output),
+                total_tokens: Some(input + output),
+            };
+            let parsed = parse_usage(Some(&usage)).unwrap();
+            assert_eq!(
+                (
+                    u64::from(parsed.input_tokens),
+                    u64::from(parsed.output_tokens)
+                ),
+                (input, output)
+            );
+        }
     }
-
-    #[test]
-    fn test_parse_usage_none() {
-        assert_eq!(parse_usage(None), (0, 0));
-    }
-
-    #[test]
-    fn test_parse_usage_missing_completion_falls_back_to_total_minus_prompt() {
-        let usage = ChatCompletionUsage {
-            prompt_tokens: Some(100),
-            completion_tokens: None,
-            total_tokens: Some(180),
-        };
-        // output = total - prompt = 80
-        assert_eq!(parse_usage(Some(&usage)), (100, 80));
-    }
-
-    #[test]
-    fn test_parse_usage_missing_completion_and_prompt_uses_total() {
-        let usage = ChatCompletionUsage {
-            prompt_tokens: None,
-            completion_tokens: None,
-            total_tokens: Some(200),
-        };
-        // input = 0 (no prompt), output = total = 200
-        assert_eq!(parse_usage(Some(&usage)), (0, 200));
-    }
-
-    #[test]
-    fn test_parse_usage_all_none() {
-        let usage = ChatCompletionUsage {
-            prompt_tokens: None,
-            completion_tokens: None,
-            total_tokens: None,
-        };
-        assert_eq!(parse_usage(Some(&usage)), (0, 0));
-    }
-
-    #[test]
-    fn test_saturate_u32_within_range() {
-        assert_eq!(saturate_u32(0), 0);
-        assert_eq!(saturate_u32(42), 42);
-        assert_eq!(saturate_u32(u32::MAX as u64), u32::MAX);
-    }
-
-    #[test]
-    fn test_saturate_u32_overflow_clamps() {
-        assert_eq!(saturate_u32(u32::MAX as u64 + 1), u32::MAX);
-        assert_eq!(saturate_u32(u64::MAX), u32::MAX);
-    }
-
-    // -- Pricing types deserialization ----------------------------------------
 
     #[test]
     fn test_model_cost_deserialize() {

@@ -584,6 +584,28 @@ impl Drop for ExchangeGuard {
 }
 #[async_trait]
 impl HostManagedModelGateway for McpProviderModelGateway {
+    fn supports_provider_observation(&self) -> bool {
+        self.inner.supports_provider_observation()
+    }
+    async fn stream_model_observed(
+        &self,
+        request: HostManagedModelRequest,
+        capabilities: Option<Arc<dyn LoopCapabilityPort>>,
+        custodian: Arc<dyn LoopModelResponseCustodian>,
+    ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        match capabilities {
+            Some(capabilities) => {
+                self.stream_selected(request, capabilities, Some(custodian))
+                    .await
+            }
+            None => {
+                self.inner
+                    .stream_model_observed(request, None, custodian)
+                    .await
+            }
+        }
+    }
+
     fn supports_tool_exchange(&self) -> bool {
         self.inner.supports_tool_exchange()
     }
@@ -599,6 +621,36 @@ impl HostManagedModelGateway for McpProviderModelGateway {
         request: HostManagedModelRequest,
         capabilities: Arc<dyn LoopCapabilityPort>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        self.stream_selected(request, capabilities, None).await
+    }
+}
+
+impl McpProviderModelGateway {
+    async fn dispatch_selected(
+        &self,
+        request: HostManagedModelRequest,
+        capabilities: Arc<dyn LoopCapabilityPort>,
+        custodian: Option<Arc<dyn LoopModelResponseCustodian>>,
+    ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        match custodian {
+            Some(custodian) => {
+                self.inner
+                    .stream_model_observed(request, Some(capabilities), custodian)
+                    .await
+            }
+            None => {
+                self.inner
+                    .stream_model_with_capabilities(request, capabilities)
+                    .await
+            }
+        }
+    }
+    async fn stream_selected(
+        &self,
+        request: HostManagedModelRequest,
+        capabilities: Arc<dyn LoopCapabilityPort>,
+        custodian: Option<Arc<dyn LoopModelResponseCustodian>>,
+    ) -> Result<HostManagedModelResponse, HostManagedModelError> {
         let run_id = request.run_id;
         let port = self.binding.port(run_id).map_err(|_| {
             HostManagedModelError::safe(
@@ -608,8 +660,7 @@ impl HostManagedModelGateway for McpProviderModelGateway {
         })?;
         let Some(port) = port else {
             return self
-                .inner
-                .stream_model_with_capabilities(request, capabilities)
+                .dispatch_selected(request, capabilities, custodian)
                 .await;
         };
         if request.surface_version.as_ref() != Some(&port.version) {
@@ -637,8 +688,7 @@ impl HostManagedModelGateway for McpProviderModelGateway {
             )
         })?;
         let result = self
-            .inner
-            .stream_model_with_capabilities(request, capabilities)
+            .dispatch_selected(request, capabilities, custodian)
             .await;
         match result.as_ref().map(|response| &response.output) {
             Ok(ParentLoopOutput::CapabilityCalls(_)) => {

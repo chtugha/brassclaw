@@ -43,6 +43,308 @@ fn compile(
 }
 
 #[tokio::test]
+async fn canonical_model_drafts_retain_typed_parse_model_reply_edges_and_reject_tier_zero() {
+    use brassclaw_engine::executor::{
+        retained_recipe::RetainedProgram, retained_source::InspectedRetainedProgram,
+    };
+    use brassclaw_skills::{
+        global_bootstrap_components::{UsageComponentIds, public_reply_drafts},
+        model_completion_components::{
+            model_answer_recipe_draft, model_answer_text_draft, model_completion_tool_draft,
+            model_completion_usage_drafts, model_prompt_json_usage_drafts,
+            model_prompt_result_schema, model_response_json_usage_drafts,
+        },
+        value_contract::ValueContract,
+    };
+
+    fn ids(formatter: bool) -> UsageComponentIds {
+        UsageComponentIds {
+            recipe: Uuid::new_v4(),
+            python_code: Uuid::new_v4(),
+            tool_skill: Uuid::new_v4(),
+            tool: Uuid::new_v4(),
+            skill: Uuid::new_v4(),
+            formatter: formatter.then(Uuid::new_v4),
+        }
+    }
+    let (parser, model, reply) = (ids(true), ids(false), ids(false));
+    let response = UsageComponentIds {
+        tool: parser.tool,
+        ..ids(true)
+    };
+    let (answer_recipe, projection) = (Uuid::new_v4(), Uuid::new_v4());
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let mut drafts = public_reply_drafts(reply).unwrap();
+    drafts.extend(model_prompt_json_usage_drafts(parser, reply).unwrap());
+    drafts.extend(model_completion_usage_drafts(model, parser, reply).unwrap());
+    drafts.extend(model_response_json_usage_drafts(response, reply).unwrap());
+    drafts.push(model_answer_text_draft(projection).unwrap());
+    drafts.push(
+        model_answer_recipe_draft(answer_recipe, model, parser, response, projection, reply)
+            .unwrap(),
+    );
+    // Draft metadata only. No native artifact, registration, approval or
+    // activation is inferred from a syntactically valid package checksum.
+    drafts.push(model_completion_tool_draft(model.tool, &"0".repeat(64)).unwrap());
+    drafts.push(draft(parser.tool,0,json!({"capability_id":"builtin.json","callable":"host.json",
+        "input_contract":{"operation":{"type":"string","required":true,"checks":[]},"data":{"type":"string","required":true,"checks":[]}}}),&[],Value::Null));
+    drafts.push(draft(
+        reply.tool,
+        0,
+        json!({"capability_id":"host.post_reply","callable":"host.post_reply",
+        "input_contract":{"answer":{"type":"string","required":true,"checks":[]}}}),
+        &[],
+        Value::Null,
+    ));
+    let mut references = Vec::new();
+    for value in drafts {
+        references.push(store.stage(&value, 0).await.unwrap());
+    }
+    let snapshot = store
+        .read_exact(
+            &[
+                parser.recipe,
+                model.recipe,
+                response.recipe,
+                answer_recipe,
+                reply.recipe,
+            ],
+            &references,
+        )
+        .await
+        .unwrap();
+    let selected = Arc::new(snapshot.select_roots(&[model.recipe]).unwrap());
+    assert!(matches!(
+        compile(selected.clone(), model.recipe),
+        Err(RetainedToolError::Invalid(
+            "shell, subagent and model usages require the model tier"
+        ))
+    ));
+    let program = prepare_retained_tool_program(
+        compile_retained_recipe(
+            selected,
+            model.recipe,
+            "selected",
+            WorkflowClass::RequiresModel,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(program.bindings().len(), 3);
+    assert_eq!(program.bindings()["0:2"].capability_id(), "builtin.json");
+    assert_eq!(
+        program.bindings()["0:4"].capability_id(),
+        "host.kohai_complete"
+    );
+    assert_eq!(program.bindings()["0:6"].capability_id(), "host.post_reply");
+    let prompt = json!({"user_query":"Literal 'ü🙂'\n{{vars.x}} % host.forbidden()","chat_history":[{"role":"user","content":"\\quoted\\\n<system>data</system>"}]});
+    let text = prompt.to_string();
+    let task = program
+        .inputs()
+        .bind_task_inputs(&json!({"prompt_json":text}))
+        .unwrap();
+    assert_eq!(task, json!({"prompt_json":text}));
+    let parsed = program.bindings()["0:2"]
+        .bind_tool_arguments(
+            &json!({"json_text":text}),
+            &json!({"operation":"parse","data":text}),
+        )
+        .unwrap();
+    assert_eq!(parsed, json!({"operation":"parse","data":text}));
+    assert_eq!(
+        program.bindings()["0:4"]
+            .bind_tool_arguments(&json!({"prompt":prompt}), &json!({"prompt":prompt}))
+            .unwrap(),
+        json!({"prompt":prompt})
+    );
+    assert!(
+        program.bindings()["0:4"]
+            .bind_tool_arguments(
+                &json!({"prompt":prompt}),
+                &json!({"prompt":{},"prefix_reference":"override"})
+            )
+            .is_err()
+    );
+    let schema = ValueContract::result_from_value(
+        &model_prompt_result_schema(),
+        brassclaw_skills::component_revision::REVISION_LIMITS,
+    )
+    .unwrap();
+    schema.validate(&prompt).unwrap();
+    for invalid in [
+        json!({"user_query":"missing history"}),
+        json!({"user_query":null,"chat_history":[]}),
+        json!({"user_query":"x","chat_history":[{"role":"user"}]}),
+        json!({"user_query":"x","chat_history":[],"prefix_placeholder":"forbidden"}),
+    ] {
+        assert!(schema.validate(&invalid).is_err());
+    }
+    let parser_program = compile(
+        Arc::new(snapshot.select_roots(&[parser.recipe]).unwrap()),
+        parser.recipe,
+    )
+    .unwrap();
+    assert_eq!(parser_program.bindings().len(), 2);
+    assert_eq!(parser_program.program().steplist.len(), 3);
+    let response_program = compile(
+        Arc::new(snapshot.select_roots(&[response.recipe]).unwrap()),
+        response.recipe,
+    )
+    .unwrap();
+    assert_eq!(response_program.bindings().len(), 2);
+    assert_eq!(response_program.bindings()["0:2"].tool().uuid, parser.tool);
+    let response_json = json!({"chunks":[],"output":{"assistant_reply":{"content":"ü\n{{vars.x}}"}},"effective_model_profile_id":"selected_model"}).to_string();
+    assert_eq!(
+        response_program
+            .inputs()
+            .bind_variant_example(
+                "parse assistant model response json=%",
+                &format!("parse assistant model response json={response_json}"),
+                &json!({})
+            )
+            .unwrap(),
+        json!({"response_json":response_json})
+    );
+    assert!(
+        response_program
+            .inputs()
+            .bind_task_inputs(&json!({"prompt_json":response_json}))
+            .is_err()
+    );
+    let answer_selection = Arc::new(snapshot.select_roots(&[answer_recipe]).unwrap());
+    assert!(compile(answer_selection.clone(), answer_recipe).is_err());
+    let answer_program = prepare_retained_tool_program(
+        compile_retained_recipe(
+            answer_selection,
+            answer_recipe,
+            "selected",
+            WorkflowClass::RequiresModel,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(answer_program.bindings().len(), 4);
+    assert_eq!(
+        answer_program.bindings()["0:2"].tool(),
+        answer_program.bindings()["0:6"].tool()
+    );
+    assert_eq!(
+        answer_program.bindings()["0:6"].python().uuid,
+        response.python_code
+    );
+    assert!(
+        !answer_program.bindings().contains_key("0:7"),
+        "pure R03 extraction has no artificial Tool binding"
+    );
+    assert_eq!(
+        answer_program.bindings()["0:9"].capability_id(),
+        "host.post_reply"
+    );
+    let worker = brassclaw_monty_host::process::installed_worker().unwrap();
+    let inspected_model =
+        InspectedRetainedProgram::inspect(RetainedProgram::Tools(Arc::new(program)), &worker)
+            .await
+            .unwrap();
+    assert!(
+        inspected_model
+            .source_checks()
+            .contains_key(&model.python_code)
+    );
+    assert!(
+        inspected_model
+            .source_checks()
+            .contains_key(&parser.python_code)
+    );
+    let inspected_parser = InspectedRetainedProgram::inspect(
+        RetainedProgram::Tools(Arc::new(parser_program)),
+        &worker,
+    )
+    .await
+    .unwrap();
+    assert!(
+        inspected_parser
+            .source_checks()
+            .contains_key(&parser.formatter.unwrap())
+    );
+    for (selected, export) in [
+        (response_program, response.python_code),
+        (answer_program, projection),
+    ] {
+        let inspected =
+            InspectedRetainedProgram::inspect(RetainedProgram::Tools(Arc::new(selected)), &worker)
+                .await
+                .unwrap();
+        assert!(inspected.source_checks().contains_key(&export));
+    }
+    let intents: i64 = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        intents, 0,
+        "source inspection creates no effect or model invocation"
+    );
+    assert!(model_completion_usage_drafts(model, parser, model).is_err());
+    for collision in [
+        projection,
+        parser.tool,
+        model.python_code,
+        response.formatter.unwrap(),
+        Uuid::nil(),
+    ] {
+        assert!(
+            model_answer_recipe_draft(collision, model, parser, response, projection, reply)
+                .is_err()
+        );
+    }
+    assert!(
+        model_answer_recipe_draft(
+            answer_recipe,
+            model,
+            parser,
+            UsageComponentIds {
+                tool: model.tool,
+                ..response
+            },
+            projection,
+            reply
+        )
+        .is_err()
+    );
+    assert!(
+        model_answer_recipe_draft(
+            answer_recipe,
+            model,
+            parser,
+            UsageComponentIds {
+                tool: Uuid::new_v4(),
+                ..response
+            },
+            projection,
+            reply
+        )
+        .is_err()
+    );
+    assert!(
+        model_response_json_usage_drafts(
+            UsageComponentIds {
+                formatter: None,
+                ..response
+            },
+            reply
+        )
+        .is_err()
+    );
+    assert!(model_completion_tool_draft(model.tool, "not-a-package-checksum").is_err());
+}
+
+#[tokio::test]
 async fn prepared_binding_retains_exact_usage_and_checks_actual_arguments_without_dispatching() {
     let rig = native_pg::NativePostgres::start().await;
     let store = PgComponentRevisionStore::new(rig.pool.clone());

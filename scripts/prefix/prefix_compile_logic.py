@@ -46,7 +46,7 @@ def prefix_prepare(inputs):
     prefix_fields(source, ['format', 'profile', 'release', 'header', 'evidence_view', 'sources', 'procedures'])
     if source['format'] != 'brassclaw-prefix-source-snapshot/1' or source['profile'] not in ('base-prompt', 'prefix-maker'):
         raise ValueError('unsupported source snapshot')
-    if source['evidence_view'] not in ('literal-reference/v1', 'literal-reference/v2-deduplicated'):
+    if source['evidence_view'] not in ('literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing'):
         raise ValueError('unsupported evidence view')
     if any(not isinstance(source[key], str) or not source[key].strip() for key in ('release', 'header')):
         raise ValueError('release and accepted header required')
@@ -142,8 +142,11 @@ def prefix_render(inputs):
             compact.append(identity[:12])
             evidence.append({'id': identity, 'path': source['path'], 'document_sha256': record['sha256'], 'line_start': 1, 'line_end': record['line_count'], 'excerpt_sha256': record['sha256'], 'excerpt': source['text'], 'disposition': source['disposition'], 'sections': record['sections']})
     files = state['files']
-    if snapshot['evidence_view'] == 'literal-reference/v2-deduplicated':
-        rendered = render_deduplicated_prefix_reference(snapshot['header'], rendering, [])
+    if snapshot['evidence_view'] in ('literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing'):
+        renderer = render_trailing_inventory_prefix_reference if snapshot['evidence_view'] == 'literal-reference/v3-trailing-inventory' else render_deduplicated_prefix_reference
+        if snapshot['evidence_view'] == 'literal-reference/v4-stable-sharing':
+            renderer = render_stable_sharing_prefix_reference
+        rendered = renderer(snapshot['header'], rendering, [])
         files['context.md'] = rendered['context']
         files['render_map.json'] = prefix_json(rendered['render_map'])
     else:

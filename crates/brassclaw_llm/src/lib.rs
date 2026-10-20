@@ -30,6 +30,7 @@ pub mod nearai_chat;
 pub mod openai_codex_provider;
 pub(crate) mod openai_codex_session;
 mod optional_auth_http;
+pub mod provider_observation;
 mod provider;
 mod reasoning;
 pub mod recording;
@@ -60,6 +61,9 @@ pub mod model_discovery;
 pub mod reasoning_models;
 pub mod vision_models;
 
+#[cfg(all(test, feature = "registry-provider-factory"))]
+mod single_submission_tests;
+
 pub use circuit_breaker::{CircuitBreakerConfig, CircuitBreakerProvider};
 pub use config::{
     BedrockConfig, CacheRetention, GeminiOauthConfig, LlmBackendKind, LlmConfig, NearAiConfig,
@@ -80,9 +84,9 @@ pub use openai_codex_session::{DeviceCodeStart, OpenAiCodexSessionManager};
 pub use provider::sanitize_tool_messages;
 pub use provider::{
     ChatMessage, CompletionRequest, CompletionResponse, ContentPart, FinishReason, ImageUrl,
-    LlmProvider, ModelMetadata, RetainedLlmProvider, Role, ToolCall, ToolCompletionRequest,
-    ToolCompletionResponse, ToolDefinition, ToolResult, generate_tool_call_id,
-    normalized_model_override,
+    LlmProvider, ModelMetadata, ProviderDispatchPolicy, RetainedLlmProvider, Role, ToolCall,
+    ToolCompletionRequest, ToolCompletionResponse, ToolDefinition, ToolResult,
+    generate_tool_call_id, normalized_model_override,
 };
 pub use reasoning::{
     ActionPlan, Reasoning, ReasoningContext, RespondOutput, RespondResult, ResponseAnomaly,
@@ -107,7 +111,7 @@ pub use response_body::{
 };
 pub use response_cache::{CachedProvider, ResponseCacheConfig, ResponseCachePolicy};
 pub use retry::{RetryConfig, RetryProvider, RetryTimingPolicy};
-pub use rig_adapter::RigAdapter;
+pub use rig_adapter::{RigAdapter, RigUsageFormat};
 pub use role::ProviderRole;
 pub use runtime::{LlmReloadHandle, SwappableLlmProvider};
 pub use session::{NearWalletSignedMessage, SessionConfig, SessionManager, create_session_manager};
@@ -336,7 +340,7 @@ fn create_codex_chatgpt_from_registry(
         config.refresh_token.clone(),
         config.auth_path.clone(),
         request_timeout_secs,
-    );
+    )?;
 
     Ok(Arc::new(provider))
 }
@@ -373,6 +377,7 @@ fn registry_http_client(provider: &str, timeout_secs: u64) -> Result<reqwest::Cl
     reqwest::Client::builder()
         .timeout(timeout)
         .redirect(reqwest::redirect::Policy::none())
+        .retry(reqwest::retry::never())
         .build()
         .map_err(|_| LlmError::RequestFailed {
             provider: provider.into(),
@@ -455,6 +460,8 @@ fn create_openai_compat_from_registry(
     );
 
     let adapter = RigAdapter::new(model, &config.model)
+        .with_usage_format(crate::rig_adapter::RigUsageFormat::OpenAi)
+        .with_openai_chat_output_limit()
         .with_unsupported_params(config.unsupported_params.clone());
     Ok(Arc::new(adapter))
 }
@@ -535,6 +542,7 @@ fn create_anthropic_from_registry(
 
     Ok(Arc::new(
         RigAdapter::new(model, &config.model)
+            .with_usage_format(crate::rig_adapter::RigUsageFormat::Anthropic)
             .with_cache_retention(cache_retention)
             .with_unsupported_params(config.unsupported_params.clone()),
     ))
@@ -577,6 +585,7 @@ fn create_ollama_from_registry(
     // reasoning for thinking models (Qwen3, DeepSeek-R1, Gemma 4, etc.).
     // Non-thinking models ignore the parameter harmlessly.
     let adapter = RigAdapter::new(model, &config.model)
+        .with_usage_format(crate::rig_adapter::RigUsageFormat::Ollama)
         .with_unsupported_params(config.unsupported_params.clone())
         .with_additional_params(serde_json::json!({ "think": true }));
     Ok(Arc::new(adapter))
@@ -634,6 +643,7 @@ fn create_deepseek_from_registry(
 
     Ok(Arc::new(
         RigAdapter::new(model, &config.model)
+            .with_usage_format(crate::rig_adapter::RigUsageFormat::OpenAi)
             .with_unsupported_params(config.unsupported_params.clone()),
     ))
 }
@@ -700,6 +710,7 @@ fn create_openrouter_from_registry(
 
     Ok(Arc::new(
         RigAdapter::new(model, &config.model)
+            .with_usage_format(crate::rig_adapter::RigUsageFormat::OpenAi)
             .with_unsupported_params(config.unsupported_params.clone()),
     ))
 }
@@ -765,6 +776,7 @@ fn create_gemini_from_registry(
 
     Ok(Arc::new(
         RigAdapter::new(model, &config.model)
+            .with_usage_format(crate::rig_adapter::RigUsageFormat::Gemini)
             .with_unsupported_params(config.unsupported_params.clone()),
     ))
 }

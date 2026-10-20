@@ -25,9 +25,8 @@ use brassclaw_turns::run_profile::{
 
 use crate::dispatch::HookDispatcher;
 
-/// Wraps an inner `LoopModelPort`, forwards `stream_model` unchanged, and
-/// dispatches `after_model` observer hooks once the inner call returns
-/// successfully.
+/// Forward model operations and the explicit response-custody contract.
+/// AfterModel observers remain owned by the transcript's durable boundary.
 pub struct HookedLoopModelPort {
     inner: Arc<dyn LoopModelPort>,
     /// Kept for future point-specific observers (e.g., `model-response-
@@ -55,6 +54,16 @@ impl HookedLoopModelPort {
 
 #[async_trait]
 impl LoopModelPort for HookedLoopModelPort {
+    async fn stream_model_with_custody(
+        &self,
+        request: LoopModelRequest,
+        custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    ) -> Result<LoopModelResponse, AgentLoopHostError> {
+        self.inner
+            .stream_model_with_custody(request, custodian)
+            .await
+    }
+
     async fn stream_model(
         &self,
         request: LoopModelRequest,
@@ -162,6 +171,8 @@ mod tests {
 
     fn request() -> LoopModelRequest {
         LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: Vec::new(),
             surface_version: None,
             model_preference: None,

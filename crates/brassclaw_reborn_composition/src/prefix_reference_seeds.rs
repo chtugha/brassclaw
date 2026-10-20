@@ -1,5 +1,7 @@
 //! Installation-owned literal references, retained in the existing class-17
 //! component revision store. No second document catalogue or approval label.
+#[path = "prefix_release_documents.rs"]
+mod release;
 use brassclaw_engine::memory::intent_system::IntentScope;
 use brassclaw_pg::PgPool;
 use brassclaw_skills::{
@@ -42,18 +44,31 @@ fn sha(text: &str) -> String {
     hex::encode(Sha256::digest(text.as_bytes()))
 }
 fn drafts() -> Result<Vec<ComponentRevisionDraft>, RebornBuildError> {
-    GUIDES.iter().map(|(path, text)| {
+    let mut drafts = GUIDES.iter().map(|(path, text)| {
         if text.trim().is_empty() { return Err(invalid()); }
         ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":id(&format!("prefix:document:{path}")),"class_code":17,
             "document":{"format":"packaged-prefix-reference/1","path":path,"content":text,"content_sha256":sha(text),"coverage":"core-guides-only","disposition":"included","authority":"packaged-reference; distinguish binding targets from implemented support"},
             "dependencies":[],"association":null}).to_string()).map_err(|_| invalid())
-    }).collect()
+    }).collect::<Result<Vec<_>, _>>()?;
+    drafts.extend(release::additional_drafts()?);
+    Ok(drafts)
 }
 
 pub(crate) struct Package {
     pub(crate) snapshot: Arc<RetainedComponentSnapshot>,
 }
 impl Package {
+    pub(crate) fn core_snapshot(&self) -> Result<Arc<RetainedComponentSnapshot>, RebornBuildError> {
+        self.snapshot
+            .select_roots(
+                &GUIDES
+                    .iter()
+                    .map(|(path, _)| id(&format!("prefix:document:{path}")))
+                    .collect::<Vec<_>>(),
+            )
+            .map(Arc::new)
+            .map_err(|_| invalid())
+    }
     /// The supplied graph must match this executable's complete packaged set.
     /// Reading a source/status label or an allocation head is insufficient.
     pub(crate) fn verify(&self) -> Result<(), RebornBuildError> {
@@ -114,6 +129,9 @@ pub(crate) async fn retain(
     let tx = client.transaction().await.map_err(|_| invalid())?;
     for document in &documents {
         let path = document.document()["path"].as_str().ok_or_else(invalid)?;
+        if !GUIDES.iter().any(|(core, _)| *core == path) {
+            continue;
+        }
         let text = document.document()["content"]
             .as_str()
             .ok_or_else(invalid)?;
@@ -143,6 +161,116 @@ pub(crate) async fn assert_database_sources(
             .unwrap()
     );
     let capture: serde_json::Value = serde_json::from_str(&before).unwrap();
+    let release_bytes = catalogue
+        .capture_declared_release_prefix_sources("base-prompt")
+        .await
+        .unwrap();
+    assert_eq!(
+        release_bytes,
+        catalogue
+            .capture_declared_release_prefix_sources("base-prompt")
+            .await
+            .unwrap()
+    );
+    let release_capture: serde_json::Value = serde_json::from_str(&release_bytes).unwrap();
+    assert_ne!(release_capture["header"], capture["header"]);
+    let generation = catalogue.active.read().await.generation.to_string();
+    let workflow_sources = catalogue
+        .export_prefix_workflow_sources(&generation)
+        .await
+        .unwrap();
+    assert_eq!(
+        workflow_sources.format,
+        "brassclaw-catalogue-source-export/2"
+    );
+    for selected in [
+        catalogue._compiler_program.as_ref().unwrap().clone(),
+        catalogue
+            .measurement_qualification
+            .as_ref()
+            .unwrap()
+            .program(),
+    ] {
+        let instruction = selected.program().inputs().instruction();
+        assert!(
+            workflow_sources
+                .selections
+                .iter()
+                .any(|source| source == instruction.retained_selection().unwrap().exact_bytes())
+        );
+        for revision in instruction.snapshot().revisions().values() {
+            assert!(
+                workflow_sources
+                    .components
+                    .iter()
+                    .any(
+                        |source| source.reference.uuid == revision.reference().uuid.to_string()
+                            && source.reference.version == revision.reference().version
+                            && source.revision_bytes == revision.draft().exact_bytes()
+                    )
+            );
+        }
+    }
+    if let Some(path) = std::env::var_os("BRASSCLAW_TEST_CATALOGUE_EXPORT") {
+        use std::io::Write;
+        let path = std::path::PathBuf::from(path).with_extension("prefix-workflows.json");
+        let bytes = serde_json::to_vec(&workflow_sources).unwrap();
+        match std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&path)
+        {
+            Ok(mut output) => {
+                output.write_all(&bytes).unwrap();
+                output.sync_all().unwrap();
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                assert_eq!(std::fs::read(path).unwrap(), bytes)
+            }
+            Err(error) => panic!("cannot retain exact prefix workflow source export: {error}"),
+        }
+    }
+    let additions = release::additional_drafts().unwrap();
+    let archived_ids: Vec<_> = additions.iter().map(|draft| draft.uuid()).collect();
+    for draft in additions {
+        let document = draft.document();
+        let source = release_capture["sources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|source| source["path"] == document["path"])
+            .unwrap();
+        for (source_field, document_field) in [
+            ("text", "content"),
+            ("disposition", "disposition"),
+            ("reason", "reason"),
+        ] {
+            assert_eq!(source[source_field], document[document_field]);
+        }
+        assert!(
+            !capture["sources"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|source| source["path"] == document["path"])
+        );
+    }
+    assert_eq!(
+        catalogue
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT count(*) FROM reborn_docus WHERE id=ANY($1)",
+                &[&archived_ids],
+            )
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0,
+        "archived/review-pending release sources must not become validated legacy retrieval rows"
+    );
     for (path, text) in GUIDES {
         let source = capture["sources"]
             .as_array()

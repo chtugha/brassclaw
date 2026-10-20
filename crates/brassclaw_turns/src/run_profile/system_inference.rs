@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::host::LoopSafeSummary;
+use super::host::{LoopModelUsage, LoopSafeSummary};
 
 /// Opaque id for an internal system inference task.
 ///
@@ -33,9 +33,12 @@ impl TryFrom<String> for SystemInferenceTaskId {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Uuid::parse_str(&value)
-            .map(Self)
-            .map_err(|error| format!("system inference task id must be a UUID: {error}"))
+        let id = Uuid::parse_str(&value)
+            .map_err(|error| format!("system inference task id must be a UUID: {error}"))?;
+        if id.is_nil() {
+            return Err("system inference task id must not be nil".into());
+        }
+        Ok(Self(id))
     }
 }
 
@@ -157,6 +160,10 @@ pub struct SystemInferenceResponse {
     pub output_text: String,
     /// Elapsed model-call time in milliseconds.
     pub elapsed_ms: u64,
+    /// Original provider-reported counts, when available. Absence remains
+    /// unknown; neither output text nor reservation estimates supply a meter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<LoopModelUsage>,
 }
 
 #[derive(Debug, Clone, Error, PartialEq, Eq, Serialize, Deserialize)]

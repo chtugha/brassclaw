@@ -51,7 +51,11 @@ pub(crate) fn validate_snapshot(profile: &str, bytes: &str) -> Result<(), PortFa
 #[async_trait]
 impl InternalRecipeSource for Invocation {
     fn name(&self) -> &str {
-        "prefix-generation"
+        if self.definition.operation == "measure" {
+            "prefix-measurement"
+        } else {
+            "prefix-generation"
+        }
     }
     fn reference(&self) -> &str {
         &self.reference
@@ -70,6 +74,19 @@ impl InternalRecipeSource for Invocation {
         selected: &InspectedRetainedProgram,
         execution: &RetainedRecipeExecution,
     ) -> Result<(), PortFailure> {
+        if self.definition.operation == "measure" {
+            if !std::ptr::eq(selected, self.inspected.as_ref()) {
+                return Err(invalid());
+            }
+            return crate::prefix_measurement_capture::verify_receipt(
+                &self.definition,
+                receipt,
+                selected,
+                execution,
+                &self.pool,
+            )
+            .await;
+        }
         if !std::ptr::eq(selected, self.inspected.as_ref())
             || !execution.is_complete()
             || execution.transport_failure().is_some()

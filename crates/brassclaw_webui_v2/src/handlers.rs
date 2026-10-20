@@ -1751,6 +1751,19 @@ pub async fn get_prefix_job(
         state.services().get_prefix_job(caller, &name, &job).await?,
     ))
 }
+pub async fn measure_prefix(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((name, job)): Path<(String, String)>,
+    Json(request): Json<brassclaw_product_workflow::MeasurePrefixRequest>,
+) -> Result<Json<brassclaw_product_workflow::PrefixJobDetail>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .measure_prefix(caller, &name, &job, request)
+            .await?,
+    ))
+}
 pub async fn get_prefix_generation(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,

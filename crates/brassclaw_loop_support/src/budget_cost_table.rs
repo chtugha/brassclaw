@@ -21,8 +21,8 @@ pub struct ModelCost {
     /// Output USD per token. `Decimal::ZERO` for free/local models.
     pub output_per_token: Decimal,
     /// Model's max output tokens — used for worst-case pre-call estimate.
-    /// `0` is treated as "unknown" and falls back to
-    /// [`ModelCostTable::DEFAULT_MAX_OUTPUT_TOKENS`].
+    /// `0` is treated as "unknown" and uses the acknowledged
+    /// [`ModelQuoteSettings::output_tokens`] reservation estimate.
     pub max_output_tokens: u64,
     /// Cache-creation multiplier ×1000 applied to `input_per_token` for
     /// tokens written to the provider's prompt cache on this call
@@ -92,11 +92,24 @@ pub trait ModelCostTable: Send + Sync + std::fmt::Debug {
     fn cost_for(&self, model: &ModelProfileId) -> Option<ModelCost>;
 }
 
-impl dyn ModelCostTable {
-    /// Conservative fallback when a model's max_output_tokens is unknown.
-    /// 8 KiB tokens covers most chat completions; reservations release
-    /// the overshoot in `reconcile`.
-    pub const DEFAULT_MAX_OUTPUT_TOKENS: u64 = 8_192;
+/// Host-owned reservation policy. It does not change provider output limits,
+/// token-budget enablement or the prices used to settle observed work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModelQuoteSettings {
+    pub revision: u64,
+    pub output_tokens: u32,
+}
+impl ModelQuoteSettings {
+    pub fn validate(self) -> Result<Self, &'static str> {
+        if self.revision == 0 || self.output_tokens == 0 {
+            return Err("invalid model reservation estimate settings");
+        }
+        Ok(self)
+    }
+}
+/// Synchronous host source of the last acknowledged reservation policy.
+pub trait ModelQuoteSettingsSource: Send + Sync {
+    fn snapshot(&self) -> Result<ModelQuoteSettings, &'static str>;
 }
 
 /// Constant cost table used in tests and as a safe baseline for

@@ -1,7 +1,7 @@
 /// Integer value used as an invalid-type for string fields in rejection tests.
 const INVALID_TYPE_INT: i64 = 123;
-/// Large item count used to trigger output-too-large failure in JSON stringify test.
-const STRINGIFY_OVERFLOW_ITEM_COUNT: usize = 80_000;
+/// Result crosses the retired shared 1 MiB JSON ceiling under canonical defaults.
+const LARGE_STRINGIFY_ITEM_COUNT: usize = 80_000;
 /// Integer value used as an invalid non-string target in memory write rejection test.
 const INVALID_MEMORY_TARGET_INT: i64 = 42;
 /// HTTP response body size limit used in HTTP tool tests (4 KiB, page-aligned).
@@ -331,7 +331,8 @@ async fn builtin_first_party_surface_lists_allowed_tools_in_registry_order() {
             .iter()
             .filter(|capability| !matches!(
                 capability.descriptor.id.as_str(),
-                HTTP_CAPABILITY_ID
+                JSON_CAPABILITY_ID
+                    | HTTP_CAPABILITY_ID
                     | HTTP_SAVE_CAPABILITY_ID
                     | brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID
                     | brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID
@@ -343,6 +344,7 @@ async fn builtin_first_party_surface_lists_allowed_tools_in_registry_order() {
             .all(|capability| capability.estimated_resources.output_bytes.is_some())
     );
     for id in [
+        JSON_CAPABILITY_ID,
         HTTP_CAPABILITY_ID,
         HTTP_SAVE_CAPABILITY_ID,
         brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID,
@@ -1200,7 +1202,7 @@ async fn builtin_trigger_management_maps_repository_errors_to_backend() {
 }
 
 #[tokio::test]
-async fn builtin_rejects_oversized_inputs_before_dispatch() {
+async fn builtin_json_default_input_limit_allows_data_above_the_retired_shared_ceiling() {
     let outcome = runtime()
         .invoke_capability(RuntimeCapabilityRequest::new(
             execution_context([JSON_CAPABILITY_ID]),
@@ -1212,29 +1214,40 @@ async fn builtin_rejects_oversized_inputs_before_dispatch() {
         .await
         .unwrap();
 
-    let RuntimeCapabilityOutcome::Failed(failure) = outcome else {
-        panic!("expected resource failure, got {outcome:?}");
+    let RuntimeCapabilityOutcome::Completed(result) = outcome else {
+        panic!(
+            "bounded invalid document returns valid=false above the retired ceiling: {outcome:?}"
+        );
     };
-    assert_eq!(failure.kind, RuntimeFailureKind::Resource);
+    assert_eq!(result.output, json!({"valid":false}));
 }
 
 #[tokio::test]
-async fn builtin_rejects_oversized_outputs_before_return() {
+async fn builtin_json_default_output_limit_preserves_complete_large_results() {
     let outcome = runtime()
         .invoke_capability(RuntimeCapabilityRequest::new(
             execution_context([JSON_CAPABILITY_ID]),
             capability_id(JSON_CAPABILITY_ID),
             ResourceEstimate::default(),
-            json!({"operation": "stringify", "data": {"items": vec!["xxxxxxxx"; STRINGIFY_OVERFLOW_ITEM_COUNT]}}),
+            json!({"operation": "stringify", "data": {"items": vec!["xxxxxxxx"; LARGE_STRINGIFY_ITEM_COUNT]}}),
             trust_decision(),
         ))
         .await
         .unwrap();
 
-    let RuntimeCapabilityOutcome::Failed(failure) = outcome else {
-        panic!("expected output-too-large failure, got {outcome:?}");
+    let RuntimeCapabilityOutcome::Completed(result) = outcome else {
+        panic!("complete output above the retired ceiling required: {outcome:?}");
     };
-    assert_eq!(failure.kind, RuntimeFailureKind::OutputTooLarge);
+    assert!(result.output.as_str().unwrap().len() > 1_048_576);
+    assert_eq!(
+        result.usage.output_bytes,
+        serde_json::to_vec(&result.output).unwrap().len() as u64
+    );
+    let decoded: Value = serde_json::from_str(result.output.as_str().unwrap()).unwrap();
+    assert_eq!(
+        decoded["items"].as_array().unwrap().len(),
+        LARGE_STRINGIFY_ITEM_COUNT
+    );
 }
 
 #[tokio::test]
@@ -2215,6 +2228,15 @@ async fn builtin_json_parse_query_stringify_and_validate_work() {
     .await
     .unwrap();
     assert_eq!(queried, json!("alpha"));
+    assert_eq!(
+        invoke(
+            JSON_CAPABILITY_ID,
+            json!({"operation":"query","data":{"null":"literal key"},"path":"null"})
+        )
+        .await
+        .unwrap(),
+        "literal key"
+    );
 
     let valid = invoke(
         JSON_CAPABILITY_ID,

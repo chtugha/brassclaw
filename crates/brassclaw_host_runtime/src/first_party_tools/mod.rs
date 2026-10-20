@@ -532,6 +532,11 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
         &self,
         mut request: FirstPartyCapabilityRequest,
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
+        if request.capability_id.as_str() == JSON_CAPABILITY_ID {
+            // JSON owns acknowledged parsing/output bounds. Literal "null" is
+            // valid data/path text, not an omitted optional-argument sentinel.
+            return json::dispatch(request.input, self.primitive_settings.as_deref()).await;
+        }
         bounded_input_size(request.capability_id.as_str(), &request.input)?;
         normalize_optional_null_sentinels(&mut request);
         if request.capability_id.as_str() == MODEL_ENCODING_CAPABILITY_ID {
@@ -553,7 +558,6 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
         let (output, display_preview) = match request.capability_id.as_str() {
             ECHO_CAPABILITY_ID => (echo::dispatch(&request.input)?, None),
             TIME_CAPABILITY_ID => (time::dispatch(&request.input)?, None),
-            JSON_CAPABILITY_ID => (json::dispatch(&request.input)?, None),
             HTTP_CAPABILITY_ID | HTTP_SAVE_CAPABILITY_ID => {
                 let result = http::dispatch(&request).await?;
                 network_egress_bytes = result.network_egress_bytes;
@@ -677,9 +681,8 @@ pub(super) fn bounded_input_size(
     input: &serde_json::Value,
 ) -> Result<(), FirstPartyCapabilityError> {
     let max_bytes = match capability_id {
-        JSON_CAPABILITY_ID if input["operation"] == "sha256_utf8" => {
-            prefix_generation::TRANSPORT_BYTES
-        }
+        // Actual JSON dispatch captures and enforces its acknowledged profile.
+        JSON_CAPABILITY_ID => isize::MAX as u64,
         PREFIX_GENERATION_CAPABILITY_ID => prefix_generation::TRANSPORT_BYTES,
         MEMORY_SEARCH_CAPABILITY_ID
         | MEMORY_WRITE_CAPABILITY_ID

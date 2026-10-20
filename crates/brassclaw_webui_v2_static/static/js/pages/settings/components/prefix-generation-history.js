@@ -1,3 +1,4 @@
+import { PrefixMeasurementPanel } from "./prefix-measurement-panel.js";
 import { React, html } from "../../../lib/html.js";
 import { Button } from "../../../design-system/button.js";
 import { fetchPrefixGenerations, fetchPrefixGeneration, importPrefixGeneration } from "../lib/settings-api.js";
@@ -58,6 +59,7 @@ export function PrefixGenerationHistory({ entry, t }) {
       ${generations.map(g => html`<div key=${g.generation} className="flex flex-wrap items-center gap-2">
         <code className="break-all">${g.generation}</code><span>${g.qualification}</span>
         <${Button} size="sm" variant="ghost" onClick=${() => inspect(g.generation)}>${t("prefix.inspectGeneration")}<//>
+        ${g.kind === "compiler-package" && html`<${PrefixMeasurementPanel} entry=${entry} generation=${g} t=${t} />`}
       </div>`)}
       ${detail && html`<details><summary>${t("prefix.generationDetails")}</summary>
         <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all">${JSON.stringify(detail, null, 2)}</pre>

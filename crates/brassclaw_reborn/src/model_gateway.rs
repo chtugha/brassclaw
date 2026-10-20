@@ -98,7 +98,7 @@ impl LlmModelProfilePolicy {
                     input_per_token: cost.0,
                     output_per_token: cost.1,
                     // 0 = unknown; accountant falls back to its
-                    // `DEFAULT_MAX_OUTPUT_TOKENS` (8 KiB) for the
+                    // acknowledged reservation-only output estimate for the
                     // upfront reservation estimate.
                     max_output_tokens: 0,
                     // Anthropic-style multipliers are the conservative default
@@ -170,26 +170,15 @@ where
         &self,
         request: LoopModelGatewayRequest,
     ) -> Result<Option<Box<dyn PreparedLoopModelCall>>, LoopModelGatewayError> {
-        let instruction_materialization_store: Arc<dyn InstructionMaterializationStore> =
-            Arc::new(InMemoryInstructionMaterializationStore::default());
-        self.issue_host_prompt_bundle(
-            &request.context,
-            &request.request,
-            Arc::clone(&instruction_materialization_store),
-        )
-        .await?;
-        ThreadBackedLoopModelPort::new(
-            Arc::clone(&self.thread_service),
-            self.thread_scope.clone(),
-            request.context,
-            Arc::clone(&self.host_gateway),
-            self.max_messages,
-        )
-        .with_instruction_materialization_store(instruction_materialization_store)
-        .prepare_model_call(request.request)
-        .await
-        .map(Some)
-        .map_err(host_error_to_model_gateway_error)
+        self.prepare_host_call(request, None).await.map(Some)
+    }
+
+    async fn prepare_model_call_with_observation(
+        &self,
+        request: LoopModelGatewayRequest,
+        custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    ) -> Result<Box<dyn PreparedLoopModelCall>, LoopModelGatewayError> {
+        self.prepare_host_call(request, Some(custodian)).await
     }
 
     async fn stream_model(
@@ -214,6 +203,41 @@ where
     S: SessionThreadService + ?Sized + Send + Sync,
     G: HostManagedModelGateway + ?Sized + Send + Sync,
 {
+    async fn prepare_host_call(
+        &self,
+        request: LoopModelGatewayRequest,
+        custodian: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>>,
+    ) -> Result<Box<dyn PreparedLoopModelCall>, LoopModelGatewayError>
+    where
+        S: 'static,
+        G: 'static,
+    {
+        let instruction_materialization_store: Arc<dyn InstructionMaterializationStore> =
+            Arc::new(InMemoryInstructionMaterializationStore::default());
+        self.issue_host_prompt_bundle(
+            &request.context,
+            &request.request,
+            Arc::clone(&instruction_materialization_store),
+        )
+        .await?;
+        let port = ThreadBackedLoopModelPort::new(
+            Arc::clone(&self.thread_service),
+            self.thread_scope.clone(),
+            request.context,
+            Arc::clone(&self.host_gateway),
+            self.max_messages,
+        )
+        .with_instruction_materialization_store(instruction_materialization_store);
+        match custodian {
+            Some(custodian) => {
+                port.prepare_model_call_with_observation(request.request, custodian)
+                    .await
+            }
+            None => port.prepare_model_call(request.request).await,
+        }
+        .map_err(host_error_to_model_gateway_error)
+    }
+
     async fn issue_host_prompt_bundle(
         &self,
         context: &LoopRunContext,
@@ -365,6 +389,9 @@ impl<P> HostManagedModelGateway for LlmProviderModelGateway<P>
 where
     P: LlmProvider + ?Sized + Send + Sync,
 {
+    fn supports_provider_observation(&self) -> bool {
+        true
+    }
     fn supports_tool_exchange(&self) -> bool {
         true
     }
@@ -379,10 +406,11 @@ where
                 retained.provider.as_ref(),
                 Some((&retained.provider_id, &retained.model)),
                 None,
+                None,
             )
             .await
         } else {
-            self.stream_selected(request, self.provider.as_ref(), None, None)
+            self.stream_selected(request, self.provider.as_ref(), None, None, None)
                 .await
         }
     }
@@ -398,11 +426,44 @@ where
                 retained.provider.as_ref(),
                 Some((&retained.provider_id, &retained.model)),
                 Some(capabilities),
+                None,
             )
             .await
         } else {
-            self.stream_selected(request, self.provider.as_ref(), None, Some(capabilities))
-                .await
+            self.stream_selected(
+                request,
+                self.provider.as_ref(),
+                None,
+                Some(capabilities),
+                None,
+            )
+            .await
+        }
+    }
+    async fn stream_model_observed(
+        &self,
+        request: HostManagedModelRequest,
+        capabilities: Option<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>>,
+        custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        if let Some(retained) = self.provider.retained_provider() {
+            self.stream_selected(
+                request,
+                retained.provider.as_ref(),
+                Some((&retained.provider_id, &retained.model)),
+                capabilities,
+                Some(custodian),
+            )
+            .await
+        } else {
+            self.stream_selected(
+                request,
+                self.provider.as_ref(),
+                None,
+                capabilities,
+                Some(custodian),
+            )
+            .await
         }
     }
 }
@@ -417,6 +478,7 @@ where
         provider: &Q,
         selection: Option<(&str, &str)>,
         capabilities: Option<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>>,
+        custodian: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError>
     where
         Q: LlmProvider + ?Sized,
@@ -442,6 +504,7 @@ where
         let replay_identity = ProviderReplayIdentity::new(identity, &model_override)?;
         let mut completion =
             CompletionRequest::new(convert_messages(request.messages, &replay_identity)?);
+        completion.dispatch_policy = provider_dispatch_policy(request.dispatch_policy);
         completion.model = Some(model_override);
         if let Some(cap) = self.max_output_tokens.as_ref().and_then(|slot| slot.get()) {
             completion.max_tokens = Some(u32::try_from(cap).map_err(|_| {
@@ -476,6 +539,7 @@ where
             capabilities,
             provider_turn_scope,
             replay_identity,
+            custodian,
         )
         .await
     }
@@ -609,44 +673,47 @@ impl<P> HostManagedModelGateway for RoutedLlmProviderModelGateway<P>
 where
     P: ModelRouteProviderPool + ?Sized + Send + Sync,
 {
+    fn supports_provider_observation(&self) -> bool {
+        true
+    }
     fn supports_tool_exchange(&self) -> bool {
         true
     }
-
     async fn stream_model(
         &self,
         request: HostManagedModelRequest,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
-        let slot = slot_for_model_profile(&request.model_profile_id)?;
-        let request_snapshot = request
-            .resolved_model_route
-            .as_ref()
-            .ok_or_else(missing_route_snapshot_error)?;
-        let policy_mode = self.validate_route_snapshot(slot, request_snapshot)?;
-        let snapshot = snapshot_from_host_request(slot, request_snapshot, policy_mode)?;
-        let provider = self.provider_pool.provider_for_route(&snapshot).await?;
-        let model_profile_id = request.model_profile_id.clone();
-        let run_id = request.run_id;
-        let turn_id = request.turn_id;
-        let replay_identity = ProviderReplayIdentity::new(
-            snapshot.route().provider_id(),
-            snapshot.route().model_id(),
-        )?;
-        let mut completion =
-            CompletionRequest::new(convert_messages(request.messages, &replay_identity)?);
-        completion.model = Some(snapshot.route().model_id().to_string());
-        validate_provider_model_binding_matches_route(snapshot.route(), provider.as_ref())?;
-        add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
-        add_route_metadata(&mut completion, &snapshot);
-
-        complete_model_request(provider.as_ref(), completion, None, None, replay_identity).await
+        self.stream_selected(request, None, None).await
     }
-
     async fn stream_model_with_capabilities(
         &self,
         request: HostManagedModelRequest,
         capabilities: Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        self.stream_selected(request, Some(capabilities), None)
+            .await
+    }
+    async fn stream_model_observed(
+        &self,
+        request: HostManagedModelRequest,
+        capabilities: Option<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>>,
+        custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        self.stream_selected(request, capabilities, Some(custodian))
+            .await
+    }
+}
+
+impl<P> RoutedLlmProviderModelGateway<P>
+where
+    P: ModelRouteProviderPool + ?Sized + Send + Sync,
+{
+    async fn stream_selected(
+        &self,
+        request: HostManagedModelRequest,
+        capabilities: Option<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>>,
+        custodian: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>>,
+    ) -> Result<HostManagedModelResponse, HostManagedModelError> {
         let slot = slot_for_model_profile(&request.model_profile_id)?;
         let request_snapshot = request
             .resolved_model_route
@@ -664,21 +731,35 @@ where
         )?;
         let mut completion =
             CompletionRequest::new(convert_messages(request.messages, &replay_identity)?);
+        completion.dispatch_policy = provider_dispatch_policy(request.dispatch_policy);
         completion.model = Some(snapshot.route().model_id().to_string());
         validate_provider_model_binding_matches_route(snapshot.route(), provider.as_ref())?;
         add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
         add_route_metadata(&mut completion, &snapshot);
 
-        let provider_turn_scope = format!(
-            "run={run_id}\nturn={turn_id}\nmodel_call={}",
-            self.provider_turn_sequence.fetch_add(1, Ordering::Relaxed)
-        );
+        let provider_turn_scope = if capabilities.is_some() {
+            let sequence = self
+                .provider_turn_sequence
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
+                .map_err(|_| {
+                    HostManagedModelError::safe(
+                        HostManagedModelErrorKind::PolicyDenied,
+                        "model-call identity exhausted",
+                    )
+                })?;
+            Some(format!(
+                "run={run_id}\nturn={turn_id}\nmodel_call={sequence}"
+            ))
+        } else {
+            None
+        };
         complete_model_request(
             provider.as_ref(),
             completion,
-            Some(capabilities),
-            Some(provider_turn_scope),
+            capabilities,
+            provider_turn_scope,
             replay_identity,
+            custodian,
         )
         .await
     }
@@ -839,6 +920,19 @@ fn host_error_to_model_gateway_error(error: AgentLoopHostError) -> LoopModelGate
     converted
 }
 
+fn provider_dispatch_policy(
+    policy: brassclaw_turns::run_profile::LoopModelDispatchPolicy,
+) -> brassclaw_llm::ProviderDispatchPolicy {
+    match policy {
+        brassclaw_turns::run_profile::LoopModelDispatchPolicy::Configured => {
+            brassclaw_llm::ProviderDispatchPolicy::Configured
+        }
+        brassclaw_turns::run_profile::LoopModelDispatchPolicy::SingleSubmission => {
+            brassclaw_llm::ProviderDispatchPolicy::SingleSubmission
+        }
+    }
+}
+
 fn request_model_override<P>(
     route: &LlmModelProfileRoute,
     provider: &P,
@@ -914,7 +1008,7 @@ fn validate_replay_identity_text(
 
 #[tracing::instrument(
     level = "debug",
-    skip(provider, completion, capabilities, replay_identity),
+    skip(provider, completion, capabilities, replay_identity, custodian),
     fields(
         provider_id = %replay_identity.provider_id,
         provider_model_id = %replay_identity.provider_model_id,
@@ -927,6 +1021,7 @@ async fn complete_model_request<P>(
     capabilities: Option<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>>,
     provider_turn_scope: Option<String>,
     replay_identity: ProviderReplayIdentity,
+    custodian: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>>,
 ) -> Result<HostManagedModelResponse, HostManagedModelError>
 where
     P: LlmProvider + ?Sized,
@@ -963,10 +1058,20 @@ where
             let tool_request =
                 ToolCompletionRequest::from_completion_request(completion, llm_tool_definitions);
             debug!("reborn model gateway dispatching tool-capable provider request");
-            let response = provider
-                .complete_with_tools(tool_request)
-                .await
-                .map_err(map_provider_error)?;
+            let response = observed_provider_call(
+                &custodian,
+                &replay_identity,
+                provider.complete_with_tools(tool_request),
+            )
+            .await
+            .map_err(map_provider_error)?;
+            if let Some(custodian) = custodian.as_ref() {
+                retain_provider_observation(custodian,&replay_identity,serde_json::json!({
+                    "kind":"tools","content":response.content,"tool_calls":response.tool_calls,
+                    "finish_reason":finish_reason_name(response.finish_reason),"reasoning":response.reasoning,
+                    "usage":response.usage,
+                })).await?;
+            }
             let response =
                 recover_textual_tool_calls_from_tool_response(response, &recovery_tool_names)?;
             return tool_response_to_host(
@@ -988,10 +1093,16 @@ where
         );
     }
 
-    let response = provider
-        .complete(completion)
-        .await
-        .map_err(map_provider_error)?;
+    let response =
+        observed_provider_call(&custodian, &replay_identity, provider.complete(completion))
+            .await
+            .map_err(map_provider_error)?;
+    if let Some(custodian) = custodian.as_ref() {
+        retain_provider_observation(custodian,&replay_identity,serde_json::json!({
+            "kind":"text","content":response.content,"finish_reason":finish_reason_name(response.finish_reason),
+            "reasoning":response.reasoning,"usage":response.usage,
+        })).await?;
+    }
     debug!(
         finish_reason = ?response.finish_reason,
         content_bytes = response.content.len(),
@@ -1000,11 +1111,95 @@ where
     response_to_host_reply(response)
 }
 
+struct ProviderWireCustodian {
+    custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    identity: ProviderReplayIdentity,
+}
+#[async_trait]
+impl brassclaw_llm::provider_observation::ProviderWireObserver for ProviderWireCustodian {
+    fn receive_response(
+        &self,
+        status: u16,
+        body: &[u8],
+    ) -> Result<(), brassclaw_llm::provider_observation::ProviderObservationError> {
+        self.custodian
+            .receive_provider_wire_observation(brassclaw_llm::provider_observation::wire_envelope(
+                status,
+                body,
+                &self.identity.provider_id,
+                &self.identity.provider_model_id,
+            ))
+            .map_err(|_| brassclaw_llm::provider_observation::ProviderObservationError)
+    }
+    async fn persist_response(
+        &self,
+    ) -> Result<(), brassclaw_llm::provider_observation::ProviderObservationError> {
+        self.custodian
+            .persist_provider_wire_observation()
+            .await
+            .map_err(|_| brassclaw_llm::provider_observation::ProviderObservationError)
+    }
+}
+async fn observed_provider_call<T>(
+    custodian: &Option<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>>,
+    identity: &ProviderReplayIdentity,
+    operation: impl std::future::Future<Output = Result<T, brassclaw_llm::LlmError>>,
+) -> Result<T, brassclaw_llm::LlmError> {
+    if let Some(custodian) = custodian
+        .as_ref()
+        .filter(|c| c.requires_provider_observation())
+    {
+        brassclaw_llm::provider_observation::observe_chat_completion(
+            Arc::new(ProviderWireCustodian {
+                custodian: custodian.clone(),
+                identity: identity.clone(),
+            }),
+            operation,
+        )
+        .await
+    } else {
+        operation.await
+    }
+}
+
+fn finish_reason_name(reason: FinishReason) -> &'static str {
+    match reason {
+        FinishReason::Stop => "stop",
+        FinishReason::Length => "length",
+        FinishReason::ToolUse => "tool_use",
+        FinishReason::ContentFilter => "content_filter",
+        FinishReason::Unknown => "unknown",
+    }
+}
+
+async fn retain_provider_observation(
+    custodian: &Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    identity: &ProviderReplayIdentity,
+    response: serde_json::Value,
+) -> Result<(), HostManagedModelError> {
+    // Synchronous custody occurs before the first persistence await. This is
+    // the provider adapter DTO, not a claim to retain unparsed HTTP wire bytes.
+    custodian
+        .receive_provider_observation(serde_json::json!({
+            "format":"provider-model-observation/1","provider_id":identity.provider_id,
+            "model_id":identity.provider_model_id,"response":response,
+        }))
+        .map_err(map_capability_host_error)?;
+    custodian
+        .persist_provider_observation()
+        .await
+        .map_err(map_capability_host_error)
+}
+
 fn recover_textual_tool_calls_from_tool_response(
     response: ToolCompletionResponse,
     tool_names: &[String],
 ) -> Result<ToolCompletionResponse, HostManagedModelError> {
-    if !response.tool_calls.is_empty() {
+    if !matches!(
+        response.finish_reason,
+        FinishReason::Stop | FinishReason::ToolUse
+    ) || !response.tool_calls.is_empty()
+    {
         return Ok(response);
     }
     let Some(content) = response.content.as_deref() else {
@@ -1029,11 +1224,10 @@ fn recover_textual_tool_calls_from_tool_response(
     Ok(ToolCompletionResponse {
         content: Some(clean_response(content)),
         tool_calls: recovered_tool_calls,
-        input_tokens: response.input_tokens,
-        output_tokens: response.output_tokens,
+        usage: response.usage,
+
         finish_reason: FinishReason::ToolUse,
-        cache_read_input_tokens: response.cache_read_input_tokens,
-        cache_creation_input_tokens: response.cache_creation_input_tokens,
+
         reasoning: response.reasoning,
     })
 }
@@ -1133,12 +1327,7 @@ async fn tool_response_to_host(
             response.content.unwrap_or_default(),
             response.reasoning,
         )
-        .with_usage(LoopModelUsage {
-            input_tokens: response.input_tokens,
-            output_tokens: response.output_tokens,
-            cache_read_input_tokens: response.cache_read_input_tokens,
-            cache_creation_input_tokens: response.cache_creation_input_tokens,
-        }));
+        .with_optional_usage(provider_usage_to_host(response.usage)));
     }
 
     match response.finish_reason {
@@ -1158,12 +1347,7 @@ async fn tool_response_to_host(
                 content,
                 response.reasoning,
             )
-            .with_usage(LoopModelUsage {
-                input_tokens: response.input_tokens,
-                output_tokens: response.output_tokens,
-                cache_read_input_tokens: response.cache_read_input_tokens,
-                cache_creation_input_tokens: response.cache_creation_input_tokens,
-            }))
+            .with_optional_usage(provider_usage_to_host(response.usage)))
         }
         FinishReason::Length => Err(HostManagedModelError::safe(
             HostManagedModelErrorKind::BudgetExceeded,
@@ -1226,15 +1410,19 @@ fn sha256_hex_prefix(input: &[u8], len: usize) -> String {
         .collect()
 }
 
+fn provider_usage_to_host(usage: Option<brassclaw_llm::TokenUsage>) -> Option<LoopModelUsage> {
+    usage.map(|usage| LoopModelUsage {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_read_input_tokens: usage.cache_read_input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+    })
+}
+
 fn response_to_host_reply(
     response: CompletionResponse,
 ) -> Result<HostManagedModelResponse, HostManagedModelError> {
-    let usage = LoopModelUsage {
-        input_tokens: response.input_tokens,
-        output_tokens: response.output_tokens,
-        cache_read_input_tokens: response.cache_read_input_tokens,
-        cache_creation_input_tokens: response.cache_creation_input_tokens,
-    };
+    let usage = provider_usage_to_host(response.usage);
     match response.finish_reason {
         FinishReason::Stop => {
             let content = clean_response(&response.content);
@@ -1242,7 +1430,7 @@ fn response_to_host_reply(
                 content,
                 response.reasoning,
             )
-            .with_usage(usage))
+            .with_optional_usage(usage))
         }
         FinishReason::Length => Err(HostManagedModelError::safe(
             HostManagedModelErrorKind::BudgetExceeded,
@@ -1608,6 +1796,33 @@ fn is_credit_exhaustion_error(error: &LlmError) -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn incomplete_or_filtered_textual_proposals_cannot_be_recovered_as_tool_use() {
+        for finish_reason in [
+            FinishReason::Length,
+            FinishReason::ContentFilter,
+            FinishReason::Unknown,
+        ] {
+            let content =
+                "<tool_call>{\"name\":\"search\",\"arguments\":{\"q\":\"partial\"}}</tool_call>";
+            let response = recover_textual_tool_calls_from_tool_response(
+                ToolCompletionResponse {
+                    content: Some(content.into()),
+                    tool_calls: vec![],
+                    usage: None,
+                    finish_reason,
+                    reasoning: Some("original reasoning".into()),
+                },
+                &["search".into()],
+            )
+            .unwrap();
+            assert_eq!(response.finish_reason, finish_reason);
+            assert!(response.tool_calls.is_empty());
+            assert_eq!(response.content.as_deref(), Some(content));
+            assert_eq!(response.reasoning.as_deref(), Some("original reasoning"));
+        }
+    }
+
     fn request_failed(reason: &str) -> LlmError {
         LlmError::RequestFailed {
             provider: "test_provider".to_string(),
@@ -1804,5 +2019,34 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&replay.model_content).unwrap(),
             observation
         );
+    }
+}
+
+#[cfg(test)]
+mod usage_presence_contract {
+    use super::*;
+
+    #[test]
+    fn successful_conversion_preserves_unknown_and_reported_zero() {
+        for usage in [
+            None,
+            Some(brassclaw_llm::TokenUsage::default()),
+            Some(brassclaw_llm::TokenUsage {
+                input_tokens: 7,
+                output_tokens: 3,
+                cache_read_input_tokens: 11,
+                cache_creation_input_tokens: 5,
+            }),
+        ] {
+            let response = response_to_host_reply(CompletionResponse {
+                content: "received answer".into(),
+                finish_reason: FinishReason::Stop,
+                reasoning: None,
+                usage,
+            })
+            .unwrap();
+            assert_eq!(response.usage, provider_usage_to_host(usage));
+            assert_eq!(response.usage.is_some(), usage.is_some());
+        }
     }
 }

@@ -51,7 +51,7 @@ impl MontyTaskHost {
                 encode(self.build_prompt_bundle(request).await?)
             }
             "stream_model" => {
-                let request: LoopModelRequest = decode(
+                let mut request: LoopModelRequest = decode(
                     payload,
                     &[
                         "messages",
@@ -60,6 +60,9 @@ impl MontyTaskHost {
                         "capability_view",
                     ],
                 )?;
+                // The private root port admits a new model operation here.
+                // Callers cannot supply/reuse this field through the codec.
+                request.work_id = Some(brassclaw_turns::run_profile::ModelWorkId::new());
                 encode(self.stream_model(request).await?)
             }
             "invoke_capability" => {
@@ -160,6 +163,8 @@ mod tests {
             json!({"messages": [], "capability_view": {"visible_capability_ids": [], "grant": true}}),
             json!({"messages": [], "resolved_messages": null}),
             json!({"messages": [], "conversation_id": "another-chat"}),
+            json!({"messages": [], "dispatch_policy": "configured"}),
+            json!({"messages": [], "work_id": "00000000-0000-4000-8000-000000000001"}),
         ] {
             let result: Result<LoopModelRequest, _> = decode(
                 payload,

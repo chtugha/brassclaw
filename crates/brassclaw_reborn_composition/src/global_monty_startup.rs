@@ -29,6 +29,9 @@ pub(crate) async fn start(
     kernel: Arc<dyn MontyKernelSnapshot>,
     scope: &IntentScope,
     mounts: MountView,
+    primitive_settings: &Arc<crate::host_primitive_settings::AcknowledgedPrimitiveSettings>,
+    source_inspection: &crate::source_inspection::ContainedSourceInspection,
+    resource_store_settings: &crate::resource_store_settings::AcknowledgedResourceStoreSettings,
 ) -> Result<
     (
         GlobalMontyOwner,
@@ -70,7 +73,26 @@ pub(crate) async fn start(
     .get("default", "default")
     .await
     .map_err(|error| invalid(error.to_string()))?;
-    crate::live_monty_settings::validate_http_defaults(settings.execution_limits)
+    crate::live_monty_settings::validate_host_defaults(settings.execution_limits)
+        .map_err(|error| invalid(error.to_string()))?;
+    resource_store_settings
+        .prepare_bootstrap(
+            settings.revision,
+            settings.execution_limits.resource_store_timeout_millis,
+        )
+        .map_err(invalid)?;
+    // Bootstrap qualification itself uses JSON. It must see exactly the same
+    // selected revision as the catalogue/VM, before the live owner exists.
+    // Ingress remains disabled until runtime binds the acknowledged live view.
+    primitive_settings
+        .prepare_bootstrap(brassclaw_host_runtime::HostPrimitiveSettings {
+            revision: settings.revision,
+            limits: settings.execution_limits,
+        })
+        .map_err(|error| invalid(error.to_string()))?;
+    source_inspection
+        .bind(primitive_settings.clone())
+        .await
         .map_err(|error| invalid(error.to_string()))?;
     let catalogue = InstalledMontyCatalogue::boot(
         pool.clone(),

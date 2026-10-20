@@ -217,6 +217,8 @@ async fn text_only_host_factory_builds_complete_agent_loop_driver_host() {
 
     let model_response = host_dyn
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: prompt_bundle.messages,
             surface_version: Some(surface.version.clone()),
             model_preference: None,
@@ -359,6 +361,9 @@ async fn monty_task_host_preserves_opaque_identity_prompt_authority_and_reply_sc
         task.dispatch_port(
             "stream_model",
             serde_json::to_value(LoopModelRequest {
+                // The Python port cannot choose the host's operation identity.
+                work_id: None,
+                dispatch_policy: Default::default(),
                 messages: bundle.messages,
                 surface_version: bundle.surface_version,
                 ..LoopModelRequest::default()
@@ -483,6 +488,7 @@ async fn monty_task_host_materializes_complete_recipe_input_and_fences_preparati
         "materialization performs no model call"
     );
     task.stream_model(LoopModelRequest {
+        dispatch_policy: Default::default(),
         messages: bundle.messages,
         surface_version: bundle.surface_version,
         ..LoopModelRequest::default()
@@ -562,6 +568,7 @@ async fn monty_task_host_retains_tool_requests_and_rejects_prompt_bypass_and_for
     assert!(fixture.gateway.requests().is_empty());
     let bundle = task.build_prompt_bundle(request.clone()).await.unwrap();
     let model_request = LoopModelRequest {
+        dispatch_policy: Default::default(),
         messages: bundle.messages,
         surface_version: bundle.surface_version,
         ..LoopModelRequest::default()
@@ -581,6 +588,7 @@ async fn monty_task_host_retains_tool_requests_and_rejects_prompt_bypass_and_for
         .unwrap();
     assert!(
         task.stream_model(LoopModelRequest {
+            dispatch_policy: Default::default(),
             messages: foreign.messages,
             surface_version: foreign.surface_version,
             ..LoopModelRequest::default()
@@ -597,6 +605,9 @@ async fn monty_task_host_retains_tool_requests_and_rejects_prompt_bypass_and_for
         task.dispatch_port(
             "stream_model",
             serde_json::to_value(LoopModelRequest {
+                // The Python port cannot choose the host's operation identity.
+                work_id: None,
+                dispatch_policy: Default::default(),
                 messages: bundle.messages,
                 surface_version: bundle.surface_version,
                 ..LoopModelRequest::default()
@@ -693,6 +704,7 @@ async fn monty_task_host_fences_only_the_addressed_attempt_before_provider_or_re
         AgentLoopHostErrorKind::Cancelled
     );
     let request = LoopModelRequest {
+        dispatch_policy: Default::default(),
         messages: prompt.messages,
         ..LoopModelRequest::default()
     };
@@ -807,6 +819,8 @@ async fn text_only_host_factory_sanitizes_gateway_error_summaries() {
 
     let error = host
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: prompt_bundle.messages,
             surface_version: None,
             model_preference: None,
@@ -865,6 +879,8 @@ async fn text_only_host_factory_invokes_model_budget_accountant() {
         .unwrap();
 
     host.stream_model(LoopModelRequest {
+        work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+        dispatch_policy: Default::default(),
         messages: prompt_bundle.messages,
         surface_version: None,
         model_preference: None,
@@ -1474,6 +1490,8 @@ async fn text_only_host_factory_includes_safety_context_in_prompt_bundle() {
         .unwrap();
     host_dyn
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: prompt_bundle.messages,
             surface_version: None,
             model_preference: None,
@@ -1527,6 +1545,8 @@ async fn text_only_host_factory_uses_explicit_local_noop_safety_context() {
         .unwrap();
     host_dyn
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: prompt_bundle.messages,
             surface_version: None,
             model_preference: None,
@@ -1997,6 +2017,8 @@ async fn text_only_host_e2e_keeps_persisted_model_route_through_full_flow() {
         .unwrap();
     let model_response = host_dyn
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: prompt_bundle.messages,
             surface_version: None,
             model_preference: None,
@@ -3120,6 +3142,8 @@ async fn product_live_runtime_builds_when_all_required_adapters_are_present() {
         .unwrap();
     host_dyn
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: prompt_bundle.messages,
             surface_version: None,
             model_preference: None,
@@ -3284,6 +3308,8 @@ async fn text_only_host_factory_threads_model_route_snapshot_to_gateway() {
 
     host_dyn
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: host_dyn
                 .build_prompt_bundle(LoopPromptBundleRequest {
                     mode: PromptMode::TextOnly,
@@ -3564,6 +3590,8 @@ async fn text_only_host_e2e_flow_persists_checkpoint_mapping_in_turn_state_store
         .unwrap();
     let model_response = host_dyn
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: prompt_bundle.messages,
             surface_version: Some(surface_version.clone()),
             model_preference: None,
@@ -3903,6 +3931,8 @@ async fn text_only_host_factory_threads_identity_source_to_prompt_and_model() {
 
     host_dyn
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: prompt_bundle.messages,
             surface_version: Some(surface.version),
             model_preference: None,
@@ -4524,6 +4554,8 @@ async fn text_only_host_prompt_bundle_includes_surface_metadata_and_still_stream
     assert_eq!(prompt_bundle.messages.len(), 3);
 
     host.stream_model(LoopModelRequest {
+        work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+        dispatch_policy: Default::default(),
         messages: prompt_bundle.messages,
         surface_version: Some(surface.version),
         model_preference: None,
@@ -6683,6 +6715,8 @@ impl AgentLoopDriver for TextOnlyFinalReplyDriver {
             .map_err(driver_host_error)?;
         let model_response = host
             .stream_model(LoopModelRequest {
+                work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+                dispatch_policy: Default::default(),
                 messages: prompt_bundle.messages,
                 surface_version: Some(surface.version),
                 model_preference: None,
@@ -7377,6 +7411,7 @@ async fn monty_model_capture_persists_resolved_prompt_and_structured_response() 
             .unwrap();
         let response = task
             .stream_model(LoopModelRequest {
+                dispatch_policy: Default::default(),
                 messages: bundle.messages,
                 surface_version: bundle.surface_version,
                 ..LoopModelRequest::default()
@@ -7466,6 +7501,7 @@ async fn monty_model_capture_persists_resolved_prompt_and_structured_response() 
         .unwrap();
     assert!(
         task.stream_model(LoopModelRequest {
+            dispatch_policy: Default::default(),
             messages: bundle.messages,
             surface_version: bundle.surface_version,
             ..LoopModelRequest::default()
@@ -7627,6 +7663,7 @@ async fn monty_model_capture_rerouting_keeps_selected_system_prefix_and_records_
         .await
         .unwrap();
     host.stream_model(LoopModelRequest {
+        dispatch_policy: Default::default(),
         messages: bundle.messages,
         surface_version: bundle.surface_version,
         ..LoopModelRequest::default()
@@ -7691,6 +7728,7 @@ async fn monty_model_capture_rerouting_keeps_selected_system_prefix_and_records_
         .is_none()
     );
     host.stream_model(LoopModelRequest {
+        dispatch_policy: Default::default(),
         messages: bundle.messages,
         surface_version: bundle.surface_version,
         ..LoopModelRequest::default()
@@ -7884,6 +7922,7 @@ async fn monty_model_capture_policy_denial_prevents_both_provider_calls() {
         .unwrap();
     let error = host
         .stream_model(LoopModelRequest {
+            dispatch_policy: Default::default(),
             messages: bundle.messages,
             surface_version: bundle.surface_version,
             ..LoopModelRequest::default()
@@ -8008,6 +8047,7 @@ async fn monty_model_capture_review_budget_denial_releases_primary_hold() {
         .unwrap();
     let error = host
         .stream_model(LoopModelRequest {
+            dispatch_policy: Default::default(),
             messages: bundle.messages,
             surface_version: bundle.surface_version,
             ..LoopModelRequest::default()

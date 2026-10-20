@@ -486,7 +486,12 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
                     .post(handlers::import_prefix_generation)
                     .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
             )
-            .route(WEBUI_V2_PATTERN_PREFIX_JOB, get(handlers::get_prefix_job))
+            .route(
+                WEBUI_V2_PATTERN_PREFIX_JOB,
+                get(handlers::get_prefix_job)
+                    .post(handlers::measure_prefix)
+                    .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
+            )
             .route(
                 WEBUI_V2_PATTERN_PREFIX_GENERATION,
                 get(handlers::get_prefix_generation),

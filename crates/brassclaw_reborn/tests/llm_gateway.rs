@@ -375,11 +375,15 @@ async fn gateway_rejects_empty_tool_capable_stop_response_without_text_only_retr
     let provider = Arc::new(ToolAwareProvider::tool_response(ToolCompletionResponse {
         content: None,
         tool_calls: Vec::new(),
-        input_tokens: 1,
-        output_tokens: 1,
+        usage: Some(brassclaw_llm::TokenUsage {
+            input_tokens: 1,
+            output_tokens: 1,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+        }),
+
         finish_reason: FinishReason::Stop,
-        cache_read_input_tokens: 0,
-        cache_creation_input_tokens: 0,
+
         reasoning: None,
     }));
     let gateway = LlmProviderModelGateway::with_provider_identity(
@@ -477,11 +481,15 @@ async fn gateway_preserves_structured_tool_calls_when_content_has_legacy_marker(
             reasoning: None,
             signature: None,
         }],
-        input_tokens: 1,
-        output_tokens: 1,
+        usage: Some(brassclaw_llm::TokenUsage {
+            input_tokens: 1,
+            output_tokens: 1,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+        }),
+
         finish_reason: FinishReason::ToolUse,
-        cache_read_input_tokens: 0,
-        cache_creation_input_tokens: 0,
+
         reasoning: Some("response reasoning".to_string()),
     }));
     let gateway = LlmProviderModelGateway::with_provider_identity(
@@ -1856,6 +1864,8 @@ async fn production_loop_model_gateway_rejects_forged_context_summary_before_pro
 
     let error = port
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: vec![LoopModelMessage {
                 role: "user".to_string(),
                 content_ref: forged_ref.clone(),
@@ -1907,6 +1917,8 @@ async fn production_loop_model_gateway_rejects_unvalidated_surface_before_provid
 
     let error = port
         .stream_model(LoopModelRequest {
+            work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+            dispatch_policy: Default::default(),
             messages: vec![LoopModelMessage {
                 role: "user".to_string(),
                 content_ref: LoopMessageRef::new(format!("msg:{}", fixture.user_message_id))
@@ -2355,6 +2367,8 @@ async fn production_loop_request_with_safety(
         .await
         .expect("test prompt bundle should build");
     LoopModelRequest {
+        work_id: Some(brassclaw_turns::run_profile::ModelWorkId::new()),
+        dispatch_policy: Default::default(),
         messages: prompt_bundle.messages,
         surface_version: None,
         model_preference,
@@ -2460,6 +2474,7 @@ fn model_request_with_route(
 
 fn model_request(model_profile_id: ModelProfileId) -> HostManagedModelRequest {
     HostManagedModelRequest {
+        dispatch_policy: Default::default(),
         model_profile_id,
         messages: vec![
             HostManagedModelMessage {
@@ -2542,12 +2557,15 @@ impl LlmProvider for IgnoresModelOverrideProvider {
         self.requests.lock().unwrap().push(request);
         Ok(CompletionResponse {
             content: self.content.clone(),
-            input_tokens: 1,
-            output_tokens: 1,
+            usage: Some(brassclaw_llm::TokenUsage {
+                input_tokens: 1,
+                output_tokens: 1,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            }),
+
             finish_reason: FinishReason::Stop,
             reasoning: None,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
         })
     }
 
@@ -2626,12 +2644,15 @@ impl RecordingLlmProvider {
             requests: Mutex::new(Vec::new()),
             response: Mutex::new(Some(Ok(CompletionResponse {
                 content: content.to_string(),
-                input_tokens: 1,
-                output_tokens: 1,
+                usage: Some(brassclaw_llm::TokenUsage {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                }),
+
                 finish_reason,
                 reasoning: None,
-                cache_read_input_tokens: 0,
-                cache_creation_input_tokens: 0,
             }))),
         }
     }
@@ -2686,12 +2707,15 @@ impl LlmProvider for BarrierRecordingLlmProvider {
         self.barrier.wait().await;
         Ok(CompletionResponse {
             content: self.content.clone(),
-            input_tokens: 1,
-            output_tokens: 1,
+            usage: Some(brassclaw_llm::TokenUsage {
+                input_tokens: 1,
+                output_tokens: 1,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            }),
+
             finish_reason: FinishReason::Stop,
             reasoning: None,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
         })
     }
 
@@ -2720,12 +2744,15 @@ impl ToolAwareProvider {
             tool_requests: Mutex::new(Vec::new()),
             plain_response: Mutex::new(Some(CompletionResponse {
                 content: content.to_string(),
-                input_tokens: 1,
-                output_tokens: 1,
+                usage: Some(brassclaw_llm::TokenUsage {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                }),
+
                 finish_reason: FinishReason::Stop,
                 reasoning: None,
-                cache_read_input_tokens: 0,
-                cache_creation_input_tokens: 0,
             })),
             tool_response: Mutex::new(None),
         }
@@ -2735,11 +2762,15 @@ impl ToolAwareProvider {
         Self::tool_response(ToolCompletionResponse {
             content: None,
             tool_calls,
-            input_tokens: 1,
-            output_tokens: 1,
+            usage: Some(brassclaw_llm::TokenUsage {
+                input_tokens: 1,
+                output_tokens: 1,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            }),
+
             finish_reason: FinishReason::ToolUse,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
+
             reasoning: Some("response reasoning".to_string()),
         })
     }
@@ -2748,11 +2779,15 @@ impl ToolAwareProvider {
         Self::tool_response(ToolCompletionResponse {
             content: Some(content.to_string()),
             tool_calls: Vec::new(),
-            input_tokens: 1,
-            output_tokens: 1,
+            usage: Some(brassclaw_llm::TokenUsage {
+                input_tokens: 1,
+                output_tokens: 1,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            }),
+
             finish_reason: FinishReason::Stop,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
+
             reasoning: None,
         })
     }

@@ -80,7 +80,9 @@ impl LlmProvider for TokenRefreshingProvider {
         self.ensure_fresh_token().await;
 
         match self.inner.complete(request.clone()).await {
-            Err(LlmError::AuthFailed { .. } | LlmError::SessionExpired { .. }) => {
+            Err(LlmError::AuthFailed { .. } | LlmError::SessionExpired { .. })
+                if request.dispatch_policy.allows_resubmission() =>
+            {
                 tracing::debug!("Auth failure during complete(), refreshing and retrying once");
                 self.session.handle_auth_failure().await?;
                 self.update_inner_token().await?;
@@ -97,7 +99,9 @@ impl LlmProvider for TokenRefreshingProvider {
         self.ensure_fresh_token().await;
 
         match self.inner.complete_with_tools(request.clone()).await {
-            Err(LlmError::AuthFailed { .. } | LlmError::SessionExpired { .. }) => {
+            Err(LlmError::AuthFailed { .. } | LlmError::SessionExpired { .. })
+                if request.dispatch_policy.allows_resubmission() =>
+            {
                 tracing::debug!(
                     "Auth failure during complete_with_tools(), refreshing and retrying once"
                 );

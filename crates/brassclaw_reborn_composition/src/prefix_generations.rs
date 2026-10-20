@@ -139,7 +139,12 @@ fn validate_archived_source_input(
         || design["source_selection"] != "complete-mandatory"
         || !matches!(
             design["evidence_view"].as_str(),
-            Some("literal-reference/v1" | "literal-reference/v2-deduplicated")
+            Some(
+                "literal-reference/v1"
+                    | "literal-reference/v2-deduplicated"
+                    | "literal-reference/v3-trailing-inventory"
+                    | "literal-reference/v4-stable-sharing"
+            )
         )
     {
         return Err(bad());
@@ -471,7 +476,12 @@ pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> 
             || design["profile"] != profile
             || !matches!(
                 design["evidence_view"].as_str(),
-                Some("literal-reference/v1" | "literal-reference/v2-deduplicated")
+                Some(
+                    "literal-reference/v1"
+                        | "literal-reference/v2-deduplicated"
+                        | "literal-reference/v3-trailing-inventory"
+                        | "literal-reference/v4-stable-sharing"
+                )
             )
             || design["source_selection"] != "complete-mandatory"
             || text(&design["header"])?.trim().is_empty()
@@ -576,7 +586,14 @@ pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> 
         let design = read("profile_design.json")?;
         if design["format"] != "brassclaw-prefix-compiler-design/1"
             || design["profile"] != profile
-            || design["evidence_view"] != "literal-reference/v2-deduplicated"
+            || !matches!(
+                design["evidence_view"].as_str(),
+                Some(
+                    "literal-reference/v2-deduplicated"
+                        | "literal-reference/v3-trailing-inventory"
+                        | "literal-reference/v4-stable-sharing"
+                )
+            )
             || design["source_selection"] != "complete-mandatory"
         {
             return Err(bad());
@@ -591,7 +608,14 @@ pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> 
             return Err(bad());
         }
     } else if files.contains_key("profile_design.json")
-        && read("profile_design.json")?["evidence_view"] == "literal-reference/v2-deduplicated"
+        && matches!(
+            read("profile_design.json")?["evidence_view"].as_str(),
+            Some(
+                "literal-reference/v2-deduplicated"
+                    | "literal-reference/v3-trailing-inventory"
+                    | "literal-reference/v4-stable-sharing"
+            )
+        )
     {
         return Err(bad());
     }

@@ -133,10 +133,28 @@ The synchronous PostgreSQL bridge requires Tokio's multithread runtime, used
 by ordinary `serve` and CLI startup. Composition rejects a PostgreSQL runtime
 on an incompatible executor before workers start; the store returns a storage
 error rather than panicking if invoked independently on that executor. Each
-bridge operation is bounded to two seconds. A timed-out mutation has an
+bridge exchange uses the acknowledged `resource_store_timeout_millis` setting
+(default 2000 ms), captured once for a logical snapshot read/CAS write. Budget
+gates share the same source. Accepted operations retain their captured policy
+across edits; the last acknowledged policy remains available for settlement
+after the global owner stops. A timed-out mutation has an
 uncertain outcome: callers retain its explicit reservation address, deny
 execution and fence a replacement quote until acknowledged reconciliation.
 A timeout never authorizes replay or proves that no hold exists.
+
+PostgreSQL status inspection returns one consistent read generation without
+rewriting an unchanged ledger or creating an empty account row. A period
+rollover still requires durable acknowledgement before its reset usage is
+returned; failed writes preserve the stored period and active holds. Other
+stores may retain their existing transactional inspection behavior.
+
+A cap-only edit preserves an active rolling/calendar window and its consumption.
+An expired window advances before the successor cap is installed. Explicit
+period changes retain their usage reset, and neither path releases active
+reservations or deletes original receipts. Legacy per-invocation limits keep
+their existing semantics until the coordinated budget migration.
+
+
 
 ## 6. Concurrency
 

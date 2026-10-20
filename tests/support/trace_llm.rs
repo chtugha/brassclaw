@@ -720,12 +720,17 @@ impl LlmProvider for TraceLlm {
                 } => {
                     return Ok(CompletionResponse {
                         content,
-                        input_tokens,
-                        output_tokens,
+                        usage: input_tokens.zip(output_tokens).map(
+                            |(input_tokens, output_tokens)| brassclaw_llm::TokenUsage {
+                                input_tokens,
+                                output_tokens,
+                                cache_read_input_tokens: 0,
+                                cache_creation_input_tokens: 0,
+                            },
+                        ),
+
                         finish_reason: FinishReason::Stop,
                         reasoning: None,
-                        cache_read_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
                     });
                 }
                 TraceResponse::ToolCalls { .. } => {
@@ -758,11 +763,17 @@ impl LlmProvider for TraceLlm {
             } => Ok(ToolCompletionResponse {
                 content: Some(content),
                 tool_calls: Vec::new(),
-                input_tokens,
-                output_tokens,
+                usage: input_tokens
+                    .zip(output_tokens)
+                    .map(|(input_tokens, output_tokens)| brassclaw_llm::TokenUsage {
+                        input_tokens,
+                        output_tokens,
+                        cache_read_input_tokens: 0,
+                        cache_creation_input_tokens: 0,
+                    }),
+
                 finish_reason: FinishReason::Stop,
-                cache_read_input_tokens: 0,
-                cache_creation_input_tokens: 0,
+
                 reasoning: None,
             }),
             TraceResponse::ToolCalls {
@@ -783,11 +794,17 @@ impl LlmProvider for TraceLlm {
                 Ok(ToolCompletionResponse {
                     content: None,
                     tool_calls: calls,
-                    input_tokens,
-                    output_tokens,
+                    usage: input_tokens
+                        .zip(output_tokens)
+                        .map(|(input_tokens, output_tokens)| brassclaw_llm::TokenUsage {
+                            input_tokens,
+                            output_tokens,
+                            cache_read_input_tokens: 0,
+                            cache_creation_input_tokens: 0,
+                        }),
+
                     finish_reason: FinishReason::ToolUse,
-                    cache_read_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
+
                     reasoning: None,
                 })
             }

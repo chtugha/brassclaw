@@ -38,7 +38,10 @@ mod token_estimator;
 mod turn_event_publisher;
 
 pub use budget_accountant::GovernorBackedAccountant;
-pub use budget_cost_table::{ModelCost, ModelCostTable, StaticModelCostTable, ZeroCostTable};
+pub use budget_cost_table::{
+    ModelCost, ModelCostTable, ModelQuoteSettings, ModelQuoteSettingsSource, StaticModelCostTable,
+    ZeroCostTable,
+};
 pub use budget_seeding::BudgetSeedingPolicy;
 pub use cancellation_port::{
     AlwaysAliveLoopCancellationPort, AlwaysAliveRunCancellationFactory,
@@ -1074,7 +1077,40 @@ where
         request: LoopModelRequest,
     ) -> Result<Box<dyn brassclaw_turns::run_profile::PreparedLoopModelCall>, AgentLoopHostError>
     {
+        self.prepare_model_call_inner(request, None).await
+    }
+
+    /// Preserve the authorized prompt/work selection and its exact native
+    /// occurrence's observer through preparation and dispatch.
+    pub async fn prepare_model_call_with_observation(
+        &self,
+        request: LoopModelRequest,
+        custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    ) -> Result<Box<dyn brassclaw_turns::run_profile::PreparedLoopModelCall>, AgentLoopHostError>
+    {
+        if !self.gateway.supports_provider_observation() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unimplemented,
+                "provider response custody is unavailable",
+            ));
+        }
+        self.prepare_model_call_inner(request, Some(custodian))
+            .await
+    }
+
+    async fn prepare_model_call_inner(
+        &self,
+        request: LoopModelRequest,
+        custodian: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>>,
+    ) -> Result<Box<dyn brassclaw_turns::run_profile::PreparedLoopModelCall>, AgentLoopHostError>
+    {
         validate_thread_scope_for_run(&self.thread_scope, &self.run_context)?;
+        if request.work_id.is_none() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "model work identity is missing",
+            ));
+        }
         let requested_model_profile_id = request.model_preference.clone();
         let model_profile_id = requested_model_profile_id.clone().unwrap_or_else(|| {
             self.run_context
@@ -1125,6 +1161,7 @@ where
         }
 
         let host_request = HostManagedModelRequest {
+            dispatch_policy: request.dispatch_policy,
             model_profile_id: model_profile_id.clone(),
             messages: resolved_messages,
             surface_version: request.surface_version.clone(),
@@ -1134,6 +1171,7 @@ where
         };
 
         let work = brassclaw_turns::run_profile::ModelWorkRequest {
+            work_id: request.work_id,
             kind: brassclaw_turns::run_profile::ModelWorkKind::Assistant,
             model_profile_id: model_profile_id.clone(),
             resolved_model_route: self.run_context.resolved_model_route.clone(),
@@ -1161,16 +1199,23 @@ where
         };
         let dispatch = Box::pin(async move {
             owned.emit_model_started(requested_model_profile_id).await;
-            let gateway_result = if let Some(capabilities) = owned.capabilities.as_ref() {
-                let capabilities: Arc<dyn LoopCapabilityPort> =
+            let capabilities: Option<Arc<dyn LoopCapabilityPort>> =
+                owned.capabilities.as_ref().map(|capabilities| {
                     if let Some(ref capability_view) = request.capability_view {
                         Arc::new(CapabilitySurfaceVisibleFilter::new(
                             Arc::clone(capabilities),
                             capability_view.visible_capability_ids.clone(),
-                        ))
+                        )) as Arc<dyn LoopCapabilityPort>
                     } else {
                         Arc::clone(capabilities)
-                    };
+                    }
+                });
+            let gateway_result = if let Some(custodian) = custodian {
+                owned
+                    .gateway
+                    .stream_model_observed(host_request, capabilities, custodian)
+                    .await
+            } else if let Some(capabilities) = capabilities {
                 owned
                     .gateway
                     .stream_model_with_capabilities(host_request, capabilities)
@@ -1511,6 +1556,25 @@ where
 /// profile policy, retry/circuit behavior, and sanitization.
 #[async_trait]
 pub trait HostManagedModelGateway: Send + Sync {
+    fn supports_provider_observation(&self) -> bool {
+        false
+    }
+
+    /// A selected native operation requires actual adapter-response custody,
+    /// including failures during later validation. Unsupported gateways reject
+    /// before dispatch rather than falling back to an unobserved request.
+    async fn stream_model_observed(
+        &self,
+        _request: HostManagedModelRequest,
+        _capabilities: Option<Arc<dyn LoopCapabilityPort>>,
+        _custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        Err(HostManagedModelError::safe(
+            HostManagedModelErrorKind::ConfigurationError,
+            "provider response custody is unavailable",
+        ))
+    }
+
     /// Whether this gateway actually forwards provider Tool definitions and
     /// structured Tool calls. Text-only defaults must not silently accept an
     /// enabled request-local command exchange.
@@ -1534,6 +1598,11 @@ pub trait HostManagedModelGateway: Send + Sync {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostManagedModelRequest {
+    #[serde(
+        default,
+        skip_serializing_if = "brassclaw_turns::run_profile::LoopModelDispatchPolicy::is_configured"
+    )]
+    pub dispatch_policy: brassclaw_turns::run_profile::LoopModelDispatchPolicy,
     pub model_profile_id: ModelProfileId,
     pub messages: Vec<HostManagedModelMessage>,
     pub surface_version: Option<CapabilitySurfaceVersion>,
@@ -1661,6 +1730,12 @@ impl HostManagedModelResponse {
     /// sites can chain into [`assistant_reply`] / [`capability_calls`].
     pub fn with_usage(mut self, usage: LoopModelUsage) -> Self {
         self.usage = Some(usage);
+        self
+    }
+
+    /// Keep absent provider metering distinct from an observed zero.
+    pub fn with_optional_usage(mut self, usage: Option<LoopModelUsage>) -> Self {
+        self.usage = usage;
         self
     }
 }

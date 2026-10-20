@@ -231,12 +231,15 @@ impl LlmProvider for StubLlm {
         }
         Ok(CompletionResponse {
             content: self.response.clone(),
-            input_tokens: 10,
-            output_tokens: 5,
+            usage: Some(crate::TokenUsage {
+                input_tokens: 10,
+                output_tokens: 5,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            }),
+
             finish_reason: FinishReason::Stop,
             reasoning: None,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
         })
     }
 
@@ -251,11 +254,15 @@ impl LlmProvider for StubLlm {
         Ok(ToolCompletionResponse {
             content: Some(self.response.clone()),
             tool_calls: Vec::new(),
-            input_tokens: 10,
-            output_tokens: 5,
+            usage: Some(crate::TokenUsage {
+                input_tokens: 10,
+                output_tokens: 5,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            }),
+
             finish_reason: FinishReason::Stop,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
+
             reasoning: None,
         })
     }

@@ -78,8 +78,13 @@ impl ProviderCooldown {
     /// Record a retryable failure. Returns `true` if the threshold was
     /// just reached (caller should activate cooldown).
     fn record_failure(&self, threshold: u32) -> bool {
-        let prev = self.failure_count.fetch_add(1, Ordering::Relaxed);
-        prev + 1 >= threshold
+        let prev = self
+            .failure_count
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                Some(value.saturating_add(1))
+            })
+            .expect("saturating failure update always succeeds");
+        prev.saturating_add(1) >= threshold
     }
 
     /// Activate cooldown at the given timestamp.
@@ -197,7 +202,11 @@ impl FailoverProvider {
     /// Providers in cooldown are skipped unless *all* providers are in
     /// cooldown, in which case the one with the oldest cooldown timestamp
     /// (most likely to have recovered) is tried.
-    async fn try_providers<T, F, Fut>(&self, mut call: F) -> Result<(usize, T), LlmError>
+    async fn try_providers<T, F, Fut>(
+        &self,
+        dispatch_policy: crate::ProviderDispatchPolicy,
+        mut call: F,
+    ) -> Result<(usize, T), LlmError>
     where
         F: FnMut(Arc<dyn LlmProvider>) -> Fut,
         Fut: Future<Output = Result<T, LlmError>>,
@@ -215,6 +224,19 @@ impl FailoverProvider {
                 provider = %self.providers[i].model_name(),
                 "Skipping provider (in cooldown)"
             );
+        }
+
+        if !dispatch_policy.allows_resubmission() {
+            // The operation owns its selected primary. Health restrictions can
+            // refuse it; they cannot substitute another model/provider.
+            available.retain(|index| *index == 0);
+            if available.is_empty() {
+                return Err(LlmError::RequestFailed {
+                    provider: "failover".into(),
+                    reason: "selected primary provider is in cooldown".into(),
+                });
+            }
+            self.bind_provider_to_current_task(0);
         }
 
         // Never skip ALL providers: if every provider is in cooldown, pick
@@ -306,7 +328,7 @@ impl LlmProvider for FailoverProvider {
 
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
         let (provider_idx, response) = self
-            .try_providers(|provider| {
+            .try_providers(request.dispatch_policy, |provider| {
                 let req = request.clone();
                 async move { provider.complete(req).await }
             })
@@ -320,7 +342,7 @@ impl LlmProvider for FailoverProvider {
         request: ToolCompletionRequest,
     ) -> Result<ToolCompletionResponse, LlmError> {
         let (provider_idx, response) = self
-            .try_providers(|provider| {
+            .try_providers(request.dispatch_policy, |provider| {
                 let req = request.clone();
                 async move { provider.complete_with_tools(req).await }
             })
@@ -409,21 +431,28 @@ mod tests {
                 output_cost: Decimal::ZERO,
                 complete_result: Mutex::new(Some(Ok(CompletionResponse {
                     content: content.to_string(),
-                    input_tokens: 10,
-                    output_tokens: 5,
+                    usage: Some(crate::TokenUsage {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        cache_read_input_tokens: 0,
+                        cache_creation_input_tokens: 0,
+                    }),
+
                     finish_reason: FinishReason::Stop,
                     reasoning: None,
-                    cache_read_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
                 }))),
                 tool_complete_result: Mutex::new(Some(Ok(ToolCompletionResponse {
                     content: Some(content.to_string()),
                     tool_calls: vec![],
-                    input_tokens: 10,
-                    output_tokens: 5,
+                    usage: Some(crate::TokenUsage {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        cache_read_input_tokens: 0,
+                        cache_creation_input_tokens: 0,
+                    }),
+
                     finish_reason: FinishReason::Stop,
-                    cache_read_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
+
                     reasoning: None,
                 }))),
             }
@@ -536,6 +565,18 @@ mod tests {
             *self.active_model.write().unwrap() = model.to_string();
             Ok(())
         }
+    }
+
+    #[test]
+    fn failure_health_counter_keeps_its_threshold_after_integer_exhaustion() {
+        let counter = ProviderCooldown::new();
+        counter.failure_count.store(u32::MAX, Ordering::Relaxed);
+        for _ in 0..2 {
+            assert!(counter.record_failure(3));
+        }
+        assert_eq!(counter.failure_count.load(Ordering::Relaxed), u32::MAX);
+        counter.reset();
+        assert!(!counter.record_failure(3));
     }
 
     fn make_request() -> CompletionRequest {
@@ -803,12 +844,15 @@ mod tests {
             }
             Ok(CompletionResponse {
                 content: format!("{} ok", self.name),
-                input_tokens: 10,
-                output_tokens: 5,
+                usage: Some(crate::TokenUsage {
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                }),
+
                 finish_reason: FinishReason::Stop,
                 reasoning: None,
-                cache_read_input_tokens: 0,
-                cache_creation_input_tokens: 0,
             })
         }
 
@@ -831,11 +875,15 @@ mod tests {
             Ok(ToolCompletionResponse {
                 content: Some(format!("{} ok", self.name)),
                 tool_calls: vec![],
-                input_tokens: 10,
-                output_tokens: 5,
+                usage: Some(crate::TokenUsage {
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                }),
+
                 finish_reason: FinishReason::Stop,
-                cache_read_input_tokens: 0,
-                cache_creation_input_tokens: 0,
+
                 reasoning: None,
             })
         }
