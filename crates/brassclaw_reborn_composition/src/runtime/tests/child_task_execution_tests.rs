@@ -343,14 +343,18 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
     let rig = super::super::test_pg::pg_rig().await;
     let _database = rig.lock_db().await;
     let directory = tempfile::tempdir().unwrap();
-    let transport = ChildCommitTransport::start(rig.url.expose_secret()).await;
+    let transport = ChildCommitTransport::start(rig.url.expose_secret(), ChildWrite::rules())
+        .await
+        .unwrap();
     let runtime = Arc::new(
         Box::pin(build_reborn_runtime(
             RebornRuntimeInput::from_services(
                 crate::RebornBuildInput::postgres_with_reborn_home(
                     "native-child-owner",
                     (*transport.pool).clone(),
-                    transport.url.clone(),
+                    brassclaw_secrets::SecretMaterial::from(
+                        transport.connection_string().to_owned(),
+                    ),
                     directory.path().to_path_buf(),
                 )
                 .with_runtime_policy(local_dev_runtime_policy()),
@@ -543,7 +547,7 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
         };
         let cuts_before = transport.cut_count();
         if let Some(phase) = interrupted_write {
-            transport.arm(phase);
+            transport.arm(phase as u8).unwrap();
         }
         let native_call = tokio::time::timeout(Duration::from_secs(20), async {
             let Some(execution) = execution else {
@@ -1037,5 +1041,5 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
         "a fenced parent cannot dispatch another child"
     );
     shutdown_shared_runtime(runtime).await.unwrap();
-    transport.shutdown().await;
+    transport.shutdown().await.unwrap();
 }

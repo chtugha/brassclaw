@@ -13441,3 +13441,27 @@ cases and the backend race retain their exact earlier scopes. Fifteen additional
 actual Monty utility evaluations check the proposed R10 Markdown helper only;
 no component approval/activation is inferred. Only unembedded reports/plans are
 finalized afterward; the final equivalence receipt identifies those differences.
+
+
+### 2026-10-23 — Pure review prerequisites and backend test ownership (scoped acceptance)
+
+The common source now exposes exact pure source/dependency observations, every
+root export check, strict untrusted pure declarations and original sealed review
+subject/selection identities. These are validator Steps 3/8–10 prerequisites, not
+durable approval, complete class-Q1, human Q2, seed qualification or activation.
+[The contract](../reborn/pure-component-review.md) records the exact remaining
+writer/readers and the per-unbound-invocation approval gate; composition R10 and
+V35-03/04 reuse that owner instead of creating parallel machinery.
+
+The first batch found existing PostgreSQL test listeners in product composition.
+Their complete real protocol transport now belongs to optional PG test support;
+domain selectors/assertions stay in the callers. A subsequent literal-IP parsing
+defect was repaired before acceptance. No architecture check or warning was
+suppressed. Run 3 passed **67 focused tests**, including ten real atomic/ACK-loss
+regressions, native child old-selection/same-global-VM execution and both complete
+architecture suites; strict affected/root Clippy, fmt and whitespace passed.
+The ordinary matched/unmatched global-root pass is separately reused from run 1.
+[The scoped report](../validation/2026-10-23-pure-review-foundation.md) records
+failed batches, exact commands/artifacts, source applicability and open boundaries.
+One common source/index and serial Cargo target remain in use. A checkpoint push
+does not close the remaining v3/v3.5 or installed-release acceptance gates.

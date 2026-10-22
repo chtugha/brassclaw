@@ -1,7 +1,9 @@
 # v3 implementation status and work ownership
 
-Reconciled on **2026-10-22** against the common `main` working tree, based on
-`580a7f73e`. This index describes the source delivered with this document.
+Reconciled on **2026-10-23** against the common `main` working tree. Consolidation
+started from `580a7f73e`; the raw-source checkpoint is `c52bdc2e0`. This index
+also includes the subsequently validated pure-review prerequisites described below.
+It describes the source delivered with this document.
 It supersedes older present-tense implementation observations in the guides;
 their binding component, authority and failure contracts remain authoritative.
 The dated implementation journals retain historical evidence, including failed
@@ -24,7 +26,10 @@ Other platforms use one appropriate local target directory; the macOS path is
 not a product setting or a required installation path.
 
 The consolidation validation result is recorded in
-[the validation record](validation/2026-10-22-consolidation.md). Older frozen
+[the validation record](validation/2026-10-22-consolidation.md). The subsequent
+[pure-review prerequisite record](validation/2026-10-23-pure-review-foundation.md)
+covers 67 focused tests, actual PostgreSQL acknowledgement cuts, global child
+execution, unchanged architecture rules and strict affected/root lint. Older frozen
 receipts establish their named scopes only. No full release/platform matrix,
 fresh remote installation, general crash recovery or full-plan completion is
 inferred from focused local checks.
@@ -34,7 +39,7 @@ inferred from focused local checks.
 | Area | Actual implementation and supported boundary | Remaining qualification or cutover |
 | --- | --- | --- |
 | Global Monty | `global_monty_startup.rs`, `GlobalMontyOwner`, `GlobalMontyDriver`, `global_task_factory.rs` start one supervised Monty 1.0 worker before ordinary workers/producers. Opaque input IDs, isolated tasks, typed retained Recipe execution and reply/history use that service. The per-chat lazy driver is removed; there is no Rust-loop fallback. | Supervised durable recovery/replacement, unresolved effects, broader wait/child/restart and platform acceptance. A completed task does not stop the instance VM. |
-| Components and preload | `component_revision`, `revision_store`, retained instruction/inputs/tools/reviews and `retained_preload`/`retained_source` implement immutable revisions, recursive contracts, typed bindings, dependency-first function loading and pinned exports for selected graphs. Runtime values are data. | Migrate remaining legacy seeds/callers; general standalone pure approval and qualified dynamic flow/occurrences remain separate gaps. Legacy composer bodies are not the ordinary retained execution contract. |
+| Components and preload | `component_revision`, `revision_store`, retained instruction/inputs/tools/reviews and `retained_preload`/`retained_source` implement immutable revisions, recursive contracts, typed bindings, dependency-first function loading and pinned exports for selected graphs. Runtime values are data. Pure-review source prerequisites now expose exact complete closure observations, all-export checks, strict declarations and original sealed subject/selection identities; [their contract](reborn/pure-component-review.md) distinguishes these from approval. | Migrate remaining legacy seeds/callers; general standalone pure approval and qualified dynamic flow/occurrences remain separate gaps. Pure evidence writers/readers, Human Q2, seed qualification and activation are unfinished. Legacy composer bodies are not the ordinary retained execution contract. |
 | Approval and deployment | Trusted structural/behavioral evidence, human association review, coherent authored catalogue activation and component deployment exist. Exact packaged bootstrap qualification exists for named first-party closures. | Eight class-specific validator Recipes and their ordinary durable scheduling are incomplete. Existing narrow package qualification is not a general pure-component exemption. Authored changes require human Q2; shipped seeds require controlled integrity/Q1/behavior, without extra installed-instance Q2. |
 | Routing and MCP | Ordinary matching uses a coherent approved generation. Qualified command discovery, always-running MCP server and ordinary new-chat ingress/response correlation exist. Packaged public reply has scoped ordinary/MCP acceptance. | Populate and qualify the rest of the public library and its commands; migrate remaining compatibility surfaces. Draft/status labels are not advertised contracts. Only actual No-Match enters Tier 2. |
 | Complete file source | The existing registered `builtin.read_file` has a strict `raw_utf8_preserved` profile returning the complete captured UTF-8 text, host invocation/content identity and explicit representation/completeness. Existing live read limits, current Tool policy and mount/structured-entry protection apply. [Scoped native acceptance](validation/2026-10-23-raw-file-snapshot.md) covers actual local and PostgreSQL callers and backend races. | Canonical raw Skill/export/ToolSkill/Recipe qualification, independently approved R10 pure checking, retained source/derived lineage and doc-sync/doc-convert consumer migration remain open. A numbered preview or caller flag is not raw provenance. |
@@ -50,6 +55,14 @@ The original seven composition failures were resolved on their recorded global
 service path. That limited result does not establish that all plans or all
 integration suites pass on this combined tree. The validation record identifies
 which combined-tree checks have actually run.
+
+**Independent pure-step gap:** current authored preparation accumulates approved
+usage-closure UUID coverage across variants. That membership is not standalone
+pure-invocation approval. Validator Steps 3/8–10 own the per-unbound-step exact
+root/export/closure gate, durable approval pins and compatibility/repair cutover,
+as detailed in [the pure review contract](reborn/pure-component-review.md#exact-remaining-cutover-contract).
+The new source/declaration prerequisites do not themselves repair that reader or
+establish general independent pure activation.
 
 ## One implementation owner per responsibility
 

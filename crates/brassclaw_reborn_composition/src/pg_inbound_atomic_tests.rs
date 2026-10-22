@@ -147,9 +147,9 @@ async fn native_inbound_lost_commit_ack_retains_one_receipt_and_original_message
         "ack-loss-event",
     )
     .await;
-    let proxy = CommitAckProxy::start(rig.url.expose_secret()).await;
+    let proxy = commit_ack_proxy(rig.url.expose_secret()).await;
     let uncertain = PgSessionThreadService::new(proxy.pool.clone(), "claimed-child-native");
-    proxy.armed.store(true, Ordering::Release);
+    proxy.arm(1).unwrap();
     let lost = tokio::time::timeout(
         Duration::from_secs(15),
         uncertain.accept_inbound_message(input.clone()),
@@ -157,8 +157,8 @@ async fn native_inbound_lost_commit_ack_retains_one_receipt_and_original_message
     .await
     .unwrap();
     assert!(lost.is_err());
-    assert!(proxy.dropped.load(Ordering::Acquire));
-    proxy.task.await.unwrap().unwrap();
+    assert_eq!(proxy.cut_count(), 1);
+    proxy.shutdown().await.unwrap();
     let observed = threads
         .replay_accepted_inbound_message(replay(&input))
         .await

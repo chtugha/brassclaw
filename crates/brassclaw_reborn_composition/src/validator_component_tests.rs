@@ -30,6 +30,200 @@ async fn observation_exchange(
 }
 
 #[tokio::test]
+async fn pure_review_source_closure_checks_unselected_exports_and_dependencies() {
+    use brassclaw_engine::{
+        executor::{
+            retained_recipe::RetainedProgram,
+            retained_source::{InspectedRetainedProgram, RetainedSourceError},
+        },
+        memory::{
+            retained_inputs::prepare_retained_unbound_program,
+            retained_instruction::{WorkflowClass, compile_retained_recipe},
+        },
+    };
+    use brassclaw_skills::component_revision::{ComponentRevisionDraft, RetainedComponentSnapshot};
+
+    // These exact draft graphs exercise the real parser/preload inspector.
+    // No approval, component activation or successful-Q1 row is manufactured.
+    async fn inspect(
+        root: Uuid,
+        helper: Uuid,
+        document: Value,
+        helper_document: Option<Value>,
+    ) -> InspectedRetainedProgram {
+        let recipe = Uuid::new_v4();
+        let mut drafts = vec![
+            ComponentRevisionDraft::from_json(&json!({
+                "format":"component-revision/1","uuid":recipe,"class_code":21,
+                "document":{
+                    "variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":[],"variable_patterns":[]}],
+                    "step_descriptions":[{"desc_idx":0,"label":"Private source inspection","yaml_source":"","steps":[
+                        {"stepnumber":1,"knowledge":"orchestrator","goal":"Inspect pure source","content":"","type":"component","include":[root]}
+                    ]}],
+                    "input_layouts":{"selected":{"format":"recipe-input-layout/1",
+                        "task_inputs":{"text":{"type":"string","required":true,"checks":[]}},
+                        "steps":{"0:1":{"text":{"kind":"task_input","reference":"{{vars.text}}"}}}}}
+                },"dependencies":[root],"association":null
+            }).to_string()).unwrap(),
+            ComponentRevisionDraft::from_json(&json!({
+                "format":"component-revision/1","uuid":root,"class_code":22,
+                "document":document,"dependencies":if helper_document.is_some() { vec![helper] } else { vec![] },"association":null
+            }).to_string()).unwrap(),
+        ];
+        if let Some(document) = helper_document {
+            drafts.push(
+                ComponentRevisionDraft::from_json(
+                    &json!({
+                        "format":"component-revision/1","uuid":helper,"class_code":22,
+                        "document":document,"dependencies":[],"association":null
+                    })
+                    .to_string(),
+                )
+                .unwrap(),
+            );
+        }
+        let snapshot = Arc::new(
+            RetainedComponentSnapshot::new(
+                &[recipe],
+                drafts
+                    .into_iter()
+                    .map(|draft| draft.at_version(1).unwrap())
+                    .collect(),
+            )
+            .unwrap(),
+        );
+        let program = prepare_retained_unbound_program(
+            compile_retained_recipe(snapshot, recipe, "selected", WorkflowClass::Deterministic)
+                .unwrap(),
+        )
+        .unwrap();
+        InspectedRetainedProgram::inspect(
+            RetainedProgram::Unbound(Arc::new(program)),
+            &installed_worker().unwrap(),
+        )
+        .await
+        .unwrap()
+    }
+
+    let root = Uuid::new_v4();
+    let helper = Uuid::new_v4();
+    let helper_document = json!({
+        "content":"def identity(value):\n    return value\n",
+        "preload":{"format":"python-preload/2","exports":{},"private_functions":{"identity":["value"]},
+            "constants":[],"imports":[],"dependencies":[],"default_export":null}
+    });
+    let source = "def text_identity(inputs):\n    return identity(inputs['text'])\ndef direct_identity(text):\n    return identity(text)\n";
+    let document = json!({
+        "content":source,"input_contract":{"text":{"type":"string","required":true,"checks":[]}},
+        "result_contract":{"type":"string"},
+        "preload":{"format":"python-preload/2","exports":{
+            "text_identity":{"symbol":"text_identity","parameters":["inputs"],"mapping":true},
+            "direct_identity":{"symbol":"direct_identity","parameters":["text"],"mapping":false}
+        },"private_functions":{},"constants":[],"imports":[],"dependencies":[helper],"default_export":"text_identity"}
+    });
+    let inspected = inspect(
+        root,
+        helper,
+        document.clone(),
+        Some(helper_document.clone()),
+    )
+    .await;
+    let pure = inspected.pure_component(root).unwrap();
+    assert_eq!(pure.component().uuid, root);
+    assert_eq!(pure.components().keys().copied().collect::<Vec<_>>(), {
+        let mut ids = vec![root, helper];
+        ids.sort();
+        ids
+    });
+    for (id, source) in pure.sources() {
+        assert_eq!(source.component(), pure.components()[id]);
+        assert!(source.observations().direct_host_calls.is_empty());
+    }
+    assert_eq!(
+        pure.export_invocations(),
+        &BTreeMap::from([
+            (
+                "text_identity".into(),
+                "result = text_identity(inputs=inputs)".into()
+            ),
+            (
+                "direct_identity".into(),
+                "result = direct_identity(text=inputs['text'])".into()
+            ),
+        ])
+    );
+    assert!(inspected.pure_component(Uuid::new_v4()).is_err());
+
+    let mut unselected_host = document.clone();
+    unselected_host["content"] = json!(source.replace(
+        "return identity(text)",
+        "return host.unbound_effect(value=text)"
+    ));
+    let mut hidden_dependency = helper_document.clone();
+    hidden_dependency["content"] = json!(
+        "def identity(value):\n    return value\ndef hidden_effect(value):\n    return host.unbound_effect(value=value)\n"
+    );
+    hidden_dependency["preload"]["private_functions"]["hidden_effect"] = json!(["value"]);
+    let mut wrong_signature = document.clone();
+    wrong_signature["content"] = json!(source.replace(
+        "direct_identity(text):\n    return identity(text)",
+        "direct_identity(other):\n    return identity(other)"
+    ));
+    wrong_signature["preload"]["exports"]["direct_identity"]["parameters"] = json!(["other"]);
+    let mut recursive_export = document.clone();
+    recursive_export["content"] =
+        json!(source.replace("return identity(text)", "return direct_identity(text)"));
+    let mut legacy = document.clone();
+    legacy["content"] = json!("result = inputs['text']");
+    legacy.as_object_mut().unwrap().remove("preload");
+    for (candidate, dependency, rejected_component, reason) in [
+        (
+            unselected_host,
+            Some(helper_document.clone()),
+            root,
+            "pure closure contains a legacy body or host call",
+        ),
+        (
+            document,
+            Some(hidden_dependency),
+            helper,
+            "pure closure contains a legacy body or host call",
+        ),
+        (
+            wrong_signature,
+            Some(helper_document.clone()),
+            root,
+            "export signature differs from input contract",
+        ),
+        (
+            recursive_export,
+            Some(helper_document),
+            root,
+            "recursive function graph requires unsupported invocation qualification",
+        ),
+        (
+            legacy,
+            None,
+            root,
+            "pure root requires declared preload exports",
+        ),
+    ] {
+        // Ordinary inspection has selected text_identity only. That cannot
+        // certify every export/dependency as an independently pure component.
+        let inspected = inspect(root, helper, candidate, dependency).await;
+        let Err(RetainedSourceError::Invalid {
+            component,
+            reason: actual,
+        }) = inspected.pure_component(root)
+        else {
+            panic!("the complete pure subject must reject {reason}")
+        };
+        assert_eq!(component, rejected_component);
+        assert_eq!(actual, reason);
+    }
+}
+
+#[tokio::test]
 async fn typed_structural_successor_keeps_hostile_data_out_of_unchanged_source() {
     use brassclaw_skills::validator_components::{
         STRUCTURAL_PRESENCE_SOURCE, structural_presence_draft,
@@ -457,6 +651,9 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
         .await
         .unwrap()
         .unwrap();
+    assert_eq!(subject.submission_id(), subject_id);
+    assert_eq!(saved.submission_id(), subject.submission_id());
+    assert_eq!(saved.subject_checksum(), subject.subject_checksum());
     let restored = RetainedValidatorCoverage::restore_preparation(&saved).unwrap();
     assert_eq!(
         restored

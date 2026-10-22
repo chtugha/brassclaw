@@ -18,6 +18,11 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- Independent pure-component review prerequisites: exact source/dependency views,
+  checks for every declared export, strict immutable review declarations and
+  original sealed subject/selection identities. Preserve Skill-association formats;
+  trusted evidence writers, Human Q2 and catalogue activation remain separate
+  unfinished work.
 - Complete UTF-8 source capture in the existing file reader, preserving BOM,
   Unicode, original line endings and final-newline presence under the live read
   limit. Give each captured result an immutable native-invocation/content identity;
@@ -152,6 +157,11 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Fixed
 
+- Own real PostgreSQL acknowledgement-loss transports in optional backend test
+  support, sharing byte selectors and explicit shutdown across native callers.
+  Keep product-ingress architecture checks strict; the test-only proxy accepts
+  only loopback upstreams and forwards actual protocol bytes without fabricated
+  database or coordinator results.
 - Align pregenerated Oniguruma encoding bindings with their generator by removing
   invalid function-pointer equality derives, resolving the compiler warning
   without suppressing it or changing the native representation. Share one

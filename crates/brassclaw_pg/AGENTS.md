@@ -55,13 +55,17 @@ Shared PostgreSQL pool management and schema migration runner for brassclaw.
 ## Responsibilities
 
 - Builds and returns a `deadpool_postgres::Pool` from a connection URL
-- Runs all `V000__`…`V026__` SQL migrations via `refinery`
+- Runs the complete embedded migration inventory in `migrations/` via `refinery`
 - Handles migration-history reconciliation for existing deployments (pre-seeding
   history rows for tables that pre-date refinery)
 - Owns parsed endpoint/TLS policy for pools and dedicated sessions
 - Owns the canonical migration files in `migrations/`
 
 ## Migration files
+
+The table below records the original V000–V026 schema baseline, not the complete
+current inventory. Use the actual `migrations/` files and shared runner for current
+versions, checksums and upgrade order; never omit newer migrations from an upgrade.
 
 All migrations use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`
 for idempotency. Each migration is self-contained.
@@ -113,3 +117,15 @@ Account for aggregate reservations and dedicated listeners; a per-pool default
 is not an instance-wide capacity limit. Use `connection::connect` for a genuinely
 session-local connection such as LISTEN, and own polling/shutdown explicitly.
 None of these helpers retries application SQL or an uncertain effect.
+
+## Native test support
+
+The optional `test-support` feature owns actual loopback PostgreSQL wire
+forwarding and acknowledgement cuts in `test_support`. Downstream callers enable
+it through dev-dependencies, supply literal Bind-frame selectors or a private
+next-COMMIT rule, then verify actual stores/results. Domain-specific child-task
+selectors remain in the owning tests; this crate handles protocol bytes only.
+It fabricates no SQL/coordinator response, logs no credentials and requires
+explicit shutdown. Remote upstreams are rejected. Ordinary application builds
+do not enable this listener/test infrastructure. Do not place transport listeners
+in product/API composition or exempt them from the ingress architecture check.

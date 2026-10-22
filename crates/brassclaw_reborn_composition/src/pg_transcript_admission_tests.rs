@@ -244,9 +244,9 @@ async fn native_atomic_child_admission_keeps_input_link_when_commit_ack_is_lost(
     let (accepted, message) = input(&threads, &child_scope).await;
     let request = child_request(&parent, child_scope.clone(), actor.clone(), accepted);
     let child = request.requested_run_id.unwrap();
-    let proxy = CommitAckProxy::start(rig.url.expose_secret()).await;
+    let proxy = commit_ack_proxy(rig.url.expose_secret()).await;
     let uncertain = DefaultTurnCoordinator::new(Arc::new(atomic_store(proxy.pool.clone())));
-    proxy.armed.store(true, Ordering::Release);
+    proxy.arm(1).unwrap();
     let result = tokio::time::timeout(
         Duration::from_secs(15),
         uncertain.submit_claimed_child_run(request, &parent),
@@ -254,8 +254,8 @@ async fn native_atomic_child_admission_keeps_input_link_when_commit_ack_is_lost(
     .await
     .unwrap();
     assert!(result.is_err());
-    assert!(proxy.dropped.load(Ordering::Acquire));
-    proxy.task.await.unwrap().unwrap();
+    assert_eq!(proxy.cut_count(), 1);
+    proxy.shutdown().await.unwrap();
     // Reconcile by reading the original IDs; do not submit or execute again.
     let record = store
         .get_run_record(&child_scope, child)

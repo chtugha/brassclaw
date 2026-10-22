@@ -2,14 +2,10 @@
 //! actual COMMIT acknowledgement is cut by a local byte transport.
 use super::*;
 use brassclaw_pg::PgPool;
+use brassclaw_pg::test_support::{AckCutRule, AckCutTransport};
 use secrecy::ExposeSecret;
 use serde_json::Value;
-use std::{
-    io,
-    sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
-};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::time::Duration;
 
 #[path = "pg_inbound_atomic_tests.rs"]
 mod atomic_inbound;
@@ -18,102 +14,10 @@ mod atomic_inbound;
 #[path = "pg_transcript_admission_tests.rs"]
 mod atomic_transcript;
 
-struct CommitAckProxy {
-    pool: Arc<PgPool>,
-    armed: Arc<AtomicBool>,
-    dropped: Arc<AtomicBool>,
-    task: tokio::task::JoinHandle<io::Result<()>>,
-}
-impl CommitAckProxy {
-    async fn start(connection: &str) -> Self {
-        let mut endpoint = url::Url::parse(connection).unwrap();
-        let upstream = (
-            endpoint.host_str().unwrap().to_owned(),
-            endpoint.port().unwrap(),
-        );
-        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-            .await
-            .unwrap();
-        let address = listener.local_addr().unwrap();
-        endpoint.set_host(Some("127.0.0.1")).unwrap();
-        endpoint.set_port(Some(address.port())).unwrap();
-        let parameters = endpoint
-            .query_pairs()
-            .filter(|(key, _)| key != "sslmode")
-            .map(|(key, value)| (key.into_owned(), value.into_owned()))
-            .collect::<Vec<_>>();
-        endpoint.set_query(None);
-        endpoint
-            .query_pairs_mut()
-            .extend_pairs(parameters)
-            .append_pair("sslmode", "disable");
-        let armed = Arc::new(AtomicBool::new(false));
-        let dropped = Arc::new(AtomicBool::new(false));
-        let observed = dropped.clone();
-        let cut = armed.clone();
-        let task = tokio::spawn(async move {
-            let (downstream, _) = listener.accept().await?;
-            let upstream =
-                tokio::net::TcpStream::connect((upstream.0.as_str(), upstream.1)).await?;
-            let (mut source, mut upstream_writer) = upstream.into_split();
-            let (mut downstream_reader, mut destination) = downstream.into_split();
-            let answers = async {
-                loop {
-                    // PostgreSQL's typed backend framing. Other packets are
-                    // streamed unchanged; no SQL result or success is invented.
-                    let mut header = [0_u8; 5];
-                    source.read_exact(&mut header).await?;
-                    let length = u32::from_be_bytes(header[1..].try_into().unwrap())
-                        .checked_sub(4)
-                        .ok_or_else(|| {
-                            io::Error::new(io::ErrorKind::InvalidData, "invalid backend frame")
-                        })?;
-                    if header[0] == b'C' && length == 7 {
-                        let mut tag = [0_u8; 7];
-                        source.read_exact(&mut tag).await?;
-                        if &tag == b"COMMIT\0" && cut.swap(false, Ordering::AcqRel) {
-                            // The server has committed. Discard this real
-                            // acknowledgement and close the client connection.
-                            observed.store(true, Ordering::Release);
-                            destination.shutdown().await?;
-                            return Ok::<(), io::Error>(());
-                        }
-                        destination.write_all(&header).await?;
-                        destination.write_all(&tag).await?;
-                    } else {
-                        destination.write_all(&header).await?;
-                        let transferred = tokio::io::copy(
-                            &mut (&mut source).take(u64::from(length)),
-                            &mut destination,
-                        )
-                        .await?;
-                        if transferred != u64::from(length) {
-                            return Err(io::Error::new(
-                                io::ErrorKind::UnexpectedEof,
-                                "incomplete backend frame",
-                            ));
-                        }
-                    }
-                }
-            };
-            let requests = async {
-                tokio::io::copy(&mut downstream_reader, &mut upstream_writer)
-                    .await
-                    .map(|_| ())
-            };
-            tokio::select! { result=answers => result, result=requests => result }
-        });
-        let pool = Arc::new(brassclaw_pg::pool::build_pool(endpoint.as_str()).unwrap());
-        // Authenticate before arming; only the targeted store operation uses this
-        // private pool, so no unrelated transaction can consume the cut.
-        drop(pool.get().await.unwrap());
-        Self {
-            pool,
-            armed,
-            dropped,
-            task,
-        }
-    }
+async fn commit_ack_proxy(connection: &str) -> AckCutTransport {
+    AckCutTransport::start(connection, vec![AckCutRule::next_commit(1)])
+        .await
+        .unwrap()
 }
 
 async fn reservation_count(pool: &PgPool, scope: &TurnScope, root: TurnRunId) -> u64 {
@@ -260,9 +164,9 @@ async fn native_claimed_child_reservation_survives_lost_commit_ack_without_relea
         })
         .await
         .unwrap();
-    let proxy = CommitAckProxy::start(rig.url.expose_secret()).await;
+    let proxy = commit_ack_proxy(rig.url.expose_secret()).await;
     let uncertain = PgTurnStateStore::new(proxy.pool.clone(), "claimed-child-native");
-    proxy.armed.store(true, Ordering::Release);
+    proxy.arm(1).unwrap();
     let lost = tokio::time::timeout(
         Duration::from_secs(15),
         uncertain.release_claimed_child_reservation(first_scope, *first),
@@ -273,11 +177,12 @@ async fn native_claimed_child_reservation_survives_lost_commit_ack_without_relea
         lost.is_err(),
         "the actual committed write must lose its acknowledgement"
     );
-    assert!(
-        proxy.dropped.load(Ordering::Acquire),
+    assert_eq!(
+        proxy.cut_count(),
+        1,
         "a real COMMIT response must have been cut"
     );
-    proxy.task.await.unwrap().unwrap();
+    proxy.shutdown().await.unwrap();
     assert_eq!(reservation_count(&rig.pool, &parent_scope, root).await, 1);
     let reopened = PgTurnStateStore::new(rig.pool.clone(), "claimed-child-native");
     assert_eq!(
@@ -373,12 +278,12 @@ async fn native_lost_child_admission_ack_preserves_identity_and_cancels_below_fa
         requested_run_id: Some(child),
         spawn_tree_descendant_cap: 2,
     };
-    let proxy = CommitAckProxy::start(rig.url.expose_secret()).await;
+    let proxy = commit_ack_proxy(rig.url.expose_secret()).await;
     let uncertain = DefaultTurnCoordinator::new(Arc::new(PgTurnStateStore::new(
         proxy.pool.clone(),
         "claimed-child-native",
     )));
-    proxy.armed.store(true, Ordering::Release);
+    proxy.arm(1).unwrap();
     let lost = tokio::time::timeout(
         Duration::from_secs(15),
         uncertain.submit_claimed_child_run(request.clone(), &claim),
@@ -386,11 +291,12 @@ async fn native_lost_child_admission_ack_preserves_identity_and_cancels_below_fa
     .await
     .unwrap();
     assert!(lost.is_err());
-    assert!(
-        proxy.dropped.load(Ordering::Acquire),
+    assert_eq!(
+        proxy.cut_count(),
+        1,
         "the server's real child-admission COMMIT acknowledgement must be cut"
     );
-    proxy.task.await.unwrap().unwrap();
+    proxy.shutdown().await.unwrap();
     let actual = store
         .get_run_record(&child_scope, child)
         .await

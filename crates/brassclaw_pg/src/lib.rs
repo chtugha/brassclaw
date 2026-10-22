@@ -3,6 +3,10 @@ pub mod error;
 pub mod migrations;
 pub mod pool;
 
+/// Real loopback wire fault injection; absent from ordinary production builds.
+#[cfg(feature = "test-support")]
+pub mod test_support;
+
 pub use deadpool_postgres::Pool as PgPool;
 pub use error::PgError;
 

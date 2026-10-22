@@ -14,12 +14,19 @@ use uuid::Uuid;
 /// The engine can rebuild typed IBS from this retained graph without latest reads.
 pub struct RetainedValidatorSelection {
     submission_id: Uuid,
+    subject_checksum: String,
     bytes: String,
     validator_bytes: String,
     selection: serde_json::Value,
     snapshot: std::sync::Arc<crate::component_revision::RetainedComponentSnapshot>,
 }
 impl RetainedValidatorSelection {
+    pub fn submission_id(&self) -> Uuid {
+        self.submission_id
+    }
+    pub fn subject_checksum(&self) -> &str {
+        &self.subject_checksum
+    }
     pub fn bytes(&self) -> &str {
         &self.bytes
     }
@@ -137,6 +144,7 @@ async fn verify(
     }
     Ok(RetainedValidatorSelection {
         submission_id: value.submission_id,
+        subject_checksum: value.subject_checksum,
         bytes: bytes.to_owned(),
         validator_bytes: value.validator_selection_bytes,
         selection,

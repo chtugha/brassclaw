@@ -585,6 +585,17 @@ completion and failed downstream output each retain honest, non-replayed outcome
 
 ### Step 9 — Wire durable Q1 work, human Q2 and approval writers
 
+**Source prerequisite — 2026-10-23:** `pure_component_contract` now defines a
+strict, untrusted `pure-component-approval/1` declaration. It identifies exact
+class-22 root/closure references and separate Q1/Q2/behavioral UUIDs. The Engine's
+`InspectedRetainedProgram::pure_component` extracts actual source observations,
+checks every root export and rejects host calls throughout the retained closure,
+including unselected/dead calls. The existing sealed validator subject/selection
+exposes its original submission identity/checksum. These are source/selection
+prerequisites, **not durable pure approval, successful whole-class Q1, trusted
+seed provenance or an activated component**. The writer/reader/activation steps
+below remain required. See [the exact prerequisite contract](docs/reborn/pure-component-review.md).
+
 1. Reuse existing immutable submission records and make their review work discoverable
    via the existing admission/coordination services. Atomically retain submission
    and required work/outbox reference, or specify its idempotent reconciliation

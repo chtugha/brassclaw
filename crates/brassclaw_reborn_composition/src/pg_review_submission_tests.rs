@@ -955,6 +955,11 @@ async fn native_validator_subject_preserves_complete_pinned_graph_and_base_compa
             .unwrap()
             .unwrap();
     let value = first.value();
+    assert_eq!(first.submission_id(), submission_id);
+    assert_eq!(
+        value["subject_checksum"].as_str(),
+        Some(first.subject_checksum())
+    );
     assert_eq!(first.candidate().uuid, component);
     assert_eq!(first.candidate().class_code, 22);
     assert_eq!(first.candidate().version, 3);

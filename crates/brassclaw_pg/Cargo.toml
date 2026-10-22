@@ -24,6 +24,8 @@ pgvector = { version = "0.4", features = ["postgres"] }
 thiserror = "2"
 tokio = { version = "1", features = ["rt", "macros"] }
 tracing = "0.1"
+tokio-util = { version = "0.7", features = ["rt"], optional = true }
+url = { version = "2", optional = true }
 
 [features]
 # Heavy integration tests that require a live Postgres; run with:
@@ -33,6 +35,9 @@ integration = []
 # TEST_PG_URL, TEST_PG_REMOTE_URL, TEST_PG_TLS_URL, TEST_PG_UNTRUSTED_URL
 # and a trust store containing only the acceptance CA are required.
 connection-integration = []
+# Real loopback PostgreSQL wire fault injection for downstream native tests.
+# Not enabled by ordinary application dependencies.
+test-support = ["dep:tokio-util", "dep:url", "tokio/net", "tokio/io-util"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }

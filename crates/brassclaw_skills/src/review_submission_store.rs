@@ -269,6 +269,8 @@ impl RetainedReviewRequest {
 pub struct RetainedValidatorSubject {
     value: serde_json::Value,
     candidate: ComponentRevisionRef,
+    submission_id: Uuid,
+    subject_checksum: String,
 }
 impl RetainedValidatorSubject {
     pub fn value(&self) -> &serde_json::Value {
@@ -276,6 +278,15 @@ impl RetainedValidatorSubject {
     }
     pub fn candidate(&self) -> ComponentRevisionRef {
         self.candidate
+    }
+    /// Original immutable submission identity, not a review or task approval.
+    pub fn submission_id(&self) -> Uuid {
+        self.submission_id
+    }
+    /// Covers the original candidate, lineage base and exact dependency choice.
+    /// It is distinct from the validator program's own selection checksum.
+    pub fn subject_checksum(&self) -> &str {
+        &self.subject_checksum
     }
 }
 
@@ -508,6 +519,8 @@ impl PgReviewSubmissionStore {
             .filter(|revision| revision.reference().uuid != subject.candidate.uuid)
             .map(|revision| revision_input(revision, limits))
             .collect::<Result<Vec<_>, _>>()?;
+        let submission_id = subject.id;
+        let subject_checksum = subject.checksum.clone();
         let value = serde_json::json!({
             "format": "component-validator-subject/1",
             "submission_id": subject.id,
@@ -522,6 +535,8 @@ impl PgReviewSubmissionStore {
         Ok(Some(RetainedValidatorSubject {
             value,
             candidate: subject.candidate,
+            submission_id,
+            subject_checksum,
         }))
     }
 

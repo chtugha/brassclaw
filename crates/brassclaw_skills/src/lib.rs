@@ -36,6 +36,10 @@ pub mod value_contract;
 /// does not establish trusted evidence, activate components or grant authority.
 pub mod association_contract;
 
+/// Independent pure-PythonCode review declarations. Parsing supplies no trusted
+/// review provenance, source qualification, component activation or authority.
+pub mod pure_component_contract;
+
 /// Immutable revision data and complete exact dependency retention. These types
 /// do not establish review provenance, activation or Tool authority.
 pub mod component_revision;

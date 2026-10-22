@@ -55,6 +55,34 @@ impl InspectedSource {
 }
 pub type InspectedSources = BTreeMap<Uuid, InspectedSource>;
 
+/// Actual parser observations for one closed, effect-free preload graph.
+/// Construction checks every declared root export and every dependency source,
+/// including host calls outside the selected invocation. This is structural
+/// evidence only: it establishes neither behavior, semantic review, approval,
+/// catalogue activation nor permission to execute a task.
+pub struct InspectedPureComponent<'a> {
+    component: ComponentRevisionRef,
+    components: BTreeMap<Uuid, ComponentRevisionRef>,
+    sources: BTreeMap<Uuid, &'a InspectedSource>,
+    export_invocations: BTreeMap<String, String>,
+}
+impl<'a> InspectedPureComponent<'a> {
+    pub fn component(&self) -> ComponentRevisionRef {
+        self.component
+    }
+    pub fn components(&self) -> &BTreeMap<Uuid, ComponentRevisionRef> {
+        &self.components
+    }
+    pub fn sources(&self) -> &BTreeMap<Uuid, &'a InspectedSource> {
+        &self.sources
+    }
+    /// Generated invocations are derived from retained declarations, never
+    /// runtime input or prose. Behavioral evidence must cover each export.
+    pub fn export_invocations(&self) -> &BTreeMap<String, String> {
+        &self.export_invocations
+    }
+}
+
 /// The executor accepts only the exact program inspected by this constructor.
 /// Successful construction grants no permission and activates no component.
 /// A trusted catalogue owner may share this immutable value across task hosts;
@@ -381,6 +409,108 @@ impl InspectedRetainedProgram {
     }
     pub fn program(&self) -> &RetainedProgram {
         &self.program
+    }
+
+    /// Extract an independently reviewable pure source closure from this exact
+    /// inspected selection. No latest lookup, copied source or new interpreter
+    /// is needed. A dependency outside this graph, a legacy body or even an
+    /// unselected/dead host call prevents this structural pure qualification.
+    pub fn pure_component(
+        &self,
+        component: Uuid,
+    ) -> Result<InspectedPureComponent<'_>, RetainedSourceError> {
+        use brassclaw_skills::value_contract::{ContractLimits, InputContract, ValueContract};
+
+        use super::retained_preload::PreloadDeclaration;
+
+        let fail = |reason| RetainedSourceError::Invalid { component, reason };
+        let graph = self.program.inputs().instruction().snapshot().revisions();
+        let root = graph
+            .get(&component)
+            .filter(|revision| revision.reference().class_code == 22)
+            .ok_or_else(|| fail("pure root must be retained PythonCode"))?;
+        let limits = ContractLimits {
+            max_depth: self.preparation_limits.bounds.max_value_depth,
+            max_nodes: self.preparation_limits.bounds.max_value_nodes,
+            max_bytes: self.preparation_limits.bounds.max_value_bytes,
+        };
+        let document = root.draft().document();
+        InputContract::from_value(&document["input_contract"], limits)
+            .map_err(|_| fail("pure root input contract is invalid"))?;
+        ValueContract::result_from_value(&document["result_contract"], limits)
+            .map_err(|_| fail("pure root result contract is invalid"))?;
+        let library = PreloadDeclaration::parse(document, root.draft().dependencies())
+            .map_err(fail)?
+            .filter(|library| !library.exports.is_empty())
+            .ok_or_else(|| fail("pure root requires declared preload exports"))?;
+        let export_invocations = library
+            .exports
+            .keys()
+            .map(|name| {
+                library
+                    .invocation(name, &document["input_contract"])
+                    .map(|invocation| (name.clone(), invocation))
+                    .map_err(fail)
+            })
+            .collect::<Result<_, _>>()?;
+        let mut components = BTreeMap::new();
+        let mut sources = BTreeMap::new();
+        let mut pending = vec![component];
+        while let Some(id) = pending.pop() {
+            if components.contains_key(&id) {
+                continue;
+            }
+            let dependency_error = |reason| RetainedSourceError::Invalid {
+                component: id,
+                reason,
+            };
+            let revision = graph
+                .get(&id)
+                .filter(|revision| revision.reference().class_code == 22)
+                .ok_or_else(|| dependency_error("pure dependency must be retained PythonCode"))?;
+            let observed = self
+                .sources
+                .get(&id)
+                .filter(|source| source.component() == revision.reference())
+                .ok_or_else(|| {
+                    dependency_error("pure dependency lacks exact source observations")
+                })?;
+            if observed.observations().preload.is_none()
+                || !observed.observations().direct_host_calls.is_empty()
+            {
+                return Err(dependency_error(
+                    "pure closure contains a legacy body or host call",
+                ));
+            }
+            pending.extend(revision.draft().dependencies());
+            components.insert(id, revision.reference());
+            sources.insert(id, observed);
+        }
+        let mut owners = BTreeMap::new();
+        for (id, source) in &sources {
+            let preload = source
+                .observations()
+                .preload
+                .as_ref()
+                .ok_or_else(|| fail("pure dependency lacks preload observations"))?;
+            for symbol in preload.functions.keys() {
+                if owners.insert(symbol.clone(), *id).is_some() {
+                    return Err(fail("pure dependency symbol conflict"));
+                }
+            }
+        }
+        for export in library.exports.values() {
+            let calls = export_calls(&export.symbol, &owners, &self.sources).map_err(fail)?;
+            if !calls.is_empty() {
+                return Err(fail("pure export resolves to a host call"));
+            }
+        }
+        Ok(InspectedPureComponent {
+            component: root.reference(),
+            components,
+            sources,
+            export_invocations,
+        })
     }
 }
 
