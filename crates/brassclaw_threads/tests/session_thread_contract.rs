@@ -16,6 +16,42 @@ use brassclaw_threads::{
 use chrono::Utc;
 use futures::future::join_all;
 
+#[path = "common/inbound_atomic.rs"]
+mod inbound_atomic;
+
+#[tokio::test]
+async fn memory_event_claim_is_unique_and_input_is_immutable() {
+    inbound_atomic::exercise(
+        std::sync::Arc::new(InMemorySessionThreadService::default()),
+        scope("atomic-event"),
+    )
+    .await;
+}
+
+#[path = "common/inbound_replay.rs"]
+mod inbound_replay;
+
+#[tokio::test]
+async fn replay_lookup_preserves_exact_scope_and_actor() {
+    inbound_replay::exercise(
+        &InMemorySessionThreadService::default(),
+        scope("replay-scope"),
+    )
+    .await;
+}
+
+#[path = "common/submission_binding.rs"]
+mod submission_binding;
+
+#[tokio::test]
+async fn memory_submission_acknowledgement_preserves_original_identity_and_message_kind() {
+    submission_binding::exercise(
+        &InMemorySessionThreadService::default(),
+        scope("submission"),
+    )
+    .await;
+}
+
 fn scope(label: &str) -> ThreadScope {
     ThreadScope {
         tenant_id: TenantId::new(format!("tenant-{label}")).unwrap(),
@@ -636,7 +672,7 @@ async fn duplicate_external_event_returns_same_message_without_duplicate_history
             source_binding_id: Some("telegram-thread-1".into()),
             reply_target_binding_id: Some("telegram-thread-1".into()),
             external_event_id: Some("telegram-event-9".into()),
-            content: user_message("retry payload is ignored"),
+            content: user_message("hello once"),
         })
         .await
         .unwrap();

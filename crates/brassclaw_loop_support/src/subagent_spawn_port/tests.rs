@@ -1029,6 +1029,7 @@ fn turn_record(run_context: &LoopRunContext, subagent_depth: u32) -> TurnRunReco
         parent_run_id: lineage_root,
         subagent_depth,
         spawn_tree_root_run_id: lineage_root,
+        claimed_child_reservation_released: None,
     }
 }
 

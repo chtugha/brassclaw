@@ -1,6 +1,14 @@
 # Path to v3.5 — qualified Recipe-first execution
 
-**Date:** 2026-10-17. **State:** consolidated design and roadmap; implementation, qualification, publication and deployment remain future work. **Execution checklist:** the Zenflow To-do tab for task `6326cc40-3f63-4867-8a8b-9f4f3455ded5`, using stable work IDs `V35-01`–`V35-30`. This document is the substantive architecture/acceptance artifact, not a second checklist.
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
+**Date:** 2026-10-17; source/plan reconciliation 2026-10-22. **State:** coordinated roadmap; named v3 prerequisites are implemented, while the remaining v3.5 semantic/flow/connection/cutover work and acceptance remain open. **Execution checklist:** the Zenflow To-do tab for task `6326cc40-3f63-4867-8a8b-9f4f3455ded5`, using stable work IDs `V35-01`–`V35-30`. This document is the substantive architecture/acceptance artifact, not a second checklist.
 
 ## Purpose, authority and scope
 
@@ -10,11 +18,11 @@ The broader correction is responsibility ownership, not the mere existence of Re
 
 Binding authorities are `./recipe.md`, `./skills.md`, `./tools.md`, `./toolskills.md`, `./simplified_v3.md` §§1.1/9/10 and `./docs/development-policy.md`. Older examples and status snapshots are subordinate. Requirements and the technical design are retained in `./.zenflow/tasks/strictly-follow-the-following-wo-6326/requirements.md`, `./.zenflow/tasks/strictly-follow-the-following-wo-6326/source-inventory.md` and `./.zenflow/tasks/strictly-follow-the-following-wo-6326/spec.md`. Both workflow attachments were read; requirements → specification → planning → verification/report governs this delivery. Zenflow replaces their file-checklist instruction.
 
-This roadmap absorbs all requirements of `./docs/plans/sempai_v3.5.md` and `./docs/plans/simplify_connections_v3.5.md`. **Neither source plan is obsolete now.** Retirement requires all mapped implementation, safety, reuse, cutover and compatibility acceptance, not this document. The four ongoing v3 plans keep their other open work. This delivery changes no runtime, seed, migration, database, configuration, provider or deployment.
+This roadmap absorbs all requirements of `./docs/plans/sempai_v3.5.md` and `./docs/plans/simplify_connections_v3.5.md`. **Neither source plan is obsolete now.** Retirement requires all mapped implementation, safety, reuse, cutover and compatibility acceptance, not this document. The four ongoing v3 plans keep their other open work. The original roadmap-only delivery changed no runtime, seed, migration, database, configuration, provider or deployment. The 2026-10-22 common-tree checkpoint includes the implementation boundaries recorded in the current support index; it does not certify the rest of v3.5.
 
 ## Evidence baseline and support truth
 
-The inspected working tree has HEAD `6a36dfc5b225128512ff761c076620866baea163` and substantial pre-existing edits. Eight drift keys from the specification were rehashed and unchanged at roadmap preparation: shared PG connection policy, authored catalogue, retained inputs/executor, review backend, compiler approval writer and both prefix/simplified journals. Source consumers were reinspected for the boundaries below. This is source/document evidence, **not a new runtime test**. Historical receipts are attributed and require byte/configuration applicability review before reuse.
+The original roadmap inspection used HEAD `6a36dfc5b225128512ff761c076620866baea163` and substantial pre-existing edits. The current merged-source baseline is recorded in [the implementation status index](docs/implementation-status.md); the observations in this paragraph are historical. Eight drift keys from the specification were rehashed and unchanged at roadmap preparation: shared PG connection policy, authored catalogue, retained inputs/executor, review backend, compiler approval writer and both prefix/simplified journals. Source consumers were reinspected for the boundaries below. This is source/document evidence, **not a new runtime test**. Historical receipts are attributed and require byte/configuration applicability review before reuse.
 
 | Evidence class | Meaning and promotion requirement |
 | --- | --- |
@@ -60,7 +68,17 @@ Runtime text remains typed data, never Python source/prose execution. Recursive 
 
 ### Two distinct shared-support gaps
 
-**Standalone pure approval (`V35-03, V35-04`).** The existing review/revision/activation owners need a concrete trusted evidence schema, immutable writer and checked reader for an exact pure component/interface/source/dependency closure and behavior. Authored evidence requires Q1/behavior/human Q2; verified noncircular installation bootstrap uses integrity/Q1/behavior without extra instance Q2. Activation, restoration and task capture must check exact coverage and retain old evidence. No accepted field name is invented here. Preserve the exact `skill-association/1` and `skill-association-approval/1` formats; they describe real Tool usages, not zero-Tool logic. Do not widen the compiler graph exception, exempt arbitrary dependencies or hide filter/format inside file-read to evade the gap.
+**Standalone pure approval (`V35-03, V35-04`).** Implement the shared evidence
+schema, trusted immutable writer and checked activation/restoration/task readers
+once under [validator's remaining work, item 3](validator_v3.md#remaining-implementation--consolidated-2026-10-22)
+and its Steps 3/8–10. V35-03/04 consume that owner's exact pure-component,
+interface/source/dependency and behavioral coverage for the reference workflows;
+they do not create another approval store or compiler exemption. Their acceptance
+adds actual independent pure-step reuse/publication and successor retention.
+Authored Q1/behavior/human Q2 and noncircular shipped integrity/Q1/behavior remain
+distinct. Preserve real Tool-usage association formats; no zero-Tool Skill,
+arbitrary dependency exemption or hidden filter/formatter inside file-read.
+
 
 **Dynamic occurrence support (`V35-13, V35-14`).** The owning flow schema/IBS/qualifier must represent checksummed legal branches, item bindings/results and repeated selected usages. Monty chooses the next branch/item. Rust verifies selected membership, typed edges, freshness and unique occurrence identity, separate from task attempt and service generation. Journal intent/count precedes every actual effect; retain original arguments/key/checksum, exact answer and confirmed/unresolved state. V129's `(attempt_id, operation)` cannot represent repeated submissions. A successor migration/compatibility reader must preserve V122/V127/V129/V133 bytes and old flat tasks. Merely removing `started.contains(step_id)`, trusting a model loop index or adding unrecognized Recipe fields is unsafe. Initial conversion stays stop-only, not general crash replay/resume. Reference reuse and pure extraction can progress independently.
 
@@ -198,9 +216,16 @@ Connection acceptance (`V35-21`–`V35-29`) covers fresh startup/shutdown; all p
 | Owning plan | Input/output handshake and required gate | This roadmap's boundary |
 | --- | --- | --- |
 | `./simplified_v3.md`, latest `./docs/plans/simplified-v3-implementation.md` | `V35-01` reconciles exact current source/receipts; `V35-14, V35-23, V35-24, V35-26, V35-27, V35-29` use its global lifecycle, authority, resources and Phases 0a/3a/7/8 production/cutover gates | No new VM/admission/settings/provider/recovery owner. Default token budgets remain disabled; 512 MiB startup/manual floor and live desired/effective revisions remain; task compute default 600 executing seconds excludes idle/waits and global VM lifetime. Allocation-count retirement follows actual Monty migration, not silently ignored settings. |
-| `./validator_v3.md` | `V35-03, V35-04` coordinate pure approval schema/writers/readers; `V35-17, V35-18, V35-19` supply actual class routes/full subject/evidence/ordinary admission and activation handoff | Eight routes **0,1,2,3,13,21,22,23**; roots 10/50 separately protected. Full candidate/base/dependency subject differs from selected validator manifest. Each required rule exactly once; unknown/skipped/interrupted never pass. Human Q2 cannot be model-written; bootstrap cannot self-approve. |
+| `./validator_v3.md` | Validator Steps 1–12 implement shared pure approval and actual class routes/full subjects/evidence/ordinary admission once. `V35-03/04/17/18/19` consume and accept that implementation for v3.5 workflows, rather than repeat it | Eight routes **0,1,2,3,13,21,22,23**; roots 10/50 separately protected. Full candidate/base/dependency subject differs from selected validator manifest. Each required rule exactly once; unknown/skipped/interrupted never pass. Human Q2 cannot be model-written; bootstrap cannot self-approve. |
 | `./docs/plans/monty.composition.md` §35 and its implementation/coverage/recipe/skill-recipe appendices | `V35-01, V35-05, V35-09, V35-13, V35-14` resolve current canonical identities, exported usages/commands, adapters, typed layouts and flow gates | §35 supersedes early activation-absent snapshots. Templates are not allocated records; old reply/history warnings need exact successor evidence. No second loader, manifest store or migration. |
 | `./docs/plans/prefix_v3_upgrade.md`, `./docs/reborn/prefix-source-compiler.md` | `V35-20` reconciles current compiler/bootstrap/behavior writer/reader bytes, ownership and applicable receipts; required shared-source/model/pure approval handoffs return to original owner | Separate quarantined source-only compile, installation qualification, durable Generate, model design/tokenization, validation/publication/activation, quality/cache. Source selection/preparation → compile orchestration → validation → publication are components. A bounded compiler operation returns artifacts, not a generation workflow. Distinct flat hash stages do not prove foreach. |
+
+The shared [implementation ownership index](docs/implementation-status.md#one-implementation-owner-per-responsibility)
+also applies to the Pending structured V35 milestones. A milestone referencing
+validator/runtime/prefix support is an integration and acceptance dependency on
+that named owner, not authorization to implement a second store, scheduler,
+resource control or review route. Keep the future Sempai semantic and dynamic
+occurrence work here; return shared prerequisite repairs to their owner.
 
 The latest Phase C continuation records the accepted closed installation slice in `./target/validation/prefix-registry-artifacts-p6m1aifn/accepted.json`: exact packaged graph/native/worker integrity, committed intent, actual eight-case behavior, coherent readback, canonical Retain approval reuse, atomic hash-usage approval, zero-dispatch proof reuse and incomplete-intent rejection. Delivery review found that local receipt present with `result: passed`; this is attributed frozen acceptance, not a rerun or certification of current merged bytes. Older writer-under-acceptance notes in the inventory/specification are superseded for this bounded status, not erased. `V35-01, V35-20` must reconcile applicability before further work. Production durable Generate/internal-completion admission remains the existing owner’s next distinct gate.
 
@@ -208,71 +233,22 @@ The prefix owner retains six-profile/custom-profile Generate, Sources, Redesign/
 
 ### V35-20 handoff: per-model budgets shape prefix content and design
 
-The two per-target input ceilings remain hard technical limits with budgeting off.
-`token_budgets_enabled` controls discretionary quotas only; toggling it must not
-delete, hide or bypass these persisted values. Kohai obtains both active-provider
-and Sempai-provider limit/geometry bundles from the one canonical owner. Sempai
-receives the answer target's limits as trusted review input. The orchestration
-Recipe checks its whole Sempai request before review, then checks the fully
-reassembled answer request after the edit, with history/tools/framing and prefix
-once. Reuse one unconditional final transport guard over actual provider-transformed
-bytes, including unchanged/disabled review, retries and continuations. Source-side
-settings/planning work does not establish this guard is implemented.
+This implementation is owned by the prefix plan's
+[budget-aware design and generation contract](docs/plans/prefix_v3_upgrade.md#budget-aware-design-and-generation-contract-2026-10-22)
+and [remaining-work sequence](docs/plans/prefix_v3_upgrade.md#remaining-implementation-sequence--full-completion).
+The former repeated budget/design/dispatch implementation steps here are replaced
+by those owner steps. V35-16/20/28 consume their canonical provider/model policy,
+trusted geometry, rendered measurements, immutable design ranges and unconditional
+final request guards; they do not create another mutable settings store, compiler
+or transport guard.
 
-`V35-16, V35-20, V35-28` must prove both checks with budgeting on/off, persistence
-across toggle/restart, different limits for the two targets, zero review calls on
-Sempai overflow and zero final calls when an edited prompt only overflows after
-history/prefix assembly. Preserve original evidence and use only qualified views/
-inspection stages when the full review input cannot fit. Missing limits/geometry
-block dispatch explicitly. Do not rely on a model's fit claim or provider errors.
-
-The prefix owner's [budget-aware contract](./docs/plans/prefix_v3_upgrade.md#budget-aware-design-and-generation-contract-2026-10-22)
-also governs `V35-09`–`V35-16`, `V35-20`, `V35-28` and cutover acceptance. Mutable
-`max_prefix_tokens` and `max_prompt_tokens` have one owner:
-`ProviderDefinition.model_token_limits[model]` in the existing provider definition,
-with the existing provider revision/CAS and GET/POST
-`/api/webchat/v2/llm/providers`. Prefix/Sempai/model-design records retain immutable
-policy references and historical values, never another editable settings owner.
-The same model name on different providers need not have the same deployment
-capacity or policy. The requested Ornith values remain 100,000 and 14,688;
-262,144 positions in config is not a prefix allowance, and the observed serving
-context is 131,072 for the whole sequence. Source/UI support is not live deployment
-or final-prompt enforcement evidence.
-
-Recipes/PythonCode own budget-aware knowledge presentation and evidence selection;
-Rust retains canonical settings storage, trusted identity, actual tokenizer/provider
-transport and technical enforcement. Reuse shared read, budget-planning, selection,
-rendering, exact measurement and receipt components. No new specialized Sempai or
-prefix workflow Tool, provider registry or sizing service. Preserve the diagnostic
-measurement Recipe's v1 contract; add qualified successor composition rather than
-reinterpreting historical `fits` as prefix/prompt policy compliance.
-
-Generate/Regenerate runs accepted deterministic design rules for its pinned budget.
-Designs declare mandatory coverage, complete unit/dependency groups, optional
-priorities/tie-breaking and supported size ranges. A changed cap can choose an
-accepted range; unsupported ranges require Redesign and mandatory overflow blocks
-generation. Redesign/model-design generation considers current content and target
-architecture at those limits, returning a reviewed design and exact complete
-candidate as required by the prefix plan. No silent truncation, ad-hoc summaries,
-loss of safety contracts or inference-service changes. Source originals and all
-coverage/exclusion evidence remain retained.
-
-Sempai's original-turn target, its own review provider and Prefix-Maker's design
-provider are independently pinned. Validate each actual base/domain composite,
-adapter-defined prefix/dynamic partition, complete input plus output and tools/
-history/framing; do not infer a semantic boundary from common-prefix token counts
-or assume separately tokenized strings add exactly. Oversized review evidence uses
-an explicitly qualified multi-stage Recipe or returns Capacity blocked while
-preserving originals. Final request preparation enforces actual technical limits.
-
-Extend `V35-20`/`V35-28` acceptance with exact/one-token-over checks for both caps,
-aggregate overflow, missing policy, two provider/model targets, accepted size-band
-transitions, unsupported bands, mandatory knowledge overflow, deterministic repeats,
-policy-edit races, retained old tasks and held-out Sempai quality at supported sizes.
-New work resolves current policy; acceptance/activation detects stale revisions;
-retained jobs keep their original evidence and current dispatch constraints.
-This is an extension of the existing work IDs, not a competing execution checklist
-or claim that Generate, serving/cache qualification or this roadmap is complete.
+Retain the cross-plan acceptance handoff: both Sempai and answer targets must fit
+with discretionary budgeting on/off, final recomposition includes actual provider
+history/tools/framing/prefix once, and an edited prompt is checked again before
+provider dispatch. Missing geometry/policy, unsupported design range or mandatory
+knowledge overflow blocks explicitly. The prefix owner implements and qualifies
+those behaviors; Recipe-owned Sempai orchestration remains V35-09–16/28. Source/UI
+support and historical diagnostic counts do not establish deployment or serving.
 
 ## Guidance reconciliation and semantic review
 
@@ -368,6 +344,15 @@ Final `V35-30` acceptance requires a caller-to-owner map with no unreviewed doma
 Only then may the two absorbed v3.5 plans be labeled obsolete with a link to this accepted successor and exact evidence. Historical receipts and intentional exceptions remain readable. The four ongoing v3 plans are not automatically closed. Performance, real-model teaching/cache quality, installed-platform acceptance, automatic crash resume and exactly-once external execution retain their separate proof obligations.
 
 ## Planning delivery review boundary
+
+The following describes the **2026-10-17 planning session**, not current runtime
+acceptance or independently verified current scheduler state. Its supporting
+requirements/specification/inventory/report are local ignored Zenflow artifacts;
+the structured checklist belongs to that tool, not another Git checkout. The
+repository's current implementation instructions are the owning plans linked
+above and this roadmap's contracts/crosswalk. Apply the consolidated owner
+handoffs to the V35 milestones; do not require a private planning workspace,
+a missing `plan.md` or a second implementation to continue from a fresh clone.
 
 This artifact records source-grounded design and coverage, not performed runtime work. This step checks its paths, source assertions, crosswalk, structured-list agreement and whitespace. The next existing Zenflow delivery-review step independently verifies consistency and writes the delivery report; no future implementation is started by this planning step.
 

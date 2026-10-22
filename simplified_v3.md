@@ -1,5 +1,93 @@
 # Simplified v3: Plan zur Vereinfachung von Sicherheitsmodell, Runtime und WebUI
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
+## Remaining implementation — consolidated 2026-10-22
+
+This is the current remaining-work disposition for the existing phases, not a
+restart of completed implementation. Use the [shared status/owner index](docs/implementation-status.md)
+and [dated evidence journal](docs/plans/simplified-v3-implementation.md). The
+contracts and acceptance matrices below remain binding; old descriptions of a
+per-chat VM, absent immutable storage or absent typed bindings are historical.
+
+1. **Finish authority and product-surface cutover (Phases 0–3/4–5, §§8–10).**
+   Complete the consumer-by-consumer scope/role/profile/grant inventory and the
+   authenticated route/function matrix. Replace remaining per-operation approval
+   and role/tenant permission decisions with current instance-wide Tool rules;
+   preserve token/origin/CSRF, sandbox/network/secret checks and data identity/AAD.
+   Remove a legacy check only with its replacement wired through the real caller.
+   Finish Intents CRUD/matching explanation, operator configuration and unsupported
+   product surfaces. Acceptance: real authenticated read/write/dispatch cases,
+   invalid token/external-sender rejection, live policy changes during retained
+   tasks, no hidden role/edition path and no lost function disguised as cleanup.
+2. **Finish live resource/cap coverage (Phase 3a, §§5/9).** Start from the existing
+   acknowledged Rust/Monty settings publication and UI explanations. Inventory
+   remaining actual consumers/defaults/ranges, including transport depth 64,
+   PG snapshot conflict attempts 12 and filesystem attempts 8. Reuse the existing
+   settings owner for adjustable policies and show desired/effective revision,
+   pending/failure state and short help. Before lifting depth/parser limits,
+   complete safe owned decoding and late-error cleanup. Conflict retry only pure
+   snapshot transitions, never external effects. Keep startup sizing default,
+   512 MiB startup/manual floor, optional slow automatic mode and 600 executing
+   task seconds. Disabled discretionary token budgets must reach all remaining
+   consumers; provider context/output and per-model hard input caps remain active.
+   Acceptance: real WebUI edits, failed/slow DB writes, concurrent edits, active
+   tasks/waits, unsafe reductions, deep/large hostile values and platform checks.
+3. **Finish durable lifecycle/child recovery (Phase 3a).** Reuse the single global
+   service, actual parent claims, captured catalogue, native invocation custody,
+   dependent admission and the atomic transcript/turn participant. Complete
+   unreadable/delayed ensure/input/run outcomes, filesystem pending receipts,
+   legacy unkeyed reservation retirement, bounded ancestor cancellation and
+   saturated/multilevel child waits. Persist/reconcile original identities,
+   dispatch counts and known/unknown effects across shutdown/restart; expose
+   operator diagnosis/settlement without resubmission or synthetic completion.
+   Fence the old generation before supervised replacement; no parallel VM,
+   per-chat VM, Rust workflow fallback or whole-Recipe replay. Acceptance includes
+   real lost/rejected COMMITs, stale attempts, policy edits, no duplicate effects,
+   singleton ownership, service readiness and unrelated-work progress.
+4. **Consume shared component/review work once (Phase 0a).** Exact review subjects,
+   eight validator workflows, trusted evidence and general pure approval are
+   implemented by [validator Steps 1–12](validator_v3.md#remaining-implementation--consolidated-2026-10-22).
+   Canonical library migration, usage exports/layouts and MCP population are
+   implemented by [composition](docs/plans/monty.composition.md#remaining-implementation--consolidated-2026-10-22)
+   and its component/Recipe appendices. Runtime consumes their qualified selections
+   and approval/artifact references; it does not build a second loader, validator,
+   manifest store or component catalogue. Full native artifact retention/loading
+   across incompatible upgrades remains a runtime gate, not metadata-only proof.
+5. **Consume prefix/provider and future v3.5 work (Phase 0a/3a, §10).** PostgreSQL
+   provider management is the canonical mutable owner. Prefix/profile/model
+   budgets, Generate/design/Sources/serving and unconditional final request sizing
+   are implemented by [the prefix remaining sequence](docs/plans/prefix_v3_upgrade.md#remaining-implementation-sequence--full-completion).
+   This plan wires/accepts those results in ordinary dispatch; it does not add a
+   second budget store or compiler. Recipe-owned Sempai semantics, dynamic
+   occurrences and connection/facility consolidation use the existing
+   [v3.5 work IDs](path_to_v3.5.md#ongoing-plan-handoffs-not-parallel-implementations).
+   Preserve native accounting/custody when moving business sequencing to Python.
+6. **Complete data and compatibility migration (Phases 6/8).** Finish dry-run
+   inventory, override-aware immutable seed upgrades and retained old artifact/
+   approval references. Audit remaining config.toml/provider-file and scoped
+   store fallbacks; retire them only after their current PostgreSQL consumers
+   and migration/repair paths pass. Reuse the existing PG connection/TLS builder;
+   remaining connection lifetime/TLS acceptance belongs to V35-21. Preserve secret
+   AAD, keys, aliases and transcripts. Test fresh/existing/repeated boot, V176
+   healthy/corrupt/ambiguous legacy receipt upgrade, interrupted writes, backup
+   and actual restore. Never edit applied migrations or choose ambiguous owners.
+7. **Run combined production/cutover acceptance (Phases 7–8, §5).** Exercise the
+   actual operator UI/API, all retained Recipe variants/classes and external
+   adapters on the combined source, with original IDs, no-replay effects, old
+   task selections, live policy/budgets and complete eligible history. Include
+   Linux/macOS/Windows build/behavior boundaries and measured startup/latency/
+   idle/memory evidence before performance claims. Release only after those
+   gates and a fresh supported installation/provider/prefix/function audit.
+   A normal commit/push can record this incomplete checkpoint; it does not close
+   the implementation or authorize claiming full release acceptance.
+
 ## Binding preloadable Skill interface (v3)
 
 A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
@@ -29,7 +117,9 @@ as a user message, forwards the correlated chat result and closes the chat.
 It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
 the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
 per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
-This is a binding target, not proof of implemented loader/store/runner support.
+Selected retained loader/store/runner support is implemented; this contract
+does not certify every workflow or the complete migration. See
+[the current implementation status](docs/implementation-status.md).
 Current-source observations and historical step-body examples below must be
 migrated to this interface before being accepted as updated v3 implementations.
 
@@ -85,10 +175,11 @@ runtime or database functionality.
   through the supported recovery contract; waits/reclaims/crashes do not reset
   counts or permit replay of completed effects.
 
-Current code still has plain text substitution, fresh state in nested step
-execution and incomplete immutable version manifests/binding preparation. The
-new typed inputs interface and strict single-component validation require
-implementation and production-path acceptance; do not claim these are shipped.
+The legacy composer still contains source-substitution and historical step-body
+paths. Ordinary PostgreSQL/skills-db execution uses immutable retained selections,
+typed inputs, checked single-component steps and preloaded exports on the global
+Monty service. Full-library migration, general pure approval, dynamic occurrences
+and durable recovery remain open; see the current implementation status index.
 
 ## Verbindliche Skill-Architektur
 
@@ -222,7 +313,7 @@ Die tatsächliche Reihenfolge folgt den `step_descriptions` der ausgewählten Va
 
 ## 2. Auditumfang und aktuelle Architektur
 
-Gesichtet wurden die Repository-Orientierung (`README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md`), Workspace- und Crate-Struktur, Reborn-Architektur- und Vertragsdokumente, relevante Konfigurationen, Einstiegs- und Kompositionspunkte, Scope-/Profil-/Trust-/Ingress-Implementierungen, WebUI-Module sowie Test- und CI-Inventare. Die ursprüngliche Untersuchung war statisch; die inzwischen ausgeführten gezielten Implementierungsprüfungen stehen in `docs/plans/simplified-v3-implementation.md`. Die Codebase umfasst rund 60 Workspace-Crates, etwa 1.200 Rust-Dateien und zahlreiche crate-lokale Architekturverträge.
+Gesichtet wurden die Repository-Orientierung (`README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md`), Workspace- und Crate-Struktur, Reborn-Architektur- und Vertragsdokumente, relevante Konfigurationen, Einstiegs- und Kompositionspunkte, Scope-/Profil-/Trust-/Ingress-Implementierungen, WebUI-Module sowie Test- und CI-Inventare. Die ursprüngliche Untersuchung war statisch; die inzwischen ausgeführten gezielten Implementierungsprüfungen stehen in `docs/plans/simplified-v3-implementation.md`. Das aktuelle Workspace-/Dateiinventar ist aus Cargo und dem gemeinsamen Git-Baum abzuleiten; die früheren Größenangaben waren historische Momentaufnahmen.
 
 ### 2.1 Aktuelle Pfade
 
@@ -230,7 +321,7 @@ Gesichtet wurden die Repository-Orientierung (`README.md`, `CONTRIBUTING.md`, `A
 - **Komposition:** `brassclaw_reborn_composition` baut Runtime, Substrate, Loop-Driver, Provider und WebUI zusammen.
 - **Requestpfad:** WebUI-Ingress authentifiziert Bearer-Token; WebUI-Handler erhalten `WebUiAuthenticatedCaller`; Komposition reicht in Turn-/Host-APIs weiter.
 - **Ausführung:** Turn-Koordination und Runner rufen einen Agent-Loop auf. Capability-Aufrufe laufen über `CapabilityHost`, Autorisierung/Obligations-/Approval-Pfade und Dispatcher/Runtime-Lanes.
-- **Monty-Istzustand (Abweichung vom Ziel):** Der Runner ruft `MontyTurnDriverPort::drive_turn` auf. Komposition konstruiert `PersistentMontyDriver` mit einer leeren `MontySessionRegistry`; die erste Eingabe eines `TurnScope` erzeugt über `prepare_monty_session` eine VM. Weitere Turns setzen die chatgebundene VM fort. Das ist weder ein globaler Orchestrator noch ein VM-Start beim Boot.
+- **Monty-Istzustand (2026-10-22):** Der gewöhnliche PostgreSQL/skills-db-Pfad startet `GlobalMontyOwner` vor Workern/Produzenten. `GlobalMontyDriver` übergibt exakt adressierte Aufgaben an diesen bereits laufenden Dienst. `PersistentMontyDriver` und die lazy Per-Chat-VM sind entfernt. Verbleibend sind die im aktuellen Restplan benannten Recovery-, Bibliotheks-, Policy- und Abnahmegates, nicht ein erneuter Singleton-Umbau.
 - **Sicherheitsdienste:** getrennte Crates für Trust, Authorization, Approvals, Secrets, Network, Filesystem, Resources, Processes, Safety und Audit/Eventing.
 - **Persistenz:** PostgreSQL (eingebettet oder extern), Migrations in Root- und Crate-Verzeichnissen; einzelne Legacy-/Upgrade-Pfade bestehen fort.
 
@@ -243,7 +334,7 @@ Gesichtet wurden die Repository-Orientierung (`README.md`, `CONTRIBUTING.md`, `A
 5. **WebUI-Sicherheitskonfiguration:** Es gibt bereits Settings-Bausteine für Safety/Security, Tokens, Provider und weitere Funktionen, aber sie sind nicht als ein vollständiges, systematisches Panel pro Schutzebene organisiert. Backend-Konfiguration und UI-Abdeckung sind nicht durch einen einzigen vollständigen Parameterkatalog belegt.
 6. **WebUI-Fläche:** Routen und Einstellungen spiegeln noch Profile, Security, Users und Scopes wider. Zudem gibt es statische API-Module mit expliziten Platzhaltern für fehlende v2-Endpunkte: Admin, Jobs, Missions/Projects, Workspace, Routines, Settings/Users sowie Gateway-Restart.
 7. **Migration und Dokumentationsdrift:** Verträge dokumentieren bewusst LocalSingleUser, HostedMultiTenant und EnterpriseDedicated. Einige Tests/Kommentare sind als Migrations- und Feature-Gates markiert. Die E2E-Dokumentation beschreibt teilweise ältere Binary-/libSQL-Annahmen. Ein Umbau braucht daher einen expliziten Contract-/Schema-/Fixture-Cutover statt bloßer Typumbenennung.
-8. **Orchestrator-Lebenszyklus und versteckte Chatbindung:** `basic_mode.py` hält einen Verlauf in VM-Variablen, behandelt leere Eingaben/Stop als `FINAL` und hängt am chatgebundenen Bootstrap. Der genaue Eingabelookup samt Thread-/Turn-/Run-Prüfung ist inzwischen umgesetzt; History-Cutoff und globale Fortsetzungen bleiben offen. Gemeinsames Boot-Seeding wurde aus der WebUI nach `component_boot.rs` verschoben. Die globale VM ist noch nicht produktiv verdrahtet. `MontySession` besitzt einen beim Start angelegten `LimitedTracker`, kumulative Tokens und stdout. Ein Singleton allein würde Kontexte vermischen und Lebenszeitlimits falsch anwenden. Der aktuelle Python-Ablauf wechselt außerdem nach Matching-/Recipe-Fehlern in den LLM-Pfad; das muss dem Fehlervertrag aus §1.1 weichen.
+8. **Historische Chatbindung und verbleibende Fortsetzungen:** Der alte `basic_mode.py`-/`LimitedTracker`-Befund beschreibt den Ausgangszustand. Der gewöhnliche globale Monty-1.0-Pfad hat exakte Eingaben, getrennte Task-Accounts, typisierte Ergebnisse, gemeinsame Live-Revisionen und Reply/History-Abschluss. Ungeklärte Effekte, allgemeine Crash-Recovery, verbleibende Legacy-Aufrufer und volle Plattform-/Cutover-Abnahme bleiben offen.
 
 **Nachweisstand:** Der vorhandene A→B→A-Test belegt die Fortsetzungs-API der gepinnten Monty-Version, nicht den vollständigen Produktionspfad. Native PostgreSQL-Testrigs liegen inzwischen in Composition vor; erfolgreiche Boot-/Restore-/Cutover-Abnahme ist damit noch nicht behauptet. Ältere Angaben im Implementierungsbericht zu ausschließlich Docker-basierten Tests und konkreten Invocation-Approvals sind historischer Stand und beim nächsten Implementierungsnachweis zu aktualisieren. Tatsächliche Testergebnisse bleiben unverändert dokumentiert.
 
@@ -308,30 +399,16 @@ Infrastruktur, keine spezialisierten Rust-Tools für fachliche Workflows.
    ausweisen; keine neuen Felder in bestehende APIs hineinbehaupten. Neues
    ToolSkill-Metadatum braucht keine Rust-Kompilation; eine neue Primitive
    benötigt ihren getrennten Build-/Validierungs-/Registrierungspfad.
-2. **Assoziation und Approval getrennt speichern und prüfen.** Die exakten
-   `skill-association/1`- und `skill-association-approval/1`-Verträge aus skills.md
-   über versionierte Migrationen, neutrale Ports und die unterstützten
-   Store-/Reviewpfade implementieren. Stabile UUID-Verweise bleiben versionslos;
-   die unveränderliche Assoziation gehört zur ausgewählten Skillrevision.
-   Der vertrauenswürdig erzeugte Approval-Datensatz enthält Association-Checksum,
-   vollständige eindeutige Komponentenreferenzen mit Klasse/Revision/Checksum,
-   validation_mode, Q1-/Q2- und reale Verhaltensnachweise. Checksum-Abdeckung
-   umfasst ausführungsrelevante Metadaten, Abhängigkeiten und Toolimplementierungen.
-   Doppelte/unbekannte Felder, falsche Klassen, fehlende Referenzen und nicht
-   passende Evidenz ablehnen. Reviewdatensätze sind weder selbst ausgestellte
-   Freigaben noch Invocation-Leases. Neue Kombinationen benötigen neue Evidenz,
-   auch bei kompatiblen Änderungen; unveränderte Komponenten dürfen wiederverwendet
-   werden. Autorreview/Q1/Q2/Verhalten prüfen Bedeutung vor Aktivierung; IBS
-   verifiziert beim Start nur strukturierte genehmigte Kombinationen, ohne LLM.
-3. **Approval-Provenienz eindeutig machen.** authored-Kombinationen benötigen
-   erfolgreiche vertrauenswürdige Q1-, menschliche Q2- und Verhaltensnachweise.
-   Nur der kontrollierte first-party system_seed-Bootstrap darf q2_ref=null
-   führen; auch dort sind die erforderlichen Q1-/Integritäts- und beobachteten
-   Verhaltensnachweise nötig. source=system oder validation_status=validated
-   reichen nicht. Importierte Altzeilen ohne Evidenz nicht als vollständig
-   migriert markieren; fehlende Zuordnungen/Verträge/Nachweise sichtbar machen
-   und vor gewöhnlicher Aktivierung auflösen. Existierende Insert-Defaults und
-   Content-Checksums nicht als fertige Ziel-Approval-Infrastruktur ausgeben.
+2. **Assoziation, Approval und Provenienz über den Validator-Owner abschließen.**
+   Diese Implementierung erfolgt in [validator_v3.md Steps 2–3/8–10](validator_v3.md#remaining-implementation--consolidated-2026-10-22).
+   Vorhandene unveränderliche Revision-/Review-/Association-Stores wiederverwenden;
+   keine zweite Schema-/Writer-/Q2-Implementierung in diesem Plan.
+3. **Ergebnisse dieses Owners übernehmen.** Die Runtime prüft die exakten
+   genehmigten Kombinationen und kontrollierten system_seed-Nachweise. Authored
+   benötigt menschliches Q2; ausgelieferte qualifizierte Seeds kein zusätzliches
+   Instanz-Q2. Labels sind keine Evidenz. Verbleibende Aktivierungs-/Consumer-Gates
+   hier abnehmen, statt die Reviewimplementierung erneut auszuführen.
+
 4. **Vollständige unveränderliche Auswahl erhalten.** Matching und IBS verwenden
    eine konsistente Kataloggeneration und wählen die neuesten aktivierten,
    genehmigten Versionen. Recipe-UUID/Revision/Checksum, Variante, exakter

@@ -83,7 +83,7 @@ async fn explicit_child_entry_preserves_typed_inputs_and_cannot_rematch_or_fall_
             .resolve_named_recipe("host-post-reply")
             .await
             .unwrap();
-        selected.inputs = Some(json!({"answer":literal}));
+        selected.inputs = Some(json!({"answer":literal}).into());
         let ports = GlobalRecipePorts::new(
             host.clone(),
             admission,

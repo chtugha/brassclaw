@@ -17,8 +17,7 @@ use serde_json::json;
 use std::{sync::Arc, time::Duration};
 use uuid::Uuid;
 
-#[path = "../tests/common/loopback_http.rs"]
-mod loopback_http;
+use crate::test_loopback_http as loopback_http;
 
 /// Real retained native HTTP and policy/transport behavior. This does not claim
 /// durable source-job qualification or Sources UI activation.

@@ -1,5 +1,76 @@
 # Validator v3 implementation plan
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
+## Remaining implementation — consolidated 2026-10-22
+
+Reuse the implemented immutable revision/submission/review stores, function-aware
+retained inspector/runner, human association review, component deployment and
+single global service. The [support index](docs/implementation-status.md) records
+those bounded capabilities. The following are the remaining gates for the existing
+Steps 1–12; the legacy three-field checker does not close any class route.
+
+1. **Complete actual subjects and immutable validator selections (Steps 1–3).**
+   Inventory real installed UUIDs/overrides and every proposal/edit/resubmit/
+   bootstrap/repair producer. Retain the full exact candidate/base/dependency,
+   schemas/interfaces, workflow layout, native artifact/adapter and required
+   check set. Keep the reviewed subject distinct from the validator program's
+   own pinned manifest. Strictly reject duplicate keys, missing/unknown fields,
+   inconsistent identity and stale bases before effects. Extend existing records
+   only for demonstrated missing fields; do not create competing review stores.
+2. **Implement/qualify reusable checks and all eight routes (Steps 4–7).** Migrate
+   the actual legacy seed identities to class-specific Recipes for classes
+   **0, 1, 2, 3, 13, 21, 22 and 23**. Separately protect class-10/50 roots.
+   Reuse exact catalogue/schema/source inspection and bounded native operations;
+   pure transformations remain PythonCode and one-Tool checks get associated
+   Skill exports/bindings. ToolSkill review does not compile or execute metadata;
+   Tool review must verify actual implementation identity/registration. Recipe
+   review must check variants, step links, one UUID/step and typed handoffs.
+   Pure/code review must check exports/dependencies/effect-free loading and
+   isolation. Extension review must check the actual dependency catalogue.
+   Each required check executes exactly once with authentic result/provenance;
+   unknown/skipped/interrupted/unavailable is incomplete, never passed.
+3. **Finish behavior/semantic and standalone-pure evidence (Steps 3/8–10).**
+   Extend the current trusted writers/readers with exact standalone pure source,
+   interface and dependency-closure coverage, coordinated with V35-03/04.
+   Preserve association formats for real Tool usages; do not invent zero-Tool
+   Skills or widen the closed compiler approval exception. Observe valid/invalid
+   behavior in the selected interpreter and real adapters; parsing alone cannot
+   certify prose/code meaning, external effects or model quality. Authored exact
+   combinations require human Q2; shipped exact packages use noncircular
+   integrity/Q1/behavior without an installed-instance Q2 action.
+4. **Finish durable ordinary Q1 scheduling and operator handoff (Steps 6/9/12).**
+   Connect actual immutable submissions/queue items to the existing global
+   orchestrator as private typed work, retaining run/attempt/validator selection
+   and idempotency. Recipes sequence checks; Rust admits/transports/enforces.
+   Persist real evidence and incomplete outcomes, expose exact reviewed views,
+   and apply human Q2 only to that view. No Rust sweep loop, synthetic user match,
+   evidence-success endpoint or model-written human approval. Acceptance: actual
+   installed proposal -> Q1/behavior -> human Q2 -> coherent activation -> next
+   ordinary task; cancelled/failed/conflicting/uncertain work stays distinguishable.
+5. **Finish override/upgrade/restore and downstream acceptance (Steps 10–12).**
+   Preserve old task/validator/evidence/native selections and operator overrides
+   during seed successor activation. Test fresh/repeated/upgrade boot, failed or
+   lost commits, interrupted review and actual backup/restore. Activation must
+   verify exact support/evidence before publishing its generation; no downgrade,
+   silent catalogue omission or Tier-2 replay. Qualify each class through its real
+   save/resubmit/operator path and the §5 matrix, including eligible MCP commands.
+
+Shared infrastructure is implemented by its owner, not again here: global
+lifecycle, live limits, cancellation/fatal recovery and authority cutover are
+[simplified Phase 3a and remaining work](simplified_v3.md#remaining-implementation--consolidated-2026-10-22);
+component authoring/commands are [composition](docs/plans/monty.composition.md#remaining-implementation--consolidated-2026-10-22);
+prefix generation/serving is [the prefix plan](docs/plans/prefix_v3_upgrade.md#remaining-implementation-sequence--full-completion).
+Qualified dynamic flow/occurrences and Recipe-owned Sempai conversion retain
+V35-13/14 and V35-09–16/28 ownership in [path_to_v3.5.md](path_to_v3.5.md).
+These dependencies are not reasons to rebuild completed preload/IBS infrastructure.
+
 ## Binding preloadable Skill interface (v3)
 
 A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
@@ -29,7 +100,9 @@ as a user message, forwards the correlated chat result and closes the chat.
 It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
 the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
 per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
-This is a binding target, not proof of implemented loader/store/runner support.
+Selected retained loader/store/runner support is implemented; this contract
+does not certify every workflow or the complete migration. See
+[the current implementation status](docs/implementation-status.md).
 Current-source observations and historical step-body examples below must be
 migrated to this interface before being accepted as updated v3 implementations.
 
@@ -97,11 +170,11 @@ class-1/2/3 route. Their coordinated review is an explicit dependency below.
 | Immutable draft revisions already exist | `component_revision.rs`, `revision_store.rs`, V101 | Extend/reuse this storage. Do not build a competing revision store or treat retained drafts as active. |
 | Immutable review submissions and transactional staging exist | `review_submission_store.rs::submit_in_transaction`, `pg_review_submission.rs`, product authoring facade | Reuse exact candidate/base/dependency references and idempotent submission identities. Complete missing producer/admission connections; do not create another submission store or claim existing submission implies Q1 scheduling. |
 | Ordinary startup already owns the shared global service | `global_monty_startup.rs::GlobalMontyOwner::start`, `runtime.rs`, installed catalogue | Reuse this service and task transport. Remaining work is validator admission, preload/interface support, full catalogue activation and associated acceptance; do not rebuild the global lifecycle. Packaged reply/history support is not full-library support. |
-| Source inspection still enforces the earlier body contract | `retained_source.rs`: `result_store_sites`, `direct_host_calls` | Extend inspection for effect-free definitions, returned values and reachable helper calls together with retained export invocation. Do not merely remove one-call/result checks and thereby admit uninspected effects. |
+| Function-aware retained source/preload inspection exists | `retained_source.rs`, `retained_preload.rs`, retained executor | Reuse exact export/dependency and reachable-call inspection. Migrate remaining validator bodies and qualify their actual graph; do not build another loader or remove effect checks. |
 | Association/schema parsers and evidence readers exist | `association_contract.rs`, `value_contract.rs`, `association_review_store.rs`, V102 | Reuse structured formats; connect actual trusted producers and activation. Parsing declarations is not approval. |
 | New structural/behavior producers exist separately | `pg_retained_q1.rs`, `retained_source.rs`, retained executor | Reuse observations and persistence; do not claim these execute the eight Recipes or establish human/semantic approval. |
 | Working-tree human association review additions exist | `pg_association_review.rs`, `association_review_store.rs`, product facade and WebUI association-review panel | Reuse exact displayed-view checksums and transactional Q2/association writes after verifying their real ingress and tests. Their declared scope is one Tool usage; `catalogue_activated` remains false. They do not establish eight-class review or production activation. |
-| Legacy seed review requests now stay pending and persistence errors fail boot | `builtin_bootstrap.rs::record_seed_review`, `zencoder_bootstrap.rs`, `ValidationQueueStore::retain_pending_request`, `boot_integrity.rs` (2026-10-08) | Fabricated Q1/builtin graduation was removed. The controlled immutable system-seed evidence producer/reader is still required; pending requests and historical validated labels establish no v3 approval. |
+| Legacy seed review requests now stay pending and persistence errors fail boot | `builtin_bootstrap.rs::record_seed_review`, `zencoder_bootstrap.rs`, `ValidationQueueStore::retain_pending_request`, `boot_integrity.rs` (2026-10-08) | Fabricated Q1/builtin graduation was removed. Controlled immutable bootstrap producers/readers now qualify named packaged closures. Extend that owner for remaining validator seeds; pending legacy requests and historical validated labels establish no v3 approval. |
 
 The principal integration files are:
 
@@ -375,44 +448,20 @@ labelled semantic approval, and no class-specific workflow is hidden in a Tool.
 
 ### Step 5a — Qualify effect-free preload and pinned function invocation
 
-This is a prerequisite for steps 6–8 and new Skill activation. Implement it in
-the existing composition/interface/host owners, coordinated with composition
-section 24. It is not another validation workflow or a new global VM.
+Function-aware source inspection, `python-preload/2`, typed retained invocation
+and dependency-first loading are implemented. Reuse `retained_preload`,
+`retained_source`, `retained_recipe` and the actual Monty utility/native path.
+The [composition owner](docs/plans/monty.composition.md#remaining-implementation--consolidated-2026-10-22)
+implements remaining component/interface migrations; this step consumes them.
+Do not create another loader or remove the current inspector's call-graph/effect
+restrictions to admit an unsupported validator. Qualify each validator's exact
+export/dependency/native closure, effect-free load, mutable-state isolation and
+actual arguments/results through its real retained path. General standalone pure
+approval remains this plan's Steps 3/8–10 with V35-03/04. Live hosting/resource
+support comes from simplified Phase 3a; dynamic occurrences from V35-13/14.
 
-1. Resolve declared code/helper/constant dependencies by stable UUID from the
-   selected closure. Reject undeclared dependencies, cycles, missing symbols,
-   incompatible signatures/imports and export conflicts before any effect.
-   Compute dependency-first topological order, breaking ties by stable UUID.
-2. Qualify exact definitions under the selected packaged Monty build. Reject
-   Tool/model/I/O/scheduling calls during load, including default expressions,
-   decorators and initializers. Only supported definitions and recursively
-   immutable constants qualify; uppercase list/dict/set names are still mutable.
-3. Implement a collision-safe task-local export environment binding each public
-   name to its owning Skill/interface/code revisions, implementation symbol and
-   invocation binding context. Do not use runtime-generated eval/getattr/source
-   to resolve names. Never capture ambient or another task's host authority.
-4. Share compiled artifacts only with compatible symbol environments. Allocate
-   fresh mutable arguments/defaults/working objects per invocation; forbid shared
-   mutable defaults/globals/caches or closures over task values. Where safe sharing
-   is unavailable, use isolated function environments within the one global service.
-5. Invoke the selected export with validated typed data after the matching binding.
-   Capture its return into the step result and validate the output separately.
-   Preserve fixed selectors and computed argument guards; no source reconstruction
-   or effectful load step is introduced. Independent invocations retain separate
-   Recipe occurrences, counts and effect identities even if code is deduplicated.
-6. Pin export environments across children, waits, retries and resumes. New tasks
-   may select a successor without overwriting old names/bindings. Extend actual
-   continuation/transport contracts and retain old code/native artifacts until
-   their references expire; do not use a new feed's latest name resolution.
-7. Follow section 7.2's suspendable invocation design. The pinned
-   `MontyRepl::call_function` is not the production Tool-usage entry point: it
-   accepts positional arguments only and cannot service external/OS calls.
-   Do not copy upstream pool/check-out examples into the global lifecycle.
-
-Gate: real retained Monty execution demonstrates zero load effects, deterministic
-resolution, signature/cycle/collision rejection, fresh repeated/concurrent state,
-live policy after preload and exact old/new export/host coexistence through waits
-and supported recovery. Parser acceptance alone cannot qualify this loader.
+Gate: the selected validator invokes its exact declared exports with typed data,
+without executing prose, effectful initializers or an unreviewed helper graph.
 
 ### Step 6 — Assemble and execute multi-step validation Recipes
 

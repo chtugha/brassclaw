@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 use super::{InstalledMontyCatalogue, SelectedTools, TaskCatalogue, failed};
 use crate::{
     authored_monty_catalogue::CatalogueGeneration,
-    global_recipe_ports::{MontyTaskCatalogue, SelectedMontyRecipe},
+    global_recipe_ports::SelectedMontyRecipe,
     monty_kernel::PgSelectedToolPolicy,
     pg_monty_admission::{CatalogueReference, PgMontyAdmission},
 };
@@ -30,9 +30,9 @@ impl InstalledMontyCatalogue {
         host: Arc<MontyTaskHost>,
         admission: Arc<PgMontyAdmission>,
         view: Arc<CatalogueGeneration>,
-        resolution: IntentResolution,
+        resolution: Option<IntentResolution>,
         query: String,
-    ) -> Result<Arc<dyn MontyTaskCatalogue>, AgentLoopDriverError> {
+    ) -> Result<Arc<TaskCatalogue>, AgentLoopDriverError> {
         let mut selections = Vec::new();
         let model_prefix_reference = std::sync::OnceLock::new();
         for selected in std::iter::once(&self.reply)
@@ -129,9 +129,19 @@ impl InstalledMontyCatalogue {
                     let expected =
                         serde_json::from_value(doc["implementation"]["identity"].clone())
                             .map_err(|_| failed())?;
-                    self.kernel
-                        .builtin_with_policy(&capability, expected, policy)
-                        .map_err(|_| failed())?
+                    if capability.as_str() == brassclaw_host_runtime::SPAWN_SUBAGENT_CAPABILITY_ID {
+                        self.kernel
+                            .child_with_policy(
+                                expected,
+                                self.child_task_port(host.clone(), admission.clone()),
+                                policy,
+                            )
+                            .map_err(|_| failed())?
+                    } else {
+                        self.kernel
+                            .builtin_with_policy(&capability, expected, policy)
+                            .map_err(|_| failed())?
+                    }
                 };
                 runtimes.insert(step.clone(), Arc::new(runtime));
             }
@@ -141,7 +151,7 @@ impl InstalledMontyCatalogue {
                 program: program.clone(),
                 runtimes,
                 mounts: self.memory_mounts.clone(),
-                answers: tokio::sync::Mutex::new(BTreeMap::new()),
+                answers: super::native_answers::NativeToolAnswers::default(),
                 model_responses,
             });
             selections.push(SelectedMontyRecipe {

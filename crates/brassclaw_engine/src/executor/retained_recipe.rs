@@ -89,6 +89,12 @@ impl RetainedToolInvocation<'_> {
     }
 }
 
+/// A received result still needs durable acknowledgement. No payload, retry
+/// authority, provider request or Tool execution is represented by this error.
+#[derive(Debug, Clone, Copy, thiserror::Error)]
+#[error("received native results require reconciliation")]
+pub struct NativeResultReconciliationError;
+
 #[async_trait]
 /// The trusted caller retains the exact implementation and dispatches through
 /// its real kernel, current policy and durable effect adapter. The instance
@@ -98,6 +104,19 @@ pub trait RetainedToolPort: Send + Sync {
     /// owner alive. This flag grants no dispatch/retry/continuation authority.
     fn has_uncommitted_native_results(&self) -> bool {
         false
+    }
+
+    /// Persist only already received results under their original private
+    /// journal addresses. This must never invoke a Tool/provider, select a new
+    /// revision, restore dispatch, or manufacture a missing native answer.
+    async fn reconcile_received_native_results(
+        &self,
+    ) -> Result<(), NativeResultReconciliationError> {
+        if self.has_uncommitted_native_results() {
+            Err(NativeResultReconciliationError)
+        } else {
+            Ok(())
+        }
     }
 
     async fn dispatch(

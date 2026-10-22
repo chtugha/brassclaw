@@ -29,7 +29,9 @@ as a user message, forwards the correlated chat result and closes the chat.
 It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
 the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
 per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](../../skills.md#preloadable-function-interface-binding-v3-target).
-This is a binding target, not proof of implemented loader/store/runner support.
+Selected retained loader/store/runner support is implemented; this contract
+does not certify every workflow or the complete migration. See
+[the current implementation status](../implementation-status.md).
 Current-source observations and historical step-body examples below must be
 migrated to this interface before being accepted as updated v3 implementations.
 
@@ -66,10 +68,11 @@ not completed runtime or database functionality.
   Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
   No-Match enters Tier 2; errors or begun Recipe failures never replay there.
 
-Current code still has plain text substitution, fresh state in nested step
-execution and incomplete immutable version manifests/binding preparation. The
-new typed inputs interface and strict single-component validation require
-implementation and production-path acceptance; do not claim these are shipped.
+The legacy composer still contains source-substitution and historical step-body
+paths. Ordinary PostgreSQL/skills-db execution uses immutable retained selections,
+typed inputs, checked single-component steps and preloaded exports on the global
+Monty service. Full-library migration, general pure approval, dynamic occurrences
+and durable recovery remain open; see the current implementation status index.
 
 > **Source:** `github.com/chtugha/zencoder-ironclaw-integration`
 > **Target:** BrassClaw Reborn v3 extension (`ext-zencoder`)

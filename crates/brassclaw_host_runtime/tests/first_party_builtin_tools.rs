@@ -1971,6 +1971,22 @@ async fn builtin_spawn_subagent_authorization_invokes_through_host_runtime() {
 }
 
 #[tokio::test]
+async fn explicit_child_without_owner_never_returns_legacy_authorization_success() {
+    let result = invoke(
+        SPAWN_SUBAGENT_CAPABILITY_ID,
+        json!({
+            "workflow":{"recipe_id":uuid::Uuid::new_v4(),"variant":"selected"},
+            "inputs":{"answer":"null"},
+        }),
+    )
+    .await;
+    assert!(
+        result.is_err(),
+        "an absent child owner must not fabricate completion or authorization"
+    );
+}
+
+#[tokio::test]
 async fn builtin_shell_invokes_copied_shell_core_through_host_runtime() {
     let outcome = runtime()
         .invoke_capability(RuntimeCapabilityRequest::new(

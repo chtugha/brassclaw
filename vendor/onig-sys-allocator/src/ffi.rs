@@ -267,7 +267,7 @@ pub type OnigApplyAllCaseFoldFunc = ::std::option::Option<
     ) -> ::std::os::raw::c_int,
 >;
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone)]
 pub struct OnigEncodingTypeST {
     pub mbc_enc_len:
         ::std::option::Option<unsafe extern "C" fn(p: *const OnigUChar) -> ::std::os::raw::c_int>,

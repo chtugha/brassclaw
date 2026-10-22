@@ -150,6 +150,20 @@ pub trait TurnSpawnTreeStateStore: TurnStateStore {
         root_run_id: TurnRunId,
         delta: u32,
     ) -> Result<(), TurnError>;
+
+    /// Release the one reservation owned by an exactly identified terminal
+    /// claimed child. The persisted marker and count change atomically, so a
+    /// lost acknowledgement cannot release a sibling's slot on repetition.
+    /// Legacy/untracked reservations require their own reconciliation evidence.
+    async fn release_claimed_child_reservation(
+        &self,
+        _scope: &TurnScope,
+        _child: TurnRunId,
+    ) -> Result<(), TurnError> {
+        Err(TurnError::Unavailable {
+            reason: "claimed child reservation release is unavailable".into(),
+        })
+    }
 }
 
 /// Combined supertrait for types that serve as the turn spawn-tree state
@@ -287,6 +301,14 @@ impl TurnSpawnTreeStateStore for TurnStateDriverBox {
         self.0
             .release_tree_descendants(scope, root_run_id, delta)
             .await
+    }
+
+    async fn release_claimed_child_reservation(
+        &self,
+        scope: &crate::TurnScope,
+        child: crate::TurnRunId,
+    ) -> Result<(), crate::TurnError> {
+        self.0.release_claimed_child_reservation(scope, child).await
     }
 }
 
@@ -452,6 +474,11 @@ pub struct TurnRunRecord {
     pub subagent_depth: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spawn_tree_root_run_id: Option<TurnRunId>,
+    /// Some(false): this claimed child still owns its reservation; Some(true):
+    /// its exact release was committed. None preserves unknown legacy/root
+    /// records and never implies that a reservation may be released.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claimed_child_reservation_released: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -1,7 +1,6 @@
 //! Actual retained kernel + PostgreSQL + operator-selected live model candidate.
 //! Not catalogue activation, a global Recipe cutover or installed-system QA.
-#[path = "../tests/common/loopback_http.rs"]
-mod loopback_http;
+use crate::test_loopback_http as loopback_http;
 
 use std::{collections::HashMap, sync::Arc};
 

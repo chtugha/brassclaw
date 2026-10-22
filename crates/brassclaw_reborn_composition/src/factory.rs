@@ -396,10 +396,12 @@ pub(crate) async fn build_pg_runtime_stores(
     reborn_home: &std::path::Path,
     tenant_id: &str,
 ) -> Result<PgRuntimeStores, RebornBuildError> {
-    let turn_state = Arc::new(brassclaw_turns::PgTurnStateStore::new(
-        Arc::clone(&pool),
-        tenant_id,
+    let turn_state = brassclaw_turns::PgTurnStateStore::new(Arc::clone(&pool), tenant_id);
+    #[cfg(feature = "skills-db")]
+    let turn_state = turn_state.with_admission_commit_participant(Arc::new(
+        crate::pg_transcript_admission::PgTranscriptAdmission::new(Arc::clone(&pool), tenant_id),
     ));
+    let turn_state = Arc::new(turn_state);
     let checkpoint_state_store: Arc<dyn brassclaw_turns::CheckpointStateStore> = Arc::new(
         brassclaw_loop_support::PgCheckpointStateStore::new(Arc::clone(&pool), tenant_id),
     );

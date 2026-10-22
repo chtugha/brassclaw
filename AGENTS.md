@@ -1,5 +1,13 @@
 # Agent Rules
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 ## Binding preloadable Skill interface (v3)
 
 A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
@@ -29,7 +37,9 @@ as a user message, forwards the correlated chat result and closes the chat.
 It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
 the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
 per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
-This is a binding target, not proof of implemented loader/store/runner support.
+Selected retained loader/store/runner support is implemented; this contract
+does not certify every workflow or the complete migration. See
+[the current implementation status](docs/implementation-status.md).
 Current-source observations and historical step-body examples below must be
 migrated to this interface before being accepted as updated v3 implementations.
 
@@ -82,10 +92,11 @@ completed runtime/store enforcement.
   calls host.<tool>(...). Only an actual
   No-Match enters Tier 2; errors or begun Recipe failures never replay there.
 
-Current code still has plain text substitution, fresh state in nested step
-execution and incomplete immutable version manifests/binding preparation. The
-new typed inputs interface and strict single-component validation require
-implementation and production-path acceptance; do not claim these are shipped.
+The legacy composer still contains source-substitution and historical step-body
+paths. Ordinary PostgreSQL/skills-db execution uses immutable retained selections,
+typed inputs, checked single-component steps and preloaded exports on the global
+Monty service. Full-library migration, general pure approval, dynamic occurrences
+and durable recovery remain open; see the current implementation status index.
 
 ### Installation seeds and post-installation changes
 
@@ -207,8 +218,9 @@ class-22 entry points belong to Orchestrator execution steps. Keep unrelated
 tasks/attempts isolated and preserve needed typed state within each Recipe,
 including child execution and waits. Q1/Q2 and the documented dependent-chain
 exception remain applicable. See the actual `knowledge`/`stepnumber` Recipe
-schema; explanatory channel names are not insert fields. These definitions do
-not implement an association schema, binding engine or new runtime path.
+schema; explanatory channel names are not insert fields. These definitions are not execution evidence. The retained association/binding
+APIs and qualified global path now exist; legacy-row coverage and remaining
+qualification are recorded in the implementation status index.
 
 ## Binding Tool and ToolSkill definitions (v3)
 
@@ -327,7 +339,7 @@ do not override the four guides.
 BrassClaw Reborn is organized in five conceptual layers:
 
 - **Products** own UX and surface-level composition. They wire together loops, capabilities, and host access for a specific deployment shape (CLI, web, daemon). Products do not implement agent logic directly.
-- **Loops** own agent behavior. They manage planning, tool dispatch, turn sequencing, approval gates, checkpointing, retries, and completion. A loop is the unit of agentic execution. Product code must not implement a second loop or bypass the loop runner.
+- **Loops and run interfaces** define the execution/lifecycle boundary. In the ordinary v3 path, Monty/Recipes/PythonCode own planning and task sequencing; Rust owns admission, transport, authority, accounting and effect custody. Legacy Rust-loop implementations are migration inputs, never a fallback for failed retained execution. Product code must not implement a second workflow loop.
 - **Kernel** owns authority. It controls trust decisions, secret resolution, safety policy enforcement, sandboxing, capability grants, and session identity. Kernel boundaries are not negotiable from product or loop code.
 - **Infrastructure** — Shared services: LLM providers, Postgres persistence, embeddings, extensions, and observability. Lives in `crates/`.
 - **Component Library** — Recipes, Skills, ToolSkills, PythonCode snippets, and ExtensionCatalogues stored in Postgres. **This is where most new capabilities are added.** Existing supported contracts can add component rows without a new primitive; missing schema/runner support still requires implementation. See `builtin_bootstrap.rs` for how first-party components are seeded.
@@ -384,17 +396,18 @@ artificial token caps, including hardcoded retrieval/assembly constants.
 Token accounting remains observability; model context/output limits remain
 technical constraints. Time, allocation and memory limits are independent.
 
-**Implementation status (2026-10-08):** ordinary `skills-db` runtime startup now
-owns one supervised global Monty service. The original seven composition callers
-and a matched/unmatched multi-turn regression pass through that service with
-opaque conversation IDs, typed IBS inputs, pinned packaged reply/history workflows
-and retained VM identity. The per-chat lazy driver has been removed. This is
-limited production-path evidence, not completion of the full v3 plan. Authored
-catalogue activation, complete library prefix compilation, adaptive memory,
-live settings uptake and the remaining legacy authorization cutover still need
-implementation and acceptance.
-See `docs/plans/simplified-v3-implementation.md`; never mark the full plan complete
-or claim improved speed without the production-path tests and measurements.
+**Implementation status (2026-10-22):** ordinary PostgreSQL/skills-db startup
+owns one supervised global Monty 1.0 service. Retained typed inputs/preload,
+immutable revisions, exact approvals, authored deployment, live Rust/Monty
+settings and scoped ordinary/MCP/prefix/native-child paths are implemented.
+V176 makes scoped inbound receipt/message acceptance atomic; admission binds its
+input in the same PostgreSQL transaction. Explicit children retain parent claims,
+original catalogue/IDs and full outcomes without rematching or replay. General
+pure approval, eight validator workflows, five subagent seed migrations, final
+prefix/model guards, remaining policy/cap/compatibility migration and durable
+recovery remain open. See [the current support and ownership index](docs/implementation-status.md)
+and its combined-tree validation record; do not recreate completed infrastructure
+or claim full-plan/platform/deployment acceptance.
 
 ## Orchestrator-First, LLM-Minimal Design (Mandatory)
 
@@ -407,9 +420,10 @@ This principle governs all Recipe, Skill, PythonCode, and ToolSkill authoring.
 
 ### Global Monty lifecycle (binding target architecture)
 
-**Upgrade prerequisite:** Follow `simplified_v3.md` Phase 3a’s Monty 1.0 gate
-before global production wiring. The v0.0.16 custom-tracker proof is test-only
-and cannot implement the new API. Monty 1.0 removes the allocation-count limit;
+**Runtime baseline:** the ordinary global worker uses Monty 1.0. Phase 3a
+retains the remaining lifecycle/resource/recovery gates; do not repeat the
+completed version migration. The old v0.0.16 custom-tracker proof is historical
+and cannot implement the current API. Monty 1.0 removes the allocation-count limit;
 preserve existing settings until their explicit migration rather than silently
 ignoring them. Rust and Monty must share the effective duration revision and
 one task compute account; a persisted WebUI edit alone is not runtime uptake.
@@ -868,6 +882,13 @@ Capability leases are authority-bearing records — the rules below are not styl
 The *names* of these env vars are stored in `brassclaw_config`; the *values* are read from the environment at runtime and never persisted. Includes: `BRASSCLAW_REBORN_WEBUI_TOKEN`, `BRASSCLAW_REBORN_WEBUI_USER_ID`, provider API keys, OAuth secrets, trigger auth tokens.
 
 ## Build and Test
+
+Build only from this common repository root and Git index. Use one serial Cargo
+execution and the canonical NVMe target below; `brassclaw-target2` and mutable
+validation build mirrors are retired. Immutable validation archives preserve
+historical evidence and must not become alternative development/build trees.
+Before publishing, stage the reviewed common tree, verify it, and use an ordinary
+fast-forward push; never copy an old validation snapshot over current source.
 
 > **Mandatory:** Every `cargo build`/`test`/`clippy`/`check` **must** set
 > `CARGO_TARGET_DIR=/Users/ollama/brassclaw-target` (NVMe) — never build in-place on the

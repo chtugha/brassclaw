@@ -47,6 +47,32 @@ pub(crate) struct CapturedChildRecipe {
 
 #[async_trait]
 pub(crate) trait MontyCatalogueProvider: Send + Sync {
+    /// Retain only a weak scheduling dependency after the actual task ports
+    /// exist. This hook neither admits work nor supplies authority.
+    fn observe_task_ports(
+        &self,
+        _host: &Arc<MontyTaskHost>,
+        _admission: &Arc<PgMontyAdmission>,
+        _ports: std::sync::Weak<dyn TaskPorts>,
+    ) -> Result<(), AgentLoopDriverError> {
+        Ok(())
+    }
+
+    /// Completed tasks may release acknowledged child observations. Unknown
+    /// admissions/effects remain with their original owner for reconciliation.
+    fn release_task(&self, _attempt: MontyTaskAttempt) -> Result<(), AgentLoopDriverError> {
+        Ok(())
+    }
+    /// Acknowledge only terminal child results already received by their
+    /// original native owner. This must not admit, dispatch or resume a child,
+    /// resolve an unknown admission, or turn the original failed Tool into a
+    /// successful return value.
+    async fn reconcile_received_child_results(
+        &self,
+        _attempt: MontyTaskAttempt,
+    ) -> Result<(), AgentLoopDriverError> {
+        Ok(())
+    }
     /// A provider without the complete child admission/retention contract must
     /// leave ordinary entry unchanged. Returning a source requires verified
     /// parent attempt/admission, child identity and the parent's pinned view.
@@ -396,6 +422,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         // Retention precedes every await below, including a lost COMMIT reply
         // and a caller dropping this future. No registry lock crosses I/O.
         admission.persist_reservation().await?;
+        let observation_admission = admission.clone();
         let child = self
             .catalogue
             .capture_child(host.clone(), admission.clone(), &input)
@@ -458,6 +485,12 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             .await
             .map_err(|_| failed("monty_instance_ownership_failed"))?;
         let ports = Arc::new(ports.with_dependency_parent(dependency_parent));
+        let scheduled: Arc<dyn TaskPorts> = ports.clone();
+        self.catalogue.observe_task_ports(
+            &host,
+            &observation_admission,
+            Arc::downgrade(&scheduled),
+        )?;
         self.tasks()?
             .get_mut(&host.attempt())
             .ok_or_else(|| failed("monty_task_registry_failed"))?
@@ -509,6 +542,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             return Err(failed("monty_task_settlement_conflict"));
         }
         task.retention.unsubmitted_settled()?;
+        self.catalogue.release_task(host.attempt())?;
         tasks.remove(&host.attempt());
         Ok(())
     }
@@ -577,6 +611,16 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                 task.provider_port.clone(),
             )
         };
+        // A transient journal failure must not discard a received Tool result.
+        // This retries only its same idempotent evidence acknowledgement; the
+        // original failed VM outcome stays failed and execution never resumes.
+        ports
+            .reconcile_received_native_results()
+            .await
+            .map_err(|_| failed("monty_native_result_reconciliation_required"))?;
+        self.catalogue
+            .reconcile_received_child_results(host.attempt())
+            .await?;
         let report = match retained_report {
             Some(report) => report,
             None => {
@@ -638,6 +682,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             receipt.outcome,
             TaskOutcome::Completed { .. } | TaskOutcome::InternalCompleted { .. }
         ) {
+            self.catalogue.release_task(host.attempt())?;
             if let Some(task) = tasks.get(&host.attempt()) {
                 task.retention.completed()?;
             }

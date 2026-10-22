@@ -308,7 +308,8 @@ impl global_task_factory::MontyCatalogueProvider for DraftProvider {
                         .program()
                         .inputs()
                         .bind_variant_example(input_text, &input.user_input, &json!({}))
-                        .unwrap(),
+                        .unwrap()
+                        .into(),
                 );
                 // This identifies this validator's committed draft snapshot,
                 // not an activated/approved production catalogue generation.

@@ -1,5 +1,13 @@
 # Runtime limits audit
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 Source audit: 2026-10-17. This is an implementation inventory, not a full-v3
 acceptance claim. The release checklist must close the remaining fixed values.
 
@@ -720,3 +728,49 @@ were verified. R1 failed only on the new module's wrong LoopMessageRef import;
 its diagnostics remain archived. R2 corrects that root export. The marker port
 never produces an admitted/completed child. No R09, merged-peer, platform or
 full-plan acceptance follows.
+
+
+### 2026-10-22 — Typed input and native answer custody (scoped acceptance)
+
+The existing JsonValue owner replaces recursive selected-input copies; native
+answers retain the actual original journal handle and immutable answer rather
+than a second complete serialized JSON tree. Original captured data limits still
+apply. Receipt acknowledgement cannot replay native effects or change a failed
+Recipe to completed. Frozen task-native-custody R3 passes the real native
+COMMIT-failure regression, independent journal and both affected strict lint
+graphs; unchanged R2 evidence includes ordinary global execution and the actual
+operator-selected model. The exact receipt is
+/private/tmp/brassclaw-task-native-custody-r3-accepted.json. No whole-plan, model
+policy or resource-setting cutover claim follows.
+
+Exact claimed-child reservation release is separately accepted in frozen
+child-reservation-20261022-r3: ten checks and eight retained artifact hashes,
+including a real PostgreSQL COMMIT-response loss, exact repeated release without
+consuming a sibling, filesystem CAS/reopen and pending-record pruning. Its
+receipt is /private/tmp/brassclaw-child-reservation-accepted.json. The marker is
+idempotency metadata, not a new resource quota, sampling counter or Tool grant.
+
+The accepted child-observation-release-20261022-r3 successor releases redundant Rust answer payloads immediately after
+the original journal acknowledgement, retaining the caller-owned return value
+and immutable invocation metadata. Failed/unknown acknowledgements keep their
+complete payload. Read-only weak witnesses extend the actual COMMIT regression;
+they are compiled only for tests, do not retain payloads or supply outcomes, and
+add no production measurement loop. Its actual COMMIT regression and child
+cancellation/received-result cleanup, native model-wire/ordinary global callers,
+independent entry/journal/factory cancellation and both strict lint graphs pass.
+Nine recorded checks and five retained artifact hashes were verified in
+/private/tmp/brassclaw-child-observation-release-r3-accepted.json. This does not
+certify unknown admissions, parent export/bootstrap activation, legacy retirement
+or full-plan/platform acceptance.
+
+Still-open cap finding: process.rs MAX_TRANSPORT_DEPTH=64 remains a protocol
+framing guard independent of configured max_value_depth. Do not claim that every
+runtime bound is controlled by WebUI until guarded framing/admission semantics
+and the actual effective settings/UI help agree. Removing it requires safe late
+error cleanup and metadata decoding, not simply disabling Serde's recursion guard.
+
+The turn-state snapshot stores also still have fixed optimistic CAS retry counts:
+PostgreSQL Turns `PG_CAS_RETRIES=12`, PostgreSQL Threads `apply_optional`
+with 12 attempts, and filesystem `FILESYSTEM_CAS_RETRIES=8`. These are
+conflict retry policy, not permission to replay a Tool or child effect. Their
+instance-wide configuration/live uptake and explanatory controls remain open.

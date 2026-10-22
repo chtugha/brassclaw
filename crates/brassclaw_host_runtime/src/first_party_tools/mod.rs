@@ -546,6 +546,13 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
             // valid data/path text, not an omitted optional-argument sentinel.
             return json::dispatch(request.input, self.primitive_settings.as_deref()).await;
         }
+        if request.capability_id.as_str() == SPAWN_SUBAGENT_CAPABILITY_ID
+            && (request.services.child_tasks.is_some() || request.input.get("workflow").is_some())
+        {
+            // The explicit child profile preserves typed inputs and literal
+            // "null" data. It never returns the legacy authorization receipt.
+            return spawn_subagent::dispatch_child(request).await;
+        }
         bounded_input_size(request.capability_id.as_str(), &request.input)?;
         normalize_optional_null_sentinels(&mut request);
         if request.capability_id.as_str() == MODEL_ENCODING_CAPABILITY_ID {

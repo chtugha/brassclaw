@@ -28,9 +28,8 @@
 //! `source_binding_id`, `external_event_id`) tuple, so flat layout under one
 //! `/threads/idempotency/` directory is safe — two different scopes with
 //! identical binding/event id produce different on-disk keys. The
-//! `replay_accepted_inbound_message` lookup, which has no scope input, scans
-//! that directory and matches `source_binding_id`+`external_event_id` against
-//! the persisted record body.
+//! `replay_accepted_inbound_message` lookup uses that exact scope-keyed path
+//! and verifies the persisted identity and actor before returning metadata.
 
 mod message_sequence_index;
 
@@ -51,6 +50,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::identifiers::SummaryArtifactId;
+use crate::message_submission::ensure_user_accepted;
 use crate::summary_artifacts::find_overlapping_summary;
 use crate::title::derive_title_from_message;
 use crate::{
@@ -100,9 +100,8 @@ struct StoredThreadRecord {
 
 use crate::stored_message::StoredThreadMessageRecord;
 
-/// On-disk inbound idempotency record. Includes the originating scope so
-/// the scope-less `replay_accepted_inbound_message` can rehydrate the
-/// replay reply.
+/// Claimed inbound identity. A claim precedes its message write; absence of
+/// that exact message is unresolved, never another successful admission.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct InboundIdempotencyRecord {
     scope: ThreadScope,
@@ -158,6 +157,54 @@ where
     fn idempotency_entry(record: &InboundIdempotencyRecord) -> Result<Entry, SessionThreadError> {
         let body = serialize_pretty(record)?;
         Ok(Entry::bytes(body).with_content_type(ContentType::json()))
+    }
+
+    async fn acknowledged_inbound(
+        &self,
+        request: &AcceptInboundMessageRequest,
+    ) -> Result<Option<AcceptedInboundMessage>, SessionThreadError> {
+        if let Some(idempotency_key) = InboundIdempotencyKey::from_request(request) {
+            let record_key = idempotency_record_key(&idempotency_key)?;
+            let path = idempotency_record_path(&record_key)?;
+            if let Some(versioned) = self
+                .filesystem
+                .get(&request.scope.to_resource_scope(), &path)
+                .await?
+            {
+                let record = deserialize::<InboundIdempotencyRecord>(&versioned.entry.body)?;
+                if record.scope != request.scope
+                    || record.source_binding_id != idempotency_key.source_binding_id
+                    || record.external_event_id != idempotency_key.external_event_id
+                {
+                    return Err(SessionThreadError::Backend(
+                        "inbound receipt identity mismatch".into(),
+                    ));
+                }
+                if record.thread_id != request.thread_id {
+                    return Err(SessionThreadError::IdempotentReplayThreadMismatch {
+                        stored_thread_id: record.thread_id,
+                        requested_thread_id: request.thread_id.clone(),
+                    });
+                }
+                let (_, _) = self
+                    .read_thread_versioned(&request.scope, &record.thread_id)
+                    .await?
+                    .ok_or_else(|| SessionThreadError::UnknownThread {
+                        thread_id: record.thread_id.clone(),
+                    })?;
+                let existing = self
+                    .read_message_versioned(&request.scope, &record.thread_id, record.message_id)
+                    .await?
+                    .map(|(message, _)| message)
+                    .ok_or(SessionThreadError::UnknownMessage {
+                        message_id: record.message_id,
+                    })?;
+                return crate::inbound_idempotency::acknowledged_input(&existing, request)
+                    .map(Some);
+            }
+        }
+
+        Ok(None)
     }
 
     async fn read_thread_versioned(
@@ -450,36 +497,6 @@ where
         Ok(summaries)
     }
 
-    async fn find_idempotency_record(
-        &self,
-        match_predicate: impl Fn(&InboundIdempotencyRecord) -> bool,
-    ) -> Result<Option<InboundIdempotencyRecord>, SessionThreadError> {
-        let root = idempotency_root()?;
-        // Idempotency records are scope-keyed at the path level and don't
-        // need a per-tenant filesystem rewrite; use the system scope to
-        // route through the global idempotency root.
-        let scope = ResourceScope::system();
-        let entries = match self.filesystem.list_dir(&scope, &root).await {
-            Ok(entries) => entries,
-            Err(error) if is_not_found(&error) => return Ok(None),
-            Err(error) => return Err(error.into()),
-        };
-        for entry in entries {
-            if !entry.name.ends_with(".json") {
-                continue;
-            }
-            let child = join_scoped(&root, &entry.name)?;
-            let Some(versioned) = self.filesystem.get(&scope, &child).await? else {
-                continue;
-            };
-            let record = deserialize::<InboundIdempotencyRecord>(&versioned.entry.body)?;
-            if match_predicate(&record) {
-                return Ok(Some(record));
-            }
-        }
-        Ok(None)
-    }
-
     async fn delete_idempotency_records_for_thread(
         &self,
         scope: &ThreadScope,
@@ -530,7 +547,9 @@ where
                     thread_id: thread_id.clone(),
                 })?;
             let assigned = stored.next_sequence;
-            stored.next_sequence = assigned + 1;
+            stored.next_sequence = assigned.checked_add(1).ok_or_else(|| {
+                SessionThreadError::Backend("thread message sequence exhausted".into())
+            })?;
             let entry = Self::thread_entry(&stored)?;
             match put_with_cas(
                 self.filesystem.as_ref(),
@@ -675,57 +694,55 @@ where
         &self,
         request: AcceptInboundMessageRequest,
     ) -> Result<AcceptedInboundMessage, SessionThreadError> {
-        // First, check idempotency. The on-disk key SHA-256s the full
-        // (scope, source_binding_id, external_event_id) tuple, so a
-        // same-binding/event from a different scope hashes to a different
-        // key (and we only see records under the current MountView).
-        if let Some(idempotency_key) = InboundIdempotencyKey::from_request(&request) {
-            let record_key = idempotency_record_key(&idempotency_key)?;
-            let path = idempotency_record_path(&record_key)?;
-            if let Some(versioned) = self
+        if let Some(existing) = self.acknowledged_inbound(&request).await? {
+            return Ok(existing);
+        }
+        let (thread, _) = self
+            .read_thread_versioned(&request.scope, &request.thread_id)
+            .await?
+            .ok_or_else(|| SessionThreadError::UnknownThread {
+                thread_id: request.thread_id.clone(),
+            })?;
+        thread.next_sequence.checked_add(1).ok_or_else(|| {
+            SessionThreadError::Backend("thread message sequence exhausted".into())
+        })?;
+        let message_id = ThreadMessageId::new();
+        if let Some(key) = InboundIdempotencyKey::from_request(&request) {
+            let record = InboundIdempotencyRecord {
+                scope: key.scope.clone(),
+                source_binding_id: key.source_binding_id.clone(),
+                external_event_id: key.external_event_id.clone(),
+                thread_id: request.thread_id.clone(),
+                message_id,
+            };
+            let path = idempotency_record_path(&idempotency_record_key(&key)?)?;
+            // Claim this exact message ID BEFORE writing a canonical message.
+            // A missing pending message remains unresolved. Never overwrite
+            // a winner or degrade atomic Absent into a read/Any sequence.
+            match self
                 .filesystem
-                .get(&request.scope.to_resource_scope(), &path)
-                .await?
+                .put(
+                    &request.scope.to_resource_scope(),
+                    &path,
+                    Self::idempotency_entry(&record)?,
+                    CasExpectation::Absent,
+                )
+                .await
             {
-                let record = deserialize::<InboundIdempotencyRecord>(&versioned.entry.body)?;
-                if record.thread_id != request.thread_id {
-                    return Err(SessionThreadError::IdempotentReplayThreadMismatch {
-                        stored_thread_id: record.thread_id,
-                        requested_thread_id: request.thread_id,
+                Ok(_) => {}
+                Err(FilesystemError::VersionMismatch { .. }) => {
+                    return self.acknowledged_inbound(&request).await?.ok_or_else(|| {
+                        SessionThreadError::Backend(
+                            "inbound receipt requires reconciliation".into(),
+                        )
                     });
                 }
-                let (_, _) = self
-                    .read_thread_versioned(&request.scope, &record.thread_id)
-                    .await?
-                    .ok_or_else(|| SessionThreadError::UnknownThread {
-                        thread_id: record.thread_id.clone(),
-                    })?;
-                let existing = self
-                    .read_message_versioned(&request.scope, &record.thread_id, record.message_id)
-                    .await?
-                    .map(|(message, _)| message)
-                    .ok_or(SessionThreadError::UnknownMessage {
-                        message_id: record.message_id,
-                    })?;
-                if existing.actor_id.as_deref() != Some(request.actor_id.as_str()) {
-                    return Err(SessionThreadError::IdempotentReplayActorMismatch {
-                        stored_actor_id: existing.actor_id.clone().unwrap_or_default(),
-                        requested_actor_id: request.actor_id,
-                    });
-                }
-                return Ok(AcceptedInboundMessage {
-                    thread_id: existing.thread_id,
-                    message_id: record.message_id,
-                    sequence: existing.sequence,
-                    idempotent_replay: true,
-                });
+                Err(error) => return Err(error.into()),
             }
         }
-
         let sequence = self
             .reserve_sequence(&request.scope, &request.thread_id)
             .await?;
-        let message_id = ThreadMessageId::new();
         let message = ThreadMessageRecord {
             message_id,
             thread_id: request.thread_id.clone(),
@@ -745,31 +762,6 @@ where
         self.write_new_message(&request.scope, &request.thread_id, &message, "message")
             .await?;
 
-        if let Some(idempotency_key) = InboundIdempotencyKey::from_request(&request) {
-            let idem_record = InboundIdempotencyRecord {
-                scope: idempotency_key.scope.clone(),
-                source_binding_id: idempotency_key.source_binding_id.clone(),
-                external_event_id: idempotency_key.external_event_id.clone(),
-                thread_id: request.thread_id.clone(),
-                message_id,
-            };
-            let record_key = idempotency_record_key(&idempotency_key)?;
-            let path = idempotency_record_path(&record_key)?;
-            let entry = Self::idempotency_entry(&idem_record)?;
-            // `Any` here: the SHA-256 key already encodes the full tuple,
-            // so a duplicate write simply overwrites with the same
-            // (binding, event, thread, message) — equivalent to the
-            // legacy in-memory HashMap upsert.
-            self.filesystem
-                .put(
-                    &request.scope.to_resource_scope(),
-                    &path,
-                    entry,
-                    CasExpectation::Any,
-                )
-                .await?;
-        }
-
         Ok(AcceptedInboundMessage {
             thread_id: request.thread_id,
             message_id,
@@ -782,15 +774,28 @@ where
         &self,
         request: ReplayAcceptedInboundMessageRequest,
     ) -> Result<Option<AcceptedInboundMessageReplay>, SessionThreadError> {
-        let Some(record) = self
-            .find_idempotency_record(|candidate| {
-                candidate.source_binding_id == request.source_binding_id
-                    && candidate.external_event_id == request.external_event_id
-            })
+        let key = InboundIdempotencyKey {
+            scope: request.scope.clone(),
+            source_binding_id: request.source_binding_id.clone(),
+            external_event_id: request.external_event_id.clone(),
+        };
+        let path = idempotency_record_path(&idempotency_record_key(&key)?)?;
+        let Some(versioned) = self
+            .filesystem
+            .get(&request.scope.to_resource_scope(), &path)
             .await?
         else {
             return Ok(None);
         };
+        let record = deserialize::<InboundIdempotencyRecord>(&versioned.entry.body)?;
+        if record.scope != request.scope
+            || record.source_binding_id != request.source_binding_id
+            || record.external_event_id != request.external_event_id
+        {
+            return Err(SessionThreadError::Backend(
+                "inbound receipt identity mismatch".into(),
+            ));
+        }
         let Some((_, _)) = self
             .read_thread_versioned(&record.scope, &record.thread_id)
             .await?
@@ -806,6 +811,17 @@ where
             .ok_or(SessionThreadError::UnknownMessage {
                 message_id: record.message_id,
             })?;
+        if message.actor_id.as_deref() != Some(request.actor_id.as_str()) {
+            return Ok(None);
+        }
+        if message.kind != MessageKind::User
+            || message.thread_id != record.thread_id
+            || message.source_binding_id.as_deref() != Some(request.source_binding_id.as_str())
+        {
+            return Err(SessionThreadError::Backend(
+                "inbound receipt message mismatch".into(),
+            ));
+        }
         Ok(Some(AcceptedInboundMessageReplay {
             scope: record.scope,
             thread_id: record.thread_id,
@@ -836,10 +852,7 @@ where
                 thread_id: thread_id.clone(),
             })?;
         self.apply_message_update(scope, thread_id, message_id, |message| {
-            ensure_user_accepted(message, "mark_message_submitted")?;
-            message.status = MessageStatus::Submitted;
-            message.turn_id = Some(turn_id.clone());
-            message.turn_run_id = Some(turn_run_id.clone());
+            crate::message_submission::bind_submission(message, &turn_id, &turn_run_id)?;
             Ok(())
         })
         .await
@@ -1810,25 +1823,6 @@ fn ensure_draft(message: &ThreadMessageRecord) -> Result<(), SessionThreadError>
     Ok(())
 }
 
-fn ensure_user_accepted(
-    message: &ThreadMessageRecord,
-    attempted: &'static str,
-) -> Result<(), SessionThreadError> {
-    if message.kind == MessageKind::User
-        && matches!(
-            message.status,
-            MessageStatus::Accepted | MessageStatus::DeferredBusy
-        )
-    {
-        return Ok(());
-    }
-    Err(SessionThreadError::InvalidMessageTransition {
-        message_id: message.message_id,
-        from: message.status,
-        attempted,
-    })
-}
-
 fn is_model_visible(status: MessageStatus) -> bool {
     matches!(
         status,
@@ -2032,9 +2026,9 @@ fn summary_covers_redacted_or_deleted_content(
 // multi-step transition is implemented with
 // `put(_, _, CasExpectation::Version)` + retry on
 // `FilesystemError::VersionMismatch`. Byte-only backends (LocalFilesystem)
-// reject anything but `Any`; we fall back to `Any` so the existing
-// single-instance guarantee from the per-path lock map carries the safety
-// invariant.
+// do not expose record versions. Legacy versioned updates use the per-path
+// single-instance lock for their Any compatibility path. New inbound receipt
+// claims bypass this helper and require the backend's actual atomic Absent.
 
 /// Local error classification for the CAS-aware put helper.
 enum PutError {
@@ -2163,3 +2157,7 @@ mod tests {
         assert_eq!(record_key.len(), "sha256-".len() + 64);
     }
 }
+
+#[cfg(test)]
+#[path = "filesystem_inbound_tests.rs"]
+mod inbound_storage_tests;

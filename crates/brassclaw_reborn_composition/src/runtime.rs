@@ -3298,7 +3298,16 @@ pub async fn build_reborn_runtime(
         },
         safety_context: None,
         hook_security_audit_sink: Some(Arc::new(brassclaw_events::TracingSecurityAuditSink)),
-        turn_event_sink: None,
+        turn_event_sink: {
+            #[cfg(all(feature = "postgres", feature = "skills-db"))]
+            {
+                Some(installed_catalogue.child_event_sink())
+            }
+            #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
+            {
+                None
+            }
+        },
         hook_dispatcher_builder_factory,
         recipe_lookup,
         retrieval_lookup,
@@ -3389,6 +3398,24 @@ pub async fn build_reborn_runtime(
         )) as Arc<dyn brassclaw_turns::run_profile::SystemInferencePort>
     });
     let planned_turn_coordinator: Arc<dyn TurnCoordinator> = composition.coordinator.clone();
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    installed_catalogue
+        .bind_child_runtime(
+            composition.coordinator.clone(),
+            composition.child_runs.clone(),
+            pg_stores
+                .as_ref()
+                .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                    reason: "global child admission requires its actual PostgreSQL turn store"
+                        .into(),
+                })?
+                .turn_state
+                .clone(),
+            thread_service.clone(),
+        )
+        .map_err(|error| RebornRuntimeError::InvalidArgument {
+            reason: error.to_string(),
+        })?;
     let interaction_turn_state: Option<Arc<dyn run_state_read_source::RunStateReadSource>> = {
         #[cfg(feature = "postgres")]
         {
@@ -4111,6 +4138,9 @@ mod tests {
     ))]
     #[path = "canonical_model_usage_tests.rs"]
     mod canonical_model_usage_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "child_task_execution_tests.rs"]
+    mod child_task_execution_tests;
     #[cfg(all(
         feature = "postgres",
         feature = "skills-db",
@@ -4136,6 +4166,9 @@ mod tests {
     mod model_response_usage_tests;
     #[path = "../../../tests/common/native_http.rs"]
     mod native_http;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "native_result_custody_tests.rs"]
+    mod native_result_custody_tests;
     #[cfg(all(
         feature = "postgres",
         feature = "skills-db",

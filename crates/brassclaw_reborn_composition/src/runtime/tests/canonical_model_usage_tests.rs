@@ -73,7 +73,7 @@ impl InternalRecipeSource for CanonicalSource {
         Ok(SelectedMontyRecipe {
             normal_match: None,
             inspected: self.inspected.clone(),
-            inputs: Some(self.inputs.clone()),
+            inputs: Some(self.inputs.clone().into()),
             tools: Some(self.tools.clone()),
         })
     }

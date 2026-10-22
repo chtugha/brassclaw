@@ -1866,6 +1866,7 @@ mod tests {
             parent_run_id,
             subagent_depth,
             spawn_tree_root_run_id,
+            claimed_child_reservation_released: None,
         }
     }
 
@@ -1904,6 +1905,7 @@ mod tests {
             parent_run_id: None,
             subagent_depth: 1,
             spawn_tree_root_run_id: None,
+            claimed_child_reservation_released: None,
         }
     }
 

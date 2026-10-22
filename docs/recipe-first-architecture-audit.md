@@ -1,5 +1,15 @@
 # Why Recipe authoring keeps turning into Rust work
 
+> **Current execution boundary — 2026-10-22:** ordinary PostgreSQL/skills-db
+> startup retains one `GlobalMontyOwner`; `GlobalMontyDriver` transports work to
+> that service. `global_mode.py` sequences pinned retained preload exports and
+> typed result handoffs. `basic_mode.py`, the old composer/step-body examples and
+> per-chat bootstrap observations below describe legacy paths. Qualified source
+> support, open migration/approval/recovery work and the owning plans are in
+> [the current status index](implementation-status.md). Historical line numbers are inspection anchors,
+> not current acceptance evidence. Reuse existing implementations.
+
+
 **Review date:** 2026-10-17. **Inspected HEAD:** `6a36dfc5b225128512ff761c076620866baea163`.
 
 ## Executive conclusion

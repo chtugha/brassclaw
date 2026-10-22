@@ -415,6 +415,20 @@ where
         })
         .await
     }
+
+    async fn release_claimed_child_reservation(
+        &self,
+        scope: &TurnScope,
+        child: TurnRunId,
+    ) -> Result<(), TurnError> {
+        // Exact release needs the same real backend CAS as claimed admission;
+        // the byte-only compatibility fallback cannot acknowledge this marker.
+        self.apply_with_cas_fallback(false, |store| async move {
+            let outcome = store.release_claimed_child_reservation(scope, child).await;
+            (outcome, store)
+        })
+        .await
+    }
 }
 
 #[async_trait]

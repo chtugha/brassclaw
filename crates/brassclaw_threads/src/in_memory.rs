@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::identifiers::SummaryArtifactId;
+use crate::message_submission::ensure_user_accepted;
 use crate::summary_artifacts::find_overlapping_summary;
 use crate::title::derive_thread_title;
 use crate::{
@@ -127,25 +128,16 @@ impl SessionThreadService for InMemorySessionThreadService {
                 .ok_or(SessionThreadError::UnknownMessage {
                     message_id: record.message_id,
                 })?;
-            if existing.actor_id.as_deref() != Some(request.actor_id.as_str()) {
-                return Err(SessionThreadError::IdempotentReplayActorMismatch {
-                    stored_actor_id: existing.actor_id.clone().unwrap_or_default(),
-                    requested_actor_id: request.actor_id,
-                });
-            }
-            return Ok(AcceptedInboundMessage {
-                thread_id: existing.thread_id.clone(),
-                message_id: record.message_id,
-                sequence: existing.sequence,
-                idempotent_replay: true,
-            });
+            return crate::inbound_idempotency::acknowledged_input(existing, &request);
         }
 
         let key = InboundIdempotencyKey::from_request(&request);
         let thread = get_thread_mut(&mut state, &request.scope, &request.thread_id)?;
         let message_id = ThreadMessageId::new();
         let sequence = thread.next_sequence;
-        thread.next_sequence += 1;
+        thread.next_sequence = thread.next_sequence.checked_add(1).ok_or_else(|| {
+            SessionThreadError::Backend("thread message sequence exhausted".into())
+        })?;
         thread.messages.push(ThreadMessageRecord {
             message_id,
             thread_id: request.thread_id.clone(),
@@ -227,10 +219,7 @@ impl SessionThreadService for InMemorySessionThreadService {
     ) -> Result<ThreadMessageRecord, SessionThreadError> {
         let mut state = self.state.lock().await;
         let message = get_message_mut(&mut state, scope, thread_id, message_id)?;
-        ensure_user_accepted(message, "mark_message_submitted")?;
-        message.status = MessageStatus::Submitted;
-        message.turn_id = Some(turn_id);
-        message.turn_run_id = Some(turn_run_id);
+        crate::message_submission::bind_submission(message, &turn_id, &turn_run_id)?;
         Ok(message.clone())
     }
 
@@ -278,7 +267,9 @@ impl SessionThreadService for InMemorySessionThreadService {
             content: Some(request.content.into_text()),
             redaction_ref: None,
         };
-        thread.next_sequence += 1;
+        thread.next_sequence = thread.next_sequence.checked_add(1).ok_or_else(|| {
+            SessionThreadError::Backend("thread message sequence exhausted".into())
+        })?;
         thread.messages.push(message.clone());
         Ok(message)
     }
@@ -358,7 +349,9 @@ impl SessionThreadService for InMemorySessionThreadService {
             content: Some(content),
             redaction_ref: None,
         };
-        thread.next_sequence += 1;
+        thread.next_sequence = thread.next_sequence.checked_add(1).ok_or_else(|| {
+            SessionThreadError::Backend("thread message sequence exhausted".into())
+        })?;
         thread.messages.push(message.clone());
         Ok(message)
     }
@@ -405,7 +398,9 @@ impl SessionThreadService for InMemorySessionThreadService {
             content: Some(content),
             redaction_ref: None,
         };
-        thread.next_sequence += 1;
+        thread.next_sequence = thread.next_sequence.checked_add(1).ok_or_else(|| {
+            SessionThreadError::Backend("thread message sequence exhausted".into())
+        })?;
         thread.messages.push(message.clone());
         Ok(message)
     }
@@ -860,25 +855,6 @@ fn ensure_draft(message: &ThreadMessageRecord) -> Result<(), SessionThreadError>
     Ok(())
 }
 
-fn ensure_user_accepted(
-    message: &ThreadMessageRecord,
-    attempted: &'static str,
-) -> Result<(), SessionThreadError> {
-    if message.kind == MessageKind::User
-        && matches!(
-            message.status,
-            MessageStatus::Accepted | MessageStatus::DeferredBusy
-        )
-    {
-        return Ok(());
-    }
-    Err(SessionThreadError::InvalidMessageTransition {
-        message_id: message.message_id,
-        from: message.status,
-        attempted,
-    })
-}
-
 fn context_messages_with_summary_replacements(thread: &StoredThread) -> Vec<ContextMessage> {
     let replacement_summaries = thread
         .summary_artifacts
@@ -1031,3 +1007,7 @@ fn is_model_visible(status: MessageStatus) -> bool {
 fn is_model_context_visible(message: &ThreadMessageRecord) -> bool {
     is_model_visible(message.status) && message.kind != MessageKind::CapabilityDisplayPreview
 }
+
+#[cfg(test)]
+#[path = "in_memory_inbound_tests.rs"]
+mod inbound_storage_tests;

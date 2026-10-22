@@ -1,5 +1,13 @@
 # Model input ceilings
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 The writable owner is `ProviderDefinition.model_token_limits[model]` inside the
 existing PostgreSQL `brassclaw_llm_providers.definition` record. Inference and
 Prefix settings use the same editor/query and GET/POST

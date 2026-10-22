@@ -174,6 +174,8 @@ pub(crate) mod pg_token_settings_store;
 pub(crate) mod pg_tool_skill_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_tool_store;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod pg_transcript_admission;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_user_preference_store;
 pub(crate) mod plan_library;
@@ -1169,6 +1171,9 @@ mod prefix_reference_tests;
 mod prefix_source_storage_tests;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_sources;
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+#[path = "../tests/common/loopback_http.rs"]
+mod test_loopback_http;
 #[cfg(all(test, feature = "skills-db"))]
 mod validator_component_tests;
 

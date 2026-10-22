@@ -1,5 +1,13 @@
 # Recipe authoring instructions
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 ## Binding preloadable Skill interface (v3)
 
 A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
@@ -29,7 +37,9 @@ as a user message, forwards the correlated chat result and closes the chat.
 It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
 the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
 per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
-This is a binding target, not proof of implemented loader/store/runner support.
+Selected retained loader/store/runner support is implemented; this contract
+does not certify every workflow or the complete migration. See
+[the current implementation status](docs/implementation-status.md).
 Current-source observations and historical step-body examples below must be
 migrated to this interface before being accepted as updated v3 implementations.
 
@@ -42,8 +52,8 @@ working, validated or Tier 0 without the corresponding evidence.
 Read [AGENTS.md](AGENTS.md), [simplified_v3.md](simplified_v3.md) and the
 [development policy](docs/development-policy.md). Their binding contracts take
 precedence over historical examples. This file documents authoring; it does not
-implement missing runtime features. Implementation observations below reflect
-the source inspected on 2026-10-06.
+implement missing runtime features. Legacy observations explicitly describe the 2026-10-06 composer. The retained
+ordinary path and remaining gaps are reconciled in the current status index.
 
 ## 1. Understand exactly what you are creating
 
@@ -198,9 +208,10 @@ that the workflow achieves the user's intent.
 emit their exact UUID/version/checksum references in the BuildInstruction,
 including all selected Tool, ToolSkill, Skill, PythonCode and dependency
 references. The orchestrator executes those resolved versions, never a fresh
-“latest” lookup. The currently listed BuildInstruction fields do not implement
-this complete version manifest; extending that contract is required runtime
-work. The instruction remains ephemeral; retain its version selection with
+“latest” lookup. The legacy BuildInstruction fields alone do not implement
+this complete manifest. The ordinary retained path now uses immutable revision
+selections, retained input/tool/review preparation and task catalogue references;
+reuse those owners rather than adding a second manifest store. The instruction remains ephemeral; retain its version selection with
 the task through the supported task snapshot/continuation mechanism, without
 introducing a separate persistent BuildInstruction table.
 
@@ -300,7 +311,7 @@ Create an input table before writing PythonCode:
 
 The table is a specification, not evidence that capture is wired.
 
-### Current capture semantics
+### Legacy capture semantics (not the ordinary retained input contract)
 
 1. The intent system selects a matched template and variant. A match alone does
    not produce typed, trusted Tool arguments.
@@ -336,7 +347,7 @@ with different argument positions require their own verified layouts.
 ### Verify which path receives the template
 
 The retrieval path calls `capture_variables(matched_template, query, patterns)`.
-The currently inspected `PgCompositionPort::compose_with_pool` instead calls
+The legacy `PgCompositionPort::compose_with_pool` calls
 `capture_variables(user_input, user_input, patterns)`; its public compose call
 does not carry the matched template. Ordinary concrete messages containing no
 `%` therefore yield no positional slots on that path.
@@ -348,7 +359,7 @@ into user messages as a workaround.
 
 ## 5. Keep captured values as data, never executable source
 
-The current composer uses plain string replacement for `{{vars.NAME}}`. It
+The legacy composer uses plain string replacement for `{{vars.NAME}}`. It
 does not escape Python literals or reparse the substituted program before
 returning it. A stored body's validated status does not certify the substituted
 body.
@@ -366,8 +377,9 @@ protect the earlier substitution.
 
 ### Binding convention for the v3 target
 
-The following defines the required authoring/IBS contract. It requires runtime
-and schema support; it is not a claim that today's composer implements it.
+The following defines the authoring/IBS contract. The ordinary retained input
+path implements typed bindings and recursive validation. Legacy composers and
+unmigrated seeds must be converted before they can use that path.
 
 1. Input names MUST match `[a-z][a-z0-9_]*`, be unique within the variant, and
    be declared with type, required/default behavior and validation rules.
@@ -393,9 +405,8 @@ and schema support; it is not a claim that today's composer implements it.
 6. The target PythonCode input convention is `inputs["local_name"]`: a
    runtime-provided mapping for that step. For example,
    `result = host.some_tool(value=inputs["value"])` consumes data without
-   modifying source. `inputs` is a required target interface specified here,
-   not an existing guaranteed VM symbol. Do not deploy bodies using it until
-   the actual runner implements and verifies this contract.
+   modifying source. The retained runner supplies this mapping for the selected invocation.
+   Do not assume the legacy executor provides the same contract.
 7. Pure-logic components perform transformations and formatting explicitly.
    To construct a message or URL, use component code over typed inputs; do not
    embed expressions in placeholders or interpolate values into Python source.
@@ -437,7 +448,7 @@ Rules:
   components, create several ordered steps, each referencing one component.
   This applies to ToolSkills, PythonCode and Skill context components. Never
   place several PythonCode UUIDs in one step and expect their bodies to be
-  combined. The current composer silently skips additional PythonCode bodies
+  combined. The legacy composer can skip additional PythonCode bodies
   after selecting the first nonempty one; such a step is an authoring error.
   Authoring/validation MUST reject empty or multi-component `include` lists
   for component steps. Verify enforcement; this document does not add it.
@@ -458,8 +469,10 @@ Rules:
   orchestrator PythonCode that calls the Tool. A binding does not execute it.
 - ToolSkill UUIDs stay on the Rust channel. Skill prose stays off that channel.
 - Tier-0 executable steps MUST reference class 22, never Skill prose.
-- One PythonCode body contains one independent `host.<tool>(...)` call. Pure
-  logic with zero host calls is allowed. Assign `result = <value>` in every body.
+- One usage contains one independent `host.<tool>(...)` call. Pure
+  logic with zero host calls is allowed. Current retained preloads define and
+  return from declared exports; `result = <value>` describes historical body
+  execution only. Do not mix legacy bodies into a preloaded namespace.
 - Author PythonCode at the smallest useful reusable grain. Separate reusable
   pure-logic operations from Tool usages where their contracts allow it. Search
   for existing component UUIDs before writing new bodies. Assemble programs by
@@ -485,15 +498,13 @@ step and argument, and transport/checkpoint mechanism. Distinguish the local
 Python `result`, the Tool's payload and `host.run_program`'s outer response
 (`ok`, `return_value`, `stdout`, `error`). They are not interchangeable.
 
-The target is one Recipe execution context owned by Monty, preserving needed
-results across steps and waits while isolating unrelated tasks and attempts.
-Currently `host.run_program` and the Tier-0 channel runner create fresh state
-per step. A local variable created in step A is not automatically available in
-step B. Do not write an undefined `previous_result`, interpolate runtime output
-as new Python source, or combine independent calls to conceal this gap. Use a
-verified handoff, the valid dependent-chain exception, or document the missing
-runtime implementation. Do not assume `assembled_program` is the execution
-path merely because its concatenated source would share scope.
+The retained ordinary runner provides task-owned context and explicit typed
+result bindings across selected steps and waits. It preserves task/attempt/input
+isolation; a Python local in one invocation is not an implicit variable in the
+next. Use the declared result/field edge, never source interpolation or an
+undefined ambient `previous_result`. Legacy fresh-step execution is not the v3
+handoff contract. Complete crash continuation and dynamic repeated occurrences
+remain separate open work; VM memory is not a durable checkpoint.
 
 ## 7. Emit the actual persisted IBS schema
 

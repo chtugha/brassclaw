@@ -678,7 +678,7 @@ impl crate::global_recipe_ports::InternalRecipeSource for CompilerFlowSource {
         Ok(crate::global_recipe_ports::SelectedMontyRecipe {
             normal_match: None,
             inspected: self.inspected.clone(),
-            inputs: Some(self.inputs.clone()),
+            inputs: Some(self.inputs.clone().into()),
             tools: Some(self.tools.clone()),
         })
     }

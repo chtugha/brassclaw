@@ -35,6 +35,10 @@ pub trait SessionThreadService: Send + Sync {
         request: ReplayAcceptedInboundMessageRequest,
     ) -> Result<Option<AcceptedInboundMessageReplay>, SessionThreadError>;
 
+    /// Bind only an accepted/deferred user message to the coordinator's exact
+    /// turn/run pair. Repeating that pair acknowledges the same binding;
+    /// another pair, message kind or redacted/terminal state cannot replace it.
+    /// This records references, never lifecycle authority.
     async fn mark_message_submitted(
         &self,
         scope: &ThreadScope,

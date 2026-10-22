@@ -18,6 +18,20 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- Atomic scoped inbound message receipts (V176), with coherent legacy backfill,
+  exact event/actor/input identity and transactional transcript/turn admission.
+  Preserve original accepted input and child IDs across actual lost database
+  acknowledgements; reject corrupt/ambiguous legacy receipt graphs explicitly.
+- Native explicit child-task handoff with original parent claim/invocation,
+  inherited immutable catalogue, same-global-VM execution, dependent admission,
+  full correlated replies and classified failed/cancelled/recovery outcomes.
+  Parent/bootstrap activation and all five legacy subagent Recipe migrations
+  remain separate open gates.
+- A consolidated implementation/status and plan-ownership index, current remaining
+  steps across simplified/validator/composition/prefix/v3.5 work, and refreshed
+  authoring/architecture guidance. Replace overlapping implementation instructions
+  with references to their canonical owners; preserve dated evidence as history.
+
 - Six registered prefix profiles, immutable source/generation artifacts and release
   inventories, with durable source-only compilation and measurement through the
   existing global Monty admission path. Add the installed Sempai v5 source profile
@@ -42,8 +56,9 @@ not claim a full merged release qualification or a testmachine deployment.
   coding read/write/patch, scan, directory and diff controls in English and German.
 - Task-bound native child-service binding and an explicit selected-Recipe entry
   that avoids rematching typed child inputs. Preserve the retained implementation,
-  kernel checks and original service resolution; complete production child
-  admission/provenance/wait/cancellation integration remains in progress.
+  kernel checks and original service resolution. Native admission/provenance and
+  correlated terminal waits now exist; parent bootstrap/activation, full legacy
+  migration, saturation and durable restart recovery remain open.
 - Retained Skill function preloading with pinned exports and dependency graphs,
   typed invocation data, structural validation and task-local mutable state.
 - MCP Recipe discovery and immutable command qualification against real settled
@@ -69,6 +84,14 @@ not claim a full merged release qualification or a testmachine deployment.
   older exchanges and visible desired/effective capacity in the WebUI.
 
 ### Changed
+
+- Consolidate development on the common `main` source/index and one serial Cargo
+  target. Retire mutable validation build mirrors and the second target cache;
+  retain immutable source/binary/receipt evidence separately.
+- Describe the implemented retained typed-input/preload/revision/activation paths
+  separately from the legacy composer. Keep the remaining standalone pure approval,
+  dynamic occurrence, full validator/library, prefix serving and recovery gates
+  explicit instead of treating completed infrastructure as absent.
 
 - Preserve canonical provider selection and exact request preparation through model
   wrappers and internal inference. Carry host-known pre-dispatch non-entry evidence
@@ -121,6 +144,28 @@ not claim a full merged release qualification or a testmachine deployment.
   their existing namespace; full catalogue-prefix caching remains unfinished.
 
 ### Fixed
+
+- Align pregenerated Oniguruma encoding bindings with their generator by removing
+  invalid function-pointer equality derives, resolving the compiler warning
+  without suppressing it or changing the native representation. Share one
+  loopback HTTP fixture module across native-model and HTTP usage tests instead
+  of loading its source twice under different module identities.
+- Keep exact submitted-message acknowledgements read-only and reject rebinding,
+  wrong message kinds and redacted inputs consistently across transcript stores.
+  Protect zero-version/raced PostgreSQL thread identity and checked sequence/
+  snapshot generation exhaustion. Reject a foreign tenant scope before thread
+  creation or persistence, rather than writing an unreadable mixed identity.
+- Make claimed-child reservation release idempotent after a lost COMMIT reply;
+  preserve sibling reservations, cancellation below terminal ancestors and
+  original received results through failed acknowledgement.
+- Release redundant native answer payloads only after the original durable
+  journal acknowledgement. Failed/unknown outcomes keep their recovery owner;
+  neither settlement nor result validation replays an external effect.
+- Include the actual nullable sanitized child-failure object in the closed usage
+  contract, declare the complete parent review's pure completion export and use
+  its actual runtime identity for the private parent/child integration check.
+  Combined-source acceptance is recorded separately; this checkpoint does not
+  qualify or activate the five legacy parent workflows.
 
 - Reconcile model preparation failures with the exact primary reservation, retain
   independent Sempai spend and unknown effects, and distinguish confirmed non-entry

@@ -26,6 +26,48 @@ use brassclaw_threads::{
 };
 use chrono::Utc;
 
+#[path = "common/inbound_atomic.rs"]
+mod inbound_atomic;
+
+#[tokio::test]
+async fn filesystem_event_claim_is_unique_and_input_is_immutable() {
+    let backend = Arc::new(InMemoryBackend::new());
+    let filesystem = scoped_threads_fs_at(backend, "tenant-atomic-event", "user-atomic-event");
+    inbound_atomic::exercise(
+        Arc::new(FilesystemSessionThreadService::new(filesystem)),
+        scope("atomic-event"),
+    )
+    .await;
+}
+
+#[path = "common/inbound_replay.rs"]
+mod inbound_replay;
+
+#[tokio::test]
+async fn replay_lookup_preserves_exact_scope_and_actor() {
+    let backend = Arc::new(InMemoryBackend::new());
+    let filesystem = scoped_threads_fs_at(backend, "tenant-replay", "user-replay");
+    inbound_replay::exercise(
+        &FilesystemSessionThreadService::new(filesystem),
+        scope("replay-scope"),
+    )
+    .await;
+}
+
+#[path = "common/submission_binding.rs"]
+mod submission_binding;
+
+#[tokio::test]
+async fn filesystem_submission_acknowledgement_preserves_original_identity_and_message_kind() {
+    let backend = Arc::new(InMemoryBackend::new());
+    let filesystem = scoped_threads_fs_at(backend, "tenant-submission", "user-submission");
+    submission_binding::exercise(
+        &FilesystemSessionThreadService::new(filesystem),
+        scope("submission"),
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn filesystem_delete_thread_removes_owned_thread_and_hides_missing_or_wrong_scope() {
     let backend = Arc::new(InMemoryBackend::new());
@@ -678,7 +720,7 @@ async fn durable_history_flow(service: &impl SessionThreadService, label: &str) 
             source_binding_id: Some("telegram-thread-1".into()),
             reply_target_binding_id: Some("telegram-thread-1".into()),
             external_event_id: Some("telegram-event-1".into()),
-            content: MessageContent::text("retry payload ignored"),
+            content: MessageContent::text("secret token"),
         })
         .await
         .unwrap();

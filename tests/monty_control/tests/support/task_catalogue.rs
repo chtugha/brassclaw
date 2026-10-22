@@ -192,7 +192,7 @@ impl MontyTaskCatalogue for ValidationCatalogue {
                 return Ok(MontyIntentSelection::Match(SelectedMontyRecipe {
                     normal_match: Some(Box::new(normal_match)),
                     inspected,
-                    inputs: Some(inputs),
+                    inputs: Some(inputs.into()),
                     tools: Some(tools),
                 }));
             }

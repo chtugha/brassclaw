@@ -111,7 +111,7 @@ pub(super) struct Admitted {
     pub(super) host: Arc<MontyTaskHost>,
     pub(super) input: Value,
     pub(super) admission: Arc<PgMontyAdmission>,
-    state: Arc<PgTurnStateStore>,
+    pub(super) state: Arc<PgTurnStateStore>,
     pub(super) attempt: MontyTaskAttempt,
 }
 pub(super) async fn admit(
@@ -119,16 +119,56 @@ pub(super) async fn admit(
     identity: &str,
     answer: &str,
 ) -> Result<Admitted, RebornBuildError> {
+    prepare_admission(pool, identity, answer, AdmissionMode::Contained).await
+}
+
+/// Reserve a real installation-review parent without starting VM execution.
+/// The owner must retain its captured catalogue, live claim and scheduled ports
+/// before dispatch. This supplies no approval, activation or child authority by
+/// itself; the native child owner still verifies every original reference.
+#[cfg(test)]
+pub(super) async fn reserve_child_review_parent(
+    pool: Arc<PgPool>,
+    identity: &str,
+    reference: &str,
+) -> Result<Admitted, RebornBuildError> {
+    prepare_admission(pool, identity, reference, AdmissionMode::RetainedParent).await
+}
+
+#[derive(Clone, Copy)]
+enum AdmissionMode {
+    Contained,
+    #[cfg(test)]
+    RetainedParent,
+}
+
+async fn prepare_admission(
+    pool: Arc<PgPool>,
+    identity: &str,
+    answer: &str,
+    mode: AdmissionMode,
+) -> Result<Admitted, RebornBuildError> {
     let tenant = TenantId::new(NAMESPACE).map_err(invalid)?;
     let agent = AgentId::new(identity).map_err(invalid)?;
-    let project = ProjectId::new("contained").map_err(invalid)?;
     let actor = UserId::new("installation-owner").map_err(invalid)?;
+    let (project, owner) = match mode {
+        AdmissionMode::Contained => (Some(ProjectId::new("contained").map_err(invalid)?), None),
+        #[cfg(test)]
+        AdmissionMode::RetainedParent => (None, Some(actor.clone())),
+    };
+    let source_binding = match mode {
+        AdmissionMode::Contained => "bootstrap-internal",
+        #[cfg(test)]
+        AdmissionMode::RetainedParent => {
+            brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING
+        }
+    };
     let conversation = ThreadId::new(format!("{identity}-{}", Uuid::new_v4())).map_err(invalid)?;
     let scope = ThreadScope {
         tenant_id: tenant.clone(),
         agent_id: agent.clone(),
-        project_id: Some(project.clone()),
-        owner_user_id: None,
+        project_id: project.clone(),
+        owner_user_id: owner,
     };
     let threads = Arc::new(PgSessionThreadService::new(pool.clone(), tenant.as_str()));
     threads
@@ -146,28 +186,44 @@ pub(super) async fn admit(
             scope: scope.clone(),
             thread_id: conversation.clone(),
             actor_id: actor.to_string(),
-            source_binding_id: Some("bootstrap-internal".into()),
-            reply_target_binding_id: Some("bootstrap-internal".into()),
+            source_binding_id: Some(source_binding.into()),
+            reply_target_binding_id: Some(source_binding.into()),
             external_event_id: None,
             content: MessageContent::text(answer),
         })
         .await
         .map_err(invalid)?;
-    let turn_scope = TurnScope::new(
-        tenant.clone(),
-        Some(agent),
-        Some(project),
-        conversation.clone(),
-    );
+    let turn_scope = match mode {
+        AdmissionMode::Contained => {
+            TurnScope::new(tenant.clone(), Some(agent), project, conversation.clone())
+        }
+        #[cfg(test)]
+        AdmissionMode::RetainedParent => TurnScope::new_with_owner(
+            tenant.clone(),
+            Some(agent),
+            project,
+            conversation.clone(),
+            scope.owner_user_id.clone(),
+        ),
+    };
     let state = Arc::new(PgTurnStateStore::new(pool.clone(), tenant.as_str()));
-    DefaultTurnCoordinator::new(state.clone())
+    let coordinator = DefaultTurnCoordinator::new(state.clone());
+    #[cfg(test)]
+    let coordinator = match mode {
+        AdmissionMode::Contained => coordinator,
+        AdmissionMode::RetainedParent => coordinator.with_run_profile_resolver(Arc::new(
+            brassclaw_reborn::planned_driver_factory::default_planned_run_profile_resolver()
+                .map_err(invalid)?,
+        )),
+    };
+    coordinator
         .submit_turn(SubmitTurnRequest {
             scope: turn_scope.clone(),
             actor: TurnActor::new(actor),
             accepted_message_ref: AcceptedMessageRef::new(format!("msg:{}", accepted.message_id))
                 .map_err(invalid)?,
-            source_binding_ref: SourceBindingRef::new("bootstrap-internal").map_err(invalid)?,
-            reply_target_binding_ref: ReplyTargetBindingRef::new("bootstrap-internal")
+            source_binding_ref: SourceBindingRef::new(source_binding).map_err(invalid)?,
+            reply_target_binding_ref: ReplyTargetBindingRef::new(source_binding)
                 .map_err(invalid)?,
             requested_run_profile: None,
             idempotency_key: IdempotencyKey::new(Uuid::new_v4().to_string()).map_err(invalid)?,
@@ -212,6 +268,11 @@ pub(super) async fn admit(
             .ok_or_else(|| invalid("bootstrap actor missing"))?,
     )
     .with_accepted_message_ref(claimed.state.accepted_message_ref.clone());
+    #[cfg(test)]
+    let context = match mode {
+        AdmissionMode::Contained => context,
+        AdmissionMode::RetainedParent => context.with_trusted_internal_turn(),
+    };
     let attempt = MontyTaskAttempt {
         run_id: claimed.state.run_id,
         runner_id: claimed.runner_id,
@@ -219,7 +280,9 @@ pub(super) async fn admit(
     };
     let admission = Arc::new(PgMontyAdmission::prepare(pool, &context, attempt).map_err(invalid)?);
     admission.persist_reservation().await.map_err(invalid)?;
-    admission.check_and_start().await.map_err(invalid)?;
+    if matches!(mode, AdmissionMode::Contained) {
+        admission.check_and_start().await.map_err(invalid)?;
+    }
     let cancellation_owner = Arc::new(TurnStateRunCancellationFactory::new(state.clone()));
     let cancellation = RunStateLoopCancellationPort::new(
         cancellation_owner
@@ -232,18 +295,20 @@ pub(super) async fn admit(
         cancellation,
         _cancellation_owner: cancellation_owner,
     });
-    let host = Arc::new(MontyTaskHost::new(
-        MontyTaskHandoff::new(
-            AgentLoopDriverRunRequest {
-                turn_id: context.turn_id,
-                run_id: context.run_id,
-                resolved_run_profile: context.resolved_run_profile.clone(),
-            },
-            attempt,
-            host,
-        )
-        .map_err(invalid)?,
-    ));
+    let request = AgentLoopDriverRunRequest {
+        turn_id: context.turn_id,
+        run_id: context.run_id,
+        resolved_run_profile: context.resolved_run_profile.clone(),
+    };
+    let handoff = match mode {
+        AdmissionMode::Contained => MontyTaskHandoff::new(request, attempt, host),
+        #[cfg(test)]
+        AdmissionMode::RetainedParent => {
+            MontyTaskHandoff::new_claimed(request, Arc::new(claimed), host)
+        }
+    }
+    .map_err(invalid)?;
+    let host = Arc::new(MontyTaskHost::new(handoff));
     Ok(Admitted {
         host,
         admission,

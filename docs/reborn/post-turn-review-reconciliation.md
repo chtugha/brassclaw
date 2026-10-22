@@ -1,5 +1,13 @@
 # Post-turn review reconciliation and native release
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 The operator’s **Reconcile retained effects and accounting** action is in Settings’
 validation panel. It performs native evidence/accounting recovery, never a second
 Sempai review. Recording an observation remains a separate action.

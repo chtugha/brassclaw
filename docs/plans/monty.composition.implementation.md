@@ -1,29 +1,52 @@
 # monty.composition — component implementation instructions
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
+## Remaining implementation — consolidated 2026-10-22
+
+This appendix supplies the detailed component/usage designs for the
+[composition owner's remaining steps](monty.composition.md#remaining-implementation--consolidated-2026-10-22).
+Its examples are not allocated/activated components. Resolve canonical identities,
+replace historical bodies with declared preload exports, bind typed inputs and
+qualify each exact graph/native implementation through the existing stores and
+runner. Reuse compatible helpers; do not create a second copy for every consumer.
+
+- Complete each legacy/new/proposed entry's exact recursive contract, executable
+  association, export/dependency graph, canonical Recipe/command, actual adapter
+  and required evidence; mark reuse/retirement explicitly in the coverage ledgers.
+- R09 requires the complete parent/global/export/result path, authentic packaged
+  qualification and all five subagent migrations. The explicit native primitive
+  exists; the legacy receipt is not completion. Failed/cancelled/recovery outcomes
+  must be handled without empty success or replay. See R09's finite-profile rules.
+- R10 remains blocked on faithful raw acquisition/source identity, not on another
+  text formatter. Numbered reads cannot reconstruct originals. Complete its
+  primitive/usage qualification before doc-convert/doc-sync consumers activate.
+- General standalone pure approval is implemented by validator/V35-03/04; dynamic
+  branch/item/occurrence support by V35-13/14. Reuse those results. Current selected
+  flat preload execution is implemented and is not a reason to rebuild a loader.
+- Prefix/model/design/compiler work remains in the prefix plan; Sempai business
+  conversion remains in path_to_v3.5. Component examples here may supply reusable
+  units to those owners without taking over their job/approval/recovery machinery.
+
+Acceptance and retirement are owned by composition §7 and its remaining-work
+section. Source-only examples, stored drafts and a successful standalone export
+cannot establish ordinary activation or full-library completion.
+
 ## Reply/history migration review gate
 
-The existing packaged `host-post-reply` and `host-save-history` Recipes, their
-associated Skills and PythonCode are migration inputs, **not qualified current-v3
-implementations to reuse unchanged**. Updating these exact workflows is the parent
-task; implementing the qualified preload/export adapter is its prerequisite.
-
-Before selecting a successor, independently review the actual retained definitions,
-interfaces, bindings, dependency graph, typed input/result handoffs and global-runtime
-callers against `recipe.md`, `skills.md` and section 24 of `monty.composition.md`.
-Upgrade the usages and Recipes for effect-free dependency-first loading, explicit
-pinned export invocation, isolated mutable state and current kernel enforcement.
-Complete the applicable exact-combination bootstrap/approval and behavioral evidence
-before activation. Names, existing package status, old acceptance receipts and the
-word “canonical” do not qualify the unchanged implementation.
-
-Preserve compatible stable UUIDs and old task selections when that reviewed migration
-supports them; do not copy deprecated source substitution, ambient step state,
-module-level Tool execution or unsafe retry guidance into the new adapter. Review
-reply/history ownership, both routing branches, history framing, finalization and
-no-replay behavior together after the adapter is qualified. Keep these internal
-usages out of public MCP discovery unless a separately qualified public contract
-explicitly permits exposure. The commented instructions below are historical only.
-
+The retained reply/history successors and preload/export adapter now have scoped
+ordinary-global evidence; packaged public reply also has ordinary MCP/chat/provider
+acceptance. Reuse those exact qualified versions through existing selection and
+activation owners. Earlier instructions to implement an absent adapter are
+historical. A new successor still requires its complete interface/binding/native
+and behavior qualification; names and labels alone never establish it. Preserve
+old tasks and no-replay completion; internal history remains private.
 
 **MCP discovery/provider lifecycle:** derive tools/list from available approved mcp-call-skill-recipes and their exact command variants. The server remains running; Kohai connects/advertises only after final prefix addition immediately before prompt send and disconnects on the complete model answer. Refresh the server list at startup/restart and qualified Skill/Recipe catalogue changes. Preserve request-local advertised contracts and ordinary-chat result recovery; see [the authoritative lifecycle](monty.composition.md#recipe-derived-discovery-and-kohai-owned-provider-connections).
 
@@ -37,7 +60,7 @@ This appendix is part of [monty.composition](monty.composition.md). It implement
 
 All Skill instructions in this appendix use the [updated binding definition](../../skills.md#preloadable-function-interface-binding-v3-target). A Skill contains prose plus an approved exported function interface, not a top-level script to regenerate per invocation. Preload functions/helpers and immutable constants in deterministic dependency-first order; then invoke the pinned selected export with typed parameters. The class-22 reference remains the canonical component reference, not a new copy of its body per Recipe. Pure helper code remains PythonCode and does not become a Skill.
 
-Public names and implementation symbols below are proposed interface declarations to reconcile with canonical UUIDs. Store the export table/signatures/dependencies in checksummed Skill revision content through a supported retained representation; do not append invented fields to skill-association/1, legacy constructors or Recipe JSON. The task manifest pins exact symbol-to-code/Skill association and Tool implementation resolution. Current direct step-body inspection needs function-aware loading and full call-graph validation before these function examples are accepted by the real runner. No current runtime acceptance is claimed.
+Public names and implementation symbols below are proposed interface declarations to reconcile with canonical UUIDs. Store the export table/signatures/dependencies in checksummed Skill revision content through a supported retained representation; do not append invented fields to skill-association/1, legacy constructors or Recipe JSON. The task manifest pins exact symbol-to-code/Skill association and Tool implementation resolution. Function-aware loading and reachable-call validation now exist in the retained runner. Each example still needs actual identity, association, schema and behavior qualification before activation; do not confuse this design appendix with that evidence.
 
 Loading has no effects and grants no Tool availability. Each invocation still needs its matching ToolSkill binding and live kernel checks. All transitively called helpers inherit the selected task binding context, never an ambient authority object. Immutable code/constants may be shared; mutable arrays/defaults/closures/results remain invocation/task/attempt-owned. Defaults are materialized anew only for missing inputs. Independent calls remain separate execution steps; declared retry/effect/recovery rules apply to actual dispatches inside functions, not merely to the number of source call sites.
 
@@ -4967,7 +4990,9 @@ result = {"op": "mark_stale"}
 result = {"goal": inputs["goal"], "context": inputs["context"]}
 ```
 
-**Required execution step (blocked child adapter profile):** reuse existing actual supported child admission/dispatch primitive and scheduler when they implement the final-v3 global service contract. Determine real callable, parameters, parent/run/attempt identity, inherited retained snapshot, result/wait handles, cancellation/budget and effect semantics before writing the one-call executor/associated Skill/ToolSkill. Do not invent host.spawn_child, treat authorization as completion, or start a second Monty/per-chat VM. The actual primitive body in first_party_tools/spawn_subagent.rs returns only authorized:true; registration plus that result is insufficient. Explicit wait/result handling belongs to Recipe/global continuation support; runner errors never become empty successful child results. Consumers: all five seeded subagent Recipes, research/review child jobs and future reusable task decomposition. Always Tier1. If direct typed mapping suffices, omit the preparer and keep only the qualified admission usage. Test identical goal/context transport, old-snapshot retention across child/wait, stale attempt/cancel fencing and missing/unknown child outcome. Keep atomic; no domain-specific child Rust workflow Tool.
+**Required execution step (qualification still pending):** reuse the existing actual child admission/dispatch primitive and scheduler. The explicit native profile now accepts `host.spawn_subagent(workflow={recipe_id, variant}, inputs={...})`; the task-bound owner verifies the original parent claim/native invocation, validates the selected public workflow and recursive inputs before effects, and admits through the shared turn coordinator. The global Monty child keeps the parent's captured catalogue and exact typed selection, without rematching, reading latest or entering Tier 2. Its actual terminal run/reply is distinct from admission. The separate legacy flavor/task profile still returns an authorization receipt and must be retired together with its callers; it is not a fallback for this explicit profile. Do not invent host.spawn_child, treat authorization as completion, or start a second Monty/per-chat VM. The current scoped native evidence is recorded under the 2026-10-22 child-owner/reservation milestones in [the implementation ledger](simplified-v3-implementation.md); it does not approve/activate a parent export or migrate the five seeded Recipes. Finish exact Skill/code/ToolSkill contracts, noncircular installation-owned qualification, retained-artifact integrity, cancellation/admission uncertainty and parent Monty-export acceptance before activation. Each reusable usage declares its actual recursive child-input profile; `allow_extra_fields: true` requires an explicit `extra_fields` schema, not an untyped arbitrary map. Explicit wait/result handling belongs to Recipe/global continuation support; runner errors never become empty successful child results. Consumers: all five seeded subagent Recipes, research/review child jobs and future reusable task decomposition. Always Tier1. If direct typed mapping suffices, omit the preparer and keep only the qualified admission usage. Test identical goal/context transport, old-snapshot retention across child/wait, stale attempt/cancel fencing and missing/unknown child outcome. Keep atomic; no domain-specific child Rust workflow Tool.
+
+**Parent review successor (2026-10-22, source complete; executable acceptance pending):** the closed review now includes a complete parent Recipe on the instance's already-running global VM: a Rust binding, its associated preloaded child export, and a separate pure completion step consuming the typed child result. Its private source retains the actual captured catalogue reference for native invocation provenance. This does not approve a draft, activate public routing or start another orchestrator. A separate real case blocks the child's reply Tool after capture and expects the actual sanitized failed outcome, no reply, no retry and no Tier-2 model call. The result schema must include optional nullable `failure:{category:string}` as actually emitted; absent and null remain distinct. Failed/uncertain owners stay retained for recovery. Full installation bootstrap, ordinary parent activation, the five seed migrations and unreadable/restart cases remain required.
 
 ### Coverage acceptance for these dependencies
 

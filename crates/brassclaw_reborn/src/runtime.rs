@@ -228,6 +228,7 @@ where
     pub driver_registry: Arc<DriverRegistry>,
     pub run_profile_resolver: Arc<dyn RunProfileResolver>,
     pub coordinator: Arc<dyn brassclaw_turns::TurnCoordinator>,
+    pub child_runs: Arc<dyn TurnSpawnTreePort>,
     pub host_factory: Arc<RebornLoopDriverHostFactory<S, G>>,
     pub worker: Arc<TurnRunnerWorker>,
     pub wake_sender: TurnRunnerWakeSender,
@@ -527,7 +528,7 @@ where
     let spawn_decorator = Arc::new(SubagentSpawnCapabilityDecorator::new(
         SubagentSpawnDeps {
             coordinator: Arc::clone(&coordinator) as Arc<dyn brassclaw_turns::TurnCoordinator>,
-            child_runs,
+            child_runs: child_runs.clone(),
             turn_state_store: Arc::clone(&parts.turn_state) as Arc<dyn TurnSpawnTreeStateStore>,
             thread_service: Arc::clone(&parts.thread_service),
             goal_store: Arc::clone(&parts.subagent_goal_store) as Arc<dyn SubagentSpawnGoalStore>,
@@ -658,6 +659,7 @@ where
             driver_registry,
             run_profile_resolver,
             coordinator,
+            child_runs,
             host_factory,
             worker,
             wake_sender,

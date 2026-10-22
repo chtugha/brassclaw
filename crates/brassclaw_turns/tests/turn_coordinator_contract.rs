@@ -7486,6 +7486,76 @@ async fn terminal_intermediate_is_retained_until_its_descendants_are_prunable() 
     );
 }
 
+#[tokio::test]
+async fn terminal_root_tree_cancellation_reaches_live_descendants_without_reopening_parent() {
+    let (coordinator, store) = coordinator();
+    let root = accepted_run_id(
+        &coordinator
+            .submit_turn(submit_request(
+                "finished-tree-root",
+                "finished-tree-root-submit",
+            ))
+            .await
+            .unwrap(),
+    );
+    let middle = TurnRunId::new();
+    let leaf = TurnRunId::new();
+    coordinator
+        .submit_child_run(child_run_request(
+            scope("finished-tree-root"),
+            root,
+            "finished-tree-middle",
+            middle,
+            "finished-tree-middle-submit",
+            3,
+        ))
+        .await
+        .unwrap();
+    coordinator
+        .submit_child_run(child_run_request(
+            scope("finished-tree-middle"),
+            middle,
+            "finished-tree-leaf",
+            leaf,
+            "finished-tree-leaf-submit",
+            3,
+        ))
+        .await
+        .unwrap();
+    complete_queued_run(&store, middle, "finished-tree-middle").await;
+    complete_queued_run(&store, root, "finished-tree-root").await;
+    let request = cancel_request("finished-tree-root", root, "finished-tree-cancel");
+    let responses = coordinator.cancel_tree(request.clone()).await.unwrap();
+    assert_eq!(responses.len(), 2);
+    let root_response = responses
+        .iter()
+        .find(|(_, response)| response.run_id == root)
+        .unwrap();
+    assert!(root_response.1.already_terminal);
+    assert_eq!(root_response.1.status, TurnStatus::Completed);
+    assert_eq!(
+        responses
+            .iter()
+            .find(|(_, response)| response.run_id == leaf)
+            .unwrap()
+            .1
+            .status,
+        TurnStatus::Cancelled
+    );
+    let snapshot = store.persistence_snapshot();
+    assert_eq!(
+        snapshot
+            .runs
+            .iter()
+            .find(|record| record.run_id == middle)
+            .unwrap()
+            .status,
+        TurnStatus::Completed
+    );
+    coordinator.cancel_tree(request).await.unwrap();
+    assert_same_tree_snapshot(&store.persistence_snapshot(), &snapshot);
+}
+
 #[derive(Default)]
 struct ChildAdmissionBarrier {
     started: tokio::sync::Notify,

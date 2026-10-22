@@ -30,10 +30,11 @@ not completed runtime or database functionality.
   Orchestrator-channel PythonCode calls `host.<tool>(...)`. Only an actual
   No-Match enters Tier 2; errors or begun Recipe failures never replay there.
 
-Current code still has plain text substitution, fresh state in nested step
-execution and incomplete immutable version manifests/binding preparation. The
-new typed inputs interface and strict single-component validation require
-implementation and production-path acceptance; do not claim these are shipped.
+The legacy composer still contains source-substitution and historical step-body
+paths. Ordinary PostgreSQL/skills-db execution uses immutable retained selections,
+typed inputs, checked single-component steps and preloaded exports on the global
+Monty service. Full-library migration, general pure approval, dynamic occurrences
+and durable recovery remain open; see the current implementation status index.
 
 > **Subsystem:** Sempai-Kohai — the prompt interceptor that **memorizes, optimizes, and
 > finalizes** LLM prompts. The Kohai is the working LLM (always on); the Sempai is an optional

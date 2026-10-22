@@ -2,6 +2,21 @@
 //! coordinator, lifecycle wrapper and snapshot aggregate, not R09 activation.
 use std::sync::Arc;
 
+#[path = "../../brassclaw_threads/tests/common/inbound_atomic.rs"]
+mod inbound_atomic_contract;
+
+#[path = "../../brassclaw_threads/tests/common/inbound_replay.rs"]
+mod inbound_replay_contract;
+
+#[path = "../../brassclaw_threads/tests/common/submission_binding.rs"]
+mod submission_binding_contract;
+
+#[path = "claimed_child_reservation_tests.rs"]
+mod reservation_tests;
+
+#[path = "pg_message_submission_tests.rs"]
+mod message_submission_tests;
+
 use brassclaw_host_api::{AgentId, TenantId, ThreadId, UserId};
 use brassclaw_threads::{
     AcceptInboundMessageRequest, EnsureThreadRequest, MessageContent, PgSessionThreadService,

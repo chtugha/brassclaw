@@ -682,6 +682,16 @@ where
             .release_tree_descendants(scope, root_run_id, delta)
             .await
     }
+
+    async fn release_claimed_child_reservation(
+        &self,
+        scope: &crate::TurnScope,
+        child: TurnRunId,
+    ) -> Result<(), TurnError> {
+        self.inner
+            .release_claimed_child_reservation(scope, child)
+            .await
+    }
 }
 
 #[async_trait]

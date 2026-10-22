@@ -1,5 +1,13 @@
 # Tool definition and authoring instructions — final v3
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 ## Binding preloadable Skill interface (v3)
 
 A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
@@ -29,7 +37,9 @@ as a user message, forwards the correlated chat result and closes the chat.
 It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
 the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
 per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
-This is a binding target, not proof of implemented loader/store/runner support.
+Selected retained loader/store/runner support is implemented; this contract
+does not certify every workflow or the complete migration. See
+[the current implementation status](docs/implementation-status.md).
 Current-source observations and historical step-body examples below must be
 migrated to this interface before being accepted as updated v3 implementations.
 
@@ -408,8 +418,8 @@ requirements; this guide does not implement durable recovery.
 These examples illustrate definitions and expected source behavior, not
 activated components, production-path test evidence or guaranteed callable
 adapters. Resolve actual UUIDs, compatible registrations, ToolSkills and approved
-usage associations before execution. The target `inputs` mapping still requires
-runner support. No archive `source: system` field grants permission.
+usage associations before execution. On the retained path `inputs` is supplied
+by the invocation; legacy callers must migrate to that supported runner. No archive `source: system` field grants permission.
 
 ### A. Read a line interval: one Tool, several reusable usages
 
@@ -601,9 +611,12 @@ provide initial live-policy infrastructure. Legacy grants/approval paths still
 exist. These pieces do not certify a complete production cutover for every
 host operation. Verify the selected production caller before making that claim.
 
-The global Monty lifecycle, typed input interface, recursive binding validation,
-immutable implementation retention and exact association approval records require
-coordinated implementation and acceptance. This file creates none of those paths.
+The global Monty service, typed retained inputs/recursive bindings, immutable
+component revisions and exact association approval paths are implemented for
+selected qualified graphs. Native identity/integrity and current Tool policy are
+checked at actual dispatch. Full-library migration, cross-upgrade native artifact
+loading and durable recovery remain open; reuse the existing owners in the
+status index instead of recreating them.
 
 ## 12. Acceptance and authoring checklist
 

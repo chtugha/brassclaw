@@ -626,9 +626,11 @@ mod key_cleanup_tests {
         // report the recovery location and never overwrite the new pathname.
         let error =
             finish_captured_key_cleanup(&path, &captured_directory, &replacement).unwrap_err();
-        assert!(error
-            .to_string()
-            .contains(&captured_directory.display().to_string()));
+        assert!(
+            error
+                .to_string()
+                .contains(&captured_directory.display().to_string())
+        );
         assert_eq!(
             brassclaw_reborn_composition::secrets_master::read_raw_master_key(&captured)
                 .unwrap()

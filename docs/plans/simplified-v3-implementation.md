@@ -29,7 +29,9 @@ as a user message, forwards the correlated chat result and closes the chat.
 It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
 the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
 per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](../../skills.md#preloadable-function-interface-binding-v3-target).
-This is a binding target, not proof of implemented loader/store/runner support.
+Selected retained loader/store/runner support is implemented; this contract
+does not certify every workflow or the complete migration. See
+[the current implementation status](../implementation-status.md).
 Current-source observations and historical step-body examples below must be
 migrated to this interface before being accepted as updated v3 implementations.
 
@@ -13001,7 +13003,7 @@ never produces an admitted/completed child. No R09, merged-peer, platform or
 full-plan acceptance follows.
 
 
-### 2026-10-22 — Explicit Monty child Recipe entry (implementation candidate)
+### 2026-10-22 — Explicit Monty child Recipe entry (R1 transport accepted; successor pending)
 
 R09 now has a host-only child_recipe transport entry. A trusted catalogue owner
 can supply one exact selected Recipe and complete typed inputs together with
@@ -13017,4 +13019,393 @@ admission, cancellation, inherited catalogue ownership or bootstrap activation.
 Those remain mandatory R09 work. The closed native regression uses actual draft
 IBS, kernel, PostgreSQL and global Monty; it temporarily makes the actual matcher
 table unavailable to expose accidental rematching. It invokes no child scheduler
-or model and manufactures no approval or successful child run. Validation pending.
+or model and manufactures no approval or successful child run. Frozen R1 passes
+all seven checks: envelope, explicit child transport (4.184 s), existing Recipe
+failure (16.980 s), native journal (17.330 s), ordinary PG/global runtime
+(53.505 s), strict affected root/PG/Bedrock lint (118.841 s) and independent lint
+(33.504 s). /private/tmp/brassclaw-child-entry-r1-accepted.json and all seven
+retained executable hashes were verified. The owned-selection/input-custody
+successor below is separate pending work, not certified by the R1 result.
+
+
+### 2026-10-22 — Typed input and native answer custody (frozen projection accepted)
+
+Child selection now moves once into execution. Selected inputs and child request
+data use the existing immutable JsonValue owner: host clones share read-only
+custody and guarded cleanup, while each VM invocation gets its own mutable values.
+Internal/prefix/model consumers receive only mechanical input-owner conversions;
+this changes no prefix policy, provider owner or component definition.
+
+General native Tool answers now retain their original private PgMontyInvocation
+handle before execution and retain the actual PortAnswer with cheap JsonValue
+payload custody. Pending/acknowledged status is distinct. Settlement may only
+re-acknowledge those exact received answers (and already received model evidence)
+through the original idempotent journal API. It never dispatches a Tool/provider,
+resumes Python, selects latest or converts the original failed Recipe to success.
+Failed tasks already retained their ports before this change; the repair supplies
+the missing generic acknowledgement state and original-key reconciliation path,
+and removes the additional serialized full-answer copy.
+
+The actual ordinary approved reply regression rejects native answer COMMIT after
+the real reply effect, requires the original owner/intent to remain, removes the
+rejection and acknowledges the original receipt after fencing. It must prove one
+reply, one invocation/attempt, the exact original answer and a failed task even
+after acknowledgement. Frozen R2 passed all functional checks, including actual
+native COMMIT rejection (28.539 s), ordinary global runtime (53.905 s), the real
+operator-selected model (101.851 s) and affected strict lint (132.183 s). Its
+independent lint rejected two unused API references; no warning was suppressed.
+R3 uses the actual invocation accessor/type in the shared journal writer and
+passes the independent journal (18.896 s), native COMMIT regression (27.862 s),
+affected strict lint (126.827 s) and independent strict lint (34.068 s).
+Unchanged functional/model evidence is retained explicitly from R2. The receipt
+/private/tmp/brassclaw-task-native-custody-r3-accepted.json and all ten retained
+artifact hashes were verified. The peer measurement qualifier was absent from
+this frozen baseline, so merged-peer acceptance remains required.
+
+### 2026-10-22 — Actual child admission owner (scoped frozen R4 acceptance)
+
+Subsequent source work binds the original native spawn_subagent registration to
+the actual turn coordinator and claimed-child admission port before workers.
+The explicit workflow/typed-input profile preserves literal data and cannot
+return the legacy authorized:true receipt. The existing legacy caller remains
+separate pending its coordinated retirement. Delegation checks the original
+private admission and immutable Tool journal, derives child IDs from the native
+invocation, retains the original address before writes and submits with the
+actual parent claim. Explicit capture binds fresh ports against the parent's
+retained catalogue, with no new matching or latest lookup. It observes the exact
+terminal child run/reply and uses the existing configurable status poll policy.
+Native child delegation does not declare an OS-process spawn effect.
+
+Frozen child-owner-20261022-r4 passes seven new checks plus five unchanged
+HostRuntime checks. The actual native candidate (28.082 s including fixture
+startup) admits a child using the original worker claim, transports hostile
+literal inputs, proves the exact child/run/reply relationship and keeps the
+original catalogue after a real replacement publication. Invalid child inputs
+create no second thread; a stale parent cannot dispatch another child. The
+actual waiter is armed while the child is running: lifecycle notification must
+complete it inside the test's 20-second bound despite a configured 30-second
+polling fallback. Notifications are hints; completion always rereads durable
+state. Existing ordinary global runtime (52.793 s), original COMMIT-result
+custody (24.637 s), independent entry/journal checks and both strict lint graphs
+also pass. /private/tmp/brassclaw-child-owner-r4-accepted.json and all seven
+retained artifact hashes were verified. Initial compilation diagnostics (wrong
+store trait, then two missing test imports) were corrected without suppression.
+
+This is contained native infrastructure evidence. It does not approve/activate
+the draft parent usage or demonstrate the parent Monty export's full qualification.
+Cancellation, unknown child-admission acknowledgement, noncircular bootstrap and
+all five seeded subagent Recipe migrations still require their own acceptance.
+It is not R09, merged-peer, platform or full-plan completion.
+
+### 2026-10-22 — Exact child reservation release (scoped frozen R3 acceptance)
+
+The next repair gives claimed children a persisted optional release marker.
+Only actual claimed admission creates the known-pending marker; legacy/root
+records preserve absent/unknown state. The exact child UUID is the idempotency
+address: marker and one-slot decrement share the same aggregate mutation/CAS.
+An unkeyed release may not consume known claimed-child reservations. Pending
+claimed children remain protected from terminal-record pruning. Memory, actual
+PostgreSQL, filesystem with real CAS, lifecycle and boxed-store consumers are
+wired; no byte-only CAS fallback may acknowledge this release. Native child
+observation retains the actual result before attempting acknowledgement/release.
+
+Source includes a real PostgreSQL regression that cuts the server's actual
+COMMIT response after commit, then reopens the store and repeats the same child
+release without consuming its sibling. The filesystem/memory contract checks
+reopen and absent legacy evidence, and native child acceptance checks its
+committed release marker. Frozen R3 passes ten checks: actual COMMIT-loss
+(4.483 s), filesystem/coordinator, claimed-admission, ordinary global/native-child,
+independent entry/journal and both strict lint graphs (131.239/36.034 s). The
+receipt /private/tmp/brassclaw-child-reservation-accepted.json and all eight
+retained artifact hashes were verified. The initial R2 test reached its final zero-count
+assertion but incorrectly required an empty serialized reservation array, which
+the actual schema omits. R3 decodes the real defaulted snapshot type instead.
+Before R09 activation, finish these checks and the cancellation/admission tests.
+The unkeyed legacy path for untracked children still needs its coordinated
+retirement/reconciliation; the new guard does not certify that legacy recovery.
+
+### 2026-10-22 — Child cancellation, received-result acknowledgement and payload release (scoped R3 acceptance)
+
+The explicit child selector now uses the public reply/incoming workflow set,
+matching ordinary routing. The internal history finalizer is not a child goal:
+ordinary child execution requires its own correlated reply, and must reject that
+helper before admitting a child or appending history. The contained candidate
+test supplies the helper's valid recursive inputs to distinguish this guard from
+an input-validation failure.
+
+The native owner also exposes evidence-only acknowledgement of terminal child
+results it has actually received. Ordinary factory settlement invokes it after
+native-answer acknowledgement. It retries the exact child's persisted release
+marker, never child admission/execution or Tool delivery. Successful release is
+remembered to avoid repeated database writes. The original failed native Tool
+remains failed; an unknown child admission is neither observed nor reconciled by
+this hook. Failed/recovery-required child effects remain retained independently.
+
+Frozen child-observation-release-20261022-r3 passes nine checks and all five
+retained artifact hashes were verified in
+/private/tmp/brassclaw-child-observation-release-r3-accepted.json. Its real
+native regression (28.065 s) additionally cancels a claimed child
+before execution and checks durable acknowledgement, one claim, no Tool effect,
+reservation release, live parent and unchanged VM. Another actual child completes
+its reply while a PostgreSQL trigger rejects only its reservation release; after
+removing that rejection, repeated evidence acknowledgement must release the slot,
+retain the original Tool error and prove one child reply/claim/dispatch attempt.
+The actual native reply COMMIT regression (24.026 s) additionally uses read-only
+weak witnesses to prove that unacknowledged answer bytes remain in host custody
+and that confirmed journal acknowledgement releases their redundant Rust payload
+while the failed task/immutable invocation stay retained. The dispatcher owns
+the exact return value independently; concurrent identical acknowledgements are
+idempotent and a second receive cannot replace an acknowledged result. Native
+model-wire custody (24.176 s), ordinary global execution (50.765 s), independent
+entry/journal/factory-cancellation and both strict lint graphs
+(121.401/34.656 s) also pass. Unchanged store/COMMIT-loss evidence is retained
+from child-reservation R3. Initial successors caught a missing test import and
+an extra-field contract without its required schema; both were corrected, with
+their failing diagnostics preserved and no suppression.
+No candidate approval or activation is fabricated. Parent Monty-export/bootstrap
+qualification, unknown admission acknowledgement, ancestor cancellation across
+handoff phases, saturation and all five seeded Recipe migrations remain R09 work.
+This is scoped native/ownership evidence, not merged-peer, platform, R09 or
+full-plan/release acceptance.
+
+### 2026-10-22 — Cancellation below terminal parents and unknown admission (scoped acceptance)
+
+Explicit tree cancellation now traverses descendants even when the requested
+parent is already terminal. Completed/failed parent and intermediate states stay
+unchanged; scope/actor checks, atomic rollback and idempotent event identities
+remain. A parent failure does not prove that child admission did not commit.
+
+Frozen unknown-child-admission-20261022-r1 passes ten checks with all eight
+retained artifact hashes verified in
+/private/tmp/brassclaw-unknown-child-admission-r1-accepted.json. The actual
+PostgreSQL child-admission COMMIT response is cut (4.358 s); the same child,
+accepted message, lineage and reservation remain after the caller error. Parent
+failure fences a repeated old-claim submit, authorized cancellation reaches its
+queued child, and exact repeated release neither creates a replacement identity
+nor changes the parent's failure. Shared Turns/filesystem/coordinator contracts,
+the native child/ordinary global caller, independent journal and strict affected/
+independent lint (125.475/35.065 s) also pass.
+
+This is coordinator/database transport acceptance. It is not a full Native
+ChildPort admission-fault/recovery caller, automatic message-linkage repair,
+parent component activation or supervised restart. Those R09 gates remain.
+
+### 2026-10-22 — Preloaded child usage through Monty behavioral review (scoped acceptance)
+
+The existing native child regression now executes its first staged Python export
+through the actual source inspector, retained behavioral runner and SelectedTools
+adapter, with the original parent claim/admission. It checks the actual journal
+answer/one attempt without manually acknowledging that occurrence. The child
+still executes in the instance's original global service with the old catalogue
+and complete literal inputs/results. The contained review worker is reaped;
+this neither starts another production orchestrator nor approves/activates the
+draft parent. The remaining four candidate occurrences are not declared complete.
+Review task/frame/actor/heap/deadline limits come from acknowledged instance
+settings and actual worker layout, rather than new fixture policy caps.
+
+Frozen child-preloaded-export-20261022-r1 passes this real regression (29.153 s)
+and affected test lint (116.212 s). Its receipt
+/private/tmp/brassclaw-child-preloaded-export-r1-accepted.json and both artifact
+hashes were verified. Only test/review wiring changed; predecessor production
+evidence is reused explicitly. Full ordinary global parent Recipe qualification,
+noncircular installation bootstrap and the five seed migrations remain open.
+
+### 2026-10-22 — Exact transcript submission acknowledgement (scoped acceptance)
+
+The next repair makes coordinator-supplied message linkage immutable after its
+first accepted/deferred User binding. The same turn/run pair can be acknowledged
+again; conflicting pairs, Assistant/redacted messages, empty IDs and incoherent
+partial bindings fail. PostgreSQL busy deferral receives the same state guards
+as memory/filesystem. An exact PostgreSQL acknowledgement skips serialization,
+snapshot rewrite and generation advancement. Snapshot increments reject signed
+representation exhaustion instead of wrapping; negative versions fail, while
+the version-zero bootstrap/legacy format remains supported. PostgreSQL thread
+CAS additionally preserves tenant identity and rechecks a raced ensure winner's
+scope. This is reference storage, not turn lifecycle or invocation authority.
+
+Frozen `message-submission-20261022-r1` passes the actual memory/filesystem
+contracts, real PostgreSQL repeats/conflicts/kinds/redaction/exhaustion,
+cross-tenant zero-version and blocked INSERT ensure-race checks. PostgreSQL
+redaction now explicitly stores Redacted status and clears both content and
+private provider replay data, matching the other backends. Actual native child
+and ordinary global Monty regressions and affected strict test lint also pass
+(eight checks, five retained executable hashes verified).
+Atomic admission/message linkage and observation/recovery of an unknown Native
+ChildPort admission remain separate required work; no safe whole-Recipe retry
+or automatic success can be inferred from these prerequisites.
+
+
+### 2026-10-22 — Atomic transcript and admission commit (scoped acceptance)
+
+The PostgreSQL turn store now supports an installation-wired metadata participant
+for newly admitted records. The transcript owner binds the exact existing user
+message within the coordinator's transaction, after the turn aggregate/aliases
+and before COMMIT. It checks canonical tenant/scope/row identity, message kind,
+status and exact IDs; rollback covers the run, reservation, alias and message.
+Normal skills-db runtime factory wiring installs the participant. No raw input
+enters turn state, no Tool executes, and heartbeats/old tasks/idempotent admission
+replays do not rebind. The remaining producer-side mark is an exact read-only ACK.
+
+Frozen `atomic-admission-20261022-r1` passes eight actual PostgreSQL admission/
+storage tests (18.165 s), including root/child binding before producer ACK,
+redacted/foreign input rollback, deferred COMMIT rejection after both writes and
+loss of the actual server COMMIT acknowledgement. Native child (26.464 s),
+ordinary global Monty (52.557 s) and affected strict test lint (131.353 s) also
+pass; two retained executable hashes are verified. Existing uncertain Native ChildPort
+operations, parent qualification/activation, restart, merged-peer and full-plan
+acceptance remain open; atomic persistence alone does not establish those gates.
+
+
+### 2026-10-22 — Original-child observation after an unclear admission (scoped acceptance)
+
+The native ChildPort now checks the original run after an admission error, rather
+than treating a lost COMMIT response as proof of failed admission. The read-only
+check requires the exact parent/child lineage, actor, received time, source/reply
+references, retained execution profile and already-submitted input. Only that
+committed original child proceeds to ordinary observation; missing, unavailable,
+redacted or mismatched evidence remains uncertain with original custody. There
+is no re-submission, new run, retry count reset, input repair or effect replay.
+
+The existing five-case native/preloaded child regression is being extended to
+route its real PostgreSQL clients through a byte-preserving loopback transport.
+It cuts the actual first child admission COMMIT acknowledgement after the server
+commits; it invents no database result or coordinator response. Frozen
+`child-admission-reconcile-20261022-r1` passes that real native/preloaded child
+case (30.814 s), ordinary global regression (52.108 s) and affected strict
+test lint (129.368 s). The original child, old catalogue, one invocation and
+full reply are verified in the same global service; two executable hashes
+are retained and verified.
+Unobservable commits, lost thread/message acceptance ACKs, operator reconciliation,
+ordinary parent activation/bootstrap and full R09/restart gates remain open.
+
+
+### 2026-10-22 — Scoped inbound receipt lookup (scoped acceptance)
+
+PostgreSQL replay previously ignored the requested scope and actor and silently
+skipped malformed snapshots; filesystem replay scanned with a system scope and
+ignored those request fields. The new PostgreSQL reader selects only matching
+JSONB receipts in the exact canonical scope, validates snapshot/entry/message
+identities and rejects ambiguous or malformed candidates. Filesystem replay
+uses the existing full scope-keyed hash path directly, validates its contents
+and checks the actor. Memory's existing exact lookup is retained. These are
+correlation/isolation checks, not feature or invocation permission grants.
+
+Common actual Memory/ScopedFilesystem/PostgreSQL tests cover actor, agent,
+project and owner separation, including identical source/event IDs in two
+scopes. PostgreSQL additionally tests corrupted receipt identity and two real
+conflicting legacy rows. Frozen `inbound-replay-20261022-r1` passes both complete backend contracts,
+nine actual PostgreSQL storage/admission tests (19.456 s), actual lost-COMMIT
+native child (27.249 s), ordinary global Monty (52.691 s) and strict affected
+test lint (127.992 s). Five retained artifact hashes are verified. Cross-thread acceptance races remain separate required work: current
+PG receipts live per thread, and filesystem acceptance overwrites the key after
+writing the message. Neither reader fix proves transactional event uniqueness.
+Those writers must be repaired before claiming full input-ACK recovery.
+
+
+### 2026-10-22 — Atomic inbound event identity (scoped acceptance)
+
+V176 adds one canonical PostgreSQL receipt per exact scope/source/event tuple,
+with a checked SQL SHA-256 key, retained raw identity fields and thread FK. It
+validates and backfills the existing receipt/message graph without choosing a
+winner for conflicting legacy rows. Temporary indexed migration data is dropped
+at commit; malformed/ambiguous graphs abort migration. Only receipt metadata
+is indexed for legacy reads. PostgreSQL accepts a message and its receipt in
+one transaction, validates exact duplicate actor/text/reply and preserves the
+original IDs. Read-only duplicate ACKs do not rewrite the snapshot. Deletion
+removes canonical receipts with the scoped thread deletion in one transaction.
+
+Filesystem acceptance claims the original message ID with real atomic Absent
+before writing the canonical message. A pending/missing message stays unresolved;
+no Any overwrite or non-atomic fallback can replace the claim. Memory/filesystem
+now reject changed duplicate text/reply, aligning with the PostgreSQL contract.
+Actual message counters use checked increments; representation exhaustion is an
+explicit error and not a new resource quota. Safe database error classifications
+retain SQLSTATE without exposing private server diagnostics.
+
+Common real-backend caller tests cover concurrent cross-thread event identity,
+exact duplicate ACK, conflicting actor/text/reply, redaction and explicit deletion.
+Additional source tests cover pending filesystem claims, counter exhaustion,
+actual PostgreSQL lost COMMIT ACK, deferred commit rejection, nullable scope
+keys, and real refinery upgrade/rollback for corrupt and ambiguous old graphs.
+Frozen `inbound-atomic-20261022-r2` passes 40 Thread unit tests, both complete
+backend contracts, 15 actual PostgreSQL storage/admission/upgrade checks, native
+lost-COMMIT child (30.648 s), ordinary global Monty (53.345 s) and strict affected
+lint (126.992 s). The first run rejected an invalid virtual path in two new test
+fixtures; the correction uses the established tenant/user mount grammar and
+retains that failed evidence. Production source is unchanged from the first
+warning-free compilation and real PostgreSQL pass. Identical test/worker hashes
+permit reusing that PostgreSQL pass. The actual worker was rebuilt with V176;
+all 43 retained executable hashes are verified. Compiled extra test targets are
+not claimed as executed behavior. General partial-write/operator recovery,
+ordinary parent Recipe qualification/activation, restart, merged-peer/platform
+and full plan acceptance remain open.
+
+
+### 2026-10-22 — Original thread/input observation after lost acknowledgements (accepted scoped native checks)
+
+The native ChildPort now observes the original empty scoped thread after an
+unclear ensure write, and the original accepted input through its exact scoped
+event receipt after an unclear input commit. It checks the actual owner, IDs,
+status, unbound references and opaque input data. Only the already committed
+original records allow the unfinished handoff to continue; no second ensure,
+message acceptance, child admission or completed effect is replayed. Missing,
+redacted, partial or mismatched evidence remains uncertain with original custody.
+
+The existing real five-case native child regression now targets lost replies at
+three phases: thread ensure, input COMMIT and child admission COMMIT. The
+byte-preserving transport uses actual idle ReadyForQuery for autocommit and the
+real COMMIT CommandComplete for explicit transactions; it invents no successful
+record or response. It must retain the original child, one invocation, old
+catalogue and ordinary global VM, including cancellation and reservation-write
+failure cases. The actual native child check passes (29.941 s), ordinary global
+Monty passes (51.604 s), and strict affected/root PostgreSQL + Bedrock test lint
+passes (127.622 s). Both retained executable hashes are verified; the unchanged
+worker closure reuses the actual V176-capable worker. This accepts readable
+acknowledgement loss during the original call, without resubmission.
+Unreadable/delayed outcomes, operator recovery, ordinary parent
+qualification/activation and complete R09/restart/full-plan gates remain open.
+
+
+### 2026-10-22 — Complete global parent review and classified child failure (scoped combined acceptance on 2026-10-23)
+
+Internal Recipe sources can retain their actual captured ordinary catalogue
+reference for explicit native child handoffs. The immutable reference participates
+in the original admission/invocation checks; it is not an approval, routing
+fallback or request-carried permission. Existing standalone internal work keeps
+its absent catalogue reference.
+
+The closed native candidate includes the actual optional nullable sanitized
+failure object. A new case changes real Tool policy after child capture and
+checks failed state, one attempt, no reply and no model replay through the
+preloaded export. Failed child evidence remains retained. A complete parent
+Recipe is separately submitted to the already-running instance global service
+with a real durable claim, its captured catalogue and typed inputs. Python
+executes binding/export/result handoff and completion; its child uses the same
+VM and old selection after a coherent catalogue publication. The private review
+constructor is test-only and supplies no component approval/activation. Source
+review and formatting pass. The separate six-case native regression passed
+(31.063 s); complete-parent preflight rejected its missing pure preload declaration.
+That test Recipe now declares a function/export. Common-root execution also
+corrected the fixture's actual runtime tenant/agent/project/thread-owner scope
+and its trusted internal admission/canonical result-reference settlement. The
+existing production validation and live kernel checks remain effective. The
+actual complete-parent check and six-case child failure/acknowledgement regression
+pass in the shared global service; no draft parent is activated.
+
+The common-root `run-10` acceptance builds the application/worker and affected
+test targets, passes 503 selected tests with none failed/ignored, affected/root
+strict test Clippy, formatting and whitespace checks, and verifies every retained
+executable hash. It also covers real V176 upgrade/atomicity, rejecting foreign
+thread namespaces before writing, native answer no-replay, ordinary global
+Match/No-Match, selected prefix/source/model-budget callers and shared backend
+contracts. Compiler-generated function-pointer equality and duplicate HTTP test
+module loading were repaired without suppressions. Exact selectors, counts,
+artifacts and limitations are recorded in
+`docs/validation/2026-10-22-consolidation.md`.
+
+One common Git root/index and one serial NVMe Cargo target replace the two mutable
+build mirrors/target2. Exact old source/binary/receipt archives remain evidence.
+Active plans now assign each shared responsibility one implementation owner and
+reference it from consumers, including the v3.5 dependency handoffs. Installation-
+owned production qualification, ordinary parent activation, the five historical
+subagent Recipe migrations and full R09/restart/plan acceptance remain open.

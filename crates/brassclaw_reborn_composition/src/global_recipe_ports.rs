@@ -30,7 +30,7 @@ use crate::pg_monty_admission::{CatalogueReference, PgMontyAdmission};
 pub(crate) struct SelectedMontyRecipe {
     pub(crate) normal_match: Option<Box<crate::normal_match_evidence::NormalMatchEvidence>>,
     pub(crate) inspected: Arc<InspectedRetainedProgram>,
-    pub(crate) inputs: Option<Value>,
+    pub(crate) inputs: Option<brassclaw_host_api::JsonValue>,
     pub(crate) tools: Option<Arc<dyn RetainedToolPort>>,
 }
 
@@ -66,6 +66,12 @@ pub(crate) trait MontyTaskCatalogue: Send + Sync {
 pub(crate) trait InternalRecipeSource: Send + Sync {
     fn name(&self) -> &str;
     fn reference(&self) -> &str;
+    /// An internal owner may retain an ordinary catalogue for explicit child
+    /// handoffs. The reference comes from its captured immutable view, never
+    /// from the request or a lookup of latest. It grants no approval or Tool use.
+    fn catalogue_reference(&self) -> Option<CatalogueReference> {
+        None
+    }
     async fn select(&self) -> Result<SelectedMontyRecipe, PortFailure>;
     /// Check actual retained native effects/answers and correlated durable rows.
     /// This may read evidence, but must never replay effects or select next work.
@@ -117,7 +123,7 @@ pub(crate) struct GlobalRecipePorts {
     user_input: String,
     ownership: Option<crate::global_monty_owner::GlobalOwnerCheck>,
     internal: Option<Arc<dyn InternalRecipeSource>>,
-    child: Option<Mutex<Option<SelectedMontyRecipe>>>,
+    child: Option<Box<Mutex<Option<SelectedMontyRecipe>>>>,
     observe_behavior: bool,
     capacity: Arc<dyn RecipeCapacitySource>,
     pub(super) state: Mutex<State>,
@@ -209,7 +215,7 @@ impl GlobalRecipePorts {
         {
             return Err(failure("child_recipe_selection_invalid"));
         }
-        self.child = Some(Mutex::new(Some(selected)));
+        self.child = Some(Box::new(Mutex::new(Some(selected))));
         Ok(self)
     }
 
@@ -369,6 +375,26 @@ impl GlobalRecipePorts {
         Ok(report)
     }
 
+    /// Receipt persistence only: acknowledge the exact native answers already
+    /// retained by this task. No continuation or external effect is replayed.
+    pub(crate) async fn reconcile_received_native_results(&self) -> Result<(), PortFailure> {
+        let tools = self
+            .state
+            .lock()
+            .await
+            .recipes
+            .values()
+            .filter_map(|selection| selection.selected.tools.clone())
+            .collect::<Vec<_>>();
+        for tools in tools {
+            tools
+                .reconcile_received_native_results()
+                .await
+                .map_err(|_| failure("native_result_evidence_uncommitted"))?;
+        }
+        Ok(())
+    }
+
     async fn retain_selection(
         &self,
         selected: SelectedMontyRecipe,
@@ -410,7 +436,12 @@ impl GlobalRecipePorts {
             .bind_catalogue(
                 self.catalogue
                     .as_ref()
-                    .and_then(|catalogue| catalogue.catalogue_reference()),
+                    .and_then(|catalogue| catalogue.catalogue_reference())
+                    .or_else(|| {
+                        self.internal
+                            .as_ref()
+                            .and_then(|source| source.catalogue_reference())
+                    }),
             )
             .map_err(|_| failure("monty_catalogue_reference_conflict"))?;
         self.admission
@@ -606,7 +637,12 @@ impl GlobalRecipePorts {
                 let inputs = program
                     .inputs()
                     .bind_task_inputs_with_limits(
-                        selected.selected.inputs.as_ref().unwrap_or(envelope),
+                        selected
+                            .selected
+                            .inputs
+                            .as_ref()
+                            .map(brassclaw_host_api::JsonValue::as_value)
+                            .unwrap_or(envelope),
                         limits,
                     )
                     .map_err(|_| failure("recipe_composition_failed"))?;

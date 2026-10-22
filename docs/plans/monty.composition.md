@@ -1,31 +1,88 @@
 # monty.composition
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
+## Remaining implementation — consolidated 2026-10-22
+
+The retained preload/input/tool/review path, coherent authored activation and
+scoped public-reply/MCP execution already exist. Use the
+[combined status index](../implementation-status.md), §35 and the current journal
+rather than early descriptions of an absent loader/activation path. The seven
+original failures were resolved in their recorded scope; full library migration
+and this plan's acceptance remain open.
+
+1. **Close the installed identity/consumer ledger (§§6.1/18/21–25).** Resolve actual
+   stable UUIDs/revisions/checksums, usage/code/ToolSkill/native associations,
+   overrides, aliases and every consuming Recipe/variant. Assign each entry a
+   converted/reused/retired/blocked disposition and canonical destination. Do not
+   infer installed identities or approval from example names, Markdown or labels.
+2. **Migrate/qualify component families (§6.2/4–6 and implementation appendix).**
+   Reuse existing compatible components; author small pure exports and one-Tool
+   usages with exact recursive arguments/results/failure, preload declarations,
+   typed layouts and dependency graphs. Reconcile every old top-level body and
+   plain substitution with function-based loading before activation. Test actual
+   invalid/null/default/overflow/injection data, adapters, policy and effects.
+   Package qualification must be noncircular, override-preserving and artifact-
+   exact; authored versions use Q1/behavior/human Q2. A draft package is not active.
+3. **Finish R09 parent usages and five subagent Recipes.** Consume the actual
+   claim-fenced admission/child/global service implemented by simplified Phase 3a.
+   Declare each finite recursive child-input profile and all actual terminal
+   outcomes, including optional nullable sanitized failure. Qualify the complete
+   parent binding/export/result handoff on the ordinary global path and implement
+   installation-owned bootstrap before public activation. Migrate spawn/research/
+   coding/exploration/query consumers with explicit goal/context/workflow/result
+   steps, always Tier 1. Retire legacy flavor/task authorization-only callers
+   together; neither `authorized:true` nor a draft review proves child completion.
+   Consume the owner's uncertainty/cancellation/saturation/restart acceptance.
+4. **Finish actual missing primitive profiles (§§20–23, R10).** Identify/reuse
+   registered callable/adapter semantics before adding narrow primitive support.
+   R10 still needs faithful complete raw UTF-8 acquisition with an authentic
+   immutable source reference; numbered read previews cannot supply original
+   bytes/newlines. Complete binding/result/effect coverage for HTTP/body/pagination,
+   storage/lineage, shell/process and dependent-chain exceptions. Never manufacture
+   unsupported parameters or move a multi-Tool workflow into Rust.
+5. **Populate coherent public commands and retire legacy admission (§§6.7/25/35).**
+   Reuse the existing activation/deployment and MCP discovery/chat bridge. Give
+   every real usage its canonical execution Recipe/command; qualify exact command
+   grammar, captures, variants, expected reply/classified failure and ordinary
+   chat lifecycle before advertising. Keep internal helpers private and preserve
+   in-flight advertised generations. Replace new legacy admission only after
+   migrated consumers pass; retain old artifacts needed by old tasks.
+6. **Complete the §7 matrix on the combined product.** Exercise each converted
+   variant through actual selected Monty/host/native/DB callers, including waits,
+   changed policy, retained revisions, cancellation and no replay after completed
+   effects. Include installed overrides/upgrades, platform behavior and ordinary
+   UI/MCP output. Pure syntax/source probes alone do not close a component family.
+
+Implement shared work once: [validator](../../validator_v3.md#remaining-implementation--consolidated-2026-10-22)
+owns Q1/class routes, general pure approval and evidence/human-Q2 machinery;
+[simplified v3](../../simplified_v3.md#remaining-implementation--consolidated-2026-10-22)
+owns global runtime/authority/resources/recovery; [prefix](prefix_v3_upgrade.md#remaining-implementation-sequence--full-completion)
+owns compiler/profile/design/serving/model-budget work. Recipe-owned Sempai and
+dynamic occurrences use [v3.5](../../path_to_v3.5.md) V35-09–16/28 and V35-13/14;
+this plan consumes those contracts rather than creating a second implementation.
+
 ## Reply/history migration review gate
 
-The existing packaged `host-post-reply` and `host-save-history` Recipes, their
-associated Skills and PythonCode are migration inputs, **not qualified current-v3
-implementations to reuse unchanged**. Updating these exact workflows is the parent
-task; implementing the qualified preload/export adapter is its prerequisite.
+The retained reply/history successors now use declared preloaded interfaces,
+typed bindings and exact qualified package/approval/native selections. Ordinary
+global execution, authored activation and packaged public-reply MCP acceptance
+have scoped evidence in the current status index and §§31–35. Reuse the exact
+qualified successors; the older gate here described their earlier migration.
 
-Before selecting a successor, independently review the actual retained definitions,
-interfaces, bindings, dependency graph, typed input/result handoffs and global-runtime
-callers against `recipe.md`, `skills.md` and section 24 of `monty.composition.md`.
-Upgrade the usages and Recipes for effect-free dependency-first loading, explicit
-pinned export invocation, isolated mutable state and current kernel enforcement.
-Complete the applicable exact-combination bootstrap/approval and behavioral evidence
-before activation. Names, existing package status, old acceptance receipts and the
-word “canonical” do not qualify the unchanged implementation.
+Any new successor still needs independent interface/code/binding/dependency and
+behavior review before activation. Preserve stable IDs, overrides, old task
+selections, current policy and completed effects. Internal history/finalization
+stays private; a separate public reply contract does not expose all internal
+helpers. Full library migration and general pure/recovery gates remain open.
 
-Preserve compatible stable UUIDs and old task selections when that reviewed migration
-supports them; do not copy deprecated source substitution, ambient step state,
-module-level Tool execution or unsafe retry guidance into the new adapter. Review
-reply/history ownership, both routing branches, history framing, finalization and
-no-replay behavior together after the adapter is qualified. Keep these internal
-usages out of public MCP discovery unless a separately qualified public contract
-explicitly permits exposure. The commented instructions below are historical only.
-
-
-**MCP source status (2026-10-09):** the raw-Skill/composer serving stub has been retired and legacy outbound MCP activation/attachment has been suspended. Earlier source observations of that stub are historical. See [section 26](#26-inbound-mcp-source-review-and-transport-retirement-2026-10-09) for the repairs and the still-required Recipe/chat/Kohai implementation. The new inbound service is not yet runtime-qualified.
+**MCP source status (2026-10-09):** the raw-Skill/composer serving stub has been retired and legacy outbound MCP activation/attachment has been suspended. Earlier source observations of that stub are historical. See [section 26](#26-inbound-mcp-source-review-and-transport-retirement-2026-10-09) for the repairs and the still-required Recipe/chat/Kohai implementation. The successor has scoped ordinary MCP chat/provider acceptance in §§33–35; remaining library population and broader lifecycle acceptance stay open.
 
 **Updated v3 Skill definition:** a Skill is one Tool usage exposed through a preloadable Python function interface, with prose, explicit associated code, public exported names/signatures and private helper/constant dependencies. Resolve and pin its exact interface/code/association/Tool graph, load definitions in dependency-first order without effects, and invoke the selected export on demand. Loading enables no Tool; matching ToolSkill binding and live kernel checks remain required. Code/immutable constants can be shared; mutable arrays/defaults/closures/results are isolated per invocation/task/attempt. See [the binding function-interface contract](../../skills.md#preloadable-function-interface-binding-v3-target). All legacy and new Skill rows require the per-usage function migration in the implementation appendix; pure wrappers remain PythonCode documentation. This is a target and plan update, not runtime support.
 
@@ -37,37 +94,27 @@ The root source now converges both routes on reply verification followed by the
 retained history Recipe. Failure after publication must retain that completed
 effect and must not publish again or replay the task as Tier 2.
 
-Daily-memory records, the authoritative conversation transcript and Sempai's
-analysis input are distinct. The current resolved model gateway captures each
-provider request's supplied history/prompt in a forensic packet and adds the
-provider response afterwards. However, `InterceptingModelGateway::prepare`
-performs Sempai review before Kohai dispatch, while `close` only records the
-response. There is no post-response Sempai call in that path. Packet persistence
-failures are logged and do not currently establish a durable learning handoff.
-A packet status named `SempaiReviewed` therefore does not prove that Sempai has
-reviewed the completed current turn. The legacy `PgKohaiPort` also records packets,
-but its source explicitly has no Sempai dispatch; it is not an alternative that
-completes this requirement.
+Daily memory, the authoritative transcript and Sempai analysis input remain
+distinct. The completed-turn consumer, packaged review/delivery and native
+provider/effect/accounting custody now exist; earlier claims that no consumer
+exists are superseded. This does not establish complete forensic input or
+Recipe-owned Sempai semantics.
 
-The completed-turn learning workflow remains required implementation work:
-review/compose a Recipe using qualified existing usages for a correlated typed
-bundle of conversation/run/attempt/message identities, original and effective
-model prompts, responses, Tool/effect receipts and terminal completion/failure
-state. Pin the Sempai model/prefix selection independently. Record a durable,
-deduplicated review request with exact bundle references, submit any proposed
-components through the authored Q1/behavior/human-Q2 path, and retain review and
-queue outcomes. Delivery/review recovery may not replay task effects, publish a
-second reply or infer absent effects from an incomplete packet. Resolve missing
-primitive/store/runner support explicitly before activation; a daily log or an
-existing pre-dispatch review is not a substitute for this post-turn workflow.
+The remaining review/evidence/proposal/iteration conversion is implemented by
+[path_to_v3.5.md](../../path_to_v3.5.md) V35-09–16/28, carrying the requirements of
+[sempai_v3.5.md](sempai_v3.5.md). This plan consumes its qualified usages and
+contracts; it does not implement another completed-turn consumer or specialized
+Rust review workflow. Delivery recovery retains original effects and never
+resubmits the task/model or posts another reply. The following producer/model
+paragraphs are dated implementation milestones, not the current remaining list.
 
 **Producer implementation:** V122 now retains an immutable review event in the
 original admission settlement transaction for actual No-Match turns, including
 failed turns after publication. It snapshots available model packets and exact
 Recipe/Tool evidence without private claim/admission keys. This is durable
 handoff retention, not delivered Sempai review or proof of complete task data.
-The event explicitly has `evidence_complete=false`. The consumer, qualified
-model/proposal usages and durable review acknowledgement remain prerequisites.
+The event explicitly has `evidence_complete=false`. The successor consumer and native acknowledgement exist; remaining qualified
+workflow/business conversion and complete evidence are tracked by the v3.5 owner.
 Follow the [completed-turn Recipe authoring record and acceptance contract](../reborn/contracts/completed-turn-sempai-review.md).
 
 **Model evidence implementation:** V127 and the resolved host interceptor retain
@@ -374,8 +421,8 @@ Enforce compute time, memory and structural limits through the shared service's 
 
 1. **Resolve identities and reuse destinations.** Produce a machine-readable ledger from the source inventory and installed catalogue: old name/UUID/revision/checksum, historical Skill companion, actual association status, canonical destination, dependencies and disposition. Resolve the illustrative interval usage and current reply/history packages before redirecting callers. Inspect overrides and retained tasks. Do not interpret a matching name, class or validated flag as an approved association.
 2. **Define usage contracts before rewriting bodies.** For each listed entry, reconcile prose, actual primitive parameters, fixed arguments and recursive input/result/failure contracts. Establish one-Tool usage boundaries and pure helpers. Split multi-call read/tail/filter, trigger removal and memory append only as needed by their actual semantics. Reuse one compatible dispatcher with multiple reviewed usage associations; do not create a duplicate executor for each fixed selector. Specify new host support only when an existing primitive/adapter truly cannot implement the operation.
-3. **Complete required retained assembly support.** Verify catalogue selection, typed IBS bindings, exact associations, internal dependencies and loaded aliases in the real startup/worker path. Implement missing store/runner support before activating code that depends on it. Never bypass it by executing Skill prose, metadata or an arbitrary returned source string. Keep the current compiler's restrictions until explicit supported changes and acceptance justify expansion.
-4. **Convert and qualify in manageable families.** Start with zero-host lexical/encoding/formatting helpers and the canonical interval usage. Then convert read-only filesystem/time/JSON/HTTP retrieval and domain shaping. Follow with effectful memory/file/trigger/API writes, shell usages and authoring validators. Each family includes its Skill prose corrections and exact combination evidence; a parse-only batch is not complete. Prefix/bootstrap lifecycle wrappers excluded in section 3 remain with their existing owners.
+3. **Consume retained assembly and shared qualification support.** Existing retained selection, typed bindings, dependency/export loading and associations are the implementation baseline. Remaining runtime/lifecycle gaps are implemented by simplified Phase 0a/3a; general pure approval and review by validator Steps 3/8–10; dynamic occurrences by V35-13/14. This plan consumes and tests those results in its component families, without a second loader, store or review executor. Keep actual inspector restrictions and reject unsupported graphs before activation.
+4. **Convert and qualify in manageable families.** Start with zero-host lexical/encoding/formatting helpers and the canonical interval usage. Then convert read-only filesystem/time/JSON/HTTP retrieval and domain shaping. Follow with effectful memory/file/trigger/API writes, shell usages. The validator plan implements authoring-validator workflows; this plan supplies reusable components to that owner. Each family includes its Skill prose corrections and exact combination evidence; a parse-only batch is not complete. Prefix/bootstrap lifecycle wrappers excluded in section 3 remain with their existing owners.
 5. **Validate through real Monty and host bindings.** Compile exact successor bytes, execute representative valid/invalid inputs in the pinned interpreter, and then exercise retained assembly and actual registered adapters in a controlled environment. Verify input isolation, outputs, policy, effects, cancellation, waits and retained selection, including failures before dispatch. Reuse unchanged evidence only under the development policy's identity conditions.
 6. **Ship immutable packaged successors and coherent catalogue generations.** Qualify installation-owned seeds with package/artifact integrity, structural/Q1 and behavioral evidence, using noncircular bootstrap ownership. Preserve operator overrides and old selections. Installed authoring uses its separate human-Q2 path. Catalogue activation occurs only after the full selected dependency/association combination and production runner support pass their gates; do not activate incompatible rows and silently omit them during matching.
 7. **Retire legacy execution admission after acceptance.** Redirect relevant Recipe callers to canonical UUIDs using the actual persisted schema. Prevent placeholder-composed or prose-derived programs from entering execution, including older composer/MCP surfaces. Remove old defaults only after selection and resume tests show that new tasks use approved successors while old tasks retain their artifacts. Retiring new admission is distinct from deleting historical rows or implementations.

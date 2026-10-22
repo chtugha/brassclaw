@@ -159,6 +159,150 @@ fn child_run_request(
 }
 
 #[tokio::test]
+async fn filesystem_claimed_child_release_is_exact_after_reopen_and_preserves_unknown_legacy() {
+    let scoped = scoped_turns_fs(Arc::new(InMemoryBackend::new()));
+    let store = FilesystemTurnStateStore::new(scoped.clone());
+    let resolver = InMemoryRunProfileResolver::default();
+    let parent_scope = turn_scope("release-parent");
+    let parent = accepted_run_id(
+        &store
+            .submit_turn(
+                submit_request_for(parent_scope.clone(), "release-parent"),
+                &AllowAllTurnAdmissionPolicy,
+                &resolver,
+            )
+            .await
+            .unwrap(),
+    );
+    let claim = store
+        .claim_next_run(ClaimRunRequest {
+            runner_id: TurnRunnerId::new(),
+            lease_token: TurnLeaseToken::new(),
+            scope_filter: Some(parent_scope.clone()),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let child_scope = turn_scope("release-child");
+    let child = accepted_run_id(
+        &store
+            .submit_claimed_child_turn(
+                child_run_request(
+                    parent_scope.clone(),
+                    parent,
+                    child_scope.clone(),
+                    "release-child",
+                    1,
+                ),
+                &claim,
+                &AllowAllTurnAdmissionPolicy,
+                &resolver,
+            )
+            .await
+            .unwrap(),
+    );
+    assert!(
+        store
+            .release_claimed_child_reservation(&child_scope, child)
+            .await
+            .is_err()
+    );
+    store
+        .request_cancel(brassclaw_turns::CancelRunRequest {
+            scope: child_scope.clone(),
+            actor: turn_actor(),
+            run_id: child,
+            reason: brassclaw_turns::SanitizedCancelReason::UserRequested,
+            idempotency_key: IdempotencyKey::new("release-child-cancel").unwrap(),
+        })
+        .await
+        .unwrap();
+    let pending = store.persistence_snapshot().await.unwrap();
+    let aggressive = brassclaw_turns::InMemoryTurnStateStore::from_persistence_snapshot(
+        pending.clone(),
+        brassclaw_turns::InMemoryTurnStateStoreLimits {
+            max_terminal_records: 0,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let unrelated_scope = turn_scope("release-unrelated-pruning");
+    let unrelated = accepted_run_id(
+        &aggressive
+            .submit_turn(
+                submit_request_for(unrelated_scope.clone(), "release-unrelated-pruning"),
+                &AllowAllTurnAdmissionPolicy,
+                &resolver,
+            )
+            .await
+            .unwrap(),
+    );
+    aggressive
+        .request_cancel(brassclaw_turns::CancelRunRequest {
+            scope: unrelated_scope,
+            actor: turn_actor(),
+            run_id: unrelated,
+            reason: brassclaw_turns::SanitizedCancelReason::UserRequested,
+            idempotency_key: IdempotencyKey::new("release-unrelated-pruning-cancel").unwrap(),
+        })
+        .await
+        .unwrap();
+    assert!(
+        aggressive
+            .get_run_record(&child_scope, child)
+            .await
+            .unwrap()
+            .is_some(),
+        "terminal cache eviction must preserve an unacknowledged claimed reservation"
+    );
+    let mut legacy = pending;
+    legacy
+        .runs
+        .iter_mut()
+        .find(|run| run.run_id == child)
+        .unwrap()
+        .claimed_child_reservation_released = None;
+    let legacy = brassclaw_turns::InMemoryTurnStateStore::from_persistence_snapshot(
+        legacy,
+        brassclaw_turns::InMemoryTurnStateStoreLimits::default(),
+    )
+    .unwrap();
+    assert!(
+        matches!(
+            legacy
+                .release_claimed_child_reservation(&child_scope, child)
+                .await,
+            Err(TurnError::Unavailable { .. })
+        ),
+        "missing old evidence never implies an exact release"
+    );
+    assert_eq!(
+        legacy.persistence_snapshot().spawn_tree_reservations[0].descendant_count,
+        1
+    );
+    store
+        .release_claimed_child_reservation(&child_scope, child)
+        .await
+        .unwrap();
+    let reopened = FilesystemTurnStateStore::new(scoped);
+    reopened
+        .release_claimed_child_reservation(&child_scope, child)
+        .await
+        .unwrap();
+    let saved = reopened.persistence_snapshot().await.unwrap();
+    assert!(saved.spawn_tree_reservations.is_empty());
+    assert_eq!(
+        saved
+            .runs
+            .iter()
+            .find(|run| run.run_id == child)
+            .unwrap()
+            .claimed_child_reservation_released,
+        Some(true)
+    );
+}
+
+#[tokio::test]
 async fn filesystem_turn_state_store_persists_submit_and_reopens() {
     let (backend, _storage_guard) = engine_filesystem();
     let scoped = scoped_turns_fs(Arc::clone(&backend));

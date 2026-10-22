@@ -15,6 +15,8 @@ mod error;
 mod filesystem_service;
 mod identifiers;
 mod in_memory;
+mod inbound_idempotency;
+mod message_submission;
 pub mod pg_service;
 mod service;
 mod stored_message;

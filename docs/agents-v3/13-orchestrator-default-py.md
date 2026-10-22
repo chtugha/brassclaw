@@ -1,5 +1,15 @@
 # 13 — Python Orchestrator (Monty)
 
+> **Current execution boundary — 2026-10-22:** ordinary PostgreSQL/skills-db
+> startup retains one `GlobalMontyOwner`; `GlobalMontyDriver` transports work to
+> that service. `global_mode.py` sequences pinned retained preload exports and
+> typed result handoffs. `basic_mode.py`, the old composer/step-body examples and
+> per-chat bootstrap observations below describe legacy paths. Qualified source
+> support, open migration/approval/recovery work and the owning plans are in
+> [the current status index](../implementation-status.md). Historical line numbers are inspection anchors,
+> not current acceptance evidence. Reuse existing implementations.
+
+
 ## Binding Recipe architecture (v3)
 
 Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
@@ -32,10 +42,11 @@ not completed runtime or database functionality.
   Orchestrator-channel PythonCode calls `host.<tool>(...)`. Only an actual
   No-Match enters Tier 2; errors or begun Recipe failures never replay there.
 
-Current code still has plain text substitution, fresh state in nested step
-execution and incomplete immutable version manifests/binding preparation. The
-new typed inputs interface and strict single-component validation require
-implementation and production-path acceptance; do not claim these are shipped.
+The legacy composer still contains source-substitution and historical step-body
+paths. Ordinary PostgreSQL/skills-db execution uses immutable retained selections,
+typed inputs, checked single-component steps and preloaded exports on the global
+Monty service. Full-library migration, general pure approval, dynamic occurrences
+and durable recovery remain open; see the current implementation status index.
 
 > **Subsystem (f2):** the **Python Orchestrator** — the brain of the
 > Orchestrator/Executioner split. The Orchestrator (Monty VM, Python) is the

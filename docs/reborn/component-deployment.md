@@ -1,5 +1,13 @@
 # Deploying reviewed component submissions
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 Settings → Validation queue → **Deploy reviewed components** connects retained
 Sempai/operator submissions to the existing live catalogue activation service.
 Preparation verifies exact graphs and existing trusted usage approvals. Activation

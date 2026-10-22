@@ -1,5 +1,13 @@
 # Simplify connections v3.5 — reuse BrassClaw's built-in infrastructure
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 Date: 2026-10-10. Status: proposed implementation plan; all steps remain open.
 Creating this document changes no code, component, schema, configuration or
 deployment. “v3.5” names this consolidation effort; it does not supersede the

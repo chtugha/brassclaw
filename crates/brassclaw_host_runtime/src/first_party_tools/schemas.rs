@@ -209,7 +209,12 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
             "properties": {
                 "flavor_id": {
                     "type": "string",
-                    "enum": ["general", "researcher", "coder", "explorer"],
+                    "enum": [
+                        "general",
+                        "researcher",
+                        "coder",
+                        "explorer"
+                    ],
                     "description": "Subagent flavor. general: read/search only, bounded task. researcher: + web search, prefer evidence over mutation. coder: read/write/shell, file-focused execution. explorer: read/search, deep analysis, no writes."
                 },
                 "task": {
@@ -219,10 +224,80 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
                 "handoff": {
                     "type": "string",
                     "description": "Optional context to pass to the child subagent"
+                },
+                "workflow": {
+                    "type": "object",
+                    "properties": {
+                        "recipe_id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "Stable approved Recipe UUID in the parent task's retained catalogue."
+                        },
+                        "variant": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Exact retained Recipe variant key."
+                        }
+                    },
+                    "required": [
+                        "recipe_id",
+                        "variant"
+                    ],
+                    "additionalProperties": false
+                },
+                "inputs": {
+                    "type": "object",
+                    "description": "Complete typed child inputs; validated against the selected retained Recipe before admission."
                 }
             },
-            "required": ["flavor_id", "task"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "oneOf": [
+                {
+                    "required": [
+                        "workflow",
+                        "inputs"
+                    ],
+                    "not": {
+                        "anyOf": [
+                            {
+                                "required": [
+                                    "flavor_id"
+                                ]
+                            },
+                            {
+                                "required": [
+                                    "task"
+                                ]
+                            },
+                            {
+                                "required": [
+                                    "handoff"
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    "required": [
+                        "flavor_id",
+                        "task"
+                    ],
+                    "not": {
+                        "anyOf": [
+                            {
+                                "required": [
+                                    "workflow"
+                                ]
+                            },
+                            {
+                                "required": [
+                                    "inputs"
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
         }),
         "schemas/builtin/read_file.input.v1.json" => json!({
             "type": "object",

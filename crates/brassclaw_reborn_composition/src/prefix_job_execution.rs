@@ -64,7 +64,7 @@ impl InternalRecipeSource for Invocation {
         Ok(SelectedMontyRecipe {
             normal_match: None,
             inspected: self.inspected.clone(),
-            inputs: Some(self.definition.input.clone()),
+            inputs: Some(self.definition.input.clone().into()),
             tools: Some(self.tools.clone()),
         })
     }

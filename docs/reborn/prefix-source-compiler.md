@@ -1,5 +1,13 @@
 # Recipe-owned source compiler
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 The installer retains exact component drafts, then qualifies the packaged
 source-only workflow through its closed `system_seed` owner. It currently produces
 quarantined base-prompt, Prefix-Maker and Sempai source-only packages. Sempai uses

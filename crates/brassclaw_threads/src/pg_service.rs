@@ -5,12 +5,15 @@
 //! `brassclaw_session_threads.metadata` keyed by `(tenant_id, thread_id)`.
 //! A `version` counter provides optimistic CAS for concurrent mutations.
 //!
-//! The idempotency table is a separate column (`idempotency` JSONB) within
-//! the same row so that `replay_accepted_inbound_message` can scan all
-//! known idempotency records for the tenant without loading every thread's
-//! full transcript.
+//! Inbound idempotency receipts live in that same snapshot. Replay selects
+//! matching receipt candidates in the exact canonical scope and checks the
+//! stored identities without loading unrelated transcripts into the service.
 //!
 //! Cross-tenant isolation: every query is scoped by `tenant_id`.
+
+mod admission;
+mod replay;
+mod submission_transaction;
 
 use std::sync::Arc;
 
@@ -35,16 +38,23 @@ use crate::{
     UpdateToolResultReferenceRequest,
 };
 
-fn map_pool(e: deadpool_postgres::PoolError) -> SessionThreadError {
-    SessionThreadError::Backend(e.to_string())
+fn map_pool(_error: deadpool_postgres::PoolError) -> SessionThreadError {
+    SessionThreadError::Backend("thread database pool unavailable".into())
 }
 
-fn map_pg(e: tokio_postgres::Error) -> SessionThreadError {
-    SessionThreadError::Backend(e.to_string())
+fn map_pg(error: tokio_postgres::Error) -> SessionThreadError {
+    let reason = match error.code() {
+        Some(code) => format!("thread database error (SQLSTATE {})", code.code()),
+        None => "thread database transport/protocol failure".into(),
+    };
+    SessionThreadError::Backend(reason)
 }
 
-fn map_json(e: serde_json::Error) -> SessionThreadError {
-    SessionThreadError::Backend(e.to_string())
+fn map_json(error: serde_json::Error) -> SessionThreadError {
+    SessionThreadError::Backend(format!(
+        "thread snapshot encoding error ({:?})",
+        error.classify()
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -116,10 +126,33 @@ impl PgSessionThreadService {
             Some(r) => {
                 let payload: Value = r.get(0);
                 let version: i64 = r.get(1);
-                let snapshot: ThreadSnapshot = serde_json::from_value(payload).map_err(map_json)?;
+                let snapshot = self.decode_snapshot(thread_id, payload, version)?;
                 Ok((snapshot, version))
             }
         }
+    }
+
+    fn decode_snapshot(
+        &self,
+        thread_id: &ThreadId,
+        payload: Value,
+        version: i64,
+    ) -> Result<ThreadSnapshot, SessionThreadError> {
+        if version < 0 {
+            return Err(SessionThreadError::Backend(
+                "invalid thread snapshot version".into(),
+            ));
+        }
+        let snapshot: ThreadSnapshot = serde_json::from_value(payload).map_err(map_json)?;
+        if snapshot.record.as_ref().is_some_and(|record| {
+            record.thread_id != *thread_id
+                || record.scope.tenant_id.as_str() != self.tenant_id.as_str()
+        }) {
+            return Err(SessionThreadError::Backend(
+                "thread snapshot identity mismatch".into(),
+            ));
+        }
+        Ok(snapshot)
     }
 
     /// Write snapshot back with CAS on `version`. Returns `Ok(true)` on success,
@@ -133,6 +166,11 @@ impl PgSessionThreadService {
             .record
             .as_ref()
             .ok_or_else(|| SessionThreadError::Backend("snapshot has no record".to_string()))?;
+        if record.scope.tenant_id.as_str() != self.tenant_id.as_str() {
+            return Err(SessionThreadError::ThreadScopeMismatch {
+                thread_id: record.thread_id.clone(),
+            });
+        }
         let thread_id = record.thread_id.as_str().to_string();
         let user_id = record
             .scope
@@ -144,8 +182,10 @@ impl PgSessionThreadService {
         let project_id = record.scope.project_id.as_ref().map(|p| p.to_string());
         let created_by = &record.created_by_actor_id;
         let title = record.title.as_deref();
+        let next_version = expected_version.checked_add(1).ok_or_else(|| {
+            SessionThreadError::Backend("thread snapshot version exhausted".into())
+        })?;
         let metadata_val = serde_json::to_value(snapshot).map_err(map_json)?;
-        let next_version = expected_version + 1;
 
         let client = self.pool.get().await.map_err(map_pool)?;
         let rows = client
@@ -163,6 +203,10 @@ impl PgSessionThreadService {
                      version = $9, \
                      updated_at = now() \
                  WHERE brassclaw_session_threads.version = $10 \
+                   AND brassclaw_session_threads.tenant_id = $2 \
+                   AND brassclaw_session_threads.user_id = excluded.user_id \
+                   AND brassclaw_session_threads.agent_id = excluded.agent_id \
+                   AND brassclaw_session_threads.project_id IS NOT DISTINCT FROM excluded.project_id \
                    AND brassclaw_session_threads.deleted_at IS NULL",
                 &[
                     &thread_id,
@@ -195,9 +239,33 @@ impl PgSessionThreadService {
         A: FnMut(ThreadSnapshot) -> Fut,
         Fut: std::future::Future<Output = Result<(T, ThreadSnapshot), SessionThreadError>>,
     {
+        self.apply_optional(thread_id, move |snapshot| {
+            let mutation = apply(snapshot);
+            async move {
+                let (outcome, snapshot) = mutation.await?;
+                Ok((outcome, Some(snapshot)))
+            }
+        })
+        .await
+    }
+
+    /// Exact metadata acknowledgements may require no write. In that case do
+    /// not serialize/rewrite the full transcript or advance its CAS generation.
+    async fn apply_optional<T, A, Fut>(
+        &self,
+        thread_id: &ThreadId,
+        mut apply: A,
+    ) -> Result<T, SessionThreadError>
+    where
+        A: FnMut(ThreadSnapshot) -> Fut,
+        Fut: std::future::Future<Output = Result<(T, Option<ThreadSnapshot>), SessionThreadError>>,
+    {
         for _ in 0..12usize {
             let (snapshot, version) = self.read_snapshot(thread_id).await?;
             let (outcome, new_snapshot) = apply(snapshot).await?;
+            let Some(new_snapshot) = new_snapshot else {
+                return Ok(outcome);
+            };
             if self.write_snapshot(&new_snapshot, version).await? {
                 return Ok(outcome);
             }
@@ -227,6 +295,9 @@ impl SessionThreadService for PgSessionThreadService {
             None => ThreadId::new(uuid::Uuid::new_v4().to_string())
                 .map_err(|e| SessionThreadError::GeneratedThreadId(e.to_string()))?,
         };
+        if request.scope.tenant_id.as_str() != self.tenant_id.as_str() {
+            return Err(SessionThreadError::ThreadScopeMismatch { thread_id });
+        }
         // Check existing first (read-only fast path).
         let (snapshot, version) = self.read_snapshot(&thread_id).await?;
         if let Some(existing) = &snapshot.record {
@@ -252,9 +323,13 @@ impl SessionThreadService for PgSessionThreadService {
         // Write; on conflict (another racing ensure) re-read and return existing.
         if !self.write_snapshot(&new_snapshot, version).await? {
             let (s2, _) = self.read_snapshot(&thread_id).await?;
-            return s2.record.ok_or_else(|| {
+            let existing = s2.record.ok_or_else(|| {
                 SessionThreadError::Backend("thread vanished after race".to_string())
-            });
+            })?;
+            if existing.scope != record.scope {
+                return Err(SessionThreadError::ThreadScopeMismatch { thread_id });
+            }
+            return Ok(existing);
         }
         // Derive title if absent using the (empty) message list — no messages yet on new thread.
         // Title derivation is a best-effort read-time operation; skip on creation.
@@ -266,175 +341,14 @@ impl SessionThreadService for PgSessionThreadService {
         &self,
         request: AcceptInboundMessageRequest,
     ) -> Result<AcceptedInboundMessage, SessionThreadError> {
-        let thread_id = request.thread_id.clone();
-        self.apply(&thread_id, |mut snapshot| {
-            let request = request.clone();
-            async move {
-                let record =
-                    snapshot
-                        .record
-                        .as_ref()
-                        .ok_or_else(|| SessionThreadError::UnknownThread {
-                            thread_id: request.thread_id.clone(),
-                        })?;
-                if record.scope != request.scope {
-                    return Err(SessionThreadError::ThreadScopeMismatch {
-                        thread_id: request.thread_id.clone(),
-                    });
-                }
-
-                // Idempotency check
-                if let (Some(sbid), Some(eid)) =
-                    (&request.source_binding_id, &request.external_event_id)
-                    && let Some(entry) = snapshot
-                        .inbound_idempotency
-                        .iter()
-                        .find(|e| e.source_binding_id == *sbid && e.external_event_id == *eid)
-                {
-                    let message_id = ThreadMessageId::from_uuid(
-                        uuid::Uuid::parse_str(&entry.message_id)
-                            .map_err(|e| SessionThreadError::Backend(e.to_string()))?,
-                    );
-                    let stored = snapshot
-                        .messages
-                        .iter()
-                        .find(|m| m.message_id == message_id)
-                        .ok_or_else(|| {
-                            SessionThreadError::Backend(
-                                "inbound receipt has no message".to_string(),
-                            )
-                        })?;
-                    if stored.actor_id.as_deref() != Some(request.actor_id.as_str())
-                        || stored.content.as_deref() != Some(request.content.as_text())
-                        || stored.reply_target_binding_id != request.reply_target_binding_id
-                    {
-                        return Err(SessionThreadError::Backend(
-                            "inbound event conflicts with its original message".to_string(),
-                        ));
-                    }
-                    let seq = stored.sequence;
-                    return Ok((
-                        AcceptedInboundMessage {
-                            thread_id: request.thread_id,
-                            message_id,
-                            sequence: seq,
-                            idempotent_replay: true,
-                        },
-                        snapshot,
-                    ));
-                }
-
-                // Original event receipts remain recoverable after closure.
-                // Only a genuinely new admission is rejected.
-                if snapshot.closed {
-                    return Err(SessionThreadError::Backend("thread is closed".to_string()));
-                }
-
-                let message_id = Self::new_message_id();
-                let sequence = snapshot.next_sequence + 1;
-                snapshot.next_sequence = sequence;
-                let message = ThreadMessageRecord {
-                    message_id,
-                    thread_id: request.thread_id.clone(),
-                    sequence,
-                    kind: MessageKind::User,
-                    status: MessageStatus::Accepted,
-                    actor_id: Some(request.actor_id.clone()),
-                    source_binding_id: request.source_binding_id.clone(),
-                    reply_target_binding_id: request.reply_target_binding_id.clone(),
-                    turn_id: None,
-                    turn_run_id: None,
-                    tool_result_ref: None,
-                    tool_result_provider_call: None,
-                    content: Some(request.content.into_text()),
-                    redaction_ref: None,
-                };
-
-                // Store idempotency entry
-                if let (Some(sbid), Some(eid)) =
-                    (request.source_binding_id, request.external_event_id)
-                {
-                    snapshot.inbound_idempotency.push(InboundIdempotencyEntry {
-                        scope_tenant_id: request.scope.tenant_id.to_string(),
-                        scope_agent_id: request.scope.agent_id.to_string(),
-                        scope_owner_user_id: request
-                            .scope
-                            .owner_user_id
-                            .as_ref()
-                            .map(|u| u.to_string()),
-                        source_binding_id: sbid,
-                        external_event_id: eid,
-                        thread_id: request.thread_id.to_string(),
-                        message_id: message_id.as_uuid().to_string(),
-                    });
-                }
-
-                let result = AcceptedInboundMessage {
-                    thread_id: request.thread_id,
-                    message_id,
-                    sequence,
-                    idempotent_replay: false,
-                };
-                snapshot.messages.push(message);
-                Ok((result, snapshot))
-            }
-        })
-        .await
+        self.accept_inbound_transaction(request).await
     }
 
     async fn replay_accepted_inbound_message(
         &self,
         request: ReplayAcceptedInboundMessageRequest,
     ) -> Result<Option<AcceptedInboundMessageReplay>, SessionThreadError> {
-        // Scan all rows for this tenant to find the idempotency entry.
-        // This is a full-table scan scoped to tenant_id; acceptable for
-        // infrequent idempotency lookups during replay paths.
-        let client = self.pool.get().await.map_err(map_pool)?;
-        let rows = client
-            .query(
-                "SELECT id, metadata FROM brassclaw_session_threads \
-                 WHERE tenant_id = $1 AND deleted_at IS NULL",
-                &[&self.tenant_id],
-            )
-            .await
-            .map_err(map_pg)?;
-        for row in rows {
-            let _thread_id_str: String = row.get(0);
-            let payload: Value = row.get(1);
-            let snapshot: ThreadSnapshot = match serde_json::from_value(payload) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-            for entry in &snapshot.inbound_idempotency {
-                if entry.source_binding_id == request.source_binding_id
-                    && entry.external_event_id == request.external_event_id
-                {
-                    let message_id = ThreadMessageId::from_uuid(
-                        uuid::Uuid::parse_str(&entry.message_id)
-                            .map_err(|e| SessionThreadError::Backend(e.to_string()))?,
-                    );
-                    let message = snapshot
-                        .messages
-                        .iter()
-                        .find(|m| m.message_id == message_id);
-                    let record = snapshot.record.as_ref();
-                    if let (Some(msg), Some(rec)) = (message, record) {
-                        return Ok(Some(AcceptedInboundMessageReplay {
-                            scope: rec.scope.clone(),
-                            thread_id: rec.thread_id.clone(),
-                            message_id,
-                            sequence: msg.sequence,
-                            status: msg.status,
-                            actor_id: msg.actor_id.clone(),
-                            source_binding_id: msg.source_binding_id.clone(),
-                            reply_target_binding_id: msg.reply_target_binding_id.clone(),
-                            turn_run_id: msg.turn_run_id.clone(),
-                        }));
-                    }
-                }
-            }
-        }
-        Ok(None)
+        self.lookup_inbound_replay(request).await
     }
 
     async fn mark_message_submitted(
@@ -447,7 +361,7 @@ impl SessionThreadService for PgSessionThreadService {
     ) -> Result<ThreadMessageRecord, SessionThreadError> {
         let thread_id = thread_id.clone();
         let scope = scope.clone();
-        self.apply(&thread_id, |mut snapshot| {
+        self.apply_optional(&thread_id, |mut snapshot| {
             let scope = scope.clone();
             let thread_id_inner = thread_id.clone();
             let turn_id = turn_id.clone();
@@ -461,11 +375,10 @@ impl SessionThreadService for PgSessionThreadService {
                     .ok_or(SessionThreadError::Backend(format!(
                         "message {message_id:?} not found"
                     )))?;
-                message.status = MessageStatus::Submitted;
-                message.turn_id = Some(turn_id);
-                message.turn_run_id = Some(turn_run_id);
+                let changed =
+                    crate::message_submission::bind_submission(message, &turn_id, &turn_run_id)?;
                 let result = message.clone();
-                Ok((result, snapshot))
+                Ok((result, changed.then_some(snapshot)))
             }
         })
         .await
@@ -491,7 +404,13 @@ impl SessionThreadService for PgSessionThreadService {
                     .ok_or(SessionThreadError::Backend(format!(
                         "message {message_id:?} not found"
                     )))?;
+                crate::message_submission::ensure_user_accepted(
+                    message,
+                    "mark_message_deferred_busy",
+                )?;
                 message.status = MessageStatus::DeferredBusy;
+                message.turn_id = None;
+                message.turn_run_id = None;
                 let result = message.clone();
                 Ok((result, snapshot))
             }
@@ -517,7 +436,9 @@ impl SessionThreadService for PgSessionThreadService {
                     return Ok((existing.clone(), snapshot));
                 }
                 let message_id = Self::new_message_id();
-                let sequence = snapshot.next_sequence + 1;
+                let sequence = snapshot.next_sequence.checked_add(1).ok_or_else(|| {
+                    SessionThreadError::Backend("thread message sequence exhausted".into())
+                })?;
                 snapshot.next_sequence = sequence;
                 let message = ThreadMessageRecord {
                     message_id,
@@ -603,7 +524,9 @@ impl SessionThreadService for PgSessionThreadService {
                     return Ok((existing.clone(), snapshot));
                 }
                 let message_id = Self::new_message_id();
-                let sequence = snapshot.next_sequence + 1;
+                let sequence = snapshot.next_sequence.checked_add(1).ok_or_else(|| {
+                    SessionThreadError::Backend("thread message sequence exhausted".into())
+                })?;
                 snapshot.next_sequence = sequence;
                 let message = ThreadMessageRecord {
                     message_id,
@@ -638,7 +561,9 @@ impl SessionThreadService for PgSessionThreadService {
             async move {
                 check_thread_scope(&snapshot, &request.thread_id, &request.scope)?;
                 let message_id = Self::new_message_id();
-                let sequence = snapshot.next_sequence + 1;
+                let sequence = snapshot.next_sequence.checked_add(1).ok_or_else(|| {
+                    SessionThreadError::Backend("thread message sequence exhausted".into())
+                })?;
                 snapshot.next_sequence = sequence;
                 let content_str = serde_json::to_string(&request.preview).unwrap_or_default();
                 let message = ThreadMessageRecord {
@@ -780,7 +705,9 @@ impl SessionThreadService for PgSessionThreadService {
                         "message {:?} not found",
                         request.message_id
                     )))?;
+                message.status = MessageStatus::Redacted;
                 message.content = None;
+                message.tool_result_provider_call = None;
                 message.redaction_ref = Some(request.redaction_ref);
                 let result = message.clone();
                 Ok((result, snapshot))
@@ -999,26 +926,32 @@ impl SessionThreadService for PgSessionThreadService {
         scope: &ThreadScope,
         thread_id: &ThreadId,
     ) -> Result<(), SessionThreadError> {
-        let client = self.pool.get().await.map_err(map_pool)?;
-        let user_id = scope
-            .owner_user_id
-            .as_ref()
-            .map(|u| u.to_string())
-            .unwrap_or_else(|| brassclaw_host_api::SYSTEM_RESERVED_ID.to_string());
-        let rows = client
-            .execute(
-                "UPDATE brassclaw_session_threads \
-                 SET deleted_at = now() \
-                 WHERE id = $1 AND tenant_id = $2 AND user_id = $3 AND deleted_at IS NULL",
-                &[&thread_id.as_str(), &self.tenant_id, &user_id],
-            )
+        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let transaction = client.transaction().await.map_err(map_pg)?;
+        self.locked_snapshot(&transaction, scope, thread_id)
             .await
-            .map_err(map_pg)?;
-        if rows == 0 {
+            .map_err(|error| match error {
+                SessionThreadError::ThreadScopeMismatch { .. } => {
+                    SessionThreadError::UnknownThread {
+                        thread_id: thread_id.clone(),
+                    }
+                }
+                other => other,
+            })?;
+        transaction.execute(
+            "DELETE FROM brassclaw_inbound_message_receipts WHERE tenant_id=$1 AND thread_id=$2",
+            &[&self.tenant_id, &thread_id.as_str()],
+        ).await.map_err(map_pg)?;
+        let rows = transaction.execute(
+            "UPDATE brassclaw_session_threads SET deleted_at=now() WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL",
+            &[&self.tenant_id, &thread_id.as_str()],
+        ).await.map_err(map_pg)?;
+        if rows != 1 {
             return Err(SessionThreadError::UnknownThread {
                 thread_id: thread_id.clone(),
             });
         }
+        transaction.commit().await.map_err(map_pg)?;
         Ok(())
     }
 

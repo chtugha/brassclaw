@@ -57,6 +57,10 @@ use crate::{
     pg_monty_admission::{CatalogueReference, PgMontyAdmission},
 };
 
+#[path = "monty_child_tasks.rs"]
+mod child_tasks;
+#[path = "native_tool_answers.rs"]
+mod native_answers;
 #[path = "task_catalogue_binding.rs"]
 mod task_binding;
 
@@ -145,6 +149,7 @@ pub(crate) struct InstalledMontyCatalogue {
     pub(crate) capture_gate:
         tokio::sync::Mutex<Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>>,
     captured_prefixes: std::sync::Mutex<BTreeMap<String, std::sync::Weak<TaskCatalogue>>>,
+    child_tasks: child_tasks::ChildTasks,
     pub(crate) discovery_publication: tokio::sync::Mutex<()>,
     // Retain the bootstrap subject independently of its approved active selection.
     _public_reply_candidate: Arc<InspectedRetainedProgram>,
@@ -167,6 +172,78 @@ pub(crate) struct InstalledMontyCatalogue {
 }
 
 impl InstalledMontyCatalogue {
+    /// Closed behavioral review only; this cannot publish a draft catalogue or
+    /// supply an ordinary task with an unapproved selection. The original
+    /// native registration, current policy and actual parent owner still apply.
+    #[cfg(test)]
+    pub(crate) fn child_usage_tools_for_test(
+        self: &Arc<Self>,
+        host: Arc<MontyTaskHost>,
+        admission: Arc<PgMontyAdmission>,
+        program: Arc<RetainedToolProgram>,
+    ) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+        if program.bindings().is_empty()
+            || program.bindings().values().any(|binding| {
+                binding.capability_id() != brassclaw_host_runtime::SPAWN_SUBAGENT_CAPABILITY_ID
+            })
+        {
+            return Err(invalid(
+                "closed child review requires native child bindings",
+            ));
+        }
+        let capability = CapabilityId::new(brassclaw_host_runtime::SPAWN_SUBAGENT_CAPABILITY_ID)
+            .map_err(|_| invalid("native child identity is invalid"))?;
+        let original = self
+            .kernel
+            .builtin(&capability, None)
+            .map_err(|_| invalid("native child registration is unavailable"))?;
+        let mut runtimes = BTreeMap::new();
+        for (step, binding) in program.bindings() {
+            let document = program.inputs().instruction().snapshot().revisions()
+                [&binding.tool().uuid]
+                .draft()
+                .document();
+            let expected = serde_json::from_value(document["implementation"]["identity"].clone())
+                .map_err(|_| invalid("closed child artifact identity is invalid"))?;
+            let policy = Arc::new(PgSelectedToolPolicy {
+                host: host.clone(),
+                pool: self.pool.clone(),
+                tool: binding.tool().uuid,
+                capability: capability.clone(),
+                effects: original.descriptor().effects.clone(),
+                mounts: MountView::default(),
+            });
+            let runtime = self
+                .kernel
+                .child_with_policy(
+                    expected,
+                    self.child_task_port(host.clone(), admission.clone()),
+                    policy,
+                )
+                .map_err(|_| {
+                    invalid("closed child binding could not retain its native artifact")
+                })?;
+            runtimes.insert(step.clone(), Arc::new(runtime));
+        }
+        Ok(Arc::new(SelectedTools {
+            host,
+            admission,
+            program,
+            runtimes,
+            mounts: MountView::default(),
+            answers: native_answers::NativeToolAnswers::default(),
+            model_responses: None,
+        }))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn native_answer_retained_for_test(
+        invocation: Uuid,
+    ) -> Result<bool, brassclaw_engine::executor::retained_recipe::NativeResultReconciliationError>
+    {
+        native_answers::retains_payload_for_test(invocation)
+    }
+
     pub(crate) fn bootstrap_usage(
         &self,
         binding: &brassclaw_engine::memory::retained_tools::RetainedToolBinding,
@@ -744,6 +821,7 @@ impl InstalledMontyCatalogue {
             initial_preparation: preparation_policy,
             preparation_settings: std::sync::RwLock::new(None),
             captured_prefixes: std::sync::Mutex::new(BTreeMap::new()),
+            child_tasks: child_tasks::ChildTasks::default(),
             #[cfg(test)]
             capture_gate: tokio::sync::Mutex::new(None),
             worker: worker.to_owned(),
@@ -823,7 +901,7 @@ struct TaskCatalogue {
     reply: SelectedMontyRecipe,
     history: SelectedMontyRecipe,
     incoming: Vec<SelectedMontyRecipe>,
-    resolution: IntentResolution,
+    resolution: Option<IntentResolution>,
     query: String,
     view: Arc<crate::authored_monty_catalogue::CatalogueGeneration>,
     _package: Arc<InstalledMontyCatalogue>,
@@ -831,6 +909,38 @@ struct TaskCatalogue {
 
 #[async_trait]
 impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
+    fn observe_task_ports(
+        &self,
+        host: &Arc<MontyTaskHost>,
+        admission: &Arc<PgMontyAdmission>,
+        ports: std::sync::Weak<dyn brassclaw_monty_host::service::TaskPorts>,
+    ) -> Result<(), AgentLoopDriverError> {
+        self.child_tasks.observe(host, admission, ports)
+    }
+
+    fn release_task(
+        &self,
+        attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
+    ) -> Result<(), AgentLoopDriverError> {
+        self.child_tasks.release(attempt)
+    }
+
+    async fn reconcile_received_child_results(
+        &self,
+        attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
+    ) -> Result<(), AgentLoopDriverError> {
+        self.acknowledge_received_child_results(attempt).await
+    }
+
+    async fn capture_child(
+        &self,
+        host: Arc<MontyTaskHost>,
+        admission: Arc<PgMontyAdmission>,
+        input: &TaskInput,
+    ) -> Result<Option<crate::global_task_factory::CapturedChildRecipe>, AgentLoopDriverError> {
+        self.capture_child_task(host, admission, input).await
+    }
+
     async fn capture_internal(
         &self,
         host: Arc<MontyTaskHost>,
@@ -1028,7 +1138,14 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             captured.notify_one();
             release.notified().await;
         }
-        self.bind_captured_view(host, admission, view, resolution, input.user_input.clone())
+        self.bind_captured_view(
+            host,
+            admission,
+            view,
+            Some(resolution),
+            input.user_input.clone(),
+        )
+        .map(|task| task as Arc<dyn MontyTaskCatalogue>)
     }
 }
 
@@ -1082,7 +1199,7 @@ pub(crate) fn bootstrap_reply_tools(
         program,
         runtimes: BTreeMap::from([("0:2".to_owned(), Arc::new(runtime))]),
         mounts: MountView::default(),
-        answers: tokio::sync::Mutex::new(BTreeMap::new()),
+        answers: native_answers::NativeToolAnswers::default(),
         model_responses: None,
     }))
 }
@@ -1279,7 +1396,7 @@ pub(crate) fn model_recipe_candidate_tools(
         program,
         runtimes,
         mounts: MountView::default(),
-        answers: tokio::sync::Mutex::new(BTreeMap::new()),
+        answers: native_answers::NativeToolAnswers::default(),
         model_responses: Some(responses),
     }))
 }
@@ -1329,7 +1446,7 @@ fn bootstrap_builtin_tools(
         program,
         runtimes,
         mounts: MountView::default(),
-        answers: tokio::sync::Mutex::new(BTreeMap::new()),
+        answers: native_answers::NativeToolAnswers::default(),
         model_responses: None,
     }))
 }
@@ -1379,7 +1496,8 @@ impl MontyTaskCatalogue for TaskCatalogue {
         if query != self.query {
             return Err(failure());
         }
-        match &self.resolution {
+        let resolution = self.resolution.as_ref().ok_or_else(failure)?;
+        match resolution {
             IntentResolution::NoMatch => Ok(MontyIntentSelection::NoMatch),
             IntentResolution::Disambiguation { .. } => Ok(MontyIntentSelection::Disambiguation),
             IntentResolution::Match {
@@ -1404,13 +1522,14 @@ impl MontyTaskCatalogue for TaskCatalogue {
                         .program()
                         .inputs()
                         .bind_variant_example(input_text, query, &json!({}))
-                        .map_err(|_| failure())?,
+                        .map_err(|_| failure())?
+                        .into(),
                 );
                 selected.normal_match = Some(Box::new(
                     crate::normal_match_evidence::NormalMatchEvidence::from_committed_match(
                         self.view.generation,
                         query,
-                        &self.resolution,
+                        resolution,
                         selected.inspected.program().inputs().instruction(),
                         selected.inputs.as_ref().ok_or_else(failure)?,
                     )
@@ -1438,15 +1557,26 @@ struct SelectedTools {
     runtimes: BTreeMap<String, Arc<RetainedFirstPartyCapability>>,
     mounts: MountView,
     // A lost answer commit retains the actual result; it cannot justify replay.
-    answers: tokio::sync::Mutex<BTreeMap<String, Value>>,
+    answers: native_answers::NativeToolAnswers,
     model_responses: Option<Arc<dyn RecipeModelResponseStore>>,
 }
 #[async_trait]
 impl RetainedToolPort for SelectedTools {
     fn has_uncommitted_native_results(&self) -> bool {
-        self.model_responses
-            .as_ref()
-            .is_some_and(|owner| owner.has_uncommitted_results())
+        self.answers.has_pending()
+            || self
+                .model_responses
+                .as_ref()
+                .is_some_and(|owner| owner.has_uncommitted_results())
+    }
+
+    async fn reconcile_received_native_results(
+        &self,
+    ) -> Result<(), brassclaw_engine::executor::retained_recipe::NativeResultReconciliationError>
+    {
+        self.answers
+            .reconcile(self.model_responses.as_deref())
+            .await
     }
 
     async fn dispatch(
@@ -1458,6 +1588,9 @@ impl RetainedToolPort for SelectedTools {
         let error = || PortAnswer::TerminalError {
             reason_kind: "retained_tool_failed".into(),
         };
+        if self.answers.has_pending() {
+            return error();
+        }
         let Some(selected) = self.program.bindings().get(invocation.step_id()) else {
             return error();
         };
@@ -1507,6 +1640,16 @@ impl RetainedToolPort for SelectedTools {
             Ok(record) => record,
             Err(_) => return error(),
         };
+        // Retain the original private journal handle before native execution,
+        // not merely a serialized summary after its result has arrived.
+        let received =
+            match self
+                .answers
+                .retain(invocation.step_id(), binding.capability_id(), record)
+            {
+                Ok(received) => received,
+                Err(_) => return error(),
+            };
         let trust = TrustDecision {
             effective_trust: EffectiveTrustClass::user_trusted(),
             authority_ceiling: AuthorityCeiling {
@@ -1538,19 +1681,15 @@ impl RetainedToolPort for SelectedTools {
             },
             _ => error(),
         };
-        let retained = match serde_json::to_value(&answer) {
-            Ok(value) => value,
+        let answer = match received.receive(answer) {
+            Ok(answer) => answer,
             Err(_) => return error(),
         };
-        self.answers
-            .lock()
-            .await
-            .insert(invocation.step_id().to_owned(), retained);
-        if record.record_answer(&answer).await.is_err() {
-            return PortAnswer::TerminalError {
+        match received.acknowledge().await {
+            Ok(()) => answer,
+            Err(_) => PortAnswer::TerminalError {
                 reason_kind: "tool_answer_persistence_failed".into(),
-            };
+            },
         }
-        answer
     }
 }

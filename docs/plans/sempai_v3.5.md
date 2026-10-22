@@ -1,5 +1,13 @@
 # Sempai v3.5 — convert the current implementation into reusable v3 components
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 Date: 2026-10-10. Status: proposed; no implementation or deployment is authorized by
 this document. The user requested this plan while keeping all current code,
 components, data, configuration and deployments unchanged.

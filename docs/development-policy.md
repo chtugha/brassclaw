@@ -1,5 +1,13 @@
 # Development reasoning and validation policy
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 ## Binding preloadable Skill interface (v3)
 
 A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
@@ -29,7 +37,9 @@ as a user message, forwards the correlated chat result and closes the chat.
 It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
 the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
 per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](../skills.md#preloadable-function-interface-binding-v3-target).
-This is a binding target, not proof of implemented loader/store/runner support.
+Selected retained loader/store/runner support is implemented; this contract
+does not certify every workflow or the complete migration. See
+[the current implementation status](implementation-status.md).
 Current-source observations and historical step-body examples below must be
 migrated to this interface before being accepted as updated v3 implementations.
 
@@ -78,6 +88,22 @@ every edit. This policy supersedes older blanket development test/lint rules.
 Subsystem acceptance criteria, kernel enforcement, Q1 and human Q2 remain
 binding. The root disk-space checks, cleanup thresholds and NVMe target rules
 are unchanged.
+
+## Shared source and build ownership (2026-10-22)
+
+Use the common repository-root checkout and Git index for all current work.
+Compile that source directly with one canonical Cargo target; on this host it is
+`/Users/ollama/brassclaw-target`. Cargo executions are serial under
+`/private/tmp/brassclaw-target-cargo.lock`. Do not restart the retired target2
+or mutable validation build mirrors. Coordinate writers before final staging;
+never replace current source with an older frozen projection.
+
+Keep immutable historical source/binary/receipt archives for evidence reuse and
+failure diagnosis. They are not competing development trees or build inputs.
+Preserve actual needed executables before cleaning disposable caches; do not
+clean the repository's entire `target` directory because it contains evidence.
+Follow the unchanged free-space rules and choose checks for the merged claim.
+A combined-root build does not retrospectively broaden older frozen receipts.
 
 ## Reason before compiling
 

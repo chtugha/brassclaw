@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use brassclaw_host_api::{CapabilityId, ResourceScope, ThreadId};
+use brassclaw_host_api::{CapabilityId, JsonValue, ResourceScope, ThreadId};
 use brassclaw_turns::{LoopMessageRef, SanitizedFailure, TurnRunId};
 use serde_json::Value;
 use uuid::Uuid;
@@ -47,13 +47,14 @@ impl RuntimeChildWorkflowRef {
 /// contract and actual data limits before any admission effect.
 pub struct RuntimeChildTaskRequest {
     workflow: RuntimeChildWorkflowRef,
-    inputs: Value,
+    inputs: JsonValue,
 }
 impl RuntimeChildTaskRequest {
     pub fn new(
         workflow: RuntimeChildWorkflowRef,
         inputs: Value,
     ) -> Result<Self, RuntimeChildTaskError> {
+        let inputs = JsonValue::from(inputs);
         if !inputs.is_object() {
             return Err(RuntimeChildTaskError::InvalidRequest);
         }
@@ -65,10 +66,10 @@ impl RuntimeChildTaskRequest {
     }
 
     pub fn inputs(&self) -> &Value {
-        &self.inputs
+        self.inputs.as_value()
     }
 
-    pub fn into_parts(self) -> (RuntimeChildWorkflowRef, Value) {
+    pub fn into_parts(self) -> (RuntimeChildWorkflowRef, JsonValue) {
         (self.workflow, self.inputs)
     }
 }
@@ -76,15 +77,17 @@ impl RuntimeChildTaskRequest {
 /// Actual correlated final reply. These fields describe an observation, not
 /// completion proof: the owner must read and verify the durable run/reply pair.
 /// Preserve the full content; a safe summary or display preview is insufficient.
+#[derive(Clone)]
 pub struct RuntimeChildTaskReply {
     pub child_run_id: TurnRunId,
     pub thread_id: ThreadId,
     pub reply_ref: LoopMessageRef,
-    pub content: String,
+    pub content: Arc<str>,
 }
 
 /// Observed terminal child state, distinct from admission and parent success.
 /// Recovery-required children retain their effects and cannot be replayed.
+#[derive(Clone)]
 pub enum RuntimeChildTaskOutcome {
     Completed(RuntimeChildTaskReply),
     Failed {

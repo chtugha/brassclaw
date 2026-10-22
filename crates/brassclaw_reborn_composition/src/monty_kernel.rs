@@ -50,6 +50,12 @@ pub(crate) trait MontyKernelSnapshot: Send + Sync {
         expected: NativeImplementationRef,
         policy: Arc<dyn InstanceToolPolicySource>,
     ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError>;
+    fn child_with_policy(
+        &self,
+        expected: NativeImplementationRef,
+        child: Arc<dyn brassclaw_host_runtime::RuntimeChildTaskPort>,
+        policy: Arc<dyn InstanceToolPolicySource>,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError>;
     #[cfg(feature = "root-llm-provider")]
     fn review(
         &self,
@@ -169,6 +175,18 @@ impl<F: RootFilesystem + 'static, G: ResourceGovernor + 'static> MontyKernelSnap
         self.retain_native_with_authorizer(
             id,
             expected,
+            Arc::new(InstanceToolAuthorizer::new(policy)),
+        )
+    }
+    fn child_with_policy(
+        &self,
+        expected: NativeImplementationRef,
+        child: Arc<dyn brassclaw_host_runtime::RuntimeChildTaskPort>,
+        policy: Arc<dyn InstanceToolPolicySource>,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError> {
+        self.retain_native_with_child_tasks(
+            expected,
+            child,
             Arc::new(InstanceToolAuthorizer::new(policy)),
         )
     }

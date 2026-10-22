@@ -216,7 +216,7 @@ impl PgMontyAdmission {
         step_id: &str,
         arguments: &Value,
         data_limits: ContractLimits,
-    ) -> Result<PgMontyInvocation, AgentLoopDriverError> {
+    ) -> Result<super::PgMontyInvocation, AgentLoopDriverError> {
         let binding = program
             .bindings()
             .get(step_id)
@@ -332,6 +332,11 @@ fn workflow_selection(
         })
 }
 impl PgMontyInvocation {
+    /// The original host-created occurrence identity, never a dispatch grant.
+    pub(crate) fn invocation_id(&self) -> brassclaw_host_api::InvocationId {
+        brassclaw_host_api::InvocationId::from_uuid(self.id)
+    }
+
     /// Persist the actual host answer before child resume/output validation.
     /// Return/domain/terminal distinctions survive; an error does not prove
     /// that an external effect did not occur. Missing/oversized/failed answer
@@ -354,6 +359,7 @@ impl PgMontyInvocation {
             _ => {}
         }
         let answer = encoded_answer(answer, self.data_limits)?;
+        let id = self.invocation_id().as_uuid();
         let mut client = self
             .admission
             .pool
@@ -369,7 +375,7 @@ impl PgMontyInvocation {
         let row = tx.query_opt(
             "SELECT phase,answer_bytes FROM brassclaw_monty_tool_invocations
              WHERE invocation_id=$1 AND run_id=$2 AND admission_key=$3 AND invocation_key=$4 FOR UPDATE",
-            &[&self.id,&self.admission.attempt.run_id.as_uuid(),&&self.admission.key[..],&&self.key[..]],
+            &[&id,&self.admission.attempt.run_id.as_uuid(),&&self.admission.key[..],&&self.key[..]],
         ).await.map_err(|_| failed("monty_invocation_database_failed"))?
             .ok_or_else(|| failed("monty_invocation_fenced"))?;
         match row.get::<_, &str>(0) {
@@ -380,7 +386,7 @@ impl PgMontyInvocation {
                     "UPDATE brassclaw_monty_tool_invocations
                      SET phase='answered',answer_bytes=$2,answer_checksum=$3,answered_at=clock_timestamp()
                      WHERE invocation_id=$1 AND phase='dispatch_intent'",
-                    &[&self.id,&answer,&digest(&answer)],
+                    &[&id,&answer,&digest(&answer)],
                 ).await.map_err(|_| failed("monty_invocation_database_failed"))?;
                 if changed != 1 {
                     return Err(failed("monty_invocation_fenced"));

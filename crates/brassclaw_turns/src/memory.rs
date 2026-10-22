@@ -135,6 +135,7 @@ struct RunRecord {
     parent_run_id: Option<TurnRunId>,
     subagent_depth: u32,
     spawn_tree_root_run_id: Option<TurnRunId>,
+    claimed_child_reservation_released: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -666,6 +667,7 @@ impl TurnStateStore for InMemoryTurnStateStore {
             parent_run_id: None,
             subagent_depth: 0,
             spawn_tree_root_run_id: None,
+            claimed_child_reservation_released: None,
         };
         inner.turns.insert(turn_id, turn_record);
         inner.active_locks.insert(
@@ -752,7 +754,6 @@ impl TurnStateStore for InMemoryTurnStateStore {
         if root.actor != request.actor {
             return Err(TurnError::Unauthorized);
         }
-        let cancel_descendants = !root.status.is_terminal() || root.status == TurnStatus::Cancelled;
         let mut children: HashMap<TurnRunId, Vec<&RunRecord>> = HashMap::new();
         for record in inner.records.values() {
             if same_scope_envelope(&record.scope, &request.scope)
@@ -761,11 +762,11 @@ impl TurnStateStore for InMemoryTurnStateStore {
                 children.entry(parent).or_default().push(record);
             }
         }
-        let mut stack = if cancel_descendants {
-            vec![request.run_id]
-        } else {
-            Vec::new()
-        };
+        // A terminal parent does not prove that its descendants are terminal:
+        // child admission may have committed before its acknowledgement was
+        // lost. Explicit tree cancellation still visits the whole lineage,
+        // preserving each already terminal run's status and idempotent result.
+        let mut stack = vec![request.run_id];
         let mut visited = HashSet::from([request.run_id]);
         let mut requests = Vec::new();
         while let Some(parent) = stack.pop() {
@@ -840,6 +841,7 @@ impl InMemoryTurnStateStore {
         admission_policy: &dyn TurnAdmissionPolicy,
         run_profile_resolver: &dyn RunProfileResolver,
     ) -> Result<SubmitTurnResponse, TurnError> {
+        let tracked_reservation = parent.is_some();
         let idempotency_key = SubmitIdempotencyKey {
             scope: request.child_scope.clone(),
             key: request.idempotency_key.clone(),
@@ -1190,6 +1192,7 @@ impl InMemoryTurnStateStore {
             parent_run_id: Some(parent_run_id),
             subagent_depth,
             spawn_tree_root_run_id: Some(root_run_id),
+            claimed_child_reservation_released: tracked_reservation.then_some(false),
         };
         inner.turns.insert(turn_id, turn_record);
         inner.active_locks.insert(
@@ -1395,6 +1398,12 @@ impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
         }
         let key = SpawnTreeReservationKey::new(scope, canonical_root_run_id);
         let mut released_reservation = false;
+        let pending = inner.pending_claimed_reservations(scope, canonical_root_run_id)?;
+        if pending > 0 && !inner.tree_reservations.contains_key(&key) {
+            return Err(invalid_lineage(
+                "claimed child reservation count is missing",
+            ));
+        }
         if let Some(count) = inner.tree_reservations.get_mut(&key) {
             let previous = *count;
             if previous < u64::from(delta) {
@@ -1403,6 +1412,11 @@ impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
                 // reservation and uncapping the spawn tree.
                 return Err(TurnError::InvalidRequest {
                     reason: "release delta exceeds current reservation count".to_string(),
+                });
+            }
+            if previous - u64::from(delta) < pending {
+                return Err(TurnError::InvalidRequest {
+                    reason: "unkeyed release would consume a claimed child's reservation".into(),
                 });
             }
             *count = previous - u64::from(delta);
@@ -1423,6 +1437,78 @@ impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
             inner.prune_terminal_records();
         }
 
+        Ok(())
+    }
+
+    async fn release_claimed_child_reservation(
+        &self,
+        scope: &TurnScope,
+        child: TurnRunId,
+    ) -> Result<(), TurnError> {
+        let mut inner = self.lock_inner()?;
+        let record = inner
+            .records
+            .get(&child)
+            .filter(|record| record.scope == *scope)
+            .ok_or(TurnError::ScopeNotFound)?;
+        if !record.status.is_terminal()
+            || record.parent_run_id.is_none()
+            || record.subagent_depth == 0
+        {
+            return Err(TurnError::InvalidRequest {
+                reason: "only a terminal child can release its reservation".into(),
+            });
+        }
+        match record.claimed_child_reservation_released {
+            Some(true) => return Ok(()),
+            Some(false) => {}
+            None => {
+                return Err(TurnError::Unavailable {
+                    reason: "untracked child reservation requires reconciliation".into(),
+                });
+            }
+        }
+        let root_id = record
+            .spawn_tree_root_run_id
+            .filter(|root| *root != child)
+            .ok_or_else(|| invalid_lineage("claimed child reservation has no distinct root"))?;
+        let root = inner
+            .records
+            .get(&root_id)
+            .ok_or(TurnError::ScopeNotFound)?;
+        if !same_scope_envelope(&root.scope, scope)
+            || root.spawn_tree_root_run_id.unwrap_or(root.run_id) != root_id
+        {
+            return Err(invalid_lineage("claimed child reservation root differs"));
+        }
+        let key = SpawnTreeReservationKey::new(&root.scope, root_id);
+        let pending = inner.pending_claimed_reservations(scope, root_id)?;
+        let current = inner
+            .tree_reservations
+            .get(&key)
+            .copied()
+            .ok_or_else(|| invalid_lineage("claimed child reservation is missing"))?;
+        if pending == 0 || current < pending {
+            return Err(invalid_lineage(
+                "claimed child reservation count is inconsistent",
+            ));
+        }
+        let next = current
+            .checked_sub(1)
+            .ok_or_else(|| invalid_lineage("claimed child reservation is exhausted"))?;
+        // The marker and count share the aggregate lock and durable CAS.
+        // Repetition observes this child, never subtracts a sibling's slot.
+        inner
+            .records
+            .get_mut(&child)
+            .ok_or(TurnError::ScopeNotFound)?
+            .claimed_child_reservation_released = Some(true);
+        if next == 0 {
+            inner.tree_reservations.remove(&key);
+        } else {
+            inner.tree_reservations.insert(key, next);
+        }
+        inner.prune_terminal_records();
         Ok(())
     }
 }
@@ -1630,6 +1716,25 @@ impl TurnRunTransitionPort for InMemoryTurnStateStore {
 impl crate::store::TurnStateDriver for InMemoryTurnStateStore {}
 
 impl Inner {
+    fn pending_claimed_reservations(
+        &self,
+        scope: &TurnScope,
+        root: TurnRunId,
+    ) -> Result<u64, TurnError> {
+        let count = self
+            .records
+            .values()
+            .filter(|record| {
+                record.claimed_child_reservation_released == Some(false)
+                    && record.spawn_tree_root_run_id == Some(root)
+                    && same_scope_envelope(&record.scope, scope)
+            })
+            .count();
+        u64::try_from(count).map_err(|_| TurnError::Unavailable {
+            reason: "claimed child reservation count cannot be represented".into(),
+        })
+    }
+
     /// Admission and this check share the state lock. Repeat it after profile
     /// resolution, which may await while cancellation commits elsewhere.
     fn ensure_uncancelled_ancestry(&self, parent_run_id: TurnRunId) -> Result<(), TurnError> {
@@ -1667,6 +1772,15 @@ impl Inner {
         let mut queued_runs = VecDeque::new();
         let mut terminal_runs = VecDeque::new();
         for run in snapshot.runs {
+            if run.claimed_child_reservation_released.is_some()
+                && (run.parent_run_id.is_none()
+                    || run.subagent_depth == 0
+                    || run.spawn_tree_root_run_id.is_none())
+            {
+                return Err(invalid_lineage(
+                    "claimed child reservation marker has no lineage",
+                ));
+            }
             cursor = cursor.max(run.event_cursor.0);
             let actor = turns
                 .get(&run.turn_id)
@@ -1707,6 +1821,7 @@ impl Inner {
                     parent_run_id: run.parent_run_id,
                     subagent_depth: run.subagent_depth,
                     spawn_tree_root_run_id: run.spawn_tree_root_run_id,
+                    claimed_child_reservation_released: run.claimed_child_reservation_released,
                 },
             );
         }
@@ -2804,10 +2919,10 @@ impl Inner {
         for run_id in &terminal {
             if !reserved.contains(run_id)
                 && child_counts.get(run_id).copied().unwrap_or(0) == 0
-                && let Some(record) = self
-                    .records
-                    .get(run_id)
-                    .filter(|record| record.status.is_terminal())
+                && let Some(record) = self.records.get(run_id).filter(|record| {
+                    record.status.is_terminal()
+                        && record.claimed_child_reservation_released != Some(false)
+                })
             {
                 eligible.push(Reverse((record.event_cursor, run_id.as_uuid())));
             }
@@ -2826,10 +2941,10 @@ impl Inner {
                     if *count == 0
                         && terminal.contains(&parent)
                         && !reserved.contains(&parent)
-                        && let Some(record) = self
-                            .records
-                            .get(&parent)
-                            .filter(|record| record.status.is_terminal())
+                        && let Some(record) = self.records.get(&parent).filter(|record| {
+                            record.status.is_terminal()
+                                && record.claimed_child_reservation_released != Some(false)
+                        })
                     {
                         eligible.push(Reverse((record.event_cursor, parent.as_uuid())));
                     }
@@ -2867,6 +2982,7 @@ impl RunRecord {
             parent_run_id: self.parent_run_id,
             subagent_depth: self.subagent_depth,
             spawn_tree_root_run_id: self.spawn_tree_root_run_id,
+            claimed_child_reservation_released: self.claimed_child_reservation_released,
         }
     }
 

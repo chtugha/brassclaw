@@ -1,5 +1,13 @@
 # Skill definition and authoring instructions
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 ## Review concerns — resolved in the documentation
 
 The 2026-10-06 review identified three specification issues, now resolved in
@@ -19,8 +27,8 @@ evidence and outcome classifications. These remain target specifications.
 2. **Resolved in this guide: recursive schemas and null/default rules.**
    Section 7 now specifies list elements, nested object fields, typed extra
    fields, missing versus null values, defaults and producer/consumer
-   compatibility. Recursive validation remains target runtime/store work;
-   documenting the contract does not establish its enforcement.
+   compatibility. Recursive validation is implemented in the retained value/input contracts;
+   acceptance of an individual usage still requires its actual selected path.
 3. **Resolved in this guide: numeric bounds and computed Tool arguments.**
    Section 9 now defines a portable bounded-integer transport profile, checks
    inputs and computed `limit` before dispatch, and specifies oversized-number
@@ -1091,8 +1099,9 @@ or resumable checkpoints need them. Resume does not reselect newest. Approval
 does not need rechecking merely because a newer version was activated;
 integrity, attempt freshness and current global Tool permission still apply.
 
-Immutable version storage, task manifests and association enforcement are
-target requirements, not guarantees of the current mutable-row schema.
+Immutable revisions, retained selections and exact association enforcement exist
+in the retained stores/runner. Legacy mutable rows do not supply those contracts.
+General library migration, standalone pure approval and recovery remain open.
 
 ### Pin the matched workflow, not only its executable components
 

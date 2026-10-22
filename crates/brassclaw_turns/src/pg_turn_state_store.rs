@@ -49,6 +49,19 @@ use crate::{
 /// Maximum number of optimistic-CAS retries before surfacing `TurnError::Unavailable`.
 const PG_CAS_RETRIES: usize = 12;
 
+/// Trusted PostgreSQL metadata participant in the same admission transaction.
+/// Implementations may bind existing canonical references, but must not admit
+/// work, execute Tools, commit the transaction or acquire another connection.
+/// An error rolls back the run, reservations, aliases and participating writes.
+#[async_trait]
+pub trait PgTurnAdmissionCommitParticipant: Send + Sync {
+    async fn bind_admitted_run(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        run: &TurnRunRecord,
+    ) -> Result<(), TurnError>;
+}
+
 fn map_pg_pool(e: deadpool_postgres::PoolError) -> TurnError {
     TurnError::Unavailable {
         reason: e.to_string(),
@@ -94,6 +107,7 @@ pub struct PgTurnStateStore {
     tenant_id: String,
     limits: InMemoryTurnStateStoreLimits,
     admission_limit_provider: Arc<dyn TurnAdmissionLimitProvider>,
+    admission_commit_participant: Option<Arc<dyn PgTurnAdmissionCommitParticipant>>,
 }
 
 impl PgTurnStateStore {
@@ -103,11 +117,23 @@ impl PgTurnStateStore {
             tenant_id: tenant_id.into(),
             limits: InMemoryTurnStateStoreLimits::default(),
             admission_limit_provider: Arc::new(AllowAllTurnAdmissionLimitProvider),
+            admission_commit_participant: None,
         }
     }
 
     pub fn with_limits(mut self, limits: InMemoryTurnStateStoreLimits) -> Self {
         self.limits = limits;
+        self
+    }
+
+    /// Installation wiring supplies the transcript's existing-reference binder.
+    /// New admissions participate; retries, heartbeats and old tasks never
+    /// rebind a message or repeat an admission side effect.
+    pub fn with_admission_commit_participant(
+        mut self,
+        participant: Arc<dyn PgTurnAdmissionCommitParticipant>,
+    ) -> Self {
+        self.admission_commit_participant = Some(participant);
         self
     }
 
@@ -181,6 +207,11 @@ impl PgTurnStateStore {
             Some(r) => {
                 let payload: Value = r.get(0);
                 let version: i64 = r.get(1);
+                if version < 0 {
+                    return Err(TurnError::Unavailable {
+                        reason: "invalid turn-state snapshot version".into(),
+                    });
+                }
                 let snapshot: TurnPersistenceSnapshot =
                     serde_json::from_value(payload).map_err(map_json_de)?;
                 Ok((snapshot, version))
@@ -196,9 +227,15 @@ impl PgTurnStateStore {
         thread_id: &ThreadId,
         snapshot: &TurnPersistenceSnapshot,
         expected_version: i64,
+        newly_admitted: &[&TurnRunRecord],
     ) -> Result<bool, TurnError> {
+        let next_version =
+            expected_version
+                .checked_add(1)
+                .ok_or_else(|| TurnError::Unavailable {
+                    reason: "turn-state snapshot version exhausted".into(),
+                })?;
         let payload = serde_json::to_value(snapshot).map_err(map_json_ser)?;
-        let next_version = expected_version + 1;
         // Snapshot rows use the thread_id as both `id` (PK) and `turn_id`.
         // `run_id` is NULL for snapshot rows; `status` uses the 'snapshot' sentinel.
         // The unique index on (tenant_id, turn_id) drives the ON CONFLICT CAS.
@@ -269,6 +306,14 @@ impl PgTurnStateStore {
                 reason: "thread belongs to a different turn snapshot".to_owned(),
             });
         }
+        if let Some(participant) = &self.admission_commit_participant {
+            for run in newly_admitted {
+                if let Err(error) = participant.bind_admitted_run(&transaction, run).await {
+                    transaction.rollback().await.map_err(map_pg)?;
+                    return Err(error);
+                }
+            }
+        }
         transaction.commit().await.map_err(map_pg)?;
         Ok(true)
     }
@@ -289,7 +334,32 @@ impl PgTurnStateStore {
     // ------------------------------------------------------------------
 
     /// Load-apply-CAS the snapshot keyed by `thread_id`.
-    async fn apply<T, A, Fut>(&self, thread_id: &ThreadId, mut apply: A) -> Result<T, TurnError>
+    async fn apply<T, A, Fut>(&self, thread_id: &ThreadId, apply: A) -> Result<T, TurnError>
+    where
+        A: FnMut(InMemoryTurnStateStore) -> Fut,
+        Fut: std::future::Future<Output = (Result<T, TurnError>, InMemoryTurnStateStore)>,
+    {
+        self.apply_inner(thread_id, false, apply).await
+    }
+
+    async fn apply_admission<T, A, Fut>(
+        &self,
+        thread_id: &ThreadId,
+        apply: A,
+    ) -> Result<T, TurnError>
+    where
+        A: FnMut(InMemoryTurnStateStore) -> Fut,
+        Fut: std::future::Future<Output = (Result<T, TurnError>, InMemoryTurnStateStore)>,
+    {
+        self.apply_inner(thread_id, true, apply).await
+    }
+
+    async fn apply_inner<T, A, Fut>(
+        &self,
+        thread_id: &ThreadId,
+        admission: bool,
+        mut apply: A,
+    ) -> Result<T, TurnError>
     where
         A: FnMut(InMemoryTurnStateStore) -> Fut,
         Fut: std::future::Future<Output = (Result<T, TurnError>, InMemoryTurnStateStore)>,
@@ -303,8 +373,20 @@ impl PgTurnStateStore {
             if new_snapshot == old_snapshot {
                 return outcome;
             }
+            let newly_admitted =
+                if admission && outcome.is_ok() && self.admission_commit_participant.is_some() {
+                    let old_runs: std::collections::HashSet<_> =
+                        old_snapshot.runs.iter().map(|run| run.run_id).collect();
+                    new_snapshot
+                        .runs
+                        .iter()
+                        .filter(|run| !old_runs.contains(&run.run_id))
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
             match self
-                .write_snapshot(thread_id, &new_snapshot, version)
+                .write_snapshot(thread_id, &new_snapshot, version, &newly_admitted)
                 .await?
             {
                 true => return outcome,
@@ -432,7 +514,7 @@ impl TurnStateStore for PgTurnStateStore {
             .await;
         let pre_resolved = PreResolvedRunProfileResolver::new(profile_resolution);
         let thread_id = request.scope.thread_id.clone();
-        self.apply(&thread_id, |store| {
+        self.apply_admission(&thread_id, |store| {
             let request = request.clone();
             let pre_resolved = pre_resolved.clone();
             async move {
@@ -524,7 +606,7 @@ impl TurnSpawnTreeStateStore for PgTurnStateStore {
         // The parent, descendant reservation and child commit in one aggregate.
         // Child thread lookups resolve its link after the same transaction commits.
         let thread_id = request.parent_scope.thread_id.clone();
-        self.apply(&thread_id, |store| {
+        self.apply_admission(&thread_id, |store| {
             let request = request.clone();
             let pre_resolved = pre_resolved.clone();
             async move {
@@ -554,7 +636,7 @@ impl TurnSpawnTreeStateStore for PgTurnStateStore {
         // The parent, descendant reservation and child commit in one aggregate.
         // Child thread lookups resolve its link after the same transaction commits.
         let thread_id = request.parent_scope.thread_id.clone();
-        self.apply(&thread_id, |store| {
+        self.apply_admission(&thread_id, |store| {
             let request = request.clone();
             let parent = parent.clone();
             let pre_resolved = pre_resolved.clone();
@@ -651,6 +733,23 @@ impl TurnSpawnTreeStateStore for PgTurnStateStore {
                 let outcome = store
                     .release_tree_descendants(&scope, root_run_id, delta)
                     .await;
+                (outcome, store)
+            }
+        })
+        .await
+    }
+
+    async fn release_claimed_child_reservation(
+        &self,
+        scope: &TurnScope,
+        child: TurnRunId,
+    ) -> Result<(), TurnError> {
+        let thread = scope.thread_id.clone();
+        let scope = scope.clone();
+        self.apply(&thread, |store| {
+            let scope = scope.clone();
+            async move {
+                let outcome = store.release_claimed_child_reservation(&scope, child).await;
                 (outcome, store)
             }
         })

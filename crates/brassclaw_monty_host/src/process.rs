@@ -230,7 +230,7 @@ pub enum WorkerCommand {
 /// Domain errors are classified by the trusted port, without placing arbitrary
 /// host exception strings into Python. A fatal instance failure uses process
 /// termination; it cannot masquerade as a catchable task error.
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PortAnswer {
     Return {

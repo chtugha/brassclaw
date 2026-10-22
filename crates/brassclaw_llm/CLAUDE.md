@@ -1,5 +1,13 @@
 # LLM Module
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](../../docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 Multi-provider LLM integration with circuit breaker, retry, failover, and response caching.
 
 ## File Map

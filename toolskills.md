@@ -1,5 +1,13 @@
 # ToolSkill definition and authoring instructions — final v3
 
+> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
+> work. Earlier dated source observations below are historical where superseded;
+> binding contracts remain in force. Implement each shared responsibility in its
+> named owning plan, then reuse it here. A source-only/closed check is not public
+> activation, deployed support or full-v3 completion.
+
+
 ## Binding preloadable Skill interface (v3)
 
 A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
@@ -29,7 +37,9 @@ as a user message, forwards the correlated chat result and closes the chat.
 It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
 the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
 per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
-This is a binding target, not proof of implemented loader/store/runner support.
+Selected retained loader/store/runner support is implemented; this contract
+does not certify every workflow or the complete migration. See
+[the current implementation status](docs/implementation-status.md).
 Current-source observations and historical step-body examples below must be
 migrated to this interface before being accepted as updated v3 implementations.
 
@@ -408,10 +418,14 @@ does not by itself prove registration, dynamic loading or binding occurred.
 Trace the [host compose/run bridge](crates/brassclaw_engine/src/executor/orchestrator.rs)
 and the selected runtime before claiming the callable is ready.
 
-The current composer also performs plain source substitution and does not
-establish full typed binding, recursive assembly, immutable manifests or exact
-association approval. Repair missing runtime support; do not work around it by
-putting executable source into ToolSkill text or grouping independent effects.
+The legacy composer performs source substitution and cannot establish these
+retained contracts. The ordinary path now reads `tool-skill-binding/1` metadata
+from immutable revision documents and prepares exact Tool/Skill/code associations
+through `retained_tools` and `retained_reviews`. These are supported structured
+revision documents, not extra fields on `NewPgToolSkill`. A descriptor remains
+non-executable and grants no permission. Migrate remaining legacy rows/callers
+through the existing qualification/activation owners; do not execute metadata or
+group independent effects to conceal missing support.
 
 ## 8. Versions, approval and live policy
 

@@ -1,5 +1,15 @@
 # `brassclaw` standalone binary
 
+> **Current execution boundary — 2026-10-22:** ordinary PostgreSQL/skills-db
+> startup retains one `GlobalMontyOwner`; `GlobalMontyDriver` transports work to
+> that service. `global_mode.py` sequences pinned retained preload exports and
+> typed result handoffs. `basic_mode.py`, the old composer/step-body examples and
+> per-chat bootstrap observations below describe legacy paths. Qualified source
+> support, open migration/approval/recovery work and the owning plans are in
+> [the current status index](implementation-status.md). Historical line numbers are inspection anchors,
+> not current acceptance evidence. Reuse existing implementations.
+
+
 `brassclaw` is the standalone executable boundary for Reborn. It is separate from the legacy `brassclaw` binary so Reborn boot, config, state, and runtime composition can evolve without accidentally invoking v1 runtime paths.
 
 This binary is available as the workspace package `brassclaw_reborn_cli` and builds the executable named `brassclaw`.

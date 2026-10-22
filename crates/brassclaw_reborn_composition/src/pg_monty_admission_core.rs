@@ -18,6 +18,7 @@ use tokio_postgres::Transaction;
 
 #[path = "pg_monty_invocation.rs"]
 mod invocation;
+pub(crate) use invocation::PgMontyInvocation;
 
 /// An exact ordinary catalogue selected by its owner. This is retained data,
 /// not approval, child provenance or authority. Internal workflows retain their
