@@ -5168,14 +5168,12 @@ async fn native_live_coding_limits_reach_retained_primitives_from_webui_settings
             },
         );
     }
-    let policy = Arc::new(
-        LiveStableToolPolicy::new(StableToolPolicySnapshot {
-            revision: 1,
-            tools,
-            capabilities: mappings,
-        })
-        .unwrap(),
-    );
+    let policy_snapshot = StableToolPolicySnapshot {
+        revision: 1,
+        tools,
+        capabilities: mappings,
+    };
+    let policy = Arc::new(LiveStableToolPolicy::new(policy_snapshot.clone()).unwrap());
     let kernel = runtime.services.monty_kernel.as_ref().unwrap();
     let mut retained = HashMap::new();
     for cap in caps {
@@ -5273,6 +5271,35 @@ async fn native_live_coding_limits_reach_retained_primitives_from_webui_settings
     };
     assert_eq!(read.output["lines_shown"], 1);
     assert_eq!(read.output["truncated_by_default"], true);
+    let RuntimeCapabilityOutcome::Completed(snapshot) = retained
+        [&CapabilityId::new(READ_FILE_CAPABILITY_ID).unwrap()]
+        .invoke(invoke(
+            READ_FILE_CAPABILITY_ID,
+            json!({"path":"/workspace/lines.txt","representation":"raw_utf8_preserved"}),
+        ))
+        .await
+        .unwrap()
+    else {
+        panic!("raw capture follows the same live read limit")
+    };
+    assert_eq!(snapshot.output["content"], "α\nβ\nγ\n");
+    assert_eq!(snapshot.output["complete"], true);
+    std::fs::write(
+        workspace.path().join("raw-too-large.txt"),
+        "12345678901234567",
+    )
+    .unwrap();
+    assert!(matches!(
+        retained[&CapabilityId::new(READ_FILE_CAPABILITY_ID).unwrap()]
+            .invoke(invoke(
+                READ_FILE_CAPABILITY_ID,
+                json!({"path":"/workspace/raw-too-large.txt","representation":"raw_utf8_preserved"})
+            ))
+            .await
+            .unwrap(),
+        RuntimeCapabilityOutcome::Failed(_)
+    ));
+
     let RuntimeCapabilityOutcome::Completed(list) = retained
         [&CapabilityId::new(LIST_DIR_CAPABILITY_ID).unwrap()]
         .invoke(invoke(
@@ -5428,6 +5455,29 @@ async fn native_live_coding_limits_reach_retained_primitives_from_webui_settings
         restored.settings.revision
     );
     assert_eq!(runtime.global_monty_owner.client().root_identity(), vm);
+    let mut blocked = policy_snapshot;
+    blocked.revision = 2;
+    for rule in blocked.tools.values_mut() {
+        rule.revision = blocked.revision;
+    }
+    let read_id = blocked.capabilities[&CapabilityId::new(READ_FILE_CAPABILITY_ID).unwrap()];
+    blocked.tools.get_mut(&read_id).unwrap().enabled = false;
+    policy.publish(1, blocked).unwrap();
+    let RuntimeCapabilityOutcome::Failed(blocked) = retained
+        [&CapabilityId::new(READ_FILE_CAPABILITY_ID).unwrap()]
+        .invoke(invoke(
+            READ_FILE_CAPABILITY_ID,
+            json!({"path":"/workspace/lines.txt","representation":"raw_utf8_preserved"}),
+        ))
+        .await
+        .unwrap()
+    else {
+        panic!("live policy must deny the retained raw read Tool")
+    };
+    assert_eq!(
+        blocked.kind,
+        brassclaw_host_runtime::RuntimeFailureKind::Authorization
+    );
     drop(client);
     drop(retained);
     drop(bundle);
@@ -5828,6 +5878,10 @@ async fn native_coding_primitives_protect_structured_entries_on_both_backends() 
                 json!({"path":"/workspace/state.json"}),
             ),
             (
+                READ_FILE_CAPABILITY_ID,
+                json!({"path":"/workspace/state.json","representation":"raw_utf8_preserved"}),
+            ),
+            (
                 WRITE_FILE_CAPABILITY_ID,
                 json!({"path":"/workspace/state.json","content":"replacement"}),
             ),
@@ -6017,7 +6071,7 @@ async fn native_coding_primitives_protect_structured_entries_on_both_backends() 
                 retained[&CapabilityId::new(READ_FILE_CAPABILITY_ID).unwrap()]
                     .invoke(invoke(
                         READ_FILE_CAPABILITY_ID,
-                        json!({"path":"/workspace/state.json"}),
+                        json!({"path":"/workspace/state.json","representation":"raw_utf8_preserved"}),
                     ))
                     .await
                     .unwrap()

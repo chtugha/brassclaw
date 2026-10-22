@@ -773,6 +773,11 @@ identities for the four roles; replace them with allocated/resolved real UUIDs
 before submission. A compatible offset/limit ToolSkill must be reused or created;
 an archive descriptor accepting only `range` does not satisfy this example.
 
+The native reader also supports a distinct complete UTF-8 capture profile;
+see [the actual raw-file contract](docs/reborn/raw-file-snapshot.md). That profile
+has no range arguments and a different result schema. Its primitive acceptance
+neither changes this interval usage nor approves a raw Skill or R10 component.
+
 ### Numeric transport and Tool bounds for this usage
 
 This example uses a deliberately portable integer profile: line numbers and
@@ -858,8 +863,9 @@ Do not treat an error payload as success. Do not retry automatically.
 Malformed successful results fail the declared output check before downstream use.
 
 Limits and tier
-Read-only usage. Current implementation rejects files larger than its 10 MiB
-read limit and probes for binary content. Technical limits remain authoritative.
+Read-only usage. The implementation rejects files larger than the live
+max_coding_read_bytes limit (default 10 MiB) and probes for binary content.
+Technical limits remain authoritative.
 Deterministic prepared inputs can be used by Tier-0 Recipes; no LLM is needed.
 
 Examples and acceptance

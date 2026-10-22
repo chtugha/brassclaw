@@ -33,6 +33,28 @@ use super::{
 pub(super) async fn read_file(
     request: &CodingCapabilityRequest<'_>,
 ) -> Result<Value, CodingCapabilityError> {
+    let fields = request.input.as_object().ok_or_else(input_error)?;
+    // Native contained callers do not execute the metadata's JSON Schema.
+    // Enforce its closed argument set here as well, before any path I/O.
+    if fields
+        .keys()
+        .any(|key| !matches!(key.as_str(), "path" | "representation" | "offset" | "limit"))
+    {
+        return Err(input_error());
+    }
+    let raw_snapshot = match fields.get("representation") {
+        None => false,
+        Some(Value::String(value)) if value == "numbered_lines" => false,
+        Some(Value::String(value)) if value == "raw_utf8_preserved" => true,
+        _ => return Err(input_error()),
+    };
+    // A complete source capture cannot also select a line range, even an
+    // explicit zero/default. Reject before any filesystem operation.
+    if raw_snapshot
+        && (request.input.get("offset").is_some() || request.input.get("limit").is_some())
+    {
+        return Err(input_error());
+    }
     let resolved = resolve_required_path(request, "path", FilesystemOperation::ReadFile)?;
     let offset = optional_usize(request.input, "offset")?.unwrap_or(0);
     let limit = optional_usize(request.input, "limit")?;
@@ -63,7 +85,7 @@ pub(super) async fn read_file(
         .filesystem
         .read_file_bounded(
             &resolved.virtual_path,
-            request.limits.max_coding_read_bytes as usize,
+            usize::try_from(request.limits.max_coding_read_bytes).unwrap_or(usize::MAX),
         )
         .await
         .map_err(|error| {
@@ -71,6 +93,32 @@ pub(super) async fn read_file(
         })?
         .ok_or_else(|| CodingCapabilityError::new(RuntimeDispatchErrorKind::Resource))?;
     reject_binary_probe(&bytes)?;
+    if raw_snapshot {
+        // Move the actual bounded read into UTF-8; no display formatting,
+        // BOM stripping, replacement decoding or newline normalization.
+        let content = String::from_utf8(bytes).map_err(|_| {
+            operation_error_with_summary("read_file raw snapshot requires valid UTF-8")
+        })?;
+        let path = resolved.scoped_path.as_str().as_bytes();
+        let mut identity = blake3::Hasher::new_derive_key("brassclaw.file-read-snapshot.1");
+        identity.update(&(path.len() as u64).to_le_bytes());
+        identity.update(path);
+        identity.update(content.as_bytes());
+        // Correlate immutable captured bytes with this host-assigned invocation.
+        // This is not a mutable path/refetch handle or a filesystem checkpoint.
+        // Retained execution durably keeps the actual output in its native journal.
+        let source_ref = format!(
+            "file-read-snapshot/1:{}:{}",
+            request.scope.invocation_id,
+            identity.finalize().to_hex(),
+        );
+        return Ok(json!({
+            "source_ref": source_ref,
+            "content": content,
+            "complete": true,
+            "representation": "raw_utf8_preserved",
+        }));
+    }
     let (content, _encoding, _line_ending) = decode_text(&bytes)?;
     let start_line = offset.saturating_sub(1);
     let default_window = !has_explicit_range && request.limits.default_coding_read_lines > 0;

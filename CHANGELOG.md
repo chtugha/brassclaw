@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 This development checkpoint collects the parallel v3 implementation work through
-2026-10-22, including the prefix and runtime/resource workstreams. The qualified
+2026-10-23, including the prefix and runtime/resource workstreams. The qualified
 packaged reply has local MCP chat/provider acceptance; completed-turn review and
 its native effect/accounting custody are implemented in bounded scopes. Full v3
 acceptance, broader public Recipe population, reusable Sempai workflow conversion,
@@ -18,6 +18,13 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- Complete UTF-8 source capture in the existing file reader, preserving BOM,
+  Unicode, original line endings and final-newline presence under the live read
+  limit. Give each captured result an immutable native-invocation/content identity;
+  reject range/forged fields, invalid encodings and oversized reads before exposing
+  a complete result. Actual native callers, live WebUI limits/policy and structured
+  entry races on both backends have scoped acceptance. Canonical usage/R10 pure
+  approval and doc-conversion activation remain open.
 - Atomic scoped inbound message receipts (V176), with coherent legacy backfill,
   exact event/actor/input identity and transactional transcript/turn admission.
   Preserve original accepted input and child IDs across actual lost database

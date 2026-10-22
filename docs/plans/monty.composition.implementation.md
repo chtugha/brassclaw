@@ -24,11 +24,14 @@ runner. Reuse compatible helpers; do not create a second copy for every consumer
   qualification and all five subagent migrations. The explicit native primitive
   exists; the legacy receipt is not completion. Failed/cancelled/recovery outcomes
   must be handled without empty success or replay. See R09's finite-profile rules.
-- R10 remains blocked on faithful raw acquisition/source identity, not on another
+- R10's native raw-acquisition prerequisite now has scoped local acceptance;
+  canonical usage/checker/qualification and consumer migration remain open. See
+  [the actual raw-file contract](../reborn/raw-file-snapshot.md), not another
   text formatter. Numbered reads cannot reconstruct originals. Complete its
   primitive/usage qualification before doc-convert/doc-sync consumers activate.
-- General standalone pure approval is implemented by validator/V35-03/04; dynamic
-  branch/item/occurrence support by V35-13/14. Reuse those results. Current selected
+- General standalone pure approval remains open under validator Steps 3/8–10,
+  consumed by V35-03/04; dynamic branch/item/occurrence support belongs to
+  V35-13/14. Reuse their accepted results when available. Current selected
   flat preload execution is implemented and is not a reason to rebuild a loader.
 - Prefix/model/design/compiler work remains in the prefix plan; Sempai business
   conversion remains in path_to_v3.5. Component examples here may supply reusable
@@ -5004,18 +5007,32 @@ For doc-sync/doc-convert, faithful complete raw source acquisition and immutable
 
 **Prose description:** Validate and extract a complete faithful UTF8 document snapshot before hashing, extraction, storage or full-source prefix teaching.
 
-**Implementation:** Add the missing raw-source check shared by doc-convert/doc-sync and complete-source export. A qualified raw acquisition/export operation supplies an internally defined typed snapshot with immutable source_ref:string, content:string, complete:boolean and representation:string. Every field is required, no extras; representation must equal raw_utf8_preserved by guard. This internal result profile is a target adapter contract, not a currently supported read_file field/API. The trusted host verifies actual acquisition, limits, encoding/newlines and source identity before exposing it; user/model flags cannot establish completeness or provenance.
+**Native prerequisite (2026-10-23, scoped local acceptance):** the existing registered `builtin.read_file` supports `representation="raw_utf8_preserved"`. It returns exactly `source_ref:string`, `content:string`, `complete:true`, `representation:"raw_utf8_preserved"`, preserving full valid UTF-8/BOM/newline bytes. It rejects range fields, forged extra fields, invalid encodings and incomplete/oversized reads under existing live limits. The source reference identifies the actual captured bytes/native invocation, not a path to refetch or an OS-wide checkpoint. See [the exact native contract and evidence](../reborn/raw-file-snapshot.md). No raw-acquisition Skill/Recipe or R10 pure component is activated by this prerequisite.
+
+**Remaining implementation:** author a one-Tool raw-acquisition usage over that existing primitive, with fixed representation, path-only typed inputs, declared preload export, exact four-field result/failure, compatible ToolSkill and canonical execution Recipe. Independently author the small R10 pure export and closed recursive contracts; do not hide it in the reader or invent a zero-Tool Skill. Its input must be the retained actual acquisition result through a pinned Recipe edge, never caller/model flags. It checks completeness, representation and canonical source-reference syntax, and returns `{source_ref:string, text:string}` without normalization; both fields are required, no extras. Empty text is valid. Checking syntax/flags grants no provenance: the native acquisition/journal and workflow edge supply custody. General pure qualification/approval is implemented once by validator Steps 3/8–10, then consumed here; package source qualification and authored review stay distinct.
 
 ```python
-snapshot = inputs["snapshot"]
-if snapshot["complete"] is not True or snapshot["representation"] != "raw_utf8_preserved":
-    raise ValueError("complete_raw_document_required")
-if not snapshot["source_ref"]:
-    raise ValueError("document_source_identity_required")
-result = snapshot["content"]
+# Proposed preloadable class-22 definition; no Tool or approval effects.
+def require_complete_document(inputs):
+    snapshot = inputs["snapshot"]
+    if snapshot["complete"] is not True or snapshot["representation"] != "raw_utf8_preserved":
+        raise ValueError("complete_raw_document_required")
+    parts = snapshot["source_ref"].split(":")
+    if len(parts) != 3 or parts[0] != "file-read-snapshot/1":
+        raise ValueError("document_source_identity_required")
+    invocation = parts[1]
+    digest = parts[2]
+    if len(invocation) != 36 or any(invocation[i] != "-" for i in (8, 13, 18, 23)):
+        raise ValueError("document_source_identity_required")
+    digits = invocation.replace("-", "")
+    if len(digits) != 32 or digits == "0" * 32 or any(c not in "0123456789abcdef" for c in digits):
+        raise ValueError("document_source_identity_required")
+    if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+        raise ValueError("document_source_identity_required")
+    return {"source_ref": snapshot["source_ref"], "text": snapshot["content"]}
 ```
 
-**Recipe wiring/reuse:** actual supported raw snapshot/export binding and executor (blocked until its registered profile is identified or supported) -> R10 -> R05 and L033/L091/R07 in separate reusable steps. Ordinary L001 read_file uses decoded lines, removes newline details and adds numbered display prefixes; stripping them cannot recover original source bytes. Reuse an existing complete-source export primitive if its exact semantics agree; otherwise extend the existing filesystem primitive's technical raw/snapshot profile instead of adding a Rust doc-conversion workflow. Do not invent host.read_file(raw=True) or concatenate display chunks and declare them byte-faithful. UTF8-only documents preserve the exact text hashed by R05; other encodings need an explicit different canonicalization contract. No silent CRLF/trailing-newline normalization. Test absent/malformed identity, incomplete text, numbered-display representation, empty valid document, Unicode, CRLF and terminal newline, size rejection and changing source. Preserve the snapshot ref alongside text through all consumers. This is a pure checker with no Skill/ToolSkill; the separate acquisition is a one-Tool Skill usage. Keep atomic; consumers share this check but do not gain authority from its booleans.
+**Recipe wiring/reuse:** qualify the actual raw-acquisition binding/export -> separately approved R10 -> bind `R10.text` to R05/extraction content and preserve `R10.source_ref` alongside the exact original snapshot through later storage/lineage steps. Use supported lineage fields; implement missing persistence support explicitly before claiming retained source linkage. Keep R05 and L033/L091/R07 in separate reusable steps. Ordinary L001 read_file uses decoded lines, removes newline details and adds numbered display prefixes; stripping them cannot recover original source bytes. Reuse the existing qualified raw filesystem profile and retain its actual output; do not add a Rust doc-conversion workflow or a second raw reader. Do not invent host.read_file(raw=True) or concatenate display chunks and declare them byte-faithful. UTF8-only documents preserve the exact text hashed by R05; other encodings need an explicit different canonicalization contract. No silent CRLF/trailing-newline normalization. Test absent/malformed identity, incomplete text, numbered-display representation, empty valid document, Unicode, CRLF and terminal newline, size rejection and changing source. Preserve the snapshot ref alongside text through all consumers. This is a pure checker with no Skill/ToolSkill; the separate acquisition is a one-Tool Skill usage. Keep atomic; consumers share this check but do not gain authority from its booleans.
 
 ### Existing model usage requalification — pc-host-kohai-complete
 

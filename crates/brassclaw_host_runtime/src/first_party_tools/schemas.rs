@@ -303,11 +303,24 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
             "type": "object",
             "properties": {
                 "path": { "type": "string", "description": "Scoped path to read" },
+                "representation": {
+                    "type": "string",
+                    "enum": ["numbered_lines", "raw_utf8_preserved"],
+                    "description": "Numbered line preview by default; raw_utf8_preserved returns a complete bounded UTF-8 source capture without normalization and forbids offset/limit"
+                },
                 "offset": { "type": "integer", "minimum": 0, "description": "1-based starting line; 0 starts at the beginning" },
                 "limit": { "type": "integer", "minimum": 0, "description": "Maximum lines to return" }
             },
             "required": ["path"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "oneOf": [
+                {"properties": {"representation": {"enum": ["numbered_lines"]}}},
+                {
+                    "required": ["representation"],
+                    "properties": {"representation": {"const": "raw_utf8_preserved"}},
+                    "not": {"anyOf": [{"required": ["offset"]}, {"required": ["limit"]}]}
+                }
+            ]
         }),
         "schemas/builtin/write_file.input.v1.json" => json!({
             "type": "object",

@@ -774,3 +774,15 @@ PostgreSQL Turns `PG_CAS_RETRIES=12`, PostgreSQL Threads `apply_optional`
 with 12 attempts, and filesystem `FILESYSTEM_CAS_RETRIES=8`. These are
 conflict retry policy, not permission to replay a Tool or child effect. Their
 instance-wide configuration/live uptake and explanatory controls remain open.
+
+
+### Complete raw file capture — 2026-10-23
+
+`builtin.read_file` now supports `representation="raw_utf8_preserved"` under the
+same live `max_coding_read_bytes` setting and current kernel/mount rules. It
+forbids ranges and returns a complete UTF-8 snapshot or an error; the preview's
+line default never silently cuts a raw result. No extra fixed read quota or
+operator control is added. [Actual native acceptance](validation/2026-10-23-raw-file-snapshot.md)
+covers WebUI/PostgreSQL byte-limit uptake, retained-handler policy blocking and
+structured-entry races. Canonical raw component and document-workflow
+qualification remain separate open composition/validator work.

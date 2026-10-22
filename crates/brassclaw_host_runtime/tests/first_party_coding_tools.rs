@@ -593,6 +593,151 @@ async fn builtin_coding_utf16_rejects_incomplete_units_and_preserves_unicode_edi
 }
 
 #[tokio::test]
+async fn builtin_read_file_raw_snapshot_preserves_complete_utf8_and_original_identity() {
+    let temp = tempfile::tempdir().unwrap();
+    let lines = brassclaw_host_api::MontyExecutionLimits::default().default_coding_read_lines;
+    let long = "ü🙂\r\n".repeat(usize::try_from(lines).unwrap() + 1);
+    let cases = [
+        ("empty.txt", ""),
+        (
+            "literal.txt",
+            "\u{feff}ü🙂\r\n\r\n{{vars.code}}\rprint('data')\n",
+        ),
+        ("no-final-newline.txt", "first\r\nlast"),
+        ("long.txt", long.as_str()),
+    ];
+    let (filesystem, mounts) = mounted_filesystem(temp.path(), MountPermissions::read_only());
+    let runtime = runtime_with_filesystem(filesystem);
+    for (name, original) in cases {
+        std::fs::write(temp.path().join(name), original.as_bytes()).unwrap();
+        let context = execution_context_with_mounts(coding_capability_ids(), mounts.clone());
+        let invocation = context.resource_scope.invocation_id;
+        let first = invoke_with_context(
+            &runtime,
+            READ_FILE_CAPABILITY_ID,
+            json!({"path":format!("/workspace/{name}"),"representation":"raw_utf8_preserved"}),
+            context.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(first.as_object().unwrap().len(), 4);
+        assert_eq!(
+            first["content"].as_str().unwrap().as_bytes(),
+            original.as_bytes()
+        );
+        assert_eq!(first["complete"], true);
+        assert_eq!(first["representation"], "raw_utf8_preserved");
+        let source = first["source_ref"].as_str().unwrap().to_owned();
+        let prefix = format!("file-read-snapshot/1:{invocation}:");
+        let digest = source.strip_prefix(&prefix).unwrap();
+        assert_eq!(digest.len(), 64);
+        assert!(
+            digest
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        );
+        std::fs::write(temp.path().join(name), "changed\r\n").unwrap();
+        // Reuse the contained caller identity deliberately: even then changed
+        // captured bytes cannot acquire the old source reference.
+        let second = invoke_with_context(
+            &runtime,
+            READ_FILE_CAPABILITY_ID,
+            json!({"path":format!("/workspace/{name}"),"representation":"raw_utf8_preserved"}),
+            context,
+        )
+        .await
+        .unwrap();
+        assert_ne!(second["source_ref"], first["source_ref"]);
+        assert_eq!(first["content"], original);
+        assert_eq!(first["source_ref"], source);
+    }
+}
+
+#[tokio::test]
+async fn builtin_read_file_raw_snapshot_rejects_ranges_encoding_and_incomplete_reads() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("invalid.txt"), [b'a', 0xff, b'b']).unwrap();
+    std::fs::write(temp.path().join("utf16.txt"), [0xff, 0xfe, b'a', 0]).unwrap();
+    std::fs::write(temp.path().join("binary.txt"), [b'a', 0, b'b']).unwrap();
+    std::fs::write(
+        temp.path().join("oversized.txt"),
+        vec![b'x'; max_read_size() + 1],
+    )
+    .unwrap();
+    let (filesystem, mounts) = mounted_filesystem(temp.path(), MountPermissions::read_only());
+    let runtime = runtime_with_filesystem(filesystem);
+    for (name, expected) in [
+        ("invalid.txt", RuntimeFailureKind::OperationFailed),
+        ("utf16.txt", RuntimeFailureKind::OperationFailed),
+        ("binary.txt", RuntimeFailureKind::OperationFailed),
+        ("oversized.txt", RuntimeFailureKind::Resource),
+    ] {
+        let result = invoke_with_context(
+            &runtime,
+            READ_FILE_CAPABILITY_ID,
+            json!({"path":format!("/workspace/{name}"),"representation":"raw_utf8_preserved"}),
+            execution_context_with_mounts(coding_capability_ids(), mounts.clone()),
+        )
+        .await;
+        assert_eq!(result, Err(expected));
+    }
+    for extra in [
+        json!({"offset":0}),
+        json!({"limit":0}),
+        json!({"source_ref":"forged"}),
+        json!({"complete":true}),
+    ] {
+        let mut input =
+            json!({"path":"/workspace/missing.txt","representation":"raw_utf8_preserved"});
+        input
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        let result = invoke_with_context(
+            &runtime,
+            READ_FILE_CAPABILITY_ID,
+            input,
+            execution_context_with_mounts(coding_capability_ids(), mounts.clone()),
+        )
+        .await;
+        assert_eq!(
+            result,
+            Err(RuntimeFailureKind::InvalidInput),
+            "unexpected acceptance of {extra}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn builtin_read_file_raw_snapshot_keeps_mount_read_denial() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("private.txt"), "private unchanged\r\n").unwrap();
+    let (filesystem, mounts) = mounted_filesystem(
+        temp.path(),
+        MountPermissions {
+            read: false,
+            write: true,
+            delete: false,
+            list: false,
+            execute: false,
+        },
+    );
+    let runtime = runtime_with_filesystem(filesystem);
+    let result = invoke_with_context(
+        &runtime,
+        READ_FILE_CAPABILITY_ID,
+        json!({"path":"/workspace/private.txt","representation":"raw_utf8_preserved"}),
+        execution_context_with_mounts(coding_capability_ids(), mounts),
+    )
+    .await;
+    assert!(result.is_err());
+    assert_eq!(
+        std::fs::read_to_string(temp.path().join("private.txt")).unwrap(),
+        "private unchanged\r\n"
+    );
+}
+
+#[tokio::test]
 async fn builtin_read_file_large_ranges_stop_at_eof_without_arithmetic_overflow() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("lines.txt"), "first\nβ\nfinal\n").unwrap();

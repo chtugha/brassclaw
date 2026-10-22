@@ -442,8 +442,16 @@ For an explicitly provisioned permitted text fixture containing
 `alpha\nbeta\ngamma\ndelta\n`, arguments `offset=2`, `limit=2` yield that payload
 according to source. The backend treats offset as one-based (zero is also
 accepted), clamps to EOF, prefixes line numbers, probes for binary content and
-rejects files above its current 10 MiB read limit. Without an explicit range,
+rejects files above the live `max_coding_read_bytes` setting (default 10 MiB).
+Without an explicit range,
 it applies the current default line cap; inspect the selected version's limits.
+
+A separate registered `representation="raw_utf8_preserved"` profile now captures
+complete valid UTF-8 without display formatting and forbids range fields. Its
+four-field output and immutable capture identity are documented in
+[the raw-file contract](docs/reborn/raw-file-snapshot.md), with scoped native
+acceptance. Its canonical usage and R10 pure/consumer qualification remain open;
+this interval example still describes numbered display output.
 
 The reusable interval Skill in skills.md deliberately restricts
 `1 <= start_line <= end_line <= 2147483647` and computes the inclusive length.

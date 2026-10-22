@@ -115,7 +115,7 @@ const CODING_CAPABILITIES: &[CodingCapabilityMetadata] = &[
     CodingCapabilityMetadata {
         id: READ_FILE_CAPABILITY_ID,
         kind: CodingCapabilityKind::ReadFile,
-        description: "Read a file through scoped mounts with v1 read_file output shape",
+        description: "Read a scoped file as a numbered preview or complete unnormalized UTF-8 capture",
         effects: &[EffectKind::ReadFilesystem],
     },
     CodingCapabilityMetadata {

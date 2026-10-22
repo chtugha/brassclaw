@@ -13409,3 +13409,35 @@ Active plans now assign each shared responsibility one implementation owner and
 reference it from consumers, including the v3.5 dependency handoffs. Installation-
 owned production qualification, ordinary parent activation, the five historical
 subagent Recipe migrations and full R09/restart/plan acceptance remain open.
+
+
+### 2026-10-23 — Complete raw UTF-8 file acquisition (scoped native acceptance)
+
+The existing registered file reader has a separate `raw_utf8_preserved` profile.
+Its complete four-field result preserves actual UTF-8/BOM/newline bytes and
+correlates the immutable capture with the native invocation and path/content
+BLAKE3 identity. Ranges/forged fields and invalid/incomplete reads are errors.
+Existing live read ceilings, kernel policy and filesystem protections remain;
+there is no new Rust document workflow or fixed quota.
+
+The actual extension/native caller suites pass 73 cases. Real WebUI/PostgreSQL
+limit publication and current-policy blocking pass on a retained handler in the
+same global VM; memory/PostgreSQL structured-entry transitions also pass. With
+strict affected Clippy, formatting and whitespace this accepts 75 selected tests,
+not every compiled target. Exact hashes/commands, reused scope and two corrected
+failed attempts are recorded in
+[the raw-file validation report](../validation/2026-10-23-raw-file-snapshot.md).
+The raw canonical usage, separately approved R10 pure export, persistence/lineage
+and doc-conversion migrations remain open. General pure approval belongs to
+validator Steps 3/8–10, consumed by V35-03/04; the closed compiler exception is
+not expanded. Final embedded documentation validation retains its own snapshot.
+
+Final `r10-raw-source-20261023/run-4` builds the common application/worker with
+updated embedded guides/changelog, passes version smoke, actual native live
+settings/policy startup, strict root/composition Clippy and format/whitespace.
+All 61 retained executable hashes are verified, and the accepted app/worker are
+restored to the one canonical target after disposable cleanup. Reused 73 native
+cases and the backend race retain their exact earlier scopes. Fifteen additional
+actual Monty utility evaluations check the proposed R10 Markdown helper only;
+no component approval/activation is inferred. Only unembedded reports/plans are
+finalized afterward; the final equivalence receipt identifies those differences.

@@ -533,6 +533,12 @@ An adapter could translate contracts, but its existence must be verified.
 Do not call an unsupported `range` keyword or silently treat these schemas as
 compatible merely because both descriptors say “read file.”
 
+The registered reader also has the distinct complete UTF-8 profile described in
+[the raw-file contract](docs/reborn/raw-file-snapshot.md). Its fixed representation,
+range rejection and four-field result need a matching qualified usage association;
+this preview descriptor is not silently compatible. Native support exists, while
+canonical raw usage/R10 approval and consumer migration remain open.
+
 ### B. Specify the correct binding
 
 ```text

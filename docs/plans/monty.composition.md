@@ -42,9 +42,14 @@ and this plan's acceptance remain open.
    Consume the owner's uncertainty/cancellation/saturation/restart acceptance.
 4. **Finish actual missing primitive profiles (§§20–23, R10).** Identify/reuse
    registered callable/adapter semantics before adding narrow primitive support.
-   R10 still needs faithful complete raw UTF-8 acquisition with an authentic
-   immutable source reference; numbered read previews cannot supply original
-   bytes/newlines. Complete binding/result/effect coverage for HTTP/body/pagination,
+   R10's native prerequisite now supports complete UTF-8 capture through
+   `builtin.read_file(representation="raw_utf8_preserved")`, with scoped local
+   acceptance of its actual capture identity, live limits/policy and backend
+   protection. [The contract](../reborn/raw-file-snapshot.md) distinguishes this
+   from still-missing canonical usage/association, standalone pure checker,
+   package qualification and doc-sync/doc-convert migrations. Reuse that primitive;
+   numbered previews cannot supply original bytes/newlines.
+   Complete binding/result/effect coverage for HTTP/body/pagination,
    storage/lineage, shell/process and dependent-chain exceptions. Never manufacture
    unsupported parameters or move a multi-Tool workflow into Rust.
 5. **Populate coherent public commands and retire legacy admission (§§6.7/25/35).**
