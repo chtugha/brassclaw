@@ -528,38 +528,120 @@ impl ResourceTally {
         }
     }
 
-    fn add_assign(&mut self, other: &Self) {
-        self.usd = self.usd.checked_add(other.usd).unwrap_or(Decimal::MAX);
-        self.input_tokens = self.input_tokens.saturating_add(other.input_tokens);
-        self.output_tokens = self.output_tokens.saturating_add(other.output_tokens);
-        self.wall_clock_ms = self.wall_clock_ms.saturating_add(other.wall_clock_ms);
-        self.output_bytes = self.output_bytes.saturating_add(other.output_bytes);
-        self.network_egress_bytes = self
-            .network_egress_bytes
-            .saturating_add(other.network_egress_bytes);
-        self.process_count = self.process_count.saturating_add(other.process_count);
-        self.concurrency_slots = self
-            .concurrency_slots
-            .saturating_add(other.concurrency_slots);
+    // Preflight every field before replacing any account balance. Saturating
+    // arithmetic loses a reservation's contribution when another hold is freed.
+    fn checked_add(&self, other: &Self) -> Result<Self, ResourceError> {
+        if self.usd < Decimal::ZERO || other.usd < Decimal::ZERO {
+            return Err(inconsistent_tally_error());
+        }
+        Ok(Self {
+            usd: self
+                .usd
+                .checked_add(other.usd)
+                .filter(|sum| {
+                    sum.checked_sub(self.usd) == Some(other.usd)
+                        && sum.checked_sub(other.usd) == Some(self.usd)
+                })
+                .ok_or(ResourceError::InvalidEstimate {
+                    dimension: ResourceDimension::Usd,
+                    reason: "aggregate resource tally cannot be represented",
+                })?,
+            input_tokens: self.input_tokens.checked_add(other.input_tokens).ok_or(
+                ResourceError::InvalidEstimate {
+                    dimension: ResourceDimension::InputTokens,
+                    reason: "aggregate resource tally cannot be represented",
+                },
+            )?,
+            output_tokens: self.output_tokens.checked_add(other.output_tokens).ok_or(
+                ResourceError::InvalidEstimate {
+                    dimension: ResourceDimension::OutputTokens,
+                    reason: "aggregate resource tally cannot be represented",
+                },
+            )?,
+            wall_clock_ms: self.wall_clock_ms.checked_add(other.wall_clock_ms).ok_or(
+                ResourceError::InvalidEstimate {
+                    dimension: ResourceDimension::WallClockMs,
+                    reason: "aggregate resource tally cannot be represented",
+                },
+            )?,
+            output_bytes: self.output_bytes.checked_add(other.output_bytes).ok_or(
+                ResourceError::InvalidEstimate {
+                    dimension: ResourceDimension::OutputBytes,
+                    reason: "aggregate resource tally cannot be represented",
+                },
+            )?,
+            network_egress_bytes: self
+                .network_egress_bytes
+                .checked_add(other.network_egress_bytes)
+                .ok_or(ResourceError::InvalidEstimate {
+                    dimension: ResourceDimension::NetworkEgressBytes,
+                    reason: "aggregate resource tally cannot be represented",
+                })?,
+            process_count: self.process_count.checked_add(other.process_count).ok_or(
+                ResourceError::InvalidEstimate {
+                    dimension: ResourceDimension::ProcessCount,
+                    reason: "aggregate resource tally cannot be represented",
+                },
+            )?,
+            concurrency_slots: self
+                .concurrency_slots
+                .checked_add(other.concurrency_slots)
+                .ok_or(ResourceError::InvalidEstimate {
+                    dimension: ResourceDimension::ConcurrencySlots,
+                    reason: "aggregate resource tally cannot be represented",
+                })?,
+        })
     }
 
-    fn sub_assign(&mut self, other: &Self) {
-        self.usd = self
-            .usd
-            .checked_sub(other.usd)
-            .map(|value| value.max(Decimal::ZERO))
-            .unwrap_or(Decimal::ZERO);
-        self.input_tokens = self.input_tokens.saturating_sub(other.input_tokens);
-        self.output_tokens = self.output_tokens.saturating_sub(other.output_tokens);
-        self.wall_clock_ms = self.wall_clock_ms.saturating_sub(other.wall_clock_ms);
-        self.output_bytes = self.output_bytes.saturating_sub(other.output_bytes);
-        self.network_egress_bytes = self
-            .network_egress_bytes
-            .saturating_sub(other.network_egress_bytes);
-        self.process_count = self.process_count.saturating_sub(other.process_count);
-        self.concurrency_slots = self
-            .concurrency_slots
-            .saturating_sub(other.concurrency_slots);
+    fn checked_sub(&self, other: &Self) -> Result<Self, ResourceError> {
+        if self.usd < Decimal::ZERO || other.usd < Decimal::ZERO {
+            return Err(inconsistent_tally_error());
+        }
+        Ok(Self {
+            usd: self
+                .usd
+                .checked_sub(other.usd)
+                .filter(|amount| {
+                    *amount >= Decimal::ZERO
+                        && self.usd.checked_sub(*amount) == Some(other.usd)
+                        && amount.checked_add(other.usd) == Some(self.usd)
+                })
+                .ok_or_else(inconsistent_tally_error)?,
+            input_tokens: self
+                .input_tokens
+                .checked_sub(other.input_tokens)
+                .ok_or_else(inconsistent_tally_error)?,
+            output_tokens: self
+                .output_tokens
+                .checked_sub(other.output_tokens)
+                .ok_or_else(inconsistent_tally_error)?,
+            wall_clock_ms: self
+                .wall_clock_ms
+                .checked_sub(other.wall_clock_ms)
+                .ok_or_else(inconsistent_tally_error)?,
+            output_bytes: self
+                .output_bytes
+                .checked_sub(other.output_bytes)
+                .ok_or_else(inconsistent_tally_error)?,
+            network_egress_bytes: self
+                .network_egress_bytes
+                .checked_sub(other.network_egress_bytes)
+                .ok_or_else(inconsistent_tally_error)?,
+            process_count: self
+                .process_count
+                .checked_sub(other.process_count)
+                .ok_or_else(inconsistent_tally_error)?,
+            concurrency_slots: self
+                .concurrency_slots
+                .checked_sub(other.concurrency_slots)
+                .ok_or_else(inconsistent_tally_error)?,
+        })
+    }
+}
+
+fn inconsistent_tally_error() -> ResourceError {
+    ResourceError::Storage {
+        reason: "resource reservation ledger is inconsistent".into(),
     }
 }
 
@@ -1563,22 +1645,97 @@ impl Serialize for ResourceState {
     }
 }
 
+// JSON maps use entry arrays because account keys are structured. Reject
+// duplicate identities rather than silently letting collect() replace them.
+fn unique_resource_entries<K, V, E>(entries: Vec<(K, V)>) -> Result<HashMap<K, V>, E>
+where
+    K: std::hash::Hash + Eq,
+    E: serde::de::Error,
+{
+    let mut values = HashMap::with_capacity(entries.len());
+    for (key, value) in entries {
+        if values.insert(key, value).is_some() {
+            return Err(E::custom("duplicate resource ledger identity"));
+        }
+    }
+    Ok(values)
+}
+
+impl ResourceState {
+    fn validate_retained_balances(&self) -> Result<(), ResourceError> {
+        let mut expected: HashMap<ResourceAccount, ResourceTally> = HashMap::new();
+        for (id, record) in &self.reservations {
+            if *id != record.reservation.id
+                || record.accounts != ResourceAccount::cascade(&record.reservation.scope)
+                || record.tally != ResourceTally::from_estimate(&record.reservation.estimate)
+            {
+                return Err(inconsistent_tally_error());
+            }
+            validate_estimate(&record.reservation.estimate)?;
+            if let Some(actual) = &record.actual {
+                validate_usage(actual)?;
+                if record.status != ReservationStatus::Reconciled {
+                    return Err(inconsistent_tally_error());
+                }
+            }
+            if record.status == ReservationStatus::Active {
+                for account in &record.accounts {
+                    let tally = expected.entry(account.clone()).or_default();
+                    *tally = tally.checked_add(&record.tally)?;
+                }
+            }
+        }
+        // Zero rows may be retained by old snapshots. Missing/extra zero rows
+        // are equivalent; every nonzero reservation balance must agree exactly.
+        for (account, actual) in &self.reserved_by_account {
+            if expected.get(account).cloned().unwrap_or_default() != *actual {
+                return Err(inconsistent_tally_error());
+            }
+        }
+        for (account, tally) in expected {
+            if self
+                .reserved_by_account
+                .get(&account)
+                .cloned()
+                .unwrap_or_default()
+                != tally
+            {
+                return Err(inconsistent_tally_error());
+            }
+        }
+        for (account, usage) in &self.usage_by_account {
+            let reserved = self
+                .reserved_by_account
+                .get(account)
+                .cloned()
+                .unwrap_or_default();
+            usage.checked_add(&reserved)?;
+        }
+        Ok(())
+    }
+}
+
 impl<'de> Deserialize<'de> for ResourceState {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let value = ResourceStateSerde::deserialize(deserializer)?;
-        Ok(Self {
-            limits: value.limits.into_iter().collect(),
-            reserved_by_account: value.reserved_by_account.into_iter().collect(),
-            usage_by_account: value.usage_by_account.into_iter().collect(),
-            reservations: value.reservations.into_iter().collect(),
-            period_anchors: value
-                .period_anchors
-                .map(|entries| entries.into_iter().collect())
-                .unwrap_or_default(),
-        })
+        let state = Self {
+            limits: unique_resource_entries::<_, _, D::Error>(value.limits)?,
+            reserved_by_account: unique_resource_entries::<_, _, D::Error>(
+                value.reserved_by_account,
+            )?,
+            usage_by_account: unique_resource_entries::<_, _, D::Error>(value.usage_by_account)?,
+            reservations: unique_resource_entries::<_, _, D::Error>(value.reservations)?,
+            period_anchors: unique_resource_entries::<_, _, D::Error>(
+                value.period_anchors.unwrap_or_default(),
+            )?,
+        };
+        state
+            .validate_retained_balances()
+            .map_err(serde::de::Error::custom)?;
+        Ok(state)
     }
 }
 
@@ -1997,12 +2154,29 @@ fn reserve_with_outcome_in_state(
         estimate,
     };
 
-    for account in &accounts {
-        state
-            .reserved_by_account
-            .entry(account.clone())
-            .or_default()
-            .add_assign(&requested);
+    // Validate every account, including unconfigured accounts and disabled
+    // token budgets, before changing a balance. These are representation checks,
+    // not an additional policy cap. Combined spend/holds must also remain exact.
+    let balances = accounts
+        .iter()
+        .map(|account| {
+            let reserved = state
+                .reserved_by_account
+                .get(account)
+                .cloned()
+                .unwrap_or_default();
+            let updated = reserved.checked_add(&requested)?;
+            let usage = state
+                .usage_by_account
+                .get(account)
+                .cloned()
+                .unwrap_or_default();
+            usage.checked_add(&updated)?;
+            Ok((account.clone(), updated))
+        })
+        .collect::<Result<Vec<_>, ResourceError>>()?;
+    for (account, balance) in balances {
+        state.reserved_by_account.insert(account, balance);
     }
 
     state.reservations.insert(
@@ -2055,37 +2229,46 @@ fn reconcile_in_state(
 ) -> Result<ResourceReceipt, ResourceError> {
     let mut record = state
         .reservations
-        .remove(&reservation_id)
+        .get(&reservation_id)
+        .cloned()
         .ok_or(ResourceError::UnknownReservation { id: reservation_id })?;
-
     if record.status != ReservationStatus::Active {
-        let status = record.status;
-        state.reservations.insert(reservation_id, record);
         return Err(ResourceError::ReservationClosed {
             id: reservation_id,
-            status,
+            status: record.status,
         });
     }
-
-    if let Err(error) = validate_usage(&actual) {
-        state.reservations.insert(reservation_id, record);
-        return Err(error);
-    }
-
+    validate_usage(&actual)?;
     for account in &record.accounts {
         advance_period_if_rolled_over(state, account, now);
-        state
-            .reserved_by_account
-            .entry(account.clone())
-            .or_default()
-            .sub_assign(&record.tally);
-        state
-            .usage_by_account
-            .entry(account.clone())
-            .or_default()
-            .add_assign(&ResourceTally::from_usage(&actual));
     }
-
+    let actual_tally = ResourceTally::from_usage(&actual);
+    let balances = record
+        .accounts
+        .iter()
+        .map(|account| {
+            let reserved = state
+                .reserved_by_account
+                .get(account)
+                .cloned()
+                .unwrap_or_default();
+            let updated_reserved = reserved.checked_sub(&record.tally)?;
+            let usage = state
+                .usage_by_account
+                .get(account)
+                .cloned()
+                .unwrap_or_default();
+            let updated_usage = usage.checked_add(&actual_tally)?;
+            updated_usage.checked_add(&updated_reserved)?;
+            Ok((account.clone(), updated_reserved, updated_usage))
+        })
+        .collect::<Result<Vec<_>, ResourceError>>()?;
+    // A failed preflight leaves the original active reservation and every
+    // balance intact; no partial cascade can erase another operation's hold.
+    for (account, reserved, usage) in balances {
+        state.reserved_by_account.insert(account.clone(), reserved);
+        state.usage_by_account.insert(account, usage);
+    }
     record.status = ReservationStatus::Reconciled;
     record.actual = Some(actual.clone());
     let receipt = ResourceReceipt {
@@ -2106,27 +2289,33 @@ fn release_in_state(
 ) -> Result<ResourceReceipt, ResourceError> {
     let mut record = state
         .reservations
-        .remove(&reservation_id)
+        .get(&reservation_id)
+        .cloned()
         .ok_or(ResourceError::UnknownReservation { id: reservation_id })?;
-
     if record.status != ReservationStatus::Active {
-        let status = record.status;
-        state.reservations.insert(reservation_id, record);
         return Err(ResourceError::ReservationClosed {
             id: reservation_id,
-            status,
+            status: record.status,
         });
     }
-
     for account in &record.accounts {
         advance_period_if_rolled_over(state, account, now);
-        state
-            .reserved_by_account
-            .entry(account.clone())
-            .or_default()
-            .sub_assign(&record.tally);
     }
-
+    let balances = record
+        .accounts
+        .iter()
+        .map(|account| {
+            let reserved = state
+                .reserved_by_account
+                .get(account)
+                .cloned()
+                .unwrap_or_default();
+            Ok((account.clone(), reserved.checked_sub(&record.tally)?))
+        })
+        .collect::<Result<Vec<_>, ResourceError>>()?;
+    for (account, reserved) in balances {
+        state.reserved_by_account.insert(account, reserved);
+    }
     record.status = ReservationStatus::Released;
     let receipt = ResourceReceipt {
         id: reservation_id,
@@ -2519,7 +2708,11 @@ fn check_integer(
 ) -> Option<ResourceDenial> {
     // 0 = unlimited per the convention in `ResourceLimits`.
     let limit = limit.filter(|v| *v > 0)?;
-    if usage.saturating_add(reserved).saturating_add(requested) > limit {
+    if usage
+        .checked_add(reserved)
+        .and_then(|total| total.checked_add(requested))
+        .is_none_or(|total| total > limit)
+    {
         Some(ResourceDenial {
             account: account.clone(),
             dimension,
@@ -2601,7 +2794,7 @@ fn threshold_integer(inputs: ThresholdInputs<'_, u64>) -> Option<ThresholdInterv
         period_end,
     } = inputs;
     let limit = limit.filter(|v| *v > 0)?;
-    let total = usage.saturating_add(reserved).saturating_add(requested);
+    let total = usage.checked_add(reserved)?.checked_add(requested)?;
     let utilization = total as f64 / limit as f64;
     if thresholds.pause_at < 1.0 && utilization >= thresholds.pause_at {
         return Some(ThresholdIntervention::Approval(ResourceApprovalNeeded {

@@ -2424,6 +2424,7 @@ dependencies = [
  "monty-types",
  "notify",
  "rand 0.8.8",
+ "refinery",
  "regex",
  "reqwest 0.12.28",
  "rust_decimal",
@@ -2453,6 +2454,7 @@ dependencies = [
 name = "brassclaw_reborn_config"
 version = "0.1.0"
 dependencies = [
+ "rust_decimal",
  "serde",
  "tempfile",
  "thiserror 2.0.20",
@@ -2792,7 +2794,6 @@ dependencies = [
  "brassclaw_pg",
  "chrono",
  "deadpool-postgres",
- "heck",
  "hex",
  "serde",
  "serde_json",

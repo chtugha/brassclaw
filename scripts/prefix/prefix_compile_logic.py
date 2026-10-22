@@ -44,15 +44,19 @@ def prefix_digest_list(values, count):
 def prefix_prepare(inputs):
     source = prefix_decode(inputs['snapshot_bytes'])
     prefix_fields(source, ['format', 'profile', 'release', 'header', 'evidence_view', 'sources', 'procedures'])
-    if source['format'] != 'brassclaw-prefix-source-snapshot/1' or source['profile'] not in ('base-prompt', 'prefix-maker'):
+    if source['format'] != 'brassclaw-prefix-source-snapshot/1' or source['profile'] not in ('base-prompt', 'prefix-maker', 'sempai'):
         raise ValueError('unsupported source snapshot')
-    if source['evidence_view'] not in ('literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing'):
+    if source['evidence_view'] not in ('literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing', 'literal-reference/v5-contextual-sharing'):
         raise ValueError('unsupported evidence view')
     if any(not isinstance(source[key], str) or not source[key].strip() for key in ('release', 'header')):
         raise ValueError('release and accepted header required')
     mandatory = ['skills.md', 'recipe.md', 'tools.md', 'toolskills.md', 'CLAUDE.md', 'AGENTS.md', 'simplified_v3.md']
     if source['profile'] == 'prefix-maker':
         mandatory.append('scripts/prefix/prefix-maker-reference.md')
+    if source['profile'] == 'sempai':
+        if source['evidence_view'] != 'literal-reference/v5-contextual-sharing':
+            raise ValueError('Sempai requires context-aware source presentation')
+        mandatory.extend(['scripts/prefix/sempai-authoring-reference.md', 'scripts/prefix/sempai-monty-compatibility.md'])
     if not isinstance(source['sources'], list) or not source['sources']:
         raise ValueError('complete source inventory required')
     records = []
@@ -82,7 +86,7 @@ def prefix_prepare(inputs):
         texts.extend(unit[2] for unit in record['units'])
     for name in sorted(procedures):
         texts.append(procedures[name])
-    state = {'snapshot': source, 'records': records, 'hash_count': len(texts)}
+    state = {'snapshot': source, 'records': records, 'required_sources': mandatory, 'hash_count': len(texts)}
     return {'state_bytes': prefix_json(state), 'texts': texts}
 
 
@@ -135,17 +139,19 @@ def prefix_render(inputs):
         source = record['source']
         identity = inputs['digests'][index]
         sources.append({'path': source['path'], 'artifact': 'raw/' + record['sha256'], 'sha256': record['sha256'], 'kind': source['kind'], 'disposition': source['disposition'], 'reason': source['reason']})
-        rendering.append({'path': source['path'], 'sha256': record['sha256'], 'disposition': source['disposition'], 'reason': source['reason'], 'text': source['text'], 'evidence_id': identity, 'units': record['units']})
+        rendering.append({'path': source['path'], 'kind': source['kind'], 'sha256': record['sha256'], 'disposition': source['disposition'], 'reason': source['reason'], 'text': source['text'], 'evidence_id': identity, 'units': record['units']})
         if source['disposition'] == 'included':
             if identity[:12] in compact:
                 raise ValueError('compact evidence identity collision')
             compact.append(identity[:12])
             evidence.append({'id': identity, 'path': source['path'], 'document_sha256': record['sha256'], 'line_start': 1, 'line_end': record['line_count'], 'excerpt_sha256': record['sha256'], 'excerpt': source['text'], 'disposition': source['disposition'], 'sections': record['sections']})
     files = state['files']
-    if snapshot['evidence_view'] in ('literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing'):
+    if snapshot['evidence_view'] in ('literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing', 'literal-reference/v5-contextual-sharing'):
         renderer = render_trailing_inventory_prefix_reference if snapshot['evidence_view'] == 'literal-reference/v3-trailing-inventory' else render_deduplicated_prefix_reference
         if snapshot['evidence_view'] == 'literal-reference/v4-stable-sharing':
             renderer = render_stable_sharing_prefix_reference
+        if snapshot['evidence_view'] == 'literal-reference/v5-contextual-sharing':
+            renderer = render_contextual_prefix_reference
         rendered = renderer(snapshot['header'], rendering, [])
         files['context.md'] = rendered['context']
         files['render_map.json'] = prefix_json(rendered['render_map'])
@@ -153,7 +159,11 @@ def prefix_render(inputs):
         files['context.md'] = render_prefix_reference(snapshot['header'], rendering, [])
     files['sources.json'] = prefix_json({'format': 'brassclaw-prefix-generation-sources/1', 'release': snapshot['release'], 'input_artifact': 'source_snapshot.json', 'sources': sources})
     files['evidence.json'] = prefix_json(evidence)
-    files['profile_design.json'] = prefix_json({'format': 'brassclaw-prefix-compiler-design/1', 'profile': snapshot['profile'], 'header': snapshot['header'], 'required_sources': [record['source']['path'] for record in records if record['source']['path'] in ['skills.md', 'recipe.md', 'tools.md', 'toolskills.md', 'CLAUDE.md', 'AGENTS.md', 'simplified_v3.md', 'scripts/prefix/prefix-maker-reference.md'] and (snapshot['profile'] == 'prefix-maker' or record['source']['path'] != 'scripts/prefix/prefix-maker-reference.md')], 'evidence_view': snapshot['evidence_view'], 'source_selection': 'complete-mandatory'})
+    design = {'format': 'brassclaw-prefix-compiler-design/1', 'profile': snapshot['profile'], 'header': snapshot['header'], 'required_sources': state['required_sources'], 'evidence_view': snapshot['evidence_view'], 'source_selection': 'complete-mandatory'}
+    if snapshot['evidence_view'] == 'literal-reference/v5-contextual-sharing':
+        design['format'] = 'brassclaw-prefix-compiler-design/2'
+        design['source_contexts'] = {item['source']: item['context'] for item in rendered['render_map']['sources']}
+    files['profile_design.json'] = prefix_json(design)
     hashes = state['procedure_hashes']
     compiler = {'format': 'brassclaw-monty-prefix-compiler/1', 'execution_attestation': 'unqualified-development-process', 'entry_sha256': hashes['compiler/entry.py'], 'shared_evidence_sha256': hashes['compiler/prefix_units.py'], 'renderer_sha256': hashes['compiler/prefix_render.py'], 'unit_segmenter_sha256': hashes['compiler/prefix_units.py']}
     if snapshot['profile'] == 'prefix-maker':

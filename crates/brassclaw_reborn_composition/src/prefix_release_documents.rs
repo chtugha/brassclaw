@@ -742,6 +742,312 @@ const DOCUMENTS: &[(&str, &str)] = &[
         include_str!("../../../scripts/prefix/sempai-authoring-reference.md"),
     ),
     ("validator_v3.md", include_str!("../../../validator_v3.md")),
+    (
+        "crates/brassclaw_engine/prompts/sempai_audit.md",
+        include_str!("../../../crates/brassclaw_engine/prompts/sempai_audit.md"),
+    ),
+    (
+        "crates/brassclaw_interceptor/src/packet.rs",
+        include_str!("../../../crates/brassclaw_interceptor/src/packet.rs"),
+    ),
+    (
+        "docs/agents-v3/14-validation-queue.md",
+        include_str!("../../../docs/agents-v3/14-validation-queue.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/LICENSE",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/LICENSE"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/alternatives.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/alternatives.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/api/python/errors.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/api/python/errors.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/api/python/host_objects.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/api/python/host_objects.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/api/python/os.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/api/python/os.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/api/python/pools.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/api/python/pools.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/api/python/suspend_resume.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/api/python/suspend_resume.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/api/python/websocket.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/api/python/websocket.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/cli.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/cli.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/examples.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/examples.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/filesystem.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/filesystem.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/host-functions.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/host-functions.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/host-objects.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/host-objects.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/index.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/index.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/AGENTS.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/AGENTS.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/assert.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/assert.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/asyncio.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/asyncio.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/base64.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/base64.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/builtins.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/builtins.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/classes.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/classes.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/collections.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/collections.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/comprehensions.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/comprehensions.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/copy.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/copy.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/dataclasses.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/dataclasses.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/datetime.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/datetime.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/encoding.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/encoding.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/eval_exec.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/eval_exec.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/exceptions.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/exceptions.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/filesystem.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/filesystem.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/format.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/format.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/functools.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/functools.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/host-values.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/host-values.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/index.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/index.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/iter.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/iter.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/itertools.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/itertools.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/json.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/json.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/language.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/language.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/math.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/math.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/modules.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/modules.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/namedtuple.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/namedtuple.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/open.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/open.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/os.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/os.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/pathlib.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/pathlib.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/print.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/print.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/random.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/random.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/re.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/re.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/resource_limits.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/resource_limits.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/sys.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/sys.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/time.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/time.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/typing.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/typing.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/unicodedata.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/unicodedata.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/with.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/limitations/with.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/quickstart/javascript.md",
+        include_str!(
+            "../../../scripts/prefix/monty-reference/v1.0.0/docs/quickstart/javascript.md"
+        ),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/quickstart/python.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/quickstart/python.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/quickstart/rust.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/quickstart/rust.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/resource-limits.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/resource-limits.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/security.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/security.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/server.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/server.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/snapshots.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/snapshots.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/docs/type-checking.md",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/docs/type-checking.md"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/manifest.json",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/manifest.json"),
+    ),
+    (
+        "scripts/prefix/monty-reference/v1.0.0/mkdocs.yml",
+        include_str!("../../../scripts/prefix/monty-reference/v1.0.0/mkdocs.yml"),
+    ),
+    (
+        "scripts/prefix/sempai-monty-compatibility.md",
+        include_str!("../../../scripts/prefix/sempai-monty-compatibility.md"),
+    ),
+    (
+        "scripts/prefix/sempai-worked-examples.json",
+        include_str!("../../../scripts/prefix/sempai-worked-examples.json"),
+    ),
+    (
+        "scripts/prefix/sempai-worked-examples.md",
+        include_str!("../../../scripts/prefix/sempai-worked-examples.md"),
+    ),
+    (
+        "scripts/prefix/sempai-worked-examples.receipt.json",
+        include_str!("../../../scripts/prefix/sempai-worked-examples.receipt.json"),
+    ),
 ];
 
 /// Validate the complete declared inventory against the compiled byte set.
@@ -766,6 +1072,12 @@ pub(super) fn additional_drafts() -> Result<Vec<ComponentRevisionDraft>, RebornB
     if rows.len() != content.len() || content.len() != GUIDES.len() + DOCUMENTS.len() {
         return Err(invalid());
     }
+    verify_reference_package(
+        &content,
+        "scripts/prefix/monty-reference/v1.0.0",
+        "https://github.com/pydantic/monty",
+        "v1.0.0",
+    )?;
     let mut seen = std::collections::BTreeSet::new();
     let mut drafts = Vec::new();
     for row in rows {
@@ -802,4 +1114,118 @@ pub(super) fn additional_drafts() -> Result<Vec<ComponentRevisionDraft>, RebornB
             "dependencies":[],"association":null}).to_string()).map_err(|_| invalid())?);
     }
     Ok(drafts)
+}
+
+/// Check a declared GitHub reference package against its complete embedded bytes.
+/// This is source integrity, not runtime compatibility or knowledge approval.
+fn verify_reference_package(
+    content: &std::collections::BTreeMap<&str, &str>,
+    directory: &str,
+    repository: &str,
+    tag: &str,
+) -> Result<(), RebornBuildError> {
+    let manifest_path = format!("{directory}/manifest.json");
+    let manifest = brassclaw_skills::value_contract::strict_json(
+        content.get(manifest_path.as_str()).ok_or_else(invalid)?,
+        brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
+    )
+    .map_err(|_| invalid())?;
+    let commit = manifest["commit"].as_str().ok_or_else(invalid)?;
+    if manifest.as_object().is_none_or(|value| value.len() != 7)
+        || manifest["schema"] != 1
+        || manifest["tag"] != tag
+        || manifest["repository"] != repository
+        || commit.len() != 40
+        || !commit
+            .bytes()
+            .all(|v| v.is_ascii_digit() || (b'a'..=b'f').contains(&v))
+        || ["license", "scope"]
+            .iter()
+            .any(|field| manifest[field].as_str().is_none_or(|v| v.trim().is_empty()))
+    {
+        return Err(invalid());
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for file in manifest["files"].as_array().ok_or_else(invalid)? {
+        let name = file["path"].as_str().ok_or_else(invalid)?;
+        let path = format!("{directory}/{name}");
+        if file.as_object().is_none_or(|value| value.len() != 4)
+            || name.contains('\\')
+            || name.split('/').any(|v| v.is_empty() || v.starts_with('.'))
+            || file["model_reference"].as_bool().is_none()
+            || file["url"] != format!("{repository}/blob/{commit}/{name}")
+            || !seen.insert(path.clone())
+        {
+            return Err(invalid());
+        }
+        let text = *content.get(path.as_str()).ok_or_else(invalid)?;
+        if sha(text) != file["sha256"].as_str().ok_or_else(invalid)? {
+            return Err(invalid());
+        }
+    }
+    let prefix = format!("{directory}/");
+    let expected: std::collections::BTreeSet<_> = content
+        .keys()
+        .filter(|path| path.starts_with(&prefix) && **path != manifest_path)
+        .map(|path| (*path).to_owned())
+        .collect();
+    if expected.is_empty() || seen != expected {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn upstream_reference_package_preserves_complete_bytes_and_rejects_forged_provenance() {
+        let directory = "scripts/prefix/monty-reference/v1.0.0";
+        let manifest_path = "scripts/prefix/monty-reference/v1.0.0/manifest.json";
+        let content: std::collections::BTreeMap<_, _> =
+            GUIDES.iter().chain(DOCUMENTS).copied().collect();
+        let verify = |content: &std::collections::BTreeMap<&str, &str>| {
+            verify_reference_package(
+                content,
+                directory,
+                "https://github.com/pydantic/monty",
+                "v1.0.0",
+            )
+        };
+        verify(&content).unwrap();
+        let original: serde_json::Value = serde_json::from_str(content[manifest_path]).unwrap();
+        let rejected = |value: serde_json::Value| {
+            let bytes = value.to_string();
+            let mut changed = content.clone();
+            changed.insert(manifest_path, bytes.as_str());
+            assert!(verify(&changed).is_err());
+        };
+        let mut changed = original.clone();
+        changed["files"][0]["sha256"] = json!("0".repeat(64));
+        rejected(changed);
+        let mut changed = original.clone();
+        changed["files"][0]["url"] = json!("https://example.invalid/other");
+        rejected(changed);
+        let mut changed = original.clone();
+        changed["files"][0]["path"] = json!("../private");
+        rejected(changed);
+        let mut changed = original.clone();
+        changed["files"][0]["model_reference"] = json!("true");
+        rejected(changed);
+        let mut changed = original.clone();
+        changed["files"].as_array_mut().unwrap().remove(0);
+        rejected(changed);
+        let mut changed = original.clone();
+        changed["files"]
+            .as_array_mut()
+            .unwrap()
+            .push(original["files"][0].clone());
+        rejected(changed);
+        let mut changed = content.clone();
+        changed.insert(
+            "scripts/prefix/monty-reference/v1.0.0/LICENSE",
+            "different original",
+        );
+        assert!(verify(&changed).is_err());
+    }
 }

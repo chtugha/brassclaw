@@ -29,7 +29,8 @@ async fn native_model_quote_settings_update_new_holds_and_preserve_existing_quot
         Arc::new(brassclaw_resources::NoOpBudgetEventSink),
         &brassclaw_reborn_config::BudgetDefaults::compiled_defaults(),
         Some(slot.clone()),
-    );
+    )
+    .unwrap();
     let first =
         crate::native_admission_fixture::reserve(rig.pool.clone(), "reserve quote before edit")
             .await;

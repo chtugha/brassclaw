@@ -206,6 +206,74 @@ The latest Phase C continuation records the accepted closed installation slice i
 
 The prefix owner retains six-profile/custom-profile Generate, Sources, Redesign/Create/Model Designs and real serving/cache acceptance. This roadmap does not take them over or claim them complete. Missing model readiness cannot block a valid model-free source artifact; source-only acceptance cannot certify Generate activation. Retain immutable source/model originals and exact generation receipts. Shared serializer/iterative-value and kernel-output local results do not justify lifting strict parser/depth guards or skipping public DTO/journal/child/wait/live-profile/platform checks.
 
+### V35-20 handoff: per-model budgets shape prefix content and design
+
+The two per-target input ceilings remain hard technical limits with budgeting off.
+`token_budgets_enabled` controls discretionary quotas only; toggling it must not
+delete, hide or bypass these persisted values. Kohai obtains both active-provider
+and Sempai-provider limit/geometry bundles from the one canonical owner. Sempai
+receives the answer target's limits as trusted review input. The orchestration
+Recipe checks its whole Sempai request before review, then checks the fully
+reassembled answer request after the edit, with history/tools/framing and prefix
+once. Reuse one unconditional final transport guard over actual provider-transformed
+bytes, including unchanged/disabled review, retries and continuations. Source-side
+settings/planning work does not establish this guard is implemented.
+
+`V35-16, V35-20, V35-28` must prove both checks with budgeting on/off, persistence
+across toggle/restart, different limits for the two targets, zero review calls on
+Sempai overflow and zero final calls when an edited prompt only overflows after
+history/prefix assembly. Preserve original evidence and use only qualified views/
+inspection stages when the full review input cannot fit. Missing limits/geometry
+block dispatch explicitly. Do not rely on a model's fit claim or provider errors.
+
+The prefix owner's [budget-aware contract](./docs/plans/prefix_v3_upgrade.md#budget-aware-design-and-generation-contract-2026-10-22)
+also governs `V35-09`–`V35-16`, `V35-20`, `V35-28` and cutover acceptance. Mutable
+`max_prefix_tokens` and `max_prompt_tokens` have one owner:
+`ProviderDefinition.model_token_limits[model]` in the existing provider definition,
+with the existing provider revision/CAS and GET/POST
+`/api/webchat/v2/llm/providers`. Prefix/Sempai/model-design records retain immutable
+policy references and historical values, never another editable settings owner.
+The same model name on different providers need not have the same deployment
+capacity or policy. The requested Ornith values remain 100,000 and 14,688;
+262,144 positions in config is not a prefix allowance, and the observed serving
+context is 131,072 for the whole sequence. Source/UI support is not live deployment
+or final-prompt enforcement evidence.
+
+Recipes/PythonCode own budget-aware knowledge presentation and evidence selection;
+Rust retains canonical settings storage, trusted identity, actual tokenizer/provider
+transport and technical enforcement. Reuse shared read, budget-planning, selection,
+rendering, exact measurement and receipt components. No new specialized Sempai or
+prefix workflow Tool, provider registry or sizing service. Preserve the diagnostic
+measurement Recipe's v1 contract; add qualified successor composition rather than
+reinterpreting historical `fits` as prefix/prompt policy compliance.
+
+Generate/Regenerate runs accepted deterministic design rules for its pinned budget.
+Designs declare mandatory coverage, complete unit/dependency groups, optional
+priorities/tie-breaking and supported size ranges. A changed cap can choose an
+accepted range; unsupported ranges require Redesign and mandatory overflow blocks
+generation. Redesign/model-design generation considers current content and target
+architecture at those limits, returning a reviewed design and exact complete
+candidate as required by the prefix plan. No silent truncation, ad-hoc summaries,
+loss of safety contracts or inference-service changes. Source originals and all
+coverage/exclusion evidence remain retained.
+
+Sempai's original-turn target, its own review provider and Prefix-Maker's design
+provider are independently pinned. Validate each actual base/domain composite,
+adapter-defined prefix/dynamic partition, complete input plus output and tools/
+history/framing; do not infer a semantic boundary from common-prefix token counts
+or assume separately tokenized strings add exactly. Oversized review evidence uses
+an explicitly qualified multi-stage Recipe or returns Capacity blocked while
+preserving originals. Final request preparation enforces actual technical limits.
+
+Extend `V35-20`/`V35-28` acceptance with exact/one-token-over checks for both caps,
+aggregate overflow, missing policy, two provider/model targets, accepted size-band
+transitions, unsupported bands, mandatory knowledge overflow, deterministic repeats,
+policy-edit races, retained old tasks and held-out Sempai quality at supported sizes.
+New work resolves current policy; acceptance/activation detects stale revisions;
+retained jobs keep their original evidence and current dispatch constraints.
+This is an extension of the existing work IDs, not a competing execution checklist
+or claim that Generate, serving/cache qualification or this roadmap is complete.
+
 ## Guidance reconciliation and semantic review
 
 `V35-02` shortens entry routing in `./AGENTS.md`, `./CLAUDE.md`, `./README.md`, `./.claude/rules/tools.md` and `./crates/AGENTS.md`; canonical semantics stay in the four guides and development procedure in the existing policy/skill. Local applicability labels distinguish retained ordinary execution, compatibility `compose_program`/`PgCompositionPort`, historical evidence and target gaps. Source substitution, first-body selection, fresh-step state, empty bindings, retired intrinsic dispatch, filesystem Skill loaders, Domain-Skill hierarchy and invocation approval leases cannot remain default prescriptions behind distant banners. Preserve real compatibility warnings/history. Remove `./docs/plans/zencoder-extension-plan.md` from the default example route until migrated. Source comments in `./crates/brassclaw_engine/src/types/ibs.rs` and `./crates/brassclaw_engine/src/memory/composition.rs` identify the actual API path. Keep `./.agents/skills/reborn-feature/SKILL.md` and `./.claude/skills/reborn-feature/SKILL.md` byte-identical if changed.

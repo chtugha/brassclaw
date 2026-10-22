@@ -7,13 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-This development checkpoint collects the parallel v3 implementation work. The
-qualified packaged reply has local MCP chat/provider acceptance. Full v3
-acceptance, broader public Recipe population and completed-turn review delivery
-remain in progress.
+This development checkpoint collects the parallel v3 implementation work through
+2026-10-22, including the prefix and runtime/resource workstreams. The qualified
+packaged reply has local MCP chat/provider acceptance; completed-turn review and
+its native effect/accounting custody are implemented in bounded scopes. Full v3
+acceptance, broader public Recipe population, reusable Sempai workflow conversion,
+production child-task integration and prefix serving cutover remain in progress.
+Recorded focused validation applies to its exact snapshots; this checkpoint does
+not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- Six registered prefix profiles, immutable source/generation artifacts and release
+  inventories, with durable source-only compilation and measurement through the
+  existing global Monty admission path. Add the installed Sempai v5 source profile
+  and retain complete guides, procedures and pinned upstream Monty references.
+- Versioned prefix presentation layouts with contextual whole-unit sharing, stable
+  leading content, trailing inventories and complete origin maps. Preserve failed
+  candidates and original sources instead of silently truncating oversized builds.
+- Immutable model configuration/artifact inspection, exact effective-template
+  tokenization and durable measurement receipts checked against Hugging Face. The
+  measured full Sempai reference exceeds the observed serving capacity and remains
+  unactivated; configuration position capacity is not a prefix allowance.
+- Per-provider/model prefix and non-prefix prompt ceilings in the existing provider
+  definition and revisioned API. Inference and Prefix settings share one editor,
+  query and writer; add stale-edit protection and a pure Monty budget-planning
+  component. Final Kohai/Sempai dispatch enforcement remains to be integrated.
+- Typed bounded HTTP source-check building blocks and exact-content classification,
+  plus an immutable registered-source read/diagnostic-append primitive and canonical
+  usages. Native HTTP, policy, preload and PostgreSQL checks pass; admitted source
+  checks, trusted availability projection and automatic collection remain pending.
+- Migrations V174–V175 for retained task catalogue references and fourteen
+  acknowledged coding-operation limits, preserving configured overrides. Expose
+  coding read/write/patch, scan, directory and diff controls in English and German.
+- Task-bound native child-service binding and an explicit selected-Recipe entry
+  that avoids rematching typed child inputs. Preserve the retained implementation,
+  kernel checks and original service resolution; complete production child
+  admission/provenance/wait/cancellation integration remains in progress.
 - Retained Skill function preloading with pinned exports and dependency graphs,
   typed invocation data, structural validation and task-local mutable state.
 - MCP Recipe discovery and immutable command qualification against real settled
@@ -27,7 +57,8 @@ remain in progress.
   settings API and WebUI.
 - Durable completed-turn Sempai review events for settled No-Match admissions
   (V122), retaining correlated forensic evidence without replaying task effects.
-  Event consumption and the qualified post-turn review Recipe remain pending.
+  The consumer, packaged post-turn Recipe and native reconciliation now exist;
+  moving evidence/proposal/iteration policy into reusable components remains open.
 - Versioned MCP command qualification (V123) and reduction rulesets (V124), with
   native PostgreSQL regression coverage and retained validation evidence.
 - Prefix compiler/protocol checks, v23/v24 comparison and cache evidence, and
@@ -39,6 +70,26 @@ remain in progress.
 
 ### Changed
 
+- Preserve canonical provider selection and exact request preparation through model
+  wrappers and internal inference. Carry host-known pre-dispatch non-entry evidence
+  without treating uncertain provider entry as a confirmed unused reservation.
+- Remove artificial retrieval/matcher result cuts when token budgeting is disabled
+  and remove the second fixed host-call fence ceiling. Retain explicit transport,
+  parser, heap, model-context and current Tool-policy constraints.
+- Use owned/reference-counted model metadata instead of a process-lifetime name
+  interner, distinct-name quotas or overflow sentinel substitutions.
+- Route coding primitives through acknowledged execution limits; bound directory
+  enumeration, file/search materialization, total scanned bytes and edit previews
+  before allocation. Keep opaque files distinct from missing or invalid UTF-8 data.
+- Preserve exact encoded source identity, BOM and line endings during coding edits;
+  apply opaque-file updates atomically with expected-content checks across native
+  and database-backed filesystem paths. Conflicts cannot overwrite changed data.
+- Reconcile prefix, Sempai and v3.5 plans with implemented infrastructure, current
+  validation boundaries and ordered remaining work. Specify model-specific accepted
+  budget ranges and always-on hard limits, including Sempai review input and the
+  final edited prompt/history/tools/prefix, independently of optional budgeting.
+- Update filesystem, resource, turn, provider and runtime-limit contracts and
+  regressions for the shared ownership and remaining production cutover gates.
 - Master-key rewrapping uses cross-platform OS entropy and the authoritative
   database ceremony, preserves the selected key version, rejects conflicting or
   malformed key files, and fails on uncertain encrypted-data queries. New raw
@@ -71,6 +122,25 @@ remain in progress.
 
 ### Fixed
 
+- Reconcile model preparation failures with the exact primary reservation, retain
+  independent Sempai spend and unknown effects, and distinguish confirmed non-entry
+  from an uncertain provider failure before release or refund.
+- Reject resource/accounting representation overflow, inconsistent active balances
+  and lost settlement/refund states instead of saturating counters or fabricating
+  balances; preserve per-work pricing/default evaluation semantics.
+- Fence parent/child actor updates and catalogue handoff against the actual retained
+  claim and backend CAS state. Retain old task provenance, owned transport capacity
+  and exact provider context instead of rebuilding child state from mutable defaults.
+- Classify structured filesystem entries and opaque text correctly, forward bounded
+  enumeration through filesystem adapters, and reject oversized or conflicting
+  coding operations before storage mutation.
+- Retain the selected model in Prefix settings across provider revision refreshes,
+  while subsequent captures use the new exact revision and shared settings readback.
+- Correct source-storage native handler registration and explicit requiredness in
+  the model-budget result contract; retain failed snapshots and qualify corrected
+  successors without rewriting earlier evidence.
+- Document and lint the native Oniguruma allocator bridge's ownership, bounds and
+  overflow behavior in its isolated dependency workspace.
 - Retain standalone CLI PostgreSQL ownership through completion and explicitly
   shut down owned servers on success, early return and error. Failed bootstrap
   can finish on retry without abandoning its server. New embedded clusters no

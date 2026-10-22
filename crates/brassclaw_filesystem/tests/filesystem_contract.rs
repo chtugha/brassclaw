@@ -138,6 +138,22 @@ async fn scoped_write_is_denied_on_read_only_mount() {
             ..
         }
     ));
+    let err = scoped
+        .put_opaque(
+            &ResourceScope::system(),
+            &ScopedPath::new("/workspace/generated.txt").unwrap(),
+            b"also denied".to_vec(),
+            CasExpectation::Any,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        FilesystemError::PermissionDenied {
+            operation: FilesystemOperation::WriteFile,
+            ..
+        }
+    ));
     assert!(!storage.path().join("project1/generated.txt").exists());
 }
 
@@ -789,4 +805,174 @@ fn scoped_project_fs(
         )])
         .unwrap(),
     )
+}
+
+#[path = "support/bounded_directory_contract.rs"]
+mod bounded_directory_contract;
+
+#[tokio::test]
+async fn bounded_directory_windows_preserve_distinct_children_on_actual_core_backends() {
+    let directory = tempdir().unwrap();
+    let local = local_root_with_projects_mount(directory.path());
+    bounded_directory_contract::assert_bounded_directory_contract(&local).await;
+    bounded_directory_contract::assert_bounded_directory_contract(&InMemoryBackend::new()).await;
+    let memory = Arc::new(InMemoryBackend::new());
+    let mut composite = CompositeRootFilesystem::new();
+    composite
+        .mount(
+            MountDescriptor {
+                virtual_root: VirtualPath::new("/projects").unwrap(),
+                backend_id: BackendId::new("bounded-memory").unwrap(),
+                backend_kind: BackendKind::Custom("in-memory".into()),
+                storage_class: StorageClass::FileContent,
+                content_kind: ContentKind::GenericFile,
+                index_policy: IndexPolicy::NotIndexed,
+                capabilities: BackendCapabilities::empty(),
+            },
+            memory,
+        )
+        .unwrap();
+    bounded_directory_contract::assert_bounded_directory_contract(&composite).await;
+}
+
+/// All data and bounded enumeration come from a real LocalFilesystem. Reject
+/// the unbounded operation so the dispatcher cannot hide a materializing fallback.
+struct BoundedDirectoryLocal(LocalFilesystem);
+
+#[async_trait::async_trait]
+impl RootFilesystem for BoundedDirectoryLocal {
+    async fn list_dir(&self, path: &VirtualPath) -> Result<Vec<DirEntry>, FilesystemError> {
+        Err(FilesystemError::Backend {
+            path: path.clone(),
+            operation: FilesystemOperation::ListDir,
+            reason: "unbounded directory enumeration is forbidden in this fixture".into(),
+        })
+    }
+    async fn list_dir_bounded(
+        &self,
+        path: &VirtualPath,
+        max_entries: usize,
+    ) -> Result<Vec<DirEntry>, FilesystemError> {
+        self.0.list_dir_bounded(path, max_entries).await
+    }
+    async fn stat(&self, path: &VirtualPath) -> Result<FileStat, FilesystemError> {
+        self.0.stat(path).await
+    }
+}
+
+#[tokio::test]
+async fn composite_forwards_the_bounded_operation_to_the_selected_actual_local_mount() {
+    let directory = tempdir().unwrap();
+    for name in ["a.txt", "b.txt", "c.txt"] {
+        std::fs::write(directory.path().join(name), b"actual local directory").unwrap();
+    }
+    let local = BoundedDirectoryLocal(local_root_with_projects_mount(directory.path()));
+    let mut composite = CompositeRootFilesystem::new();
+    composite
+        .mount(
+            MountDescriptor {
+                virtual_root: VirtualPath::new("/projects").unwrap(),
+                backend_id: BackendId::new("bounded-local").unwrap(),
+                backend_kind: BackendKind::Custom("local".into()),
+                storage_class: StorageClass::FileContent,
+                content_kind: ContentKind::GenericFile,
+                index_policy: IndexPolicy::NotIndexed,
+                capabilities: BackendCapabilities::empty(),
+            },
+            Arc::new(local),
+        )
+        .unwrap();
+    let entries = composite
+        .list_dir_bounded(&VirtualPath::new("/projects").unwrap(), 2)
+        .await
+        .unwrap();
+    assert_eq!(entries.len(), 2);
+    assert!(
+        entries
+            .iter()
+            .all(|entry| ["a.txt", "b.txt", "c.txt"].contains(&entry.name.as_str()))
+    );
+    assert!(matches!(
+        composite
+            .list_dir_bounded(&VirtualPath::new("/tmp").unwrap(), 1)
+            .await,
+        Err(FilesystemError::MountNotFound { .. })
+    ));
+}
+
+#[tokio::test]
+async fn scoped_composite_opaque_writes_reach_only_the_selected_native_mount() {
+    let broad = Arc::new(InMemoryBackend::new());
+    let narrow = Arc::new(InMemoryBackend::new());
+    let mut composite = CompositeRootFilesystem::new();
+    for (root, id, backend) in [
+        ("/projects", "broad", broad.clone()),
+        ("/projects/narrow", "narrow", narrow.clone()),
+    ] {
+        composite
+            .mount(
+                MountDescriptor {
+                    virtual_root: VirtualPath::new(root).unwrap(),
+                    backend_id: BackendId::new(id).unwrap(),
+                    backend_kind: BackendKind::DatabaseFilesystem,
+                    storage_class: StorageClass::FileContent,
+                    content_kind: ContentKind::GenericFile,
+                    index_policy: IndexPolicy::NotIndexed,
+                    capabilities: backend.capabilities(),
+                },
+                backend,
+            )
+            .unwrap();
+    }
+    let scoped = ScopedFilesystem::with_fixed_view(
+        Arc::new(composite),
+        MountView::new(vec![MountGrant::new(
+            MountAlias::new("/workspace").unwrap(),
+            VirtualPath::new("/projects/narrow").unwrap(),
+            MountPermissions::read_write(),
+        )])
+        .unwrap(),
+    );
+    let path = ScopedPath::new("/workspace/new/file.txt").unwrap();
+    let canonical = VirtualPath::new("/projects/narrow/new/file.txt").unwrap();
+    let version = scoped
+        .put_opaque(
+            &ResourceScope::system(),
+            &path,
+            b"native bytes".to_vec(),
+            CasExpectation::Absent,
+        )
+        .await
+        .unwrap();
+    assert!(broad.get(&canonical).await.unwrap().is_none());
+    assert_eq!(
+        narrow.get(&canonical).await.unwrap().unwrap().entry.body,
+        b"native bytes"
+    );
+    narrow
+        .put(
+            &canonical,
+            Entry::record(
+                RecordKind::new("protected").unwrap(),
+                &serde_json::json!({"secret":true}),
+            )
+            .unwrap(),
+            CasExpectation::Version(version),
+        )
+        .await
+        .unwrap();
+    let record = narrow.get(&canonical).await.unwrap().unwrap();
+    assert!(matches!(
+        scoped
+            .put_opaque(
+                &ResourceScope::system(),
+                &path,
+                b"denied".to_vec(),
+                CasExpectation::Any
+            )
+            .await,
+        Err(FilesystemError::Unsupported { .. })
+    ));
+    assert_eq!(narrow.get(&canonical).await.unwrap().unwrap(), record);
+    assert!(broad.get(&canonical).await.unwrap().is_none());
 }

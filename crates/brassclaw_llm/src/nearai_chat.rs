@@ -686,8 +686,8 @@ impl LlmProvider for NearAiChatProvider {
         })
     }
 
-    fn model_name(&self) -> &str {
-        &self.config.model
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(&self.config.model)
     }
 
     fn cost_per_token(&self) -> (Decimal, Decimal) {

@@ -232,6 +232,7 @@ impl TurnRunTransitionPort for MockTransitionPort {
                 maybe_claimed.map(|mut claimed| {
                     claimed.runner_id = request.runner_id;
                     claimed.lease_token = request.lease_token;
+                    claimed.state.status = TurnStatus::Running;
                     claimed
                 })
             })
@@ -389,7 +390,14 @@ impl MontyTurnDriverPort for MockMontyDriver {
         &self,
         handoff: brassclaw_turns::run_profile::MontyTaskHandoff,
     ) -> Result<LoopExit, AgentLoopDriverError> {
+        let claimed = handoff
+            .claimed_run()
+            .expect("ordinary worker retains its real claim")
+            .clone();
         let (request, attempt, _) = handoff.into_parts();
+        assert_eq!(claimed.state.run_id, request.run_id);
+        assert_eq!(claimed.runner_id, attempt.runner_id);
+        assert_eq!(claimed.lease_token, attempt.lease_token);
         self.drive_requests.lock().expect("lock").push(request);
         self.drive_attempts.lock().expect("lock").push(attempt);
         if !self.drive_delay.is_zero() {
@@ -620,6 +628,15 @@ impl MockHostFactory {
             claimed.state.run_id,
             claimed.resolved_run_profile.clone(),
         );
+        context = context.with_accepted_message_ref(claimed.state.accepted_message_ref.clone());
+        if let Some(actor) = claimed.state.actor.clone() {
+            context = context.with_actor(actor);
+        }
+        if claimed.state.source_binding_ref.as_str()
+            == brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING
+        {
+            context = context.with_trusted_internal_turn();
+        }
         if let Some(snapshot) = claimed.state.resolved_model_route.clone() {
             context = context.with_resolved_model_route(snapshot);
         }
@@ -715,6 +732,82 @@ fn make_fail_closed_recovery_applier(port: Arc<MockTransitionPort>) -> Arc<LoopE
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn claimed_monty_handoff_keeps_exact_host_owned_identity_without_inventing_claims() {
+    use brassclaw_turns::run_profile::{MontyTaskAttempt, MontyTaskHandoff};
+    let claim = Arc::new(make_claimed_run(
+        &test_descriptor(),
+        test_scope(),
+        TurnStatus::Running,
+    ));
+    let host: Arc<dyn AgentLoopDriverHost + Send + Sync> =
+        Arc::new(MockHostFactory::host_for_claim(&claim));
+    let request = AgentLoopDriverRunRequest {
+        turn_id: claim.state.turn_id,
+        run_id: claim.state.run_id,
+        resolved_run_profile: claim.resolved_run_profile.clone(),
+    };
+    let task = crate::monty_task_host::MontyTaskHost::new(
+        MontyTaskHandoff::new_claimed(request.clone(), claim.clone(), host.clone()).unwrap(),
+    );
+    assert!(Arc::ptr_eq(task.claimed_run().unwrap(), &claim));
+    assert_eq!(task.attempt().runner_id, claim.runner_id);
+    assert_eq!(task.attempt().lease_token, claim.lease_token);
+    // Metadata consistency is not durable freshness or authorization evidence.
+    for case in 0..9 {
+        let mut different = claim.as_ref().clone();
+        match case {
+            0 => different.state.run_id = TurnRunId::new(),
+            1 => different.state.turn_id = TurnId::new(),
+            2 => different.state.scope.thread_id = ThreadId::new("foreign-thread").unwrap(),
+            3 => {
+                different.state.actor = Some(brassclaw_turns::TurnActor::new(
+                    brassclaw_host_api::UserId::new("foreign-actor").unwrap(),
+                ))
+            }
+            4 => {
+                different.state.accepted_message_ref =
+                    AcceptedMessageRef::new("msg:foreign").unwrap()
+            }
+            5 => different.state.status = TurnStatus::Completed,
+            6 => different.resolved_run_profile.profile_version = RunProfileVersion::new(2),
+            7 => different.state.resolved_run_profile_version = RunProfileVersion::new(2),
+            8 => {
+                different.state.source_binding_ref = SourceBindingRef::new(
+                    brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING,
+                )
+                .unwrap()
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            matches!(
+                MontyTaskHandoff::new_claimed(request.clone(), Arc::new(different), host.clone()),
+                Err(AgentLoopDriverError::InvalidRequest { .. })
+            ),
+            "case {case}"
+        );
+    }
+    // Legacy/internal callers lacking an owned claim must not reconstruct one
+    // from their public IDs; a future child adapter must reject this absence.
+    let handoff = MontyTaskHandoff::new(
+        request,
+        MontyTaskAttempt {
+            run_id: claim.state.run_id,
+            runner_id: claim.runner_id,
+            lease_token: claim.lease_token,
+        },
+        host,
+    )
+    .unwrap();
+    assert!(handoff.claimed_run().is_none());
+    assert!(
+        crate::monty_task_host::MontyTaskHost::new(handoff)
+            .claimed_run()
+            .is_none()
+    );
+}
 
 #[tokio::test]
 async fn pending_input_relinquishes_only_before_execution_and_expires() {

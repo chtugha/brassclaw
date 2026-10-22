@@ -56,32 +56,44 @@ impl ModelCost {
         }
     }
 
-    /// Cost of writing `tokens` bytes to the prompt cache.
-    pub fn cache_write_cost(&self, tokens: u64) -> Decimal {
-        if tokens == 0 || self.cache_write_multiplier_milli == 0 {
-            return Decimal::ZERO;
+    /// Cost of writing tokens to the prompt cache. Invalid or unrepresentable
+    /// configured arithmetic returns None, never a panic or a zero-price fallback.
+    pub fn cache_write_cost(&self, tokens: u64) -> Option<Decimal> {
+        self.cache_cost(tokens, self.cache_write_multiplier_milli)
+    }
+
+    /// Checked cost of reading tokens from the prompt cache.
+    pub fn cache_read_cost(&self, tokens: u64) -> Option<Decimal> {
+        self.cache_cost(tokens, self.cache_read_multiplier_milli)
+    }
+
+    fn cache_cost(&self, tokens: u64, multiplier_milli: u32) -> Option<Decimal> {
+        if self.input_per_token < Decimal::ZERO {
+            return None;
         }
-        let multiplier = Decimal::new(self.cache_write_multiplier_milli as i64, 3);
-        self.input_per_token * Decimal::from(tokens) * multiplier
-    }
-
-    /// Cost of reading `tokens` from the prompt cache.
-    pub fn cache_read_cost(&self, tokens: u64) -> Decimal {
-        if tokens == 0 || self.cache_read_multiplier_milli == 0 {
-            return Decimal::ZERO;
+        if tokens == 0 || multiplier_milli == 0 {
+            return Some(Decimal::ZERO);
         }
-        let multiplier = Decimal::new(self.cache_read_multiplier_milli as i64, 3);
-        self.input_per_token * Decimal::from(tokens) * multiplier
+        let multiplier = Decimal::new(i64::from(multiplier_milli), 3);
+        self.fresh_input_cost(tokens)?
+            .checked_mul(multiplier)
+            .filter(|amount| self.input_per_token.is_zero() || !amount.is_zero())
     }
 
-    /// Cost of fresh (non-cached) input tokens.
-    pub fn fresh_input_cost(&self, tokens: u64) -> Decimal {
-        self.input_per_token * Decimal::from(tokens)
+    /// Checked cost of fresh (non-cached) input tokens.
+    pub fn fresh_input_cost(&self, tokens: u64) -> Option<Decimal> {
+        if self.input_per_token < Decimal::ZERO {
+            return None;
+        }
+        self.input_per_token.checked_mul(Decimal::from(tokens))
     }
 
-    /// Cost of output tokens.
-    pub fn output_cost(&self, tokens: u64) -> Decimal {
-        self.output_per_token * Decimal::from(tokens)
+    /// Checked cost of output tokens.
+    pub fn output_cost(&self, tokens: u64) -> Option<Decimal> {
+        if self.output_per_token < Decimal::ZERO {
+            return None;
+        }
+        self.output_per_token.checked_mul(Decimal::from(tokens))
     }
 }
 

@@ -657,8 +657,9 @@ pub trait LlmProvider: Send + Sync {
         None
     }
 
-    /// Get the model name.
-    fn model_name(&self) -> &str;
+    /// Provider-reported model identity. Immutable providers may borrow; mutable
+    /// wrappers return owned data so replacement never leaks or falsifies names.
+    fn model_name(&self) -> std::borrow::Cow<'_, str>;
 
     /// Get cost per token (input, output).
     fn cost_per_token(&self) -> (Decimal, Decimal);
@@ -749,8 +750,8 @@ mod model_override_tests {
 
     #[async_trait]
     impl LlmProvider for StubProvider {
-        fn model_name(&self) -> &str {
-            "stub-model"
+        fn model_name(&self) -> std::borrow::Cow<'_, str> {
+            std::borrow::Cow::Borrowed("stub-model")
         }
 
         fn cost_per_token(&self) -> (Decimal, Decimal) {

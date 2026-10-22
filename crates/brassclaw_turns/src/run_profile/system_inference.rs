@@ -1,9 +1,14 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::host::{LoopModelUsage, LoopSafeSummary};
+use super::{
+    host::{LoopModelUsage, LoopSafeSummary},
+    model::ModelSubmission,
+};
 
 /// Opaque id for an internal system inference task.
 ///
@@ -186,8 +191,35 @@ pub enum SystemInferenceError {
 /// and must not expose raw prompt/input content on public progress surfaces.
 #[async_trait]
 pub trait SystemInferencePort: Send + Sync {
+    /// Retain a mutable model role before policy/accounting awaits. This must
+    /// not dispatch inference, connect tools or grant authority. A replacement
+    /// retains the exact typed request and wrapper enforcement; immutable or
+    /// legacy ports may return None. Live technical limits still apply.
+    fn retain_model_selection(
+        &self,
+        _request: &SystemInferenceRequest,
+    ) -> Result<Option<Arc<dyn SystemInferencePort>>, SystemInferenceError> {
+        Ok(None)
+    }
+
     async fn call_system_inference(
         &self,
         request: SystemInferenceRequest,
     ) -> Result<SystemInferenceResponse, SystemInferenceError>;
+
+    /// Rust-owned evidence about this exact call, separate from its public
+    /// result. Never infer non-submission from an error category or timeout.
+    /// Unsupported adapters preserve the reservation with Unknown.
+    async fn call_system_inference_with_submission(
+        &self,
+        request: SystemInferenceRequest,
+    ) -> (
+        Result<SystemInferenceResponse, SystemInferenceError>,
+        ModelSubmission,
+    ) {
+        (
+            self.call_system_inference(request).await,
+            ModelSubmission::Unknown,
+        )
+    }
 }

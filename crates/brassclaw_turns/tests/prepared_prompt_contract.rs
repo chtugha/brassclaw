@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use brassclaw_host_api::{AgentId, InvocationId, TenantId, ThreadId};
+use brassclaw_host_api::{AgentId, TenantId, ThreadId};
 use brassclaw_turns::{
     TurnId, TurnRunId, TurnScope,
     run_profile::{
@@ -11,9 +11,10 @@ use brassclaw_turns::{
         HostManagedLoopPromptPort, InMemoryInstructionMaterializationStore,
         InMemoryLoopHostMilestoneSink, InMemoryRunProfileResolver, InstructionMaterializationStore,
         LoopContextBundle, LoopContextPort, LoopContextRequest, LoopInlineMessageRole,
-        LoopInputCursor, LoopPromptBundleAuthority, LoopPromptBundleRequest, LoopPromptPort,
-        LoopRunContext, LoopSafeSummary, PreparedLoopPromptMessage, PreparedLoopPromptRequest,
-        PromptMode, RunProfileResolutionRequest, RunProfileResolver,
+        LoopInputCursor, LoopPromptBundleAuthority, LoopPromptBundleRequest,
+        LoopPromptMessageSetId, LoopPromptPort, LoopRunContext, LoopSafeSummary,
+        PreparedLoopPromptMessage, PreparedLoopPromptRequest, PromptMode,
+        RunProfileResolutionRequest, RunProfileResolver,
     },
 };
 
@@ -46,7 +47,7 @@ async fn context() -> LoopRunContext {
 }
 fn request() -> PreparedLoopPromptRequest {
     PreparedLoopPromptRequest {
-        invocation_id: InvocationId::new(),
+        message_set_id: LoopPromptMessageSetId::new(),
         metadata: LoopPromptBundleRequest {
             mode: PromptMode::TextOnly,
             context_cursor: None,
@@ -147,7 +148,7 @@ async fn prepared_references_pin_body_role_run_scope_invocation_and_order() {
     for change in 0..4 {
         let mut changed = input.clone();
         match change {
-            0 => changed.invocation_id = InvocationId::new(),
+            0 => changed.message_set_id = LoopPromptMessageSetId::new(),
             1 => changed.messages[0].content.push('!'),
             2 => changed.messages[0].role = LoopInlineMessageRole::Assistant,
             _ => changed.messages.insert(
@@ -221,7 +222,7 @@ async fn prepared_prompt_rejects_invalid_metadata_and_limits_without_issuing_gra
                 AgentLoopHostErrorKind::InvalidInvocation
             }
             1 => {
-                input.invocation_id = InvocationId::from_uuid(uuid::Uuid::nil());
+                input.message_set_id = LoopPromptMessageSetId::from_uuid(uuid::Uuid::nil());
                 AgentLoopHostErrorKind::InvalidInvocation
             }
             2 => {

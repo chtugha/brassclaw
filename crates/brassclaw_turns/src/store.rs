@@ -95,6 +95,23 @@ pub trait TurnSpawnTreeStateStore: TurnStateStore {
         admission_policy: &dyn TurnAdmissionPolicy,
         run_profile_resolver: &dyn RunProfileResolver,
     ) -> Result<SubmitTurnResponse, TurnError>;
+    /// Admit a child only while the supplied original runner claim is current.
+    /// Recheck inside the same aggregate mutation as lineage/reservation/queueing,
+    /// including after async preparation. The child inherits the parent's actor
+    /// identity so the same tree remains cancellable. A claim fences work; it
+    /// grants no Tool permission. Unsupported stores must not fall back to
+    /// unfenced admission.
+    async fn submit_claimed_child_turn(
+        &self,
+        _request: SubmitChildRunRequest,
+        _parent: &crate::runner::ClaimedTurnRun,
+        _admission_policy: &dyn TurnAdmissionPolicy,
+        _run_profile_resolver: &dyn RunProfileResolver,
+    ) -> Result<SubmitTurnResponse, TurnError> {
+        Err(TurnError::Unavailable {
+            reason: "claimed child admission is unavailable".into(),
+        })
+    }
     ///
     /// List child runs only when the parent is visible in the supplied scope.
     ///
@@ -218,6 +235,18 @@ impl TurnSpawnTreeStateStore for TurnStateDriverBox {
     ) -> Result<crate::SubmitTurnResponse, crate::TurnError> {
         self.0
             .submit_child_turn(request, admission_policy, run_profile_resolver)
+            .await
+    }
+
+    async fn submit_claimed_child_turn(
+        &self,
+        request: SubmitChildRunRequest,
+        parent: &crate::runner::ClaimedTurnRun,
+        admission_policy: &dyn TurnAdmissionPolicy,
+        run_profile_resolver: &dyn RunProfileResolver,
+    ) -> Result<SubmitTurnResponse, TurnError> {
+        self.0
+            .submit_claimed_child_turn(request, parent, admission_policy, run_profile_resolver)
             .await
     }
 

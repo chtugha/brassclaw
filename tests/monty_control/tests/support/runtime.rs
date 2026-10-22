@@ -62,6 +62,7 @@ pub(crate) fn boot(source: &str) -> RootBoot {
     // points may reuse definitions without calling _global_main.
     if source == include_str!("../../../../crates/brassclaw_engine/orchestrator/global_mode.py") {
         boot.aliases.insert("await_pool_update".into());
+        boot.aliases.insert("resolve_child_recipe".into());
     }
     boot
 }

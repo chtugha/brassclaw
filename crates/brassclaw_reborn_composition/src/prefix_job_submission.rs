@@ -114,7 +114,7 @@ impl RebornRuntime {
         };
         if id.is_nil()
             || expected_revision == 0
-            || !matches!(profile, "base-prompt" | "prefix-maker")
+            || !matches!(profile, "base-prompt" | "prefix-maker" | "sempai")
         {
             return Err(invalid("unsupported source-only prefix snapshot request"));
         }
@@ -204,7 +204,7 @@ impl RebornRuntime {
         };
         if id.is_nil()
             || request.expected_profile_revision == 0
-            || !matches!(profile, "base-prompt" | "prefix-maker")
+            || !matches!(profile, "base-prompt" | "prefix-maker" | "sempai")
             || caller.tenant_id.as_str() != self.webui_tenant_id()
         {
             return Err(invalid("invalid offline prefix measurement request"));
@@ -324,7 +324,9 @@ impl RebornRuntime {
 }
 
 #[cfg(test)]
-pub(super) async fn assert_global_snapshot_submission(runtime: &Arc<RebornRuntime>) -> Uuid {
+pub(super) async fn assert_global_snapshot_submission(
+    runtime: &Arc<RebornRuntime>,
+) -> (Uuid, Uuid) {
     use serde_json::{Value, json};
     let id = Uuid::new_v4();
     let pool = runtime.installed_catalogue.pool.clone();
@@ -338,13 +340,18 @@ pub(super) async fn assert_global_snapshot_submission(runtime: &Arc<RebornRuntim
         .unwrap()
         .get(0);
     drop(client);
-    let fixture = crate::bootstrap_compiler_fixture::CompilerFixture::scoped(
-        "base-prompt",
-        "literal-reference/v4-stable-sharing",
-        &format!("global-source-job/{id}"),
+    // Explicit experimental layout over the owner's real pinned core sources;
+    // this changes neither installed defaults nor an accepted model design.
+    let mut captured: Value = serde_json::from_str(
+        &runtime
+            .installed_catalogue
+            .capture_core_prefix_sources("base-prompt")
+            .await
+            .unwrap(),
     )
     .unwrap();
-    let snapshot = crate::prefix_generations::canonical(fixture.snapshot()).unwrap();
+    captured["evidence_view"] = json!("literal-reference/v5-contextual-sharing");
+    let snapshot = crate::prefix_generations::canonical(&captured).unwrap();
     let caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
         runtime.thread_scope.tenant_id.clone(),
         runtime.actor_user_id.clone(),
@@ -352,7 +359,7 @@ pub(super) async fn assert_global_snapshot_submission(runtime: &Arc<RebornRuntim
         runtime.thread_scope.project_id.clone(),
     );
     let rejected = Uuid::new_v4();
-    let mut misidentified = fixture.snapshot().clone();
+    let mut misidentified = captured.clone();
     misidentified["procedures"]["compiler/entry.py"] = json!("different procedure");
     assert!(
         runtime
@@ -424,7 +431,24 @@ pub(super) async fn assert_global_snapshot_submission(runtime: &Arc<RebornRuntim
         .strip_prefix("prefix-generation:base-prompt:")
         .unwrap();
     let bytes: String = client.query_one("SELECT generation_bytes FROM reborn_prefix_generations WHERE profile_name='base-prompt' AND generation_id=$1", &[&generation]).await.unwrap().get(0);
-    fixture.verify(&bytes).unwrap();
+    crate::prefix_generations::validate_package("base-prompt", &bytes).unwrap();
+    let package: Value = serde_json::from_str(&bytes).unwrap();
+    use base64::Engine;
+    let read = |name: &str| {
+        base64::engine::general_purpose::STANDARD
+            .decode(package["artifacts"][name]["data"].as_str().unwrap())
+            .unwrap()
+    };
+    assert_eq!(read("source_snapshot.json"), snapshot.as_bytes());
+    let design: Value = serde_json::from_slice(&read("profile_design.json")).unwrap();
+    assert_eq!(design["format"], "brassclaw-prefix-compiler-design/2");
+    assert!(
+        design["source_contexts"]
+            .as_object()
+            .unwrap()
+            .values()
+            .any(|scope| scope == "component-definition")
+    );
     let count = || async {
         client
             .query_one(
@@ -642,6 +666,104 @@ pub(super) async fn assert_global_snapshot_submission(runtime: &Arc<RebornRuntim
             .unwrap()
             .len()
     );
+    let sempai_revision: i64 = client
+        .query_one(
+            "SELECT revision FROM reborn_prefix_profiles WHERE name='sempai'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert!(
+        runtime
+            .installed_catalogue
+            .capture_core_prefix_sources("sempai")
+            .await
+            .is_err()
+    );
+    let sempai_id = Uuid::new_v4();
+    let sempai_caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
+        runtime.thread_scope.tenant_id.clone(),
+        runtime.actor_user_id.clone(),
+        Some(runtime.thread_scope.agent_id.clone()),
+        runtime.thread_scope.project_id.clone(),
+    );
+    runtime
+        .submit_current_release_prefix_snapshot(
+            sempai_id,
+            "sempai",
+            sempai_revision as u64,
+            sempai_caller.clone(),
+        )
+        .await
+        .unwrap();
+    let sempai = crate::prefix_job_definitions::Store::new(pool.clone())
+        .get(sempai_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        runtime
+            .wait_for_terminal(
+                &sempai.scope,
+                TurnRunId::from_uuid(sempai_id),
+                &CancellationToken::new()
+            )
+            .await
+            .unwrap(),
+        TurnStatus::Completed
+    );
+    let sempai_capture: Value =
+        serde_json::from_str(sempai.input["snapshot_bytes"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        sempai_capture["evidence_view"],
+        "literal-reference/v5-contextual-sharing"
+    );
+    let selected = sempai_capture["sources"].as_array().unwrap();
+    for path in [
+        "skills.md",
+        "recipe.md",
+        "scripts/prefix/sempai-authoring-reference.md",
+        "scripts/prefix/sempai-monty-compatibility.md",
+        "scripts/prefix/monty-reference/v1.0.0/docs/host-functions.md",
+    ] {
+        assert!(
+            selected
+                .iter()
+                .any(|row| row["path"] == path && row["disposition"] == "included")
+        );
+    }
+    for path in [
+        "scripts/prefix/sempai-worked-examples.md",
+        "crates/brassclaw_engine/prompts/sempai_audit.md",
+        "scripts/prefix/prefix-maker-reference.md",
+    ] {
+        assert!(
+            selected
+                .iter()
+                .any(|row| row["path"] == path && row["disposition"] == "development-only")
+        );
+    }
+    runtime
+        .submit_current_release_prefix_snapshot(
+            sempai_id,
+            "sempai",
+            sempai_revision as u64,
+            sempai_caller,
+        )
+        .await
+        .unwrap();
+    let job = runtime
+        .inspect_prefix_job("sempai", sempai_id)
+        .await
+        .unwrap();
+    assert_eq!(job.answered_tool_calls, 5);
+    assert_eq!(job.run_status, Some(TurnStatus::Completed));
+    assert_eq!(job.admission_phase.as_deref(), Some("settled"));
+    eprintln!(
+        "Sempai declared-release source job: sources={}; 5 calls, no replay or activation",
+        selected.len()
+    );
     assert_eq!(
         runtime.global_monty_owner.client().root_identity(),
         identity
@@ -650,5 +772,5 @@ pub(super) async fn assert_global_snapshot_submission(runtime: &Arc<RebornRuntim
         outcome["execution"]["all_selected_recipes_complete"],
         json!(true)
     );
-    core_id
+    (core_id, sempai_id)
 }

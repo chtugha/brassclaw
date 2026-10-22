@@ -14,7 +14,7 @@ Run from the BrassClaw repository root. Commands work in Linux/macOS terminals.
 Python and transformers/tokenizers are required only for target compilation.
 
 The repository also supplies scripts/prefix/release-reference-inventory.json.
-It declares 201 documents from its documented roots and conservatively selects
+It declares 270 original sources, including archived Sempai/Monty candidates, and conservatively selects
 13 references; other material is archived, not silently fed into the model view.
 Read scripts/prefix/release-reference-inventory.md for scope and remaining gaps.
 For a document snapshot using that inventory, in a fixed release checkout:
@@ -173,3 +173,11 @@ V4 always keeps the first occurrence literal; later exact duplicates refer to it
 original source/range. Appending a later duplicate no longer rewrites earlier
 reference cards. Earlier source insertions or content edits can still change the
 prefix. Complete original archives and the exact-unit map remain available.
+
+For explicit source-context captions and sharing only within the same context:
+  --evidence-view literal-reference/v5-contextual-sharing
+
+This development option retains complete originals, design/2 context assignments
+and render-map/2 origins. Equal SDK and ordinary-reference units stay separate.
+Captions are compiler metadata, not source quotations or capability/approval facts.
+Selecting this option does not enable Sempai generation or accept a model design.

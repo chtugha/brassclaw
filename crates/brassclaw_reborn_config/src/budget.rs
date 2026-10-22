@@ -171,6 +171,7 @@ impl BudgetDefaults {
                     reason: "must be a finite, non-negative number (0 = unlimited)".to_string(),
                 });
             }
+            validate_accounting_decimal(value, label)?;
         }
         for (label, value) in [("warn_at", self.warn_at), ("pause_at", self.pause_at)] {
             if !value.is_finite() || !(0.0..=1.0).contains(&value) {
@@ -192,6 +193,7 @@ impl BudgetDefaults {
                 reason: "must be a finite number >= 1.0".to_string(),
             });
         }
+        validate_accounting_decimal(self.overestimate_factor, "overestimate_factor")?;
         Ok(())
     }
 }
@@ -208,6 +210,18 @@ pub enum BudgetDefaultsError {
     Invalid { field: &'static str, reason: String },
     #[error("environment variable `{name}` is not a valid f64: {value}")]
     InvalidEnvF64 { name: &'static str, value: String },
+}
+
+fn validate_accounting_decimal(value: f64, field: &'static str) -> Result<(), BudgetDefaultsError> {
+    let representable = rust_decimal::Decimal::from_f64_retain(value)
+        .is_some_and(|decimal| value == 0.0 || !decimal.is_zero());
+    if !representable {
+        return Err(BudgetDefaultsError::Invalid {
+            field,
+            reason: "must fit the accounting decimal representation without turning a positive value into zero".into(),
+        });
+    }
+    Ok(())
 }
 
 fn read_f64_env(name: &'static str) -> Result<Option<f64>, BudgetDefaultsError> {
@@ -230,6 +244,51 @@ mod tests {
     #[test]
     fn compiled_defaults_validate() {
         BudgetDefaults::compiled_defaults().validate().unwrap();
+    }
+
+    #[test]
+    fn accounting_defaults_reject_decimal_overflow_and_positive_underflow() {
+        type Setter = fn(&mut BudgetDefaults, f64);
+        let fields: [(&str, Setter); 7] = [
+            ("user_daily_usd", |d, v| d.user_daily_usd = v),
+            ("project_daily_usd", |d, v| d.project_daily_usd = v),
+            ("heartbeat_per_tick_usd", |d, v| {
+                d.heartbeat_per_tick_usd = v
+            }),
+            ("routine_lightweight_usd", |d, v| {
+                d.routine_lightweight_usd = v
+            }),
+            ("routine_standard_usd", |d, v| d.routine_standard_usd = v),
+            ("background_job_default_usd", |d, v| {
+                d.background_job_default_usd = v
+            }),
+            ("overestimate_factor", |d, v| d.overestimate_factor = v),
+        ];
+        for (field, set) in fields {
+            for value in [f64::MAX, 1e100, f64::MIN_POSITIVE] {
+                let mut defaults = BudgetDefaults::compiled_defaults();
+                set(&mut defaults, value);
+                assert!(
+                    matches!(
+                        defaults.validate(),
+                        Err(BudgetDefaultsError::Invalid { field: failed, .. }) if failed == field
+                    ),
+                    "{field} must reject {value}"
+                );
+            }
+            let mut defaults = BudgetDefaults::compiled_defaults();
+            set(&mut defaults, 1e28);
+            defaults.validate().unwrap();
+            set(
+                &mut defaults,
+                if field == "overestimate_factor" {
+                    1.0
+                } else {
+                    0.0
+                },
+            );
+            defaults.validate().unwrap();
+        }
     }
 
     #[test]

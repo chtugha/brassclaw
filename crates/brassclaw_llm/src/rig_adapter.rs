@@ -47,14 +47,24 @@ pub enum RigUsageFormat {
     Gemini,
 }
 
+/// Request transport chosen by construction, independently of response metering.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RigRequestFormat {
+    #[default]
+    Native,
+    OpenAiChat,
+    ChatMaxTokens,
+    Anthropic,
+    Ollama,
+    Gemini,
+}
+
 /// Adapter that wraps a rig-core `CompletionModel` and implements `LlmProvider`.
 pub struct RigAdapter<M: CompletionModel> {
     model: M,
     model_name: String,
     usage_format: RigUsageFormat,
-    /// Rig 0.30's OpenAI chat request drops CoreCompletionRequest.max_tokens.
-    /// Only that transport needs the modern wire field in additional_params.
-    openai_chat_output_limit: bool,
+    request_format: RigRequestFormat,
     input_cost: Decimal,
     output_cost: Decimal,
     /// Prompt cache retention policy (Anthropic only).
@@ -80,7 +90,7 @@ impl<M: CompletionModel> RigAdapter<M> {
             model,
             model_name: name,
             usage_format: RigUsageFormat::Unknown,
-            openai_chat_output_limit: false,
+            request_format: RigRequestFormat::Native,
             input_cost,
             output_cost,
             cache_retention: CacheRetention::None,
@@ -94,33 +104,100 @@ impl<M: CompletionModel> RigAdapter<M> {
         self
     }
 
-    /// Select the actual OpenAI Chat Completions transport, independently of
-    /// its response-meter format (also used by DeepSeek/OpenRouter SDKs).
-    pub(crate) fn with_openai_chat_output_limit(mut self) -> Self {
-        self.openai_chat_output_limit = true;
+    /// Select the actual SDK request transport. Provider names and response
+    /// shapes cannot establish the request parameter contract.
+    pub fn with_request_format(mut self, format: RigRequestFormat) -> Self {
+        self.request_format = format;
         self
     }
 
-    fn apply_output_limit(&self, request: &mut RigRequest) -> Result<(), LlmError> {
-        if !self.openai_chat_output_limit {
+    fn apply_request_parameters(
+        &self,
+        request: &mut RigRequest,
+        stops: Option<&[String]>,
+    ) -> Result<(), LlmError> {
+        use RigRequestFormat::*;
+        let invalid = || LlmError::RequestFailed {
+            provider: self.model_name.clone(),
+            reason: "provider request parameter contract is invalid".into(),
+        };
+        let limit = request.max_tokens;
+        let temperature = request.temperature;
+        if temperature.is_some_and(|value| !value.is_finite()) {
+            return Err(invalid());
+        }
+        if self.request_format == Native {
+            if stops.is_some() {
+                return Err(invalid());
+            }
             return Ok(());
         }
-        let Some(limit) = request.max_tokens else {
+        let needs_limit = limit.is_some() && self.request_format != Anthropic;
+        if !needs_limit
+            && stops.is_none()
+            && !(self.request_format == Gemini && temperature.is_some())
+        {
             return Ok(());
-        };
+        }
+        if self.request_format == Ollama && limit.is_some() {
+            // This SDK puts the core field at an unsupported top-level key.
+            // Its additional parameters become the actual `options` object.
+            request.max_tokens = None;
+        }
         let params = request
             .additional_params
             .get_or_insert_with(|| serde_json::json!({}));
-        let params = params
-            .as_object_mut()
-            .ok_or_else(|| LlmError::RequestFailed {
-                provider: self.model_name.clone(),
-                reason: "provider additional parameters must be an object".into(),
-            })?;
-        // The captured per-call ceiling wins over transport defaults. Do not
-        // transmit competing deprecated and modern limit fields.
-        params.remove("max_tokens");
-        params.insert("max_completion_tokens".into(), limit.into());
+        let params = params.as_object_mut().ok_or_else(invalid)?;
+        match self.request_format {
+            OpenAiChat => {
+                if let Some(limit) = limit {
+                    params.remove("max_tokens");
+                    params.insert("max_completion_tokens".into(), limit.into());
+                }
+                if let Some(stops) = stops {
+                    params.insert("stop".into(), serde_json::json!(stops));
+                }
+            }
+            ChatMaxTokens => {
+                if let Some(limit) = limit {
+                    params.insert("max_tokens".into(), limit.into());
+                }
+                if let Some(stops) = stops {
+                    params.insert("stop".into(), serde_json::json!(stops));
+                }
+            }
+            Anthropic => {
+                if let Some(stops) = stops {
+                    params.insert("stop_sequences".into(), serde_json::json!(stops));
+                }
+            }
+            Ollama => {
+                if let Some(limit) = limit {
+                    params.insert("num_predict".into(), limit.into());
+                }
+                if let Some(stops) = stops {
+                    params.insert("stop".into(), serde_json::json!(stops));
+                }
+            }
+            Gemini => {
+                // Rig maps core fields only when generationConfig exists. Do
+                // not use the SDK's Default, which adds its own output ceiling.
+                let config = params
+                    .entry("generationConfig")
+                    .or_insert_with(|| serde_json::json!({}));
+                let config = config.as_object_mut().ok_or_else(invalid)?;
+                if let Some(limit) = limit {
+                    config.insert("maxOutputTokens".into(), limit.into());
+                }
+                if let Some(temperature) = temperature {
+                    config.insert("temperature".into(), serde_json::json!(temperature));
+                }
+                if let Some(stops) = stops {
+                    config.insert("stopSequences".into(), serde_json::json!(stops));
+                }
+            }
+            Native => unreachable!("native transport handled before parameter adaptation"),
+        }
         Ok(())
     }
 
@@ -762,8 +839,8 @@ where
     M: CompletionModel + Send + Sync + 'static,
     M::Response: Send + Sync + Serialize + DeserializeOwned,
 {
-    fn model_name(&self) -> &str {
-        &self.model_name
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(&self.model_name)
     }
 
     fn cost_per_token(&self) -> (Decimal, Decimal) {
@@ -809,7 +886,7 @@ where
         )?;
 
         merge_additional_params(&mut rig_req, self.default_additional_params.as_ref());
-        self.apply_output_limit(&mut rig_req)?;
+        self.apply_request_parameters(&mut rig_req, request.stop_sequences.as_deref())?;
         inject_model_override(&mut rig_req, model_override.as_deref());
 
         let response = self
@@ -874,7 +951,7 @@ where
         )?;
 
         merge_additional_params(&mut rig_req, self.default_additional_params.as_ref());
-        self.apply_output_limit(&mut rig_req)?;
+        self.apply_request_parameters(&mut rig_req, request.stop_sequences.as_deref())?;
         inject_model_override(&mut rig_req, model_override.as_deref());
 
         let response = self

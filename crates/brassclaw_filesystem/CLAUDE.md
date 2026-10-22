@@ -99,10 +99,11 @@ consumers of the legacy methods — new code should call `put`/`get`/
 
 ## When you're editing this crate
 
-- Run the full crate tests, both feature combinations:
-  `cargo test -p brassclaw_filesystem --all-features`,
-  `cargo check -p brassclaw_filesystem --no-default-features --features libsql`,
-  `cargo check -p brassclaw_filesystem --no-default-features --features postgres`.
+- Follow [the development validation policy](../../docs/development-policy.md)
+  to select focused checks and reuse applicable evidence. The current crate has
+  default and `postgres` feature configurations; it has no `libsql` feature.
+  SQL semantics require actual PostgreSQL/caller acceptance alongside applicable
+  crate contracts and affected-package lint.
 - New `Entry` shapes (record kinds, indexed projections) belong in the
   consumer crate, not here. This crate only owns the trait surface and
   shared primitives.

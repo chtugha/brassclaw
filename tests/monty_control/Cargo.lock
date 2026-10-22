@@ -1290,7 +1290,6 @@ dependencies = [
  "brassclaw_pg",
  "chrono",
  "deadpool-postgres",
- "heck",
  "hex",
  "serde",
  "serde_json",

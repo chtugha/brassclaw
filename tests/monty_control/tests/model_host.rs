@@ -51,6 +51,8 @@ use sha2::Digest;
 mod admission_integrity;
 #[path = "support/capabilities.rs"]
 mod capabilities;
+#[path = "support/child_recipe_entry.rs"]
+mod child_recipe_entry;
 #[path = "../../../crates/brassclaw_reborn_composition/src/global_monty_driver.rs"]
 mod global_monty_driver;
 #[path = "../../../crates/brassclaw_reborn_composition/src/global_monty_owner.rs"]
@@ -2769,7 +2771,10 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
         .batch_execute("TRUNCATE brassclaw_monty_tool_invocations")
         .await
         .unwrap_err();
-    assert_eq!(dependency_error.as_db_error().unwrap().code().code(), "0A000");
+    assert_eq!(
+        dependency_error.as_db_error().unwrap().code().code(),
+        "0A000"
+    );
     for statement in [
         "UPDATE brassclaw_monty_tool_invocations SET data_max_bytes=data_max_bytes+1",
         "UPDATE brassclaw_monty_tool_invocations SET phase='dispatch_intent',answer_bytes=NULL,answer_checksum=NULL,answered_at=NULL WHERE step_id='0:2'",
@@ -2792,7 +2797,10 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
         .await
         .unwrap()
         .get(0);
-    assert_eq!(retained, 3, "rejected mutations retain every original intent");
+    assert_eq!(
+        retained, 3,
+        "rejected mutations retain every original intent"
+    );
     assert!(
         admitted
             .admission
@@ -3863,6 +3871,9 @@ fn copy_task_input(input: &TaskInput) -> TaskInput {
         entry: match &input.entry {
             brassclaw_monty_host::service::TaskEntry::Chat => {
                 brassclaw_monty_host::service::TaskEntry::Chat
+            }
+            brassclaw_monty_host::service::TaskEntry::ChildRecipe => {
+                brassclaw_monty_host::service::TaskEntry::ChildRecipe
             }
             brassclaw_monty_host::service::TaskEntry::InternalRecipe { name } => {
                 brassclaw_monty_host::service::TaskEntry::InternalRecipe { name: name.clone() }

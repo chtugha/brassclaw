@@ -2,7 +2,9 @@
 
 The installer retains exact component drafts, then qualifies the packaged
 source-only workflow through its closed `system_seed` owner. It currently produces
-quarantined base-prompt and Prefix-Maker packages. The qualified program is private:
+quarantined base-prompt, Prefix-Maker and Sempai source-only packages. Sempai uses
+the declared release inventory and the explicit context-aware v5 layout. It does
+not reuse the older standalone Sempai compiler's transport or persona. The qualified program is private:
 it returns a durable receipt and is not advertised as an ordinary chat Recipe.
 Generate jobs, accepted model designs, target tokenization, activation and cache
 warming remain separate work; qualification alone does not enable their WebUI actions.
@@ -20,7 +22,9 @@ The `brassclaw-prefix-source-snapshot/1` input contains `profile`, `release`,
 `header`, `evidence_view`, complete `sources` and three original `procedures`.
 Each source declares its canonical relative path, kind, disposition, reason and
 complete UTF-8 text. The seven component/architecture guides are mandatory;
-Prefix-Maker additionally requires its dedicated reference. Component-library
+Prefix-Maker additionally requires its dedicated reference. Sempai requires its
+complete selected authoring/compatibility guides and upstream model-reference
+corpus; complete originals remain archived separately from presentation. Component-library
 coverage is not implied by including those guides.
 
 The owner must build that snapshot from its retained source/design/code selection.
@@ -39,6 +43,13 @@ V4 always leaves the first occurrence literal and references it from later exact
 duplicates, so appending a later duplicate does not relabel earlier references.
 Source insertions earlier in canonical order and content edits can still change
 earlier tokens. Every format retains the same complete original/range map.
+V5 adds conservative source-family context captions and shares a complete unit
+only inside the same declared context. Equal SDK/reference/component bytes can
+therefore remain separate. Its `brassclaw-prefix-render-map/2` identifies each
+(context, unit hash) group and its exact originals; compiler design `/2` records
+complete included-source context assignments. Captions are compiler metadata,
+not quotations or proof of API availability, compatibility, approval or permission.
+Storage verifies map/assignment integrity; qualified Python owns classification.
 Existing defaults and accepted designs are unchanged.
 
 ## Execution
@@ -76,7 +87,7 @@ From the repository root on Linux or macOS:
 python3 -m unittest discover -s scripts/prefix -p test_prefix_compile_logic.py -v
 ```
 
-This checks both profiles and all four render formats against complete current guides
+This checks the supported source profiles and render formats against complete current guides
 and independent SHA-256/original-byte assertions. It is CPython evidence only.
 Native tests additionally inspect and run the same packaged definitions in Monty,
 prepare the exact retained Recipe graph, and exercise registered hashing/retention
@@ -369,3 +380,18 @@ generation history; its retry/filtering/limit-state tests pass separately. The c
 affected/standalone lint, standalone consumers, routes and ordinary single-root
 behavior. Embedded/browser UI acceptance and current shared-tree integration
 remain separate checks.
+
+
+### Sempai installed source-only adapter
+
+The installed compiler Recipe also accepts `sempai`, requiring the v5 contextual
+layout and complete binding/authoring/compatibility guides. Its declared-release
+selection includes pinned official Monty model-reference files; core-only capture
+is rejected. All original archived sources remain available, while old reviewer
+personas and teaching receipts remain outside this model view pending current
+contract review. The Prefix-Maker authoring procedure is excluded.
+
+This extends the existing source-only submission/storage/measurement owners. It
+does not replace the legacy standalone Sempai compiler or extend the development
+build worker. It does not activate a reviewer, accept a model design or establish
+model capacity, proposal quality or cache reuse. Source-only output is quarantined.

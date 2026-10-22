@@ -59,6 +59,48 @@ pub struct InMemoryBackend {
 }
 
 impl InMemoryBackend {
+    async fn put_entry(
+        &self,
+        path: &VirtualPath,
+        entry: Entry,
+        cas: CasExpectation,
+        opaque_only: bool,
+    ) -> Result<RecordVersion, FilesystemError> {
+        let mut state = self.state.lock().await;
+        if opaque_only
+            && state
+                .entries
+                .get(path)
+                .is_some_and(|stored| stored.entry.kind.is_some())
+        {
+            return Err(FilesystemError::Unsupported {
+                path: path.clone(),
+                operation: FilesystemOperation::WriteFile,
+            });
+        }
+        validate_file_namespace(&state, path, FilesystemOperation::WriteFile)?;
+        let current_version = state.entries.get(path).map(|stored| stored.version);
+        check_cas(path, cas, current_version)?;
+
+        let next_version = current_version
+            .unwrap_or_else(|| RecordVersion::from_backend(0))
+            .checked_next()
+            .ok_or_else(|| FilesystemError::Backend {
+                path: path.clone(),
+                operation: FilesystemOperation::WriteFile,
+                reason: "entry version representation exhausted".into(),
+            })?;
+        state.entries.insert(
+            path.clone(),
+            StoredEntry {
+                entry,
+                version: next_version,
+                modified: SystemTime::now(),
+            },
+        );
+        Ok(next_version)
+    }
+
     pub fn new() -> Self {
         Self {
             state: Mutex::new(State {
@@ -79,7 +121,7 @@ impl Default for InMemoryBackend {
 #[async_trait]
 impl RootFilesystem for InMemoryBackend {
     fn capabilities(&self) -> BackendCapabilities {
-        BackendCapabilities::in_memory_full()
+        BackendCapabilities::in_memory_full().with(crate::Capability::OpaqueWrite)
     }
 
     async fn put(
@@ -88,23 +130,16 @@ impl RootFilesystem for InMemoryBackend {
         entry: Entry,
         cas: CasExpectation,
     ) -> Result<RecordVersion, FilesystemError> {
-        let mut state = self.state.lock().await;
-        validate_file_namespace(&state, path, FilesystemOperation::WriteFile)?;
-        let current_version = state.entries.get(path).map(|stored| stored.version);
-        check_cas(path, cas, current_version)?;
+        self.put_entry(path, entry, cas, false).await
+    }
 
-        let next_version = current_version
-            .map(|v| v.next())
-            .unwrap_or_else(|| RecordVersion::from_backend(1));
-        state.entries.insert(
-            path.clone(),
-            StoredEntry {
-                entry,
-                version: next_version,
-                modified: SystemTime::now(),
-            },
-        );
-        Ok(next_version)
+    async fn put_opaque(
+        &self,
+        path: &VirtualPath,
+        body: Vec<u8>,
+        cas: CasExpectation,
+    ) -> Result<RecordVersion, FilesystemError> {
+        self.put_entry(path, Entry::bytes(body), cas, true).await
     }
 
     async fn get_metadata(
@@ -264,6 +299,61 @@ impl RootFilesystem for InMemoryBackend {
         }
         out.sort_by(|left, right| left.name.cmp(&right.name));
         Ok(out)
+    }
+
+    async fn list_dir_bounded(
+        &self,
+        path: &VirtualPath,
+        max_entries: usize,
+    ) -> Result<Vec<DirEntry>, FilesystemError> {
+        if max_entries == 0 {
+            return Ok(Vec::new());
+        }
+        let state = self.state.lock().await;
+        let prefix = with_trailing_slash(path.as_str());
+        let mut selected = BTreeMap::new();
+        for (stored_path, _) in state
+            .entries
+            .range::<str, _>((Included(prefix.as_str()), Unbounded))
+            .take_while(|(key, _)| key.as_str().starts_with(&prefix))
+        {
+            let suffix = &stored_path.as_str()[prefix.len()..];
+            let (name, has_more) = first_segment(suffix);
+            if name.is_empty() || selected.contains_key(name) {
+                continue;
+            }
+            // A selected name can have descendants after another child's
+            // lexical path (a, a-foo, a/child). Classify it from the index;
+            // stopping early must not turn such a directory into a file.
+            let child_prefix = format!("{prefix}{name}/");
+            let directory = has_more
+                || state
+                    .entries
+                    .range::<str, _>((Included(child_prefix.as_str()), Unbounded))
+                    .next()
+                    .is_some_and(|(key, _)| key.as_str().starts_with(&child_prefix));
+            selected.insert(
+                name.to_owned(),
+                if directory {
+                    FileType::Directory
+                } else {
+                    FileType::File
+                },
+            );
+            if selected.len() == max_entries {
+                break;
+            }
+        }
+        selected
+            .into_iter()
+            .map(|(name, file_type)| {
+                Ok(DirEntry {
+                    path: VirtualPath::new(join_path(path.as_str(), &name))?,
+                    name,
+                    file_type,
+                })
+            })
+            .collect()
     }
 
     async fn stat(&self, path: &VirtualPath) -> Result<FileStat, FilesystemError> {
@@ -429,8 +519,14 @@ impl RootFilesystem for InMemoryBackend {
             .or_default();
         let next = log
             .last()
-            .map(|rec| rec.seq.next())
-            .unwrap_or_else(|| SeqNo::ZERO.next());
+            .map(|rec| rec.seq)
+            .unwrap_or(SeqNo::ZERO)
+            .checked_next()
+            .ok_or_else(|| FilesystemError::Backend {
+                path: path.clone(),
+                operation: FilesystemOperation::Append,
+                reason: "event sequence representation exhausted".into(),
+            })?;
         log.push(EventRecord { seq: next, payload });
         Ok(next)
     }
@@ -460,6 +556,16 @@ impl RootFilesystem for InMemoryBackend {
         let mut state = self.state.lock().await;
         validate_file_namespace(&state, path, FilesystemOperation::AppendFile)?;
         let existing = state.entries.get(path).cloned();
+        let next_version = existing
+            .as_ref()
+            .map(|s| s.version)
+            .unwrap_or_else(|| RecordVersion::from_backend(0))
+            .checked_next()
+            .ok_or_else(|| FilesystemError::Backend {
+                path: path.clone(),
+                operation: FilesystemOperation::AppendFile,
+                reason: "entry version representation exhausted".into(),
+            })?;
         // Like the PostgreSQL opaque-byte append, discard stale record/index
         // metadata instead of leaving it attached to changed bytes.
         let mut entry = Entry::bytes(
@@ -469,9 +575,6 @@ impl RootFilesystem for InMemoryBackend {
                 .unwrap_or_default(),
         );
         entry.body.extend_from_slice(bytes);
-        let next_version = existing
-            .map(|s| s.version.next())
-            .unwrap_or_else(|| RecordVersion::from_backend(1));
         state.entries.insert(
             path.clone(),
             StoredEntry {
@@ -677,6 +780,107 @@ mod tests {
 
     fn key(s: &str) -> IndexKey {
         IndexKey::new(s).unwrap()
+    }
+
+    #[tokio::test]
+    async fn exhausted_native_versions_and_sequences_reject_before_mutation() {
+        let fs = InMemoryBackend::new();
+        let path = vpath("/projects/exhausted");
+        let maximum = RecordVersion::from_backend(u64::MAX);
+        fs.state.lock().await.entries.insert(
+            path.clone(),
+            StoredEntry {
+                entry: Entry::bytes(b"retained bytes".to_vec()),
+                version: maximum,
+                modified: SystemTime::now(),
+            },
+        );
+        let original = fs.get(&path).await.unwrap().unwrap();
+        for cas in [CasExpectation::Any, CasExpectation::Version(maximum)] {
+            assert!(
+                fs.put(&path, Entry::bytes(b"must not replace".to_vec()), cas)
+                    .await
+                    .is_err()
+            );
+            assert!(
+                fs.put_opaque(&path, b"must not replace".to_vec(), cas)
+                    .await
+                    .is_err()
+            );
+            assert_eq!(fs.get(&path).await.unwrap().unwrap(), original);
+        }
+        assert!(fs.append_file(&path, b"must not append").await.is_err());
+        assert_eq!(fs.get(&path).await.unwrap().unwrap(), original);
+        fs.state.lock().await.event_logs.insert(
+            path.as_str().into(),
+            vec![EventRecord {
+                seq: SeqNo::from_backend(u64::MAX),
+                payload: b"last event".to_vec(),
+            }],
+        );
+        assert!(
+            fs.append(&path, b"duplicate must not appear".to_vec())
+                .await
+                .is_err()
+        );
+        let log = fs.tail(&path, SeqNo::ZERO).await.unwrap();
+        assert_eq!(log.len(), 1);
+        assert_eq!(log[0].seq, SeqNo::from_backend(u64::MAX));
+        assert_eq!(log[0].payload, b"last event");
+    }
+
+    #[tokio::test]
+    async fn opaque_write_keeps_cas_and_never_converts_records() {
+        let fs = InMemoryBackend::new();
+        let path = vpath("/projects/opaque-boundary");
+        let first = fs
+            .put_opaque(&path, b"first".to_vec(), CasExpectation::Absent)
+            .await
+            .unwrap();
+        let second = fs
+            .put_opaque(&path, b"second".to_vec(), CasExpectation::Version(first))
+            .await
+            .unwrap();
+        assert!(matches!(
+            fs.put_opaque(&path, b"stale".to_vec(), CasExpectation::Version(first))
+                .await,
+            Err(FilesystemError::VersionMismatch { .. })
+        ));
+        assert_eq!(fs.get(&path).await.unwrap().unwrap().entry.body, b"second");
+        let record = Entry::record(
+            RecordKind::new("protected").unwrap(),
+            &serde_json::json!({"secret":"retained"}),
+        )
+        .unwrap();
+        let version = fs
+            .put(&path, record.clone(), CasExpectation::Version(second))
+            .await
+            .unwrap();
+        for cas in [
+            CasExpectation::Any,
+            CasExpectation::Absent,
+            CasExpectation::Version(version),
+        ] {
+            assert!(
+                fs.put_opaque(&path, b"must not convert".to_vec(), cas)
+                    .await
+                    .is_err()
+            );
+            let got = fs.get(&path).await.unwrap().unwrap();
+            assert_eq!(got.version, version);
+            assert_eq!(got.entry, record);
+        }
+        // Trusted entry owners retain intentional conversion, unlike byte Tools.
+        fs.put(
+            &path,
+            Entry::bytes(b"restored".to_vec()),
+            CasExpectation::Version(version),
+        )
+        .await
+        .unwrap();
+        fs.put_opaque(&path, b"ordinary edit".to_vec(), CasExpectation::Any)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -972,6 +1176,12 @@ mod tests {
             .find(|e| e.name == "x")
             .expect("/projects/x should be listed");
         assert_eq!(x.file_type, FileType::Directory);
+        // The bounded projection must classify a selected legacy file with
+        // descendants correctly even when it stops before visiting that child.
+        let bounded = fs.list_dir_bounded(&vpath("/projects"), 1).await.unwrap();
+        assert_eq!(bounded.len(), 1);
+        assert_eq!(bounded[0].name, "x");
+        assert_eq!(bounded[0].file_type, FileType::Directory);
     }
 
     #[tokio::test]
@@ -1033,7 +1243,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_dir_bounded_uses_trait_default_truncation() {
+    async fn bounded_directory_window_respects_requested_count() {
         let fs = InMemoryBackend::new();
         for p in ["/projects/a.md", "/projects/b.md", "/projects/c.md"] {
             fs.put(&vpath(p), Entry::bytes(vec![]), CasExpectation::Absent)

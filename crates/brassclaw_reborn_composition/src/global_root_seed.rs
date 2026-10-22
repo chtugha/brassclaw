@@ -28,6 +28,7 @@ fn ports() -> BTreeSet<String> {
         "finish_task",
         "resolve_intent",
         "resolve_internal_recipe",
+        "resolve_child_recipe",
         "resolve_component_by_name",
         "compose_orchestrator",
         "run_program",

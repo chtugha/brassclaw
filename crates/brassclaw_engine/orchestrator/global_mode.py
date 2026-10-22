@@ -407,14 +407,25 @@ async def _execute_task(task):
         if not isinstance(receipt, str) or receipt == "":
             raise RuntimeError("recipe_execution_failed")
         return {"receipt_ref": receipt}
-    if entry.get("kind") != "chat":
-        raise RuntimeError("task_entry_invalid")
     _exact_fields(entry, ["kind"])
-    intent = await host.resolve_intent(task_token, user_input)
+    if entry.get("kind") == "child_recipe":
+        # The owner selected this exact Recipe and typed inputs from the
+        # parent's retained catalogue before durable child admission. This is
+        # explicit Monty handoff, not another intent match or a Tier-2 fallback.
+        intent = await host.resolve_child_recipe(task_token)
+        if not isinstance(intent, dict) or intent.get("status") != "child_recipe":
+            raise RuntimeError("recipe_composition_failed")
+        inputs = intent.get("inputs")
+        if not isinstance(inputs, dict):
+            raise RuntimeError("recipe_composition_failed")
+    elif entry.get("kind") == "chat":
+        intent = await host.resolve_intent(task_token, user_input)
+    else:
+        raise RuntimeError("task_entry_invalid")
     if not isinstance(intent, dict):
         raise RuntimeError("intent_resolution_failed")
     status = intent.get("status")
-    if status == "match":
+    if status == "match" or (status == "child_recipe" and entry["kind"] == "child_recipe"):
         recipe_id = intent.get("component_id")
         step_link = intent.get("step_link")
     elif status == "no_match":

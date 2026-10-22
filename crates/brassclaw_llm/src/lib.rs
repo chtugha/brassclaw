@@ -30,8 +30,8 @@ pub mod nearai_chat;
 pub mod openai_codex_provider;
 pub(crate) mod openai_codex_session;
 mod optional_auth_http;
-pub mod provider_observation;
 mod provider;
+pub mod provider_observation;
 mod reasoning;
 pub mod recording;
 pub mod registry;
@@ -70,6 +70,7 @@ pub use config::{
     OAUTH_PLACEHOLDER, OpenAiCodexConfig, ProviderRequestPolicy, RegistryProviderConfig,
 };
 pub use embedding_models::{EmbeddingModelContract, EmbeddingModelContracts};
+mod model_token_limits;
 pub use error::{LlmConfigError, LlmError};
 pub use failover::{CooldownConfig, FailoverProvider};
 pub(crate) use gemini_oauth::GeminiOauthProvider;
@@ -78,6 +79,7 @@ pub use host::{
     SessionSecrets, SharedSessionDb, SharedSessionKeyPersistor, SharedSessionRenewer,
     SharedSessionSecrets,
 };
+pub use model_token_limits::{ModelTokenLimitOverrides, ModelTokenLimits};
 pub use nearai_chat::{DEFAULT_MODEL, ModelInfo, NearAiChatProvider, default_models};
 pub use openai_codex_provider::OpenAiCodexProvider;
 pub use openai_codex_session::{DeviceCodeStart, OpenAiCodexSessionManager};
@@ -461,7 +463,7 @@ fn create_openai_compat_from_registry(
 
     let adapter = RigAdapter::new(model, &config.model)
         .with_usage_format(crate::rig_adapter::RigUsageFormat::OpenAi)
-        .with_openai_chat_output_limit()
+        .with_request_format(crate::rig_adapter::RigRequestFormat::OpenAiChat)
         .with_unsupported_params(config.unsupported_params.clone());
     Ok(Arc::new(adapter))
 }
@@ -543,6 +545,7 @@ fn create_anthropic_from_registry(
     Ok(Arc::new(
         RigAdapter::new(model, &config.model)
             .with_usage_format(crate::rig_adapter::RigUsageFormat::Anthropic)
+            .with_request_format(crate::rig_adapter::RigRequestFormat::Anthropic)
             .with_cache_retention(cache_retention)
             .with_unsupported_params(config.unsupported_params.clone()),
     ))
@@ -586,6 +589,7 @@ fn create_ollama_from_registry(
     // Non-thinking models ignore the parameter harmlessly.
     let adapter = RigAdapter::new(model, &config.model)
         .with_usage_format(crate::rig_adapter::RigUsageFormat::Ollama)
+        .with_request_format(crate::rig_adapter::RigRequestFormat::Ollama)
         .with_unsupported_params(config.unsupported_params.clone())
         .with_additional_params(serde_json::json!({ "think": true }));
     Ok(Arc::new(adapter))
@@ -644,6 +648,7 @@ fn create_deepseek_from_registry(
     Ok(Arc::new(
         RigAdapter::new(model, &config.model)
             .with_usage_format(crate::rig_adapter::RigUsageFormat::OpenAi)
+            .with_request_format(crate::rig_adapter::RigRequestFormat::ChatMaxTokens)
             .with_unsupported_params(config.unsupported_params.clone()),
     ))
 }
@@ -711,6 +716,7 @@ fn create_openrouter_from_registry(
     Ok(Arc::new(
         RigAdapter::new(model, &config.model)
             .with_usage_format(crate::rig_adapter::RigUsageFormat::OpenAi)
+            .with_request_format(crate::rig_adapter::RigRequestFormat::ChatMaxTokens)
             .with_unsupported_params(config.unsupported_params.clone()),
     ))
 }
@@ -777,6 +783,7 @@ fn create_gemini_from_registry(
     Ok(Arc::new(
         RigAdapter::new(model, &config.model)
             .with_usage_format(crate::rig_adapter::RigUsageFormat::Gemini)
+            .with_request_format(crate::rig_adapter::RigRequestFormat::Gemini)
             .with_unsupported_params(config.unsupported_params.clone()),
     ))
 }

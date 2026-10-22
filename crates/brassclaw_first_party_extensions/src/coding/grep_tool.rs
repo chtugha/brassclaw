@@ -15,16 +15,12 @@ use serde_json::{Value, json};
 use super::{CodingCapabilityError, CodingCapabilityRequest};
 
 use super::{
-    config::{
-        DEFAULT_HEAD_LIMIT, GREP_MAX_TOTAL_BYTES, MAX_OUTPUT_SIZE, MAX_READ_SIZE,
-        MAX_VISITED_ENTRIES,
-    },
     input_error,
     inputs::{optional_usize, optional_usize_allow_zero, required_str},
     paths::{
-        filesystem_error, is_excluded_name, is_sensitive_scoped_path, operation_allowed,
-        resolve_optional_path, scoped_child_path, type_filter_matches, validate_relative_pattern,
-        virtual_to_relative,
+        filesystem_error, is_excluded_name, is_sensitive_scoped_path, list_walk_entries,
+        operation_allowed, resolve_optional_path, scoped_child_path, type_filter_matches,
+        validate_relative_pattern, virtual_to_relative,
     },
     text::{decode_text, previous_char_boundary, reject_binary_probe},
     types::{GrepFileResult, GrepLine, ResolvedPath},
@@ -169,6 +165,7 @@ pub(super) async fn grep(
         head_limit,
         before_context > 0 || after_context > 0,
         walk_result,
+        &request.limits,
     ))
 }
 
@@ -216,14 +213,10 @@ async fn walk_files(
     let mut stack = vec![root.virtual_path.clone()];
     let mut visited = 0usize;
     while let Some(dir) = stack.pop() {
-        let entries = request
-            .filesystem
-            .list_dir(&dir)
-            .await
-            .map_err(filesystem_error)?;
+        let entries = list_walk_entries(request, &dir, visited).await?;
         for entry in entries {
             visited += 1;
-            if visited > MAX_VISITED_ENTRIES {
+            if visited > request.limits.max_coding_visited_entries as usize {
                 return Err(CodingCapabilityError::new(
                     RuntimeDispatchErrorKind::Resource,
                 ));
@@ -287,11 +280,11 @@ async fn visit_file(
     visit: &mut impl FnMut(&str, &[u8], Option<SystemTime>) -> Result<bool, CodingCapabilityError>,
     skip_read_errors: bool,
 ) -> Result<bool, CodingCapabilityError> {
-    if stat.len > MAX_READ_SIZE {
+    if stat.len > request.limits.max_coding_read_bytes {
         tracing::debug!(
             path = path.as_str(),
             len = stat.len,
-            max_read_size = MAX_READ_SIZE,
+            max_read_size = request.limits.max_coding_read_bytes,
             "skipping oversized grep file"
         );
         if !skip_read_errors {
@@ -303,20 +296,36 @@ async fn visit_file(
         return Ok(true);
     }
     let next_total = walk_result.bytes_scanned.saturating_add(stat.len);
-    if next_total > GREP_MAX_TOTAL_BYTES {
+    if next_total > request.limits.max_coding_scan_bytes {
         tracing::debug!(
             path = path.as_str(),
             total_bytes = walk_result.bytes_scanned,
             next_file_bytes = stat.len,
-            max_total_bytes = GREP_MAX_TOTAL_BYTES,
+            max_total_bytes = request.limits.max_coding_scan_bytes,
             "stopping grep after aggregate scan budget"
         );
         walk_result.scan_limit = Some(ScanLimit::AggregateBytes);
         return Ok(false);
     }
+    let remaining = request.limits.max_coding_scan_bytes - walk_result.bytes_scanned;
+    let read_bound = remaining.min(request.limits.max_coding_read_bytes);
     walk_result.bytes_scanned = next_total;
-    let bytes = match request.filesystem.read_file(path).await {
-        Ok(bytes) => bytes,
+    let bytes = match request
+        .filesystem
+        .read_file_bounded(path, read_bound as usize)
+        .await
+    {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) if read_bound < request.limits.max_coding_read_bytes => {
+            walk_result.scan_limit = Some(ScanLimit::AggregateBytes);
+            return Ok(false);
+        }
+        Ok(None) if skip_read_errors => return Ok(true),
+        Ok(None) => {
+            return Err(CodingCapabilityError::new(
+                RuntimeDispatchErrorKind::Resource,
+            ));
+        }
         Err(_error) if skip_read_errors => {
             // silent-ok: grep directory search skips files that disappear or fail read.
             tracing::debug!(path = path.as_str(), "skipping grep file after read failed");
@@ -324,6 +333,9 @@ async fn visit_file(
         }
         Err(error) => return Err(filesystem_error(error)),
     };
+    // The stream may have grown after stat. Account the larger observed size;
+    // the bounded read has already kept it within the remaining scan budget.
+    walk_result.bytes_scanned += (bytes.len() as u64).saturating_sub(stat.len);
     visit(relative, &bytes, stat.modified)
 }
 
@@ -343,11 +355,13 @@ fn build_grep_output(
     head_limit: Option<usize>,
     had_context: bool,
     walk_result: WalkFilesResult,
+    limits: &brassclaw_host_api::MontyExecutionLimits,
 ) -> Value {
     let effective_limit = match head_limit {
         Some(0) => usize::MAX,
         Some(value) => value,
-        None => DEFAULT_HEAD_LIMIT,
+        None if limits.default_coding_head_lines == 0 => usize::MAX,
+        None => limits.default_coding_head_lines as usize,
     };
     match output_mode {
         "files_with_matches" => {
@@ -364,7 +378,7 @@ fn build_grep_output(
                 "truncated": walk_result.scan_limit.is_some()
                     || total > offset.saturating_add(effective_limit)
             });
-            add_scan_limit_metadata(&mut output, walk_result);
+            add_scan_limit_metadata(&mut output, walk_result, limits);
             output
         }
         "count" => {
@@ -384,7 +398,7 @@ fn build_grep_output(
                 "truncated": walk_result.scan_limit.is_some()
                     || total_count > offset.saturating_add(effective_limit)
             });
-            add_scan_limit_metadata(&mut output, walk_result);
+            add_scan_limit_metadata(&mut output, walk_result, limits);
             output
         }
         _ => {
@@ -402,7 +416,9 @@ fn build_grep_output(
                     ));
                 }
             }
-            let raw_len = lines.iter().map(|line| line.len() + 1).sum::<usize>();
+            let raw_len = lines.iter().fold(0usize, |total, line| {
+                total.saturating_add(line.len()).saturating_add(1)
+            });
             let page = lines
                 .iter()
                 .skip(offset)
@@ -411,30 +427,37 @@ fn build_grep_output(
                 .collect::<Vec<_>>();
             let mut content = page.join("\n");
             let mut truncated = walk_result.scan_limit.is_some()
-                || raw_len > MAX_OUTPUT_SIZE
+                || raw_len > limits.max_coding_output_bytes as usize
                 || lines.len() > offset.saturating_add(effective_limit);
-            if content.len() > MAX_OUTPUT_SIZE {
-                content.truncate(previous_char_boundary(&content, MAX_OUTPUT_SIZE));
+            if content.len() > limits.max_coding_output_bytes as usize {
+                content.truncate(previous_char_boundary(
+                    &content,
+                    limits.max_coding_output_bytes as usize,
+                ));
                 truncated = true;
             }
             let mut output = json!({ "content": content, "truncated": truncated });
-            add_scan_limit_metadata(&mut output, walk_result);
+            add_scan_limit_metadata(&mut output, walk_result, limits);
             output
         }
     }
 }
 
-fn add_scan_limit_metadata(output: &mut Value, walk_result: WalkFilesResult) {
+fn add_scan_limit_metadata(
+    output: &mut Value,
+    walk_result: WalkFilesResult,
+    limits: &brassclaw_host_api::MontyExecutionLimits,
+) {
     match walk_result.scan_limit {
         Some(ScanLimit::AggregateBytes) => {
             output["limit_reason"] = json!("aggregate_scan_bytes");
             output["bytes_scanned"] = json!(walk_result.bytes_scanned);
-            output["max_scan_bytes"] = json!(GREP_MAX_TOTAL_BYTES);
+            output["max_scan_bytes"] = json!(limits.max_coding_scan_bytes);
         }
         Some(ScanLimit::FileBytes { file_bytes }) => {
             output["limit_reason"] = json!("file_size_bytes");
             output["file_bytes"] = json!(file_bytes);
-            output["max_file_bytes"] = json!(MAX_READ_SIZE);
+            output["max_file_bytes"] = json!(limits.max_coding_read_bytes);
         }
         None => {}
     }
@@ -466,7 +489,10 @@ fn line_matches(
         if regex.is_match(line) {
             matched.insert(index);
             let start = index.saturating_sub(before_context);
-            let end = (index + after_context + 1).min(lines.len());
+            let end = index
+                .saturating_add(after_context)
+                .saturating_add(1)
+                .min(lines.len());
             for item in start..end {
                 include.insert(item);
             }
@@ -501,7 +527,10 @@ fn multiline_matches(
             if spans_overlap(item.start(), item.end(), *start, *end) {
                 matched.insert(index);
                 let context_start = index.saturating_sub(before_context);
-                let context_end = (index + after_context + 1).min(indexed.len());
+                let context_end = index
+                    .saturating_add(after_context)
+                    .saturating_add(1)
+                    .min(indexed.len());
                 for line_index in context_start..context_end {
                     include.insert(line_index);
                 }

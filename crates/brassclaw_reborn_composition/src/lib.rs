@@ -1126,8 +1126,19 @@ mod authored_monty_catalogue;
 mod catalogue_source_export;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod component_deployment;
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+mod http_get_usage_tests;
+#[cfg(all(
+    test,
+    feature = "postgres",
+    feature = "skills-db",
+    feature = "root-llm-provider"
+))]
+mod model_token_limit_tests;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod pg_prefix_generation_backend;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod pg_prefix_source_backend;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_compiler_candidates;
 #[cfg(feature = "skills-db")]
@@ -1144,12 +1155,18 @@ pub mod prefix_installation_baseline;
 mod prefix_measurement_candidates;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_model_artifacts;
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+mod prefix_model_budget_tests;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_model_configuration;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_model_designs;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_profile_seeds;
 #[cfg(all(test, feature = "skills-db"))]
 mod prefix_reference_tests;
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+mod prefix_source_storage_tests;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_sources;
 #[cfg(all(test, feature = "skills-db"))]
@@ -1172,6 +1189,9 @@ mod pending_seed_metadata_tests;
 
 #[cfg(all(test, feature = "postgres"))]
 mod subagent_goal_storage_tests;
+
+#[cfg(all(test, feature = "postgres"))]
+mod claimed_child_admission_tests;
 
 #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
 #[path = "../../../tests/monty_control/tests/support/admission.rs"]

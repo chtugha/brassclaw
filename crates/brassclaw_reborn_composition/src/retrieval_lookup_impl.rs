@@ -995,4 +995,139 @@ mod tests {
             "fresh scope with no components must soft-miss (Ok(None))"
         );
     }
+
+    /// Exercise the actual PG source and facade: matching/storage/IBS failures
+    /// cannot become No-Match, broad retrieval, or an empty successful recipe.
+    /// Physical legacy rows here are failure fixtures, not v3 activation proof.
+    #[cfg(feature = "skills-db")]
+    #[tokio::test]
+    async fn pg_retrieval_lookup_preserves_match_failures_and_complete_ambiguity() {
+        use brassclaw_turns::run_profile::RetrievalLookupError;
+        let rig = crate::runtime::test_pg::pg_rig().await;
+        let _guard = rig.lock_db().await;
+        let pool = rig.pool.clone();
+        let (user, agent, project) = (
+            Uuid::new_v4().to_string(),
+            Uuid::new_v4().to_string(),
+            Uuid::new_v4().to_string(),
+        );
+        let scope = fresh_intent_scope(&user, &agent, &project);
+        let context = lookup_context(&user, &agent, &project).await;
+        let lookup = PgRetrievalLookup::new(Arc::new(PostgresSource::new(pool.clone())));
+        for fault in [
+            "missing_recipe",
+            "invalid_variants",
+            "missing_variant",
+            "ambiguous_variant",
+            "invalid_steps",
+            "invalid_ibs",
+            "missing_include",
+            "unavailable_include",
+            "invalid_dependencies",
+            "missing_dependency",
+            "missing_action",
+        ] {
+            let id = Uuid::new_v4();
+            let query = format!("retrieve exact failure case {fault} {id}");
+            let link = "0:1-0:E";
+            let variant = serde_json::json!({"variant_key":"selected", "step_link":link, "intent_examples":[query], "variable_patterns":[]});
+            let mut variants = serde_json::json!([variant.clone()]);
+            let mut steps = serde_json::json!([]);
+            match fault {
+                "invalid_variants" => variants = serde_json::json!({}),
+                "missing_variant" => variants = serde_json::json!([]),
+                "ambiguous_variant" => variants = serde_json::json!([variant.clone(), variant]),
+                "invalid_steps" => steps = serde_json::json!({}),
+                "missing_include"
+                | "unavailable_include"
+                | "invalid_dependencies"
+                | "missing_dependency" => {
+                    let code = Uuid::new_v4();
+                    let dependencies =
+                        if matches!(fault, "invalid_dependencies" | "missing_dependency") {
+                            Some("0")
+                        } else {
+                            None
+                        };
+                    steps = serde_json::json!([{"desc_idx":0,"label":"declared dependency","yaml_source":"","steps":[{"stepnumber":1,"knowledge":"orchestrator","goal":"require declared code","content":"","type":"component","include":[code],"dependencies":dependencies}]}]);
+                    if fault != "missing_include" {
+                        let status = if fault == "unavailable_include" {
+                            "pending"
+                        } else {
+                            "validated"
+                        };
+                        let registry = if fault == "invalid_dependencies" {
+                            serde_json::json!({"invalid":true})
+                        } else {
+                            serde_json::json!([])
+                        };
+                        pool.get().await.unwrap().execute("INSERT INTO reborn_python_code (id,tenant_id,user_id,agent_id,project_id,name,content,validation_status,dependency_registry) VALUES($1,$2,$3,$4,$5,$6,'result = 1',$7,$8)", &[&code,&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&format!("required-{code}"),&status,&registry]).await.unwrap();
+                    }
+                }
+                _ => {}
+            }
+            if !matches!(fault, "missing_recipe" | "missing_action") {
+                pool.get().await.unwrap().execute("INSERT INTO reborn_recipes (id,tenant_id,user_id,agent_id,project_id,name,description,variants,step_descriptions) VALUES($1,$2,$3,$4,$5,$6,'failure fixture',$7,$8)", &[&id,&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&format!("failure-{id}"),&variants,&steps]).await.unwrap();
+            }
+            let class = if fault == "missing_action" { 16 } else { 21 };
+            seed_intent_input(
+                &pool,
+                &scope,
+                &query,
+                InputClass::Sentence,
+                id,
+                class,
+                IntentSource::Seeded,
+                (class == 21).then_some(link),
+            )
+            .await
+            .unwrap();
+            assert!(
+                matches!(
+                    lookup.fetch_for_turn(&context, &query, None, "02").await,
+                    Err(RetrievalLookupError::Backend(_))
+                ),
+                "{fault} must remain an error"
+            );
+        }
+        let query = unique_sentence_query();
+        for _ in 0..6 {
+            let id = Uuid::new_v4();
+            insert_validated_action_row(&pool, &scope, id, &format!("ambiguous-{id}")).await;
+            seed_intent_input(
+                &pool,
+                &scope,
+                &query,
+                InputClass::Sentence,
+                id,
+                16,
+                IntentSource::Seeded,
+                None,
+            )
+            .await
+            .unwrap();
+        }
+        let result = lookup
+            .fetch_for_turn(&context, &query, None, "02")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.routing_meta["variant"], "disambiguation");
+        assert_eq!(result.routing_meta["count"], 6);
+        assert_eq!(result.orchestrator_items.as_array().unwrap().len(), 6);
+        assert_eq!(result.rust_items, result.orchestrator_items);
+        pool.get()
+            .await
+            .unwrap()
+            .batch_execute("ALTER TABLE reborn_intent_inputs RENAME TO unavailable_intent_inputs")
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                lookup.fetch_for_turn(&context, &query, None, "02").await,
+                Err(RetrievalLookupError::Db(_))
+            ),
+            "an actual matching database failure must not enter broad retrieval"
+        );
+    }
 }

@@ -31,11 +31,13 @@ export function importSettings(_payload) {
 export function fetchLlmProviders() {
   return apiFetch("/api/webchat/v2/llm/providers");
 }
-export function upsertLlmProvider(payload) {
-  return apiFetch("/api/webchat/v2/llm/providers", {
+export async function upsertLlmProvider(payload) {
+  const snapshot = await apiFetch("/api/webchat/v2/llm/providers", {
     method: "POST",
     body: JSON.stringify(payload),
   });
+  if (typeof globalThis.dispatchEvent === "function" && typeof globalThis.Event === "function") globalThis.dispatchEvent(new Event("brassclaw-provider-settings-changed"));
+  return snapshot;
 }
 export function deleteLlmProvider(providerId, expectedRevision) {
   return apiFetch(`/api/webchat/v2/llm/providers/${encodeURIComponent(providerId)}/delete`, {
@@ -440,4 +442,8 @@ export function measurePrefix(profile, job, request) {
 }
 export function fetchPrefixJob(profile, job) {
   return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/jobs/${encodeURIComponent(job)}`);
+}
+
+export function fetchPrefixModelArtifacts(specification, artifactSet) {
+  return apiFetch(`/api/webchat/v2/prefix-model-artifacts/${encodeURIComponent(specification)}/${encodeURIComponent(artifactSet)}`);
 }

@@ -484,3 +484,36 @@ async fn native_resource_cap_edits_preserve_windows_and_advance_expired_ledgers(
         "period/cap changes retain original reservation receipts"
     );
 }
+
+mod aggregate_representation {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../brassclaw_resources/tests/support/aggregate_representation_contract.rs"
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_resource_aggregate_representation_is_atomic_and_retained() {
+    use brassclaw_resources::{
+        LiveMontyTaskSettings, MontyTaskLimits, MontyTaskSettingsRevision,
+        PersistentResourceGovernor, PgResourceGovernorStore, ResourceGovernor,
+    };
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let governor = PersistentResourceGovernor::new(PgResourceGovernorStore::new(
+        rig.pool.clone(),
+        "native-representation-ledger",
+    ));
+    governor
+        .bind_task_budget_settings(
+            LiveMontyTaskSettings::new(MontyTaskSettingsRevision {
+                revision: 1,
+                limits: MontyTaskLimits {
+                    max_compute_time: Duration::from_secs(600),
+                    token_budgets_enabled: false,
+                },
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    aggregate_representation::aggregate_representation_contract(&governor);
+}

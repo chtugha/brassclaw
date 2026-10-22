@@ -527,21 +527,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_read_hash_not_wired() {
+    async fn dispatch_read_hash_without_backend_is_explicit_safe_failure() {
         let state = ComponentDbState::default();
         let result = dispatch(
             &state,
             &json!({"op": "read_hash", "scope": {"user_id": "u", "project_id": "p"}, "name": "x"}),
         )
         .await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        // The "not wired" message is in the safe_summary field (not the Display
-        // output, which only shows the error kind for security reasons).
-        let summary = err.safe_summary().unwrap_or_default();
-        assert!(
-            summary.contains("not wired") || summary.contains("NotWired"),
-            "expected safe_summary to mention 'not wired', got: {summary:?}"
+        let err = result.expect_err("a missing backend cannot supply a stored hash");
+        assert_eq!(
+            err.kind(),
+            Some(brassclaw_host_api::RuntimeDispatchErrorKind::Backend)
+        );
+        assert_eq!(
+            err.safe_summary(),
+            Some("component database backend unavailable")
         );
     }
 }

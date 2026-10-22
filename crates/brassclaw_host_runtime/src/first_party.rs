@@ -72,6 +72,7 @@ impl FirstPartyCapabilityRequest {
             estimate: ResourceEstimate::default(),
             mounts: None,
             services: InvocationServices {
+                child_tasks: None,
                 filesystem: Arc::new(brassclaw_filesystem::InMemoryBackend::new()),
                 runtime_http_egress,
                 tool_call_http_egress: None,

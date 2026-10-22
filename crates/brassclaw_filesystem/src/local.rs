@@ -177,6 +177,19 @@ impl LocalFilesystem {
 
 #[async_trait]
 impl RootFilesystem for LocalFilesystem {
+    fn capabilities(&self) -> crate::BackendCapabilities {
+        crate::BackendCapabilities::empty().with(crate::Capability::OpaqueWrite)
+    }
+
+    async fn put_opaque(
+        &self,
+        path: &VirtualPath,
+        body: Vec<u8>,
+        cas: CasExpectation,
+    ) -> Result<RecordVersion, FilesystemError> {
+        self.put(path, Entry::bytes(body), cas).await
+    }
+
     /// Native `put` for the byte-only local filesystem. Opaque-file entries
     /// (`kind = None`, empty `indexed`) support `CasExpectation::Any` and
     /// `CasExpectation::Absent`; record-shaped entries, populated indexed

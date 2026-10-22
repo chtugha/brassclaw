@@ -37,8 +37,28 @@ use crate::{
 /// execution. Production implementations retain approved exact
 /// revisions, combination reviews and actual implementations. Draft validation
 /// uses its own explicit provider; it cannot become a production approval flag.
+/// Host-only child preparation from private durable provenance. Selection is
+/// explicit, never inferred from a user message or a fabricated intent match.
+pub(crate) struct CapturedChildRecipe {
+    pub(crate) catalogue: Arc<dyn MontyTaskCatalogue>,
+    pub(crate) selected: crate::global_recipe_ports::SelectedMontyRecipe,
+    pub(crate) dependency_parent: Arc<dyn TaskPorts>,
+}
+
 #[async_trait]
 pub(crate) trait MontyCatalogueProvider: Send + Sync {
+    /// A provider without the complete child admission/retention contract must
+    /// leave ordinary entry unchanged. Returning a source requires verified
+    /// parent attempt/admission, child identity and the parent's pinned view.
+    async fn capture_child(
+        &self,
+        _host: Arc<MontyTaskHost>,
+        _admission: Arc<PgMontyAdmission>,
+        _input: &TaskInput,
+    ) -> Result<Option<CapturedChildRecipe>, AgentLoopDriverError> {
+        Ok(None)
+    }
+
     /// Resolve host-owned durable internal work before ordinary chat matching.
     /// The default preserves normal catalogues and grants no internal entry.
     async fn capture_internal(
@@ -376,39 +396,62 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         // Retention precedes every await below, including a lost COMMIT reply
         // and a caller dropping this future. No registry lock crosses I/O.
         admission.persist_reservation().await?;
-        let dependency_parent = self.dependency_parent(&host, &input).await?;
-        let internal = self
+        let child = self
             .catalogue
-            .capture_internal(host.clone(), admission.clone(), &input)
+            .capture_child(host.clone(), admission.clone(), &input)
             .await?;
-        let ports = if let Some(source) = internal {
-            if !context.trusted_internal_turn || source.reference() != input.user_input {
-                return Err(failed("internal_recipe_admission_invalid"));
+        let dependency_parent;
+        let ports = if let Some(child) = child {
+            if context.trusted_internal_turn || child.catalogue.catalogue_reference().is_none() {
+                return Err(failed("child_recipe_admission_invalid"));
             }
-            input.entry = brassclaw_monty_host::service::TaskEntry::InternalRecipe {
-                name: source.name().to_owned(),
-            };
-            GlobalRecipePorts::for_internal(
-                host.clone(),
-                admission,
-                source,
-                Some(self.ownership.clone()),
-                false,
-                self.recipe_capacity.clone(),
-            )
-        } else {
-            let catalogue = self
-                .catalogue
-                .capture(host.clone(), admission.clone(), &input)
-                .await?;
+            input.entry = brassclaw_monty_host::service::TaskEntry::ChildRecipe;
+            dependency_parent = Some(child.dependency_parent);
             GlobalRecipePorts::new(
                 host.clone(),
                 admission,
-                catalogue,
+                child.catalogue,
                 input.user_input.clone(),
                 self.ownership.clone(),
                 self.recipe_capacity.clone(),
             )
+            .with_child_recipe(child.selected)
+            .map_err(|_| failed("child_recipe_admission_invalid"))?
+        } else {
+            dependency_parent = self.dependency_parent(&host, &input).await?;
+            let internal = self
+                .catalogue
+                .capture_internal(host.clone(), admission.clone(), &input)
+                .await?;
+            if let Some(source) = internal {
+                if !context.trusted_internal_turn || source.reference() != input.user_input {
+                    return Err(failed("internal_recipe_admission_invalid"));
+                }
+                input.entry = brassclaw_monty_host::service::TaskEntry::InternalRecipe {
+                    name: source.name().to_owned(),
+                };
+                GlobalRecipePorts::for_internal(
+                    host.clone(),
+                    admission,
+                    source,
+                    Some(self.ownership.clone()),
+                    false,
+                    self.recipe_capacity.clone(),
+                )
+            } else {
+                let catalogue = self
+                    .catalogue
+                    .capture(host.clone(), admission.clone(), &input)
+                    .await?;
+                GlobalRecipePorts::new(
+                    host.clone(),
+                    admission,
+                    catalogue,
+                    input.user_input.clone(),
+                    self.ownership.clone(),
+                    self.recipe_capacity.clone(),
+                )
+            }
         };
         self.ownership
             .check()

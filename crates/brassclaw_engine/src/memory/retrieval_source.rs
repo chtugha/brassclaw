@@ -590,8 +590,8 @@ impl RetrievalSource for PostgresSource {
     ///   - class 16 (Action) → falls through to `Components` here; the
     ///     actual execution is via `host.compose_orchestrator` →
     ///     `PgCompositionPort::compose_action_program` (HI.1).
-    /// `Disambiguation` is surfaced as-is; `NoMatch` / DB error fall back to
-    /// the full UNION ALL scan (`fetch_for_consumer`). `resolve_intent`
+    /// `Disambiguation` is surfaced as-is; only `NoMatch` enters the full
+    /// UNION ALL scan (`fetch_for_consumer`). Matching errors propagate. `resolve_intent`
     /// already atomically increments the matched row's score (PERF-03,
     /// SEC-05) — no separate increment is needed.
     async fn fetch_for_turn(
@@ -636,8 +636,6 @@ impl RetrievalSource for PostgresSource {
                             step_link,
                             &input_text,
                             query,
-                            token_budget,
-                            sender_class_code,
                         )
                         .await;
                 }
@@ -646,6 +644,11 @@ impl RetrievalSource for PostgresSource {
                 let items =
                     fetch_component_by_id(&self.pool, scope, component_id, component_class_code)
                         .await?;
+                if items.is_empty() {
+                    return Err(RetrievalSourceError::Engine(
+                        "matched component is unavailable".into(),
+                    ));
+                }
                 Ok(FetchForTurnResult::Components(items))
             }
             Ok(IntentResolution::Disambiguation { candidates }) => {
@@ -653,13 +656,17 @@ impl RetrievalSource for PostgresSource {
                 // a disambiguation message before proceeding.
                 Ok(FetchForTurnResult::Disambiguation(candidates))
             }
-            Ok(IntentResolution::NoMatch) | Err(_) => {
-                // No intent match (or DB error): fall back to the full UNION ALL.
+            Ok(IntentResolution::NoMatch) => {
+                // Only actual No-Match may enter broad retrieval.
                 let items = self
                     .fetch_for_consumer(scope, query, token_budget, sender_class_code)
                     .await?;
                 Ok(FetchForTurnResult::Components(items))
             }
+            Err(crate::memory::intent_system::IntentSystemError::Db(reason)) => {
+                Err(RetrievalSourceError::Db(reason))
+            }
+            Err(error) => Err(RetrievalSourceError::Engine(error.to_string())),
         }
     }
 }
@@ -719,43 +726,10 @@ fn split_cache_content_key(
 
 #[cfg(feature = "skills-db")]
 impl PostgresSource {
-    /// Phase E (§0.8 + subplan §7): build the `SplitResult` for a class-21
-    /// recipe intent match with a `step_link`.
-    ///
-    /// 1. Fetch the recipe row — scope filter ONLY (§7.2: NO SEC-01 hard
-    ///    gate; SELECT `validation_status`/`tier`/`wilson_lower` to compute
-    ///    `tier0_eligible`). The per-UUID sub-component fetches still enforce
-    ///    the full SEC-01 gate. If the row is absent (TOCTOU — deleted
-    ///    between the intent match and this fetch; unreachable in practice)
-    ///    → fall back to the broad-scan `Components` path (§7.2).
-    /// 2. Compute `tier0_eligible` (tier ∈ {mature, candidate} AND
-    ///    `validation_status = 'validated'` AND `wilson_lower ≥ 0.70`; the
-    ///    `has_validation` guard is subsumed by `validated ⇒ has_validation`
-    ///    per §0.23 / Q2→A). `llm_call_required = !tier0_eligible` (Q3→A).
-    /// 3. Deserialise `variants` → find the variant whose `step_link` matches
-    ///    (§7.3). Fall back to `variable_patterns = vec![]` and
-    ///    `variant_label = recipe.name`.
-    /// 4. Deserialise `step_descriptions` → `Vec<StepDescriptionEntry>`.
-    /// 5. IBS `build_instruction` — soft-fail on error (§7.4) → empty
-    ///    `SplitResult`, `llm_call_required = true`, `tier0_eligible = false`,
-    ///    `instruction = None`.
-    /// 6. `capture_variables(query, query, &variable_patterns)` (§7.1: exact-
-    ///    match intent ⇒ `input_text == query`, so `template = user_text =
-    ///    query`; inert until Phase M switches to `%`-template matching).
-    /// 7. Gather channel `include` UUIDs; resolve each via
-    ///    `lookup_component_class` (PERF-02: one indexed SELECT per UUID).
-    /// 8. Batched `fetch_components_by_ids` (FIND-P9-04) — O(tables).
-    /// 9. Partition into channels + substitute `{{vars.name}}` into every
-    ///    fetched `ComponentItem.effective_content` (§0.20.3).
-    /// 10. Substitute `{{vars.name}}` into every `tool_bindings[].params`
-    ///     (§0.4.1) on BOTH channels (no-op on empty orchestrator bindings),
-    ///     mutating the `BuildInstruction` in place.
-    /// 11. Assemble `TurnRoutingSignals` + `SplitResult { instruction: Some }`.
-    // 8 args: `matched_template` was added in Phase M.4 to thread the intent
-    // row's `input_text` (the `%`-template) into `capture_variables`; the
-    // alternative (folding scope+query+template into a struct) would deviate
-    // from the established fetch-for-turn call shape.
-    #[allow(clippy::too_many_arguments)]
+    /// Compatibility assembly for an already matched Recipe. Missing rows,
+    /// variants, invalid metadata, IBS and dependency failures remain errors;
+    /// they never become broad retrieval or an empty successful workflow. The
+    /// ordinary v3 catalogue retains its separate immutable typed execution path.
     async fn fetch_recipe_split_result(
         &self,
         scope: &ComponentScope,
@@ -763,8 +737,6 @@ impl PostgresSource {
         step_link: String,
         matched_template: &str,
         query: &str,
-        token_budget: Option<usize>,
-        sender_class_code: &str,
     ) -> Result<FetchForTurnResult, RetrievalSourceError> {
         use crate::memory::instruction_builder::{
             StepDescriptionEntry, build_instruction, capture_variables, substitute_vars,
@@ -804,13 +776,8 @@ impl PostgresSource {
             .await
             .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
 
-        let Some(row) = row else {
-            // TOCTOU absent row → broad-scan Components (§7.2).
-            let items = self
-                .fetch_for_consumer(scope, query, token_budget, sender_class_code)
-                .await?;
-            return Ok(FetchForTurnResult::Components(items));
-        };
+        let row = row
+            .ok_or_else(|| RetrievalSourceError::Engine("matched recipe is unavailable".into()))?;
 
         let recipe_name: String = row.get(0);
         let tier: String = row.get(1);
@@ -827,23 +794,31 @@ impl PostgresSource {
         let llm_call_required = !tier0_eligible;
 
         // 3. Matched variant (§7.3).
-        let variants: Vec<RecipeVariant> = serde_json::from_str(&variants_text).unwrap_or_default();
-        let matched_variant = variants
+        let variants: Vec<RecipeVariant> = serde_json::from_str(&variants_text).map_err(|_| {
+            RetrievalSourceError::Engine("matched recipe variants are invalid".into())
+        })?;
+        let mut matching = variants
             .iter()
-            .find(|v| v.step_link.as_deref() == Some(step_link.as_str()));
-        let (variable_patterns, variant_label) = match matched_variant {
-            Some(v) => (v.variable_patterns.clone(), v.variant_key.clone()),
-            None => (Vec::new(), recipe_name.clone()),
-        };
+            .filter(|variant| variant.step_link.as_deref() == Some(step_link.as_str()));
+        let variant = matching.next().ok_or_else(|| {
+            RetrievalSourceError::Engine("matched recipe variant is unavailable".into())
+        })?;
+        if matching.next().is_some() {
+            return Err(RetrievalSourceError::Engine(
+                "matched recipe variant is ambiguous".into(),
+            ));
+        }
+        let variable_patterns = variant.variable_patterns.clone();
+        let variant_label = variant.variant_key.clone();
+        let step_descs: Vec<StepDescriptionEntry> = serde_json::from_str(&step_descriptions_text)
+            .map_err(|_| {
+            RetrievalSourceError::Engine("matched recipe steps are invalid".into())
+        })?;
 
-        // 4. StepDescriptions.
-        let step_descs: Vec<StepDescriptionEntry> =
-            serde_json::from_str(&step_descriptions_text).unwrap_or_default();
-
-        // N.3 — SplitResult memo-cache check (§0.7 / Phase N.3).
-        // Key is computed from stable DB text BEFORE the expensive IBS compile
-        // (FIND-P10-02: avoids circular dependency on include UUIDs).
-        let vpat_json = serde_json::to_string(&variable_patterns).unwrap_or_default();
+        // Cache only complete metadata, before per-turn substitution.
+        let vpat_json = serde_json::to_string(&variable_patterns).map_err(|_| {
+            RetrievalSourceError::Engine("matched recipe patterns are invalid".into())
+        })?;
         let scope_key = split_cache_scope_key(scope);
         let content_key = split_cache_content_key(&step_link, &step_descriptions_text, &vpat_json);
         let cache_map_key = (scope_key.clone(), content_key.clone());
@@ -852,7 +827,9 @@ impl PostgresSource {
         let cached = self
             .split_cache
             .lock()
-            .expect("split_cache mutex not poisoned")
+            .map_err(|_| {
+                RetrievalSourceError::Engine("recipe assembly cache is unavailable".into())
+            })?
             .get(&cache_map_key)
             .cloned();
 
@@ -927,7 +904,9 @@ impl PostgresSource {
                 // Stale — evict the scope's entries and fall through to recompute.
                 self.split_cache
                     .lock()
-                    .expect("split_cache mutex not poisoned")
+                    .map_err(|_| {
+                        RetrievalSourceError::Engine("recipe assembly cache is unavailable".into())
+                    })?
                     .retain(|(sk, _), _| sk != &scope_key);
                 tracing::debug!(
                     recipe_id = %recipe_id,
@@ -936,30 +915,14 @@ impl PostgresSource {
             }
         }
 
-        // 5. IBS compile (soft-fail §7.4).
-        let Ok(mut instruction) = build_instruction(
+        // A matched workflow cannot be replaced with an empty LLM path.
+        let mut instruction = build_instruction(
             &step_link,
             &step_descs,
             &variable_patterns,
             llm_call_required,
-        ) else {
-            return Ok(FetchForTurnResult::SplitResult {
-                rust_items: Vec::new(),
-                orchestrator_items: Vec::new(),
-                routing: TurnRoutingSignals {
-                    override_prompt_creation,
-                    matched_component_ids: Vec::new(),
-                    variant_label: recipe_name.clone(),
-                    step_link: step_link.clone(),
-                    llm_call_required: true,
-                    wilson_lower,
-                    tier0_eligible: false,
-                    recipe_id: Some(recipe_id.to_string()),
-                    recipe_name: recipe_name.clone(),
-                },
-                instruction: None,
-            });
-        };
+        )
+        .map_err(|error| RetrievalSourceError::Engine(error.to_string()))?;
 
         // 6. Capture {{vars.name}} (Phase M.4: `matched_template` is the intent
         //    row's `input_text` — the literal for a Path 0 exact match (where
@@ -986,15 +949,21 @@ impl PostgresSource {
         }
         let mut rust_pairs: Vec<(uuid::Uuid, i32)> = Vec::with_capacity(rust_uuids.len());
         for id in &rust_uuids {
-            if let Some(class_code) = lookup_component_class(&self.pool, scope, *id).await? {
-                rust_pairs.push((*id, class_code));
-            }
+            let class_code = lookup_component_class(&self.pool, scope, *id)
+                .await?
+                .ok_or_else(|| {
+                    RetrievalSourceError::Engine("matched recipe component is unavailable".into())
+                })?;
+            rust_pairs.push((*id, class_code));
         }
         let mut orch_pairs: Vec<(uuid::Uuid, i32)> = Vec::with_capacity(orch_uuids.len());
         for id in &orch_uuids {
-            if let Some(class_code) = lookup_component_class(&self.pool, scope, *id).await? {
-                orch_pairs.push((*id, class_code));
-            }
+            let class_code = lookup_component_class(&self.pool, scope, *id)
+                .await?
+                .ok_or_else(|| {
+                    RetrievalSourceError::Engine("matched recipe component is unavailable".into())
+                })?;
+            orch_pairs.push((*id, class_code));
         }
 
         // 8. Two batched fetches — one per channel (PERF-02 / §0.8: "two
@@ -1005,6 +974,27 @@ impl PostgresSource {
             fetch_components_by_ids(&self.pool, scope, &rust_pairs).await?;
         let mut orchestrator_items: Vec<ComponentItem> =
             fetch_components_by_ids(&self.pool, scope, &orch_pairs).await?;
+        // A visibility/validation filter cannot remove a declared component
+        // while allowing the rest of a matched workflow to continue.
+        for (items, expected) in [
+            (&rust_items, &rust_pairs),
+            (&orchestrator_items, &orch_pairs),
+        ] {
+            let mut visible = std::collections::HashSet::new();
+            visible.try_reserve(items.len()).map_err(|_| {
+                RetrievalSourceError::Engine("recipe assembly capacity is unavailable".into())
+            })?;
+            visible.extend(items.iter().map(|item| (item.id, item.class_code)));
+            if items.len() != expected.len()
+                || expected
+                    .iter()
+                    .any(|reference| !visible.contains(reference))
+            {
+                return Err(RetrievalSourceError::Engine(
+                    "matched recipe component is unavailable".into(),
+                ));
+            }
+        }
 
         // 8b. Dependency traversal (§0.19 / Phase J.3).
         //     For each step in either channel that carries a non-empty
@@ -1031,39 +1021,21 @@ impl PostgresSource {
                     if dep_expr.is_empty() {
                         continue;
                     }
-                    // The root_id for dependency traversal is the first include
-                    // UUID of the step (the "owner" component whose
-                    // dependency_registry we walk).  If the step has no
-                    // include UUIDs there is nothing to root the traversal on;
-                    // soft-skip.
-                    let root_id = match step.include.first() {
-                        Some(id) => *id,
-                        None => continue,
-                    };
-                    match resolve_dependencies(
+                    let root_id = step.include.first().copied().ok_or_else(|| {
+                        RetrievalSourceError::Engine(
+                            "matched recipe dependency owner is unavailable".into(),
+                        )
+                    })?;
+                    let (dep_orch, dep_rust) = resolve_dependencies(
                         &self.pool,
                         scope,
                         root_id,
                         dep_expr,
                         &mut dep_visited,
                     )
-                    .await
-                    {
-                        Ok((dep_orch, dep_rust)) => {
-                            orchestrator_items.extend(dep_orch);
-                            rust_items.extend(dep_rust);
-                        }
-                        Err(e) => {
-                            // §0.19 soft-fail: dependency errors must not abort
-                            // the turn.  Log at debug and continue.
-                            tracing::debug!(
-                                step_id = %step.step_id,
-                                root_id = %root_id,
-                                err = %e,
-                                "J.3: resolve_dependencies soft-fail (non-blocking)"
-                            );
-                        }
-                    }
+                    .await?;
+                    orchestrator_items.extend(dep_orch);
+                    rust_items.extend(dep_rust);
                 }
             }
         }
@@ -1119,7 +1091,9 @@ impl PostgresSource {
         // values are freshly applied on each cache hit (§0.7 / Phase N.3).
         self.split_cache
             .lock()
-            .expect("split_cache mutex not poisoned")
+            .map_err(|_| {
+                RetrievalSourceError::Engine("recipe assembly cache is unavailable".into())
+            })?
             .insert(
                 cache_map_key,
                 CachedSplitResult {
@@ -1503,10 +1477,8 @@ pub async fn fetch_components_by_ids(
 /// `fetch_component_by_id`.
 ///
 /// Exact caller scope or validated system visibility, always tenant-anchored:
-/// the `WHERE` clause simply returns no row. Returns `Ok(None)` when the UUID
-/// is absent from the registry (caller skips that step's item rather than
-/// failing the turn — a missing include is a soft authoring gap, not a hard
-/// error).
+/// the `WHERE` clause returns no row. `Ok(None)` reports an absent/invisible
+/// UUID; callers assembling a matched workflow must reject that missing input.
 #[cfg(feature = "skills-db")]
 pub async fn lookup_component_class(
     pool: &brassclaw_pg::PgPool,
@@ -1622,19 +1594,29 @@ pub async fn resolve_dependencies(
     //
     // To load the root's registry we must know its class_code (so we can read
     // the correct table).  `lookup_component_class` provides that.
-    let root_class = match lookup_component_class(pool, scope, root_id).await? {
-        Some(c) => c,
-        None => return Ok((orchestrator_items, rust_items)), // root not found → no deps
-    };
+    let root_class = lookup_component_class(pool, scope, root_id)
+        .await?
+        .ok_or_else(|| {
+            RetrievalSourceError::Engine("recipe dependency owner is unavailable".into())
+        })?;
 
     let root_registry: Vec<DependencyEntry> =
         fetch_dependency_registry(pool, scope, root_id, root_class).await?;
 
+    // The owner is already present at this traversal boundary. A dependency
+    // cycle back to it must not return a duplicate copy of the owner itself.
+    visited.insert(root_id);
+
     for node in expr.iter() {
-        let entry = match root_registry.iter().find(|e| e.idx == node.idx) {
-            Some(e) => e,
-            None => continue, // index out of range for this component's registry
-        };
+        let mut matching = root_registry.iter().filter(|entry| entry.idx == node.idx);
+        let entry = matching.next().ok_or_else(|| {
+            RetrievalSourceError::Engine("recipe dependency index is unavailable".into())
+        })?;
+        if matching.next().is_some() {
+            return Err(RetrievalSourceError::Engine(
+                "recipe dependency index is ambiguous".into(),
+            ));
+        }
 
         let dep_uuid = entry.component_id;
         if !visited.insert(dep_uuid) {
@@ -1643,10 +1625,14 @@ pub async fn resolve_dependencies(
 
         // Fetch the dependent component (returns Vec — empty when not found).
         let mut dep_items = fetch_component_by_id(pool, scope, dep_uuid, entry.class_code).await?;
-        let dep_item = match dep_items.pop() {
-            Some(item) => item,
-            None => continue, // component missing from DB → soft skip
-        };
+        if dep_items.len() != 1 {
+            return Err(RetrievalSourceError::Engine(
+                "recipe dependency is unavailable".into(),
+            ));
+        }
+        let dep_item = dep_items.pop().ok_or_else(|| {
+            RetrievalSourceError::Engine("recipe dependency is unavailable".into())
+        })?;
 
         // Channel routing: class 13 (ToolSkill) → rust; everything else → orchestrator.
         let is_rust = dep_item.class_code == 13;
@@ -1700,10 +1686,9 @@ pub async fn resolve_dependencies(
 
 /// Fetch the `dependency_registry` JSONB for a component of known class.
 ///
-/// Returns an empty `Vec` when the column is `NULL` or the component is not
-/// found. On JSON deserialization error, logs at `debug!` and returns empty
-/// (soft-fail — a malformed registry is an authoring issue, not a hard error
-/// at fetch time).
+/// A NULL registry denotes an empty declared dependency list. Missing owners,
+/// unsupported storage and malformed registry data remain errors. They cannot
+/// remove required data from an already matched workflow.
 #[cfg(feature = "skills-db")]
 async fn fetch_dependency_registry(
     pool: &brassclaw_pg::PgPool,
@@ -1713,7 +1698,11 @@ async fn fetch_dependency_registry(
 ) -> Result<Vec<DependencyEntry>, RetrievalSourceError> {
     let table = match class_code_to_table(class_code) {
         Some((t, _)) => t,
-        None => return Ok(vec![]), // unknown class — no registry
+        None => {
+            return Err(RetrievalSourceError::Engine(
+                "recipe dependency storage is unsupported".into(),
+            ));
+        }
     };
 
     let client = pool
@@ -1740,10 +1729,9 @@ async fn fetch_dependency_registry(
         .await
         .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
 
-    let row = match row {
-        Some(r) => r,
-        None => return Ok(vec![]),
-    };
+    let row = row.ok_or_else(|| {
+        RetrievalSourceError::Engine("recipe dependency owner is unavailable".into())
+    })?;
 
     let json: Option<serde_json::Value> = row.get(0);
     let json = match json {
@@ -1751,16 +1739,8 @@ async fn fetch_dependency_registry(
         None => return Ok(vec![]),
     };
 
-    match serde_json::from_value::<Vec<DependencyEntry>>(json) {
-        Ok(entries) => Ok(entries),
-        Err(e) => {
-            tracing::debug!(
-                component_id = %component_id,
-                "dependency_registry JSON deserialization failed: {e}; treating as empty"
-            );
-            Ok(vec![])
-        }
-    }
+    serde_json::from_value::<Vec<DependencyEntry>>(json)
+        .map_err(|_| RetrievalSourceError::Engine("recipe dependency registry is invalid".into()))
 }
 
 // ---------------------------------------------------------------------------
@@ -1986,7 +1966,7 @@ mod tests {
         // this struct can read it: H4.4 surfaces it into the pkr dict,
         // H4.5 stamps it onto `recipe_tier_zero_*` events, and H4.6 builds
         // `OrchestratorResult.tier_zero_outcome` from it. Both
-        // `fetch_recipe_split_result` construction sites set
+        // successful `fetch_recipe_split_result` construction sets
         // `Some(recipe_id.to_string())`; non-recipe paths + fixtures use
         // `None`. The DB-backed assertion that the recipe sites actually
         // populate `Some` is the Phase-H.5 composition integration test;

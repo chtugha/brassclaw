@@ -22,6 +22,20 @@ const EXECUTION_FIELDS = [
   "utility_worker_memory_bytes", "max_native_artifact_bytes",
   "max_catalogue_recipes", "max_catalogue_components_per_recipe", "max_catalogue_variants_per_recipe", "max_catalogue_bytes", "max_catalogue_actor_bytes",
   "max_http_client_cache_entries", "max_mcp_inflight_calls", "max_mcp_request_bytes", "max_mcp_response_bytes", "default_http_request_timeout_millis", "default_http_response_body_bytes", "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes",
+  "max_coding_read_bytes",
+  "max_coding_write_bytes",
+  "max_coding_patch_bytes",
+  "default_coding_read_lines",
+  "max_coding_directory_entries",
+  "default_coding_directory_depth",
+  "default_coding_max_results",
+  "max_coding_output_bytes",
+  "default_coding_head_lines",
+  "max_coding_scan_bytes",
+  "max_coding_visited_entries",
+  "max_coding_diff_input_bytes",
+  "max_coding_diff_preview_bytes",
+  "coding_diff_context_lines",
   "worker_adapter_reserve_bytes",
   "max_workers", "max_recipe_contexts", "max_pending_host_calls", "max_queued_tasks", "max_queued_bytes", "max_pending_settings", "max_retained_attempts",
   "max_actor_requests", "max_actor_reserved_bytes", "max_actor_control_requests", "max_actor_control_reserved_bytes",
@@ -45,6 +59,20 @@ const pendingSettings = (status, desiredRevision) => status.state === "running" 
     status.execution_limits?.actor_control_over_capacity === true ||
     status.execution_limits?.ownership_over_capacity === true ||
     [status.task_budget, status.execution_limits, status.memory_budget, status.recipe_budget].some((budget) => budget?.uptake === "pending"));
+
+// Rust u32 fields plus the u32-framed IPC ceiling. Browser polling has its
+// stricter signed timer check below. HTTP defaults remain native u64 values.
+const U32_EXECUTION_FIELDS = [
+  "max_catalogue_recipes", "max_catalogue_components_per_recipe",
+  "max_catalogue_variants_per_recipe", "max_catalogue_actor_bytes",
+  "max_http_client_cache_entries", "max_mcp_inflight_calls",
+  "max_mcp_request_bytes", "max_mcp_response_bytes", "model_quote_output_tokens",
+  "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes",
+  "max_workers", "max_recipe_contexts", "max_pending_host_calls",
+  "max_queued_tasks", "max_pending_settings", "max_retained_attempts",
+  "max_actor_requests", "max_actor_control_requests",
+  "max_pending_ownership_checks", "max_value_depth",
+];
 
 export function MontyVmTab({ searchQuery = "" }) {
   const t = useT();
@@ -177,8 +205,8 @@ export function MontyVmTab({ searchQuery = "" }) {
       for (const key of EXECUTION_FIELDS) {
         if (String(settings.execution_limits?.[key] ?? "").trim() === "") throw new Error(t("montyVm.executionLimitsInvalid"));
         const value = Number(settings.execution_limits?.[key]);
-        if (!Number.isSafeInteger(value) || value < (["worker_adapter_reserve_bytes", "max_http_client_cache_entries"].includes(key) ? 0 : 1)) throw new Error(t("montyVm.executionLimitsInvalid"));
-        if (["model_quote_output_tokens", "max_http_client_cache_entries", "max_mcp_inflight_calls", "max_mcp_request_bytes", "max_mcp_response_bytes", "default_http_request_timeout_millis", "default_http_response_body_bytes", "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes", "max_workers", "max_recipe_contexts", "max_pending_host_calls", "max_queued_tasks", "max_pending_settings", "max_retained_attempts", "max_actor_requests", "max_actor_control_requests", "max_pending_ownership_checks"].includes(key) && value > 4294967295) throw new Error(t("montyVm.executionLimitsInvalid"));
+        if (!Number.isSafeInteger(value) || value < (["worker_adapter_reserve_bytes", "max_http_client_cache_entries", "default_coding_read_lines", "default_coding_directory_depth", "default_coding_head_lines", "coding_diff_context_lines"].includes(key) ? 0 : 1)) throw new Error(t("montyVm.executionLimitsInvalid"));
+        if (U32_EXECUTION_FIELDS.includes(key) && value > 4294967295) throw new Error(t("montyVm.executionLimitsInvalid"));
         if (key === "status_poll_interval_millis" && value > 2147483647) throw new Error(t("montyVm.statusPollInvalid"));
         executionLimits[key] = value;
       }
@@ -541,7 +569,7 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
               <label htmlFor=${`monty-${key}`} className="text-sm">${t(`montyVm.execution.${key}`)}</label>
               <p id=${`monty-${key}-help`} className="mt-1 text-xs text-[var(--v2-text-muted)]">${t(`montyVm.executionHelp.${key}`)}</p>
             </div>
-            <input id=${`monty-${key}`} type="number" min=${["worker_adapter_reserve_bytes", "max_http_client_cache_entries"].includes(key) ? "0" : "1"} step="1"
+            <input id=${`monty-${key}`} type="number" min=${["worker_adapter_reserve_bytes", "max_http_client_cache_entries", "default_coding_read_lines", "default_coding_directory_depth", "default_coding_head_lines", "coding_diff_context_lines"].includes(key) ? "0" : "1"} step="1"
               aria-describedby=${`monty-${key}-help`}
               className="col-span-2 rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 font-mono text-sm"
               value=${settings.execution_limits?.[key] ?? ""} disabled=${isSaving}

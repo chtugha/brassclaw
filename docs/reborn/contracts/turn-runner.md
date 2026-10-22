@@ -57,3 +57,18 @@ Agent-loop drivers return `LoopExit` claims. `TurnRunner` validates those claims
 ## 6. Deferred work
 
 The current slices define the core lease/recovery state machine, initial PostgreSQL/libSQL persistence adapters, pure `LoopExit` validation/mapping types, trusted `LoopExitApplier` policy derivation from host-owned evidence, and host-runtime production scheduler wiring. Durable exit-id replay storage, transcript draft validation, side-effect boundary checkpoint cadence inside the loop, and safe explicit retry/fork UX remain follow-up slices.
+
+### Owned global-Monty claim transport
+
+The ordinary worker uses `MontyTaskHandoff::new_claimed` to retain its actual
+`Arc<ClaimedTurnRun>` through `MontyTaskHost`, including waits. Construction checks
+agreement with the host's scope, actor, accepted message, run/turn, profile and
+internal-source identity. Claim tokens remain Rust-only; neither carrier nor
+host is serialized or debug-printed. This is identity transport, not fresh lease
+proof or Tool permission. Any child admission must recheck the original claim
+through the supported durable coordinator immediately before its effects.
+
+The existing explicit-attempt constructor carries no full claim and must not
+reconstruct one from IDs. A child adapter requiring the claim must reject that
+absence. This transport does not implement the child execution/wait/result
+primitive, retained child catalogue selection or activate subagent Recipes.

@@ -268,7 +268,10 @@ impl PgPrefixModelArtifacts {
         )
         .map_err(|_| Error::Unavailable)?;
         validate_binding(&value, specification, id, &self.namespace)?;
+        let configuration_observation =
+            crate::prefix_model_configuration::observe(specification, id, &bytes, &files)?;
         Ok(brassclaw_product_workflow::PrefixModelArtifactDetail {
+            configuration_observation: Some(configuration_observation),
             summary: summary(specification, id.into(), files, binding),
             artifact_set_bytes: bytes,
         })

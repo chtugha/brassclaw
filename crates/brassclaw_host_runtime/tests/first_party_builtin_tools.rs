@@ -181,6 +181,114 @@ async fn retained_builtin_handle_still_obeys_each_live_instance_policy_revision(
 }
 
 #[tokio::test]
+async fn retained_child_service_preserves_native_identity_and_kernel_block() {
+    use brassclaw_authorization::{
+        InstanceToolAuthorizer, InstanceToolRule, LiveStableToolPolicy, StableToolPolicySnapshot,
+        ToolExecutionRules,
+    };
+    use brassclaw_host_runtime::{
+        BuiltinFirstPartyTools, NativeVerificationLimits, RetainedCapabilityError,
+        RuntimeChildTaskError, RuntimeChildTaskOutcome, RuntimeChildTaskPort,
+        RuntimeChildTaskRequest, builtin_native_first_party_handlers,
+    };
+    use std::collections::HashMap;
+
+    struct NeverDelegated;
+    #[async_trait]
+    impl RuntimeChildTaskPort for NeverDelegated {
+        async fn delegate(
+            &self,
+            _: &ResourceScope,
+            _: RuntimeChildTaskRequest,
+        ) -> Result<RuntimeChildTaskOutcome, RuntimeChildTaskError> {
+            panic!("blocked native invocation must not delegate work")
+        }
+    }
+    let id = capability_id(SPAWN_SUBAGENT_CAPABILITY_ID);
+    let registrations = builtin_native_first_party_handlers(
+        BuiltinFirstPartyTools::default(),
+        MontyExecutionLimits::default().max_native_artifact_bytes,
+        NativeVerificationLimits::new(1024 * 1024, Duration::from_secs(10)).unwrap(),
+    )
+    .await
+    .unwrap();
+    let expected = registrations.native_identity(&id).unwrap();
+    let different = registrations
+        .native_identity(&capability_id(ECHO_CAPABILITY_ID))
+        .unwrap();
+    let tool_uuid = uuid::Uuid::new_v4();
+    let policy = Arc::new(
+        LiveStableToolPolicy::new(StableToolPolicySnapshot {
+            revision: 1,
+            tools: HashMap::from([(
+                tool_uuid,
+                InstanceToolRule {
+                    enabled: false,
+                    revision: 1,
+                    execution: ToolExecutionRules {
+                        allowed_effects: vec![
+                            EffectKind::DispatchCapability,
+                            EffectKind::SpawnProcess,
+                        ],
+                        mounts: MountView::default(),
+                        network: NetworkPolicy::default(),
+                        secrets: vec![],
+                        resource_ceiling: None,
+                    },
+                },
+            )]),
+            capabilities: HashMap::from([(id.clone(), tool_uuid)]),
+        })
+        .unwrap(),
+    );
+    let authorizer = Arc::new(InstanceToolAuthorizer::new(policy));
+    let services = HostRuntimeServices::new(
+        Arc::new(registry()),
+        Arc::new(LocalFilesystem::new()),
+        Arc::new(InMemoryResourceGovernor::new()),
+        authorizer.clone(),
+        brassclaw_processes::ProcessServices::in_memory(),
+        CapabilitySurfaceVersion::new("retained-child-service").unwrap(),
+    )
+    .with_first_party_capabilities(Arc::new(registrations))
+    .with_trust_policy(Arc::new(trust_policy()))
+    .with_runtime_policy(local_dev_policy());
+    let snapshot = services.capture_first_party_capabilities().unwrap();
+    let ordinary = snapshot.retain_native(&id, expected).unwrap();
+    let child: Arc<dyn RuntimeChildTaskPort> = Arc::new(NeverDelegated);
+    assert!(matches!(
+        snapshot.retain_native_with_child_tasks(different, child.clone(), authorizer.clone()),
+        Err(RetainedCapabilityError::NativeIdentity)
+    ));
+    let bound = snapshot
+        .retain_native_with_child_tasks(expected, child, authorizer)
+        .unwrap();
+    assert_eq!(bound.native_identity(), ordinary.native_identity());
+    assert_eq!(bound.descriptor(), ordinary.descriptor());
+    assert_eq!(bound.native_input_schema(), ordinary.native_input_schema());
+    bound.verify_native_artifact().await.unwrap();
+    // Registry mutation cannot replace the exact captured native registration.
+    services
+        .shared_extension_registry()
+        .remove(&provider_id())
+        .unwrap();
+    let outcome = bound
+        .invoke(RuntimeCapabilityRequest::new(
+            execution_context(std::iter::empty::<&str>()),
+            id,
+            ResourceEstimate::default(),
+            json!({"flavor_id":"general","task":"must not execute"}),
+            trust_decision(),
+        ))
+        .await
+        .unwrap();
+    let RuntimeCapabilityOutcome::Failed(failed) = outcome else {
+        panic!("current global policy must deny the retained native child Tool: {outcome:?}");
+    };
+    assert_eq!(failed.kind, RuntimeFailureKind::Authorization);
+}
+
+#[tokio::test]
 async fn builtin_first_party_package_declares_expected_capabilities() {
     let package = builtin_first_party_package().unwrap();
     assert_eq!(package.id, provider_id());
@@ -340,6 +448,12 @@ async fn builtin_first_party_surface_lists_allowed_tools_in_registry_order() {
                     | MEMORY_WRITE_CAPABILITY_ID
                     | MEMORY_READ_CAPABILITY_ID
                     | MEMORY_TREE_CAPABILITY_ID
+                    | brassclaw_host_runtime::READ_FILE_CAPABILITY_ID
+                    | brassclaw_host_runtime::WRITE_FILE_CAPABILITY_ID
+                    | brassclaw_host_runtime::LIST_DIR_CAPABILITY_ID
+                    | brassclaw_host_runtime::GLOB_CAPABILITY_ID
+                    | brassclaw_host_runtime::GREP_CAPABILITY_ID
+                    | brassclaw_host_runtime::APPLY_PATCH_CAPABILITY_ID
             ))
             .all(|capability| capability.estimated_resources.output_bytes.is_some())
     );
@@ -353,6 +467,12 @@ async fn builtin_first_party_surface_lists_allowed_tools_in_registry_order() {
         MEMORY_WRITE_CAPABILITY_ID,
         MEMORY_READ_CAPABILITY_ID,
         MEMORY_TREE_CAPABILITY_ID,
+        brassclaw_host_runtime::READ_FILE_CAPABILITY_ID,
+        brassclaw_host_runtime::WRITE_FILE_CAPABILITY_ID,
+        brassclaw_host_runtime::LIST_DIR_CAPABILITY_ID,
+        brassclaw_host_runtime::GLOB_CAPABILITY_ID,
+        brassclaw_host_runtime::GREP_CAPABILITY_ID,
+        brassclaw_host_runtime::APPLY_PATCH_CAPABILITY_ID,
     ] {
         let capability = surface
             .capabilities
@@ -5547,6 +5667,7 @@ fn all_builtin_capability_ids() -> Vec<&'static str> {
     vec![
         COMPONENT_DB_CAPABILITY_ID,
         brassclaw_host_runtime::PREFIX_GENERATION_CAPABILITY_ID,
+        brassclaw_host_runtime::PREFIX_SOURCE_CAPABILITY_ID,
         ECHO_CAPABILITY_ID,
         TIME_CAPABILITY_ID,
         JSON_CAPABILITY_ID,

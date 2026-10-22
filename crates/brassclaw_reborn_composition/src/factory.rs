@@ -1121,6 +1121,14 @@ async fn build_local_dev(
     #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
     let prefix_generation_backend = None;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let prefix_source_backend = pg_pool.as_ref().map(|pool| {
+        Arc::new(crate::pg_prefix_source_backend::PgPrefixSourceBackend::new(
+            pool.clone(),
+        )) as Arc<dyn brassclaw_host_runtime::PrefixSourceBackend>
+    });
+    #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
+    let prefix_source_backend = None;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
     let source_inspection = Arc::new(crate::source_inspection::ContainedSourceInspection::new());
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     let source_inspection_backend =
@@ -1179,6 +1187,7 @@ async fn build_local_dev(
             component_db_backend,
             prefix_bundle_backends,
             prefix_generation_backend,
+            prefix_source_backend,
             source_inspection_backend,
             model_encoding_backend,
             primitive_settings: {
@@ -1941,6 +1950,7 @@ struct BuiltinFirstPartyRegistrationInputs {
         Arc<dyn brassclaw_host_runtime::StorePrefixBundleBackend>,
     )>,
     prefix_generation_backend: Option<Arc<dyn brassclaw_host_runtime::PrefixGenerationBackend>>,
+    prefix_source_backend: Option<Arc<dyn brassclaw_host_runtime::PrefixSourceBackend>>,
     source_inspection_backend: Option<Arc<dyn brassclaw_host_runtime::SourceInspectionBackend>>,
     model_encoding_backend: Option<Arc<dyn brassclaw_host_runtime::ModelEncodingBackend>>,
     primitive_settings: Option<Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
@@ -1957,6 +1967,7 @@ async fn builtin_first_party_registry_with_trigger_create_hook(
         component_db_backend,
         prefix_bundle_backends,
         prefix_generation_backend,
+        prefix_source_backend,
         source_inspection_backend,
         model_encoding_backend,
         primitive_settings,
@@ -1993,6 +2004,9 @@ async fn builtin_first_party_registry_with_trigger_create_hook(
         if let Some(backend) = prefix_generation_backend {
             tools = tools.with_prefix_generation_backend(backend);
         }
+        if let Some(backend) = prefix_source_backend {
+            tools = tools.with_prefix_source_backend(backend);
+        }
         if let Some(backend) = component_db_backend {
             tools = tools.with_component_db(backend);
         }
@@ -2017,6 +2031,7 @@ async fn builtin_first_party_registry_with_trigger_create_hook(
     if component_db_backend.is_some()
         || prefix_bundle_backends.is_some()
         || prefix_generation_backend.is_some()
+        || prefix_source_backend.is_some()
         || source_inspection_backend.is_some()
         || model_encoding_backend.is_some()
         || primitive_settings.is_some()
@@ -2037,6 +2052,9 @@ async fn builtin_first_party_registry_with_trigger_create_hook(
         }
         if let Some(backend) = prefix_generation_backend {
             tools = tools.with_prefix_generation_backend(backend);
+        }
+        if let Some(backend) = prefix_source_backend {
+            tools = tools.with_prefix_source_backend(backend);
         }
         if let Some(backend) = component_db_backend {
             tools = tools.with_component_db(backend);

@@ -4,7 +4,9 @@
 
 use std::sync::Arc;
 
-use brassclaw_filesystem::{FilesystemError, LocalFilesystem, RootFilesystem, ScopedFilesystem};
+use brassclaw_filesystem::{
+    FilesystemError, InMemoryBackend, LocalFilesystem, RootFilesystem, ScopedFilesystem,
+};
 use brassclaw_host_api::{
     AgentId, HostPath, MountAlias, MountGrant, MountPermissions, MountView, ProjectId, TenantId,
     ThreadId, UserId, VirtualPath,
@@ -22,15 +24,15 @@ use chrono::{TimeZone, Utc};
 /// Build a [`LocalFilesystem`] with `/engine` mounted to a tempdir; the
 /// `/turns` alias on the outer [`ScopedFilesystem`] resolves under
 /// `/engine/...` per the test convention used by the run-state contract.
-fn engine_filesystem() -> LocalFilesystem {
-    let storage = tempfile::tempdir().unwrap().keep();
+fn engine_filesystem() -> (Arc<LocalFilesystem>, tempfile::TempDir) {
+    let storage = tempfile::tempdir().unwrap();
     let mut fs = LocalFilesystem::new();
     fs.mount_local(
         VirtualPath::new("/engine").unwrap(),
-        HostPath::from_path_buf(storage),
+        HostPath::from_path_buf(storage.path().to_path_buf()),
     )
     .unwrap();
-    fs
+    (Arc::new(fs), storage)
 }
 
 /// Wrap a [`RootFilesystem`] in a [`ScopedFilesystem`] that exposes the
@@ -99,7 +101,7 @@ fn accepted_run_id(response: &SubmitTurnResponse) -> TurnRunId {
 
 #[tokio::test]
 async fn filesystem_turn_state_store_does_not_write_unchanged_idle_runner_snapshot() {
-    let backend = Arc::new(engine_filesystem());
+    let (backend, _storage_guard) = engine_filesystem();
     let scoped = scoped_turns_fs(Arc::clone(&backend));
     let store = FilesystemTurnStateStore::new(scoped);
 
@@ -158,7 +160,7 @@ fn child_run_request(
 
 #[tokio::test]
 async fn filesystem_turn_state_store_persists_submit_and_reopens() {
-    let backend = Arc::new(engine_filesystem());
+    let (backend, _storage_guard) = engine_filesystem();
     let scoped = scoped_turns_fs(Arc::clone(&backend));
     let store = FilesystemTurnStateStore::new(Arc::clone(&scoped));
     let resolver = InMemoryRunProfileResolver::default();
@@ -193,7 +195,7 @@ async fn filesystem_turn_state_store_hides_records_from_other_tenants_via_mount_
     // store must NOT make the snapshot visible from tenant B's store. The
     // structural fix routes every op through ScopedFilesystem; two
     // MountViews over the same backend cannot see each other's snapshots.
-    let backend = Arc::new(engine_filesystem());
+    let (backend, _storage_guard) = engine_filesystem();
     let scoped_a = scoped_turns_fs_at(Arc::clone(&backend), "tenant-a", "alice");
     let scoped_b = scoped_turns_fs_at(Arc::clone(&backend), "tenant-b", "alice");
 
@@ -266,7 +268,7 @@ async fn filesystem_turn_state_store_hides_records_from_other_tenants_via_mount_
 
 #[tokio::test]
 async fn filesystem_turn_state_store_persists_lineage_and_tree_reservations() {
-    let backend = Arc::new(engine_filesystem());
+    let (backend, _storage_guard) = engine_filesystem();
     let scoped = scoped_turns_fs(Arc::clone(&backend));
     let store = FilesystemTurnStateStore::new(Arc::clone(&scoped));
     let resolver = InMemoryRunProfileResolver::default();
@@ -344,7 +346,7 @@ async fn filesystem_turn_state_store_persists_lineage_and_tree_reservations() {
 
 #[tokio::test]
 async fn filesystem_spawn_tree_reads_are_scope_checked() {
-    let backend = Arc::new(engine_filesystem());
+    let (backend, _storage_guard) = engine_filesystem();
     let scoped = scoped_turns_fs(Arc::clone(&backend));
     let store = FilesystemTurnStateStore::new(Arc::clone(&scoped));
     let resolver = InMemoryRunProfileResolver::default();
@@ -438,4 +440,150 @@ async fn filesystem_spawn_tree_reads_are_scope_checked() {
             .run_id,
         child
     );
+}
+
+#[tokio::test]
+async fn filesystem_claimed_child_admission_keeps_original_parent_fence_after_reopen() {
+    let scoped = scoped_turns_fs(Arc::new(InMemoryBackend::new()));
+    let store = FilesystemTurnStateStore::new(scoped.clone());
+    let resolver = InMemoryRunProfileResolver::default();
+    let parent_scope = turn_scope("claimed-fs-parent");
+    let parent = accepted_run_id(
+        &store
+            .submit_turn(
+                submit_request_for(parent_scope.clone(), "claimed-fs-parent-submit"),
+                &AllowAllTurnAdmissionPolicy,
+                &resolver,
+            )
+            .await
+            .unwrap(),
+    );
+    let claimed = store
+        .claim_next_run(ClaimRunRequest {
+            runner_id: TurnRunnerId::new(),
+            lease_token: TurnLeaseToken::new(),
+            scope_filter: Some(parent_scope.clone()),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let request = child_run_request(
+        parent_scope.clone(),
+        parent,
+        turn_scope("claimed-fs-child"),
+        "claimed-fs-child-submit",
+        3,
+    );
+    let before = store.persistence_snapshot().await.unwrap();
+    let mut foreign_actor = request.clone();
+    foreign_actor.actor = TurnActor::new(UserId::new("foreign-claimed-child-actor").unwrap());
+    assert!(matches!(
+        store
+            .submit_claimed_child_turn(
+                foreign_actor.clone(),
+                &claimed,
+                &AllowAllTurnAdmissionPolicy,
+                &resolver,
+            )
+            .await,
+        Err(TurnError::Conflict { .. })
+    ));
+    assert_eq!(store.persistence_snapshot().await.unwrap(), before);
+    let accepted = store
+        .submit_claimed_child_turn(
+            request.clone(),
+            &claimed,
+            &AllowAllTurnAdmissionPolicy,
+            &resolver,
+        )
+        .await
+        .unwrap();
+    let reopened = FilesystemTurnStateStore::new(scoped);
+    assert!(matches!(
+        reopened
+            .submit_claimed_child_turn(
+                foreign_actor,
+                &claimed,
+                &AllowAllTurnAdmissionPolicy,
+                &resolver,
+            )
+            .await,
+        Err(TurnError::Conflict { .. })
+    ));
+    let mut stale = claimed.clone();
+    stale.lease_token = TurnLeaseToken::new();
+    assert!(matches!(
+        reopened
+            .submit_claimed_child_turn(
+                request.clone(),
+                &stale,
+                &AllowAllTurnAdmissionPolicy,
+                &resolver
+            )
+            .await,
+        Err(TurnError::LeaseMismatch)
+    ));
+    assert_eq!(
+        reopened
+            .submit_claimed_child_turn(request, &claimed, &AllowAllTurnAdmissionPolicy, &resolver)
+            .await
+            .unwrap(),
+        accepted
+    );
+    assert_eq!(
+        reopened
+            .children_of(&parent_scope, parent)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn filesystem_claimed_child_admission_rejects_byte_only_cas_without_a_write() {
+    // The legacy parent path is process-local compatibility. A new claimed
+    // child must refuse this backend rather than substitute an unconditional put.
+    let (backend, _storage_guard) = engine_filesystem();
+    let store = FilesystemTurnStateStore::new(scoped_turns_fs(backend));
+    let resolver = InMemoryRunProfileResolver::default();
+    let parent_scope = turn_scope("claimed-byte-only-parent");
+    let parent = accepted_run_id(
+        &store
+            .submit_turn(
+                submit_request_for(parent_scope.clone(), "claimed-byte-only-parent-submit"),
+                &AllowAllTurnAdmissionPolicy,
+                &resolver,
+            )
+            .await
+            .unwrap(),
+    );
+    let claimed = store
+        .claim_next_run(ClaimRunRequest {
+            runner_id: TurnRunnerId::new(),
+            lease_token: TurnLeaseToken::new(),
+            scope_filter: Some(parent_scope.clone()),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let before = store.persistence_snapshot().await.unwrap();
+    assert!(matches!(
+        store
+            .submit_claimed_child_turn(
+                child_run_request(
+                    parent_scope,
+                    parent,
+                    turn_scope("claimed-byte-only-child"),
+                    "claimed-byte-only-child-submit",
+                    3,
+                ),
+                &claimed,
+                &AllowAllTurnAdmissionPolicy,
+                &resolver,
+            )
+            .await,
+        Err(TurnError::Unavailable { .. })
+    ));
+    assert_eq!(store.persistence_snapshot().await.unwrap(), before);
 }

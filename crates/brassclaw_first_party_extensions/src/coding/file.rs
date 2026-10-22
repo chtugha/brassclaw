@@ -3,29 +3,30 @@
 //! The v1 `Tool`/`JobContext`/local-filesystem boundary is replaced here with
 //! `CodingCapabilityRequest`, scoped mounts, and `RootFilesystem`.
 
-use brassclaw_filesystem::{FileType, FilesystemOperation};
+use std::fmt::Write;
+
+use brassclaw_filesystem::{CasExpectation, FileType, FilesystemOperation};
 use brassclaw_host_api::RuntimeDispatchErrorKind;
 use serde_json::{Value, json};
 
 use super::{CodingCapabilityError, CodingCapabilityOutput, CodingCapabilityRequest};
 
 use super::{
-    config::{
-        DEFAULT_LINE_LIMIT, MAX_DIR_ENTRIES, MAX_PATCH_SIZE, MAX_READ_SIZE, MAX_VISITED_ENTRIES,
-        MAX_WRITE_SIZE,
-    },
     diff_preview::{file_diff_preview, will_use_large_diff_path},
     input_error,
     inputs::{optional_usize, required_str},
     operation_error_with_summary,
     paths::{
-        create_parent_dir_unless_sensitive, deny_sensitive_existing_path, filesystem_error,
-        is_excluded_name, is_sensitive_scoped_path, is_workspace_path, operation_allowed,
-        resolve_optional_path, resolve_required_path, scoped_child_path, stat_optional,
+        deny_sensitive_existing_path, filesystem_error, is_excluded_name, is_sensitive_scoped_path,
+        is_workspace_path, list_walk_entries, operation_allowed, resolve_optional_path,
+        resolve_required_path, scoped_child_path, stat_optional, validate_parent_directory,
         virtual_to_relative,
     },
     state::{SharedCodingEditLocks, read_scope_key},
-    text::{count_matches, decode_text, encode_text, reject_binary_probe, replace_content},
+    text::{
+        PatchOutputLimits, count_matches, decode_text, encode_text, reject_binary_probe,
+        replace_content,
+    },
     types::{ListEntry, MatchMethod, ResolvedPath},
 };
 
@@ -48,7 +49,7 @@ pub(super) async fn read_file(
             RuntimeDispatchErrorKind::FilesystemDenied,
         ));
     }
-    if stat.file_type != FileType::File || stat.len > MAX_READ_SIZE {
+    if stat.file_type != FileType::File || stat.len > request.limits.max_coding_read_bytes {
         return Err(CodingCapabilityError::with_safe_summary(
             RuntimeDispatchErrorKind::Resource,
             format!(
@@ -60,33 +61,59 @@ pub(super) async fn read_file(
 
     let bytes = request
         .filesystem
-        .read_file(&resolved.virtual_path)
+        .read_file_bounded(
+            &resolved.virtual_path,
+            request.limits.max_coding_read_bytes as usize,
+        )
         .await
         .map_err(|error| {
             filesystem_error_with_summary("read_file", resolved.scoped_path.as_str(), error)
-        })?;
+        })?
+        .ok_or_else(|| CodingCapabilityError::new(RuntimeDispatchErrorKind::Resource))?;
     reject_binary_probe(&bytes)?;
     let (content, _encoding, _line_ending) = decode_text(&bytes)?;
-    let lines: Vec<&str> = content.lines().collect();
-    let total_lines = lines.len();
-    let start_line = offset.saturating_sub(1).min(total_lines);
-    let (end_line, truncated_by_default) = if let Some(limit) = limit {
-        ((start_line + limit).min(total_lines), false)
-    } else if !has_explicit_range && total_lines > DEFAULT_LINE_LIMIT {
-        (DEFAULT_LINE_LIMIT.min(total_lines), true)
+    let start_line = offset.saturating_sub(1);
+    let default_window = !has_explicit_range && request.limits.default_coding_read_lines > 0;
+    let window = limit.unwrap_or(if default_window {
+        request.limits.default_coding_read_lines as usize
     } else {
-        (total_lines, false)
-    };
-    let selected_lines: Vec<String> = lines[start_line..end_line]
-        .iter()
-        .enumerate()
-        .map(|(index, line)| format!("{:>6}│ {}", start_line + index + 1, line))
-        .collect();
+        usize::MAX
+    });
+    let mut total_lines = 0;
+    let mut lines_shown = 0;
+    let mut selected = String::new();
+    // Count all eligible lines, but retain only the formatted output. A full
+    // read of a newline-heavy file must not allocate millions of temporary
+    // strings or a second vector containing every line reference.
+    for (index, line) in content.lines().enumerate() {
+        total_lines += 1;
+        if index < start_line || lines_shown >= window {
+            continue;
+        }
+        let number = index + 1;
+        let number_width = (number.ilog10() as usize + 1).max(6);
+        let additional = number_width
+            .checked_add("│ ".len())
+            .and_then(|bytes| bytes.checked_add(line.len()))
+            .and_then(|bytes| bytes.checked_add(usize::from(lines_shown > 0)))
+            .ok_or_else(|| CodingCapabilityError::new(RuntimeDispatchErrorKind::Resource))?;
+        selected
+            .try_reserve(additional)
+            .map_err(|_| CodingCapabilityError::new(RuntimeDispatchErrorKind::Resource))?;
+        if lines_shown > 0 {
+            selected.push('\n');
+        }
+        write!(&mut selected, "{number:>6}│ {line}")
+            .map_err(|_| CodingCapabilityError::new(RuntimeDispatchErrorKind::Resource))?;
+        lines_shown += 1;
+    }
+    let truncated_by_default =
+        default_window && total_lines > request.limits.default_coding_read_lines as usize;
 
     Ok(json!({
-        "content": selected_lines.join("\n"),
+        "content": selected,
         "total_lines": total_lines,
-        "lines_shown": end_line - start_line,
+        "lines_shown": lines_shown,
         "truncated_by_default": truncated_by_default,
         "path": resolved.scoped_path.as_str()
     }))
@@ -102,7 +129,7 @@ pub(super) async fn write_file(
     }
     let resolved = resolve_required_path(request, "path", FilesystemOperation::WriteFile)?;
     let content = required_str(request.input, "content")?;
-    if content.len() > MAX_WRITE_SIZE {
+    if content.len() > request.limits.max_coding_write_bytes as usize {
         return Err(input_error());
     }
     let scope = read_scope_key(request);
@@ -122,16 +149,20 @@ pub(super) async fn write_file(
     // (the old file read would be wasted).
     let old_content =
         if !operation_allowed(&resolved.grant.permissions, FilesystemOperation::ReadFile)
-            || will_use_large_diff_path(content)
+            || will_use_large_diff_path(content, &request.limits)
         {
             None
         } else {
             existing_text_for_preview(request, &resolved, existing_stat.as_ref()).await
         };
-    create_parent_dir_unless_sensitive(request, &resolved.virtual_path).await?;
+    validate_parent_directory(request, &resolved.virtual_path).await?;
+    let mut body = Vec::new();
+    body.try_reserve_exact(content.len())
+        .map_err(|_| CodingCapabilityError::new(RuntimeDispatchErrorKind::Resource))?;
+    body.extend_from_slice(content.as_bytes());
     request
         .filesystem
-        .write_file(&resolved.virtual_path, content.as_bytes())
+        .put_opaque(&resolved.virtual_path, body, CasExpectation::Any)
         .await
         .map_err(filesystem_error)?;
     let output = json!({
@@ -139,8 +170,14 @@ pub(super) async fn write_file(
         "bytes_written": content.len(),
         "success": true
     });
-    let display_preview = old_content
-        .map(|old_content| file_diff_preview(resolved.scoped_path.as_str(), &old_content, content));
+    let display_preview = old_content.map(|old_content| {
+        file_diff_preview(
+            resolved.scoped_path.as_str(),
+            &old_content,
+            content,
+            &request.limits,
+        )
+    });
     Ok(CodingCapabilityOutput::with_display_preview(
         output,
         display_preview,
@@ -157,11 +194,12 @@ pub(super) async fn list_dir(
         .get("recursive")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let max_depth = optional_usize(request.input, "max_depth")?.unwrap_or(3);
+    let max_depth = optional_usize(request.input, "max_depth")?
+        .unwrap_or(request.limits.default_coding_directory_depth as usize);
     let mut entries = collect_list_entries(request, &resolved, recursive, max_depth).await?;
     sort_list_entries(&mut entries);
-    let truncated = entries.len() > MAX_DIR_ENTRIES;
-    entries.truncate(MAX_DIR_ENTRIES);
+    let truncated = entries.len() > request.limits.max_coding_directory_entries as usize;
+    entries.truncate(request.limits.max_coding_directory_entries as usize);
     let count = entries.len();
     Ok(json!({
         "path": resolved.scoped_path.as_str(),
@@ -181,14 +219,10 @@ async fn collect_list_entries(
     let mut stack = vec![(root.virtual_path.clone(), 0usize)];
     let mut visited = 0usize;
     while let Some((dir, depth)) = stack.pop() {
-        let entries = request
-            .filesystem
-            .list_dir(&dir)
-            .await
-            .map_err(filesystem_error)?;
+        let entries = list_walk_entries(request, &dir, visited).await?;
         for entry in entries {
             visited += 1;
-            if visited > MAX_VISITED_ENTRIES {
+            if visited > request.limits.max_coding_visited_entries as usize {
                 return Err(CodingCapabilityError::new(
                     RuntimeDispatchErrorKind::Resource,
                 ));
@@ -227,7 +261,7 @@ async fn collect_list_entries(
             {
                 stack.push((entry.path, depth + 1));
             }
-            if output.len() > MAX_DIR_ENTRIES {
+            if output.len() > request.limits.max_coding_directory_entries as usize {
                 return Ok(output);
             }
         }
@@ -298,7 +332,7 @@ pub(super) async fn apply_patch(
             RuntimeDispatchErrorKind::FilesystemDenied,
         ));
     }
-    if stat.file_type != FileType::File || stat.len > MAX_PATCH_SIZE {
+    if stat.file_type != FileType::File || stat.len > request.limits.max_coding_patch_bytes {
         return Err(CodingCapabilityError::with_safe_summary(
             RuntimeDispatchErrorKind::Resource,
             format!(
@@ -309,11 +343,15 @@ pub(super) async fn apply_patch(
     }
     let bytes = request
         .filesystem
-        .read_file(&resolved.virtual_path)
+        .read_file_bounded(
+            &resolved.virtual_path,
+            request.limits.max_coding_patch_bytes as usize,
+        )
         .await
         .map_err(|error| {
             filesystem_error_with_summary("apply_patch", resolved.scoped_path.as_str(), error)
-        })?;
+        })?
+        .ok_or_else(|| CodingCapabilityError::new(RuntimeDispatchErrorKind::Resource))?;
     reject_binary_probe(&bytes)?;
     let (content, encoding, line_ending) = decode_text(&bytes)?;
     let (match_count, match_method) = count_matches(&content, old_string);
@@ -330,12 +368,27 @@ pub(super) async fn apply_patch(
         )));
     }
 
-    let (new_content, replacements) =
-        replace_content(&content, old_string, new_string, replace_all, match_count)?;
+    let (new_content, replacements) = replace_content(
+        &content,
+        old_string,
+        new_string,
+        replace_all,
+        match_count,
+        PatchOutputLimits {
+            encoding,
+            line_ending,
+            max_bytes: request.limits.max_coding_patch_bytes,
+        },
+    )?;
     let output = encode_text(&new_content, encoding, line_ending);
+    if output.len() as u64 > request.limits.max_coding_patch_bytes {
+        return Err(CodingCapabilityError::new(
+            RuntimeDispatchErrorKind::Resource,
+        ));
+    }
     request
         .filesystem
-        .write_file(&resolved.virtual_path, &output)
+        .put_opaque(&resolved.virtual_path, output, CasExpectation::Any)
         .await
         .map_err(|error| {
             filesystem_error_with_summary("apply_patch", resolved.scoped_path.as_str(), error)
@@ -348,7 +401,12 @@ pub(super) async fn apply_patch(
     if match_method != MatchMethod::Exact {
         result["match_method"] = json!(format!("{match_method:?}"));
     }
-    let display_preview = file_diff_preview(resolved.scoped_path.as_str(), &content, &new_content);
+    let display_preview = file_diff_preview(
+        resolved.scoped_path.as_str(),
+        &content,
+        &new_content,
+        &request.limits,
+    );
     Ok(CodingCapabilityOutput::with_display_preview(
         result,
         Some(display_preview),
@@ -403,15 +461,19 @@ async fn existing_text_for_preview(
     let Some(stat) = stat else {
         return Some(String::new());
     };
-    if stat.file_type != FileType::File || stat.len > MAX_WRITE_SIZE as u64 {
+    if stat.file_type != FileType::File || stat.len > request.limits.max_coding_write_bytes {
         return None;
     }
     let bytes = request
         .filesystem
-        .read_file(&resolved.virtual_path)
+        .read_file_bounded(
+            &resolved.virtual_path,
+            request.limits.max_coding_write_bytes as usize,
+        )
         .await
         // silent-ok: write_file display preview is best-effort; the write result is canonical.
-        .ok()?;
+        .ok()
+        .flatten()?;
     reject_binary_probe(&bytes).ok()?;
     let (content, _encoding, _line_ending) = decode_text(&bytes).ok()?;
     Some(content)

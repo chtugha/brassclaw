@@ -90,7 +90,7 @@ pub(crate) async fn capture(
     profile: &str,
     request: &MeasurePrefixRequest,
 ) -> Result<Value, Error> {
-    if !matches!(profile, "base-prompt" | "prefix-maker")
+    if !matches!(profile, "base-prompt" | "prefix-maker" | "sempai")
         || request.expected_profile_revision == 0
         || !(1..=9_007_199_254_740_991).contains(&request.context_window_tokens)
         || request.reserved_additional_input_tokens > 9_007_199_254_740_991

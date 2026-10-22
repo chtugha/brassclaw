@@ -64,9 +64,12 @@ fn compile() {
 
     let mut cc = cc::Build::new();
     if cfg!(feature = "brassclaw-global-allocator") {
-        for (name, replacement) in [("malloc", "brassclaw_onig_malloc"),
-            ("calloc", "brassclaw_onig_calloc"), ("realloc", "brassclaw_onig_realloc"),
-            ("free", "brassclaw_onig_free")] {
+        for (name, replacement) in [
+            ("malloc", "brassclaw_onig_malloc"),
+            ("calloc", "brassclaw_onig_calloc"),
+            ("realloc", "brassclaw_onig_realloc"),
+            ("free", "brassclaw_onig_free"),
+        ] {
             cc.define(name, Some(replacement));
         }
     }
@@ -257,10 +260,11 @@ pub fn main() {
     let link_type = link_type_override();
     let require_pkg_config = env_var_bool("RUSTONIG_SYSTEM_LIBONIG").unwrap_or(false);
     if cfg!(feature = "brassclaw-global-allocator") {
-        assert!(!require_pkg_config && link_type != Some(LinkType::Dynamic),
-            "brassclaw-global-allocator requires the embedded patched Oniguruma, not a system/dynamic library");
+        assert!(
+            !require_pkg_config && link_type != Some(LinkType::Dynamic),
+            "brassclaw-global-allocator requires the embedded patched Oniguruma, not a system/dynamic library"
+        );
     }
-
 
     if require_pkg_config || link_type == Some(LinkType::Dynamic) {
         let mut conf = Config::new();
@@ -291,7 +295,10 @@ pub fn main() {
                 }
             }
             Err(ref err) if require_pkg_config => {
-                panic!("Unable to find oniguruma in pkg-config, and RUSTONIG_SYSTEM_LIBONIG is set: {}", err);
+                panic!(
+                    "Unable to find oniguruma in pkg-config, and RUSTONIG_SYSTEM_LIBONIG is set: {}",
+                    err
+                );
             }
             _ => {}
         }

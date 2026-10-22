@@ -863,12 +863,14 @@ struct PendingToolCall {
 
 #[async_trait]
 impl LlmProvider for CodexChatGptProvider {
-    fn model_name(&self) -> &str {
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
         // Return resolved model if available, otherwise the configured name.
-        self.resolved_model
-            .get()
-            .map(|s| s.as_str())
-            .unwrap_or(&self.configured_model)
+        std::borrow::Cow::Borrowed(
+            self.resolved_model
+                .get()
+                .map(|s| s.as_str())
+                .unwrap_or(&self.configured_model),
+        )
     }
 
     fn cost_per_token(&self) -> (Decimal, Decimal) {

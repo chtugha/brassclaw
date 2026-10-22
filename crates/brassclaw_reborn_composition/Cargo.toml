@@ -160,6 +160,8 @@ brassclaw_product_workflow = { path = "../brassclaw_product_workflow", features 
 brassclaw_product_adapters = { path = "../brassclaw_product_adapters" }
 rust_decimal = { version = "1", features = ["serde", "serde-with-str"] }
 rust_decimal_macros = "1"
+# Exercise actual previous-schema -> current-schema upgrades with the shared runner.
+refinery = { version = "0.8", features = ["tokio-postgres"] }
 sha2 = "0.10"
 tempfile = "3"
 testcontainers-modules = { version = "0.11", features = ["postgres"] }

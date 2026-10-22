@@ -2695,7 +2695,10 @@ pub async fn build_reborn_runtime(
                         None
                     }
                 },
-            );
+            )
+            .map_err(|error| RebornRuntimeError::InvalidArgument {
+                reason: format!("budget accounting defaults invalid: {error}"),
+            })?;
             Some(accountant)
         }
     };
@@ -4035,8 +4038,8 @@ pub(crate) struct PlaceholderLlmProvider;
 #[cfg(feature = "root-llm-provider")]
 #[async_trait::async_trait]
 impl brassclaw_llm::LlmProvider for PlaceholderLlmProvider {
-    fn model_name(&self) -> &str {
-        "unconfigured"
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed("unconfigured")
     }
 
     fn cost_per_token(&self) -> (rust_decimal::Decimal, rust_decimal::Decimal) {
@@ -4280,8 +4283,8 @@ mod tests {
         }
         #[async_trait]
         impl LlmProvider for Sempai {
-            fn model_name(&self) -> &str {
-                "review-provider-fixture"
+            fn model_name(&self) -> std::borrow::Cow<'_, str> {
+                std::borrow::Cow::Borrowed("review-provider-fixture")
             }
             fn cost_per_token(&self) -> (rust_decimal::Decimal, rust_decimal::Decimal) {
                 (dec!(0), dec!(0))
@@ -7766,6 +7769,9 @@ mod tests {
         );
         let literal = "quoted ' Unicode ü and {{not_source}}";
         let mut outcomes = Vec::new();
+        let captured_catalogue = runtime.installed_catalogue.active.read().await.clone();
+        let captured_checksum =
+            hex::encode(sha2::Sha256::digest(captured_catalogue.bytes.as_bytes()));
         for text in [
             "unmatched first input".to_string(),
             format!("reply {literal}"),
@@ -7793,7 +7799,16 @@ mod tests {
                 assert_eq!(reply.text.as_deref(), Some(literal));
             }
             let client = rig.pool.get().await.unwrap();
-            let row=client.query_one("SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",&[&reply.run_id.as_uuid()]).await.unwrap();
+            let row=client.query_one("SELECT outcome,catalogue_reference_version,catalogue_id,catalogue_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",&[&reply.run_id.as_uuid()]).await.unwrap();
+            assert_eq!(row.get::<_, i16>(1), 1);
+            assert_eq!(
+                row.get::<_, Option<uuid::Uuid>>(2),
+                Some(captured_catalogue.generation)
+            );
+            assert_eq!(
+                row.get::<_, Option<String>>(3),
+                Some(captured_checksum.clone())
+            );
             let retained_outcome: serde_json::Value = row.get(0);
             let review_event = client
                 .query_opt(
@@ -8059,12 +8074,18 @@ mod tests {
                 serde_json::to_value(current).unwrap()
             );
         }
-        for capacity in [2, 0, 5] {
+        let mut http_policies = vec![(2, 2002, 42), (0, 2000, 40), (5, 2005, 45)];
+        // Defaults are u64, not the explicit HTTP Tool's u32 timeout argument.
+        // A 32-bit host cannot represent a response-body ceiling above isize::MAX.
+        if usize::BITS > 32 {
+            http_policies.push((5, u64::from(u32::MAX) + 1, u64::from(u32::MAX) + 2));
+        }
+        for (capacity, timeout, bytes) in http_policies {
             let current = settings.get("default", "default").await.unwrap();
             let mut limits = current.execution_limits;
             limits.max_http_client_cache_entries = capacity;
-            limits.default_http_request_timeout_millis = 2000 + u64::from(capacity);
-            limits.default_http_response_body_bytes = 40 + u64::from(capacity);
+            limits.default_http_request_timeout_millis = timeout;
+            limits.default_http_response_body_bytes = bytes;
             let update = serde_json::from_value(serde_json::json!({
                 "expected_revision":current.revision,"execution_limits":limits,
             }))

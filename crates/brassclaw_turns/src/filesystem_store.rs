@@ -165,7 +165,21 @@ where
     /// re-reads (cross-process contention); on `Unsupported` it falls back
     /// to `CasExpectation::Any` so the byte-only `LocalFilesystem` path
     /// still works through the per-record `FILESYSTEM_RECORD_LOCKS` map.
-    async fn apply<T, A, Fut>(&self, mut apply: A) -> Result<T, TurnError>
+    async fn apply<T, A, Fut>(&self, apply: A) -> Result<T, TurnError>
+    where
+        A: FnMut(InMemoryTurnStateStore) -> Fut,
+        Fut: std::future::Future<Output = (Result<T, TurnError>, InMemoryTurnStateStore)>,
+    {
+        self.apply_with_cas_fallback(true, apply).await
+    }
+
+    /// Claimed admission requires actual backend CAS. The compatibility entry's
+    /// byte-only fallback must never weaken the original parent claim fence.
+    async fn apply_with_cas_fallback<T, A, Fut>(
+        &self,
+        allow_byte_only_fallback: bool,
+        mut apply: A,
+    ) -> Result<T, TurnError>
     where
         A: FnMut(InMemoryTurnStateStore) -> Fut,
         Fut: std::future::Future<Output = (Result<T, TurnError>, InMemoryTurnStateStore)>,
@@ -187,7 +201,15 @@ where
                 Some(v) => CasExpectation::Version(v),
                 None => CasExpectation::Absent,
             };
-            match put_with_cas(self.filesystem.as_ref(), &path, entry, cas).await {
+            match put_with_cas(
+                self.filesystem.as_ref(),
+                &path,
+                entry,
+                cas,
+                allow_byte_only_fallback,
+            )
+            .await
+            {
                 Ok(()) => return outcome,
                 Err(PutError::VersionMismatch) => continue,
                 Err(PutError::Other(error)) => return Err(error),
@@ -307,6 +329,34 @@ where
             async move {
                 let outcome = store
                     .submit_child_turn(request, admission_policy, &pre_resolved)
+                    .await;
+                (outcome, store)
+            }
+        })
+        .await
+    }
+
+    async fn submit_claimed_child_turn(
+        &self,
+        request: SubmitChildRunRequest,
+        parent: &crate::runner::ClaimedTurnRun,
+        admission_policy: &dyn TurnAdmissionPolicy,
+        run_profile_resolver: &dyn RunProfileResolver,
+    ) -> Result<SubmitTurnResponse, TurnError> {
+        let profile_resolution = run_profile_resolver
+            .resolve_run_profile(crate::RunProfileResolutionRequest {
+                requested_run_profile: request.requested_run_profile.clone(),
+                ..crate::RunProfileResolutionRequest::interactive_default()
+            })
+            .await;
+        let pre_resolved = PreResolvedRunProfileResolver::new(profile_resolution);
+        self.apply_with_cas_fallback(false, |store| {
+            let request = request.clone();
+            let parent = parent.clone();
+            let pre_resolved = pre_resolved.clone();
+            async move {
+                let outcome = store
+                    .submit_claimed_child_turn(request, &parent, admission_policy, &pre_resolved)
                     .await;
                 (outcome, store)
             }
@@ -723,8 +773,9 @@ enum PutError {
 
 /// Issue a `put` honoring the requested CAS expectation.
 ///
-/// Falls back to `CasExpectation::Any` when the backend reports `Unsupported`
-/// for the request — `LocalFilesystem` is byte-only and only accepts `Any`.
+/// Compatibility calls may fall back to `CasExpectation::Any` when the backend
+/// reports `Unsupported` — `LocalFilesystem` is byte-only and only accepts `Any`.
+/// Claimed admission disables that fallback and surfaces the backend error.
 /// On a byte-only backend the in-process record-lock map provides
 /// intra-process serialization; cross-process safety on those backends is a
 /// documented process-local limitation (matches
@@ -734,23 +785,29 @@ async fn put_with_cas<F>(
     path: &ScopedPath,
     entry: Entry,
     cas: CasExpectation,
+    allow_byte_only_fallback: bool,
 ) -> Result<(), PutError>
 where
     F: RootFilesystem,
 {
-    let fallback_entry = entry.clone();
+    let fallback_entry = allow_byte_only_fallback.then(|| entry.clone());
     let scope = ResourceScope::system();
     match filesystem.put(&scope, path, entry, cas).await {
         Ok(_) => Ok(()),
         Err(FilesystemError::VersionMismatch { .. }) => Err(PutError::VersionMismatch),
-        Err(FilesystemError::Unsupported {
-            operation: FilesystemOperation::WriteFile,
-            ..
-        }) => filesystem
-            .put(&scope, path, fallback_entry, CasExpectation::Any)
-            .await
-            .map(|_| ())
-            .map_err(|error| PutError::Other(fs_error(error))),
+        Err(
+            error @ FilesystemError::Unsupported {
+                operation: FilesystemOperation::WriteFile,
+                ..
+            },
+        ) => match fallback_entry {
+            Some(entry) => filesystem
+                .put(&scope, path, entry, CasExpectation::Any)
+                .await
+                .map(|_| ())
+                .map_err(|error| PutError::Other(fs_error(error))),
+            None => Err(PutError::Other(fs_error(error))),
+        },
         Err(error) => Err(PutError::Other(fs_error(error))),
     }
 }

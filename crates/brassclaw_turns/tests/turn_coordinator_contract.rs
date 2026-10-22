@@ -7947,3 +7947,202 @@ async fn prepared_identities_cross_the_old_count_cap_without_losing_scope_fences
     );
     assert_eq!(store.persistence_snapshot().runs.len(), 2);
 }
+
+#[tokio::test]
+async fn claimed_child_admission_fences_identity_before_cached_replay() {
+    let (coordinator, store) = coordinator();
+    let parent = accepted_run_id(
+        &coordinator
+            .submit_turn(submit_request("claimed-parent", "claimed-parent-submit"))
+            .await
+            .unwrap(),
+    );
+    let claimed = store
+        .claim_next_run(ClaimRunRequest {
+            runner_id: TurnRunnerId::new(),
+            lease_token: TurnLeaseToken::new(),
+            scope_filter: Some(scope("claimed-parent")),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let request = child_run_request(
+        scope("claimed-parent"),
+        parent,
+        "claimed-child",
+        TurnRunId::new(),
+        "claimed-child-submit",
+        3,
+    );
+    let before = store.persistence_snapshot();
+    let mut invalid = claimed.clone();
+    invalid.lease_token = TurnLeaseToken::new();
+    assert!(matches!(
+        coordinator
+            .submit_claimed_child_run(request.clone(), &invalid)
+            .await,
+        Err(TurnError::LeaseMismatch)
+    ));
+    assert_eq!(store.persistence_snapshot(), before);
+    let mut foreign_actor = request.clone();
+    foreign_actor.actor = TurnActor::new(UserId::new("foreign-claimed-child-actor").unwrap());
+    assert!(matches!(
+        coordinator
+            .submit_claimed_child_run(foreign_actor.clone(), &claimed)
+            .await,
+        Err(TurnError::Conflict { .. })
+    ));
+    assert_eq!(store.persistence_snapshot(), before);
+    let accepted = coordinator
+        .submit_claimed_child_run(request.clone(), &claimed)
+        .await
+        .unwrap();
+    assert_eq!(
+        coordinator
+            .submit_claimed_child_run(request.clone(), &claimed)
+            .await
+            .unwrap(),
+        accepted
+    );
+    assert!(matches!(
+        coordinator
+            .submit_claimed_child_run(foreign_actor, &claimed)
+            .await,
+        Err(TurnError::Conflict { .. })
+    ));
+    assert!(matches!(
+        coordinator
+            .submit_claimed_child_run(request.clone(), &invalid)
+            .await,
+        Err(TurnError::LeaseMismatch)
+    ));
+    let mut wrong_scope = claimed.clone();
+    wrong_scope.state.scope = scope("foreign-claimed-parent");
+    assert!(matches!(
+        coordinator
+            .submit_claimed_child_run(request, &wrong_scope)
+            .await,
+        Err(TurnError::LeaseMismatch)
+    ));
+    assert_eq!(
+        store
+            .children_of(&scope("claimed-parent"), parent)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn claimed_child_admission_rechecks_parent_after_profile_wait() {
+    let (coordinator, store) = coordinator();
+    let parent = accepted_run_id(
+        &coordinator
+            .submit_turn(submit_request(
+                "claimed-race-parent",
+                "claimed-race-parent-submit",
+            ))
+            .await
+            .unwrap(),
+    );
+    let claimed = store
+        .claim_next_run(ClaimRunRequest {
+            runner_id: TurnRunnerId::new(),
+            lease_token: TurnLeaseToken::new(),
+            scope_filter: Some(scope("claimed-race-parent")),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let barrier = Arc::new(ChildAdmissionBarrier::default());
+    let admitted = {
+        let store = store.clone();
+        let barrier = barrier.clone();
+        tokio::spawn(async move {
+            store
+                .submit_claimed_child_turn(
+                    child_run_request(
+                        scope("claimed-race-parent"),
+                        parent,
+                        "claimed-race-child",
+                        TurnRunId::new(),
+                        "claimed-race-child-submit",
+                        3,
+                    ),
+                    &claimed,
+                    &AllowAllTurnAdmissionPolicy,
+                    barrier.as_ref(),
+                )
+                .await
+        })
+    };
+    barrier.started.notified().await;
+    coordinator
+        .cancel_tree(cancel_request(
+            "claimed-race-parent",
+            parent,
+            "claimed-race-cancel",
+        ))
+        .await
+        .unwrap();
+    barrier.proceed.notify_one();
+    assert!(matches!(
+        admitted.await.unwrap(),
+        Err(TurnError::Conflict { .. })
+    ));
+    let snapshot = store.persistence_snapshot();
+    assert_eq!(snapshot.runs.len(), 1);
+    assert!(snapshot.spawn_tree_reservations.is_empty());
+}
+
+#[tokio::test]
+async fn claimed_child_admission_rejects_expired_parent_without_mutating_state() {
+    let store = Arc::new(InMemoryTurnStateStore::with_limits(
+        InMemoryTurnStateStoreLimits {
+            runner_lease_ttl: ChronoDuration::milliseconds(SHORT_RUNNER_LEASE_TTL_MS),
+            ..Default::default()
+        },
+    ));
+    let coordinator = DefaultTurnCoordinator::new(store.clone());
+    let parent = accepted_run_id(
+        &coordinator
+            .submit_turn(submit_request(
+                "expired-child-parent",
+                "expired-child-parent-submit",
+            ))
+            .await
+            .unwrap(),
+    );
+    let claimed = store
+        .claim_next_run(ClaimRunRequest {
+            runner_id: TurnRunnerId::new(),
+            lease_token: TurnLeaseToken::new(),
+            scope_filter: Some(scope("expired-child-parent")),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(
+        u64::try_from(2 * SHORT_RUNNER_LEASE_TTL_MS).unwrap(),
+    ))
+    .await;
+    let before = store.persistence_snapshot();
+    assert!(matches!(
+        coordinator
+            .submit_claimed_child_run(
+                child_run_request(
+                    scope("expired-child-parent"),
+                    parent,
+                    "expired-child",
+                    TurnRunId::new(),
+                    "expired-child-submit",
+                    3
+                ),
+                &claimed,
+            )
+            .await,
+        Err(TurnError::Conflict { .. })
+    ));
+    assert_eq!(store.persistence_snapshot(), before);
+}

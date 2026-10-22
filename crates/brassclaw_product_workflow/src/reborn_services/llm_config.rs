@@ -226,6 +226,8 @@ pub struct LlmConfigSnapshot {
 pub struct LlmProviderView {
     #[serde(default)]
     pub embedding_models: brassclaw_llm::EmbeddingModelContracts,
+    #[serde(default)]
+    pub model_token_limits: brassclaw_llm::ModelTokenLimitOverrides,
     /// Exact definition revision for compare-and-replace edits.
     pub revision: u64,
     pub response_cache: brassclaw_llm::ResponseCachePolicy,
@@ -287,6 +289,9 @@ pub struct UpsertLlmProviderRequest {
     /// Omitted preserves the previous model contracts; an empty object clears them.
     #[serde(default, deserialize_with = "deserialize_embedding_models_update")]
     pub embedding_models: Option<brassclaw_llm::EmbeddingModelContracts>,
+    /// Omitted preserves all model ceilings; an empty map explicitly clears them.
+    #[serde(default, deserialize_with = "deserialize_model_token_limits_update")]
+    pub model_token_limits: Option<brassclaw_llm::ModelTokenLimitOverrides>,
     /// Required for replacing/reactivating a retained identity; omit only for a new ID.
     #[serde(default)]
     pub expected_revision: Option<u64>,
@@ -326,6 +331,11 @@ fn deserialize_request_policy_update<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<brassclaw_llm::ProviderRequestPolicy>, D::Error> {
     brassclaw_llm::ProviderRequestPolicy::deserialize(deserializer).map(Some)
+}
+fn deserialize_model_token_limits_update<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<brassclaw_llm::ModelTokenLimitOverrides>, D::Error> {
+    brassclaw_llm::ModelTokenLimitOverrides::deserialize(deserializer).map(Some)
 }
 
 fn deserialize_embedding_models_update<'de, D: serde::Deserializer<'de>>(

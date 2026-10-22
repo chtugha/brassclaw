@@ -54,8 +54,11 @@ use crate::{
     global_recipe_ports::{MontyIntentSelection, MontyTaskCatalogue, SelectedMontyRecipe},
     global_task_factory::MontyCatalogueProvider,
     monty_kernel::{MontyKernelSnapshot, PgSelectedToolPolicy},
-    pg_monty_admission::PgMontyAdmission,
+    pg_monty_admission::{CatalogueReference, PgMontyAdmission},
 };
+
+#[path = "task_catalogue_binding.rs"]
+mod task_binding;
 
 fn invalid(reason: impl Into<String>) -> RebornBuildError {
     RebornBuildError::InvalidConfig {
@@ -235,20 +238,14 @@ impl InstalledMontyCatalogue {
         settings.execution_limits.validate().map_err(invalid)?;
         Ok(settings.execution_limits)
     }
-    /// Same database integrity/usage checks for capture and source projection.
+    /// Fresh capture/source projection must still name the active generation.
     /// Caller holds activation serialization and a read-only repeatable snapshot.
     pub(crate) async fn verify_source_selection(
         &self,
         tx: &tokio_postgres::Transaction<'_>,
         view: &crate::authored_monty_catalogue::CatalogueGeneration,
     ) -> Result<(), AgentLoopDriverError> {
-        let row = tx.query_one("SELECT catalogue_bytes,checksum FROM brassclaw_monty_boot_catalogues WHERE catalogue_id=$1", &[&view.generation])
-            .await.map_err(|_| failed())?;
-        if row.get::<_, String>(0) != view.bytes
-            || row.get::<_, String>(1) != hex::encode(Sha256::digest(view.bytes.as_bytes()))
-        {
-            return Err(failed());
-        }
+        self.verify_retained_selection(tx, view).await?;
         let active_generation: Uuid = tx
             .query_one(
                 "SELECT catalogue_id FROM brassclaw_monty_active_catalogue WHERE singleton",
@@ -258,6 +255,26 @@ impl InstalledMontyCatalogue {
             .map_err(|_| failed())?
             .get(0);
         if active_generation != view.generation {
+            return Err(failed());
+        }
+        Ok(())
+    }
+
+    /// Verify exact stored bytes, revisions and existing approvals for a view
+    /// already selected by the catalogue owner. Replacement/withdrawal does not
+    /// invalidate that retained selection. This neither selects a new task nor
+    /// proves child provenance, restores execution, or grants Tool permission.
+    /// The caller supplies the same coherent read-only transaction as capture.
+    pub(crate) async fn verify_retained_selection(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+        view: &crate::authored_monty_catalogue::CatalogueGeneration,
+    ) -> Result<(), AgentLoopDriverError> {
+        let row = tx.query_one("SELECT catalogue_bytes,checksum FROM brassclaw_monty_boot_catalogues WHERE catalogue_id=$1", &[&view.generation])
+            .await.map_err(|_| failed())?;
+        if row.get::<_, String>(0) != view.bytes
+            || row.get::<_, String>(1) != hex::encode(Sha256::digest(view.bytes.as_bytes()))
+        {
             return Err(failed());
         }
         if let Some(approval) = &self.reply_approval {
@@ -800,6 +817,7 @@ impl SystemBundleSource for InstalledMontyCatalogue {
 }
 
 struct TaskCatalogue {
+    reference: CatalogueReference,
     prefix_user: String,
     prefix_project: String,
     reply: SelectedMontyRecipe,
@@ -856,7 +874,10 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             || definition.created_by != context.actor.as_ref().ok_or_else(failed)?.user_id.as_str()
             || definition.operation != "generate"
             || definition.mode != "source_only"
-            || !matches!(definition.profile.as_str(), "base-prompt" | "prefix-maker")
+            || !matches!(
+                definition.profile.as_str(),
+                "base-prompt" | "prefix-maker" | "sempai"
+            )
             || definition.input["profile"] != definition.profile
             || definition.input["revision"] != revision.as_str()
         {
@@ -1007,157 +1028,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             captured.notify_one();
             release.notified().await;
         }
-        let mut selections = Vec::new();
-        let model_prefix_reference = std::sync::OnceLock::new();
-        for selected in std::iter::once(&self.reply)
-            .chain(std::iter::once(&self.history))
-            .chain(view.programs.iter())
-        {
-            let RetainedProgram::Tools(program) = selected.program() else {
-                return Err(failed());
-            };
-            let model_responses = program
-                .bindings()
-                .values()
-                .any(|binding| binding.capability_id() == "host.kohai_complete")
-                .then(|| {
-                    admission.model_response_store(
-                        model_prefix_reference
-                            .get_or_init(|| {
-                                (
-                                    format!(
-                                        "catalogue:{}:sha256:{}",
-                                        view.generation,
-                                        hex::encode(Sha256::digest(view.prefix.as_bytes()))
-                                    ),
-                                    Arc::<str>::from(view.prefix.as_str()),
-                                )
-                            })
-                            .0
-                            .clone(),
-                    )
-                });
-            let mut runtimes = BTreeMap::new();
-            for (step, binding) in program.bindings() {
-                let capability =
-                    CapabilityId::new(binding.capability_id()).map_err(|_| failed())?;
-                let descriptor = if capability.as_str() == "host.post_reply" {
-                    crate::monty_kernel::reply_package()
-                        .map_err(|_| failed())?
-                        .capabilities
-                        .into_iter()
-                        .next()
-                        .ok_or_else(failed)?
-                } else if capability.as_str() == "host.kohai_complete" {
-                    crate::monty_kernel::model_package()
-                        .map_err(|_| failed())?
-                        .capabilities
-                        .into_iter()
-                        .next()
-                        .ok_or_else(failed)?
-                } else {
-                    self.kernel
-                        .builtin(&capability, None)
-                        .map_err(|_| failed())?
-                        .descriptor()
-                        .clone()
-                };
-                let policy = Arc::new(PgSelectedToolPolicy {
-                    host: host.clone(),
-                    pool: self.pool.clone(),
-                    tool: binding.tool().uuid,
-                    capability: capability.clone(),
-                    effects: descriptor.effects.clone(),
-                    mounts: if matches!(
-                        capability.as_str(),
-                        "host.post_reply" | "host.kohai_complete"
-                    ) {
-                        MountView::default()
-                    } else {
-                        self.memory_mounts.clone()
-                    },
-                });
-                let runtime = if capability.as_str() == "host.post_reply" {
-                    self.kernel
-                        .reply(host.clone(), policy)
-                        .map_err(|_| failed())?
-                } else if capability.as_str() == "host.kohai_complete" {
-                    let prefix = brassclaw_reborn::monty_model_capability::RecipeModelPrefix::new(
-                        model_prefix_reference.get().ok_or_else(failed)?.0.clone(),
-                        model_prefix_reference.get().ok_or_else(failed)?.1.clone(),
-                    )
-                    .map_err(|_| failed())?;
-                    self.kernel
-                        .model(
-                            host.clone(),
-                            prefix,
-                            model_responses.clone().ok_or_else(failed)?,
-                            policy,
-                        )
-                        .map_err(|_| failed())?
-                } else {
-                    let doc = program.inputs().instruction().snapshot().revisions()
-                        [&binding.tool().uuid]
-                        .draft()
-                        .document();
-                    let expected =
-                        serde_json::from_value(doc["implementation"]["identity"].clone())
-                            .map_err(|_| failed())?;
-                    self.kernel
-                        .builtin_with_policy(&capability, expected, policy)
-                        .map_err(|_| failed())?
-                };
-                runtimes.insert(step.clone(), Arc::new(runtime));
-            }
-            let tools = Arc::new(SelectedTools {
-                host: host.clone(),
-                admission: admission.clone(),
-                program: program.clone(),
-                runtimes,
-                mounts: self.memory_mounts.clone(),
-                answers: tokio::sync::Mutex::new(BTreeMap::new()),
-                model_responses,
-            });
-            selections.push(SelectedMontyRecipe {
-                normal_match: None,
-                inspected: (*selected).clone(),
-                inputs: None,
-                tools: Some(tools),
-            });
-        }
-        let incoming = selections.split_off(2);
-        let history = selections.pop().ok_or_else(failed)?;
-        let reply = selections.pop().ok_or_else(failed)?;
-        let task = Arc::new(TaskCatalogue {
-            prefix_user: host
-                .run_context()
-                .actor
-                .as_ref()
-                .map(|actor| actor.user_id.as_str())
-                .unwrap_or("_system")
-                .to_owned(),
-            prefix_project: host
-                .run_context()
-                .scope
-                .project_id
-                .as_ref()
-                .map(|project| project.as_str())
-                .unwrap_or("default")
-                .to_owned(),
-            reply,
-            history,
-            incoming,
-            resolution,
-            query: input.user_input.clone(),
-            view,
-            _package: self.clone(),
-        });
-        {
-            let mut pinned = self.captured_prefixes.lock().map_err(|_| failed())?;
-            pinned.retain(|_, task| task.strong_count() > 0);
-            pinned.insert(host.run_context().run_id.to_string(), Arc::downgrade(&task));
-        }
-        Ok(task)
+        self.bind_captured_view(host, admission, view, resolution, input.user_input.clone())
     }
 }
 
@@ -1494,6 +1365,9 @@ pub(crate) fn bootstrap_compiler_tools(
 
 #[async_trait]
 impl MontyTaskCatalogue for TaskCatalogue {
+    fn catalogue_reference(&self) -> Option<CatalogueReference> {
+        Some(self.reference)
+    }
     async fn refresh_command_qualification(&self) {
         if let Err(error) = self._package.refresh_active_discovery().await {
             tracing::warn!(%error, "MCP qualification refresh failed");

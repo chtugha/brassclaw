@@ -2537,8 +2537,8 @@ impl IgnoresModelOverrideProvider {
 
 #[async_trait]
 impl LlmProvider for IgnoresModelOverrideProvider {
-    fn model_name(&self) -> &str {
-        "ignores-model-override-provider"
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed("ignores-model-override-provider")
     }
 
     fn active_model_name(&self) -> String {
@@ -2686,8 +2686,8 @@ impl BarrierRecordingLlmProvider {
 
 #[async_trait]
 impl LlmProvider for BarrierRecordingLlmProvider {
-    fn model_name(&self) -> &str {
-        &self.model_name
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(&self.model_name)
     }
 
     fn active_model_name(&self) -> String {
@@ -2804,8 +2804,8 @@ impl ToolAwareProvider {
 
 #[async_trait]
 impl LlmProvider for ToolAwareProvider {
-    fn model_name(&self) -> &str {
-        "tool-aware-provider"
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed("tool-aware-provider")
     }
 
     fn cost_per_token(&self) -> (Decimal, Decimal) {
@@ -2968,8 +2968,8 @@ impl LoopCapabilityPort for GatewayCapabilityPort {
 
 #[async_trait]
 impl LlmProvider for RecordingLlmProvider {
-    fn model_name(&self) -> &str {
-        &self.model_name
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(&self.model_name)
     }
 
     fn cost_per_token(&self) -> (Decimal, Decimal) {

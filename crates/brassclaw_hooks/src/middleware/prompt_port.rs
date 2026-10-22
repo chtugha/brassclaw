@@ -239,6 +239,14 @@ impl LoopPromptPort for HookedLoopPromptPort {
             .await
     }
 
+    async fn build_context_prompt_bundle(
+        &self,
+        request: PreparedLoopPromptRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        self.build_with_hooks(|| self.inner.build_context_prompt_bundle(request))
+            .await
+    }
+
     async fn build_prepared_prompt_bundle(
         &self,
         request: PreparedLoopPromptRequest,
@@ -886,13 +894,14 @@ mod tests {
     /// silently dropped from the prompt bundle.
     #[tokio::test]
     async fn prepared_recipe_messages_keep_hooks_materialization_and_single_use_authority() {
-        use brassclaw_host_api::{InvocationId, ThreadId};
+        use brassclaw_host_api::ThreadId;
         use brassclaw_turns::run_profile::{
             HostManagedLoopPromptPort, InMemoryInstructionMaterializationStore,
             InMemoryLoopHostMilestoneSink, InMemoryRunProfileResolver,
             InstructionBundleMaterializedMessage, InstructionMaterializationStore,
             LoopContextBundle, LoopContextPort, LoopContextRequest, LoopInlineMessageRole,
-            PreparedLoopPromptMessage, RunProfileResolutionRequest, RunProfileResolver,
+            LoopPromptMessageSetId, PreparedLoopPromptMessage, RunProfileResolutionRequest,
+            RunProfileResolver,
         };
         use brassclaw_turns::{TurnId, TurnRunId, TurnScope};
         struct NoTranscript;
@@ -956,7 +965,115 @@ mod tests {
         let exact = "Full task\n\n```python\nx = 'ä🙂'\n```".repeat(3000);
         let bundle = port
             .build_prepared_prompt_bundle(PreparedLoopPromptRequest {
-                invocation_id: InvocationId::new(),
+                message_set_id: LoopPromptMessageSetId::new(),
+                metadata: default_request(),
+                messages: vec![PreparedLoopPromptMessage {
+                    role: LoopInlineMessageRole::User,
+                    content: exact.clone(),
+                }],
+            })
+            .await
+            .unwrap();
+        assert_eq!(bundle.messages.len(), 2);
+        assert_eq!(
+            store
+                .get_materialized_message(&context, &bundle.messages[0].content_ref)
+                .unwrap()
+                .unwrap()
+                .model_content,
+            exact
+        );
+        let patch = store
+            .get_materialized_message(&context, &bundle.messages[1].content_ref)
+            .unwrap()
+            .unwrap();
+        assert_eq!(patch.role, "user");
+        assert!(patch.model_content.contains("safety reminder"));
+        assert!(patch.model_content.contains("Untrusted hook content"));
+        authority
+            .authorize_latest_model_request(&context, &bundle.messages, &bundle.surface_version)
+            .unwrap();
+        assert!(
+            authority
+                .authorize_latest_model_request(&context, &bundle.messages, &bundle.surface_version)
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn context_prefix_messages_keep_hooks_materialization_and_single_use_authority() {
+        use brassclaw_host_api::ThreadId;
+        use brassclaw_turns::run_profile::{
+            HostManagedLoopPromptPort, InMemoryInstructionMaterializationStore,
+            InMemoryLoopHostMilestoneSink, InMemoryRunProfileResolver,
+            InstructionBundleMaterializedMessage, InstructionMaterializationStore,
+            LoopContextBundle, LoopContextPort, LoopContextRequest, LoopInlineMessageRole,
+            LoopPromptMessageSetId, PreparedLoopPromptMessage, RunProfileResolutionRequest,
+            RunProfileResolver,
+        };
+        use brassclaw_turns::{TurnId, TurnRunId, TurnScope};
+        struct NoTranscript;
+        #[async_trait]
+        impl LoopContextPort for NoTranscript {
+            async fn load_loop_context(
+                &self,
+                _: LoopContextRequest,
+            ) -> Result<LoopContextBundle, AgentLoopHostError> {
+                Ok(LoopContextBundle::default())
+            }
+        }
+        struct Sink(Arc<InMemoryInstructionMaterializationStore>, LoopRunContext);
+        impl HookPromptMaterializationSink for Sink {
+            fn put(
+                &self,
+                role: &str,
+                reference: &LoopMessageRef,
+                body: String,
+            ) -> Result<(), AgentLoopHostError> {
+                self.0.put_materialized_messages(
+                    &self.1,
+                    vec![InstructionBundleMaterializedMessage {
+                        role: role.into(),
+                        content_ref: reference.clone(),
+                        model_content: body,
+                    }],
+                )
+            }
+        }
+        let context = LoopRunContext::new(
+            TurnScope::new(
+                tenant(),
+                None,
+                None,
+                ThreadId::new("prepared-hooks").unwrap(),
+            ),
+            TurnId::new(),
+            TurnRunId::new(),
+            InMemoryRunProfileResolver::default()
+                .resolve_run_profile(RunProfileResolutionRequest::interactive_default())
+                .await
+                .unwrap(),
+        );
+        let store = Arc::new(InMemoryInstructionMaterializationStore::default());
+        let authority = LoopPromptBundleAuthority::default();
+        let inner = HostManagedLoopPromptPort::new(
+            context.clone(),
+            Arc::new(NoTranscript),
+            Arc::new(InMemoryLoopHostMilestoneSink::default()),
+        )
+        .with_instruction_materialization_store(store.clone())
+        .with_prompt_bundle_authority(authority.clone());
+        let dispatcher = make_dispatcher(
+            HookTrustClass::Installed,
+            BeforePromptHookImpl::Restricted(Box::new(EnvelopeHook)),
+        );
+        let port = HookedLoopPromptPort::new(Arc::new(inner), Arc::new(dispatcher), tenant())
+            .with_materialization_sink(Arc::new(Sink(store.clone(), context.clone())))
+            .with_bundle_authority(authority.clone(), context.clone());
+        let exact = "Full task\n\n```python\nx = 'ä🙂'\n```".repeat(3000);
+        let bundle = port
+            .build_context_prompt_bundle(PreparedLoopPromptRequest {
+                message_set_id: LoopPromptMessageSetId::new(),
                 metadata: default_request(),
                 messages: vec![PreparedLoopPromptMessage {
                     role: LoopInlineMessageRole::User,

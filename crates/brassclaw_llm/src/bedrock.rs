@@ -83,8 +83,8 @@ impl BedrockProvider {
 
 #[async_trait]
 impl LlmProvider for BedrockProvider {
-    fn model_name(&self) -> &str {
-        &self.display_model
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(&self.display_model)
     }
 
     fn cost_per_token(&self) -> (Decimal, Decimal) {

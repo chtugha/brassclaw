@@ -1777,8 +1777,8 @@ impl GeminiOauthProvider {
 
 #[async_trait::async_trait]
 impl LlmProvider for GeminiOauthProvider {
-    fn model_name(&self) -> &str {
-        &self.config.model
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(&self.config.model)
     }
 
     async fn model_metadata(&self) -> Result<ModelMetadata, LlmError> {

@@ -1,5 +1,334 @@
 use super::*;
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_database_budget_configuration_is_atomic_and_strict() {
+    use crate::db_config::{self, ConfigError, ConfigWriteContext};
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let tenant = "native-budget-config";
+    let operator = ConfigWriteContext::Operator;
+    db_config::save_config_key(&rig.pool, tenant, "budget.user_daily_usd", "7.5", operator)
+        .await
+        .unwrap();
+    let before = db_config::list_config_keys(&rig.pool, tenant)
+        .await
+        .unwrap();
+    for key in [
+        "budget.user_daily_usd",
+        "budget.project_daily_usd",
+        "budget.heartbeat_per_tick_usd",
+        "budget.routine_lightweight_usd",
+        "budget.routine_standard_usd",
+        "budget.background_job_default_usd",
+    ] {
+        for invalid in ["not-a-number", "NaN", "-1", "1e100", "1e-100"] {
+            assert!(matches!(
+                db_config::save_config_changes(
+                    &rig.pool,
+                    tenant,
+                    &[
+                        ("llm.default.model", Some("must-not-commit")),
+                        (key, Some(invalid)),
+                    ],
+                    operator
+                )
+                .await,
+                Err(ConfigError::InvalidValue { .. })
+            ));
+            assert_eq!(
+                db_config::list_config_keys(&rig.pool, tenant)
+                    .await
+                    .unwrap(),
+                before
+            );
+        }
+    }
+    for invalid in ["not-a-number", "NaN", "0.5", "1e100"] {
+        assert!(
+            db_config::save_config_key(
+                &rig.pool,
+                tenant,
+                "budget.overestimate_factor",
+                invalid,
+                operator
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(
+            db_config::list_config_keys(&rig.pool, tenant)
+                .await
+                .unwrap(),
+            before
+        );
+    }
+
+    db_config::save_config_changes(
+        &rig.pool,
+        tenant,
+        &[
+            ("budget.warn_at", Some("0.75")),
+            ("budget.pause_at", Some("0.9")),
+        ],
+        operator,
+    )
+    .await
+    .unwrap();
+    // Hold the real publication lock so both independent writers must queue.
+    // Each change is valid against the original, but their combined state is
+    // invalid. Serial complete-document validation must reject exactly one.
+    let control = rig.pool.get().await.unwrap();
+    let lock_key = format!("brassclaw:budget-config:{tenant}");
+    control
+        .query_one(
+            "SELECT pg_advisory_lock(hashtextextended($1,0))",
+            &[&lock_key],
+        )
+        .await
+        .unwrap();
+    async fn writer(
+        pool: Arc<brassclaw_pg::PgPool>,
+        tenant: &'static str,
+        key: &'static str,
+        value: &'static str,
+        ready: tokio::sync::mpsc::UnboundedSender<i32>,
+    ) -> Result<(), ConfigError> {
+        let mut client = pool.get().await.unwrap();
+        let tx = tokio_postgres::Client::build_transaction(&mut client)
+            .isolation_level(tokio_postgres::IsolationLevel::ReadCommitted)
+            .start()
+            .await
+            .unwrap();
+        ready
+            .send(
+                tx.query_one("SELECT pg_backend_pid()", &[])
+                    .await
+                    .unwrap()
+                    .get(0),
+            )
+            .unwrap();
+        let result = db_config::save_config_changes_in_transaction(
+            &tx,
+            tenant,
+            &[(key, Some(value))],
+            ConfigWriteContext::Operator,
+        )
+        .await;
+        if result.is_ok() {
+            tx.commit().await.unwrap();
+        } else {
+            tx.rollback().await.unwrap();
+        }
+        result
+    }
+    let (ready, mut pids) = tokio::sync::mpsc::unbounded_channel();
+    let first = tokio::spawn(writer(
+        rig.pool.clone(),
+        tenant,
+        "budget.warn_at",
+        "0.85",
+        ready.clone(),
+    ));
+    let second = tokio::spawn(writer(
+        rig.pool.clone(),
+        tenant,
+        "budget.pause_at",
+        "0.8",
+        ready,
+    ));
+    let pids = vec![pids.recv().await.unwrap(), pids.recv().await.unwrap()];
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let waiting: i64 = control.query_one(
+            "SELECT count(*) FROM pg_locks WHERE NOT granted AND locktype='advisory' AND pid=ANY($1)",
+            &[&pids],
+        ).await.unwrap().get(0);
+        if waiting == 2 {
+            break;
+        }
+        assert!(
+            !first.is_finished() && !second.is_finished(),
+            "both actual writers must wait for publication ownership"
+        );
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "budget writers did not queue"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        control
+            .query_one(
+                "SELECT pg_advisory_unlock(hashtextextended($1,0))",
+                &[&lock_key]
+            )
+            .await
+            .unwrap()
+            .get::<_, bool>(0)
+    );
+    let outcomes = [first.await.unwrap(), second.await.unwrap()];
+    assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
+    assert_eq!(
+        outcomes
+            .iter()
+            .filter(|result| matches!(result, Err(ConfigError::InvalidValue { .. })))
+            .count(),
+        1
+    );
+    let section = db_config::load_config_snapshot(&rig.pool, tenant)
+        .await
+        .unwrap()
+        .budget
+        .unwrap();
+    brassclaw_reborn_config::BudgetDefaults::compiled_defaults()
+        .with_section(&section)
+        .validate()
+        .unwrap();
+
+    // An externally joined stale-snapshot transaction cannot publish budgets.
+    let before = db_config::list_config_keys(&rig.pool, tenant)
+        .await
+        .unwrap();
+    let mut client = rig.pool.get().await.unwrap();
+    let tx = tokio_postgres::Client::build_transaction(&mut client)
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    assert!(matches!(
+        db_config::save_config_changes_in_transaction(
+            &tx,
+            tenant,
+            &[("budget.user_daily_usd", Some("8"))],
+            operator,
+        )
+        .await,
+        Err(ConfigError::BudgetTransactionIsolation)
+    ));
+    tx.rollback().await.unwrap();
+    assert_eq!(
+        db_config::list_config_keys(&rig.pool, tenant)
+            .await
+            .unwrap(),
+        before
+    );
+
+    db_config::save_config_changes(
+        &rig.pool,
+        tenant,
+        &[
+            ("budget.warn_at", Some("0.6")),
+            ("budget.pause_at", Some("0.7")),
+        ],
+        operator,
+    )
+    .await
+    .unwrap();
+    let before = db_config::list_config_keys(&rig.pool, tenant)
+        .await
+        .unwrap();
+    assert!(
+        db_config::delete_config_key(&rig.pool, tenant, "budget.warn_at")
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        db_config::list_config_keys(&rig.pool, tenant)
+            .await
+            .unwrap(),
+        before
+    );
+    db_config::save_config_changes(
+        &rig.pool,
+        tenant,
+        &[("budget.warn_at", None), ("budget.pause_at", None)],
+        operator,
+    )
+    .await
+    .unwrap();
+
+    control.execute("INSERT INTO brassclaw_config(tenant_id,key,value) VALUES($1,'budget.warn_at','malformed')", &[&tenant]).await.unwrap();
+    assert!(matches!(
+        db_config::load_config_snapshot(&rig.pool, tenant).await,
+        Err(ConfigError::InvalidValue { .. })
+    ));
+    db_config::save_config_key(&rig.pool, tenant, "budget.warn_at", "0.75", operator)
+        .await
+        .unwrap();
+    assert_eq!(
+        db_config::load_config_snapshot(&rig.pool, tenant)
+            .await
+            .unwrap()
+            .budget
+            .unwrap()
+            .user_daily_usd,
+        Some(7.5)
+    );
+}
+
+#[tokio::test]
+async fn native_legacy_budget_import_keeps_coupled_configuration_atomic() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let directory = tempfile::tempdir().unwrap();
+    let home = brassclaw_reborn_config::RebornHome::resolve_from_env_parts(
+        Some(directory.path().as_os_str().to_os_string()),
+        None,
+        None,
+    )
+    .unwrap();
+    let tenant = "native-budget-import";
+    let source = home.path().join("config.toml");
+    std::fs::write(&source, b"[budget]\noverestimate_factor=0.5\n").unwrap();
+    for dry in [true, false] {
+        assert!(
+            crate::migration::run_migration(&rig.pool, &home, tenant, dry)
+                .await
+                .is_err()
+        );
+        assert!(
+            crate::db_config::list_config_keys(&rig.pool, tenant)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+    let bytes = b"[budget]\nuser_daily_usd=7.5\nproject_daily_usd=0\nheartbeat_per_tick_usd=0.07\nroutine_lightweight_usd=0.03\nroutine_standard_usd=0.15\nbackground_job_default_usd=2.5\ndefault_tz='UTC'\nwarn_at=0.95\npause_at=0.99\noverestimate_factor=1.5\n";
+    std::fs::write(&source, bytes).unwrap();
+    assert!(
+        crate::migration::run_migration(&rig.pool, &home, tenant, true)
+            .await
+            .unwrap()
+            .config_migrated
+    );
+    assert!(
+        crate::db_config::list_config_keys(&rig.pool, tenant)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        crate::migration::run_migration(&rig.pool, &home, tenant, false)
+            .await
+            .unwrap()
+            .config_migrated
+    );
+    let budget = crate::db_config::load_config_snapshot(&rig.pool, tenant)
+        .await
+        .unwrap()
+        .budget
+        .unwrap();
+    assert_eq!(budget.user_daily_usd, Some(7.5));
+    assert_eq!(budget.project_daily_usd, Some(0.0));
+    assert_eq!(budget.heartbeat_per_tick_usd, Some(0.07));
+    assert_eq!(budget.routine_lightweight_usd, Some(0.03));
+    assert_eq!(budget.routine_standard_usd, Some(0.15));
+    assert_eq!(budget.background_job_default_usd, Some(2.5));
+    assert_eq!(budget.default_tz.as_deref(), Some("UTC"));
+    assert_eq!(budget.warn_at, Some(0.95));
+    assert_eq!(budget.pause_at, Some(0.99));
+    assert_eq!(budget.overestimate_factor, Some(1.5));
+    assert_eq!(std::fs::read(source).unwrap(), bytes);
+}
+
 #[cfg(feature = "migrate-from-libsql")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_legacy_provider_import_is_atomic_and_preserves_sources() {
@@ -4759,4 +5088,1024 @@ async fn native_memory_archive_projection_validates_counters_and_committed_effec
     ));
     filesystem.run_migrations().await.unwrap();
     memory_archive_contract::assert_archive_contract(filesystem).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_live_coding_limits_reach_retained_primitives_from_webui_settings() {
+    use brassclaw_authorization::{
+        InstanceToolRule, LiveStableToolPolicy, StableToolPolicySnapshot, ToolExecutionRules,
+    };
+    use brassclaw_host_api::{
+        CapabilitySet, ExecutionContext, ExtensionId, MountAlias, MountGrant, MountPermissions,
+        MountView, NetworkPolicy, RuntimeKind, TrustClass, VirtualPath,
+    };
+    use brassclaw_host_runtime::{
+        APPLY_PATCH_CAPABILITY_ID, GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID,
+        HostPrimitiveSettingsSource, LIST_DIR_CAPABILITY_ID, READ_FILE_CAPABILITY_ID,
+        RuntimeCapabilityOutcome, RuntimeCapabilityRequest, WRITE_FILE_CAPABILITY_ID,
+    };
+    use brassclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance};
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let home = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    std::fs::write(workspace.path().join("lines.txt"), "α\nβ\nγ\n").unwrap();
+    std::fs::write(workspace.path().join("patch.txt"), "x").unwrap();
+    std::fs::create_dir(workspace.path().join("nested")).unwrap();
+    std::fs::write(workspace.path().join("nested/leaf.txt"), "leaf\n").unwrap();
+    let owner = "live-coding-owner";
+    let runtime = Arc::new(
+        Box::pin(build_reborn_runtime(
+            RebornRuntimeInput::from_services(
+                rig.build_input(owner, home.path())
+                    .with_local_dev_workspace_root(workspace.path().to_owned())
+                    .with_runtime_policy(local_dev_runtime_policy()),
+            )
+            .with_identity(RebornRuntimeIdentity {
+                tenant_id: "default".into(),
+                ..RebornRuntimeIdentity::reborn_cli()
+            }),
+        ))
+        .await
+        .unwrap(),
+    );
+    let vm = runtime.global_monty_owner.client().root_identity();
+    let mounts = MountView::new(vec![MountGrant::new(
+        MountAlias::new("/workspace").unwrap(),
+        VirtualPath::new("/projects/workspace").unwrap(),
+        MountPermissions::read_write_list_delete(),
+    )])
+    .unwrap();
+    let caps = [
+        READ_FILE_CAPABILITY_ID,
+        WRITE_FILE_CAPABILITY_ID,
+        APPLY_PATCH_CAPABILITY_ID,
+        LIST_DIR_CAPABILITY_ID,
+        GLOB_CAPABILITY_ID,
+        GREP_CAPABILITY_ID,
+    ];
+    let mut tools = HashMap::new();
+    let mut mappings = HashMap::new();
+    for cap in caps {
+        let id = uuid::Uuid::new_v4();
+        mappings.insert(CapabilityId::new(cap).unwrap(), id);
+        tools.insert(
+            id,
+            InstanceToolRule {
+                enabled: true,
+                revision: 1,
+                execution: ToolExecutionRules {
+                    allowed_effects: vec![EffectKind::ReadFilesystem, EffectKind::WriteFilesystem],
+                    mounts: mounts.clone(),
+                    network: NetworkPolicy::default(),
+                    secrets: vec![],
+                    resource_ceiling: None,
+                },
+            },
+        );
+    }
+    let policy = Arc::new(
+        LiveStableToolPolicy::new(StableToolPolicySnapshot {
+            revision: 1,
+            tools,
+            capabilities: mappings,
+        })
+        .unwrap(),
+    );
+    let kernel = runtime.services.monty_kernel.as_ref().unwrap();
+    let mut retained = HashMap::new();
+    for cap in caps {
+        let id = CapabilityId::new(cap).unwrap();
+        let native = kernel.builtin(&id, None).unwrap();
+        native.verify_native_artifact().await.unwrap();
+        retained.insert(
+            id.clone(),
+            kernel
+                .builtin_with_policy(&id, native.native_identity().unwrap(), policy.clone())
+                .unwrap(),
+        );
+    }
+    let invoke = |cap: &str, input| {
+        RuntimeCapabilityRequest::new(
+            ExecutionContext::local_default(
+                UserId::new(owner).unwrap(),
+                ExtensionId::new("builtin").unwrap(),
+                RuntimeKind::FirstParty,
+                TrustClass::FirstParty,
+                CapabilitySet::default(),
+                mounts.clone(),
+            )
+            .unwrap(),
+            CapabilityId::new(cap).unwrap(),
+            ResourceEstimate::default(),
+            input,
+            TrustDecision {
+                effective_trust: EffectiveTrustClass::user_trusted(),
+                authority_ceiling: AuthorityCeiling {
+                    allowed_effects: vec![EffectKind::ReadFilesystem, EffectKind::WriteFilesystem],
+                    max_resource_ceiling: None,
+                },
+                provenance: TrustProvenance::AdminConfig,
+                evaluated_at: chrono::Utc::now(),
+            },
+        )
+    };
+    let bundle = crate::build_webui_services(runtime.clone(), None)
+        .await
+        .unwrap();
+    let caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
+        TenantId::new("default").unwrap(),
+        UserId::new(owner).unwrap(),
+        None,
+        None,
+    );
+    let original = bundle
+        .api
+        .get_monty_vm_settings(caller.clone())
+        .await
+        .unwrap()
+        .settings;
+    let mut limits = original.execution_limits;
+    limits.max_coding_read_bytes = 16;
+    limits.max_coding_write_bytes = 4;
+    limits.max_coding_patch_bytes = 8;
+    limits.default_coding_read_lines = 1;
+    limits.max_coding_directory_entries = 1;
+    limits.default_coding_directory_depth = 0;
+    limits.default_coding_max_results = 1;
+    limits.max_coding_output_bytes = 8;
+    limits.default_coding_head_lines = 1;
+    limits.max_coding_scan_bytes = 16;
+    limits.max_coding_visited_entries = 8;
+    limits.max_coding_diff_input_bytes = 1000;
+    limits.max_coding_diff_preview_bytes = 16;
+    limits.coding_diff_context_lines = 0;
+    let changed = bundle
+        .api
+        .update_monty_vm_settings(
+            caller.clone(),
+            serde_json::from_value(
+                json!({"expected_revision":original.revision,"execution_limits":limits}),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let source = runtime.services.primitive_settings.as_ref().unwrap();
+    let captured = source.snapshot().await.unwrap();
+    assert_eq!(captured.revision, changed.settings.revision);
+    assert_eq!(captured.limits, limits);
+    assert_eq!(runtime.global_monty_owner.client().root_identity(), vm);
+    let RuntimeCapabilityOutcome::Completed(read) = retained
+        [&CapabilityId::new(READ_FILE_CAPABILITY_ID).unwrap()]
+        .invoke(invoke(
+            READ_FILE_CAPABILITY_ID,
+            json!({"path":"/workspace/lines.txt"}),
+        ))
+        .await
+        .unwrap()
+    else {
+        panic!("captured read policy must apply")
+    };
+    assert_eq!(read.output["lines_shown"], 1);
+    assert_eq!(read.output["truncated_by_default"], true);
+    let RuntimeCapabilityOutcome::Completed(list) = retained
+        [&CapabilityId::new(LIST_DIR_CAPABILITY_ID).unwrap()]
+        .invoke(invoke(
+            LIST_DIR_CAPABILITY_ID,
+            json!({"path":"/workspace","recursive":true}),
+        ))
+        .await
+        .unwrap()
+    else {
+        panic!("list policy")
+    };
+    assert_eq!(list.output["count"], 1);
+    assert_eq!(list.output["truncated"], true);
+    let RuntimeCapabilityOutcome::Completed(glob) = retained
+        [&CapabilityId::new(GLOB_CAPABILITY_ID).unwrap()]
+        .invoke(invoke(
+            GLOB_CAPABILITY_ID,
+            json!({"path":"/workspace","pattern":"*.txt"}),
+        ))
+        .await
+        .unwrap()
+    else {
+        panic!("glob policy")
+    };
+    assert_eq!(glob.output["count"], 1);
+    assert_eq!(glob.output["truncated"], true);
+    let RuntimeCapabilityOutcome::Completed(grep)=retained[&CapabilityId::new(GREP_CAPABILITY_ID).unwrap()].invoke(invoke(GREP_CAPABILITY_ID,json!({"path":"/workspace/lines.txt","pattern":".","output_mode":"content","context":usize::MAX}))).await.unwrap() else {panic!("grep policy and maximal context")};
+    assert!(grep.output["content"].as_str().unwrap().len() <= 8);
+    assert_eq!(grep.output["truncated"], true);
+    for (cap, input, path, original) in [
+        (
+            WRITE_FILE_CAPABILITY_ID,
+            json!({"path":"/workspace/reject.txt","content":"12345"}),
+            "reject.txt",
+            None,
+        ),
+        (
+            APPLY_PATCH_CAPABILITY_ID,
+            json!({"path":"/workspace/patch.txt","old_string":"x","new_string":"123456789"}),
+            "patch.txt",
+            Some("x"),
+        ),
+    ] {
+        assert!(matches!(
+            retained[&CapabilityId::new(cap).unwrap()]
+                .invoke(invoke(cap, input))
+                .await
+                .unwrap(),
+            RuntimeCapabilityOutcome::Failed(_)
+        ));
+        assert_eq!(
+            std::fs::read_to_string(workspace.path().join(path))
+                .ok()
+                .as_deref(),
+            original
+        );
+    }
+    // The same retained native handlers must follow a second actual WebUI save.
+    // This crosses both the former write input quota and shared output quota.
+    limits.max_coding_read_bytes = 8 * 1024 * 1024;
+    limits.max_coding_write_bytes = 8 * 1024 * 1024;
+    limits.max_coding_patch_bytes = 16;
+    limits.default_coding_read_lines = 0;
+    limits.default_coding_head_lines = 0;
+    limits.max_coding_diff_preview_bytes = 32;
+    let raised = bundle
+        .api
+        .update_monty_vm_settings(
+            caller.clone(),
+            serde_json::from_value(
+                json!({"expected_revision":changed.settings.revision,"execution_limits":limits}),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        source.snapshot().await.unwrap().revision,
+        raised.settings.revision
+    );
+    let content = "a".repeat(6 * 1024 * 1024 + 1);
+    assert!(matches!(
+        retained[&CapabilityId::new(WRITE_FILE_CAPABILITY_ID).unwrap()]
+            .invoke(invoke(
+                WRITE_FILE_CAPABILITY_ID,
+                json!({"path":"/workspace/large.txt","content":content})
+            ))
+            .await
+            .unwrap(),
+        RuntimeCapabilityOutcome::Completed(_)
+    ));
+    let RuntimeCapabilityOutcome::Completed(read) = retained
+        [&CapabilityId::new(READ_FILE_CAPABILITY_ID).unwrap()]
+        .invoke(invoke(
+            READ_FILE_CAPABILITY_ID,
+            json!({"path":"/workspace/large.txt"}),
+        ))
+        .await
+        .unwrap()
+    else {
+        panic!("shared one MiB quota must not shadow coding policy")
+    };
+    assert!(read.output["content"].as_str().unwrap().ends_with(&content));
+    assert!(read.usage.output_bytes > 6 * 1024 * 1024);
+    let RuntimeCapabilityOutcome::Completed(patched) = retained
+        [&CapabilityId::new(APPLY_PATCH_CAPABILITY_ID).unwrap()]
+        .invoke(invoke(
+            APPLY_PATCH_CAPABILITY_ID,
+            json!({"path":"/workspace/patch.txt","old_string":"x","new_string":"123456789"}),
+        ))
+        .await
+        .unwrap()
+    else {
+        panic!("raised patch limit")
+    };
+    assert_eq!(
+        std::fs::read_to_string(workspace.path().join("patch.txt")).unwrap(),
+        "123456789"
+    );
+    assert!(patched.display_preview.unwrap().output_preview.len() <= 32);
+    let client = rig.pool.get().await.unwrap();
+    client.batch_execute("CREATE FUNCTION reject_coding_policy_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.execution_limits->'max_coding_patch_bytes' IS DISTINCT FROM OLD.execution_limits->'max_coding_patch_bytes' THEN RAISE EXCEPTION 'fixture rejection'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_coding_policy_fixture BEFORE UPDATE ON reborn_monty_vm_settings FOR EACH ROW EXECUTE FUNCTION reject_coding_policy_fixture()").await.unwrap();
+    let before = source.snapshot().await.unwrap();
+    limits.max_coding_patch_bytes = 32;
+    assert!(
+        bundle
+            .api
+            .update_monty_vm_settings(
+                caller.clone(),
+                serde_json::from_value(
+                    json!({"expected_revision":raised.settings.revision,"execution_limits":limits})
+                )
+                .unwrap()
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(source.snapshot().await.unwrap().limits, before.limits);
+    assert_eq!(
+        bundle
+            .api
+            .get_monty_vm_settings(caller.clone())
+            .await
+            .unwrap()
+            .settings
+            .revision,
+        raised.settings.revision
+    );
+    client.batch_execute("DROP TRIGGER reject_coding_policy_fixture ON reborn_monty_vm_settings; DROP FUNCTION reject_coding_policy_fixture()").await.unwrap();
+    let restored=bundle.api.update_monty_vm_settings(caller,serde_json::from_value(json!({"expected_revision":raised.settings.revision,"execution_limits":original.execution_limits})).unwrap()).await.unwrap();
+    assert_eq!(
+        source.snapshot().await.unwrap().revision,
+        restored.settings.revision
+    );
+    assert_eq!(runtime.global_monty_owner.client().root_identity(), vm);
+    drop(client);
+    drop(retained);
+    drop(bundle);
+    Arc::try_unwrap(runtime)
+        .unwrap_or_else(|_| panic!("fixture owns runtime"))
+        .shutdown()
+        .await
+        .unwrap();
+}
+
+#[path = "../../../../brassclaw_filesystem/tests/support/bounded_directory_contract.rs"]
+mod bounded_directory_contract;
+
+#[tokio::test]
+async fn native_pg_bounded_directories_preserve_deduplication_and_literal_prefixes() {
+    use brassclaw_filesystem::{FilesystemError, RootFilesystem};
+    use brassclaw_host_api::VirtualPath;
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let filesystem = brassclaw_filesystem::PostgresRootFilesystem::new(rig.pool.as_ref().clone());
+    filesystem.run_migrations().await.unwrap();
+    bounded_directory_contract::assert_bounded_directory_contract(&filesystem).await;
+    assert!(matches!(
+        filesystem
+            .list_dir_bounded(&VirtualPath::new("/projects/absent").unwrap(), 0)
+            .await,
+        Err(FilesystemError::NotFound { .. })
+    ));
+    assert!(matches!(
+        filesystem
+            .list_dir_bounded(
+                &VirtualPath::new("/projects/bounded_%!/ü/beta.txt").unwrap(),
+                0
+            )
+            .await,
+        Err(FilesystemError::Backend { .. })
+    ));
+    let empty = VirtualPath::new("/projects/empty-directory").unwrap();
+    filesystem.create_dir_all(&empty).await.unwrap();
+    for limit in [0, 1] {
+        assert!(
+            filesystem
+                .list_dir_bounded(&empty, limit)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+    let largest_native = filesystem.list_dir_bounded(&empty, usize::MAX).await;
+    if i64::try_from(usize::MAX).is_err() {
+        assert!(largest_native.is_err());
+    } else {
+        assert!(largest_native.unwrap().is_empty());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_coding_primitives_protect_structured_entries_on_both_backends() {
+    use brassclaw_authorization::{
+        InstanceToolAuthorizer, InstanceToolRule, LiveStableToolPolicy, StableToolPolicySnapshot,
+        ToolExecutionRules,
+    };
+    use brassclaw_filesystem::{
+        CasExpectation, Entry, InMemoryBackend, RecordKind, RootFilesystem,
+    };
+    use brassclaw_host_api::{
+        CapabilityId, CapabilitySet, EffectKind, ExecutionContext, ExtensionId, MountAlias,
+        MountGrant, MountPermissions, MountView, NetworkPolicy, PackageId, ResourceEstimate,
+        RuntimeKind, TrustClass, UserId, VirtualPath,
+    };
+    use brassclaw_host_runtime::{
+        APPLY_PATCH_CAPABILITY_ID, BuiltinFirstPartyTools, CapabilitySurfaceVersion,
+        GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID, HostRuntimeServices, LIST_DIR_CAPABILITY_ID,
+        NativeVerificationLimits, READ_FILE_CAPABILITY_ID, RuntimeCapabilityOutcome,
+        RuntimeCapabilityRequest, RuntimeFailureKind, WRITE_FILE_CAPABILITY_ID,
+        builtin_first_party_package, builtin_native_first_party_handlers,
+    };
+    use brassclaw_trust::{
+        AdminConfig, AdminEntry, AuthorityCeiling, EffectiveTrustClass, HostTrustAssignment,
+        HostTrustPolicy, TrustDecision, TrustProvenance,
+    };
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    // Backend-delegating adapter deliberately uses the trait's shared default
+    // bounded reader. It pauses after real metadata capture, never invents a
+    // stat/result, and lets a trusted writer perform an actual conversion.
+    struct CapturedStatFilesystem<F> {
+        inner: Arc<F>,
+        target: VirtualPath,
+        target_stats_before_pause: std::sync::atomic::AtomicUsize,
+        pause_write: std::sync::atomic::AtomicBool,
+        entered: tokio::sync::Notify,
+        resume: tokio::sync::Notify,
+    }
+    #[async_trait::async_trait]
+    impl<F: RootFilesystem + 'static> RootFilesystem for CapturedStatFilesystem<F> {
+        async fn stat(
+            &self,
+            path: &VirtualPath,
+        ) -> Result<brassclaw_filesystem::FileStat, brassclaw_filesystem::FilesystemError> {
+            let stat = self.inner.stat(path).await?;
+            if path == &self.target
+                && matches!(
+                    self.target_stats_before_pause.fetch_update(
+                        std::sync::atomic::Ordering::AcqRel,
+                        std::sync::atomic::Ordering::Acquire,
+                        |remaining| remaining.checked_sub(1),
+                    ),
+                    Ok(1)
+                )
+            {
+                self.entered.notify_one();
+                self.resume.notified().await;
+            }
+            Ok(stat)
+        }
+        async fn get(
+            &self,
+            path: &VirtualPath,
+        ) -> Result<
+            Option<brassclaw_filesystem::VersionedEntry>,
+            brassclaw_filesystem::FilesystemError,
+        > {
+            self.inner.get(path).await
+        }
+        async fn put(
+            &self,
+            path: &VirtualPath,
+            entry: Entry,
+            cas: CasExpectation,
+        ) -> Result<brassclaw_filesystem::RecordVersion, brassclaw_filesystem::FilesystemError>
+        {
+            self.inner.put(path, entry, cas).await
+        }
+        async fn put_opaque(
+            &self,
+            path: &VirtualPath,
+            body: Vec<u8>,
+            cas: CasExpectation,
+        ) -> Result<brassclaw_filesystem::RecordVersion, brassclaw_filesystem::FilesystemError>
+        {
+            if path == &self.target
+                && self
+                    .pause_write
+                    .swap(false, std::sync::atomic::Ordering::AcqRel)
+            {
+                self.entered.notify_one();
+                self.resume.notified().await;
+            }
+            self.inner.put_opaque(path, body, cas).await
+        }
+        async fn list_dir(
+            &self,
+            path: &VirtualPath,
+        ) -> Result<Vec<brassclaw_filesystem::DirEntry>, brassclaw_filesystem::FilesystemError>
+        {
+            self.inner.list_dir(path).await
+        }
+        async fn list_dir_bounded(
+            &self,
+            path: &VirtualPath,
+            max_entries: usize,
+        ) -> Result<Vec<brassclaw_filesystem::DirEntry>, brassclaw_filesystem::FilesystemError>
+        {
+            self.inner.list_dir_bounded(path, max_entries).await
+        }
+    }
+
+    async fn check<F: RootFilesystem + 'static>(filesystem: Arc<F>) {
+        let root = VirtualPath::new("/projects/record-boundary").unwrap();
+        let path = VirtualPath::new("/projects/record-boundary/state.json").unwrap();
+        let filesystem = Arc::new(CapturedStatFilesystem {
+            inner: filesystem,
+            target: path.clone(),
+            target_stats_before_pause: std::sync::atomic::AtomicUsize::new(0),
+            pause_write: std::sync::atomic::AtomicBool::new(false),
+            entered: tokio::sync::Notify::new(),
+            resume: tokio::sync::Notify::new(),
+        });
+        filesystem
+            .put(
+                &path,
+                Entry::bytes(b"ordinary file\r\n".to_vec()),
+                CasExpectation::Absent,
+            )
+            .await
+            .unwrap();
+        assert!(!filesystem.stat(&path).await.unwrap().sensitive);
+        // Also exercise the native backend reader, including PostgreSQL's
+        // single-query implementation with a ceiling beyond signed i64.
+        assert_eq!(
+            filesystem
+                .inner
+                .read_file_bounded(&path, usize::MAX)
+                .await
+                .unwrap(),
+            Some(b"ordinary file\r\n".to_vec())
+        );
+        let mounts = MountView::new(vec![MountGrant::new(
+            MountAlias::new("/workspace").unwrap(),
+            root,
+            MountPermissions::read_write_list_delete(),
+        )])
+        .unwrap();
+        let capabilities = [
+            READ_FILE_CAPABILITY_ID,
+            WRITE_FILE_CAPABILITY_ID,
+            APPLY_PATCH_CAPABILITY_ID,
+            LIST_DIR_CAPABILITY_ID,
+            GLOB_CAPABILITY_ID,
+            GREP_CAPABILITY_ID,
+        ];
+        let mut tools = HashMap::new();
+        let mut mappings = HashMap::new();
+        for capability in capabilities {
+            let id = uuid::Uuid::new_v4();
+            mappings.insert(CapabilityId::new(capability).unwrap(), id);
+            tools.insert(
+                id,
+                InstanceToolRule {
+                    enabled: true,
+                    revision: 1,
+                    execution: ToolExecutionRules {
+                        allowed_effects: vec![
+                            EffectKind::ReadFilesystem,
+                            EffectKind::WriteFilesystem,
+                        ],
+                        mounts: mounts.clone(),
+                        network: NetworkPolicy::default(),
+                        secrets: vec![],
+                        resource_ceiling: None,
+                    },
+                },
+            );
+        }
+        let policy = Arc::new(
+            LiveStableToolPolicy::new(StableToolPolicySnapshot {
+                revision: 1,
+                tools,
+                capabilities: mappings,
+            })
+            .unwrap(),
+        );
+        let mut registry = brassclaw_extensions::ExtensionRegistry::new();
+        registry
+            .insert(builtin_first_party_package().unwrap())
+            .unwrap();
+        let limits = brassclaw_host_api::MontyExecutionLimits::default();
+        let preparation =
+            brassclaw_monty_host::utility::UtilityLimits::from_execution(limits).unwrap();
+        let native = builtin_native_first_party_handlers(
+            BuiltinFirstPartyTools::default(),
+            limits.max_native_artifact_bytes,
+            NativeVerificationLimits::new(
+                preparation.bounds.max_stdout_bytes,
+                preparation.process.response_timeout,
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+        let trust = HostTrustPolicy::new(vec![Box::new(AdminConfig::with_entries(vec![
+            AdminEntry::for_local_manifest(
+                PackageId::new("builtin").unwrap(),
+                "/system/extensions/builtin/manifest.toml".into(),
+                None,
+                HostTrustAssignment::first_party(),
+                vec![EffectKind::ReadFilesystem, EffectKind::WriteFilesystem],
+                None,
+            ),
+        ]))])
+        .unwrap();
+        let services = HostRuntimeServices::new(
+            Arc::new(registry),
+            filesystem.clone(),
+            Arc::new(brassclaw_resources::InMemoryResourceGovernor::new()),
+            Arc::new(InstanceToolAuthorizer::new(policy.clone())),
+            brassclaw_processes::ProcessServices::in_memory(),
+            CapabilitySurfaceVersion::new("record-boundary").unwrap(),
+        )
+        .with_first_party_capabilities(Arc::new(native))
+        .with_trust_policy(Arc::new(trust))
+        .with_runtime_policy(local_dev_runtime_policy());
+        let kernel = crate::monty_kernel::capture(&services).unwrap();
+        let mut retained = HashMap::new();
+        for capability in capabilities {
+            let id = CapabilityId::new(capability).unwrap();
+            let native = kernel.builtin(&id, None).unwrap();
+            if capability == READ_FILE_CAPABILITY_ID {
+                // Every registration below shares this actual executable image.
+                native.verify_native_artifact().await.unwrap();
+            }
+            retained.insert(
+                id.clone(),
+                kernel
+                    .builtin_with_policy(&id, native.native_identity().unwrap(), policy.clone())
+                    .unwrap(),
+            );
+        }
+        let invoke = |capability: &str, input| {
+            RuntimeCapabilityRequest::new(
+                ExecutionContext::local_default(
+                    UserId::new("record-owner").unwrap(),
+                    ExtensionId::new("builtin").unwrap(),
+                    RuntimeKind::FirstParty,
+                    TrustClass::FirstParty,
+                    CapabilitySet::default(),
+                    mounts.clone(),
+                )
+                .unwrap(),
+                CapabilityId::new(capability).unwrap(),
+                ResourceEstimate::default(),
+                input,
+                TrustDecision {
+                    effective_trust: EffectiveTrustClass::user_trusted(),
+                    authority_ceiling: AuthorityCeiling {
+                        allowed_effects: vec![
+                            EffectKind::ReadFilesystem,
+                            EffectKind::WriteFilesystem,
+                        ],
+                        max_resource_ceiling: None,
+                    },
+                    provenance: TrustProvenance::AdminConfig,
+                    evaluated_at: chrono::Utc::now(),
+                },
+            )
+        };
+        let RuntimeCapabilityOutcome::Completed(read) = retained
+            [&CapabilityId::new(READ_FILE_CAPABILITY_ID).unwrap()]
+            .invoke(invoke(
+                READ_FILE_CAPABILITY_ID,
+                json!({"path":"/workspace/state.json"}),
+            ))
+            .await
+            .unwrap()
+        else {
+            panic!("ordinary file must remain readable")
+        };
+        assert!(
+            read.output["content"]
+                .as_str()
+                .unwrap()
+                .contains("ordinary file")
+        );
+        for (capability, input) in [
+            (
+                WRITE_FILE_CAPABILITY_ID,
+                json!({"path":"/workspace/state.json","content":"ordinary replacement"}),
+            ),
+            (
+                APPLY_PATCH_CAPABILITY_ID,
+                json!({"path":"/workspace/state.json","old_string":"ordinary","new_string":"visible"}),
+            ),
+        ] {
+            let outcome = retained[&CapabilityId::new(capability).unwrap()]
+                .invoke(invoke(capability, input))
+                .await
+                .unwrap();
+            assert!(
+                matches!(outcome, RuntimeCapabilityOutcome::Completed(_)),
+                "opaque file edit {capability} must remain supported: {outcome:?}"
+            );
+        }
+        filesystem
+            .put(
+                &path,
+                Entry::record(
+                    RecordKind::new("protected_record").unwrap(),
+                    &json!({"value":"private-record-sentinel"}),
+                )
+                .unwrap(),
+                CasExpectation::Any,
+            )
+            .await
+            .unwrap();
+        let original = filesystem.get(&path).await.unwrap().unwrap();
+        for cas in [
+            CasExpectation::Any,
+            CasExpectation::Absent,
+            CasExpectation::Version(original.version),
+        ] {
+            assert!(
+                filesystem
+                    .inner
+                    .put_opaque(&path, b"must retain record".to_vec(), cas)
+                    .await
+                    .is_err()
+            );
+            assert_eq!(filesystem.get(&path).await.unwrap().unwrap(), original);
+        }
+        assert!(matches!(
+            filesystem.inner.read_file_bounded(&path, usize::MAX).await,
+            Err(brassclaw_filesystem::FilesystemError::Unsupported { .. })
+        ));
+        for (capability, input) in [
+            (
+                READ_FILE_CAPABILITY_ID,
+                json!({"path":"/workspace/state.json"}),
+            ),
+            (
+                WRITE_FILE_CAPABILITY_ID,
+                json!({"path":"/workspace/state.json","content":"replacement"}),
+            ),
+            (
+                APPLY_PATCH_CAPABILITY_ID,
+                json!({"path":"/workspace/state.json","old_string":"private-record-sentinel","new_string":"replacement"}),
+            ),
+            (
+                GREP_CAPABILITY_ID,
+                json!({"path":"/workspace/state.json","pattern":"private-record-sentinel"}),
+            ),
+        ] {
+            let RuntimeCapabilityOutcome::Failed(failure) = retained
+                [&CapabilityId::new(capability).unwrap()]
+                .invoke(invoke(capability, input))
+                .await
+                .unwrap()
+            else {
+                panic!("coding primitive must reject a structured entry")
+            };
+            assert_eq!(failure.kind, RuntimeFailureKind::Authorization);
+            let after = filesystem.get(&path).await.unwrap().unwrap();
+            assert_eq!(after.version, original.version);
+            assert_eq!(after.entry, original.entry);
+        }
+        for (capability, input, collection) in [
+            (
+                LIST_DIR_CAPABILITY_ID,
+                json!({"path":"/workspace"}),
+                "entries",
+            ),
+            (
+                GLOB_CAPABILITY_ID,
+                json!({"path":"/workspace","pattern":"*.json"}),
+                "files",
+            ),
+            (
+                GREP_CAPABILITY_ID,
+                json!({"path":"/workspace","pattern":"private-record-sentinel"}),
+                "files",
+            ),
+        ] {
+            let RuntimeCapabilityOutcome::Completed(scanned) = retained
+                [&CapabilityId::new(capability).unwrap()]
+                .invoke(invoke(capability, input))
+                .await
+                .unwrap()
+            else {
+                panic!("scanning may omit protected entries without reading their bodies")
+            };
+            assert_eq!(scanned.output[collection], json!([]));
+            assert!(
+                !serde_json::to_string(&scanned.output)
+                    .unwrap()
+                    .contains("private-record-sentinel")
+            );
+        }
+        let after_scan = filesystem.get(&path).await.unwrap().unwrap();
+        assert_eq!(after_scan, original);
+        assert!(filesystem.stat(&path).await.unwrap().sensitive);
+        // A trusted record owner can intentionally replace it with an opaque
+        // file; no stale classification or blanket path block remains.
+        filesystem
+            .put(
+                &path,
+                Entry::bytes(b"ordinary successor".to_vec()),
+                CasExpectation::Version(original.version),
+            )
+            .await
+            .unwrap();
+        assert!(!filesystem.stat(&path).await.unwrap().sensitive);
+        let RuntimeCapabilityOutcome::Completed(read) = retained
+            [&CapabilityId::new(READ_FILE_CAPABILITY_ID).unwrap()]
+            .invoke(invoke(
+                READ_FILE_CAPABILITY_ID,
+                json!({"path":"/workspace/state.json"}),
+            ))
+            .await
+            .unwrap()
+        else {
+            panic!("opaque successor must become readable")
+        };
+        assert!(
+            read.output["content"]
+                .as_str()
+                .unwrap()
+                .contains("ordinary successor")
+        );
+        // Both editing Tools finish all metadata/read checks before this pause.
+        // A trusted conversion at the native mutation boundary must survive.
+        for (capability, input) in [
+            (
+                WRITE_FILE_CAPABILITY_ID,
+                json!({"path":"/workspace/state.json","content":"must not overwrite record"}),
+            ),
+            (
+                APPLY_PATCH_CAPABILITY_ID,
+                json!({"path":"/workspace/state.json","old_string":"ordinary","new_string":"patched"}),
+            ),
+        ] {
+            filesystem
+                .put(
+                    &path,
+                    Entry::bytes(b"ordinary successor".to_vec()),
+                    CasExpectation::Any,
+                )
+                .await
+                .unwrap();
+            filesystem
+                .pause_write
+                .store(true, std::sync::atomic::Ordering::Release);
+            let (outcome, converted) = tokio::join!(
+                async {
+                    retained[&CapabilityId::new(capability).unwrap()]
+                        .invoke(invoke(capability, input))
+                        .await
+                        .unwrap()
+                },
+                async {
+                    tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        filesystem.entered.notified(),
+                    )
+                    .await
+                    .expect("actual editing Tool reaches native write boundary");
+                    filesystem
+                        .put(
+                            &path,
+                            Entry::record(
+                                RecordKind::new("protected_record").unwrap(),
+                                &json!({"value":"write-raced-private-record"}),
+                            )
+                            .unwrap(),
+                            CasExpectation::Any,
+                        )
+                        .await
+                        .unwrap();
+                    let converted = filesystem.get(&path).await.unwrap().unwrap();
+                    filesystem.resume.notify_one();
+                    converted
+                }
+            );
+            let RuntimeCapabilityOutcome::Failed(failure) = outcome else {
+                panic!("{capability} must not convert a newly structured target")
+            };
+            assert_eq!(failure.kind, RuntimeFailureKind::Authorization);
+            assert_eq!(filesystem.get(&path).await.unwrap().unwrap(), converted);
+        }
+        // Ordinary creation under missing parents works without a legacy mkdir.
+        let created = retained[&CapabilityId::new(WRITE_FILE_CAPABILITY_ID).unwrap()]
+            .invoke(invoke(
+                WRITE_FILE_CAPABILITY_ID,
+                json!({"path":"/workspace/new/nested/file.txt","content":"nested bytes"}),
+            ))
+            .await
+            .unwrap();
+        assert!(
+            matches!(created, RuntimeCapabilityOutcome::Completed(_)),
+            "{created:?}"
+        );
+        assert_eq!(
+            filesystem
+                .get(&VirtualPath::new("/projects/record-boundary/new/nested/file.txt").unwrap())
+                .await
+                .unwrap()
+                .unwrap()
+                .entry
+                .body,
+            b"nested bytes"
+        );
+        filesystem
+            .put(
+                &path,
+                Entry::bytes(b"ordinary successor".to_vec()),
+                CasExpectation::Any,
+            )
+            .await
+            .unwrap();
+        // The outer coding stat and the default reader's own stat both capture
+        // the actual opaque entry. Replace it only after the latter snapshot;
+        // get must reject the newly structured body rather than trust that stat.
+        filesystem
+            .target_stats_before_pause
+            .store(2, std::sync::atomic::Ordering::Release);
+        let (outcome, converted) = tokio::join!(
+            async {
+                retained[&CapabilityId::new(READ_FILE_CAPABILITY_ID).unwrap()]
+                    .invoke(invoke(
+                        READ_FILE_CAPABILITY_ID,
+                        json!({"path":"/workspace/state.json"}),
+                    ))
+                    .await
+                    .unwrap()
+            },
+            async {
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    filesystem.entered.notified(),
+                )
+                .await
+                .expect("actual read reaches its captured metadata");
+                filesystem
+                    .put(
+                        &path,
+                        Entry::record(
+                            RecordKind::new("protected_record").unwrap(),
+                            &json!({"value":"raced-private-record"}),
+                        )
+                        .unwrap(),
+                        CasExpectation::Any,
+                    )
+                    .await
+                    .unwrap();
+                let converted = filesystem.get(&path).await.unwrap().unwrap();
+                filesystem.resume.notify_one();
+                converted
+            }
+        );
+        let RuntimeCapabilityOutcome::Failed(failure) = outcome else {
+            panic!("a record conversion after stat must not disclose its body")
+        };
+        assert_eq!(failure.kind, RuntimeFailureKind::Authorization);
+        assert_eq!(filesystem.get(&path).await.unwrap().unwrap(), converted);
+        filesystem
+            .put(
+                &path,
+                Entry::bytes(Vec::new()),
+                CasExpectation::Version(converted.version),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            filesystem.inner.read_file_bounded(&path, 0).await.unwrap(),
+            Some(Vec::new())
+        );
+    }
+    check(Arc::new(InMemoryBackend::new())).await;
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let filesystem = Arc::new(brassclaw_filesystem::PostgresRootFilesystem::new(
+        rig.pool.as_ref().clone(),
+    ));
+    filesystem.run_migrations().await.unwrap();
+    // The SQL representation is signed; reaching its end must roll back the
+    // complete native mutation rather than repeat a version or alter the body.
+    let exhausted_path = VirtualPath::new("/projects/exhausted-pg-version").unwrap();
+    filesystem
+        .put_opaque(
+            &exhausted_path,
+            b"retained at SQL maximum".to_vec(),
+            CasExpectation::Absent,
+        )
+        .await
+        .unwrap();
+    rig.pool
+        .get()
+        .await
+        .unwrap()
+        .execute(
+            "UPDATE root_filesystem_entries SET version=$1 WHERE path=$2",
+            &[&i64::MAX, &exhausted_path.as_str()],
+        )
+        .await
+        .unwrap();
+    let exhausted = filesystem.get(&exhausted_path).await.unwrap().unwrap();
+    for cas in [
+        CasExpectation::Any,
+        CasExpectation::Version(exhausted.version),
+    ] {
+        assert!(
+            filesystem
+                .put_opaque(&exhausted_path, b"must not replace".to_vec(), cas)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            filesystem.get(&exhausted_path).await.unwrap().unwrap(),
+            exhausted
+        );
+    }
+    check(filesystem).await;
 }

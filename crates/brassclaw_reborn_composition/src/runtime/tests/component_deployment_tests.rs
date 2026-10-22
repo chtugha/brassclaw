@@ -242,7 +242,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
 
     crate::prefix_reference_seeds::assert_database_sources(&catalogue).await;
     crate::prefix_job_definitions::assert_metadata_only(&catalogue).await;
-    let prefix_job_id =
+    let (prefix_job_id, sempai_job_id) =
         crate::runtime::prefix_job_submission::assert_global_snapshot_submission(&runtime).await;
 
     // The canonical Retain workflow may use only its own qualified formatter.
@@ -365,6 +365,9 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
             "maker-trailing-inventory",
             "base-stable-sharing",
             "maker-stable-sharing",
+            "base-contextual",
+            "maker-contextual",
+            "sempai-contextual",
             "duplicate",
             "missing-guide",
             "denied",
@@ -947,7 +950,14 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     );
     drop(source_client);
     exercise_prefix_maker_import(&app, &checkout, root.path()).await;
-    exercise_prefix_model_records(&model_app, &rig.pool, &runtime, prefix_job_id).await;
+    exercise_prefix_model_records(
+        &model_app,
+        &rig.pool,
+        &runtime,
+        prefix_job_id,
+        sempai_job_id,
+    )
+    .await;
     let initial = at(&app, "GET", "/api/webchat/v2/catalogue", None, true)
         .await
         .1;
@@ -1403,6 +1413,7 @@ async fn exercise_prefix_model_records(
     pool: &Arc<brassclaw_pg::PgPool>,
     runtime: &Arc<RebornRuntime>,
     prefix_job_id: Uuid,
+    sempai_job_id: Uuid,
 ) {
     let catalogue_route = "/api/webchat/v2/prefix-model-designs";
     let capture_route = "/api/webchat/v2/prefix-model-specifications";
@@ -1459,8 +1470,16 @@ async fn exercise_prefix_model_records(
         at(app, "POST", capture_route, Some(&request), true).await.1,
         specification
     );
-    exercise_prefix_model_artifacts(app, pool, &specification, runtime, prefix_job_id).await;
-    let proposal_bytes = json!({"format":"brassclaw-prefix-design-proposal/1","profile":"sempai","specification":specification["id"],"design":{"adapter":"ornith-qwen-system/1","evidence_view":"literal-reference/v1","source_selection":"complete-mandatory","reserve_tokens":8192},"rationale":"Recorded proposal; no quality or architecture qualification asserted."}).to_string();
+    exercise_prefix_model_artifacts(
+        app,
+        pool,
+        &specification,
+        runtime,
+        prefix_job_id,
+        sempai_job_id,
+    )
+    .await;
+    let proposal_bytes = json!({"format":"brassclaw-prefix-design-proposal/1","profile":"sempai","specification":specification["id"],"design":{"adapter":"ornith-qwen-system/1","evidence_view":"literal-reference/v5-contextual-sharing","source_selection":"complete-mandatory","reserve_tokens":8192},"rationale":"Recorded proposal; no quality or architecture qualification asserted."}).to_string();
     let proposal_request =
         json!({"specification":specification["id"],"proposal_bytes":proposal_bytes});
     let route = "/api/webchat/v2/prefixes/sempai/design-proposals";
@@ -1472,6 +1491,22 @@ async fn exercise_prefix_model_records(
             .await
             .1,
         proposal
+    );
+    let mut obsolete: Value = serde_json::from_str(&proposal_bytes).unwrap();
+    obsolete["design"]["evidence_view"] = json!("literal-reference/v1");
+    assert_eq!(
+        at(
+            app,
+            "POST",
+            route,
+            Some(&json!({"specification":specification["id"],
+        "proposal_bytes":obsolete.to_string()})),
+            true
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST,
+        "new Sempai proposals must use the actual supported context-aware adapter"
     );
     let mut invalid: Value = serde_json::from_str(&proposal_bytes).unwrap();
     invalid["design"]["source_selection"] = json!("omit-whatever-does-not-fit");
@@ -1910,6 +1945,7 @@ async fn exercise_prefix_model_artifacts(
     specification: &Value,
     runtime: &Arc<RebornRuntime>,
     prefix_job_id: Uuid,
+    sempai_job_id: Uuid,
 ) {
     use base64::{Engine, engine::general_purpose::STANDARD};
     use sha2::Digest;
@@ -1959,6 +1995,28 @@ async fn exercise_prefix_model_artifacts(
     let (status, read) = at(app, "GET", &detail, None, true).await;
     assert_eq!(status, StatusCode::OK, "{read}");
     assert_eq!(read["summary"], stored);
+    let observation: Value =
+        serde_json::from_str(read["configuration_observation"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        observation["format"],
+        "brassclaw-prefix-model-config-observation/1"
+    );
+    assert_eq!(observation["qualification"], "declared-config-only");
+    assert_eq!(observation["specification"], specification["id"]);
+    assert_eq!(observation["artifact_set"], stored["id"]);
+    assert_eq!(
+        observation["config_sha256"],
+        hex::encode(sha2::Sha256::digest(&originals["config.json"]))
+    );
+    let declared: Value = serde_json::from_slice(&originals["config.json"]).unwrap();
+    assert_eq!(observation["fields"]["/model_type"], declared["model_type"]);
+    assert_eq!(
+        observation["fields"]["/text_config/layer_types"],
+        declared["text_config"]["layer_types"]
+    );
+    for field in ["runtime_cache", "weights_identity", "serving_context_limit"] {
+        assert!(observation[field].is_null());
+    }
     let bytes = read["artifact_set_bytes"].as_str().unwrap();
     assert_eq!(
         stored["id"],
@@ -1979,6 +2037,7 @@ async fn exercise_prefix_model_artifacts(
         specification["id"].as_str().unwrap(),
         stored["id"].as_str().unwrap(),
         prefix_job_id,
+        sempai_job_id,
     )
     .await;
     let mut import = set.clone();

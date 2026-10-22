@@ -297,11 +297,23 @@ fn config_import_rows(config: &RebornConfigFile) -> Result<Vec<(String, String)>
         }
     }
     if let Some(b) = &config.budget {
-        if let Some(v) = b.user_daily_usd {
-            rows.push(("budget.user_daily_usd".to_string(), v.to_string()));
-        }
-        if let Some(v) = b.project_daily_usd {
-            rows.push(("budget.project_daily_usd".to_string(), v.to_string()));
+        for (key, value) in [
+            ("budget.user_daily_usd", b.user_daily_usd),
+            ("budget.project_daily_usd", b.project_daily_usd),
+            ("budget.heartbeat_per_tick_usd", b.heartbeat_per_tick_usd),
+            ("budget.routine_lightweight_usd", b.routine_lightweight_usd),
+            ("budget.routine_standard_usd", b.routine_standard_usd),
+            (
+                "budget.background_job_default_usd",
+                b.background_job_default_usd,
+            ),
+            ("budget.warn_at", b.warn_at),
+            ("budget.pause_at", b.pause_at),
+            ("budget.overestimate_factor", b.overestimate_factor),
+        ] {
+            if let Some(value) = value {
+                rows.push((key.into(), value.to_string()));
+            }
         }
         if let Some(v) = &b.default_tz {
             rows.push(("budget.default_tz".to_string(), v.clone()));
@@ -1509,11 +1521,22 @@ async fn import_settings_snapshot(
     }
     let mut client = pool.get().await?;
     let transaction = tokio_postgres::Client::build_transaction(&mut client)
-        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .isolation_level(if dry_run {
+            tokio_postgres::IsolationLevel::RepeatableRead
+        } else {
+            tokio_postgres::IsolationLevel::ReadCommitted
+        })
         .read_only(dry_run)
         .start()
         .await?;
     if !dry_run {
+        if rows.iter().any(|(key, _)| key.starts_with("budget.")) {
+            crate::db_config::lock_budget_config(&transaction, tenant_id)
+                .await
+                .map_err(|_| MigrationError::ConfigParse {
+                    reason: "legacy budget configuration could not be locked".into(),
+                })?;
+        }
         transaction
             .batch_execute("LOCK TABLE brassclaw_config IN SHARE ROW EXCLUSIVE MODE")
             .await?;
@@ -1542,6 +1565,11 @@ async fn import_settings_snapshot(
             pending.push((key.as_str(), Some(value.as_str())));
         }
     }
+    crate::db_config::validate_budget_config_changes(&transaction, tenant_id, &pending)
+        .await
+        .map_err(|_| MigrationError::ConfigParse {
+            reason: "legacy budget settings failed database validation".into(),
+        })?;
     if dry_run {
         transaction.rollback().await?;
         return Ok(());

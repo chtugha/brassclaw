@@ -1225,6 +1225,7 @@ fn llm_snapshot(provider_id: &str) -> LlmConfigSnapshot {
         response_cache_defaults: Default::default(),
         providers: vec![LlmProviderView {
             embedding_models: Default::default(),
+            model_token_limits: Default::default(),
             model_discovery: Default::default(),
             request_policy: Default::default(),
             revision: 1,

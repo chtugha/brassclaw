@@ -72,6 +72,23 @@ pub trait RootFilesystem: Send + Sync {
         unsupported(path, FilesystemOperation::WriteFile)
     }
 
+    /// Write opaque bytes without ever replacing a structured entry.
+    ///
+    /// Requires native `Capability::OpaqueWrite`. Check the existing kind and
+    /// CAS atomically with the mutation; a stat/get preflight is insufficient.
+    /// `Any` permits an absent or opaque target, not a record conversion. Other
+    /// CAS modes retain their ordinary semantics and backend support. Trusted
+    /// record owners can still intentionally convert entries through `put`.
+    /// There is no default compatibility fallback to `put` or the legacy writer.
+    async fn put_opaque(
+        &self,
+        path: &VirtualPath,
+        _body: Vec<u8>,
+        _cas: CasExpectation,
+    ) -> Result<RecordVersion, FilesystemError> {
+        unsupported(path, FilesystemOperation::WriteFile)
+    }
+
     /// Read the entry at `path`, returning `None` if no entry is present.
     ///
     /// Default impl is `Unsupported`. Same recursion concern as `put`:
@@ -173,12 +190,17 @@ pub trait RootFilesystem: Send + Sync {
     ///
     /// Returns `Ok(None)` when the file exists but exceeds the caller's limit.
     /// Streaming backends should enforce this before materializing the full body.
+    /// Structured entries require the entry API. Check the same entry that
+    /// supplies the body; an earlier stat can become stale during a read.
     async fn read_file_bounded(
         &self,
         path: &VirtualPath,
         max_bytes: usize,
     ) -> Result<Option<Vec<u8>>, FilesystemError> {
         let stat = self.stat(path).await?;
+        if stat.sensitive {
+            return unsupported(path, FilesystemOperation::ReadFile);
+        }
         if stat.len > max_bytes as u64 {
             return Ok(None);
         }
@@ -188,6 +210,9 @@ pub trait RootFilesystem: Send + Sync {
                 operation: FilesystemOperation::ReadFile,
             });
         };
+        if entry.entry.kind.is_some() {
+            return unsupported(path, FilesystemOperation::ReadFile);
+        }
         if entry.entry.body.len() > max_bytes {
             return Ok(None);
         }

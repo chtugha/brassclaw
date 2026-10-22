@@ -7,12 +7,17 @@ use serde_json::Value;
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TaskEntry {
     Chat,
-    InternalRecipe { name: String },
+    InternalRecipe {
+        name: String,
+    },
+    /// A separately admitted child executes the owner-selected retained Recipe.
+    /// No public message or model-authored ID can construct its private source.
+    ChildRecipe,
 }
 impl TaskEntry {
     pub(crate) fn valid(&self) -> bool {
         match self {
-            Self::Chat => true,
+            Self::Chat | Self::ChildRecipe => true,
             Self::InternalRecipe { name } => valid_name(name),
         }
     }
@@ -28,7 +33,7 @@ pub(crate) fn valid_value(entry: &Value) -> bool {
         return false;
     };
     match entry.get("kind").and_then(Value::as_str) {
-        Some("chat") => entry.len() == 1,
+        Some("chat" | "child_recipe") => entry.len() == 1,
         Some("internal_recipe") => {
             entry.len() == 2
                 && entry
@@ -49,6 +54,7 @@ mod tests {
     fn task_entry_accepts_only_exact_host_envelopes() {
         for entry in [
             TaskEntry::Chat,
+            TaskEntry::ChildRecipe,
             TaskEntry::InternalRecipe {
                 name: "validator-class-21".into(),
             },
@@ -61,6 +67,8 @@ mod tests {
             json!("chat"),
             json!({"kind":"unknown"}),
             json!({"kind":"chat","name":"private"}),
+            json!({"kind":"child_recipe","recipe_id":"public-selection-is-invalid"}),
+            json!({"kind":"child_recipe","name":"private"}),
             json!({"kind":"internal_recipe"}),
             json!({"kind":"internal_recipe","name":null}),
             json!({"kind":"internal_recipe","name":""}),

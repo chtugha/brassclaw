@@ -65,7 +65,7 @@ class BuildWorkerTests(unittest.TestCase):
             guard = Path(temporary) / 'sitecustomize.py'
             guard.write_text("import sys\ndef guard(event, args):\n    if event == 'socket.connect':\n        raise RuntimeError('network forbidden in compiler check')\nsys.addaudithook(guard)\n")
             env = dict(os.environ, PYTHONPATH=temporary, HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1', HF_HUB_DISABLE_TELEMETRY='1')
-            for view in ['literal-reference/v1', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing']:
+            for view in ['literal-reference/v1', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing', 'literal-reference/v5-contextual-sharing']:
                 for profile in ['base-prompt', 'prefix-maker']:
                     value = request(profile)
                     value['design']['evidence_view'] = view

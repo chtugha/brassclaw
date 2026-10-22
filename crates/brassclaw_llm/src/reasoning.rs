@@ -3645,8 +3645,8 @@ That's my plan."#;
 
         #[async_trait]
         impl LlmProvider for NoneContentToolLlm {
-            fn model_name(&self) -> &str {
-                "none-content-tool-llm"
+            fn model_name(&self) -> std::borrow::Cow<'_, str> {
+                std::borrow::Cow::Borrowed("none-content-tool-llm")
             }
 
             fn cost_per_token(&self) -> (Decimal, Decimal) {
@@ -4001,8 +4001,8 @@ That's my plan."#;
 
     #[async_trait::async_trait]
     impl crate::LlmProvider for TruncatingLlm {
-        fn model_name(&self) -> &str {
-            "truncating-stub"
+        fn model_name(&self) -> std::borrow::Cow<'_, str> {
+            std::borrow::Cow::Borrowed("truncating-stub")
         }
         fn cost_per_token(&self) -> (rust_decimal::Decimal, rust_decimal::Decimal) {
             (rust_decimal::Decimal::ZERO, rust_decimal::Decimal::ZERO)

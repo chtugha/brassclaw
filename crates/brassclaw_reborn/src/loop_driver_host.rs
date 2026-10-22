@@ -1801,7 +1801,7 @@ where
             gateway: Arc::clone(&self.model_gateway),
             run_context: run_context.clone(),
             store: Arc::clone(&self.interceptor_store),
-            next_iteration: std::sync::atomic::AtomicU32::new(0),
+            next_iteration: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             #[cfg(feature = "root-llm-provider")]
             proposal_sink: Arc::clone(&self.proposal_sink),
             #[cfg(feature = "root-llm-provider")]
@@ -2129,6 +2129,13 @@ impl LoopPromptPort for RebornLoopDriverHost {
         request: LoopPromptBundleRequest,
     ) -> Result<LoopPromptBundle, AgentLoopHostError> {
         self.prompt.build_prompt_bundle(request).await
+    }
+
+    async fn build_context_prompt_bundle(
+        &self,
+        request: brassclaw_turns::run_profile::PreparedLoopPromptRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        self.prompt.build_context_prompt_bundle(request).await
     }
 
     async fn build_prepared_prompt_bundle(

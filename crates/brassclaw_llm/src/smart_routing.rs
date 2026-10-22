@@ -925,7 +925,7 @@ impl SmartRoutingProvider {
 
 #[async_trait]
 impl LlmProvider for SmartRoutingProvider {
-    fn model_name(&self) -> &str {
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
         self.primary.model_name()
     }
 

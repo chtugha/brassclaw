@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::pg_monty_admission::PgMontyAdmission;
+use crate::pg_monty_admission::{CatalogueReference, PgMontyAdmission};
 
 /// A catalogue-owned selection, not a caller-supplied approval flag. Production
 /// owners must establish exact activation/review/artifact provenance before
@@ -49,6 +49,11 @@ pub(crate) enum MontyIntentSelection {
 /// and IBS; none may reread latest after selection. Selection executes nothing.
 #[async_trait]
 pub(crate) trait MontyTaskCatalogue: Send + Sync {
+    /// Actual owner-selected ordinary generation. Draft validation has no
+    /// activated catalogue; absence never means "use latest" or grants approval.
+    fn catalogue_reference(&self) -> Option<CatalogueReference> {
+        None
+    }
     async fn resolve_intent(&self, query: &str) -> Result<MontyIntentSelection, PortFailure>;
     async fn resolve_named_recipe(&self, name: &str) -> Result<SelectedMontyRecipe, PortFailure>;
     async fn refresh_command_qualification(&self);
@@ -112,6 +117,7 @@ pub(crate) struct GlobalRecipePorts {
     user_input: String,
     ownership: Option<crate::global_monty_owner::GlobalOwnerCheck>,
     internal: Option<Arc<dyn InternalRecipeSource>>,
+    child: Option<Mutex<Option<SelectedMontyRecipe>>>,
     observe_behavior: bool,
     capacity: Arc<dyn RecipeCapacitySource>,
     pub(super) state: Mutex<State>,
@@ -150,6 +156,7 @@ impl GlobalRecipePorts {
             user_input,
             ownership: Some(ownership),
             internal: None,
+            child: None,
             observe_behavior: false,
             capacity,
             state: Mutex::new(State::default()),
@@ -176,6 +183,7 @@ impl GlobalRecipePorts {
             user_input: source.reference().to_owned(),
             ownership,
             internal: Some(source),
+            child: None,
             observe_behavior,
             capacity,
             state: Mutex::new(State::default()),
@@ -183,6 +191,26 @@ impl GlobalRecipePorts {
             fenced: std::sync::atomic::AtomicBool::new(false),
             dependency_parent: None,
         }
+    }
+
+    /// Only a trusted catalogue/admission owner supplies this selection. It
+    /// retains fresh child ports against the parent's exact catalogue and must
+    /// establish durable child provenance before the global driver calls here.
+    pub(crate) fn with_child_recipe(
+        mut self,
+        selected: SelectedMontyRecipe,
+    ) -> Result<Self, PortFailure> {
+        if self.internal.is_some()
+            || selected.normal_match.is_some()
+            || selected
+                .inputs
+                .as_ref()
+                .is_none_or(|inputs| !inputs.is_object())
+        {
+            return Err(failure("child_recipe_selection_invalid"));
+        }
+        self.child = Some(Mutex::new(Some(selected)));
+        Ok(self)
     }
 
     pub(crate) fn with_dependency_parent(mut self, parent: Option<Arc<dyn TaskPorts>>) -> Self {
@@ -379,6 +407,13 @@ impl GlobalRecipePorts {
         self.check_fence()?;
         self.check_ownership().await?;
         self.admission
+            .bind_catalogue(
+                self.catalogue
+                    .as_ref()
+                    .and_then(|catalogue| catalogue.catalogue_reference()),
+            )
+            .map_err(|_| failure("monty_catalogue_reference_conflict"))?;
+        self.admission
             .check_and_start()
             .await
             .map_err(|_| failure("monty_admission_fenced"))?;
@@ -392,6 +427,41 @@ impl GlobalRecipePorts {
             state.task = Some(task);
         }
         match name {
+            "resolve_child_recipe" => {
+                if !args.is_empty() || self.internal.is_some() {
+                    return Err(failure("child_recipe_selection_invalid"));
+                }
+                let child = self
+                    .child
+                    .as_ref()
+                    .ok_or_else(|| failure("child_recipe_unavailable"))?;
+                {
+                    let mut state = self.state.lock().await;
+                    if state.intent_started {
+                        return Err(failure("child_recipe_selection_repeated"));
+                    }
+                    state.intent_started = true;
+                    state.intent_outcome = Some("child_error");
+                }
+                // Transfer the one task-local selection into execution. Do
+                // not keep another complete input tree/Tool owner alive after
+                // this handoff. A failed/abandoned selection is never restored.
+                let selected = child
+                    .lock()
+                    .await
+                    .take()
+                    .ok_or_else(|| failure("child_recipe_selection_repeated"))?;
+                let inputs = selected
+                    .inputs
+                    .clone()
+                    .ok_or_else(|| failure("child_recipe_inputs_missing"))?;
+                self.check_fence()?;
+                let (id, step_link) = self.retain_selection(selected).await?;
+                self.state.lock().await.intent_outcome = Some("child_recipe");
+                Ok(
+                    json!({"status":"child_recipe","component_id":id,"step_link":step_link,"inputs":inputs}),
+                )
+            }
             "resolve_internal_recipe" => {
                 let source = self
                     .internal
@@ -424,7 +494,7 @@ impl GlobalRecipePorts {
                 )
             }
             "resolve_intent" => {
-                if self.internal.is_some() {
+                if self.internal.is_some() || self.child.is_some() {
                     return Err(failure("internal_recipe_routing_invalid"));
                 }
                 let [query] = args.as_slice() else {

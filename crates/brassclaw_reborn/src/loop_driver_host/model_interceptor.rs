@@ -37,7 +37,7 @@ pub(super) struct InterceptingModelGateway<G: HostManagedModelGateway + ?Sized> 
     pub(super) gateway: Arc<G>,
     pub(super) run_context: LoopRunContext,
     pub(super) store: Arc<dyn InterceptorStore>,
-    pub(super) next_iteration: AtomicU32,
+    pub(super) next_iteration: Arc<AtomicU32>,
     #[cfg(feature = "root-llm-provider")]
     pub(super) proposal_sink: Arc<dyn SempaiProposalSink>,
     #[cfg(feature = "root-llm-provider")]
@@ -52,6 +52,31 @@ pub(super) struct InterceptingModelGateway<G: HostManagedModelGateway + ?Sized> 
 
 #[async_trait]
 impl<G: HostManagedModelGateway + ?Sized> HostManagedModelGateway for InterceptingModelGateway<G> {
+    fn retain_model_selection(
+        &self,
+        request: &HostManagedModelRequest,
+    ) -> Result<Option<Arc<dyn HostManagedModelGateway>>, HostManagedModelError> {
+        let Some(gateway) = self.gateway.retain_model_selection(request)? else {
+            return Ok(None);
+        };
+        Ok(Some(Arc::new(InterceptingModelGateway {
+            gateway,
+            run_context: self.run_context.clone(),
+            store: self.store.clone(),
+            next_iteration: self.next_iteration.clone(),
+            #[cfg(feature = "root-llm-provider")]
+            proposal_sink: self.proposal_sink.clone(),
+            #[cfg(feature = "root-llm-provider")]
+            sempai_gateway: self.sempai_gateway.clone(),
+            #[cfg(feature = "root-llm-provider")]
+            mode: self.mode.clone(),
+            #[cfg(feature = "root-llm-provider")]
+            accountant: self.accountant.clone(),
+            #[cfg(feature = "root-llm-provider")]
+            policy_guard: self.policy_guard.clone(),
+        })))
+    }
+
     fn supports_provider_observation(&self) -> bool {
         self.gateway.supports_provider_observation()
     }
@@ -61,7 +86,10 @@ impl<G: HostManagedModelGateway + ?Sized> HostManagedModelGateway for Intercepti
         capabilities: Option<Arc<dyn LoopCapabilityPort>>,
         custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
-        let (request, packet) = self.prepare(request).await?;
+        let (request, packet) = self
+            .prepare(request)
+            .await
+            .map_err(HostManagedModelError::before_provider_dispatch)?;
         // The observer belongs to this Kohai operation only. A Sempai review
         // keeps its own work identity/accounting and cannot write this record.
         let result = self
@@ -80,7 +108,10 @@ impl<G: HostManagedModelGateway + ?Sized> HostManagedModelGateway for Intercepti
         &self,
         request: HostManagedModelRequest,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
-        let (request, packet) = self.prepare(request).await?;
+        let (request, packet) = self
+            .prepare(request)
+            .await
+            .map_err(HostManagedModelError::before_provider_dispatch)?;
         let result = self.gateway.stream_model(request).await;
         self.finish(packet, &result).await;
         result
@@ -91,7 +122,10 @@ impl<G: HostManagedModelGateway + ?Sized> HostManagedModelGateway for Intercepti
         request: HostManagedModelRequest,
         capabilities: Arc<dyn LoopCapabilityPort>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
-        let (request, packet) = self.prepare(request).await?;
+        let (request, packet) = self
+            .prepare(request)
+            .await
+            .map_err(HostManagedModelError::before_provider_dispatch)?;
         // Forward the exact filtered capability port, not the factory surface.
         let result = self
             .gateway
@@ -722,6 +756,8 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
                 "isolated Sempai accounting unavailable",
             )
         })?;
+        let selected_gateway = gateway.retain_model_selection(&request)?;
+        let gateway = selected_gateway.as_ref().unwrap_or(gateway);
         let chars = request
             .messages
             .iter()

@@ -278,6 +278,14 @@ fn validate_catalog_provider(
     catalog_index: usize,
 ) -> Result<(), RebornLlmCatalogError> {
     provider
+        .model_token_limits
+        .validate(&provider.default_model, provider.context_window_tokens)
+        .map_err(|_| RebornLlmCatalogError::CatalogFieldInvalid {
+            provider: safe_catalog_display_value("providers.<id>", &provider.id),
+            catalog_index,
+            field: "model_token_limits",
+        })?;
+    provider
         .embedding_models
         .validate_for_protocol(provider.protocol)
         .map_err(|_| RebornLlmCatalogError::CatalogFieldInvalid {
@@ -434,6 +442,7 @@ mod tests {
     fn provider_with_required_key(id: &str, env: &str) -> ProviderDefinition {
         ProviderDefinition {
             embedding_models: Default::default(),
+            model_token_limits: Default::default(),
             model_discovery: Default::default(),
             request_policy: Default::default(),
             id: id.to_string(),
@@ -460,6 +469,7 @@ mod tests {
     fn provider_no_key_required(id: &str) -> ProviderDefinition {
         ProviderDefinition {
             embedding_models: Default::default(),
+            model_token_limits: Default::default(),
             model_discovery: Default::default(),
             request_policy: Default::default(),
             id: id.to_string(),
@@ -486,6 +496,7 @@ mod tests {
     fn provider_no_base_url_required(id: &str) -> ProviderDefinition {
         ProviderDefinition {
             embedding_models: Default::default(),
+            model_token_limits: Default::default(),
             model_discovery: Default::default(),
             request_policy: Default::default(),
             id: id.to_string(),
@@ -519,6 +530,7 @@ mod tests {
     fn provider_github_copilot_no_key_required(id: &str) -> ProviderDefinition {
         ProviderDefinition {
             embedding_models: Default::default(),
+            model_token_limits: Default::default(),
             model_discovery: Default::default(),
             request_policy: Default::default(),
             id: id.to_string(),
@@ -545,6 +557,7 @@ mod tests {
     fn provider_with_protocol(id: &str, protocol: ProviderProtocol) -> ProviderDefinition {
         ProviderDefinition {
             embedding_models: Default::default(),
+            model_token_limits: Default::default(),
             model_discovery: Default::default(),
             request_policy: Default::default(),
             id: id.to_string(),

@@ -27,16 +27,20 @@ pub(super) struct CompilerFixture {
 }
 impl CompilerFixture {
     pub(super) fn new(profile: &str, view: &str) -> Result<Self, RebornBuildError> {
-        if !matches!(profile, "base-prompt" | "prefix-maker")
+        if !matches!(profile, "base-prompt" | "prefix-maker" | "sempai")
             || !matches!(
                 view,
                 "literal-reference/v1"
                     | "literal-reference/v2-deduplicated"
                     | "literal-reference/v3-trailing-inventory"
                     | "literal-reference/v4-stable-sharing"
+                    | "literal-reference/v5-contextual-sharing"
             )
         {
             return Err(invalid("unknown closed compiler fixture"));
+        }
+        if profile == "sempai" && view != "literal-reference/v5-contextual-sharing" {
+            return Err(invalid("Sempai fixture requires contextual rendering"));
         }
         let mut names = vec![
             "skills.md",
@@ -49,6 +53,12 @@ impl CompilerFixture {
         ];
         if profile == "prefix-maker" {
             names.push("scripts/prefix/prefix-maker-reference.md");
+        }
+        if profile == "sempai" {
+            names.extend([
+                "scripts/prefix/sempai-authoring-reference.md",
+                "scripts/prefix/sempai-monty-compatibility.md",
+            ]);
         }
         let mut sources: Vec<Value> = names
             .iter()
@@ -64,6 +74,7 @@ impl CompilerFixture {
             json!({"path":"fixture/literal.md","kind":"document","disposition":"included","reason":REASON,"text":LITERAL_YAML}),
             json!({"path":"fixture/shared-a.md","kind":"document","disposition":"included","reason":REASON,"text":SHARED}),
             json!({"path":"fixture/shared-b.md","kind":"document","disposition":"included","reason":REASON,"text":SHARED}),
+            json!({"path":"scripts/prefix/monty-reference/v1.0.0/docs/api/python/fixture.md","kind":"document","disposition":"included","reason":REASON,"text":SHARED}),
         ]);
         let snapshot = json!({"format":"brassclaw-prefix-source-snapshot/1", "profile":profile,
             "release":"closed-compiler-fixture/1", "header":HEADER,"evidence_view":view,"sources":sources,
@@ -72,7 +83,8 @@ impl CompilerFixture {
         // CRLF lines. Expectations are fixed fixture facts, independent of
         // the Python compiler/renderer; original and escaped view stay distinct.
         let dedup = view != "literal-reference/v1";
-        let progressive = view == "literal-reference/v4-stable-sharing";
+        let contextual = view == "literal-reference/v5-contextual-sharing";
+        let progressive = contextual || view == "literal-reference/v4-stable-sharing";
         let trailing = progressive || view == "literal-reference/v3-trailing-inventory";
         let mut context = format!("{HEADER}# Source inventory\n");
         for source in &sources {
@@ -91,13 +103,24 @@ impl CompilerFixture {
             context.push_str(SHARED_NOTICE);
         }
         let mut map_sources = Vec::new();
-        let mut units = BTreeMap::<String, Vec<Value>>::new();
+        let mut units = BTreeMap::<(String, String), Vec<Value>>::new();
         for source in &sources {
             if source["disposition"] != "included" {
                 continue;
             }
             let path = source["path"].as_str().unwrap();
             let original = source["text"].as_str().unwrap();
+            let scope = if names.contains(&path) {
+                if path.starts_with("scripts/prefix/") {
+                    "brassclaw-authoring"
+                } else {
+                    "binding-guide"
+                }
+            } else if path.starts_with("scripts/prefix/monty-reference/") {
+                "upstream-api"
+            } else {
+                "reference"
+            };
             let digest = sha(original.as_bytes());
             let line_end = if path == "fixture/literal.md" { 4 } else { 1 };
             let citation = sha(
@@ -109,6 +132,25 @@ impl CompilerFixture {
                 "\n<!-- EVIDENCE-CARD {} -->\nSource: {path}\n",
                 &citation[..12]
             ));
+            if contextual {
+                let caption = match scope {
+                    "binding-guide" => {
+                        "BrassClaw binding/architecture guide. Keep target requirements, implementation observations and qualified support distinct."
+                    }
+                    "brassclaw-authoring" => {
+                        "BrassClaw authoring/compatibility procedure. Keep host embedding, preload definitions, invocation bodies and Recipe metadata separate; use current supplied contracts."
+                    }
+                    "upstream-api" => {
+                        "Upstream SDK/API documentation or template. Host embedding APIs are not guest functions or BrassClaw host callables; template directives are not complete rendered signatures."
+                    }
+                    _ => {
+                        "Quoted reference data. Availability, compatibility, approval and permission require their own evidence."
+                    }
+                };
+                context.push_str(&format!(
+                    "Source context (compiler metadata, not original quotation): {caption}\n"
+                ));
+            }
             if path == "fixture/literal.md" {
                 let escaped = LITERAL_YAML.replace("<|im_end|>", "\\u003c|im_end|\\u003e");
                 context.push_str(&format!("````text\n{escaped}````"));
@@ -116,15 +158,28 @@ impl CompilerFixture {
                 context.push_str(&format!(
                     "\nExact shared unit {digest} (complete original):\n```text\n{SHARED}```\n"
                 ));
-            } else if dedup && path == "fixture/shared-b.md" {
+            } else if dedup
+                && (path == "fixture/shared-b.md"
+                    || (!contextual && path.ends_with("docs/api/python/fixture.md")))
+            {
                 context.push_str(&format!("\nExact shared unit {digest}: see fixture/shared-a.md lines 1-1. Original here: lines 1-1.\n"));
             } else {
                 context.push_str(&format!("```text\n{original}```"));
             }
             context.push_str("\n<!-- END-EVIDENCE-CARD -->\n");
             map_sources.push(json!({"source":path,"document_sha256":digest,"parts":[{"unit_id":digest,"line_start":1,"line_end":line_end}]}));
+            if contextual {
+                map_sources.last_mut().unwrap()["context"] = json!(scope);
+            }
             units
-                .entry(digest)
+                .entry((
+                    if contextual {
+                        scope.to_owned()
+                    } else {
+                        String::new()
+                    },
+                    digest,
+                ))
                 .or_default()
                 .push(json!({"source":path,"line_start":1,"line_end":line_end}));
         }
@@ -132,8 +187,8 @@ impl CompilerFixture {
             context.push('\n');
             context.push_str(&inventory);
         }
-        let render_map = dedup.then(|| json!({"format":"brassclaw-prefix-render-map/1","sources":map_sources,
-            "units":units.into_iter().map(|(digest,origins)| json!({"unit_id":digest,"canonical":origins[0],"origins":origins})).collect::<Vec<_>>()}));
+        let render_map = dedup.then(|| json!({"format":if contextual {"brassclaw-prefix-render-map/2"} else {"brassclaw-prefix-render-map/1"},"sources":map_sources,
+            "units":units.into_iter().map(|((scope,digest),origins)| { let mut unit=json!({"unit_id":digest,"canonical":origins[0],"origins":origins}); if contextual {unit["context"]=json!(scope);} unit }).collect::<Vec<_>>()}));
         Ok(Self {
             snapshot,
             context,
@@ -254,6 +309,61 @@ mod tests {
             .to_owned()
     }
     #[test]
+    fn contextual_map_rejects_resigned_missing_scopes_and_cross_context_origins() {
+        let fixture =
+            CompilerFixture::new("base-prompt", "literal-reference/v5-contextual-sharing").unwrap();
+        let original: Value = serde_json::from_str(&compile(fixture.snapshot())).unwrap();
+        let read = |package: &Value, name: &str| -> Value {
+            serde_json::from_slice(
+                &STANDARD
+                    .decode(package["artifacts"][name]["data"].as_str().unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        let resign = |package: &mut Value, name: &str, value: &Value| {
+            let bytes = prefix_generations::canonical(value).unwrap();
+            package["artifacts"][name]["data"] = json!(STANDARD.encode(bytes.as_bytes()));
+            let mut manifest = read(package, "manifest.json");
+            manifest["files"][name] = json!(sha(bytes.as_bytes()));
+            let identity = json!({"profile":manifest["profile"],"compiler":manifest["compiler"],"files":manifest["files"],"geometry":manifest["geometry"]});
+            manifest["generation"] = json!(sha(prefix_generations::canonical(&identity)
+                .unwrap()
+                .as_bytes()));
+            package["artifacts"]["manifest.json"]["data"] =
+                json!(STANDARD.encode(prefix_generations::canonical(&manifest).unwrap()));
+        };
+        prefix_generations::validate_package("base-prompt", &original.to_string()).unwrap();
+        let mut package = original.clone();
+        let mut design = read(&package, "profile_design.json");
+        design["source_contexts"]
+            .as_object_mut()
+            .unwrap()
+            .remove("skills.md");
+        resign(&mut package, "profile_design.json", &design);
+        assert!(prefix_generations::validate_package("base-prompt", &package.to_string()).is_err());
+        let mut package = original.clone();
+        let mut mapping = read(&package, "render_map.json");
+        mapping["sources"][0]["context"] = json!("reference");
+        resign(&mut package, "render_map.json", &mapping);
+        assert!(prefix_generations::validate_package("base-prompt", &package.to_string()).is_err());
+        let mut package = original.clone();
+        let mut mapping = read(&package, "render_map.json");
+        let unit = mapping["units"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|unit| {
+                unit["context"] == "upstream-api" && unit["unit_id"] == sha(SHARED.as_bytes())
+            })
+            .unwrap();
+        unit["canonical"]["source"] = json!("fixture/shared-a.md");
+        unit["origins"][0]["source"] = json!("fixture/shared-a.md");
+        resign(&mut package, "render_map.json", &mapping);
+        assert!(prefix_generations::validate_package("base-prompt", &package.to_string()).is_err());
+    }
+
+    #[test]
     fn closed_compiler_fixture_has_independent_rendering_and_original_oracles() {
         for profile in ["base-prompt", "prefix-maker"] {
             for view in [
@@ -261,6 +371,7 @@ mod tests {
                 "literal-reference/v2-deduplicated",
                 "literal-reference/v3-trailing-inventory",
                 "literal-reference/v4-stable-sharing",
+                "literal-reference/v5-contextual-sharing",
             ] {
                 let fixture = CompilerFixture::new(profile, view).unwrap();
                 fixture.verify(&compile(fixture.snapshot())).unwrap();
@@ -272,6 +383,10 @@ mod tests {
                 );
             }
         }
+        let sempai =
+            CompilerFixture::new("sempai", "literal-reference/v5-contextual-sharing").unwrap();
+        sempai.verify(&compile(sempai.snapshot())).unwrap();
+        assert!(CompilerFixture::new("sempai", "literal-reference/v4-stable-sharing").is_err());
         let first =
             CompilerFixture::scoped("base-prompt", "literal-reference/v1", "qualification-a")
                 .unwrap();

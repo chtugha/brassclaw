@@ -328,6 +328,8 @@ pub enum Capability {
     EntryMetadata,
     /// Native body-free paginated projection of one indexed field.
     EntryIndexMetadata,
+    /// Native opaque writes atomically reject structured targets.
+    OpaqueWrite,
 }
 
 impl Capability {
@@ -354,6 +356,7 @@ impl Capability {
             Capability::Events,
             Capability::EntryMetadata,
             Capability::EntryIndexMetadata,
+            Capability::OpaqueWrite,
         ]
     }
 }

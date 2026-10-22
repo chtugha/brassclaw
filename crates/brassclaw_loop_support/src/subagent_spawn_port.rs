@@ -26,16 +26,13 @@ use brassclaw_turns::{
         CapabilityInvocation, CapabilityOutcome, ConcurrencyHint, LoopCapabilityPort,
         LoopRunContext, LoopSafeSummary, ProviderToolCall, ProviderToolCallCapabilityIds,
         ProviderToolCallReplay, ProviderToolDefinition, VisibleCapabilityRequest,
-        VisibleCapabilitySurface, sanitize_model_visible_text,
+        VisibleCapabilitySurface,
     },
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    CapabilityResultWrite, LoopCapabilityInputResolver, LoopCapabilityResultWriter,
-    subagent_prompt_port::DEFAULT_SUBAGENT_GOAL_MAX_BYTES,
-};
+use crate::{CapabilityResultWrite, LoopCapabilityInputResolver, LoopCapabilityResultWriter};
 
 pub const DEFAULT_SUBAGENT_MAX_DEPTH: u32 = 1;
 pub const DEFAULT_SUBAGENT_MAX_SPAWN_PER_TURN: u32 = 4;
@@ -57,13 +54,11 @@ fn spawn_subagent_parameters_schema() -> serde_json::Value {
             },
             "task": {
                 "type": "string",
-                "maxLength": DEFAULT_SUBAGENT_GOAL_MAX_BYTES,
-                "description": "Self-contained task for the child subagent run. Runtime enforces a UTF-8 byte budget; maxLength is a provider-facing character-count hint."
+                "description": "Complete self-contained task data for the child subagent run."
             },
             "handoff": {
                 "type": "string",
-                "maxLength": DEFAULT_SUBAGENT_GOAL_MAX_BYTES,
-                "description": "Optional context appended to the child subagent prompt. Runtime enforces a UTF-8 byte budget; maxLength is a provider-facing character-count hint."
+                "description": "Complete optional context data appended to the child subagent prompt."
             }
         }
     })
@@ -186,14 +181,6 @@ impl TryFrom<SpawnSubagentWireArgs> for SpawnSubagentArgs {
         }
         if value.mode == Some(SpawnSubagentWireMode::Background) {
             return Err(background_subagents_disabled());
-        }
-        if value.task.len() > DEFAULT_SUBAGENT_GOAL_MAX_BYTES {
-            return Err(spawn_goal_field_too_large("task", value.task.len()));
-        }
-        if let Some(handoff) = value.handoff.as_deref()
-            && handoff.len() > DEFAULT_SUBAGENT_GOAL_MAX_BYTES
-        {
-            return Err(spawn_goal_field_too_large("handoff", handoff.len()));
         }
         Ok(Self {
             subagent_kind: value.subagent_kind,
@@ -820,9 +807,7 @@ impl SubagentSpawnCapabilityPort {
                 source_binding_id: Some(format!("subagent-source:{child_run_id}")),
                 reply_target_binding_id: Some(format!("subagent-reply:{child_run_id}")),
                 external_event_id: Some(format!("subagent-spawn:{child_run_id}")),
-                content: MessageContent::text(sanitize_model_visible_text(child_initial_message(
-                    &args,
-                ))),
+                content: MessageContent::text(child_initial_message(&args)),
             })
             .await
             .map_err(map_thread_error)?;
@@ -1235,15 +1220,6 @@ fn background_subagents_disabled() -> AgentLoopHostError {
     AgentLoopHostError::new(
         AgentLoopHostErrorKind::InvalidInvocation,
         "background subagents are disabled pending durable completion delivery design (#4147)",
-    )
-}
-
-fn spawn_goal_field_too_large(field: &'static str, len: usize) -> AgentLoopHostError {
-    AgentLoopHostError::new(
-        AgentLoopHostErrorKind::InvalidInvocation,
-        format!(
-            "spawn_subagent {field} is too large: {len} bytes (max {DEFAULT_SUBAGENT_GOAL_MAX_BYTES})"
-        ),
     )
 }
 

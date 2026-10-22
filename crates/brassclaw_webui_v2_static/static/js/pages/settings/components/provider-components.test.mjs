@@ -264,6 +264,7 @@ function createProviderCardHarness() {
   const state = {};
   const context = {
     Badge: "Badge",
+    ModelTokenLimits: "ModelTokenLimits",
     Button: "Button",
     Card: "Card",
     Icon: "Icon",

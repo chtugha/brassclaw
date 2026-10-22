@@ -306,7 +306,7 @@ impl RetryProvider {
 
 #[async_trait]
 impl LlmProvider for RetryProvider {
-    fn model_name(&self) -> &str {
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
         self.inner.model_name()
     }
 

@@ -357,6 +357,45 @@ where
         .await
     }
 
+    async fn build_context_prompt_bundle(
+        &self,
+        request: PreparedLoopPromptRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        self.validate_request(&request.metadata)?;
+        let context = self
+            .context_port
+            .load_loop_context(LoopContextRequest {
+                after: request.metadata.context_cursor.clone(),
+                limit: self.message_limit(&request.metadata),
+                mode: request.metadata.mode,
+            })
+            .await?;
+        let identity_message_count = context.identity_messages.len() as u32;
+        let instruction_snippet_count = context.instruction_snippets.len() as u32;
+        let compaction_message_index = context
+            .messages
+            .iter()
+            .filter_map(|message| message.compaction.clone())
+            .collect();
+        let visible_surface = self.visible_surface(&request.metadata)?;
+        let metadata = request.metadata.clone();
+        let instruction = prepared_prompt::build_with_context(
+            &self.context,
+            request,
+            visible_surface,
+            self.safety_context.clone(),
+            context,
+        )?;
+        self.publish_bundle(
+            &metadata,
+            instruction,
+            compaction_message_index,
+            identity_message_count,
+            instruction_snippet_count,
+        )
+        .await
+    }
+
     async fn build_prepared_prompt_bundle(
         &self,
         request: PreparedLoopPromptRequest,

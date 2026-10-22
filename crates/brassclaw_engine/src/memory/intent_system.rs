@@ -132,9 +132,6 @@ impl fmt::Display for InputClass {
 /// The 2-point spread within which multiple matches trigger disambiguation (Q11).
 pub const DISAMBIGUATION_SPREAD: i32 = 2;
 
-/// Maximum candidates surfaced in a disambiguation message.
-pub const MAX_DISAMBIGUATION_CANDIDATES: usize = 3;
-
 /// Score hard cap (SEC-05).
 pub const SCORE_CAP: i32 = 100;
 
@@ -531,8 +528,9 @@ async fn lookup_intent<C: tokio_postgres::GenericClient>(
     let eligible_texts = eligible.map(|e| &e.texts);
     let rows = client
         .query(
-            // Limit distinct workflows only after ranking and spread filtering.
-            // Limiting raw template rows can hide an equally eligible Recipe.
+            // Return every distinct workflow within the ranking spread.
+            // Catalogue admission owns capacity; aliases and a fixed top-N
+            // must not hide equally eligible workflows from disambiguation.
             "WITH matching AS (
                SELECT ii.*,
                  CASE WHEN ii.input_text = $5 THEN 0 ELSE 1 END AS text_rank,
@@ -542,9 +540,9 @@ async fn lookup_intent<C: tokio_postgres::GenericClient>(
                WHERE ii.tenant_id = $1 AND ii.user_id = $2
                  AND ii.agent_id = $3 AND ii.project_id = $4
                  AND ii.input_class = ANY($6)
-                 AND ($12::uuid[] IS NULL OR (
+                 AND ($11::uuid[] IS NULL OR (
                    ii.component_class_code=21 AND ii.needs_review=false
-                   AND EXISTS (SELECT 1 FROM unnest($12::uuid[],$13::text[],$14::text[])
+                   AND EXISTS (SELECT 1 FROM unnest($11::uuid[],$12::text[],$13::text[])
                      eligible(component_id,step_link,input_text)
                      WHERE eligible.component_id=ii.component_id
                        AND eligible.step_link=ii.step_link
@@ -574,8 +572,7 @@ async fn lookup_intent<C: tokio_postgres::GenericClient>(
                     step_link, input_text, is_template
              FROM distinct_workflows
              WHERE top_score - score <= $10
-             ORDER BY text_rank, class_rank, score DESC, id
-             LIMIT $11",
+             ORDER BY text_rank, class_rank, score DESC, id",
             &[
                 &scope.tenant_id as &(dyn ToSql + Sync),
                 &scope.user_id,
@@ -587,7 +584,6 @@ async fn lookup_intent<C: tokio_postgres::GenericClient>(
                 &order[1],
                 &order[2],
                 &DISAMBIGUATION_SPREAD,
-                &(MAX_DISAMBIGUATION_CANDIDATES as i64),
                 &eligible_ids,
                 &eligible_links,
                 &eligible_texts,

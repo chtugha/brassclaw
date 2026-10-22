@@ -104,7 +104,11 @@ async fn repository_memory_backend_keeps_builtin_repository_as_default_plugin() 
     .unwrap();
 
     filesystem
-        .write_file(&path, b"remember via plugin boundary")
+        .put_opaque(
+            &path,
+            b"remember via plugin boundary".to_vec(),
+            brassclaw_filesystem::CasExpectation::Any,
+        )
         .await
         .unwrap();
 

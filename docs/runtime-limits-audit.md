@@ -46,7 +46,7 @@ Monty product DTOs and `live_monty_settings.rs`. Field-by-field help is in
 | Legacy money-budget defaults and gates | Remaining: ordinary `runtime.rs` resolves absent `RebornRuntimeInput.budget_defaults` from compiled defaults/environment; the production search finds no `with_budget_defaults` call supplying the separately stored `budget.*` configuration. `BudgetDefaults` includes user/project daily defaults (5/2 USD), thresholds and a 1.20 estimate factor; the accountant also has a 24-hour legacy approval-gate expiry. The visible legacy `agent.max_cost_per_day_cents` field is a different owner and does not bind these defaults. Complete the instance-budget/legacy authorization cutover with explicit operator controls and help; preserve existing limit/override and ledger provenance, avoid resetting the current period on a cap-only edit, and retire per-run legacy gates rather than adding new invocation approval settings. Do not assume DB persistence is live uptake or relabel estimate-based spend as actual billing. |
 | Model-work cost quote fallback | Implemented and accepted: `model_quote_output_tokens` (default 8192) is a live WebUI reservation estimate with EN/DE explanation, replacing the separate `ModelCostTable` constant. Explicit work estimates and known cost-row maxima take precedence; accepted holds retain their estimate/revision and nested accountants share the actual acknowledged source. Real global-settings/PostgreSQL holds, write rejection, precedence, cleanup, V170 preservation, ordinary global Monty and actual model/accounting-error integration pass. It does not cap output or establish actual provider usage. Exact selected technical maximum propagation, original pricing/route retention and explicit unknown/estimated versus observed settlement still require implementation. |
 | Resource-governor PostgreSQL exchange deadline | Implemented and accepted: `resource_store_timeout_millis` (default 2000 ms) is editable in the existing Monty execution settings with EN/DE help. The actual PostgreSQL governor and gate store share the startup/acknowledged live source; one read/CAS write captures one policy. Real delayed-PG acceptance proves a timed-out mutation can commit exactly once, readback retains its outcome, and the last acknowledged deadline remains usable after global owner shutdown. Migration preserves explicit values and bumps incomplete rows once. No model retry or zero-spend inference follows from timeout. Full accounting-owner restoration after restart remains separate. |
-| Subagent goals and remaining gate/tombstone records | Locally accepted subagent-goal-retention-20261017-r1 removes the 4096-entry oldest-goal eviction and the separate 64 KiB payload ceiling in memory/PostgreSQL. Goals retain exact data until explicit deletion; insertion is fallible, duplicates and poison are errors, and draining releases the map allocation. All106 surrounding subagent tests, actual >4096 retrieval/drain and poison/large-data cases, real PostgreSQL complete committed/reopened data with duplicate/foreign/exact deletion, ordinary global Monty and strict affected PostgreSQL+Bedrock test lint pass. The separate spawn decoder/schema 64 KiB goal cap, prompt composer 64/128 KiB caps and misuse of the 512-byte status-summary contract for task data still need actual consuming-path repair. Do not loosen status/log protection to transport raw task text. Spawn rollback also discards cleanup failures; retained cleanup and real R09 child-admission/wait execution remain open. The fixed gate capacity and tombstone eviction remain separate required repairs with retained-work, durable acknowledgement and recovery contracts. |
+| Subagent goals and gate/tombstone records | Locally accepted goal-retention-20261017-r1 removed oldest-goal eviction and memory/PostgreSQL goal payload caps. The successor subagent-prompt-20261021-r4 closes the separate spawn decoder/schema 64 KiB cap, composer 64/128 KiB caps and 512-byte status-summary misuse: full task/handoff/direction data uses host-only materialization with actual context, hooks, authority and capability narrowing. It also removes in-process gate/tombstone 4096 ceilings/eviction, rejects conflicting/foreign parent records and frees backing tables on exact explicit drain. Actual PG boot/142-message data path, surrounding callers, architecture, global Monty, real model custody/accounting and strict lint pass; the receipt scopes exact sources/artifacts. Durable R09 child admission/selection/waits and retained cleanup/cancellation/discard recovery remain open. Tombstones currently have no ordinary runtime consumer; their exact-delete API is not durable acknowledgement proof. Existing technical transport/runtime constraints remain separate. |
 | MCP request cancellation index: former 4096 lifetime/active IDs per exchange | Repaired with live `max_mcp_inflight_calls` (default 4096), complete revisioned settings and EN/DE WebUI help. Native mcp-call-lifecycle-20261015-r3 proves 4097 actual registrations, live lowering without canceling accepted work, shared duplicate ownership, concurrent/aborted waiter cleanup, whole empty-batch reclamation and completed durable receipt recovery after late cancellation. V160 preserves overrides and evaluates prior defaults once; native WebUI/runtime uptake and strict affected lint pass. Ordinary saturated sibling chat admission is accepted separately in dependent-service-20261015-r10; full multi-parent/recovery and rendered form/platform acceptance remain open. HTTP byte limits are now independently live and explained, as recorded below. The request-ID guard/index repair is accepted in mcp-request-digest-20261015-r1 with r2 validation, as described below; aggregate transport buffering remains open. |
 | MCP HTTP request and response bytes | Repaired with `max_mcp_request_bytes` and `max_mcp_response_bytes` (default 1 MiB), V163 preservation of complete/partial overrides and one prior-default evaluation, complete revisioned publication and EN/DE help. Native mcp-transport-bytes-20261015-r3 with r8 retained evidence accepts requests and complete ordinary-chat replies beyond the old ceiling, a held body across reduction, no replay after response overflow following an effect, actual listener and rendered settings with persisted/effective revisions. The three command/catalogue contract regressions also pass. The extra 64 KiB invocation guard/advertised maxLength is removed; exact typed usage contracts remain. The former 256-byte request-ID guard and raw-ID B-tree key are repaired in mcp-request-digest-20261015-r1/r2. V164 indexes a canonical scalar digest while retaining and comparing the exact JSONB ID; the actual populated predecessor upgrade preserves all rows, IDs, phases, references and receipts. Real HTTP accepts an incompressible ID over 14 KiB; equivalent numeric spellings recover the same original run with unchanged effect counts, and changed-command reuse fails. Native parent/HTTP39.253s, global Monty38.259s and strict PG/composition test lint66.138s pass. Existing live HTTP byte limits remain effective. The secondary declaration 64 KiB, catalogue input 1024 and 64-variable/example guards are removed in mcp-declaration-20261017-r1. Four contract/retained-worker tests preserve complete larger declarations and typed positions, conflict/qualification errors and no publication on failure; ordinary global/MCP callers and strict affected PostgreSQL/Bedrock test lint pass. This is not evidence for a fully qualified 1025-command catalogue. Enclosing revision/parser bounds and aggregate buffering remain open. Browser CI is wired through the existing native fixture and both actual local browser checks pass (settings-browser-ci-20261016); GitHub job execution, packaged and platform/remote acceptance remain required. |
 | Host HTTP client retention | Repaired: `max_http_client_cache_entries` (default 128; zero disables retention) is persisted and exposed with EN/DE help. Individual LRU eviction preserves active handles and vetted-address keys; old builders cannot insert after a revision change. Native http-cache-policy-20261012-r2 passed actual host HTTP, PostgreSQL migration/rejection, live settings with one global VM and strict affected lint. Rendered browser and cross-platform acceptance remain open. |
@@ -203,3 +203,520 @@ provider adapter-observation custody repair uses the original invocation's
 captured data ceiling for a separate immutable evidence stage; it adds no
 independent fixed quota. That successor is still under validation and must not
 be inferred complete from the earlier successful neutral-response tests.
+
+
+Native model evidence and configured-rate ownership (2026-10-20): locally
+accepted `provider-observation-20261020-r10` keeps separate immutable original
+buffered OpenAI-compatible HTTP, adapter and validated-loop observations. The
+original invocation's acknowledged `max_value_bytes` covers encoded evidence;
+no independent response-evidence quota is introduced. Completed observation
+memory is released after exact durable acknowledgement. Real same-global-VM
+complete/truncated/two write-rejection candidates, original-response and
+accounting recovery, relevant callers and strict affected/root lint passed.
+The accountant also retains its configured rate from admission through direct,
+auxiliary and retained settlement; a later table read cannot reprice the work.
+This in-process quote is not durable rate provenance or a completed provider
+price editor. Observed-failure accounting, other wire protocols/streaming and
+partial transport custody, auxiliary evidence owners, canonical activation and
+combined production/platform acceptance remain open. The new six-transport
+parameter repair is a separate unaccepted successor at this point.
+
+
+SDK request-parameter prerequisite accepted (2026-10-20):
+`sdk-request-parameters-20261020-r3` passed all three actual single-submission
+HTTP tests, including six registry/SDK transports, and the Rig request/response
+contracts. The matrix made 24 calls: 22 original HTTP requests and two explicit
+Anthropic required-output-limit preflight errors. No technical maximum was
+invented. The existing-VM four-case model candidate passed in 48.48 s; affected
+PostgreSQL + Bedrock test-target Clippy passed with `-D warnings` in 136.86 s.
+The receipt `/private/tmp/brassclaw-sdk-request-parameters-accepted.json` records
+frozen sources, binary hashes and the verified reuse of the unchanged
+Composition caller across an LLM-unit-test-only change. These are SDK transport
+and development candidate results, not cloud-provider inference, canonical
+catalogue activation, durable pricing, combined prefix or whole-plan acceptance.
+
+
+Subagent consuming-path successor under validation (2026-10-20):
+`subagent-prompt-20261020-r1` removes the separate spawn schema/decoder
+64 KiB limits and the prompt composer's 64/128 KiB limits. Full direction,
+task and handoff use host-only prepared message materialization; the short
+LoopSafeSummary contract remains unchanged. The new context-prefix prompt
+method retains normal context loading, cursor/history policy, identity,
+instructions, memory, safety, surface validation, hooks and the existing
+single-use prompt authority. Complete-message Recipe callers retain their
+existing explicit-message behavior. The child's capability view is intersected
+on all three prompt entry points. The initial persisted child input preserves
+its literal task/handoff rather than rewriting data through the status sanitizer.
+
+Focused regressions include exact large Unicode/whitespace/code data, real
+PostgreSQL goals plus 142 eligible transcript messages with token budgets
+disabled, hook materialization and authority reuse rejection. These checks and
+ordinary global Monty/affected strict lint are pending, not accepted results.
+This is a host infrastructure prerequisite; it does not activate R09 or repair
+its missing contextual child admission, inherited immutable selection and
+durable cleanup/recovery. Existing technical transport/runtime constraints and
+the separate gate/tombstone issues still require their own consuming-path work.
+
+
+Subagent retained-bookkeeping successor prepared (2026-10-21, not yet validated):
+The separate root changes in `subagent/gate_resolution.rs` remove the fixed
+4096-state admission ceiling, reserve changed maps/vectors before logical
+insertion, reject a conflicting replay of the same gate/child identity and
+release backing tables after explicit full drain. The cached count is exact
+bookkeeping, not a resource/admission setting. Existing result delivery and
+explicit gate deletion remain in the completion observer.
+
+`tombstone_store.rs` removes oldest-record eviction, retains immutable child
+outcomes, rejects conflicting writes and exposes exact expected-record deletion
+with idempotent absence. Draining releases its map allocation; poisoned storage
+still fails. This store currently has no ordinary runtime consumer: tests and
+readiness metadata are not durable cancellation/discard integration. The new
+method explicitly does not establish durable acknowledgement by itself. R09
+recovery and retained rollback outcomes remain required work. The two-file
+changes are outside the currently running `subagent-prompt-20261020-r2` scope.
+
+
+Subagent boundary/retention successor R4 under validation (2026-10-21):
+Actual R3 PostgreSQL boot/history and global-VM regressions passed, but its
+architecture library target executed zero tests and was explicitly rejected.
+The actual architecture dependency target then found two pre-existing violations:
+a lower runtime ID in the prepared host-message contract and a test listener
+inside product source. The R4 successor uses a distinct `LoopPromptMessageSetId`
+with explicit native UUID correlation and moves only the real loopback fixture
+lifecycle into `tests/common`. Architecture rules remain unchanged.
+
+R4 combines these repairs with the prepared gate/tombstone retention changes
+and the exact first-child-message regression, then rebuilds affected host and
+prepared-message contracts, actual architecture targets, native PG/global/model
+callers and strict affected lint. No R3/R4 whole-scope acceptance is claimed yet;
+failed predecessors remain attributed. The retained-bookkeeping-only launcher
+is superseded by this combined scope and must not be run redundantly.
+
+
+Subagent host/boundary/retention prerequisite accepted (2026-10-21):
+`subagent-prompt-20261021-r4` passed both unchanged architecture targets
+(28 dependency + 4 composition checks), all 48 Subagent host adapter tests,
+106 Subagent store/observer tests, 12 prompt-hook tests, four host-prompt tests,
+the instruction bundle regression, all three complete-message contracts and
+the actual host preparation/fencing contract. Real PostgreSQL seeded/integrity
+boot and complete-goal/142-history-message cases passed (7.25 s). Ordinary
+global Monty passed (53.31 s), the real four-case canonical model candidate
+passed (40.82 s), actual original native response custody passed (46.71 s),
+and original-hold accounting recovery passed (13.67 s). Affected/root
+PostgreSQL + Bedrock test-target Clippy passed with `-D warnings` (121.20 s).
+The receipt `/private/tmp/brassclaw-subagent-prompt-accepted.json` pins the exact
+frozen inputs, binaries and unchanged worker. Other-chat prefix/vendor changes
+remain outside this source scope. No new source change followed the freeze.
+
+The former task/handoff/composer caps and short-summary misuse are repaired;
+complete input data is retained literally. In-process gates/tombstones no longer
+use 4096-entry ceilings/eviction, and exact owner/conflict/deletion/drain rules
+are observed. The distinct host message-set ID preserves native UUID correlation
+without carrying effect authority. The actual test HTTP listener lives in the
+existing test-support directory. Architecture rules were not weakened. R1's
+wrong test-only import, R2's missing production Direction boot, the R3 zero-test
+architecture invocation and its two actual boundary failures remain failed
+historical evidence. R4 rebuilt and executed all affected checks after repair.
+
+This accepts host infrastructure and retained in-process bookkeeping, not R09
+child admission/activation, inherited immutable child selections, durable
+rollback/cancellation/discard recovery, a general pure-approval schema or
+dynamic effect occurrences. The tombstone store has no ordinary runtime
+consumer; exact deletion alone is not durable acknowledgement. The actual model
+candidate remains a development InternalRecipe. Full v3, combined prefix,
+platform, release and installed-function acceptance remain open.
+
+
+### Claim-fenced child admission prerequisite (2026-10-21; r2 accepted)
+
+The existing Turn coordinator and aggregate stores now expose a separate trusted
+`submit_claimed_child_run` / `submit_claimed_child_turn` entry. It retains the
+original parent runner/lease proof and checks exact scope, run, turn, Running
+status and unexpired non-null lease inside the existing state transition,
+before cached replay and after asynchronous profile preparation. PostgreSQL CAS
+retries retain that same supplied proof. Unsupported stores return Unavailable;
+they never call the unfenced compatibility entry. Lifecycle publication, prepared
+identity checks, descendant reservation, queued wake and deferred publication
+errors retain their existing owners/order. Claims grant no Tool permission.
+
+Frozen `claimed-child-20261021-r2` passes both actual unchanged architecture
+targets (28 dependency / 4 composition), all 86 Turns library tests, all 145
+coordinator contracts and six real filesystem contracts. New cases cover stale
+identity before and after cached replay, cancellation during profile preparation,
+expired parent claims and reopen/exact replay. The actual PostgreSQL test drives
+real thread input, coordinator, lifecycle wrapper, aggregate admission, reopened
+store, lineage and cancellation (4.39 s including launcher). Ordinary global
+Monty passes (52.60 s); affected/root PostgreSQL + Bedrock test Clippy passes with
+`-D warnings` (120.38 s). Receipt:
+`/private/tmp/brassclaw-claimed-child-accepted.json`. Exact frozen inputs and
+preserved binaries are retained; the unchanged worker hash is checked.
+
+The unused status-string helper, its dead-code allowance and its sole `heck`
+dependency were removed. Filesystem test fixtures now own TempDir cleanup through
+the whole test instead of leaking it. R1 did not compile: its frozen lock selected
+the peer's local onig patch while its frozen manifests still selected registry
+onig. R2 projects the preceding accepted graph with only the unused Turns edge
+removed, and preserves the separate current-root prefix module. No peer source
+or dependency selection was reverted. Final combined-root acceptance remains.
+
+This closes the trusted coordinator/store prerequisite, not R09's actual native
+Tool dispatch, durable child-admission provenance, fresh child bindings against
+inherited selections, explicit Recipe wait/results or unresolved cleanup/recovery.
+The legacy child submission API remains compatibility-only and is not made safe
+by this new entry. No bundled approval, child execution or whole-plan acceptance
+is inferred. The separate pending host-fence ceiling repair is outside this
+accepted source snapshot.
+
+
+### Remove the second host-call ceiling (2026-10-21; r3 accepted)
+
+The per-attempt Monty cancellation barrier no longer imposes a separate fixed
+64-call limit. The existing acknowledged global `max_pending_host_calls` remains
+the service admission owner, with its existing WebUI control and EN/DE help.
+Call-address representation exhaustion remains an explicit technical error.
+The barrier retains every started call and late answer; it does not grant Tool
+permission or reserve a second capacity pool. No pressure measurement was added.
+
+Frozen `fence-capacity-20261021-r3` passes the actual unchanged architecture checks
+(28 dependency / 4 composition), all three barrier units and all six actual Reborn
+Monty-host contracts. The new caller regression admits 65 independently prepared
+calls, observes 65 pending at fencing, then checks every original withheld answer,
+unique identity, settled acknowledgement and refusal of further dispatch. It uses
+the existing recording gateway; it does not claim 65 actual provider calls. Prompt
+bundles retain their single-use authority: each is consumed before issuing the
+next bundle, while the already admitted waits overlap.
+
+Ordinary global Monty passes (57.28 s), actual real-model native answer custody
+passes (37.47 s), and affected/root PostgreSQL + Bedrock test Clippy passes with
+`-D warnings` (120.39 s). Receipt:
+`/private/tmp/brassclaw-fence-capacity-accepted.json`; exact frozen inputs and
+preserved artifacts remain in the corresponding validation directories. The
+architecture binaries were reused after exact source/dependency applicability
+checks and executed against the new checkout; the production consumers were
+rebuilt. Worker bytes are unchanged and checked.
+
+R1's wrong test crate name and R2's incorrectly pre-issued prompt grants remain
+failed historical fixtures. Neither prompt authority nor architecture rules were
+weakened. Only the corrected R3 scope is accepted. The new child actor/CAS safety
+repair is a later unaccepted scope; R09 native admission/provenance, inherited
+selection, explicit waits/results, durable recovery, full-plan/platform/combined
+prefix/release acceptance remain open.
+
+
+### Claimed child actor and backend CAS safety (2026-10-21; r1 accepted)
+
+The new claimed child entry now verifies the actual stored parent's actor before
+admission and cached replay, including after async preparation. This preserves
+the original tree's cancellation identity; it adds no Tool grant or feature-role
+check. The existing malformed mixed-actor compatibility-tree test established
+why this matters. The legacy unfenced submission contract is unchanged.
+
+Filesystem claimed admission now requires the requested backend version CAS.
+It never substitutes an unconditional write after Unsupported. Its positive
+reopen/replay fixture uses actual CAS-capable InMemoryBackend; a separate real
+LocalFilesystem negative case proves refusal leaves the complete persisted
+snapshot unchanged. The older byte-only compatibility operations remain explicitly
+process-local and are not production authority evidence. This supersedes the
+previous positive LocalFilesystem claim fixture for the stricter contract.
+
+Frozen `claimed-child-safety-20261021-r1` passes actual architecture checks
+(28 dependency / 4 composition), all 86 Turns library tests, 145 coordinator
+contracts, seven filesystem contracts, actual PostgreSQL actor/claim/reopen/tree
+cancellation (4.47 s), ordinary global Monty (54.55 s), and affected/root
+PostgreSQL + Bedrock test Clippy with `-D warnings` (119.57 s). Receipt:
+`/private/tmp/brassclaw-claimed-child-safety-accepted.json`. Exact sources and
+preserved binaries scope the result; peer changes remain excluded and untouched.
+No model path changed; real-model custody retains its separate earlier scope.
+R09 native dispatch/provenance, inherited child selection/waits and durable
+uncertain cleanup, plus full-plan/combined-root/platform/release acceptance,
+remain required. No whole-plan completion is claimed.
+
+### 2026-10-21 — Matcher response count follow-up (r1 locally accepted)
+
+The neutral matcher's fixed `MAX_DISAMBIGUATION_CANDIDATES = 3` and SQL LIMIT
+are removed in source. Disambiguation keeps all distinct workflows satisfying
+the existing rank/spread rules; aliases remain deduplicated. The ordinary catalogue
+still uses its acknowledged admission capacities. Native routing/facade regressions,
+all six existing dependency cases on native PostgreSQL, ordinary global Monty,
+architecture, strict affected root lint and independently locked Monty journal
+and lint pass in `retrieval-integrity-20261021-r1`. Receipt:
+`/private/tmp/brassclaw-retrieval-integrity-accepted.json`. It does not remove the separate parser/store/heap
+limits listed above or change the disabled-token-budget contract. Existing score
+normalization, spread and score-update rate/bucket constants remain separate
+algorithm/policy values to reconcile; they have not been exposed as live settings
+by this change. No claim that all fixed values have been removed is warranted.
+
+
+### 2026-10-21 coding primitive follow-up (source only; live acceptance pending)
+
+Root source replaces coding's read/write/patch, default read lines, directory
+entry/default-depth, glob result, grep output/default-page/scan, visited-entry and
+diff input/preview/context constants with fourteen acknowledged execution settings.
+EN/DE labels/help identify units, zero-pagination semantics, per-operation capture
+and independent task/IPC/kernel constraints. The shared coding input/output quotas
+and static manifest ceilings are removed so raised values can actually take effect.
+Bounded backend reads replace stat-then-unbounded reads; grep also bounds actual
+stream bytes by the remaining scan allowance and accounts for growth. Maximal
+explicit grep context uses saturating EOF arithmetic. V175 fills missing policy
+keys with existing defaults while preserving explicit values and retained manifest
+bytes. Native previous-row/default-evaluation/invalid-value/overflow checks and a
+real WebUI-facade save → PostgreSQL → acknowledged primitive → retained native
+Tool regression are prepared, including a larger-than-former-quota write/read and
+rejected-save rollback. These root changes are not covered by the safety-only
+`patch-expansion-20261021-r1` snapshot and are not yet accepted. Faithful raw
+snapshots, remaining primitive/parser caps and whole-plan cutover remain open.
+
+
+The fourteen coding settings above are now locally accepted in
+`coding-policy-20261021-r3`; receipt
+`/private/tmp/brassclaw-coding-policy-accepted.json` records all twelve successful
+checks, exact frozen inputs and verified artifacts. Actual native WebUI-facade
+saves, rejected-save preservation, larger-than-former-quota file operations,
+old-policy restoration, ordinary global Monty, kernel policy and strict lint pass.
+This supersedes the pending status for that exact scope only. Actual browser,
+merged peer prefix/local-onig, platform and release acceptance remain open.
+The subsequent `coding-materialization-20261021-r3` projection closes that
+scope's remaining full-read vectors and core bounded-directory forwarding.
+Walkers request the remaining visited allowance plus one overflow witness;
+Composite forwards, PostgreSQL limits distinct direct children before transfer,
+and in-memory listing retains selected metadata. Generic backend compatibility
+defaults may still materialize; partial windows do not promise global ranking.
+Receipt `/private/tmp/brassclaw-coding-materialization-accepted.json` records
+ten successful checks including actual native PostgreSQL, live settings and
+global Monty, plus rebuilt filesystem tests and strict affected test lint.
+Native execution uses the explicitly identified R2 projection; R3 fixes only
+test-helper visibility and a test label after the R2 lint failure, with exact
+production-input equivalence. No warning is suppressed. This adds no periodic
+pressure measurements or hidden quota, and establishes no RSS/speed, raw snapshot,
+merged peer, platform, full-plan or release claim.
+
+### 2026-10-21 — Model preparation and exact primary budget release
+
+`model-preparation-20261021-r2` passes all sixteen checks in
+`/private/tmp/brassclaw-model-preparation-accepted.json`. Mutable provider roles
+are retained before budget waits while dispatch still reads live technical
+limits. The ordinary WebUI provider-change regression and explicit neutral test
+lint also pass in `/private/tmp/brassclaw-model-preparation-runtime-accepted.json`.
+A native Sempai preflight failure proves the separate primary model was not
+submitted; only that proof permits releasing its exact reservation. Actual
+PostgreSQL rejection of the release preserves the hold and surfaces failure.
+Provider-entry uncertainty and independent Sempai spend remain retained.
+The subsequent local provider-preflight proof is accepted separately in
+`provider-preflight-20261021-r1`:
+`/private/tmp/brassclaw-provider-preflight-accepted.json` records all eight
+successful checks, including the actual typed non-submission outcome before
+HTTP, retained actual responses after provider entry, ordinary live role/global
+runtime and strict affected lint. No new limit, pressure counter or setting is introduced.
+The boot-derived price table and qualified/durable pricing remain open; these
+results do not establish that the dispatched model's original price is used.
+
+
+### 2026-10-21 — Numeric defaults and per-work costs (locally accepted)
+
+`accounting-representation-20261021-r2` passes all fourteen recorded checks in
+`/private/tmp/brassclaw-accounting-representation-accepted.json`, including
+actual PostgreSQL concurrent writes/imports, live quotes, real-model response
+custody, global runtime, and affected/independent strict lint. Unrepresentable
+positive defaults cannot silently become unlimited zero or a replacement factor.
+Malformed complete budget documents fail before mutation. Checked per-work costs
+retain original response/meter and holds when pricing cannot be represented.
+These are technical representation checks, not new operational caps or completed
+pricing provenance. Live legacy-default WebUI, merged peer and full-plan claims
+remain open.
+
+### 2026-10-21 — Aggregate counters (r3 locally accepted)
+
+The governor's Decimal/u64/u32 representation boundaries are technical types,
+not new configurable quotas. The accepted path rejects aggregate overflow and lost
+USD contributions before publishing any cascade balance, including when token
+budgets are disabled. No valid operational limit is silently clamped. Failed
+settlement retains original holds; inconsistent stored active balances remain
+unchanged and visible as errors. The exact `resource-ledger-20261021-r3` projection passes all fourteen checks in
+`/private/tmp/brassclaw-resource-ledger-accepted.json`, including actual native
+PostgreSQL, rebuilt worker, real-model custody, global runtime and strict
+affected/independent checks; retained artifact hashes are verified.
+The existing configurable limits, portable memory mode and explanatory WebUI
+requirements retain their prior scope; this change adds no monitoring loop.
+
+
+### 2026-10-21 — Internal model preparation (r2 locally accepted)
+
+Internal inference now has a candidate non-I/O retention boundary before policy
+and accounting waits. It pins the actual selected gateway to the complete typed
+request, preserves the guard wrapper and keeps current live model limits. A
+native regression is prepared using real inference and a real PostgreSQL governor
+with a transparent policy pause. Its exact `system-preparation-20261021-r2` projection passes all eleven checks in
+`/private/tmp/brassclaw-system-preparation-accepted.json`, including actual model,
+PostgreSQL, global runtime and strict affected/independent lint; retained artifact
+hashes are verified. No new
+cap, pressure sampler, billing provenance or whole-plan completion is introduced.
+
+
+### 2026-10-21 — Structured-entry metadata boundary (locally accepted)
+
+The PostgreSQL stat classification repair is accepted locally before extending
+raw document acquisition. It aligns structured-record protection with the in-memory backend;
+ordinary opaque files and current configurable coding limits retain their
+semantics. The actual six-Tool/kernel regression on PostgreSQL and in-memory
+backends, live coding settings, global Monty and strict affected/independent
+checks pass in entry-sensitivity-20261021-r2 (R3 validation). Existing ordinary
+parent directories also avoid a redundant unsupported legacy creation call.
+No new numeric cap,
+pressure measurement or limit setting is introduced, and R10 raw fidelity and
+atomic source identity remain open pending their separate implementation.
+
+### 2026-10-21 — Internal inference non-entry accounting (locally accepted)
+
+A Rust-only system-inference submission result preserves native evidence that a
+provider was never entered. The guarded accountant can then release the exact
+reservation; timeouts, uncertain provider outcomes and failed release
+acknowledgements keep their conservative treatment. This introduces no new cap,
+pressure sampling or user setting. The actual PostgreSQL/live-provider
+regression passes in system-nonsubmission-20261021-r1, alongside all shared
+contracts, actual model custody/global callers and strict root/independent lint.
+No full-system custody, pricing, activation or platform acceptance is implied.
+
+Source inspection on 2026-10-21 finds all 62 MontyExecutionLimits fields in the
+WebUI execution form, with nonempty labels and short-help keys for every field
+in both English and German. All five memory-help keys are present as well.
+This is a source correspondence audit, not rendered-browser acceptance, and
+does not claim that the remaining fixed values above are already configurable.
+
+### 2026-10-21 — Model-name lifetime limits (locally accepted)
+
+The fixed 1,024-entry/256-byte lifetime interner and overflow placeholder are
+removed in source in favor of owned/refcounted metadata. Immutable providers
+can borrow names; mutable snapshots own them and release replaced allocations.
+This needs no cosmetic WebUI quota or pressure sampler. Protocol/model-identity
+validation remains separate. The 2,048-replacement metadata lifecycle regression
+passes in model-name-owned-20261021-r1, with all 812 provider units, 60 gateway
+contracts, actual selected-model/PostgreSQL custody, ordinary live-role/global
+runtime and strict root/independent checks. This is metadata ownership, not
+pricing provenance, full catalogue activation or platform acceptance.
+
+### 2026-10-21 — Opaque-read classification and large ceilings (locally accepted)
+
+Structured-kind checks now follow the actual entry/body read, and PostgreSQL
+never sends a structured body from its opaque bounded-read query. A larger
+caller ceiling no longer wraps negative when represented by the signed SQL
+parameter; this is an equivalent comparison over backend lengths, not a new
+quota or truncation. Actual kernel/backend race, full-ceiling and empty-file
+cases pass in opaque-read-20261021-r2, including live coding/global callers and
+strict affected/independent lint. All 16 recorded results and retained artifact
+hashes were verified. No new setting or pressure sampler
+is introduced. Atomic writes, raw source identity and containment remain open.
+
+### 2026-10-21 — WebUI/native execution-limit ranges (locally accepted)
+
+The WebUI scalar parser now uses Rust's actual u32 fields and the u32 IPC frame
+limit; the browser polling timer retains its stricter signed limit. HTTP default
+timeout/body ceilings are u64 and no longer have an unrelated u32 form ceiling.
+All numbers still require exact JavaScript safe-integer representation, and the
+server retains platform/clock/body-allocation feasibility checks. Previously
+missing catalogue/value-depth u32 guards now reject invalid form values early.
+The existing ordinary global-runtime regression adds HTTP defaults above u32
+on 64-bit hosts and checks the same persisted/effective revision in the HTTP
+cache and Monty without replacing the VM. The exact scalar parser boundary
+checks and JavaScript syntax pass. The frozen http-ui-ranges-20261021-r1
+ordinary PostgreSQL/global runtime case passes (53.070 s), as does strict
+affected test lint (98.126 s); all three results and artifact hashes are
+verified in /private/tmp/brassclaw-http-ui-ranges-accepted.json. No rendered
+browser, 32-bit execution, merged-peer or full-plan acceptance is implied. No
+new cap, setting, pressure sampler or completion claim is introduced.
+
+### 2026-10-21 — Atomic opaque coding writes (locally accepted)
+
+The existing write/patch usages need a native storage guard: a trusted conversion
+between preflight and mutation could otherwise be overwritten through Any. One
+unified `put_opaque` operation now checks the target kind atomically with native
+CAS/namespace mutation. Ordinary trusted `put` conversion remains available.
+PostgreSQL predicates and in-memory mutex protection share their existing put
+implementation; no second filesystem trait or workflow Tool is introduced.
+
+A declared capability, scoped permission forwarding and composite mount routing
+cover the operation. Local files preserve supported Any/Absent behavior and
+reject unsupported version CAS before effects. Byte-only memory adapters preserve
+prompt safety/schema/event handling and reject unsupported CAS without entering
+that path. Coding Tools transfer the bytes to this guard; new write buffering
+uses fallible reservation. Native writes create/infer missing parents after the
+ordinary-directory preflight instead of a redundant legacy mkdir.
+
+The actual kernel/backend regression covers both write and patch conversions
+at the native mutation boundary, all record CAS modes and missing-parent creation
+on PostgreSQL and memory, alongside the prior read race. Scope/mount routing,
+real memory-repository adapters and existing Local coding contracts are included.
+All changed sources were reviewed before compilation. Frozen
+opaque-write-20261021-r1 passes all 18 recorded checks: native race (9.746 s),
+namespace/CAS (2.953 s), live coding (28.251 s), ordinary global Monty (53.052 s),
+strict affected root PostgreSQL/Bedrock lint (181.663 s), independent journal
+(18.546 s) and lint (35.769 s), plus shared contracts. Receipt
+/private/tmp/brassclaw-opaque-write-accepted.json and all retained artifact hashes
+were verified. A validation-harness disk guard interrupted after 15 successes;
+the initial log/checkpoint is retained, mandatory own-target cleanup was done,
+and only the remaining checks resumed. Three baseline Docker host cases remain
+ignored; no product failure or warning was suppressed.
+No new numeric cap, setting, pressure sampler or installed-instance approval is
+introduced. Full patch content/version CAS, raw snapshot fidelity, legacy byte
+migration, hostile local containment, catalogue/platform/full-plan acceptance
+remain separate required work.
+
+The native write audit also removes saturating record-version/event-sequence
+advancement. `checked_next` returns None at representational exhaustion; memory
+put/opaque-put/byte-append/event-append reject before publishing changes. Native
+PostgreSQL's signed version overflow aborts and rolls back. Actual maximum-state
+regressions check retained body/version/events. This is the storage integer
+representation, not a configurable resource quota; no counter can be reused.
+
+### 2026-10-22 — Retained worker claim handoff (locally accepted)
+
+The child-task bridge needs the actual worker claim. Ordinary worker handoff now
+retains it as an Arc through the existing global Monty task host, with consistent
+scope/actor/message/run/profile/internal-source checks. Tokens stay Rust-only;
+they are not Python/model inputs or Tool grants. Existing explicit-attempt
+callers carry no full claim rather than reconstructing one from IDs. Durable
+child admission must still recheck the original claim and preserve the captured
+catalogue, waits, cancellation and complete results; those R09 steps remain open.
+The metadata regression checks Arc identity, nine mismatches and absent-claim
+behavior without invoking or simulating work. Existing worker fixtures now model
+the actual Queued-to-Running claim transition and complete host metadata. Actual
+PostgreSQL/global-path and affected caller validation passed in frozen
+claimed-handoff-20261022-r1: Turns units (0.238 s), worker contracts (3.004 s),
+ordinary global Monty (56.533 s), strict affected root PostgreSQL/Bedrock test
+lint (171.959 s), independent journal (18.289 s) and lint (34.888 s). Receipt
+/private/tmp/brassclaw-claimed-handoff-accepted.json and all retained artifact
+hashes were verified. The worker contract fixtures establish transport/identity;
+the native case exercises the actual product worker with PostgreSQL. This is
+not child execution, catalogue inheritance, merged-peer or full-plan acceptance.
+No numeric cap,
+setting, pressure sampler, Rust workflow fallback or activation is added.
+
+
+### 2026-10-22 — Task-bound native child service (locally accepted prerequisite)
+
+R09 infrastructure now has a Rust-only typed child workflow/input/outcome port
+and a narrow retained-native binding constructor for builtin.spawn_subagent.
+Binding preserves the original handler, exact image/schema identity, planner,
+substrate and supplied live authorizer. Only the matching native capability gets
+the task-bound service after the original resolver succeeds. Default services
+have no child port. Claims, catalogue provenance and workflow selection cannot
+be supplied as model-authored authority fields. Complete result text is distinct
+from admission, failed/cancelled/recovery-required outcomes and unknown effects.
+
+This is a service-binding prerequisite, not an activated child profile. The
+existing authorization-only builtin remains unchanged; no Recipe may treat its
+authorized:true receipt as child success. Actual claimed admission, private
+parent/child linkage, original catalogue inheritance, dependent scheduling,
+explicit wait/full-result handling, cancellation and bootstrap qualification are
+still required before the five subagent Recipes can activate. The new boundary
+regressions inspect binding without invoking child work and exercise real native
+identity retention and kernel denial, never fabricated successful children.
+Frozen child-binding-20261022-r2 passes all eight recorded checks: service
+binding (0.456 s), original service resolution (0.024 s), actual native identity/
+kernel denial (0.714 s), retained live policy (0.041 s), ordinary PostgreSQL/
+global runtime (54.422 s), strict affected root/PG/Bedrock lint (129.185 s),
+independent native invocation journal (20.392 s) and its strict lint (38.394 s).
+/private/tmp/brassclaw-child-binding-accepted.json and retained executable hashes
+were verified. R1 failed only on the new module's wrong LoopMessageRef import;
+its diagnostics remain archived. R2 corrects that root export. The marker port
+never produces an admitted/completed child. No R09, merged-peer, platform or
+full-plan acceptance follows.

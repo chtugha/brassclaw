@@ -216,8 +216,8 @@ impl Default for StubLlm {
 
 #[async_trait]
 impl LlmProvider for StubLlm {
-    fn model_name(&self) -> &str {
-        &self.model_name
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(&self.model_name)
     }
 
     fn cost_per_token(&self) -> (Decimal, Decimal) {

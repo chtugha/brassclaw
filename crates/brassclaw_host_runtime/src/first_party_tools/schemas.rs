@@ -13,6 +13,20 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
             "type":"object","properties":{"source":{"type":"string"}},
             "required":["source"],"additionalProperties":false
         }),
+        "schemas/builtin/prefix_source.input.v1.json" => json!({
+            "type":"object","properties":{
+                "operation":{"type":"string","enum":["read","retain_observation"]},
+                "source":{"type":"object","properties":{
+                    "profile":{"type":"string","pattern":"^[a-z][a-z0-9-]{0,63}$"},
+                    "source_id":{"type":"string","format":"uuid"},
+                    "revision":{"type":"integer","minimum":1,"maximum":9007199254740991_u64},
+                    "registration_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}},
+                    "required":["profile","source_id","revision","registration_sha256"],"additionalProperties":false},
+                "diagnostic_bytes":{"type":"string","minLength":1}},
+            "required":["operation","source"],"additionalProperties":false,
+            "oneOf":[{"properties":{"operation":{"const":"read"}},"not":{"required":["diagnostic_bytes"]}},
+                {"properties":{"operation":{"const":"retain_observation"}},"required":["diagnostic_bytes"]}]
+        }),
         "schemas/builtin/prefix_generation.input.v1.json" => json!({
             "type":"object","properties":{"operation":{"type":"string","enum":["read","retain"]},
                 "profile":{"type":"string","pattern":"^[a-z][a-z0-9-]{0,63}$"},

@@ -8,12 +8,13 @@ use std::{cmp::Reverse, time::UNIX_EPOCH};
 use super::{CodingCapabilityError, CodingCapabilityRequest};
 
 use super::{
-    config::{DEFAULT_MAX_RESULTS, GLOB_MATCH_OPTIONS, MAX_VISITED_ENTRIES},
+    config::GLOB_MATCH_OPTIONS,
     input_error,
     inputs::{optional_usize, required_str},
     paths::{
         filesystem_error, is_excluded_name, is_excluded_relative_path, is_sensitive_scoped_path,
-        resolve_optional_path, scoped_child_path, validate_relative_pattern, virtual_to_relative,
+        list_walk_entries, resolve_optional_path, scoped_child_path, validate_relative_pattern,
+        virtual_to_relative,
     },
     types::ResolvedPath,
 };
@@ -25,7 +26,8 @@ pub(super) async fn glob(
     let pattern = required_str(request.input, "pattern")?;
     validate_relative_pattern(pattern)?;
     let resolved = resolve_optional_path(request, FilesystemOperation::ListDir)?;
-    let max_results = optional_usize(request.input, "max_results")?.unwrap_or(DEFAULT_MAX_RESULTS);
+    let max_results = optional_usize(request.input, "max_results")?
+        .unwrap_or(request.limits.default_coding_max_results as usize);
     let pattern = Pattern::new(pattern).map_err(|_| input_error())?;
     let mut files = Vec::new();
     let walk_result = walk_entries(request, &resolved, |entry, relative| {
@@ -70,7 +72,7 @@ pub(super) async fn glob(
     if walk_result.visit_limit_reached {
         output["limit_reason"] = json!("visited_entries");
         output["visited_entries"] = json!(walk_result.visited_entries);
-        output["max_visited_entries"] = json!(MAX_VISITED_ENTRIES);
+        output["max_visited_entries"] = json!(request.limits.max_coding_visited_entries as usize);
     }
     Ok(output)
 }
@@ -89,16 +91,12 @@ async fn walk_entries(
     let mut stack = vec![root.virtual_path.clone()];
     let mut visited = 0usize;
     while let Some(dir) = stack.pop() {
-        let entries = request
-            .filesystem
-            .list_dir(&dir)
-            .await
-            .map_err(filesystem_error)?;
+        let entries = list_walk_entries(request, &dir, visited).await?;
         for entry in entries {
             visited += 1;
-            if visited > MAX_VISITED_ENTRIES {
+            if visited > request.limits.max_coding_visited_entries as usize {
                 return Ok(WalkEntriesResult {
-                    visited_entries: MAX_VISITED_ENTRIES,
+                    visited_entries: request.limits.max_coding_visited_entries as usize,
                     visit_limit_reached: true,
                 });
             }

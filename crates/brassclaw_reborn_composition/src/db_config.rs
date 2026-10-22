@@ -40,6 +40,12 @@ pub enum ConfigError {
     #[error("config update contains duplicate key `{key}`")]
     DuplicateKey { key: String },
 
+    #[error("config value for `{key}` is invalid: {reason}")]
+    InvalidValue { key: String, reason: String },
+
+    #[error("budget configuration writes require a read-committed transaction")]
+    BudgetTransactionIsolation,
+
     #[error(
         "config value for `{key}` looks like inline secret material — \
              store secret values in env vars, not in config"
@@ -94,6 +100,9 @@ pub async fn save_config_key(
     value: &str,
     caller: ConfigWriteContext,
 ) -> Result<(), ConfigError> {
+    if key.starts_with("budget.") {
+        return save_config_changes(pool, tenant_id, &[(key, Some(value))], caller).await;
+    }
     // Guard 1: inline-secret check (applies regardless of context).
     reject_inline_secret(key.to_owned(), value).map_err(|_| {
         ConfigError::InlineSecretForbidden {
@@ -128,6 +137,15 @@ pub async fn delete_config_key(
     tenant_id: &str,
     key: &str,
 ) -> Result<(), ConfigError> {
+    if key.starts_with("budget.") {
+        return save_config_changes(
+            pool,
+            tenant_id,
+            &[(key, None)],
+            ConfigWriteContext::Operator,
+        )
+        .await;
+    }
     let client = pool.get().await?;
     client
         .execute(
@@ -148,7 +166,11 @@ pub async fn save_config_changes(
     caller: ConfigWriteContext,
 ) -> Result<(), ConfigError> {
     let mut client = pool.get().await?;
-    let transaction = client.transaction().await?;
+    let mut builder = tokio_postgres::Client::build_transaction(&mut client);
+    if changes.iter().any(|(key, _)| key.starts_with("budget.")) {
+        builder = builder.isolation_level(tokio_postgres::IsolationLevel::ReadCommitted);
+    }
+    let transaction = builder.start().await?;
     save_config_changes_in_transaction(&transaction, tenant_id, changes, caller).await?;
     transaction.commit().await?;
     Ok(())
@@ -174,6 +196,10 @@ pub(crate) async fn save_config_changes_in_transaction(
             return Err(ConfigError::DuplicateKey { key: key.into() });
         }
     }
+    if ordered.keys().any(|key| key.starts_with("budget.")) {
+        lock_budget_config(transaction, tenant_id).await?;
+        validate_budget_config_changes(transaction, tenant_id, changes).await?;
+    }
     for (key, value) in ordered {
         if let Some(value) = value {
             transaction
@@ -193,6 +219,106 @@ pub(crate) async fn save_config_changes_in_transaction(
         }
     }
     Ok(())
+}
+
+/// Serialize the complete budget document, including absent keys. A stale
+/// repeatable-read snapshot can miss a newly inserted coupled threshold even
+/// after waiting for the lock, so mutation callers must use read committed.
+pub(crate) async fn lock_budget_config(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+) -> Result<(), ConfigError> {
+    let row = transaction
+        .query_one(
+            "SELECT current_setting('transaction_isolation') = 'read committed'",
+            &[],
+        )
+        .await?;
+    if !row.try_get::<_, bool>(0)? {
+        return Err(ConfigError::BudgetTransactionIsolation);
+    }
+    let key = format!("brassclaw:budget-config:{tenant_id}");
+    transaction
+        .query_one(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+            &[&key],
+        )
+        .await?;
+    Ok(())
+}
+
+/// Read-only complete-candidate validation. Writers hold `lock_budget_config`;
+/// migration dry runs can inspect their consistent snapshot without mutation.
+pub(crate) async fn validate_budget_config_changes<C: tokio_postgres::GenericClient + Sync>(
+    client: &C,
+    tenant_id: &str,
+    changes: &[(&str, Option<&str>)],
+) -> Result<(), ConfigError> {
+    if !changes.iter().any(|(key, _)| key.starts_with("budget.")) {
+        return Ok(());
+    }
+    let rows = client
+        .query(
+            "SELECT key,value FROM brassclaw_config WHERE tenant_id=$1 AND key LIKE 'budget.%'",
+            &[&tenant_id],
+        )
+        .await?;
+    let mut values = BTreeMap::new();
+    for row in rows {
+        values.insert(row.try_get::<_, String>(0)?, row.try_get::<_, String>(1)?);
+    }
+    for &(key, value) in changes {
+        if !key.starts_with("budget.") {
+            continue;
+        }
+        if let Some(value) = value {
+            values.insert(key.into(), value.into());
+        } else {
+            values.remove(key);
+        }
+    }
+    validate_budget_values(&values)
+}
+
+fn validate_budget_values(values: &BTreeMap<String, String>) -> Result<(), ConfigError> {
+    for key in [
+        "budget.user_daily_usd",
+        "budget.project_daily_usd",
+        "budget.heartbeat_per_tick_usd",
+        "budget.routine_lightweight_usd",
+        "budget.routine_standard_usd",
+        "budget.background_job_default_usd",
+        "budget.warn_at",
+        "budget.pause_at",
+        "budget.overestimate_factor",
+    ] {
+        if let Some(value) = values.get(key) {
+            value
+                .parse::<f64>()
+                .map_err(|_| ConfigError::InvalidValue {
+                    key: key.into(),
+                    reason: "must contain a number".into(),
+                })?;
+        }
+    }
+    let mut defaults = brassclaw_reborn_config::BudgetDefaults::compiled_defaults();
+    if let Some(section) = assemble_budget(values) {
+        defaults = defaults.with_section(&section);
+    }
+    defaults.validate().map_err(|error| match error {
+        brassclaw_reborn_config::BudgetDefaultsError::Invalid { field, reason } => {
+            ConfigError::InvalidValue {
+                key: format!("budget.{field}"),
+                reason,
+            }
+        }
+        brassclaw_reborn_config::BudgetDefaultsError::InvalidEnvF64 { .. } => {
+            ConfigError::InvalidValue {
+                key: "budget".into(),
+                reason: "database budget validation cannot consume environment values".into(),
+            }
+        }
+    })
 }
 
 /// Load all config rows for a tenant and reconstruct a `RebornConfigFile`.
@@ -230,6 +356,7 @@ pub(crate) async fn load_config_snapshot_from_client<C: tokio_postgres::GenericC
         }
     }
 
+    validate_budget_values(&kv)?;
     Ok(assemble_config(&kv))
 }
 

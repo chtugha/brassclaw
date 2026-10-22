@@ -118,7 +118,7 @@ impl CircuitBreakerProvider {
                         state.state = CircuitState::HalfOpen;
                         state.half_open_successes = 0;
                         tracing::debug!(
-                            provider = self.inner.model_name(),
+                            provider = %self.inner.model_name(),
                             "Circuit breaker: Open -> HalfOpen, allowing probe"
                         );
                         Ok(())
@@ -161,7 +161,7 @@ impl CircuitBreakerProvider {
                     state.consecutive_failures = 0;
                     state.opened_at = None;
                     tracing::debug!(
-                        provider = self.inner.model_name(),
+                        provider = %self.inner.model_name(),
                         "circuit breaker: HalfOpen -> Closed (recovered)"
                     );
                 }
@@ -174,7 +174,7 @@ impl CircuitBreakerProvider {
                 // it unblocks the provider rather than leaving it permanently
                 // open.  Log the invariant violation so it is observable.
                 tracing::debug!(
-                    provider = self.inner.model_name(),
+                    provider = %self.inner.model_name(),
                     "BUG: circuit breaker record_success() called while Open — \
                      check_allowed() was bypassed; recovering to Closed"
                 );
@@ -200,7 +200,7 @@ impl CircuitBreakerProvider {
                     state.state = CircuitState::Open;
                     state.opened_at = Some(Instant::now());
                     tracing::debug!(
-                        provider = self.inner.model_name(),
+                        provider = %self.inner.model_name(),
                         failures = state.consecutive_failures,
                         "Circuit breaker: Closed -> Open"
                     );
@@ -211,7 +211,7 @@ impl CircuitBreakerProvider {
                 state.opened_at = Some(Instant::now());
                 state.half_open_successes = 0;
                 tracing::debug!(
-                    provider = self.inner.model_name(),
+                    provider = %self.inner.model_name(),
                     "Circuit breaker: HalfOpen -> Open (probe failed)"
                 );
             }
@@ -250,7 +250,7 @@ fn is_transient(err: &LlmError) -> bool {
 
 #[async_trait]
 impl LlmProvider for CircuitBreakerProvider {
-    fn model_name(&self) -> &str {
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
         self.inner.model_name()
     }
 
@@ -596,8 +596,8 @@ mod tests {
 
     #[async_trait]
     impl LlmProvider for HangingProvider {
-        fn model_name(&self) -> &str {
-            "hanging"
+        fn model_name(&self) -> std::borrow::Cow<'_, str> {
+            std::borrow::Cow::Borrowed("hanging")
         }
         fn cost_per_token(&self) -> (Decimal, Decimal) {
             (Decimal::ZERO, Decimal::ZERO)

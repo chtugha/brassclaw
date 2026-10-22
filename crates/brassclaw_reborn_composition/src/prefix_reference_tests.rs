@@ -623,13 +623,17 @@ async fn prefix_compiler_stages_preserve_originals_in_monty() {
     }
     let checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let definitions = format!("{UNIT_SOURCE}\n{REFERENCE_RENDER_SOURCE}\n{COMPILER_SOURCE}\n");
-    for profile in ["base-prompt", "prefix-maker"] {
+    for profile in ["base-prompt", "prefix-maker", "sempai"] {
         for view in [
             "literal-reference/v1",
             "literal-reference/v2-deduplicated",
             "literal-reference/v3-trailing-inventory",
             "literal-reference/v4-stable-sharing",
+            "literal-reference/v5-contextual-sharing",
         ] {
+            if profile == "sempai" && view != "literal-reference/v5-contextual-sharing" {
+                continue;
+            }
             let output = std::process::Command::new("python3")
                 .args(["-c", "import json,sys; from test_prefix_compile_logic import native_fixture; print(json.dumps(native_fixture(sys.argv[1],sys.argv[2]),ensure_ascii=False))", profile, view])
                 .env("PYTHONPATH", checkout.join("scripts/prefix")).output().unwrap();

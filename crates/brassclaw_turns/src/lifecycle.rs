@@ -627,6 +627,23 @@ where
         Ok(response)
     }
 
+    async fn submit_claimed_child_turn(
+        &self,
+        request: SubmitChildRunRequest,
+        parent: &crate::runner::ClaimedTurnRun,
+        admission_policy: &dyn TurnAdmissionPolicy,
+        run_profile_resolver: &dyn RunProfileResolver,
+    ) -> Result<SubmitTurnResponse, TurnError> {
+        let event_request = request.clone();
+        let response = self
+            .inner
+            .submit_claimed_child_turn(request, parent, admission_policy, run_profile_resolver)
+            .await?;
+        self.publish_event_once_deferred(child_submit_event(&event_request, &response))
+            .await?;
+        Ok(response)
+    }
+
     async fn children_of(
         &self,
         scope: &crate::TurnScope,

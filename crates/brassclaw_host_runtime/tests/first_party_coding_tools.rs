@@ -448,6 +448,85 @@ async fn builtin_apply_patch_failure_reports_path_and_match_count() {
 }
 
 #[tokio::test]
+async fn builtin_coding_reads_enforce_stream_bounds_after_underreported_metadata() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = vec![b'x'; max_read_size() + 1];
+    std::fs::write(temp.path().join("grown.txt"), &content).unwrap();
+    let (filesystem, mounts) = mounted_filesystem(temp.path(), MountPermissions::read_write());
+    // The real LocalFilesystem read sees the full file after the caller's stat
+    // reported an older small size, as can happen during concurrent growth.
+    let runtime = runtime_with_filesystem(StatLenOverrideFilesystem {
+        inner: filesystem,
+        suffix: "grown.txt",
+        len: 1,
+    });
+    let context = execution_context_with_mounts(coding_capability_ids(), mounts);
+    for (cap, input) in [
+        (
+            READ_FILE_CAPABILITY_ID,
+            json!({"path":"/workspace/grown.txt"}),
+        ),
+        (
+            GREP_CAPABILITY_ID,
+            json!({"path":"/workspace/grown.txt","pattern":"x","output_mode":"count"}),
+        ),
+        (
+            APPLY_PATCH_CAPABILITY_ID,
+            json!({"path":"/workspace/grown.txt","old_string":"x","new_string":"y"}),
+        ),
+    ] {
+        assert_eq!(
+            invoke_with_context(&runtime, cap, input, context.clone()).await,
+            Err(RuntimeFailureKind::Resource),
+            "{cap}"
+        );
+    }
+    assert_eq!(
+        std::fs::read(temp.path().join("grown.txt")).unwrap(),
+        content
+    );
+}
+
+#[tokio::test]
+async fn builtin_apply_patch_rejects_amplification_before_writing_the_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let original = "x".repeat(4096);
+    std::fs::write(temp.path().join("expand.txt"), &original).unwrap();
+    let (filesystem, mounts) = mounted_filesystem(temp.path(), MountPermissions::read_write());
+    let runtime = runtime_with_filesystem(filesystem);
+    let context = execution_context_with_mounts(coding_capability_ids(), mounts);
+    let result = invoke_with_context(
+        &runtime,
+        APPLY_PATCH_CAPABILITY_ID,
+        json!({"path":"/workspace/expand.txt", "old_string":"x",
+            "new_string":"y".repeat(8192), "replace_all":true}),
+        context.clone(),
+    )
+    .await;
+    // Previously this produced a 32 MiB file from a 4 KiB input despite the
+    // primitive's 10 MiB patch limit. Failure must leave the actual file intact.
+    assert_eq!(result, Err(RuntimeFailureKind::Resource));
+    assert_eq!(
+        std::fs::read_to_string(temp.path().join("expand.txt")).unwrap(),
+        original
+    );
+    let accepted = invoke_with_context(
+        &runtime,
+        APPLY_PATCH_CAPABILITY_ID,
+        json!({"path":"/workspace/expand.txt", "old_string":"x",
+            "new_string":"β", "replace_all":true}),
+        context,
+    )
+    .await
+    .unwrap();
+    assert_eq!(accepted["replacements"], 4096);
+    assert_eq!(
+        std::fs::read_to_string(temp.path().join("expand.txt")).unwrap(),
+        "β".repeat(4096)
+    );
+}
+
+#[tokio::test]
 async fn builtin_coding_utf16_rejects_incomplete_units_and_preserves_unicode_edits() {
     let temp = tempfile::tempdir().unwrap();
     let encode = |text: &str| {
@@ -511,6 +590,83 @@ async fn builtin_coding_utf16_rejects_incomplete_units_and_preserves_unicode_edi
         assert_eq!(failed, Err(RuntimeFailureKind::OperationFailed));
         assert_eq!(std::fs::read(temp.path().join(name)).unwrap(), bytes);
     }
+}
+
+#[tokio::test]
+async fn builtin_read_file_large_ranges_stop_at_eof_without_arithmetic_overflow() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("lines.txt"), "first\nβ\nfinal\n").unwrap();
+    let (filesystem, mounts) = mounted_filesystem(temp.path(), MountPermissions::read_only());
+    let runtime = runtime_with_filesystem(filesystem);
+    let context = execution_context_with_mounts(coding_capability_ids(), mounts);
+    let tail = invoke_with_context(
+        &runtime,
+        READ_FILE_CAPABILITY_ID,
+        json!({"path":"/workspace/lines.txt", "offset":2, "limit":usize::MAX}),
+        context.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(tail["content"], "     2│ β\n     3│ final");
+    assert_eq!(tail["total_lines"], 3);
+    assert_eq!(tail["lines_shown"], 2);
+    assert_eq!(tail["truncated_by_default"], false);
+    let beyond = invoke_with_context(
+        &runtime,
+        READ_FILE_CAPABILITY_ID,
+        json!({"path":"/workspace/lines.txt", "offset":usize::MAX, "limit":usize::MAX}),
+        context,
+    )
+    .await
+    .unwrap();
+    assert_eq!(beyond["content"], "");
+    assert_eq!(beyond["total_lines"], 3);
+    assert_eq!(beyond["lines_shown"], 0);
+}
+
+#[tokio::test]
+async fn builtin_full_read_preserves_empty_lines_and_line_number_width_boundaries() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("empty-lines.txt"), "\n".repeat(1_000_001)).unwrap();
+    let (filesystem, mounts) = mounted_filesystem(temp.path(), MountPermissions::read_only());
+    let runtime = runtime_with_filesystem(filesystem);
+    let context = execution_context_with_mounts(coding_capability_ids(), mounts);
+    let complete = invoke_with_context(
+        &runtime,
+        READ_FILE_CAPABILITY_ID,
+        json!({"path":"/workspace/empty-lines.txt","limit":usize::MAX}),
+        context.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(complete["total_lines"], 1_000_001);
+    assert_eq!(complete["lines_shown"], 1_000_001);
+    assert_eq!(complete["truncated_by_default"], false);
+    let content = complete["content"].as_str().unwrap();
+    assert_eq!(content.lines().count(), 1_000_001);
+    assert!(content.starts_with("     1│ \n     2│ "));
+    assert!(content.ends_with("999999│ \n1000000│ \n1000001│ "));
+    let tail = invoke_with_context(
+        &runtime,
+        READ_FILE_CAPABILITY_ID,
+        json!({"path":"/workspace/empty-lines.txt","offset":999999,"limit":usize::MAX}),
+        context.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(tail["content"], "999999│ \n1000000│ \n1000001│ ");
+    assert_eq!(tail["lines_shown"], 3);
+    let empty = invoke_with_context(
+        &runtime,
+        READ_FILE_CAPABILITY_ID,
+        json!({"path":"/workspace/empty-lines.txt","limit":0}),
+        context,
+    )
+    .await
+    .unwrap();
+    assert_eq!(empty["content"], "");
+    assert_eq!(empty["total_lines"], 1_000_001);
+    assert_eq!(empty["lines_shown"], 0);
 }
 
 #[tokio::test]
@@ -717,8 +873,25 @@ impl RootFilesystem for StatFailureFilesystem {
         self.inner.read_file(path).await
     }
 
+    async fn read_file_bounded(
+        &self,
+        path: &VirtualPath,
+        max_bytes: usize,
+    ) -> Result<Option<Vec<u8>>, FilesystemError> {
+        self.inner.read_file_bounded(path, max_bytes).await
+    }
+
     async fn write_file(&self, path: &VirtualPath, bytes: &[u8]) -> Result<(), FilesystemError> {
         self.inner.write_file(path, bytes).await
+    }
+
+    async fn put_opaque(
+        &self,
+        path: &VirtualPath,
+        body: Vec<u8>,
+        cas: brassclaw_filesystem::CasExpectation,
+    ) -> Result<brassclaw_filesystem::RecordVersion, FilesystemError> {
+        self.inner.put_opaque(path, body, cas).await
     }
 
     async fn create_dir_all(&self, path: &VirtualPath) -> Result<(), FilesystemError> {
@@ -750,8 +923,25 @@ impl RootFilesystem for StatLenOverrideFilesystem {
         self.inner.read_file(path).await
     }
 
+    async fn read_file_bounded(
+        &self,
+        path: &VirtualPath,
+        max_bytes: usize,
+    ) -> Result<Option<Vec<u8>>, FilesystemError> {
+        self.inner.read_file_bounded(path, max_bytes).await
+    }
+
     async fn write_file(&self, path: &VirtualPath, bytes: &[u8]) -> Result<(), FilesystemError> {
         self.inner.write_file(path, bytes).await
+    }
+
+    async fn put_opaque(
+        &self,
+        path: &VirtualPath,
+        body: Vec<u8>,
+        cas: brassclaw_filesystem::CasExpectation,
+    ) -> Result<brassclaw_filesystem::RecordVersion, FilesystemError> {
+        self.inner.put_opaque(path, body, cas).await
     }
 
     async fn create_dir_all(&self, path: &VirtualPath) -> Result<(), FilesystemError> {
@@ -785,8 +975,32 @@ impl RootFilesystem for ReadFailureFilesystem {
         self.inner.read_file(path).await
     }
 
+    async fn read_file_bounded(
+        &self,
+        path: &VirtualPath,
+        max_bytes: usize,
+    ) -> Result<Option<Vec<u8>>, FilesystemError> {
+        if path.as_str().ends_with(self.fail_suffix) {
+            return Err(FilesystemError::Backend {
+                path: path.clone(),
+                operation: FilesystemOperation::ReadFile,
+                reason: "injected read failure".to_string(),
+            });
+        }
+        self.inner.read_file_bounded(path, max_bytes).await
+    }
+
     async fn write_file(&self, path: &VirtualPath, bytes: &[u8]) -> Result<(), FilesystemError> {
         self.inner.write_file(path, bytes).await
+    }
+
+    async fn put_opaque(
+        &self,
+        path: &VirtualPath,
+        body: Vec<u8>,
+        cas: brassclaw_filesystem::CasExpectation,
+    ) -> Result<brassclaw_filesystem::RecordVersion, FilesystemError> {
+        self.inner.put_opaque(path, body, cas).await
     }
 
     async fn create_dir_all(&self, path: &VirtualPath) -> Result<(), FilesystemError> {
@@ -819,8 +1033,31 @@ impl RootFilesystem for ReadInfrastructureFailureFilesystem {
         self.inner.read_file(path).await
     }
 
+    async fn read_file_bounded(
+        &self,
+        path: &VirtualPath,
+        max_bytes: usize,
+    ) -> Result<Option<Vec<u8>>, FilesystemError> {
+        if path.as_str().ends_with(self.fail_suffix) {
+            return Err(FilesystemError::BackendInfrastructure {
+                operation: FilesystemOperation::ReadFile,
+                reason: "injected read infrastructure failure".to_string(),
+            });
+        }
+        self.inner.read_file_bounded(path, max_bytes).await
+    }
+
     async fn write_file(&self, path: &VirtualPath, bytes: &[u8]) -> Result<(), FilesystemError> {
         self.inner.write_file(path, bytes).await
+    }
+
+    async fn put_opaque(
+        &self,
+        path: &VirtualPath,
+        body: Vec<u8>,
+        cas: brassclaw_filesystem::CasExpectation,
+    ) -> Result<brassclaw_filesystem::RecordVersion, FilesystemError> {
+        self.inner.put_opaque(path, body, cas).await
     }
 
     async fn create_dir_all(&self, path: &VirtualPath) -> Result<(), FilesystemError> {

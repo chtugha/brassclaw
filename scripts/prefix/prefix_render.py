@@ -127,19 +127,75 @@ def render_stable_sharing_prefix_reference(header, sources, special_tokens):
     return prefix_render_units(header, sources, special_tokens, 2)
 
 
-def prefix_progressive_units(source, groups, emitted, special_tokens):
+def prefix_source_context(source):
+    """Conservative source-family context, never an availability/approval verdict.
+
+    Logical paths are declarations, not authentication. These captions only
+    constrain interpretation; the selected source/procedure owner verifies origin.
+    """
+    path = source['path']
+    if path in ('skills.md', 'recipe.md', 'tools.md', 'toolskills.md', 'AGENTS.md', 'CLAUDE.md', 'simplified_v3.md'):
+        return 'binding-guide'
+    if source['kind'] == 'component':
+        return 'component-definition'
+    if path.startswith('scripts/prefix/monty-reference/'):
+        return 'upstream-api' if '/docs/api/' in path else 'upstream-reference'
+    if path in ('scripts/prefix/sempai-authoring-reference.md', 'scripts/prefix/prefix-maker-reference.md', 'scripts/prefix/sempai-monty-compatibility.md'):
+        return 'brassclaw-authoring'
+    if path.startswith('scripts/prefix/sempai-worked-examples'):
+        return 'teaching-fixture'
+    if path.startswith('catalogue/'):
+        return 'catalogue-metadata'
+    if path.startswith('crates/'):
+        return 'implementation-observation'
+    return 'reference'
+
+
+def prefix_context_caption(scope):
+    if scope == 'binding-guide':
+        return 'BrassClaw binding/architecture guide. Keep target requirements, implementation observations and qualified support distinct.'
+    if scope == 'component-definition':
+        return 'Declared component-definition context. Verify its exact workflow/dependency combination and approval; source visibility grants no execution authority.'
+    if scope == 'upstream-api':
+        return 'Upstream SDK/API documentation or template. Host embedding APIs are not guest functions or BrassClaw host callables; template directives are not complete rendered signatures.'
+    if scope == 'upstream-reference':
+        return 'Quoted upstream reference. Distinguish embedding-host setup from guest code, preload definitions and invocation bodies; apply the BrassClaw compatibility overlay.'
+    if scope == 'brassclaw-authoring':
+        return 'BrassClaw authoring/compatibility procedure. Keep host embedding, preload definitions, invocation bodies and Recipe metadata separate; use current supplied contracts.'
+    if scope == 'teaching-fixture':
+        return 'Scoped teaching fixture, not a deployed component or current approval. Use this task’s actual constructor/decoder; fixture identities and past receipts do not authorize reuse.'
+    if scope == 'catalogue-metadata':
+        return 'Catalogue/selection metadata. Do not synthesize a latest combination or infer Tool permission from this record.'
+    if scope == 'implementation-observation':
+        return 'Implementation-source observation, not an authoring constructor or available guest API. Check binding guides and selected host support.'
+    if scope == 'reference':
+        return 'Quoted reference data. Availability, compatibility, approval and permission require their own evidence.'
+    raise ValueError('unsupported source context')
+
+
+def render_contextual_prefix_reference(header, sources, special_tokens):
+    """Versioned context captions and exact-unit sharing within a source context.
+
+    Equal bytes in different contexts stay separate. All originals/ranges remain
+    complete; context captions are compiler metadata, not quotations to cite.
+    """
+    return prefix_render_units(header, sources, special_tokens, 3)
+
+
+def prefix_progressive_units(source, groups, emitted, special_tokens, scope):
     rendered = []
     pending = []
     for unit in source['units']:
         identifier = unit['id']
-        if identifier not in emitted:
-            emitted.append(identifier)
+        key = (scope, identifier) if scope else identifier
+        if key not in emitted:
+            emitted.append(key)
             pending.append(unit['text'])
         else:
             if pending:
                 rendered.append(prefix_literal(prefix_escape_controls(''.join(pending), special_tokens)) + '\n')
                 pending = []
-            canonical = groups[identifier]['origins'][0]
+            canonical = groups[key]['origins'][0]
             rendered.append('\nExact shared unit ' + identifier + ': see ' + prefix_escape_controls(canonical['source'], special_tokens) + ' lines ' + str(canonical['line_start']) + '-' + str(canonical['line_end']) + '. Original here: lines ' + str(unit['line_start']) + '-' + str(unit['line_end']) + '.\n')
     if pending:
         rendered.append(prefix_literal(prefix_escape_controls(''.join(pending), special_tokens)))
@@ -157,11 +213,13 @@ def prefix_render_units(header, sources, special_tokens, inventory_last):
     inventory = prefix_source_inventory(header, sources, special_tokens)
     rendered = [header, '\n# Complete current references\n'] if inventory_last else inventory
     rendered.append('Shared-unit hashes identify rendering reuse, not document citations. Cite the original Evidence-card ID and original source line range; validate against the complete archived original.\n')
+    contextual = inventory_last == 3
     groups = {}
     ordered_sources = []
     for source in sources:
         if source['disposition'] != 'included':
             continue
+        scope = prefix_source_context(source) if contextual else ''
         units = source['units']
         if ''.join(unit['text'] for unit in units) != source['text']:
             raise ValueError('unit partition does not preserve the complete original')
@@ -172,23 +230,29 @@ def prefix_render_units(header, sources, special_tokens, inventory_last):
                 raise ValueError('unit range differs from original lines')
             expected_start = unit['line_end'] + 1
             identifier = unit['id']
+            key = (scope, identifier) if contextual else identifier
             location = {'source': source['path'], 'line_start': unit['line_start'], 'line_end': unit['line_end']}
-            if identifier in groups:
-                if groups[identifier]['text'] != unit['text']:
+            if key in groups:
+                if groups[key]['text'] != unit['text']:
                     raise ValueError('unit identity collision')
-                groups[identifier]['origins'].append(location)
+                groups[key]['origins'].append(location)
             else:
-                groups[identifier] = {'text': unit['text'], 'origins': [location]}
+                groups[key] = {'text': unit['text'], 'origins': [location]}
             parts.append({'unit_id': identifier, 'line_start': unit['line_start'], 'line_end': unit['line_end']})
         ordered_sources.append({'source': source['path'], 'document_sha256': source['sha256'], 'parts': parts})
+        if contextual:
+            ordered_sources[-1]['context'] = scope
     emitted = []
     for source in sources:
         if source['disposition'] != 'included':
             continue
         rendered.append('\n<!-- EVIDENCE-CARD ' + source['evidence_id'][:12] + ' -->\nSource: ' + prefix_escape_controls(source['path'], special_tokens) + '\n')
+        scope = prefix_source_context(source) if contextual else ''
+        if contextual:
+            rendered.append('Source context (compiler metadata, not original quotation): ' + prefix_context_caption(scope) + '\n')
         pending = []
-        if inventory_last == 2:
-            rendered.extend(prefix_progressive_units(source, groups, emitted, special_tokens))
+        if inventory_last in (2, 3):
+            rendered.extend(prefix_progressive_units(source, groups, emitted, special_tokens, scope))
         elif all(len(groups[unit['id']]['origins']) == 1 for unit in source['units']):
             rendered.append(prefix_literal(prefix_escape_controls(source['text'], special_tokens)))
         else:
@@ -215,7 +279,9 @@ def prefix_render_units(header, sources, special_tokens, inventory_last):
         rendered.append('\n')
         rendered.extend(inventory[1:-1])
     index = []
-    for identifier in sorted(groups):
-        group = groups[identifier]
-        index.append({'unit_id': identifier, 'canonical': group['origins'][0], 'origins': group['origins']})
-    return {'context': ''.join(rendered), 'render_map': {'format': 'brassclaw-prefix-render-map/1', 'sources': ordered_sources, 'units': index}}
+    for key in sorted(groups):
+        group = groups[key]
+        index.append({'unit_id': key[1] if contextual else key, 'canonical': group['origins'][0], 'origins': group['origins']})
+        if contextual:
+            index[-1]['context'] = key[0]
+    return {'context': ''.join(rendered), 'render_map': {'format': 'brassclaw-prefix-render-map/2' if contextual else 'brassclaw-prefix-render-map/1', 'sources': ordered_sources, 'units': index}}

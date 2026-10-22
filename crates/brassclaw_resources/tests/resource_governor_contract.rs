@@ -180,34 +180,44 @@ fn reconcile_rejects_negative_usd_actuals_without_closing_reservation() {
 }
 
 #[test]
-fn usd_tally_saturates_instead_of_panicking_on_decimal_overflow() {
+fn usd_tally_rejects_overflow_without_losing_the_original_hold() {
     let governor = InMemoryResourceGovernor::new();
     let scope = sample_scope("tenant1", "user1", Some("project1"));
     let account = ResourceAccount::tenant(scope.tenant_id.clone());
-
-    governor
+    let original = governor
         .reserve(
             scope.clone(),
             ResourceEstimate {
                 usd: Some(rust_decimal::Decimal::MAX),
-                ..ResourceEstimate::default()
+                ..Default::default()
             },
         )
         .unwrap();
-    governor
-        .reserve(
+    let rejected = ResourceReservationId::new();
+    assert!(matches!(
+        governor.reserve_with_id(
             scope,
             ResourceEstimate {
                 usd: Some(dec!(1)),
-                ..ResourceEstimate::default()
+                ..Default::default()
             },
-        )
-        .unwrap();
-
+            rejected
+        ),
+        Err(ResourceError::InvalidEstimate {
+            dimension: ResourceDimension::Usd,
+            ..
+        })
+    ));
     assert_eq!(
         governor.reserved_for(&account).usd,
         rust_decimal::Decimal::MAX
     );
+    assert!(matches!(
+        governor.release(rejected),
+        Err(ResourceError::UnknownReservation { .. })
+    ));
+    governor.release(original.id).unwrap();
+    assert_eq!(governor.reserved_for(&account).usd, dec!(0));
 }
 
 #[test]
@@ -2710,5 +2720,168 @@ fn retained_reconcile_survives_durable_governor_reconstruction() {
             .unwrap()
             .actual,
         Some(usage)
+    );
+}
+
+#[path = "support/aggregate_representation_contract.rs"]
+mod aggregate_representation;
+use aggregate_representation::aggregate_representation_contract;
+
+#[test]
+fn aggregate_representation_is_exact_in_memory_and_persistent_json() {
+    let directory = tempdir().unwrap();
+    let governors: Vec<Box<dyn ResourceGovernor>> = vec![
+        Box::new(InMemoryResourceGovernor::new()),
+        Box::new(PersistentResourceGovernor::new(
+            JsonFileResourceGovernorStore::new(directory.path().join("representation.json")),
+        )),
+    ];
+    for governor in governors {
+        // Disabled token caps do not disable exact, non-saturating counters.
+        governor
+            .bind_task_budget_settings(
+                LiveMontyTaskSettings::new(MontyTaskSettingsRevision {
+                    revision: 1,
+                    limits: MontyTaskLimits {
+                        max_compute_time: std::time::Duration::from_secs(600),
+                        token_budgets_enabled: false,
+                    },
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        aggregate_representation_contract(governor.as_ref());
+    }
+}
+
+#[test]
+fn full_integer_cap_denies_a_total_above_the_integer_ceiling() {
+    let governor = InMemoryResourceGovernor::new();
+    let scope = sample_scope("integer-ceiling", "user", None);
+    governor
+        .set_limit(
+            ResourceAccount::tenant(scope.tenant_id.clone()),
+            ResourceLimits {
+                max_input_tokens: Some(u64::MAX),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let first = governor
+        .reserve(
+            scope.clone(),
+            ResourceEstimate {
+                input_tokens: Some(u64::MAX),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(
+        matches!(governor.reserve(scope, ResourceEstimate { input_tokens: Some(1), ..Default::default() }),
+        Err(ResourceError::LimitExceeded { denial, .. }) if denial.dimension == ResourceDimension::InputTokens)
+    );
+    governor.release(first.id).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn filesystem_aggregate_representation_preserves_active_holds() {
+    use brassclaw_filesystem::{InMemoryBackend, ScopedFilesystem};
+    let backend = Arc::new(InMemoryBackend::new());
+    let scoped = Arc::new(ScopedFilesystem::with_fixed_view(
+        backend,
+        MountView::new(vec![MountGrant::new(
+            MountAlias::new("/resources").unwrap(),
+            VirtualPath::new("/tenants/tenant1/users/user1/resources").unwrap(),
+            MountPermissions::read_write_list_delete(),
+        )])
+        .unwrap(),
+    ));
+    let governor = PersistentResourceGovernor::new(FilesystemResourceGovernorStore::new(scoped));
+    aggregate_representation_contract(&governor);
+}
+
+#[test]
+fn persistent_governor_rejects_inconsistent_retained_reservations_without_writes() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("retained-integrity.json");
+    let governor = PersistentResourceGovernor::new(JsonFileResourceGovernorStore::new(&path));
+    let scope = sample_scope("retained-integrity", "owner", None);
+    let first = governor
+        .reserve(
+            scope.clone(),
+            ResourceEstimate {
+                usd: Some(dec!(0.5)),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    governor
+        .reserve(
+            scope.clone(),
+            ResourceEstimate {
+                usd: Some(dec!(0.25)),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let original = fs::read(&path).unwrap();
+    let valid: serde_json::Value = serde_json::from_slice(&original).unwrap();
+    let mut corruptions = Vec::new();
+    let mut lost_hold = valid.clone();
+    lost_hold["state"]["reserved_by_account"][0][1]["usd"] = serde_json::json!("0.5");
+    corruptions.push(lost_hold);
+    let mut duplicate = valid.clone();
+    let entry = duplicate["state"]["reserved_by_account"][0].clone();
+    duplicate["state"]["reserved_by_account"]
+        .as_array_mut()
+        .unwrap()
+        .push(entry);
+    corruptions.push(duplicate);
+    let mut mismatched = valid.clone();
+    mismatched["state"]["reservations"][0][1]["reservation"]["estimate"]["usd"] =
+        serde_json::json!("0.3");
+    corruptions.push(mismatched);
+    // An old saturated snapshot can hold two maximum-valued records while
+    // recording only one maximum balance. Never release one and erase both.
+    let mut saturated = valid;
+    for entry in saturated["state"]["reservations"].as_array_mut().unwrap() {
+        entry[1]["reservation"]["estimate"]["usd"] =
+            serde_json::json!(rust_decimal::Decimal::MAX.to_string());
+        entry[1]["tally"]["usd"] = serde_json::json!(rust_decimal::Decimal::MAX.to_string());
+    }
+    for entry in saturated["state"]["reserved_by_account"]
+        .as_array_mut()
+        .unwrap()
+    {
+        entry[1]["usd"] = serde_json::json!(rust_decimal::Decimal::MAX.to_string());
+    }
+    corruptions.push(saturated);
+    for corruption in corruptions {
+        let bytes = serde_json::to_vec_pretty(&corruption).unwrap();
+        fs::write(&path, &bytes).unwrap();
+        assert!(matches!(
+            governor.release(first.id),
+            Err(ResourceError::Storage { .. })
+        ));
+        assert!(matches!(
+            governor.account_snapshot(&ResourceAccount::tenant(scope.tenant_id.clone())),
+            Err(ResourceError::Storage { .. })
+        ));
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+    fs::write(&path, original).unwrap();
+    assert_eq!(
+        governor.release(first.id).unwrap().status,
+        ReservationStatus::Released
+    );
+    assert_eq!(
+        governor
+            .account_snapshot(&ResourceAccount::tenant(scope.tenant_id))
+            .unwrap()
+            .unwrap()
+            .ledger
+            .reserved
+            .usd,
+        dec!(0.25)
     );
 }

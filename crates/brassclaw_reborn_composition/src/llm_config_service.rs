@@ -485,6 +485,7 @@ impl RebornLlmConfigService {
 
             let view = LlmProviderView {
                 embedding_models: def.embedding_models.clone(),
+                model_token_limits: def.model_token_limits.clone(),
                 model_discovery: def.model_discovery,
                 request_policy: def.request_policy,
                 response_cache: def.response_cache,
@@ -801,6 +802,11 @@ impl LlmConfigService for RebornLlmConfigService {
             definition.embedding_models = models;
         } else if let Some(previous) = previous_definition.as_ref() {
             definition.embedding_models = previous.embedding_models.clone();
+        }
+        if let Some(limits) = request.model_token_limits {
+            definition.model_token_limits = limits;
+        } else if let Some(previous) = previous_definition.as_ref() {
+            definition.model_token_limits = previous.model_token_limits.clone();
         }
         let registry = ProviderRegistry::new(vec![definition.clone()]);
         crate::llm_catalog::validate_catalog(&registry).map_err(|_| {
@@ -1443,6 +1449,7 @@ fn custom_definition(
 ) -> ProviderDefinition {
     ProviderDefinition {
         embedding_models: Default::default(),
+        model_token_limits: Default::default(),
         model_discovery: Default::default(),
         request_policy: Default::default(),
         id: id.to_string(),

@@ -48,50 +48,12 @@ fn decode_metadata(
 
 #[cfg(feature = "postgres")]
 impl PostgresRootFilesystem {
-    pub fn new(pool: deadpool_postgres::Pool) -> Self {
-        Self { pool }
-    }
-
-    pub async fn run_migrations(&self) -> Result<(), FilesystemError> {
-        let client = self.client().await?;
-        client
-            .batch_execute(POSTGRES_ROOT_FILESYSTEM_SCHEMA)
-            .await
-            .map_err(|error| infrastructure_pg_error(FilesystemOperation::CreateDirAll, error))
-    }
-
-    async fn client(&self) -> Result<deadpool_postgres::Object, FilesystemError> {
-        self.pool
-            .get()
-            .await
-            .map_err(|error| infrastructure_error(FilesystemOperation::Stat, error.to_string()))
-    }
-}
-
-#[cfg(feature = "postgres")]
-#[async_trait]
-impl RootFilesystem for PostgresRootFilesystem {
-    fn capabilities(&self) -> BackendCapabilities {
-        // sql_typical: read/write/append/list/stat/delete/records/query/
-        // IndexExact/IndexPrefix/CAS. Events join the set with the V30
-        // append/tail backing table. Postgres has native `tsvector` /
-        // `plainto_tsquery` so we advertise IndexFts. Vector indexing is
-        // currently a brute-force cosine ranker against `indexed->>'key'`
-        // values stored as IndexValue::Bytes; we advertise IndexVector but
-        // do not require pgvector.
-        BackendCapabilities::sql_typical()
-            .with(Capability::Events)
-            .with(Capability::EntryMetadata)
-            .with(Capability::EntryIndexMetadata)
-            .with(Capability::IndexFts)
-            .with(Capability::IndexVector)
-    }
-
-    async fn put(
+    async fn put_entry(
         &self,
         path: &VirtualPath,
         entry: Entry,
         cas: CasExpectation,
+        opaque_only: bool,
     ) -> Result<RecordVersion, FilesystemError> {
         let indexed_json = serde_json::to_value(&entry.indexed).map_err(|_| {
             FilesystemError::SerializeIndexed {
@@ -160,6 +122,7 @@ impl RootFilesystem for PostgresRootFilesystem {
                             version = version + 1,
                             updated_at = NOW()
                         WHERE path = $5 AND is_dir = FALSE AND version = $6
+                            AND (NOT $7 OR kind IS NULL)
                         "#,
                         &[
                             &body,
@@ -168,6 +131,7 @@ impl RootFilesystem for PostgresRootFilesystem {
                             &indexed_json,
                             &path_str,
                             &expected_raw,
+                            &opaque_only,
                         ],
                     )
                     .await
@@ -184,7 +148,13 @@ impl RootFilesystem for PostgresRootFilesystem {
                         found,
                     });
                 }
-                Ok(expected.next())
+                expected
+                    .checked_next()
+                    .ok_or_else(|| FilesystemError::Backend {
+                        path: path.clone(),
+                        operation: FilesystemOperation::WriteFile,
+                        reason: "entry version representation exhausted".into(),
+                    })
             }
             CasExpectation::Any => {
                 let row = transaction
@@ -201,6 +171,7 @@ impl RootFilesystem for PostgresRootFilesystem {
                             version = root_filesystem_entries.version + 1,
                             updated_at = NOW()
                         WHERE root_filesystem_entries.is_dir = FALSE
+                            AND (NOT $6 OR root_filesystem_entries.kind IS NULL)
                         RETURNING version
                         "#,
                         &[
@@ -209,6 +180,7 @@ impl RootFilesystem for PostgresRootFilesystem {
                             &content_type_str,
                             &kind_str,
                             &indexed_json,
+                            &opaque_only,
                         ],
                     )
                     .await
@@ -216,7 +188,14 @@ impl RootFilesystem for PostgresRootFilesystem {
                         db_error(path.clone(), FilesystemOperation::WriteFile, error)
                     })?;
                 let Some(row) = row else {
-                    return Err(directory_write_error(path.clone()));
+                    return Err(if opaque_only {
+                        FilesystemError::Unsupported {
+                            path: path.clone(),
+                            operation: FilesystemOperation::WriteFile,
+                        }
+                    } else {
+                        directory_write_error(path.clone())
+                    });
                 };
                 let version: i64 = row.get("version");
                 record_version_from_i64(path, version)
@@ -227,6 +206,64 @@ impl RootFilesystem for PostgresRootFilesystem {
             .await
             .map_err(|error| db_error(path.clone(), FilesystemOperation::WriteFile, error))?;
         Ok(version)
+    }
+
+    pub fn new(pool: deadpool_postgres::Pool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn run_migrations(&self) -> Result<(), FilesystemError> {
+        let client = self.client().await?;
+        client
+            .batch_execute(POSTGRES_ROOT_FILESYSTEM_SCHEMA)
+            .await
+            .map_err(|error| infrastructure_pg_error(FilesystemOperation::CreateDirAll, error))
+    }
+
+    async fn client(&self) -> Result<deadpool_postgres::Object, FilesystemError> {
+        self.pool
+            .get()
+            .await
+            .map_err(|error| infrastructure_error(FilesystemOperation::Stat, error.to_string()))
+    }
+}
+
+#[cfg(feature = "postgres")]
+#[async_trait]
+impl RootFilesystem for PostgresRootFilesystem {
+    fn capabilities(&self) -> BackendCapabilities {
+        // sql_typical: read/write/append/list/stat/delete/records/query/
+        // IndexExact/IndexPrefix/CAS. Events join the set with the V30
+        // append/tail backing table. Postgres has native `tsvector` /
+        // `plainto_tsquery` so we advertise IndexFts. Vector indexing is
+        // currently a brute-force cosine ranker against `indexed->>'key'`
+        // values stored as IndexValue::Bytes; we advertise IndexVector but
+        // do not require pgvector.
+        BackendCapabilities::sql_typical()
+            .with(Capability::Events)
+            .with(Capability::EntryMetadata)
+            .with(Capability::EntryIndexMetadata)
+            .with(Capability::OpaqueWrite)
+            .with(Capability::IndexFts)
+            .with(Capability::IndexVector)
+    }
+
+    async fn put(
+        &self,
+        path: &VirtualPath,
+        entry: Entry,
+        cas: CasExpectation,
+    ) -> Result<RecordVersion, FilesystemError> {
+        self.put_entry(path, entry, cas, false).await
+    }
+
+    async fn put_opaque(
+        &self,
+        path: &VirtualPath,
+        body: Vec<u8>,
+        cas: CasExpectation,
+    ) -> Result<RecordVersion, FilesystemError> {
+        self.put_entry(path, Entry::bytes(body), cas, true).await
     }
 
     async fn get(&self, path: &VirtualPath) -> Result<Option<VersionedEntry>, FilesystemError> {
@@ -575,16 +612,21 @@ impl RootFilesystem for PostgresRootFilesystem {
         max_bytes: usize,
     ) -> Result<Option<Vec<u8>>, FilesystemError> {
         let client = self.client().await?;
-        let max_bytes = max_bytes as i64;
+        // All PostgreSQL lengths fit i64. A larger caller ceiling permits
+        // every representable body; never wrap that ceiling into a negative
+        // SQL parameter on 64-bit hosts.
+        let max_bytes = max_bytes.min(i64::MAX as usize) as i64;
         let row = client
             .query_opt(
                 r#"
                 SELECT
                     CASE
+                        WHEN kind IS NOT NULL THEN NULL
                         WHEN octet_length(contents)::BIGINT <= $2 THEN contents
                         ELSE NULL
                     END AS contents,
                     octet_length(contents)::BIGINT AS len,
+                    kind IS NOT NULL AS sensitive,
                     is_dir
                 FROM root_filesystem_entries
                 WHERE path = $1
@@ -596,6 +638,12 @@ impl RootFilesystem for PostgresRootFilesystem {
         let Some(row) = row else {
             return Err(not_found(path.clone(), FilesystemOperation::ReadFile));
         };
+        if row.get::<_, bool>("sensitive") {
+            return Err(FilesystemError::Unsupported {
+                path: path.clone(),
+                operation: FilesystemOperation::ReadFile,
+            });
+        }
         let is_dir: bool = row.get("is_dir");
         if is_dir {
             return Err(FilesystemError::Backend {
@@ -666,7 +714,10 @@ impl RootFilesystem for PostgresRootFilesystem {
     async fn list_dir(&self, path: &VirtualPath) -> Result<Vec<DirEntry>, FilesystemError> {
         let client = self.client().await?;
         let exact_entry = self.exact_entry_with_client(&client, path).await?;
-        if matches!(exact_entry, Some((_, FileType::File, _))) {
+        if exact_entry
+            .as_ref()
+            .is_some_and(|entry| entry.file_type == FileType::File)
+        {
             return Err(FilesystemError::Backend {
                 path: path.clone(),
                 operation: FilesystemOperation::ListDir,
@@ -677,24 +728,88 @@ impl RootFilesystem for PostgresRootFilesystem {
             .child_entries_with_client(&client, path, FilesystemOperation::ListDir)
             .await?;
         let children = direct_children(path, rows);
-        if matches!(exact_entry, Some((_, FileType::Directory, _))) && is_not_found(&children) {
+        if exact_entry
+            .as_ref()
+            .is_some_and(|entry| entry.file_type == FileType::Directory)
+            && is_not_found(&children)
+        {
             return Ok(Vec::new());
         }
         children
     }
 
+    async fn list_dir_bounded(
+        &self,
+        path: &VirtualPath,
+        max_entries: usize,
+    ) -> Result<Vec<DirEntry>, FilesystemError> {
+        let limit = i64::try_from(max_entries.max(1)).map_err(|_| FilesystemError::Backend {
+            path: path.clone(),
+            operation: FilesystemOperation::ListDir,
+            reason: "directory limit is not representable on this backend".into(),
+        })?;
+        let client = self.client().await?;
+        let exact = self.exact_entry_with_client(&client, path).await?;
+        if exact
+            .as_ref()
+            .is_some_and(|entry| entry.file_type == FileType::File)
+        {
+            return Err(FilesystemError::Backend {
+                path: path.clone(),
+                operation: FilesystemOperation::ListDir,
+                reason: "not a directory".into(),
+            });
+        }
+        let prefix = format!("{}/", path.as_str().trim_end_matches('/'));
+        let pattern = child_path_like_pattern(path);
+        // Limit distinct DIRECT children, not descendant rows. Project no
+        // payload or payload length; a directory can contain large files and
+        // many descendants under just one child. The first path preserves the
+        // existing direct_children classification for each selected name.
+        let rows = client
+            .query(
+                r#"
+            WITH candidates AS (
+                SELECT path,is_dir,substr(path,char_length($2)+1) AS tail
+                FROM root_filesystem_entries WHERE path LIKE $1 ESCAPE '!'
+            ), children AS (
+                SELECT path,is_dir,tail,split_part(tail,'/',1) AS name FROM candidates
+            )
+            SELECT DISTINCT ON (name COLLATE "C") name,
+                (is_dir OR position('/' IN tail)>0) AS directory
+            FROM children WHERE name<>''
+            ORDER BY name COLLATE "C",path COLLATE "C" LIMIT $3
+        "#,
+                &[&pattern, &prefix, &limit],
+            )
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::ListDir, error))?;
+        if rows.is_empty() && exact.is_none() {
+            return Err(not_found(path.clone(), FilesystemOperation::ListDir));
+        }
+        // Even a zero-sized window verifies directory existence, as the
+        // compatibility implementation does, without materializing its children.
+        rows.into_iter()
+            .take(max_entries)
+            .map(|row| {
+                let name: String = row.get("name");
+                Ok(DirEntry {
+                    path: VirtualPath::new(format!("{prefix}{name}"))?,
+                    name,
+                    file_type: if row.get("directory") {
+                        FileType::Directory
+                    } else {
+                        FileType::File
+                    },
+                })
+            })
+            .collect()
+    }
+
     async fn stat(&self, path: &VirtualPath) -> Result<FileStat, FilesystemError> {
         let client = self.client().await?;
-        if let Some((len, file_type, modified)) =
-            self.exact_entry_with_client(&client, path).await?
-        {
-            return Ok(FileStat {
-                path: path.clone(),
-                file_type,
-                len,
-                modified,
-                sensitive: false,
-            });
+        if let Some(stat) = self.exact_entry_with_client(&client, path).await? {
+            return Ok(stat);
         }
         if self.has_child_entry_with_client(&client, path).await? {
             return Ok(FileStat {
@@ -936,10 +1051,10 @@ impl PostgresRootFilesystem {
         &self,
         client: &tokio_postgres::Client,
         path: &VirtualPath,
-    ) -> Result<Option<(u64, FileType, Option<std::time::SystemTime>)>, FilesystemError> {
+    ) -> Result<Option<FileStat>, FilesystemError> {
         let row = client
             .query_opt(
-                "SELECT OCTET_LENGTH(contents)::bigint AS len, is_dir, EXTRACT(EPOCH FROM updated_at)::bigint AS updated_at_epoch FROM root_filesystem_entries WHERE path = $1",
+                "SELECT OCTET_LENGTH(contents)::bigint AS len, is_dir, kind IS NOT NULL AS sensitive, EXTRACT(EPOCH FROM updated_at)::bigint AS updated_at_epoch FROM root_filesystem_entries WHERE path = $1",
                 &[&path.as_str()],
             )
             .await
@@ -948,15 +1063,19 @@ impl PostgresRootFilesystem {
             let len: i64 = row.get("len");
             let is_dir: bool = row.get("is_dir");
             let updated_at_epoch: i64 = row.get("updated_at_epoch");
-            (
-                if is_dir { 0 } else { len.max(0) as u64 },
-                if is_dir {
+            FileStat {
+                path: path.clone(),
+                len: if is_dir { 0 } else { len.max(0) as u64 },
+                file_type: if is_dir {
                     FileType::Directory
                 } else {
                     FileType::File
                 },
-                system_time_from_unix_seconds(updated_at_epoch),
-            )
+                modified: system_time_from_unix_seconds(updated_at_epoch),
+                // Coding primitives operate on opaque files, not structured
+                // application records. Match the in-memory backend's boundary.
+                sensitive: row.get("sensitive"),
+            }
         }))
     }
 

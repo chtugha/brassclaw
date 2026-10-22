@@ -184,8 +184,8 @@ impl From<ContentType> for String {
 pub struct RecordVersion(u64);
 
 impl RecordVersion {
-    /// Internal constructor for backends. Consumers obtain versions only by
-    /// reading existing entries — they cannot fabricate one.
+    /// Constructor for backend representations. Consumers normally obtain
+    /// revisions from reads; a constructed number is not evidence of storage.
     pub fn from_backend(raw: u64) -> Self {
         Self(raw)
     }
@@ -194,8 +194,9 @@ impl RecordVersion {
         self.0
     }
 
-    pub fn next(self) -> Self {
-        Self(self.0.saturating_add(1))
+    /// Advance only when a distinct next value is representable.
+    pub fn checked_next(self) -> Option<Self> {
+        self.0.checked_add(1).map(Self)
     }
 }
 
@@ -221,8 +222,9 @@ impl SeqNo {
         self.0
     }
 
-    pub fn next(self) -> Self {
-        Self(self.0.saturating_add(1))
+    /// Advance only when a distinct next value is representable.
+    pub fn checked_next(self) -> Option<Self> {
+        self.0.checked_add(1).map(Self)
     }
 }
 
@@ -388,7 +390,7 @@ mod tests {
     #[test]
     fn record_version_orders_and_advances() {
         let v0 = RecordVersion::from_backend(0);
-        let v1 = v0.next();
+        let v1 = v0.checked_next().unwrap();
         assert!(v0 < v1);
         assert_eq!(v1.get(), 1);
     }

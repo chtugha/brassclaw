@@ -13,18 +13,17 @@
 //!   itself) live in a single `RwLock<ProviderSnapshot>`. A reader always
 //!   observes a consistent slice of one provider — never a mix of old and
 //!   new after a swap.
-//! - **No unbounded leaks.** `model_name()` returns `&'static str` because
-//!   the trait requires it; we intern each distinct name through a global
-//!   `Mutex<HashMap>` so leakage is bounded by the set of distinct model
-//!   names a process ever sees (typically a handful).
+//! - **Owned model metadata.** Snapshots retain reference-counted names. The
+//!   provider interface can borrow immutable names or return an owned copy of
+//!   mutable metadata. Replaced names are freed with their owners; there is no
+//!   process-lifetime interner, distinct-name quota or overflow placeholder.
 //! - **`set_model()` is volatile.** Runtime model switches are forwarded to
 //!   the current inner provider only. The next successful
 //!   [`LlmReloadHandle::reload`] rebuilds the chain from config and drops
 //!   the override. Callers that rely on a model override must persist it
 //!   through the normal settings path.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 use rust_decimal::Decimal;
@@ -35,73 +34,10 @@ use crate::provider::{
     ToolCompletionResponse,
 };
 
-/// Maximum number of distinct model names interned over a process lifetime.
-/// Bounded to prevent unbounded `Box::leak` growth if `set_model` is ever
-/// called with adversarial or malformed input (e.g. LLM tool-call output).
-const INTERN_MAX_ENTRIES: usize = 1024;
-
-/// Maximum length (in bytes) of a single interned model name. Anything
-/// longer is treated as malformed — real model identifiers are well under
-/// this (GPT-4o: 6 bytes, `anthropic.claude-opus-4-6-v1`: ~28 bytes).
-const INTERN_MAX_LEN: usize = 256;
-
-/// Fallback interned string used when a name exceeds the length limit or
-/// the distinct-entry cap fills up. Chosen to be visibly wrong in logs so
-/// operators notice the fallback rather than silently misattributing cost.
-const INTERN_OVERFLOW_SENTINEL: &str = "<model-name-overflow>";
-
-/// Intern a model-name string so it can be returned through the trait's
-/// `fn model_name(&self) -> &str` contract without leaking on every swap.
-///
-/// Leakage is bounded two ways: per-entry via [`INTERN_MAX_LEN`] and
-/// total via [`INTERN_MAX_ENTRIES`]. Hitting either cap logs at `warn!`
-/// and returns a static sentinel, so the process can't be coerced into
-/// unbounded memory growth by repeated `set_model` calls with novel
-/// strings.
-fn intern_model_name(name: &str) -> &'static str {
-    static INTERNER: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
-    let map = INTERNER.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut guard = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    intern_into(&mut guard, name, INTERN_MAX_ENTRIES, INTERN_MAX_LEN)
-}
-
-/// Lockless core of [`intern_model_name`], split out so the cap logic can
-/// be unit-tested against a local `HashMap` without contaminating the
-/// process-wide `OnceLock` interner that other tests read from.
-fn intern_into(
-    map: &mut HashMap<String, &'static str>,
-    name: &str,
-    max_entries: usize,
-    max_len: usize,
-) -> &'static str {
-    if name.len() > max_len {
-        tracing::debug!(
-            len = name.len(),
-            max = max_len,
-            "model name exceeds interner length limit; using overflow sentinel",
-        );
-        return INTERN_OVERFLOW_SENTINEL;
-    }
-    if let Some(existing) = map.get(name) {
-        return existing;
-    }
-    if map.len() >= max_entries {
-        tracing::debug!(
-            entries = map.len(),
-            max = max_entries,
-            "model name interner is full; using overflow sentinel",
-        );
-        return INTERN_OVERFLOW_SENTINEL;
-    }
-    let leaked: &'static str = Box::leak(name.to_string().into_boxed_str());
-    map.insert(name.to_string(), leaked);
-    leaked
-}
-
 struct ProviderSnapshot {
     inner: Arc<dyn LlmProvider>,
     provider_id: String,
-    model_name: &'static str,
+    model_name: Arc<str>,
     active_model_name: Arc<str>,
     cost_per_token: (Decimal, Decimal),
     cache_write_multiplier: Decimal,
@@ -119,12 +55,12 @@ impl std::fmt::Debug for ProviderSnapshot {
 
 impl ProviderSnapshot {
     fn capture(provider: Arc<dyn LlmProvider>) -> Self {
-        let identity = provider.model_name().to_owned();
+        let identity = provider.model_name().into_owned();
         Self::capture_named(provider, identity)
     }
 
     fn capture_named(provider: Arc<dyn LlmProvider>, provider_id: String) -> Self {
-        let model_name = intern_model_name(provider.model_name());
+        let model_name = Arc::from(provider.model_name().as_ref());
         let active_model_name = Arc::from(provider.active_model_name());
         let cost_per_token = provider.cost_per_token();
         let cache_write_multiplier = provider.cache_write_multiplier();
@@ -225,8 +161,8 @@ impl LlmProvider for SwappableLlmProvider {
         Some(self.retained_selection())
     }
 
-    fn model_name(&self) -> &str {
-        read(&self.state).model_name
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Owned(read(&self.state).model_name.to_string())
     }
 
     fn cost_per_token(&self) -> (Decimal, Decimal) {
@@ -417,7 +353,7 @@ mod tests {
     /// snapshot-refresh path and the "override is lost on swap" behaviour.
     #[derive(Debug)]
     struct TestProvider {
-        configured: &'static str,
+        configured: String,
         active: StdRwLock<String>,
         cost: (Decimal, Decimal),
         cache_write: Decimal,
@@ -425,9 +361,9 @@ mod tests {
     }
 
     impl TestProvider {
-        fn new(configured: &'static str, active: &str, cost: (Decimal, Decimal)) -> Self {
+        fn new(configured: &str, active: &str, cost: (Decimal, Decimal)) -> Self {
             Self {
-                configured,
+                configured: configured.to_owned(),
                 active: StdRwLock::new(active.to_string()),
                 cost,
                 cache_write: Decimal::ONE,
@@ -438,8 +374,8 @@ mod tests {
 
     #[async_trait]
     impl LlmProvider for TestProvider {
-        fn model_name(&self) -> &str {
-            self.configured
+        fn model_name(&self) -> std::borrow::Cow<'_, str> {
+            std::borrow::Cow::Borrowed(&self.configured)
         }
 
         fn cost_per_token(&self) -> (Decimal, Decimal) {
@@ -584,48 +520,34 @@ mod tests {
     }
 
     #[test]
-    fn model_name_interner_reuses_leaked_strings() {
-        let a = intern_model_name("gpt-5");
-        let b = intern_model_name("gpt-5");
-        assert_eq!(a.as_ptr(), b.as_ptr());
-    }
-
-    /// A model name that overshoots the per-entry length limit must fall
-    /// back to the overflow sentinel rather than leak a huge string.
-    /// Exercises `intern_into` against a local map so the process-wide
-    /// interner stays untouched (other tests depend on it returning real
-    /// interned strings for normal names).
-    #[test]
-    fn intern_into_rejects_oversized_input() {
-        let mut map: HashMap<String, &'static str> = HashMap::new();
-        let huge = "x".repeat(INTERN_MAX_LEN + 1);
-        let interned = intern_into(&mut map, &huge, INTERN_MAX_ENTRIES, INTERN_MAX_LEN);
-        assert_eq!(interned, INTERN_OVERFLOW_SENTINEL);
-        // Oversized input must not even reach the map — there would be
-        // nothing to reuse across calls and leak-count would grow.
-        assert!(map.is_empty());
-    }
-
-    /// Once the distinct-entry cap is reached, further novel names must
-    /// route to the overflow sentinel — real model identifiers never need
-    /// thousands of distinct variants, so hitting the cap signals an
-    /// adversarial or buggy caller and we'd rather log+sentinel than
-    /// leak memory. Uses a local map with a tiny cap so the test runs
-    /// quickly and doesn't touch shared state.
-    #[test]
-    fn intern_into_caps_distinct_entries() {
-        let mut map: HashMap<String, &'static str> = HashMap::new();
-        let cap = 4;
-        for i in 0..cap {
-            let interned = intern_into(&mut map, &format!("name-{i}"), cap, INTERN_MAX_LEN);
-            assert_ne!(interned, INTERN_OVERFLOW_SENTINEL);
+    fn model_name_snapshots_keep_exact_names_and_release_replaced_allocations() {
+        // Metadata-only regression: no model request or simulated provider
+        // success. Exercise the actual swappable snapshot and its lifetimes.
+        let wrapper = SwappableLlmProvider::new(Arc::new(TestProvider::new(
+            "initial",
+            "initial",
+            (Decimal::ZERO, Decimal::ZERO),
+        )));
+        for index in 0..2048 {
+            let previous_name = wrapper.model_name();
+            let retained = wrapper.retained_selection();
+            let previous_allocation = Arc::downgrade(&read(&wrapper.state).model_name);
+            let name = if index % 2 == 0 {
+                format!("configured-model-{index}")
+            } else {
+                format!("{}-{index}", "long-configured-model-".repeat(20))
+            };
+            wrapper.swap(Arc::new(TestProvider::new(
+                &name,
+                &name,
+                (Decimal::ZERO, Decimal::ZERO),
+            )));
+            assert_eq!(wrapper.model_name().as_ref(), name.as_str());
+            assert_eq!(wrapper.active_model_name(), name);
+            assert_eq!(retained.provider.model_name(), previous_name);
+            assert_eq!(retained.model.as_str(), previous_name.as_ref());
+            assert!(previous_allocation.upgrade().is_none());
         }
-        // Past the cap: sentinel.
-        let over = intern_into(&mut map, "one-too-many", cap, INTERN_MAX_LEN);
-        assert_eq!(over, INTERN_OVERFLOW_SENTINEL);
-        // And an already-interned name still resolves from the map.
-        let reused = intern_into(&mut map, "name-0", cap, INTERN_MAX_LEN);
-        assert_ne!(reused, INTERN_OVERFLOW_SENTINEL);
     }
 
     /// Concurrent `swap` and `set_model` against the same wrapper must
@@ -633,8 +555,8 @@ mod tests {
     /// Before the fix, `set_model` released the state read lock between
     /// mutating the inner and writing the snapshot — a parallel `swap`
     /// could overwrite the snapshot with one from an older provider,
-    /// leaving `model_name()` referring to a replacement's `&'static`
-    /// literal while `cost_per_token()` was captured from a different
+    /// leaving `model_name()` from one replacement while `cost_per_token()`
+    /// was captured from a different
     /// inner. The write-lock-spanning fix keeps the swap and the set-model
     /// snapshot mutually exclusive.
     ///
@@ -684,7 +606,7 @@ mod tests {
         // would.
         let configured = wrapper.model_name();
         assert!(
-            matches!(configured, "p-a" | "p-even" | "p-odd"),
+            matches!(configured.as_ref(), "p-a" | "p-even" | "p-odd"),
             "configured model_name must come from a real swap: {configured}",
         );
         let _ = wrapper.active_model_name();

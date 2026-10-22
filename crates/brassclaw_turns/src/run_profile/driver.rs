@@ -116,6 +116,7 @@ pub struct MontyTaskHandoff {
     request: AgentLoopDriverRunRequest,
     attempt: super::MontyTaskAttempt,
     host: Arc<dyn AgentLoopDriverHost + Send + Sync>,
+    claimed_run: Option<Arc<crate::runner::ClaimedTurnRun>>,
 }
 
 impl MontyTaskHandoff {
@@ -140,7 +141,51 @@ impl MontyTaskHandoff {
             request,
             attempt,
             host,
+            claimed_run: None,
         })
+    }
+
+    /// Retain the actual worker claim as Rust-only transport for child admission.
+    /// Identity agreement is checked here; freshness is still checked by the
+    /// durable coordinator before any child effect. This grants no Tool access.
+    pub fn new_claimed(
+        request: AgentLoopDriverRunRequest,
+        claimed: Arc<crate::runner::ClaimedTurnRun>,
+        host: Arc<dyn AgentLoopDriverHost + Send + Sync>,
+    ) -> Result<Self, AgentLoopDriverError> {
+        let context = host.run_context();
+        let state = &claimed.state;
+        if state.status != crate::TurnStatus::Running
+            || state.scope != context.scope
+            || state.actor != context.actor
+            || context.accepted_message_ref.as_ref() != Some(&state.accepted_message_ref)
+            || claimed.resolved_run_profile != request.resolved_run_profile
+            || state.resolved_run_profile_id != claimed.resolved_run_profile.profile_id
+            || state.resolved_run_profile_version != claimed.resolved_run_profile.profile_version
+            || state.run_id != request.run_id
+            || state.turn_id != request.turn_id
+            || context.trusted_internal_turn
+                != (state.source_binding_ref.as_str()
+                    == super::host::TRUSTED_INTERNAL_SOURCE_BINDING)
+        {
+            return Err(AgentLoopDriverError::InvalidRequest {
+                reason: "Monty claimed run and host context do not identify the same task"
+                    .to_owned(),
+            });
+        }
+        let attempt = super::MontyTaskAttempt {
+            run_id: state.run_id,
+            runner_id: claimed.runner_id,
+            lease_token: claimed.lease_token,
+        };
+        let mut handoff = Self::new(request, attempt, host)?;
+        handoff.claimed_run = Some(claimed);
+        Ok(handoff)
+    }
+
+    /// Rust-only claim, never a VM value, serialized task field or fresh grant.
+    pub fn claimed_run(&self) -> Option<&Arc<crate::runner::ClaimedTurnRun>> {
+        self.claimed_run.as_ref()
     }
 
     pub fn into_parts(

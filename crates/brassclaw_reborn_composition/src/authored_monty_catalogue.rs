@@ -178,6 +178,7 @@ impl InstalledMontyCatalogue {
                 policy,
                 "authored-monty-catalogue/3",
                 disabled,
+                None,
             )
             .await?;
         let advertised: Vec<_> = std::iter::once(self.reply.as_ref())
@@ -281,8 +282,15 @@ impl InstalledMontyCatalogue {
         policy: brassclaw_host_api::MontyExecutionLimits,
     ) -> Result<CatalogueGeneration, RecipeStoreError> {
         let disabled = self.active.read().await.disabled_recipes.clone();
-        self.prepare_with_policy(tx, recipes, policy, "authored-monty-catalogue/3", disabled)
-            .await
+        self.prepare_with_policy(
+            tx,
+            recipes,
+            policy,
+            "authored-monty-catalogue/3",
+            disabled,
+            None,
+        )
+        .await
     }
 
     async fn prepare_with_policy(
@@ -292,8 +300,18 @@ impl InstalledMontyCatalogue {
         policy: brassclaw_host_api::MontyExecutionLimits,
         format: &str,
         disabled_recipes: BTreeSet<Uuid>,
+        retained_policy: Option<&Value>,
     ) -> Result<CatalogueGeneration, RecipeStoreError> {
         policy.validate().map_err(invalid)?;
+        if let Some(document) = retained_policy {
+            let recorded = serde_json::from_value::<brassclaw_host_api::MontyExecutionLimits>(
+                document.clone(),
+            )
+            .map_err(invalid)?;
+            if format == "authored-monty-catalogue/1" || recorded != policy {
+                return Err(invalid("retained catalogue preparation policy differs"));
+            }
+        }
         if recipes.len() as u64 > u64::from(policy.max_catalogue_recipes) {
             return Err(invalid("catalogue recipe capacity exceeded"));
         }
@@ -537,7 +555,13 @@ impl InstalledMontyCatalogue {
             "prefix_checksum":digest(&prefix)});
         if format != "authored-monty-catalogue/1" {
             document["format"] = json!(format);
-            document["preparation_policy"] = serde_json::to_value(policy).map_err(invalid)?;
+            // Historical manifests can omit settings introduced afterwards.
+            // Decode their defaults for execution, but retain the exact stored
+            // fields for identity. New activation writes the complete policy.
+            document["preparation_policy"] = match retained_policy {
+                Some(original) => original.clone(),
+                None => serde_json::to_value(policy).map_err(invalid)?,
+            };
         }
         if format == "authored-monty-catalogue/3" {
             document["disabled_recipe_ids"] = json!(disabled_recipes);
@@ -623,7 +647,14 @@ impl InstalledMontyCatalogue {
             compatibility_policy
         };
         let view = self
-            .prepare_with_policy(&tx, &recipes, policy, format, disabled)
+            .prepare_with_policy(
+                &tx,
+                &recipes,
+                policy,
+                format,
+                disabled,
+                retained.then_some(&document["preparation_policy"]),
+            )
             .await?;
         if view.generation != generation || view.bytes != bytes {
             return Err(invalid("active catalogue selection differs"));

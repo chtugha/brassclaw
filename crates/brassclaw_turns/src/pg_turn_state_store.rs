@@ -25,7 +25,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use brassclaw_host_api::{ThreadId, UserId};
 use brassclaw_pg::PgPool;
-use heck::ToSnakeCase;
 use serde_json::Value;
 
 use crate::{
@@ -46,20 +45,6 @@ use crate::{
         RelinquishRunRequest, TurnRunTransitionPort,
     },
 };
-
-/// Convert a [`TurnStatus`] to the snake_case DB column value.
-///
-/// `TurnStatus` has no `#[serde(rename_all = "snake_case")]` — the serde
-/// representation is PascalCase. The DB `status` column stores snake_case
-/// values derived by converting PascalCase variant names via `heck::ToSnakeCase`
-/// (e.g. `RecoveryRequired` → `"recovery_required"`). Do NOT use `.to_lowercase()`
-/// — `"RecoveryRequired".to_lowercase()` yields `"recoveryrequired"` (missing
-/// underscore). This function will be used when writing per-run indexed rows.
-// Known tech-debt: used when per-run row indexing is added alongside snapshot rows.
-#[allow(dead_code)]
-fn turn_status_str(status: crate::TurnStatus) -> String {
-    format!("{:?}", status).to_snake_case()
-}
 
 /// Maximum number of optimistic-CAS retries before surfacing `TurnError::Unavailable`.
 const PG_CAS_RETRIES: usize = 12;
@@ -545,6 +530,37 @@ impl TurnSpawnTreeStateStore for PgTurnStateStore {
             async move {
                 let outcome = store
                     .submit_child_turn(request, admission_policy, &pre_resolved)
+                    .await;
+                (outcome, store)
+            }
+        })
+        .await
+    }
+
+    async fn submit_claimed_child_turn(
+        &self,
+        request: SubmitChildRunRequest,
+        parent: &crate::runner::ClaimedTurnRun,
+        admission_policy: &dyn TurnAdmissionPolicy,
+        run_profile_resolver: &dyn RunProfileResolver,
+    ) -> Result<SubmitTurnResponse, TurnError> {
+        let profile_resolution = run_profile_resolver
+            .resolve_run_profile(RunProfileResolutionRequest {
+                requested_run_profile: request.requested_run_profile.clone(),
+                ..RunProfileResolutionRequest::interactive_default()
+            })
+            .await;
+        let pre_resolved = PreResolvedRunProfileResolver::new(profile_resolution);
+        // The parent, descendant reservation and child commit in one aggregate.
+        // Child thread lookups resolve its link after the same transaction commits.
+        let thread_id = request.parent_scope.thread_id.clone();
+        self.apply(&thread_id, |store| {
+            let request = request.clone();
+            let parent = parent.clone();
+            let pre_resolved = pre_resolved.clone();
+            async move {
+                let outcome = store
+                    .submit_claimed_child_turn(request, &parent, admission_policy, &pre_resolved)
                     .await;
                 (outcome, store)
             }

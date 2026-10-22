@@ -36,7 +36,9 @@ mod system_inference;
 
 pub use crate::CapabilityActivityId;
 pub use monty_attempt::MontyTaskAttempt;
-pub use prepared_prompt::{PreparedLoopPromptMessage, PreparedLoopPromptRequest};
+pub use prepared_prompt::{
+    LoopPromptMessageSetId, PreparedLoopPromptMessage, PreparedLoopPromptRequest,
+};
 
 pub use compaction::{
     CompactionInitiator, LoopCompactionError, LoopCompactionMode, LoopCompactionOutcome,
@@ -95,8 +97,8 @@ pub use milestones::{
 };
 pub use model::{
     HostManagedLoopModelPort, LoopModelBudgetAccountant, LoopModelGateway, LoopModelGatewayError,
-    LoopModelGatewayRequest, LoopModelPolicyGuard, ModelCallOutcome, NoOpBudgetAccountant,
-    NoOpPolicyGuard, PreparedLoopModelCall,
+    LoopModelGatewayRequest, LoopModelPolicyGuard, ModelCallOutcome, ModelSubmission,
+    NoOpBudgetAccountant, NoOpPolicyGuard, PreparedLoopModelCall,
 };
 pub use model_observation::{
     CapabilityFailureDetail, CapabilityInputIssue, CapabilityInputIssueCode, CapabilityInputRepair,

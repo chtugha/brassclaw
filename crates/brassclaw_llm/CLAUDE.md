@@ -152,7 +152,7 @@ The full trait (all methods must be implemented or rely on defaults):
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     // Required
-    fn model_name(&self) -> &str;
+    fn model_name(&self) -> std::borrow::Cow<'_, str>;
     fn cost_per_token(&self) -> (Decimal, Decimal);  // (input, output) per token
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError>;
     async fn complete_with_tools(&self, request: ToolCompletionRequest) -> Result<ToolCompletionResponse, LlmError>;
@@ -168,7 +168,11 @@ pub trait LlmProvider: Send + Sync {
 ```
 
 Key notes:
-- `model_name()` returns the configured model name; `active_model_name()` returns the currently active model (may differ if `set_model()` was called — only `NearAiChatProvider` supports this).
+- `model_name()` borrows immutable provider metadata or owns a copy of mutable
+  wrapper metadata. Snapshots release replaced names without lifetime interners,
+  count/length quotas or placeholder substitution. `active_model_name()` returns
+  the currently active model and may differ after `set_model()`. Existing model
+  identifier and route validation remain separate from metadata ownership.
 - `cost_per_token()` returns `(Decimal, Decimal)` using `rust_decimal`. Look up via `costs::model_cost()` in your constructor; fall back to `costs::default_cost()` for unknowns.
 - `RigAdapter` ignores per-request model overrides (logs a warning). Only `NearAiChatProvider` supports per-request model overrides via `CompletionRequest::model`.
 - `complete_with_tools()` is never cached (tool calls can have side effects) — `CachedProvider` always passes them through.

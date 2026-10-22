@@ -24,6 +24,10 @@ def snapshot(profile='base-prompt', view='literal-reference/v1'):
         spec = importlib.util.spec_from_file_location('maker_core', HERE / 'prefix-maker-compiler.py')
         maker = importlib.util.module_from_spec(spec); spec.loader.exec_module(maker)
         paths = list(maker.REQUIRED); header = maker.HEADER
+    if profile == 'sempai':
+        design = json.loads((HERE / 'core-reference-designs.json').read_text())['profiles']['sempai']
+        paths.extend(['scripts/prefix/sempai-authoring-reference.md', 'scripts/prefix/sempai-monty-compatibility.md'])
+        header = design['release_header']
     return {'format': 'brassclaw-prefix-source-snapshot/1', 'profile': profile,
         'release': 'actual-current-source-stage-check', 'header': header, 'evidence_view': view,
         'sources': [{'path': name, 'kind': 'document', 'disposition': 'included',
@@ -46,7 +50,7 @@ def run_stages(source):
 class CompileLogicTests(unittest.TestCase):
     def test_actual_profiles_and_views_preserve_every_original_and_match_shared_renderer(self):
         for profile in ['base-prompt', 'prefix-maker']:
-            for view in ['literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing']:
+            for view in ['literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing', 'literal-reference/v5-contextual-sharing']:
                 with self.subTest(profile=profile, view=view):
                     source = snapshot(profile, view)
                     compiled, _ = run_stages(source)
@@ -72,12 +76,32 @@ class CompileLogicTests(unittest.TestCase):
                     expected = core.render_prefix_reference(source['header'], rendering, []) if view == 'literal-reference/v1' else (core.render_trailing_inventory_prefix_reference if view == 'literal-reference/v3-trailing-inventory' else core.render_deduplicated_prefix_reference)(source['header'], rendering, [])['context']
                     if view == 'literal-reference/v4-stable-sharing':
                         expected = core.render_stable_sharing_prefix_reference(source['header'], rendering, [])['context']
+                    if view == 'literal-reference/v5-contextual-sharing':
+                        expected = core.render_contextual_prefix_reference(source['header'], rendering, [])['context']
                     self.assertEqual(files['context.md'].decode(), expected)
                     manifest = json.loads(files['manifest.json'])
                     self.assertFalse(manifest['activation_eligible'])
                     self.assertEqual(manifest['geometry']['status'], 'unmeasured')
                     identity = {key:manifest[key] for key in ['profile','compiler','files','geometry']}
                     self.assertEqual(manifest['generation'],hashlib.sha256(core.canonical(identity)).hexdigest())
+
+    def test_sempai_requires_contextual_layout_and_complete_authoring_guides(self):
+        source = snapshot('sempai', 'literal-reference/v5-contextual-sharing')
+        result, _ = run_stages(source)
+        package = json.loads(result)
+        files = {name: base64.b64decode(value['data']) for name, value in package['artifacts'].items()}
+        design = json.loads(files['profile_design.json'])
+        self.assertEqual(design['format'], 'brassclaw-prefix-compiler-design/2')
+        self.assertEqual(len(design['required_sources']), 9)
+        self.assertEqual(design['source_contexts']['scripts/prefix/sempai-authoring-reference.md'], 'brassclaw-authoring')
+        self.assertNotIn('Home Assistant', files['context.md'].decode())
+        source['evidence_view'] = 'literal-reference/v4-stable-sharing'
+        with self.assertRaisesRegex(ValueError, 'context-aware'):
+            run_stages(source)
+        source['evidence_view'] = 'literal-reference/v5-contextual-sharing'
+        source['sources'].pop()
+        with self.assertRaisesRegex(ValueError, 'mandatory'):
+            run_stages(source)
 
     def test_missing_and_unsafe_sources_and_bad_digest_batches_stop(self):
         value = snapshot()

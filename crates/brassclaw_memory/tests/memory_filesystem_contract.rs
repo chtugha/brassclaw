@@ -35,12 +35,13 @@ async fn memory_filesystem_maps_virtual_paths_to_repository_keys() {
     let key =
         MemoryDocumentPath::new("tenant-a", "alice", Some("project-1"), "notes/a.md").unwrap();
 
-    fs.write_file(
+    fs.put_opaque(
         &VirtualPath::new(
             "/memory/tenants/tenant-a/users/alice/agents/_none/projects/project-1/notes/a.md",
         )
         .unwrap(),
-        b"memory note",
+        b"memory note".to_vec(),
+        brassclaw_filesystem::CasExpectation::Any,
     )
     .await
     .unwrap();

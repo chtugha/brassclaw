@@ -4,8 +4,9 @@ use std::time::Instant;
 use async_trait::async_trait;
 use brassclaw_turns::run_profile::{
     AgentLoopHostErrorKind, LoopModelBudgetAccountant, LoopModelGatewayError, LoopModelPolicyGuard,
-    LoopRunContext, LoopSafeSummary, ModelWorkOutcome, ModelWorkRequest, ParentLoopOutput,
-    SystemInferenceError, SystemInferencePort, SystemInferenceRequest, SystemInferenceResponse,
+    LoopRunContext, LoopSafeSummary, ModelSubmission, ModelWorkOutcome, ModelWorkRequest,
+    ParentLoopOutput, SystemInferenceError, SystemInferencePort, SystemInferenceRequest,
+    SystemInferenceResponse,
 };
 
 use crate::{
@@ -21,6 +22,7 @@ where
 {
     gateway: Arc<G>,
     run_context: LoopRunContext,
+    retained_request: Option<Arc<SystemInferenceRequest>>,
 }
 
 impl<G> ModelGatewayBackedSystemInferencePort<G>
@@ -31,7 +33,63 @@ where
         Self {
             gateway,
             run_context,
+            retained_request: None,
         }
+    }
+
+    fn check_retained_request(
+        &self,
+        request: &SystemInferenceRequest,
+    ) -> Result<(), SystemInferenceError> {
+        if self
+            .retained_request
+            .as_ref()
+            .is_some_and(|retained| retained.as_ref() != request)
+        {
+            return Err(SystemInferenceError::Failed {
+                safe_summary: safe("retained system inference request differs"),
+            });
+        }
+        Ok(())
+    }
+
+    fn model_request(
+        &self,
+        request: &SystemInferenceRequest,
+    ) -> Result<HostManagedModelRequest, SystemInferenceError> {
+        let system_ref = system_inference_ref(request.task_id.as_uuid(), "system-prompt")?;
+        let input_ref = system_inference_ref(request.task_id.as_uuid(), "input")?;
+        Ok(HostManagedModelRequest {
+            // One admitted operation must not create unrecorded provider
+            // retries or cascade to another backend after an unknown outcome.
+            dispatch_policy:
+                brassclaw_turns::run_profile::LoopModelDispatchPolicy::SingleSubmission,
+            model_profile_id: self
+                .run_context
+                .resolved_run_profile
+                .model_profile_id
+                .clone(),
+            messages: vec![
+                HostManagedModelMessage {
+                    role: HostManagedModelMessageRole::System,
+                    content: request.identity.system_prompt.clone(),
+                    content_ref: system_ref,
+                    tool_result_provider_call: None,
+                    tool_result_content: None,
+                },
+                HostManagedModelMessage {
+                    role: HostManagedModelMessageRole::User,
+                    content: request.input_text.clone(),
+                    content_ref: input_ref,
+                    tool_result_provider_call: None,
+                    tool_result_content: None,
+                },
+            ],
+            surface_version: None,
+            resolved_model_route: self.run_context.resolved_model_route.clone(),
+            run_id: self.run_context.run_id,
+            turn_id: self.run_context.turn_id,
+        })
     }
 }
 
@@ -61,17 +119,46 @@ impl GuardedSystemInferencePort {
 
 #[async_trait]
 impl SystemInferencePort for GuardedSystemInferencePort {
+    fn retain_model_selection(
+        &self,
+        request: &SystemInferenceRequest,
+    ) -> Result<Option<Arc<dyn SystemInferencePort>>, SystemInferenceError> {
+        Ok(self.inner.retain_model_selection(request)?.map(|inner| {
+            Arc::new(Self {
+                inner,
+                run_context: self.run_context.clone(),
+                accountant: self.accountant.clone(),
+                policy_guard: self.policy_guard.clone(),
+            }) as Arc<dyn SystemInferencePort>
+        }))
+    }
+
     async fn call_system_inference(
         &self,
         request: SystemInferenceRequest,
     ) -> Result<SystemInferenceResponse, SystemInferenceError> {
+        self.call_system_inference_with_submission(request).await.0
+    }
+
+    async fn call_system_inference_with_submission(
+        &self,
+        request: SystemInferenceRequest,
+    ) -> (
+        Result<SystemInferenceResponse, SystemInferenceError>,
+        ModelSubmission,
+    ) {
+        let selected = match self.inner.retain_model_selection(&request) {
+            Ok(selected) => selected,
+            Err(error) => return (Err(error), ModelSubmission::NotSubmitted),
+        };
+        let inner = selected.unwrap_or_else(|| Arc::clone(&self.inner));
         let work_request = ModelWorkRequest::for_system_inference(&self.run_context, &request);
         if let Err(error) = self
             .policy_guard
             .check_model_work_policy(&self.run_context, &work_request)
             .await
         {
-            return Err(map_gateway_error(error));
+            return (Err(map_gateway_error(error)), ModelSubmission::NotSubmitted);
         }
 
         if let Err(error) = self
@@ -79,38 +166,55 @@ impl SystemInferencePort for GuardedSystemInferencePort {
             .pre_model_work(&self.run_context, &work_request)
             .await
         {
-            return Err(map_gateway_error(error));
+            return (Err(map_gateway_error(error)), ModelSubmission::NotSubmitted);
         }
 
-        let inner = Arc::clone(&self.inner);
         let accountant = Arc::clone(&self.accountant);
         let run_context = self.run_context.clone();
         let worker_request = work_request.clone();
-        tokio::spawn(async move {
+        // Once admitted, settlement survives cancellation of the waiting caller.
+        match tokio::spawn(async move {
             if let Err(error) = accountant.model_work_dispatching(&run_context, &worker_request) {
                 accountant.release_in_flight(&run_context, &worker_request);
-                return Err(map_gateway_error(error));
+                return (Err(map_gateway_error(error)), ModelSubmission::NotSubmitted);
             }
-            let result = inner.call_system_inference(request).await;
-            let outcome = ModelWorkOutcome::from_system_inference_result(&result);
-            if let Err(error) = accountant
-                .post_model_work(&run_context, &worker_request, outcome)
-                .await
-            {
-                return Err(map_gateway_error(error));
+            let (result, submission) = inner.call_system_inference_with_submission(request).await;
+            let unsubmitted = if result.is_err() && submission == ModelSubmission::NotSubmitted {
+                accountant
+                    .reconcile_unsubmitted_model_work(&run_context, &worker_request)
+                    .await
+            } else {
+                None
+            };
+            let settlement = if let Some(result) = unsubmitted {
+                result
+            } else {
+                let outcome = ModelWorkOutcome::from_system_inference_result(&result);
+                accountant
+                    .post_model_work(&run_context, &worker_request, outcome)
+                    .await
+            };
+            if let Err(error) = settlement {
+                return (Err(map_gateway_error(error)), submission);
             }
-            result
+            (result, submission)
         })
         .await
-        .map_err(|error| {
-            tracing::debug!(
-                error = %error,
-                "system inference worker failed before post-model accounting completed"
-            );
-            SystemInferenceError::Failed {
-                safe_summary: safe("system inference task failed"),
+        {
+            Ok(result) => result,
+            Err(error) => {
+                tracing::debug!(
+                    error = %error,
+                    "system inference worker failed before post-model accounting completed"
+                );
+                (
+                    Err(SystemInferenceError::Failed {
+                        safe_summary: safe("system inference task failed"),
+                    }),
+                    ModelSubmission::Unknown,
+                )
             }
-        })?
+        }
     }
 }
 
@@ -119,73 +223,98 @@ impl<G> SystemInferencePort for ModelGatewayBackedSystemInferencePort<G>
 where
     G: HostManagedModelGateway + ?Sized,
 {
+    fn retain_model_selection(
+        &self,
+        request: &SystemInferenceRequest,
+    ) -> Result<Option<Arc<dyn SystemInferencePort>>, SystemInferenceError> {
+        self.check_retained_request(request)?;
+        if self.retained_request.is_some() {
+            return Ok(None);
+        }
+        let model_request = self.model_request(request)?;
+        let Some(gateway) = self
+            .gateway
+            .retain_model_selection(&model_request)
+            .map_err(|error| map_model_error(error.kind))?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(Arc::new(ModelGatewayBackedSystemInferencePort {
+            gateway,
+            run_context: self.run_context.clone(),
+            retained_request: Some(Arc::new(request.clone())),
+        })))
+    }
+
     async fn call_system_inference(
         &self,
         request: SystemInferenceRequest,
     ) -> Result<SystemInferenceResponse, SystemInferenceError> {
+        self.call_system_inference_with_submission(request).await.0
+    }
+
+    async fn call_system_inference_with_submission(
+        &self,
+        request: SystemInferenceRequest,
+    ) -> (
+        Result<SystemInferenceResponse, SystemInferenceError>,
+        ModelSubmission,
+    ) {
+        if let Err(error) = self.check_retained_request(&request) {
+            return (Err(error), ModelSubmission::NotSubmitted);
+        }
         if estimate_tokens_from_chars(&request.input_text).as_u64() > request.max_input_tokens {
-            return Err(SystemInferenceError::InputTooLarge);
+            return (
+                Err(SystemInferenceError::InputTooLarge),
+                ModelSubmission::NotSubmitted,
+            );
         }
 
         let started = Instant::now();
-        let system_ref = system_inference_ref(request.task_id.as_uuid(), "system-prompt")?;
-        let input_ref = system_inference_ref(request.task_id.as_uuid(), "input")?;
-        let model_request = HostManagedModelRequest {
-            // This admitted work owns one reservation/attempt. Configured
-            // provider retries/cascades could create unrecorded extra effects
-            // or switch away from its retained route after an unknown outcome.
-            dispatch_policy:
-                brassclaw_turns::run_profile::LoopModelDispatchPolicy::SingleSubmission,
-            model_profile_id: self
-                .run_context
-                .resolved_run_profile
-                .model_profile_id
-                .clone(),
-            messages: vec![
-                HostManagedModelMessage {
-                    role: HostManagedModelMessageRole::System,
-                    content: request.identity.system_prompt.clone(),
-                    content_ref: system_ref,
-                    tool_result_provider_call: None,
-                    tool_result_content: None,
-                },
-                HostManagedModelMessage {
-                    role: HostManagedModelMessageRole::User,
-                    content: request.input_text.clone(),
-                    content_ref: input_ref,
-                    tool_result_provider_call: None,
-                    tool_result_content: None,
-                },
-            ],
-            surface_version: None,
-            resolved_model_route: self.run_context.resolved_model_route.clone(),
-            run_id: self.run_context.run_id,
-            turn_id: self.run_context.turn_id,
+        let model_request = match self.model_request(&request) {
+            Ok(request) => request,
+            Err(error) => return (Err(error), ModelSubmission::NotSubmitted),
         };
 
-        let response = tokio::time::timeout(
+        let response = match tokio::time::timeout(
             std::time::Duration::from_millis(request.deadline_ms),
             self.gateway.stream_model(model_request),
         )
         .await
-        .map_err(|_| SystemInferenceError::Timeout)?
-        .map_err(|error| map_model_error(error.kind))?;
+        {
+            Err(_) => return (Err(SystemInferenceError::Timeout), ModelSubmission::Unknown),
+            Ok(Err(error)) => {
+                let submission = if error.confirmed_unsubmitted {
+                    ModelSubmission::NotSubmitted
+                } else {
+                    ModelSubmission::Unknown
+                };
+                return (Err(map_model_error(error.kind)), submission);
+            }
+            Ok(Ok(response)) => response,
+        };
 
         let output_text = match response.output {
             ParentLoopOutput::AssistantReply(reply) => reply.content,
             ParentLoopOutput::CapabilityCalls(_) => {
-                return Err(SystemInferenceError::Failed {
-                    safe_summary: safe("system inference returned capability calls"),
-                });
+                return (
+                    Err(SystemInferenceError::Failed {
+                        safe_summary: safe("system inference returned capability calls"),
+                    }),
+                    ModelSubmission::Unknown,
+                );
             }
         };
 
-        Ok(SystemInferenceResponse {
-            task_id: request.task_id,
-            output_text,
-            elapsed_ms: started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
-            usage: response.usage,
-        })
+        (
+            Ok(SystemInferenceResponse {
+                task_id: request.task_id,
+                output_text,
+                elapsed_ms: started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+                usage: response.usage,
+            }),
+            ModelSubmission::Unknown,
+        )
     }
 }
 

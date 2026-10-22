@@ -91,6 +91,18 @@ pub trait LoopModelBudgetAccountant: Send + Sync {
         None
     }
 
+    /// Reconcile a host-prepared call whose native dispatch result proves the
+    /// primary provider was never entered. Error kinds alone are not evidence.
+    /// None preserves the existing conservative behavior for unsupported
+    /// accountants; an unknown release acknowledgement must retain the hold.
+    async fn reconcile_unsubmitted_model_work(
+        &self,
+        _context: &LoopRunContext,
+        _request: &ModelWorkRequest,
+    ) -> Option<Result<(), LoopModelGatewayError>> {
+        None
+    }
+
     /// Called **before** dispatching the model request. Return `Err` with
     /// `AgentLoopHostErrorKind::BudgetExceeded` to reject the call.
     async fn pre_model_call(
@@ -194,6 +206,25 @@ pub trait PreparedLoopModelCall: Send {
     /// The prepared call is Rust-private; it cannot be supplied by Monty/LLM.
     fn work_request(&self) -> &ModelWorkRequest;
     async fn dispatch(self: Box<Self>) -> Result<LoopModelResponse, LoopModelGatewayError>;
+
+    /// Rust-owned outcome of this exact prepared call. Defaults never infer
+    /// non-submission from a failure class. This is not a serializable model
+    /// response, a retry grant or evidence about separate nested provider work.
+    async fn dispatch_with_submission(
+        self: Box<Self>,
+    ) -> (
+        Result<LoopModelResponse, LoopModelGatewayError>,
+        ModelSubmission,
+    ) {
+        (self.dispatch().await, ModelSubmission::Unknown)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelSubmission {
+    Unknown,
+    /// A trusted host adapter returned before entering this call's provider.
+    NotSubmitted,
 }
 
 #[async_trait]
@@ -456,17 +487,20 @@ where
         self.accountant
             .model_work_dispatching(&self.context, &work_request)
             .map_err(LoopModelGatewayError::into_host_error)?;
-        let gateway_result = if let Some(prepared) = prepared {
-            prepared.dispatch().await
+        let (gateway_result, submission) = if let Some(prepared) = prepared {
+            prepared.dispatch_with_submission().await
         } else {
-            self.gateway
-                .stream_model(LoopModelGatewayRequest {
-                    context: self.context.clone(),
-                    request: request.clone(),
-                })
-                .await
-        }
-        .map(sanitize_model_response);
+            (
+                self.gateway
+                    .stream_model(LoopModelGatewayRequest {
+                        context: self.context.clone(),
+                        request: request.clone(),
+                    })
+                    .await,
+                ModelSubmission::Unknown,
+            )
+        };
+        let gateway_result = gateway_result.map(sanitize_model_response);
 
         // A received response belongs to its original invocation even if
         // accounting subsequently fails. Always account the provider outcome,
@@ -487,7 +521,17 @@ where
             Ok(response) => ModelCallOutcome::Success(response),
             Err(error) => ModelCallOutcome::Failure(error),
         };
-        let post_result = if is_prepared {
+        let unsubmitted = if gateway_result.is_err() && submission == ModelSubmission::NotSubmitted
+        {
+            self.accountant
+                .reconcile_unsubmitted_model_work(&self.context, &work_request)
+                .await
+        } else {
+            None
+        };
+        let post_result = if let Some(result) = unsubmitted {
+            result
+        } else if is_prepared {
             self.accountant
                 .post_model_work_result(&self.context, &work_request, outcome)
                 .await

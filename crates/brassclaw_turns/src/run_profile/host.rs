@@ -1221,6 +1221,20 @@ pub trait LoopPromptPort: Send + Sync {
         request: LoopPromptBundleRequest,
     ) -> Result<LoopPromptBundle, AgentLoopHostError>;
 
+    /// Add complete host-owned prefix messages while preserving normal context
+    /// loading, its cursor/limits, instructions, safety, hooks and prompt authority.
+    /// This is not a wire API and grants no Tool permission. Hosts without this
+    /// materialization path must fail explicitly; summary substitution is invalid.
+    async fn build_context_prompt_bundle(
+        &self,
+        _request: super::prepared_prompt::PreparedLoopPromptRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        Err(AgentLoopHostError::new(
+            AgentLoopHostErrorKind::Unimplemented,
+            "context prompt materialization is unavailable",
+        ))
+    }
+
     /// Materialize complete, typed Recipe messages through the host's existing
     /// scoped prompt authority. This host-only interface grants no Tool access;
     /// callers must validate their selected usage and captured data limits.

@@ -112,6 +112,18 @@ pub trait TurnSpawnTreePort: Send + Sync {
         &self,
         request: SubmitChildRunRequest,
     ) -> Result<SubmitTurnResponse, TurnError>;
+
+    /// Trusted runner entry: the original parent claim is checked by the store
+    /// atomically with the child transition. It is not an invocation approval.
+    async fn submit_claimed_child_run(
+        &self,
+        _request: SubmitChildRunRequest,
+        _parent: &crate::runner::ClaimedTurnRun,
+    ) -> Result<SubmitTurnResponse, TurnError> {
+        Err(TurnError::Unavailable {
+            reason: "claimed child admission is unavailable".into(),
+        })
+    }
 }
 
 pub struct DefaultTurnCoordinator<S: ?Sized> {
@@ -445,6 +457,36 @@ where
         deferred_publication_error(self.publication_error_port.as_ref(), &wake)?;
         Ok(response)
     }
+    async fn submit_claimed_child_run(
+        &self,
+        request: SubmitChildRunRequest,
+        parent: &crate::runner::ClaimedTurnRun,
+    ) -> Result<SubmitTurnResponse, TurnError> {
+        let prepared_id = request.requested_run_id;
+        if let Some(requested) = request.requested_run_id {
+            self.check_prepared_run_scope(
+                requested,
+                &[&request.parent_scope, &request.child_scope],
+            )?;
+        }
+        let child_scope = request.child_scope.clone();
+        let response = self
+            .store
+            .submit_claimed_child_turn(
+                request,
+                parent,
+                self.admission_policy.as_ref(),
+                self.run_profile_resolver.as_ref(),
+            )
+            .await?;
+        let wake = submit_wake(child_scope, &response);
+        notify_queued_run_best_effort(self.wake_notifier.as_ref(), wake.clone());
+        if let Some(id) = prepared_id {
+            self.consume_prepared_run_id(id)?;
+        }
+        deferred_publication_error(self.publication_error_port.as_ref(), &wake)?;
+        Ok(response)
+    }
 }
 
 #[async_trait]
@@ -500,5 +542,15 @@ where
         request: SubmitChildRunRequest,
     ) -> Result<SubmitTurnResponse, TurnError> {
         self.as_ref().submit_child_run(request).await
+    }
+
+    async fn submit_claimed_child_run(
+        &self,
+        request: SubmitChildRunRequest,
+        parent: &crate::runner::ClaimedTurnRun,
+    ) -> Result<SubmitTurnResponse, TurnError> {
+        self.as_ref()
+            .submit_claimed_child_run(request, parent)
+            .await
     }
 }

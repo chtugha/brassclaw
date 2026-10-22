@@ -15,18 +15,40 @@ session APIs. Check the actual selected runtime, ABI and host adapter before usi
 a feature. Older status passages are dated observations; the current host evidence
 and binding authoring contracts take precedence over historical implementation gaps.
 
-## Three different Python contexts
+## Four distinct authoring contexts
 
-1. The prefix compiler is ordinary host Python. Its network, subprocess and file
-   access are compiler operations, not abilities granted to generated PythonCode.
-2. Upstream quickstart code creates a Monty host/session in Python, Rust or JS.
-   Never paste that host setup into a BrassClaw PythonCode component.
-3. A BrassClaw component runs inside the selected Monty execution context. Load
-   Skill function definitions without effects; invoke their pinned exports with
-   typed arguments and capture their returned results. A standalone invocation
-   body uses step-local inputs["name"] and module-level result. Actual Tool calls
-   use registered host.<tool>(...) through prepared bindings. Do not construct
-   another Monty VM, pool, event loop or agent runner inside that component.
+1. **Host embedding examples.** Upstream quickstarts create Monty hosts, sessions
+   or pools in Python, Rust or JavaScript. Those calls belong to the embedding
+   application. Never paste host setup, callback registration or pool lifecycle
+   into a BrassClaw PythonCode component or treat it as a registered Tool.
+2. **Preload definitions.** A reusable PythonCode/Skill interface declares its
+   exported names/signatures, private helpers/constants and exact dependencies.
+   Loading defines those functions; it does not invoke them, call a Tool or need
+   a module-level result assignment. Resolve/pin the reviewed association and
+   dependency-first exports. Mutable inputs, defaults, closures and results stay
+   isolated per task/attempt/invocation; only immutable reusable definitions may
+   be shared. An executable example inside prose is not that association.
+3. **Invocation bodies.** The selected caller invokes an already pinned export
+   with typed data and captures its return value. A standalone invocation-body
+   example uses step-local inputs["name"] and assigns its actual return to result;
+   that call site is not a preload-only definition or a reusable export by itself.
+   Declaring a helper or promising its result does not invoke it. Each real Tool
+   call needs its matching prepared ToolSkill and the kernel's current policy.
+   Do not create another Monty VM, pool, event loop or agent runner in the body.
+4. **Recipe authoring.** A Recipe is ordered persisted workflow metadata, not an
+   embedding script or a pasted invocation body. Use recipe.md's actual
+   knowledge/stepnumber schema, one stable component UUID per step, typed input
+   bindings and explicit completion. Rust-channel binding executes nothing;
+   the following matching executable step invokes the selected usage. Independent
+   Tool calls remain separate steps under the documented exception rules.
+
+The compiler boundary is separate from these authoring contexts. An offline
+adapter is ordinary host Python; its installed dependencies and collection access
+are not guest capabilities. The installed shared source compiler instead runs
+pure PythonCode stages in a Recipe through Monty, with separate registered hash
+and retention usages. Neither path authorizes generated code to use host files,
+network, subprocesses or SDK methods. Normal Generate must use its accepted design;
+source collection and provider-assisted redesign are separate declared workflows.
 
 Upstream feed_run(inputs={...}) supplies named values from the embedding host.
 BrassClaw's inputs mapping is its own binding contract. Passing a callable as input
@@ -74,15 +96,19 @@ Cross-host data is not ordinary shared Python memory. Containers can cross as
 copies; unsupported/cyclic/deep values can have lossy upstream conversions. Emit
 the supported finite typed data boundary only; validate actual converted results.
 Never depend on object identity or mutation propagating across host calls. Rust
-transport limits can be stricter than upstream Python/JS limits: BrassClaw's current
-private transport caps frames at 64 MiB and depth at 64. Do not claim the upstream
-256 MiB wire allowance is available to a BrassClaw task.
+transport limits can be stricter than upstream Python/JS limits. Resolve the
+selected adapter's acknowledged frame/value/shape limits; the private paths
+observed with 64 MiB frames and depth 64 are not universal limits for every native
+primitive or future revision. Do not substitute an upstream 256 MiB allowance or
+claim that saving a new setting proves effective runtime uptake.
 
 Upstream feed/turn execution clocks exclude host waits; they are not automatically
 one cumulative BrassClaw task budget. The BrassClaw task account persists consumption
 and effective settings across steps/waits/retries. Global heap policy and physical
-worker backstops are distinct. Never invent the removed max_allocations setting or
-reset consumed time to get around a limit. Finite execution does not bound external
+worker backstops are distinct. Monty 1.0 removes allocation-count limiting; legacy
+persisted allocation settings still need their explicit supported migration,
+not silent deletion/ignoring. Never invent unsupported runtime fields or reset
+consumed time to get around a limit. Finite execution does not bound external
 callbacks: their technical timeouts/cancellation still apply.
 
 Upstream terminal memory/time failures can leave session heap state untrustworthy.

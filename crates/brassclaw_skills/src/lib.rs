@@ -52,20 +52,26 @@ pub mod validator_components;
 /// Packaged typed reply/history drafts and exact source-integrity comparison.
 /// Existing Tool artifacts, behavioral review, approval and activation are separate.
 pub mod global_bootstrap_components;
-/// Shared effect-free prefix rendering draft; qualification and activation are separate.
-pub mod prefix_reference_components;
-/// Pure reusable source-compiler stages; qualification and activation are separate.
-pub mod prefix_compiler_components;
-/// One reusable ordered UTF-8 hashing usage of the existing JSON Tool.
-pub mod utf8_digest_components;
-/// Reusable immutable-generation usages; runtime bootstrap/activation are separate.
-pub mod prefix_generation_components;
 /// Canonical single-usage offline encoding drafts; qualification is separate.
 pub mod model_encoding_components;
+/// Pure reusable source-compiler stages; qualification and activation are separate.
+pub mod prefix_compiler_components;
+/// Reusable immutable-generation usages; runtime bootstrap/activation are separate.
+pub mod prefix_generation_components;
 pub mod prefix_measurement_components;
+/// Shared effect-free prefix rendering draft; qualification and activation are separate.
+pub mod prefix_reference_components;
+/// One reusable ordered UTF-8 hashing usage of the existing JSON Tool.
+pub mod utf8_digest_components;
 
 /// Typed explicit model usage and its finite JSON command-input profile.
 pub mod model_completion_components;
+
+/// Typed successor drafts for the existing bounded HTTP GET usage.
+pub mod http_get_components;
+/// Pure exact-content source-check projections; provenance/storage are separate.
+pub mod prefix_source_check_components;
+pub mod prefix_source_components;
 
 /// Immutable class-10 root source/compiler/port definitions. Parsing is neither
 /// protected-root review nor a system-seed provenance/activation shortcut.

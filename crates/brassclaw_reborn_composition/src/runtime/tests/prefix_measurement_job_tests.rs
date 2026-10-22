@@ -9,15 +9,16 @@ use tokio_util::sync::CancellationToken;
 pub(super) async fn assert_durable_measurement(
     runtime: &Arc<RebornRuntime>,
     app: &axum::Router,
+    profile: &str,
     generation: &str,
     input: &Value,
-    observed: &Value,
+    expected_observation: Option<&Value>,
 ) {
     let pool = runtime.installed_catalogue.pool.clone();
     let root = runtime.global_monty_owner.client().root_identity();
     let namespace = runtime.webui_tenant_id();
     let source = crate::prefix_generations::PgPrefixGenerations::new(pool.clone())
-        .get("base-prompt", generation)
+        .get(profile, generation)
         .await
         .unwrap();
     let package: Value = serde_json::from_str(&source.generation_bytes).unwrap();
@@ -35,17 +36,17 @@ pub(super) async fn assert_durable_measurement(
     let specification = input["specification"].as_str().unwrap();
     let proposals =
         crate::prefix_model_designs::PgPrefixModelDesigns::new(pool.clone(), namespace.into());
-    let proposal = proposals.retain_proposal("base-prompt", RetainPrefixDesignProposalRequest {
+    let proposal = proposals.retain_proposal(profile, RetainPrefixDesignProposalRequest {
         specification: specification.into(),
-        proposal_bytes: json!({"format":"brassclaw-prefix-design-proposal/1","profile":"base-prompt","specification":specification,
+        proposal_bytes: json!({"format":"brassclaw-prefix-design-proposal/1","profile":profile,"specification":specification,
             "design":{"adapter":"ornith-qwen-system/1","evidence_view":design["evidence_view"],"source_selection":"complete-mandatory","reserve_tokens":8192},
             "rationale":"Offline diagnostic only; no model, design or cache acceptance."}).to_string(),
     }).await.unwrap();
     let client = pool.get().await.unwrap();
     let revision: i64 = client
         .query_one(
-            "SELECT revision FROM reborn_prefix_profiles WHERE name='base-prompt'",
-            &[],
+            "SELECT revision FROM reborn_prefix_profiles WHERE name=$1",
+            &[&profile],
         )
         .await
         .unwrap()
@@ -83,7 +84,7 @@ pub(super) async fn assert_durable_measurement(
         let id = Uuid::new_v4();
         assert!(
             runtime
-                .submit_prefix_measurement(id, "base-prompt", invalid, caller.clone())
+                .submit_prefix_measurement(id, profile, invalid, caller.clone())
                 .await
                 .is_err(),
             "{field}"
@@ -101,7 +102,7 @@ pub(super) async fn assert_durable_measurement(
         );
     }
     let id = Uuid::new_v4();
-    let path = format!("/api/webchat/v2/prefixes/base-prompt/jobs/{id}");
+    let path = format!("/api/webchat/v2/prefixes/{profile}/jobs/{id}");
     assert_eq!(
         post(app, &path, &request, false).await.0,
         axum::http::StatusCode::UNAUTHORIZED
@@ -127,11 +128,77 @@ pub(super) async fn assert_durable_measurement(
             .unwrap(),
         TurnStatus::Completed
     );
-    let result = runtime.inspect_prefix_job("base-prompt", id).await.unwrap();
+    let result = runtime.inspect_prefix_job(profile, id).await.unwrap();
     assert_eq!(result.answered_tool_calls, 2);
     assert_eq!(result.pending_tool_calls, 0);
     assert_eq!(result.admission_phase.as_deref(), Some("settled"));
     let receipt: Value = serde_json::from_str(result.internal_receipt.as_deref().unwrap()).unwrap();
+    let row = client.query_one("SELECT arguments_bytes,answer_bytes,attempt_count FROM brassclaw_monty_tool_invocations WHERE run_id=$1 AND step_id='0:7' AND phase='answered'", &[&id]).await.unwrap();
+    assert_eq!(row.get::<_, i16>(2), 1);
+    let arguments: Value = serde_json::from_str(&row.get::<_, String>(0)).unwrap();
+    let answer: brassclaw_monty_host::process::PortAnswer =
+        serde_json::from_str(row.get::<_, Option<String>>(1).as_deref().unwrap()).unwrap();
+    let brassclaw_monty_host::process::PortAnswer::Return { value } = answer else {
+        panic!("actual retained model encoding answer required")
+    };
+    let observed: Value = serde_json::from_str(value.as_str().unwrap()).unwrap();
+    if let Some(expected) = expected_observation {
+        assert_eq!(observed["report"], expected["report"]);
+    } else {
+        // Independent HF rendering/encoding of the actual dispatched arguments,
+        // not a second native measurement or a simulated success receipt.
+        use std::{
+            io::Write,
+            process::{Command, Stdio},
+        };
+        let originals = std::path::PathBuf::from(
+            std::env::var_os("BRASSCLAW_TEST_MODEL_ARTIFACT_ROOT").unwrap(),
+        );
+        let reference = String::from_utf8(
+            STANDARD
+                .decode(package["artifacts"]["context.md"]["data"].as_str().unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(profile, "sempai");
+        assert!(reference.contains("Source: scripts/prefix/sempai-authoring-reference.md\n"));
+        assert!(
+            reference
+                .contains("Source: scripts/prefix/monty-reference/v1.0.0/docs/host-functions.md\n")
+        );
+        retain_native_package(profile, generation, &source.generation_bytes);
+        let oracle_request = json!({"format":"brassclaw-model-encoding-worker/1",
+            "expected_reference":reference,"assets":{
+                "tokenizer_json":std::fs::read_to_string(originals.join("tokenizer.json")).unwrap(),
+                "tokenizer_config_json":std::fs::read_to_string(originals.join("tokenizer_config.json")).unwrap(),
+                "chat_template":arguments["template_utf8"]},
+            "probes":serde_json::from_str::<Value>(arguments["probes_json"].as_str().unwrap()).unwrap()});
+        let mut oracle = Command::new("python3")
+            .arg(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../brassclaw_model_encoding/tests/huggingface_oracle.py"),
+            )
+            .env("BRASSCLAW_ENCODING_MODEL_ORIGINALS", &originals)
+            .env("HF_HUB_OFFLINE", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap();
+        oracle
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(serde_json::to_string(&oracle_request).unwrap().as_bytes())
+            .unwrap();
+        let oracle = oracle.wait_with_output().unwrap();
+        assert!(oracle.status.success());
+        assert_eq!(
+            observed["report"],
+            serde_json::from_slice::<Value>(&oracle.stdout).unwrap()
+        );
+    }
+
     assert_eq!(
         receipt["qualification"],
         "calculation-only; not approval or target verification"
@@ -181,7 +248,7 @@ pub(super) async fn assert_durable_measurement(
     );
     assert_eq!(
         runtime
-            .inspect_prefix_job("base-prompt", id)
+            .inspect_prefix_job(profile, id)
             .await
             .unwrap()
             .answered_tool_calls,
@@ -204,7 +271,7 @@ pub(super) async fn assert_durable_measurement(
     );
     assert_eq!(runtime.global_monty_owner.client().root_identity(), root);
     eprintln!(
-        "durable prefix measurement: retained generation/proposal/artifacts, actual global ingress, exact capacity receipt, 2 calls; reconnect did not replay; no design acceptance or activation"
+        "durable {profile} prefix measurement: largest_probe_tokens={largest}; retained generation/proposal/artifacts, actual global ingress, exact capacity receipt, 2 calls; reconnect did not replay; no design acceptance or activation"
     );
 }
 
@@ -238,4 +305,27 @@ async fn post(
         .await
         .unwrap();
     (status, serde_json::from_slice(&body).unwrap_or(Value::Null))
+}
+
+pub(super) fn retain_native_package(profile: &str, generation: &str, bytes: &str) {
+    if let Some(path) = std::env::var_os("BRASSCLAW_TEST_CORE_GENERATION_EXPORT") {
+        use std::io::Write;
+        assert!(["core", "sempai"].contains(&profile));
+        let path =
+            std::path::PathBuf::from(path).join(format!("{profile}-generation-{generation}.json"));
+        match std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&path)
+        {
+            Ok(mut file) => {
+                file.write_all(bytes.as_bytes()).unwrap();
+                file.sync_all().unwrap();
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                assert_eq!(std::fs::read(&path).unwrap(), bytes.as_bytes())
+            }
+            Err(error) => panic!("cannot retain native prefix evidence: {error}"),
+        }
+    }
 }

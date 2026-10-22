@@ -19,7 +19,8 @@ use std::sync::Arc;
 
 use brassclaw_filesystem::RootFilesystem;
 use brassclaw_host_api::{
-    CapabilityDisplayOutputPreview, MountView, ResourceScope, RuntimeDispatchErrorKind,
+    CapabilityDisplayOutputPreview, MontyExecutionLimits, MountView, ResourceScope,
+    RuntimeDispatchErrorKind,
 };
 use serde_json::Value;
 
@@ -42,6 +43,7 @@ pub struct CodingCapabilityRequest<'a> {
     pub(crate) mounts: Option<&'a MountView>,
     pub(crate) filesystem: Arc<dyn RootFilesystem>,
     pub(crate) input: &'a Value,
+    pub(crate) limits: MontyExecutionLimits,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +85,20 @@ impl<'a> CodingCapabilityRequest<'a> {
             mounts,
             filesystem,
             input,
+            limits: MontyExecutionLimits::default(),
         }
+    }
+    /// Bind the acknowledged operation snapshot before any filesystem effects.
+    /// Direct contained callers retain canonical defaults unless explicitly set.
+    pub fn with_execution_limits(
+        mut self,
+        limits: MontyExecutionLimits,
+    ) -> Result<Self, CodingCapabilityError> {
+        limits
+            .validate()
+            .map_err(|_| CodingCapabilityError::new(RuntimeDispatchErrorKind::Resource))?;
+        self.limits = limits;
+        Ok(self)
     }
 }
 

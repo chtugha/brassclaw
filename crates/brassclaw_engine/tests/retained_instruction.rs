@@ -649,3 +649,116 @@ fn retained_eligibility_accepts_complete_large_exact_graphs() {
     // it is not a catalogue activation or fabricated component approval.
     RetainedIntentEligibility::from_instructions(&[&instruction]).unwrap();
 }
+
+#[tokio::test]
+async fn retained_disambiguation_returns_all_eligible_workflows_without_alias_duplicates() {
+    use brassclaw_engine::memory::intent_system::{
+        InputClass, IntentResolution, IntentScope, IntentSource, RetainedIntentEligibility,
+        resolve_catalogue_intent_in_transaction, seed_intent_input,
+    };
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let scope = IntentScope {
+        tenant_id: "complete-disambiguation".into(),
+        user_id: "operator".into(),
+        agent_id: "agent".into(),
+        project_id: "project".into(),
+    };
+    let first = Uuid::new_v4();
+    let second = Uuid::new_v4();
+    let first_ref = store
+        .stage(&draft(first, 22, json!({"content":"result = 1"}), &[]), 0)
+        .await
+        .unwrap();
+    let second_ref = store
+        .stage(&draft(second, 22, json!({"content":"result = 2"}), &[]), 0)
+        .await
+        .unwrap();
+    let mut instructions = Vec::new();
+    let mut expected = std::collections::BTreeSet::new();
+    for index in 0..7_i32 {
+        let id = Uuid::new_v4();
+        let link = "2:1-2:E+0:1-0:E";
+        let mut document = recipe_document(first, second, link);
+        document["variants"][0]["intent_examples"] = json!(["ordered input", "ordered %"]);
+        let selected = store
+            .stage(&draft(id, 21, document, &[first, second]), 0)
+            .await
+            .unwrap();
+        let graph = Arc::new(
+            store
+                .read_exact(&[id], &[selected, first_ref, second_ref])
+                .await
+                .unwrap(),
+        );
+        instructions.push(
+            compile_retained_recipe(graph, id, "selected", WorkflowClass::Deterministic).unwrap(),
+        );
+        // This fixture establishes exact routing membership, not approval or
+        // activation. Both aliases identify the same retained workflow.
+        for text in ["ordered input", "ordered %"] {
+            seed_intent_input(
+                &rig.pool,
+                &scope,
+                text,
+                InputClass::Partial,
+                id,
+                21,
+                IntentSource::Seeded,
+                Some(link),
+            )
+            .await
+            .unwrap();
+        }
+        let score = if index < 6 { 7 - index % 3 } else { 4 };
+        rig.pool
+            .get()
+            .await
+            .unwrap()
+            .execute(
+                "UPDATE reborn_intent_inputs SET score=$2 WHERE component_id=$1",
+                &[&id, &score],
+            )
+            .await
+            .unwrap();
+        if index < 6 {
+            expected.insert(id);
+        }
+    }
+    let references: Vec<_> = instructions.iter().collect();
+    let eligible = RetainedIntentEligibility::from_instructions(&references).unwrap();
+    let mut client = rig.pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    let result = resolve_catalogue_intent_in_transaction(&tx, &scope, "ordered input", &eligible)
+        .await
+        .unwrap();
+    let IntentResolution::Disambiguation { candidates } = result else {
+        panic!("expected complete ambiguity");
+    };
+    assert_eq!(candidates.len(), 6);
+    assert_eq!(
+        candidates
+            .iter()
+            .map(|candidate| candidate.component_id)
+            .collect::<std::collections::BTreeSet<_>>(),
+        expected
+    );
+    assert!(
+        candidates
+            .windows(2)
+            .all(|pair| pair[0].score >= pair[1].score)
+    );
+    assert!(
+        candidates
+            .iter()
+            .all(|candidate| candidate.component_class_code == 21
+                && candidate.step_link.as_deref() == Some("2:1-2:E+0:1-0:E"))
+    );
+    tx.commit().await.unwrap();
+}

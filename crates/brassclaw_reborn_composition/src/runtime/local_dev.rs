@@ -601,6 +601,18 @@ impl LocalDevResultHydratingModelGateway {
 
 #[async_trait::async_trait]
 impl HostManagedModelGateway for LocalDevResultHydratingModelGateway {
+    fn retain_model_selection(
+        &self,
+        request: &HostManagedModelRequest,
+    ) -> Result<Option<Arc<dyn HostManagedModelGateway>>, HostManagedModelError> {
+        Ok(self.inner.retain_model_selection(request)?.map(|inner| {
+            Arc::new(Self {
+                inner,
+                capability_io: self.capability_io.clone(),
+            }) as Arc<dyn HostManagedModelGateway>
+        }))
+    }
+
     fn supports_provider_observation(&self) -> bool {
         self.inner.supports_provider_observation()
     }

@@ -2926,4 +2926,147 @@ mod tests {
         );
         client.batch_execute("RESET search_path").await.unwrap();
     }
+    #[tokio::test]
+    async fn native_coding_limits_upgrade_preserves_overrides_and_default_evaluation() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute(r#"
+            CREATE SCHEMA coding_limits_upgrade;
+            CREATE TABLE coding_limits_upgrade.reborn_monty_vm_settings (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO coding_limits_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_coding_limits;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+                VALUES('legacy','owner','agent','project',7),('explicit','owner','agent','project',12),('partial','owner','agent','project',22);
+        "#).await.unwrap();
+        let keys = [
+            "max_coding_read_bytes",
+            "max_coding_write_bytes",
+            "max_coding_patch_bytes",
+            "default_coding_read_lines",
+            "max_coding_directory_entries",
+            "default_coding_directory_depth",
+            "default_coding_max_results",
+            "max_coding_output_bytes",
+            "default_coding_head_lines",
+            "max_coding_scan_bytes",
+            "max_coding_visited_entries",
+            "max_coding_diff_input_bytes",
+            "max_coding_diff_preview_bytes",
+            "coding_diff_context_lines",
+        ];
+        client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-$1::text[] WHERE tenant_id='legacy'", &[&&keys[..]]).await.unwrap();
+        client.batch_execute(r#"
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{"max_coding_write_bytes":18874368,"default_coding_read_lines":0,"default_coding_head_lines":0}'::jsonb WHERE tenant_id='explicit';
+            UPDATE reborn_monty_vm_settings SET execution_limits=(execution_limits-'max_coding_write_bytes')||'{"max_coding_scan_bytes":134217728}'::jsonb WHERE tenant_id='partial';
+            CREATE SEQUENCE coding_default_observations;
+            CREATE FUNCTION counted_coding_limits() RETURNS jsonb LANGUAGE plpgsql AS $$ BEGIN
+                PERFORM nextval('coding_default_observations');
+                RETURN (SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='explicit');
+            END $$;
+            ALTER TABLE reborn_monty_vm_settings ALTER COLUMN execution_limits SET DEFAULT counted_coding_limits();
+        "#).await.unwrap();
+        let before: serde_json::Value = client
+            .query_one(
+                "SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'",
+                &[],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        let explicit_before: serde_json::Value = client
+            .query_one(
+                "SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='explicit'",
+                &[],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        let migration = include_str!("../../brassclaw_pg/migrations/V175__monty_coding_limits.sql");
+        client.batch_execute(migration).await.unwrap();
+        assert!(
+            !client
+                .query_one("SELECT is_called FROM coding_default_observations", &[])
+                .await
+                .unwrap()
+                .get::<_, bool>(0)
+        );
+        let legacy = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'",&[]).await.unwrap();
+        assert_eq!(legacy.get::<_, i64>(0), 8);
+        let mut expected = before;
+        let defaults =
+            serde_json::to_value(brassclaw_host_api::MontyExecutionLimits::default()).unwrap();
+        for key in keys {
+            expected[key] = defaults[key].clone();
+        }
+        assert_eq!(legacy.get::<_, serde_json::Value>(1), expected);
+        let explicit = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='explicit'",&[]).await.unwrap();
+        assert_eq!(explicit.get::<_, i64>(0), 12);
+        assert_eq!(explicit.get::<_, serde_json::Value>(1), explicit_before);
+        let partial = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='partial'",&[]).await.unwrap();
+        assert_eq!(partial.get::<_, i64>(0), 23);
+        assert_eq!(
+            partial.get::<_, serde_json::Value>(1)["max_coding_scan_bytes"],
+            134217728
+        );
+        assert_eq!(
+            partial.get::<_, serde_json::Value>(1)["max_coding_write_bytes"],
+            5242880
+        );
+        client.execute("INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id) VALUES('after','owner','agent','project')",&[]).await.unwrap();
+        assert_eq!(
+            client
+                .query_one("SELECT last_value FROM coding_default_observations", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            1
+        );
+        assert_eq!(
+            client
+                .query_one(
+                    "SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='after'",
+                    &[]
+                )
+                .await
+                .unwrap()
+                .get::<_, serde_json::Value>(0),
+            explicit_before
+        );
+        for key in keys {
+            for value in [
+                serde_json::Value::Null,
+                serde_json::json!(-1),
+                serde_json::json!(1.5),
+                serde_json::json!("2"),
+                serde_json::json!(u64::MAX),
+            ] {
+                let patch = serde_json::json!({key:value});
+                let error=client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||$1 WHERE tenant_id='explicit'",&[&patch]).await.unwrap_err();
+                assert_eq!(
+                    error.code(),
+                    Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION),
+                    "{key}"
+                );
+            }
+        }
+        let mut decoded: brassclaw_host_api::MontyExecutionLimits =
+            serde_json::from_value(explicit_before).unwrap();
+        assert!(decoded.validate().is_ok());
+        decoded.max_coding_patch_bytes = 0;
+        assert!(decoded.validate().is_err());
+        client.batch_execute("ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_coding_limits; UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'max_coding_read_bytes',revision=9223372036854775807 WHERE tenant_id='legacy'").await.unwrap();
+        assert_eq!(
+            client.batch_execute(migration).await.unwrap_err().code(),
+            Some(&tokio_postgres::error::SqlState::NUMERIC_VALUE_OUT_OF_RANGE)
+        );
+        let unchanged = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'",&[]).await.unwrap();
+        assert_eq!(unchanged.get::<_, i64>(0), i64::MAX);
+        assert!(
+            unchanged
+                .get::<_, serde_json::Value>(1)
+                .get("max_coding_read_bytes")
+                .is_none()
+        );
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
 }

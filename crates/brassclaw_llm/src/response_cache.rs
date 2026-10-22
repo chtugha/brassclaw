@@ -193,7 +193,7 @@ fn cache_key(model: &str, request: &CompletionRequest) -> Result<String, LlmErro
 
 #[async_trait]
 impl LlmProvider for CachedProvider {
-    fn model_name(&self) -> &str {
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
         self.inner.model_name()
     }
 
@@ -374,8 +374,8 @@ mod tests {
 
     #[async_trait]
     impl LlmProvider for SwitchableStub {
-        fn model_name(&self) -> &str {
-            "stub-model"
+        fn model_name(&self) -> std::borrow::Cow<'_, str> {
+            std::borrow::Cow::Borrowed("stub-model")
         }
 
         fn active_model_name(&self) -> String {

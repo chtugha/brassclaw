@@ -98,10 +98,9 @@ pub trait SystemBundleSource: Send + Sync {
 }
 
 pub use subagent_prompt_port::{
-    DEFAULT_SUBAGENT_GOAL_MAX_BYTES, SubagentLoopPromptPort, SubagentPromptComposer,
-    SubagentPromptGoal, SubagentPromptLimits, SubagentPromptMaterial, SubagentPromptMaterialSource,
-    materialize_direction_message, materialize_goal_framing_message, materialize_goal_message,
-    subagent_run_id_from_context,
+    SubagentLoopPromptPort, SubagentPromptComposer, SubagentPromptGoal, SubagentPromptMaterial,
+    SubagentPromptMaterialSource, materialize_direction_message, materialize_goal_framing_message,
+    materialize_goal_message, subagent_run_id_from_context,
 };
 pub use subagent_spawn_port::{
     AwaitedChildSetRecord, DEFAULT_SPAWN_SUBAGENT_CAPABILITY_ID, DEFAULT_SUBAGENT_MAX_DEPTH,
@@ -1170,6 +1169,14 @@ where
             turn_id: self.run_context.turn_id,
         };
 
+        // Capture a mutable role's concrete backend/model before policy and
+        // reservation awaits. The next prepared operation may select a new role;
+        // this operation must not change backend during budget admission.
+        let selected_gateway = self
+            .gateway
+            .retain_model_selection(&host_request)
+            .map_err(model_gateway_error)?;
+
         let work = brassclaw_turns::run_profile::ModelWorkRequest {
             work_id: request.work_id,
             kind: brassclaw_turns::run_profile::ModelWorkKind::Assistant,
@@ -1197,6 +1204,8 @@ where
             identity_context_source: self.identity_context_source.clone(),
             tool_result_source: self.tool_result_source.clone(),
         };
+        let unsubmitted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let dispatch_unsubmitted = unsubmitted.clone();
         let dispatch = Box::pin(async move {
             owned.emit_model_started(requested_model_profile_id).await;
             let capabilities: Option<Arc<dyn LoopCapabilityPort>> =
@@ -1210,19 +1219,25 @@ where
                         Arc::clone(capabilities)
                     }
                 });
-            let gateway_result = if let Some(custodian) = custodian {
-                owned
-                    .gateway
-                    .stream_model_observed(host_request, capabilities, custodian)
-                    .await
-            } else if let Some(capabilities) = capabilities {
-                owned
-                    .gateway
-                    .stream_model_with_capabilities(host_request, capabilities)
+            let gateway_result = if let Some(gateway) = selected_gateway {
+                dispatch_host_model_request(gateway.as_ref(), host_request, capabilities, custodian)
                     .await
             } else {
-                owned.gateway.stream_model(host_request).await
+                dispatch_host_model_request(
+                    owned.gateway.as_ref(),
+                    host_request,
+                    capabilities,
+                    custodian,
+                )
+                .await
             };
+
+            if gateway_result
+                .as_ref()
+                .is_err_and(|error| error.confirmed_unsubmitted)
+            {
+                dispatch_unsubmitted.store(true, std::sync::atomic::Ordering::Release);
+            }
 
             let host_response_result = match gateway_result {
                 Ok(response) => {
@@ -1261,13 +1276,37 @@ where
                 }
             }
         });
-        Ok(Box::new(PreparedThreadModelCall { work, dispatch }))
+        Ok(Box::new(PreparedThreadModelCall {
+            work,
+            dispatch,
+            unsubmitted,
+        }))
     }
 }
 
 struct PreparedThreadModelCall {
     work: brassclaw_turns::run_profile::ModelWorkRequest,
     dispatch: futures::future::BoxFuture<'static, Result<LoopModelResponse, AgentLoopHostError>>,
+    unsubmitted: Arc<std::sync::atomic::AtomicBool>,
+}
+
+async fn dispatch_host_model_request<G: HostManagedModelGateway + ?Sized>(
+    gateway: &G,
+    request: HostManagedModelRequest,
+    capabilities: Option<Arc<dyn LoopCapabilityPort>>,
+    custodian: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>>,
+) -> Result<HostManagedModelResponse, HostManagedModelError> {
+    if let Some(custodian) = custodian {
+        gateway
+            .stream_model_observed(request, capabilities, custodian)
+            .await
+    } else if let Some(capabilities) = capabilities {
+        gateway
+            .stream_model_with_capabilities(request, capabilities)
+            .await
+    } else {
+        gateway.stream_model(request).await
+    }
 }
 #[async_trait]
 impl brassclaw_turns::run_profile::PreparedLoopModelCall for PreparedThreadModelCall {
@@ -1277,15 +1316,37 @@ impl brassclaw_turns::run_profile::PreparedLoopModelCall for PreparedThreadModel
     async fn dispatch(
         self: Box<Self>,
     ) -> Result<LoopModelResponse, brassclaw_turns::run_profile::LoopModelGatewayError> {
-        self.dispatch.await.map_err(
-            |error| brassclaw_turns::run_profile::LoopModelGatewayError {
-                kind: error.kind,
-                safe_summary: LoopSafeSummary::new(error.safe_summary)
-                    .unwrap_or_else(|_| LoopSafeSummary::model_gateway_failed()),
-                reason_kind: error.reason_kind,
-                diagnostic_ref: error.diagnostic_ref,
-            },
-        )
+        self.dispatch_with_submission().await.0
+    }
+
+    async fn dispatch_with_submission(
+        self: Box<Self>,
+    ) -> (
+        Result<LoopModelResponse, brassclaw_turns::run_profile::LoopModelGatewayError>,
+        brassclaw_turns::run_profile::ModelSubmission,
+    ) {
+        let Self {
+            dispatch,
+            unsubmitted,
+            ..
+        } = *self;
+        let result =
+            dispatch.await.map_err(
+                |error| brassclaw_turns::run_profile::LoopModelGatewayError {
+                    kind: error.kind,
+                    safe_summary: LoopSafeSummary::new(error.safe_summary)
+                        .unwrap_or_else(|_| LoopSafeSummary::model_gateway_failed()),
+                    reason_kind: error.reason_kind,
+                    diagnostic_ref: error.diagnostic_ref,
+                },
+            );
+        let submission =
+            if result.is_err() && unsubmitted.load(std::sync::atomic::Ordering::Acquire) {
+                brassclaw_turns::run_profile::ModelSubmission::NotSubmitted
+            } else {
+                brassclaw_turns::run_profile::ModelSubmission::Unknown
+            };
+        (result, submission)
     }
 }
 
@@ -1556,6 +1617,19 @@ where
 /// profile policy, retry/circuit behavior, and sanitization.
 #[async_trait]
 pub trait HostManagedModelGateway: Send + Sync {
+    /// Retain a mutable role's concrete backend/model for one prepared work
+    /// item. This performs no provider I/O, reservation, prompt interception or
+    /// MCP connection and grants no authority. Wrappers must retain themselves
+    /// around the selected inner gateway so dispatch keeps their enforcement.
+    /// Immutable or legacy gateways need no replacement. Live technical limits
+    /// and kernel policy remain independently effective at actual dispatch.
+    fn retain_model_selection(
+        &self,
+        _request: &HostManagedModelRequest,
+    ) -> Result<Option<Arc<dyn HostManagedModelGateway>>, HostManagedModelError> {
+        Ok(None)
+    }
+
     fn supports_provider_observation(&self) -> bool {
         false
     }
@@ -1775,6 +1849,9 @@ pub struct HostManagedModelError {
     pub kind: HostManagedModelErrorKind,
     pub safe_summary: String,
     pub reason_kind: Option<AgentLoopHostErrorReasonKind>,
+    // Never deserialized or inferred from a provider/model error category.
+    // Only the native wrapper that has not entered its inner provider sets it.
+    confirmed_unsubmitted: bool,
 }
 
 impl HostManagedModelError {
@@ -1783,6 +1860,7 @@ impl HostManagedModelError {
             kind,
             safe_summary: safe_model_summary(kind).to_string(),
             reason_kind: None,
+            confirmed_unsubmitted: false,
         }
     }
 
@@ -1791,11 +1869,20 @@ impl HostManagedModelError {
             kind,
             safe_summary: safe_summary.into(),
             reason_kind: None,
+            confirmed_unsubmitted: false,
         }
     }
 
     pub fn with_reason_kind(mut self, reason_kind: AgentLoopHostErrorReasonKind) -> Self {
         self.reason_kind = Some(reason_kind);
+        self
+    }
+
+    /// Native adapter evidence about this call only. Use solely before entering
+    /// its provider gateway; separate Sempai work may already have executed.
+    /// A timeout, provider failure or category alone must never call this.
+    pub fn before_provider_dispatch(mut self) -> Self {
+        self.confirmed_unsubmitted = true;
         self
     }
 }

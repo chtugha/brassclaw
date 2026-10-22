@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use brassclaw_loop_support::{BudgetSeedingPolicy, GovernorBackedAccountant, ModelCostTable};
-use brassclaw_reborn_config::BudgetDefaults;
+use brassclaw_reborn_config::{BudgetDefaults, BudgetDefaultsError};
 use brassclaw_resources::{
     BudgetEventSink, BudgetGateStore, BudgetPeriod, BudgetThresholds, ResourceGovernor,
 };
@@ -34,12 +34,11 @@ use rust_decimal::Decimal;
 ///    default daily cap on first model call.
 /// 5. The configured overestimate factor from the same defaults.
 ///
-/// The caller owns the config-layer precedence
-/// (`compiled_defaults -> with_section -> with_env`) and the
-/// `BudgetDefaults::validate()` call. This helper does not read process
-/// env or apply TOML — it only wires the already-resolved defaults into
-/// the accountant. The boundary keeps the wiring helper free of hidden
-/// environment reads (review feedback Thermo-Nuclear #1).
+/// The caller owns config-layer precedence
+/// (`compiled_defaults -> with_section -> with_env`). This helper validates
+/// the resolved values and their accounting representation before wiring them.
+/// It does not read process env or apply TOML. Invalid amounts never become
+/// unlimited zero caps or a replacement estimate factor.
 ///
 /// **Production composition note**: this helper is the single source of
 /// truth for how the accountant gets built. Production runtime
@@ -59,7 +58,7 @@ pub fn build_default_budget_accountant(
     gate_store: Arc<dyn BudgetGateStore>,
     event_sink: Arc<dyn BudgetEventSink>,
     defaults: &BudgetDefaults,
-) -> Arc<dyn LoopModelBudgetAccountant> {
+) -> Result<Arc<dyn LoopModelBudgetAccountant>, BudgetDefaultsError> {
     build_default_budget_accountant_with_quote_settings(
         governor, cost_table, gate_store, event_sink, defaults, None,
     )
@@ -72,12 +71,17 @@ pub(crate) fn build_default_budget_accountant_with_quote_settings(
     event_sink: Arc<dyn BudgetEventSink>,
     defaults: &BudgetDefaults,
     quote_settings: Option<Arc<dyn brassclaw_loop_support::ModelQuoteSettingsSource>>,
-) -> Arc<dyn LoopModelBudgetAccountant> {
-    let user_daily_usd = Decimal::from_f64_retain(defaults.user_daily_usd).unwrap_or_default();
-    let project_daily_usd =
-        Decimal::from_f64_retain(defaults.project_daily_usd).unwrap_or_default();
-    let overestimate_factor =
-        Decimal::from_f64_retain(defaults.overestimate_factor).unwrap_or(Decimal::ONE);
+) -> Result<Arc<dyn LoopModelBudgetAccountant>, BudgetDefaultsError> {
+    defaults.validate()?;
+    let decimal = |value, field| {
+        Decimal::from_f64_retain(value).ok_or_else(|| BudgetDefaultsError::Invalid {
+            field,
+            reason: "cannot be represented by accounting".into(),
+        })
+    };
+    let user_daily_usd = decimal(defaults.user_daily_usd, "user_daily_usd")?;
+    let project_daily_usd = decimal(defaults.project_daily_usd, "project_daily_usd")?;
+    let overestimate_factor = decimal(defaults.overestimate_factor, "overestimate_factor")?;
     let seeding_policy = BudgetSeedingPolicy::new(
         user_daily_usd,
         project_daily_usd,
@@ -96,7 +100,7 @@ pub(crate) fn build_default_budget_accountant_with_quote_settings(
         Some(source) => accountant.with_quote_settings(source),
         None => accountant,
     };
-    Arc::new(accountant)
+    Ok(Arc::new(accountant))
 }
 
 #[cfg(test)]
@@ -108,6 +112,27 @@ mod tests {
         InMemoryBudgetEventSink, InMemoryBudgetGateStore, InMemoryResourceGovernor, ResourceAccount,
     };
     use rust_decimal_macros::dec;
+
+    #[test]
+    fn invalid_defaults_cannot_create_an_unlimited_accountant() {
+        for (user_daily_usd, overestimate_factor) in [(1e100, 1.2), (5.0, 1e100), (1e-100, 1.2)] {
+            let defaults = BudgetDefaults {
+                user_daily_usd,
+                overestimate_factor,
+                ..BudgetDefaults::compiled_defaults()
+            };
+            assert!(
+                build_default_budget_accountant(
+                    Arc::new(InMemoryResourceGovernor::new()),
+                    Arc::new(ZeroCostTable),
+                    Arc::new(InMemoryBudgetGateStore::new()),
+                    Arc::new(InMemoryBudgetEventSink::new()),
+                    &defaults,
+                )
+                .is_err()
+            );
+        }
+    }
 
     /// The helper installs the compiled-default $5 user cap on the
     /// first reservation against a fresh user. Equivalent to the e2e
@@ -128,7 +153,8 @@ mod tests {
             gate_store,
             event_sink,
             &defaults,
-        );
+        )
+        .unwrap();
 
         // Drive one `pre_model_call` to fire the seeding policy.
         let context = test_run_context("tenant-shared-helper", "alice-shared-helper");

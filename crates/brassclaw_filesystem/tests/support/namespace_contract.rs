@@ -145,6 +145,8 @@ pub(crate) async fn assert_namespace_contract(root: Arc<dyn RootFilesystem>) {
     );
     assert_eq!(
         root.get(&record).await.unwrap().unwrap().version,
-        expected.next()
+        expected
+            .checked_next()
+            .expect("test version remains representable")
     );
 }

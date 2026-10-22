@@ -11,7 +11,7 @@ use brassclaw_host_runtime::{
 };
 use brassclaw_turns::run_profile::{
     AgentLoopHostError, AgentLoopHostErrorKind, LoopInlineMessageRole, LoopModelRequest,
-    LoopModelResponse, LoopPromptBundleRequest, PreparedLoopPromptMessage,
+    LoopModelResponse, LoopPromptBundleRequest, LoopPromptMessageSetId, PreparedLoopPromptMessage,
     PreparedLoopPromptRequest, PromptMode,
 };
 use serde::Deserialize;
@@ -228,7 +228,7 @@ impl FirstPartyCapabilityHandler for TaskModelCapability {
             let bundle = self
                 .host
                 .build_prepared_prompt_bundle(PreparedLoopPromptRequest {
-                    invocation_id: invocation,
+                    message_set_id: LoopPromptMessageSetId::from_uuid(invocation.as_uuid()),
                     metadata: LoopPromptBundleRequest {
                         mode: PromptMode::TextOnly,
                         context_cursor: None,

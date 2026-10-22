@@ -436,11 +436,10 @@ async fn monty_task_host_preserves_opaque_identity_prompt_authority_and_reply_sc
 
 #[tokio::test]
 async fn monty_task_host_materializes_complete_recipe_input_and_fences_preparation() {
-    use brassclaw_host_api::InvocationId;
     use brassclaw_reborn::monty_task_host::MontyTaskHost;
     use brassclaw_turns::run_profile::{
-        LoopInlineMessageRole, MontyTaskAttempt, MontyTaskHandoff, PreparedLoopPromptMessage,
-        PreparedLoopPromptRequest,
+        LoopInlineMessageRole, LoopPromptMessageSetId, MontyTaskAttempt, MontyTaskHandoff,
+        PreparedLoopPromptMessage, PreparedLoopPromptRequest,
     };
     let fixture = HostFixture::new("prepared-recipe-input", "must not replace explicit data").await;
     let task = MontyTaskHost::new(
@@ -462,7 +461,7 @@ async fn monty_task_host_materializes_complete_recipe_input_and_fences_preparati
     let surface = task.visible_capabilities().await.unwrap();
     let exact = "Typed task data\n\n```python\nx = 'ä🙂'\n```".repeat(3000);
     let request = PreparedLoopPromptRequest {
-        invocation_id: InvocationId::new(),
+        message_set_id: LoopPromptMessageSetId::new(),
         metadata: LoopPromptBundleRequest {
             mode: PromptMode::TextOnly,
             context_cursor: None,
@@ -733,6 +732,112 @@ async fn monty_task_host_fences_only_the_addressed_attempt_before_provider_or_re
         .await
         .unwrap();
     assert_eq!(history.messages.len(), 1);
+}
+
+#[tokio::test]
+async fn monty_task_host_tracks_more_than_64_calls_and_retains_every_late_result() {
+    use brassclaw_reborn::monty_task_host::{MontyTaskHost, WithheldTaskPortValue};
+    use brassclaw_turns::run_profile::{MontyTaskAttempt, MontyTaskHandoff};
+
+    const CALLS: u32 = 65;
+    let fixture = HostFixture::new("opaque-many-host-calls", "admitted input").await;
+    let barrier = Arc::new(GatewayResponseBarrier {
+        entered: tokio::sync::Semaphore::new(0),
+        release: tokio::sync::Semaphore::new(0),
+    });
+    *fixture.gateway.barrier.lock().unwrap() = Some(barrier.clone());
+    let task = Arc::new(MontyTaskHost::new(
+        MontyTaskHandoff::new(
+            AgentLoopDriverRunRequest {
+                turn_id: fixture.context.turn_id,
+                run_id: fixture.context.run_id,
+                resolved_run_profile: fixture.context.resolved_run_profile.clone(),
+            },
+            MontyTaskAttempt {
+                run_id: fixture.context.run_id,
+                runner_id: fixture.claimed.runner_id,
+                lease_token: fixture.claimed.lease_token,
+            },
+            Arc::new(fixture.build_host().await),
+        )
+        .unwrap(),
+    ));
+    let fence = task.fence_handle();
+    let results = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let mut calls = tokio::task::JoinSet::new();
+        for _ in 0..CALLS {
+            let prompt = task
+                .build_prompt_bundle(LoopPromptBundleRequest {
+                    mode: PromptMode::TextOnly,
+                    max_messages: None,
+                    context_cursor: None,
+                    surface_version: None,
+                    checkpoint_state_ref: None,
+                    inline_messages: Vec::new(),
+                    capability_view: None,
+                    recipe_hint: None,
+                })
+                .await
+                .unwrap();
+            let owner = task.clone();
+            calls.spawn(async move {
+                owner
+                    .stream_model(LoopModelRequest {
+                        messages: prompt.messages,
+                        surface_version: prompt.surface_version,
+                        ..LoopModelRequest::default()
+                    })
+                    .await
+            });
+            // Consume each single-use prompt before issuing the next one.
+            // Only the already admitted provider waits overlap.
+            barrier.entered.acquire().await.unwrap().forget();
+        }
+        assert_eq!(fixture.gateway.requests().len(), CALLS as usize);
+        let receipt = fence
+            .fence_and_wait(task.attempt(), std::time::Duration::ZERO)
+            .await
+            .unwrap();
+        assert_eq!(receipt.pending_calls, CALLS as usize);
+        assert!(!receipt.calls_settled());
+        barrier.release.add_permits(CALLS as usize);
+        let mut results = Vec::new();
+        while let Some(result) = calls.join_next().await {
+            results.push(result.unwrap());
+        }
+        results
+    })
+    .await
+    .expect("all original host calls must reach the gateway and settle");
+    assert_eq!(results.len(), CALLS as usize);
+    for result in results {
+        assert_eq!(result.unwrap_err().kind, AgentLoopHostErrorKind::Cancelled);
+    }
+    let retained = task.take_withheld_results();
+    assert_eq!(retained.len(), CALLS as usize);
+    let mut identities = std::collections::BTreeSet::new();
+    for result in retained {
+        assert!(identities.insert(result.call_id));
+        let WithheldTaskPortValue::ModelResponse(response) = result.value else {
+            panic!("retain the actual original model response");
+        };
+        let ParentLoopOutput::AssistantReply(reply) = response.output else {
+            panic!("retain the original structured answer");
+        };
+        assert_eq!(reply.content, "model says hi");
+    }
+    assert!(!task.has_withheld_results());
+    assert!(
+        fence
+            .fence_and_wait(task.attempt(), std::time::Duration::ZERO)
+            .await
+            .unwrap()
+            .calls_settled()
+    );
+    assert_eq!(
+        task.visible_capabilities().await.unwrap_err().kind,
+        AgentLoopHostErrorKind::Cancelled
+    );
 }
 
 #[tokio::test]
@@ -7210,6 +7315,12 @@ impl LoopCheckpointStore for FailingLoopCheckpointStore {
 struct RecordingGateway {
     requests: Mutex<Vec<HostManagedModelRequest>>,
     response: Mutex<Result<HostManagedModelResponse, HostManagedModelError>>,
+    barrier: Mutex<Option<Arc<GatewayResponseBarrier>>>,
+}
+
+struct GatewayResponseBarrier {
+    entered: tokio::sync::Semaphore,
+    release: tokio::sync::Semaphore,
 }
 
 impl RecordingGateway {
@@ -7217,6 +7328,7 @@ impl RecordingGateway {
         Self {
             requests: Mutex::new(Vec::new()),
             response: Mutex::new(Ok(HostManagedModelResponse::assistant_reply(content))),
+            barrier: Mutex::new(None),
         }
     }
 
@@ -7261,6 +7373,11 @@ impl HostManagedModelGateway for RecordingGateway {
         request: HostManagedModelRequest,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
         self.requests.lock().unwrap().push(request);
+        let barrier = self.barrier.lock().unwrap().clone();
+        if let Some(barrier) = barrier {
+            barrier.entered.add_permits(1);
+            barrier.release.acquire().await.unwrap().forget();
+        }
         self.response.lock().unwrap().clone()
     }
 }
@@ -8072,4 +8189,57 @@ async fn monty_model_capture_review_budget_denial_releases_primary_hold() {
         exchange.failure.as_ref().unwrap()["kind"],
         "budget_exceeded"
     );
+
+    // A native store rejection must preserve the primary hold even though the
+    // trusted adapter proved non-submission. No error category may turn an
+    // unacknowledged release into zero spend or permit another provider call.
+    let client = database.pool.get().await.unwrap();
+    client.batch_execute(r#"
+        CREATE FUNCTION reject_primary_release() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM jsonb_array_elements(NEW.payload #> '{state,reservations}') AS current_record
+                WHERE current_record->1->>'status' = 'Released'
+                AND NOT EXISTS (
+                    SELECT 1 FROM jsonb_array_elements(OLD.payload #> '{state,reservations}') AS prior_record
+                    WHERE prior_record->0 = current_record->0
+                    AND prior_record->1->>'status' = 'Released'
+                )
+            ) THEN
+                RAISE EXCEPTION 'deliberate primary release rejection';
+            END IF;
+            RETURN NEW;
+        END $$;
+        CREATE TRIGGER reject_primary_release BEFORE UPDATE ON brassclaw_resource_accounts
+        FOR EACH ROW EXECUTE FUNCTION reject_primary_release();
+    "#).await.unwrap();
+    let bundle = host
+        .build_prompt_bundle(LoopPromptBundleRequest {
+            mode: PromptMode::TextOnly,
+            context_cursor: None,
+            surface_version: None,
+            checkpoint_state_ref: None,
+            max_messages: None,
+            inline_messages: Vec::new(),
+            capability_view: None,
+            recipe_hint: None,
+        })
+        .await
+        .unwrap();
+    let error = host
+        .stream_model(LoopModelRequest {
+            messages: bundle.messages,
+            surface_version: bundle.surface_version,
+            ..LoopModelRequest::default()
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, AgentLoopHostErrorKind::BudgetAccountingFailed);
+    let ledger = governor.account_snapshot(&account).unwrap().unwrap().ledger;
+    assert_eq!(ledger.spent.usd, Decimal::ZERO);
+    assert!(ledger.reserved.input_tokens > 0);
+    assert_eq!(ledger.reserved.output_tokens, 32);
+    assert!(sempai.requests().is_empty());
+    assert!(fixture.gateway.requests().is_empty());
+    assert_eq!(store.list_recent(10).await.unwrap().len(), 2);
 }

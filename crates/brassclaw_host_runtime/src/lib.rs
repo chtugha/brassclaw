@@ -37,6 +37,7 @@ use std::{collections::BTreeMap, env, fmt};
 use thiserror::Error;
 
 mod capability_catalog;
+mod child_task_port;
 mod dynamic_tool_loader;
 mod egress;
 mod extension_contracts;
@@ -64,6 +65,10 @@ pub use memory_probe::{HostMemoryProbeError, sample_process_memory_capacity};
 pub use capability_catalog::{
     HotCapabilityCatalog, HotCapabilityRecord, MAX_HOT_PROMPT_BYTES, MAX_HOT_SCHEMA_BYTES,
     publish_hot_capability_catalog,
+};
+pub use child_task_port::{
+    RuntimeChildTaskError, RuntimeChildTaskOutcome, RuntimeChildTaskPort, RuntimeChildTaskReply,
+    RuntimeChildTaskRequest, RuntimeChildWorkflowRef,
 };
 pub use dynamic_tool_loader::{CdylibLoadDirective, DynamicToolLoader, DynamicToolLoaderError};
 pub use egress::{
@@ -103,7 +108,8 @@ pub use first_party_tools::{
 };
 pub use first_party_tools::{
     MODEL_ENCODING_CAPABILITY_ID, ModelEncodingBackend, PREFIX_GENERATION_CAPABILITY_ID,
-    PrefixGenerationBackend, PrefixGenerationBackendError,
+    PREFIX_SOURCE_CAPABILITY_ID, PrefixGenerationBackend, PrefixGenerationBackendError,
+    PrefixSourceBackend, PrefixSourceBackendError, PrefixSourceIdentity,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use first_party_tools::{

@@ -139,6 +139,9 @@ pub struct PrefixModelArtifactSet {
 pub struct PrefixModelArtifactDetail {
     pub summary: PrefixModelArtifactSet,
     pub artifact_set_bytes: String,
+    /// Read-only exact-config projection, never effective serving/cache evidence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configuration_observation: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

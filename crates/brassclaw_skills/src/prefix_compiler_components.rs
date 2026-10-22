@@ -364,3 +364,52 @@ pub fn capacity_draft(id: uuid::Uuid) -> Result<ComponentRevisionDraft, Revision
                 "private_functions":{"capacity_fields":["value","names"],"capacity_integer":["value","minimum"],"capacity_hash":["value"]},"constants":[],"imports":["json"],"dependencies":[],"default_export":"assess_prefix_capacity"}},
         "dependencies":[],"association":null}).to_string())
 }
+
+/// Budget planning is separate from version-1 diagnostic measurement. Recipes
+/// must resolve the canonical provider revision before invoking this pure export
+/// and measure the real composite/partition afterwards. No policy lookup occurs.
+pub fn model_budget_draft(id: uuid::Uuid) -> Result<ComponentRevisionDraft, RevisionError> {
+    let integer = |minimum| json!({"type":"integer","required":true,"checks":[{"kind":"min","value":minimum},{"kind":"max","value":9007199254740991i64}]});
+    let mut fields = json!({"policy_ref":string()});
+    for (name, minimum) in [
+        ("max_prefix_tokens", 0),
+        ("max_prompt_tokens", 1),
+        ("context_window_tokens", 1),
+        ("reserved_output_tokens", 1),
+        ("additional_framing_tokens", 0),
+        ("requested_prefix_tokens", 0),
+    ] {
+        fields[name] = integer(minimum);
+        fields[name]["required"] = json!(true);
+    }
+    let mut result_fields = fields.clone();
+    for name in [
+        "effective_prefix_budget",
+        "reservation_shortfall_tokens",
+        "requested_shortfall_tokens",
+    ] {
+        result_fields[name] = integer(0);
+    }
+    for name in ["format", "qualification", "status"] {
+        result_fields[name] = string();
+    }
+    let result = json!({"type":"object","allow_extra_fields":false,"fields":result_fields});
+    crate::value_contract::InputContract::from_value(
+        &fields,
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    crate::value_contract::ValueContract::result_from_value(
+        &result,
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    draft(
+        id,
+        json!({"name":"plan-prefix-model-budget",
+        "description":"Derive a model-specific planning budget from pinned canonical policy, requested design size and explicit deployment reservations. Does not resolve policy, select content, establish rendered fit or activate anything.",
+        "content":include_str!("../../../scripts/prefix/prefix_model_budget.py"),
+        "input_contract":fields,"result_contract":result,"includes":[],"dependency_registry":null,
+        "preload":{"format":"python-preload/2","exports":{"plan_prefix_model_budget":{"symbol":"plan_prefix_model_budget","parameters":["inputs"],"mapping":true}},
+            "private_functions":{"budget_integer":["value","minimum"]},"constants":[],"imports":[],"dependencies":[],"default_export":"plan_prefix_model_budget"}}),
+        vec![],
+    )
+}

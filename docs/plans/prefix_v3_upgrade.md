@@ -34,16 +34,250 @@ Current-source observations and historical step-body examples below must be
 migrated to this interface before being accepted as updated v3 implementations.
 
 
-Status: implementation plan, not shipped functionality. Source and evidence review:
-2026-10-09. This revision incorporates Sempai quality experiments, the reproduced
-LMCache transfer failure and the v25 compiler/client protocol corrections. The v25
-source and decoder checks are development evidence: no v25 prefix generation or
-model-accuracy qualification has been published by those checks. This plan update
-does not deploy code or change inference services.
-The workspace package version inspected on 2026-10-12 is `1.7.0-rc.4`; release identity also needs a commit and
-content manifest because version numbers alone do not identify the working tree.
+Status: **partially implemented; full product cutover is not complete**.
+Current source/evidence reconciliation: **2026-10-22**. The workspace declares
+`1.7.0-rc.4`; exact source/artifact manifests, not that version alone, identify tested
+implementations. This update changes the plan only and performs no deployment,
+migration, model call, prefix activation or inference-service change.
 
-### Implementation reconciliation — 2026-10-11
+The opening status and remaining-work sequence below govern what to do next.
+Sections 4–10 define the required contracts; section 11's dated entries are the
+implementation/evidence journal for their exact frozen inputs, not a list of work
+that must all be repeated. Earlier “pending” statements in those entries are
+superseded only where the current status explicitly records their successor.
+A locally accepted prerequisite does not establish full-plan or deployed support.
+
+### Current delivery status — 2026-10-22
+
+| Area | Implemented and evidenced boundary | Still required for completion |
+| --- | --- | --- |
+| Profile registry / startup | Six first-party profiles, revisions/metadata and installation-owned registration in `prefix_profile_seeds.rs` / `InstalledMontyCatalogue`; operator edits survive reseeding. | Complete custom-profile creation and accepted compiler/design bindings. Metadata alone enables no workflow. |
+| Legacy serving | Scope bundle, existing base-only assembly Recipe, fencing and compatibility reader remain. The ordinary list labels this `legacy-unverified`; other profiles stay blocked. | Replace ordinary generation/serving through the qualified named/composite path; remove compatibility fallback only after consumer cutover. |
+| Offline compilers | Base and Prefix-Maker entry points exist, shared evidence/rendering helpers and deterministic source packages exist; domain/Sempai standalone citation, configuration and teaching helpers are retained. | Shared-engine capability/validation parity for Defensive, HA and tomedo; no blanket qualification of all standalone modes. |
+| Source/catalogue capture | Owner-selected coherent export, exact component revisions/metadata and installation-retained core/declared-release documents; explicit private prefix workflow sources are included by supported export. | Prove complete installed library/private dependency coverage and eligible registered domain-source inclusion, with no row caps or omitted required records. Legacy sweep still has `LIMIT 1000` and summary preference. |
+| Generation storage | V142 immutable originals/artifacts/maps and quarantined imports, generation list/detail/download and legacy archive support; existing generation-retention primitive. | Accepted target artifacts, lineage/invalidation, publication eligibility and consumer selections. Retention/import is not activation. |
+| Recipe compiler / bootstrap | Reusable typed Python stages, shared segmentation/renderers, JSON digest usages and Retain; installation-owned exact graph/integrity/behavior qualification. | Qualify successor graphs/options in the same owner; no expansion of the closed compiler approval exception to arbitrary pure code. |
+| Durable source-only jobs | V167/V171 metadata uses existing turn admission/global Monty/native custody; base/Prefix-Maker and v5 Sempai source-only capture/build/reconnect are locally accepted. | Ordinary one-click target-aware Generate, remaining profile adapters, parent/composite jobs and complete cancellation/recovery acceptance. No second queue/executor. |
+| Stable presentation | Versioned literal/deduplicated/trailing/progressive/context-aware v1–v5 layouts, complete origins/maps and original bytes retained; v5 source-only native acceptance. | Accepted per-model budget-dependent teaching/selection designs and actual serving/quality qualification. Source-only layout options are not accepted model designs. |
+| Model diagnostics | V145 model/specification/proposal storage, V157 immutable local artifacts, bounded config inspector/API/UI and real retained encoding worker; full token/HF comparisons, exact template identities and durable measurements. | Verified deployed identity/geometry, semantic prefix/dynamic partition, accepted designs/bindings and runtime compatibility. Config declarations are not deployed facts. |
+| Capacity observations | Frozen native base probe 141,978 and complete Sempai probe 345,129 tokens, no truncation/replay/activation. Earlier standalone Sempai probe 334,756 is a different capture. | A reviewed design that fits the chosen target; do not clip originals, treat counts as constants, or substitute config position capacity for prefix allowance. |
+| Per-model hard settings | `ProviderDefinition.model_token_limits[model]`, existing provider definition/revision/CAS and GET/POST provider API; same editor/query in Inference and Prefix, stale-edit protection and model-selection refresh. Real PG service tests and 37 frontend helper/state tests pass. | Installed-instance API upgrade/write/readback, external CLI/server notification uptake, both-target resolution and unconditional final dispatch guards. No duplicate mutable prefix settings store. |
+| Pure budget planning | `model_budget_draft` / `prefix_model_budget.py` calculates effective budget/shortfalls from pinned explicit policy/reservations; actual Monty and typed-contract checks pass. | Canonical policy read/identity qualification and integration into generation/design/serving Recipes; exact rendered fit, quality and activation are separate gates. |
+| Sources management | V143 immutable registrations, used-generation inventory, pending registration API/UI and green/red/neutral presentation contracts exist; checks remain disabled. | Admitted checks on panel open, qualified observations/projection, collection/review and eligible next-build inclusion. Saving a URL does not add reviewed knowledge. |
+| Source-check prerequisites | Existing HTTP-family typed successor, composed diagnostic graph, actual native loopback/policy/bounds tests and pure exact-content classification pass. `builtin.prefix_source` read/append backend and separate canonical usages pass native identity/preload and real PG immutability/idempotency tests. | Seed/qualify the exact full check graph, generation-original owner adapter, durable source job and UI uptake. Stored diagnostic bytes remain **unqualified**, not availability/review approval. |
+| Sempai reference | Installed v5 source-only selection retains binding/compatibility/procedure guides and pinned Monty model references; complete originals and no-replay native measurements retained. | Fit/qualify its actual composite, successor review/request contracts, both-target limits, production artifact validation and held-out reviewer/proposal behavior. |
+| Sempai infrastructure | Existing post-turn consumer, immutable proposal/deployment and native effect/accounting reconciliation are reusable infrastructure; semantic conversion remains owned by `sempai_v3.5.md` / root `path_to_v3.5.md`. | Consume those shared reusable components; do not recreate their Rust workflow policy in prefix jobs or count infrastructure acceptance as reviewer quality. |
+| Prefix-Maker / design workflows | Offline Prefix-Maker compiler/reference, registry metadata, immutable declarative proposals and Model Designs inspection/history exist. | Compatible runtime Prefix-Maker, accepted per-model designs and provider-assisted Redesign/model-design/Create Recipes, confirmed UI actions and exact candidate acceptance. Generate model design is currently disabled. |
+| Answer/cache validation | Standalone source/citation/configuration/teaching helpers and historical Ornith/LMCache experiments exist; retained worker/native-C memory containment and runtime-discovery evidence are documented below. | Production citation/config checks, actual injection/resolver, current native/external restore qualification and held-out answer quality. Historical backport experiments do not certify the current server. |
+| Deployment | Latest recorded remote discovery is read-only: app has no revisioned model-limit map and reports `active: null`; model endpoint advertises 131,072 context. | Upgrade the supported application path and verify policy readback before claiming limits are live. Requested Ornith policy remains 100,000 prefix / 14,688 other prompt tokens; `requested_change_applied` is false. No vLLM/Compose/venv/systemd change is authorized by this plan update. |
+
+**Evidence anchors and applicability.** The dated journal carries earlier receipts;
+these anchors establish the latest bounded successors used in this reconciliation:
+
+| Receipt / source | What it establishes / limit |
+| --- | --- |
+| `target/validation/prefix-registry-artifacts-q9l8y7jj/accepted.json` | Installed Sempai v5 source-only/native/API/config-inspector slice; no accepted target design or serving. |
+| `target/validation/prefix-registry-artifacts-m5jf5tis/accepted.json` | Real base/Sempai source jobs, independent HF/durable token measurements and ordinary single-root regression. Verified binary reuse is recorded, not a claimed rebuild. Historical snapshot, not certification of the newer merged tree. |
+| `target/validation/prefix-registry-artifacts-u4w40vr0/accepted.json` | Strict affected-library lint/builds and seven focused native/Monty/PG cases for HTTP/classification/storage/settings/planning; no source job, deployed limits, activation or final request guard claim. |
+| `target/validation/prefix-model-token-limits-ui-ld6sv9d2/accepted.json` | 37 actual-source frontend helper/state tests plus syntax, including selection across revision changes; no browser/external-CLI push acceptance. |
+| `target/validation/prefix-model-config-ui-kk0ebg8y/accepted.json` | Six config-inspector source-state tests and syntax; no model/cache qualification. |
+| `target/validation/prefix-token-settings-remote-d89w4l55/{observation,scope}.json` | Read-only old-application/model observation; explicitly records the requested change was not applied. |
+
+Source comparison on 2026-10-22 found 67 selected prefix/model-limit paths in the
+u4w40vr0 source inventory; only the two Model Designs frontend paths differed, and
+their successor bytes match ld6sv9d2. This is a selected-file applicability check,
+not a full dependency/toolchain or merged-production recertification. m5jf5tis is
+older than the token-policy capture, planner and source-check additions; retain its
+measurement facts without pretending it tests those successors. Preserve failed
+snapshots/receipts, including gfygqf9w and txxdqobl, and all original packages.
+
+### Remaining implementation sequence — full completion
+
+The steps below are the current execution order for **remaining** prefix work.
+They refine sections 4–12 rather than replacing their contracts or the shared v3.5
+owners. Each step requires its stated production-path acceptance; code presence or
+a new button cannot close it. Independent work may proceed when its actual inputs
+are ready. Do not block model-free source builds on optional provider-assisted work.
+
+1. **Reconcile applicable runtime gates (A/A1; shared owners).** Start from
+   `InstalledMontyCatalogue`, retained IBS/preload, global admission, compiler
+   bootstrap and native custody already implemented. Record exact applicable
+   receipts for the intended successor graph. Obtain missing general pure-component
+   approval/flow/occurrence/resource support from the v3.5 owners only when the new
+   graph needs it; do not rebuild the VM, provider registry or journal. Qualify each
+   new exact dependency/native closure through the installation path or authored
+   Q1/behavior/human Q2 as applicable. Exit: supported graph fails before effects
+   on missing approval/artifacts/policy, retains selections and never falls to Tier 2.
+2. **Finish authoritative source coverage (A/B/C).** Extend
+   `prefix_source_capture.rs`, `catalogue_source_export.rs`,
+   `prefix_reference_seeds.rs` and the release inventory through their existing
+   owners. Inventory every required component/dependency/private graph/document,
+   applicability, release, provenance and license; export coherent complete data
+   without legacy row/heading cuts. Include approved dynamic catalogue changes and
+   registered-source eligibility. Exit: >1,000-record and concurrent-activation
+   cases, exact manifests, missing-required failures and override-preserving reseed.
+3. **Complete Sources execution (C/D; §8.1).** Reuse the existing HTTP/JSON and
+   `builtin.prefix_source` usages. Compose registration read -> bounded fetch/read
+   -> full identity/hash -> classify -> append diagnostic -> checked receipt, with
+   separate actual Tool steps. Add an adapter using the existing generation owner
+   for originals; do not misuse registration foreign keys. Qualify/seed the graph,
+   admit through ordinary jobs, project only trusted results and check on panel
+   open/recheck. Add collection/archive/review and next-build inclusion without
+   autoapproval. Exit: real HTTP/DB/artifact, policy/redirect/empty/change/failure,
+   cancellation/dedup/reconnect/restart and pending-versus-used cases. No hidden LLM.
+4. **Finish profile/shared-engine parity (B/C).** Port and qualify Defensive, HA
+   and tomedo source/config/coverage/citation adapters against the shared worker;
+   preserve their raw caches and domain semantics, no clinical tomedo content or
+   HA leakage. Preserve the separate standalone adapters until replacements pass.
+   Exit: deterministic host/path-independent packages, all six profile contracts,
+   malformed/incomplete-source failures and domain-specific configuration checks.
+5. **Close model-policy/capability preparation (C/C2; §5.3).** Use only the existing
+   provider definition map/API/revision owner. Add supported notifications/readback
+   for all settings consumers and CLI; preserve hard limits when budgeting is off.
+   Capture exact answer/Sempai/design target identities, policy references,
+   tokenizer/template/injection/output/deployed-context facts, with Unknown explicit.
+   Exit: different providers/models, stale edits, toggle/restart persistence and
+   no second mutable setting. Missing required target facts are Setup required.
+6. **Implement unconditional technical request guards (C1/C2).** Kohai receives
+   both active-target and Sempai-target bundles. Add the qualified semantic
+   prefix/dynamic partition measurement and one shared last pre-dispatch guard over
+   the actual transformed envelope. Check the complete Sempai request before review,
+   then reassemble/recheck edited prompt + history/tools/framing + prefix before
+   final dispatch. Include unchanged/disabled review, retry/tool continuations and
+   tightened live ceilings; no token-budget bypass, estimated fit or silent cuts.
+   Exit: exact/one-token-over tests for both caps/context/output with budgeting on
+   and off, zero provider calls on overflow and explicit stale-policy handling.
+7. **Implement accepted model/design selection (C/C3; §5.3).** Extend the existing
+   model specification/proposal owners with validated runtime evidence, acceptance
+   and profile/consumer bindings. Specify supported budget ranges, mandatory whole
+   units/dependency groups, optional priorities/ties, rendering/teaching/citations
+   and adapter fingerprints. Bootstrap reviewed supported designs without a model
+   call. Exit: two different model designs, same-name/different-target isolation,
+   missing/incompatible/unsupported-budget states and immutable accepted revisions.
+8. **Build the ordinary target-aware Generate Recipe (C).** Reuse source-only
+   admission/compiler/Retain, rather than replacing them. Pin trusted current
+   sources, canonical policy and accepted design; use pure budget planning, accepted
+   selection/rendering, exact full-envelope/partition encoding and required
+   artifact/coverage/teaching/config checks. Retain originals and disposition maps.
+   Publish the exact validated quarantined target artifact with a correlated durable
+   receipt. Exit: zero model calls, deterministic repeats, capacity/coverage blocked
+   failures with preserved evidence, cancellation, reconnect and no effect replay.
+9. **Complete composite generation under that operation (C; §9).** Build/reuse
+   eligible immutable parents and base-plus-domain/base-plus-Sempai composites,
+   preserving evidence IDs/origins and recomputing final geometry. Retain child
+   run references and reconcile completed children. Use qualified iteration only
+   if the graph actually requires it. Exit: one-click missing/stale/reused-parent,
+   conflict/duplicate-source, partial failure, cancel/restart and aggregate-overflow
+   cases; a parent-only success cannot claim target-composite completion.
+10. **Finish dependency invalidation and publication freshness (C).** Track exact
+    catalogue/source/design/policy/template/parent lineage; use existing coherent
+    activation notifications and revision fencing. Publish desired/stale/blocked
+    status and preserve last-good/history/retained tasks. Exit: source and provider
+    races, output arriving after desired inputs change, upgrade/reseed and no
+    active replacement from an outdated successful build.
+11. **Implement named/composite consumer resolution and activation (C2).** Extend
+    the existing facade/store/serving seams for independent Kohai/Sempai selections,
+    revision-checked Activate/Rollback and retained continuations. Enforce the exact
+    endpoint/template/injection contract and prefix once; unknown incompatibility
+    fails closed. Implement target-scoped Warm/reuse through a retained, correlated
+    provider operation with normal accounting/cancellation; it never activates or
+    changes the inference deployment. Exit: ordinary provider calls, restart/activation races,
+    deactivation/last-provider/reactivation and old-task/artifact retention, with no
+    fallback to a minimal/stale bundle. Do not enable activation before step 12's
+    target-specific minimum checks and step 6's hard guards pass.
+12. **Qualify each real injection/cache path (C2/E; §9.1).** Verify actual deployed
+    identities, effective tokenizer/template and plain/constrained requests. For
+    observable native/external caching, test cold/native/external/restored-native
+    expected content, hybrid attention/recurrent groups/checkpoints and stable
+    namespace/salt behavior. An enabled known-corrupt external path blocks that
+    target; missing optional telemetry stays Unverified. Exit: exact actual
+    injection/semantic restore receipts for the configured path, without service,
+    package, Compose or venv mutation from Generate/Warm.
+13. **Finish the Sempai production contract (C1; shared v3.5 ownership).** Reuse
+    the shared evidence/model/proposal/deployment/accounting components rather than
+    specialized prefix Rust workflows. Version strict review claim/request schemas
+    to carry both targets' trusted limits/identity; update producer/parser/persona/
+    transport together, retaining old readers. Preserve full roles, Tool/effect
+    evidence and authorized edits. Qualify the fitted base-plus-Sempai reference,
+    artifact-first decoder, lossless sink and current component authoring/validation
+    rules. Exit: held-out prompt repair and actual validation-candidate Recipes,
+    malformed/adversarial/summary disagreement cases, no selfapproval or Tier-0
+    hidden model calls, no original-turn replay and correct accounting settlement.
+14. **Bootstrap runtime Prefix-Maker (C3).** Register/qualify its existing compiler
+    and approved knowledge/model-specific design through the same generation and
+    selection path. It uses a generation fitting its actual design-provider target,
+    separate from the model it designs for. Exit: first install with no prefix or
+    provider can build source artifacts; supported target bootstrap has no circular
+    self-reference or ungrounded fallback and preserves old generations.
+15. **Implement provider-assisted design Recipes (C3).** Compose Redesign, Generate
+    model design and Create Prefix from shared source/evidence/provider/validation/
+    proposal primitives. Confirm the exact request, pin current approved content
+    and architecture, preserve raw responses, validate supported declarative rules
+    and compile complete trial candidates. Use qualified multi-stage inspection or
+    block when evidence cannot fit. Accept redesign records its exact design plus
+    validated updated generation without a second Generate; production activation
+    stays separate. Exit: cancel makes zero calls, dedup/unknown effect/stale
+    acceptance/rejection, custom identity conflicts/reseed, two targets and safe
+    Prefix-Maker self-redesign using the predecessor. No arbitrary compiler code.
+16. **Integrate answer and configuration validation (C1/E; §10).** Carry the exact
+    selected generation's evidence map through real answer/reviewer paths; adapt
+    quotation/citation resolution without replacing tool/reviewer response schemas.
+    Port HA checks and qualify independent defensive/tomedo parsers/semantic checks.
+    Exit: forged/wrong-generation/unrelated-but-valid citations, misleading exact
+    quotes, invalid-but-parsing configurations and malformed proposals are detected;
+    no unapproved execution or live device changes merely to validate output.
+17. **Complete the existing WebUI/API vertical (D).** Wire normal Generate/jobs/
+    details/download/cancel/progress and composite readiness to the accepted paths;
+    add Activate/Rollback/Warm gates, Sources check-on-open, confirmed Redesign/diff/
+    acceptance, Create Prefix and model-design generation/history/binding. Reuse
+    the shared limits editor/query/endpoint with always-visible hard-limit semantics.
+    Preserve auth/CSRF, translations, keyboard/focus and accessible neutral/error
+    states. Exit: real facade/HTTP/browser matrix, navigate/reconnect without job
+    loss, duplicate clicks, races/failures and no success badge from metadata alone.
+18. **Qualify knowledge at supported model sizes (C1/C3/E).** Evaluate quarantined
+    immutable candidates with pinned suites/decoding/adapter/runtime and coverage
+    contracts. Test supported budget bands and transfer to unseen tasks across
+    component authoring, defensive maintenance, HA YAML/MQTT/Modbus and tomedo API/
+    billing-version cases. Keep first-pass, repair, semantic/citation/config errors
+    and cache failures separate. Exit: recorded quality thresholds and limitations;
+    neither spare tokens, cache hits nor benchmark memorization establish expertise.
+19. **Finish installation/upgrade acceptance (B/C/D; §6/§12).** Package the complete
+    source/compiler/validator/dependency manifests and supported model defaults;
+    use existing installation qualification and idempotent seed owners. Preserve
+    operator edits, accepted custom designs, old task/native artifacts and verified
+    imports. Register actual supported compiler/validator artifacts, not developer
+    paths or filename-only metadata. Any initial background source build uses the
+    qualified model-free Recipe after global readiness, with no self-prefix dependency.
+    Populate canonical active-target hard policies through supported APIs before
+    serving cutover. Exit: fresh/offline/no-provider setup, upgrade/reseed,
+    missing-artifact/unknown-policy and restart readback without boot network/GPU
+    dependency or incompatible raw DB writes.
+20. **Perform coordinated product cutover and recovery (A1/C2/§12).** Use the one
+    migration owner: dry-run inventory, stop admission/drain or reconcile, verified
+    backup/restore, compatible schema/binary/seeds and global Ready-before-producers.
+    Verify authenticated operator, ordinary Recipe, both model consumers and hard
+    guards; enable only accepted actions. Retire legacy sweep/scope fallback after
+    all callers move and retained tasks release references. Exit: interrupted
+    migration/restart/restore and explicit rollback receipts. External inference
+    infrastructure remains operator-owned and unchanged by these workflows.
+21. **Close the full plan through the final matrix (§12).** Run every row below
+    through actual facade/ingress/global Recipe/browser/consumer paths, map exact
+    receipts to current applicable sources/configuration and account for every
+    remaining gate. Keep optional unavailable cache capabilities honest, with no
+    waiver of mandatory safety/source/size/quality checks. Update the delivery table
+    to Complete only after this evidence and the shared applicable v3 gates pass;
+    otherwise retain the precise unresolved step and owner.
+
+**Critical order:** steps 1–7 establish target-facing prerequisites; 8–10 complete
+ordinary generation; 11–13 establish safe consumption; 14–15 add assisted design;
+16–18 complete product/quality acceptance; 19–21 finish installation/cutover/full
+acceptance. Source-only work and bounded UI improvements can progress independently.
+Steps 11/12 and the relevant parts of 16/18 are a joined activation gate, not
+permission to activate first and test the configured cache later. Model-free Generate
+must not wait for optional Redesign, while an unsupported budget is never silently
+redesigned by a model call. See §5.3 for always-on hard limits and both-target checks.
+
+### Shared infrastructure ownership — reconciled 2026-10-22
 
 Read this plan together with [Sempai v3.5](sempai_v3.5.md) and
 [Simplify connections v3.5](simplify_connections_v3.5.md). Their consolidation
@@ -63,23 +297,28 @@ generation jobs, invocation effects and provider accounting interchangeable.
 | Operator settings / APIs | Existing RebornServicesApi, authenticated v2 ingress and revisioned settings owners | Extend Prefix settings rather than building another management surface or authority path. |
 
 Completed infrastructure is reusable evidence for its exact scope, not a blanket
-Gate A1 certificate. Phase B's offline source-package/compiler and scoped catalogue
-export have focused acceptance below. The Phase C registry foundation lists all six
-shipped profiles through the existing prefix API, while regeneration remains the
-legacy `base-prompt` workflow. The compatibility scope store still has minimal
-fallbacks; those are not permitted substitutes for a missing required production
-prefix. Immutable generation retention and source/model metadata now have owning
-stores and operator surfaces; generation jobs, prefix activation/resolver, qualified
-model designs, runtime Prefix-Maker, source checking, Redesign and custom-profile
-creation remain open. Metadata/import surfaces do not close their execution gates.
+Gate A1 certificate. Named registry, immutable generation storage, installed source
+capture, qualified source-only compiler jobs and durable measurements already exist.
+Continue from them. Ordinary Generate still uses the legacy base path, and named
+consumer activation/resolution, accepted model designs, full source jobs, assisted
+design/custom creation and runtime hard-limit guards remain incomplete. Minimal
+scope-store fallbacks are compatibility behavior, not an accepted final resolver.
 
-Continue Phase C from the existing registry and accepted Phase B adapter. Complete
-immutable generation storage, pinned inputs and runtime compiler qualification
-before enabling target-aware generation. Keep shared evidence/render/token-probe
-functions rather than adding copied pipelines. This work never bypasses Gate A1.
-Database exports come from the existing catalogue owner under one snapshot; local
-source-package manifests remain build inputs, not another authoritative installed
-catalogue or approval store.
+Use the remaining-work sequence above for execution. Extend existing stores and
+qualified Recipe/native closures only where the successor contract needs it; do
+not repeat migrations or recreate completed jobs/qualification infrastructure.
+Local source manifests are build inputs, not another authoritative installed
+catalogue or approval store. The shared Sempai/connections/v3.5 owners retain their
+responsibilities; prefix work does not absorb their remaining implementation.
+
+### Historical boundary summary
+
+The former 2026-10-21 summary is superseded by the current delivery table and
+remaining-work sequence above. Retain the dated Phase B/C entries below for exact
+implementation/evidence history. Their whole-plan completion limits still apply.
+All builds for this chat use `/Users/ollama/brassclaw-target2`; concurrent work owns
+target1. No target-capacity result authorizes inference-service changes, hidden
+source removal or declaring the complete plan implemented.
 
 ## 1. Recipe-first workflow and intended result
 
@@ -207,25 +446,27 @@ grants. The v3 operator token and live instance-wide Tool policy control authori
 legacy tenant/user/agent/project columns are compatibility data until their
 coordinated migration, not justification for new feature-role checks.
 
-## 3. Current code: verified seams and shortcomings
+## 3. Current code: legacy path and successor seams
 
-This is a source inventory, not a claim that every path has passed production
-acceptance during this planning task.
+The legacy-path rows describe code still reached by ordinary base-only regeneration
+and compatibility serving. They are not claims that the successor stores/jobs are
+missing. The current delivery table above owns overall status; section 11 retains
+its dated acceptance history.
 
 | Area | Current implementation | Upgrade consequence |
 | --- | --- | --- |
 | UI | `prefix-tab.js` and `usePrefixes.js` already render entries and distinguish Generate from Regenerate. | Extend this surface; do not add a parallel settings page. |
 | Browser API | `settings-api.js` calls the v2 prefix routes. | Retain the same facade-backed API family. |
-| HTTP | `handlers.rs`, `descriptors.rs`, `router.rs`: `GET /api/webchat/v2/prefixes`, `POST /api/webchat/v2/prefixes/{name}/regenerate`. | Preserve ingress policies and route contracts; add durable job/detail/activation operations. |
+| HTTP | Existing facade-backed routes cover list/legacy regenerate, immutable generation import/history/details, source inventory/registration, model metadata/artifacts/proposals and durable measurement inspection/admission. | Extend these route families for normal target-aware generation, source jobs and activation/design acceptance; existing detail/job routes are not missing infrastructure. |
 | Facade | `RebornServicesApi` delegates to `InterceptorConfigService` in `reborn_services/interceptor_config.rs`. | Extend the existing service seam and DTOs; no direct DB/compiler access from HTTP handlers. |
-| Service | `RebornInterceptorConfigService::list_prefix_entries` returns one base-prompt entry; `regenerate_prefix` rejects other names. | Register all six seeded profiles and supported custom profiles and dispatch by validated profile identity. |
+| Service | `list_prefix_entries` reads all registered rows, including six seeds. Ordinary `regenerate_prefix` still executes only the legacy base path; registered unsupported names return Unavailable and unknown names return NotFound. | Wire accepted named/composite jobs and custom-profile lifecycle through this existing service; do not reseed a parallel registry. |
 | Generation | `regenerate_prefix` creates an internal conversation, scope ticket, lease and request UUID, submits `host-assemble-prefix-bundle`, checks terminal reply and exact stored `generation_id`. | Preserve durable operation fencing and failure semantics; replace the long synchronous HTTP wait with job admission/status. |
 | Sweep | `PgSweepValidatedComponentsBackend` selects validated rows from fixed tables without the old consumer-tag exclusion; sorts by class/prompt UID. | Reuse the read boundary, add one consistent snapshot and complete semantic records. |
 | Lost information | Sweep expressions prefer `prior_knowledge_content`; Recipes contribute only prior knowledge or an empty string. Tool schemas, Recipe variants/bindings and associations are absent from the rendered body. | Export complete original content and structured execution metadata; summaries cannot replace them. |
 | Truncation | Sweep SQL has `LIMIT 1000` per table and runs separate queries without an enclosing consistent-snapshot transaction. | Export the complete eligible catalogue with stable pagination under one snapshot; do not silently mix generations or omit rows. |
 | Docs | Sweep appends compiled-in CLAUDE/AGENTS slices starting at architecture headings. | Include complete current authoring guides and required precedence sections, including material before those headings. |
 | Role contamination | Sweep appends the Sempai response schema to the common bundle. | Keep role-specific response instructions outside the shared factual corpus. |
-| Store | `PgBasicPromptStore` persists `bundle_json`, fingerprint, timestamps and a request `generation_id` under one scope key. | It has neither a prefix-name key nor immutable generation history/evidence metadata. Request UUID is not the compiler's content-addressed generation ID. |
+| Store | Legacy `PgBasicPromptStore` still uses a scope key and request UUID. Successor `prefix_generations.rs` retains named immutable content-addressed packages and evidence; job definitions link existing turn runs. | Migrate consumers to those existing stores and add selections/lineage. The legacy request UUID is not the immutable compiler generation ID. |
 | Serving | `PgKohaiPort::complete_with_stores` resolves a stored bundle; `run_sempai_review` has `SystemBundleSource`. | Trace and test both independently. The archived claim that Kohai runs on every turn must not cause model calls on deterministic Tier-0 tasks. |
 | Staleness | Q2 approval calls `mark_stale`; current `get_system_bundle` uses a minimal fallback for stale rows or DB errors and has a default-project probe on a miss. | Add dependency-aware invalidation and a deliberate serving policy; do not silently discard a large usable generation during a rebuild. |
 | Startup | `component_boot::initialize_runtime_components` seeds host and first-party components and checks integrity; runtime initialization calls it. | Seed reference sources through this shared boot path, not only on WebUI mount. Global Monty lifecycle acceptance remains the separate Phase-3a prerequisite. |
@@ -270,8 +511,9 @@ Sharing a rendering engine must not mix domain source databases or approval rule
 Current parity is limited: the Sempai compiler has the v25 scoped artifact audit,
 reviewed strict-JSON display projection and evidence-view manifest; the independent
 Home Assistant, Defensive and tomedo compilers do not yet share those features.
-The base entry point now exists as an offline development adapter; Prefix-Maker
-still has no compiler entry point. Port and qualify
+The base and Prefix-Maker entry points exist as offline development adapters.
+Installed source-only Recipe support is separate from qualification of every
+standalone mode or target-facing design. Port and qualify
 these evidence/rendering facilities in the shared engine before claiming parity.
 Keep Sempai's reviewer/planner schemas in its consumer adapter, not in domain answer
 contracts. Inventory each profile's collection modes, source configuration, coverage
@@ -328,7 +570,7 @@ and pipeline revision `2026-10-09-sempai-artifact-scopes-v25` with every build.
 
 | Current setting | Actual behavior and production requirement |
 | --- | --- |
-| Context target/reserve | Defaults are 100,000 requested prefix tokens, 131,072 context tokens and 31,072 reserved tokens. Reserve must be at least 8,192. Effective capacity is the lesser of the request and model context minus reserve, checked against rendered envelope variants. The experimental 114,688 / 16,384 split is an explicit Ornith design choice, not the default or a guarantee of fit. |
+| Context target/reserve | Defaults are 100,000 requested prefix tokens, 131,072 context tokens and 31,072 reserved tokens. Reserve must be at least 8,192. Effective capacity is the lesser of the request and model context minus reserve, checked against rendered envelope variants. The earlier 114,688-prefix / 16,384-reserve preview is superseded for the current Ornith target: maximum prefix 100,000; maximum non-prefix prompt 14,688; combined input 114,688. Resolve production ceilings from the canonical provider/model policy; 31,072 offline reserve includes that non-prefix prompt plus 16,384 output/technical reserve. No fit is implied. |
 | Model/tokenizer | `ORNITH_MODEL_CONFIG` identifies local config; the tokenizer loads offline from that resolved file's parent directory. Supply a coherent pinned config/tokenizer directory. `TOKENIZER_MODEL` does not replace this selector. The current adapter requires the inspected 24-linear/8-full architecture and single-GPU FP8 attention geometry; a new model requires a supported adapter, not just a new DB design. |
 | Source inputs | `SEMPAI_SOURCE_ROOT` supplies the declared complete source package and teaching dependencies. Optional `SEMPAI_SOURCE_MANIFEST` pins the captured manifest. `CODING_REPOS` and `CODING_WEB_SOURCES` are rejected. Collection retains all declared originals; selection changes only the model-facing view. |
 | Reviewed selection | `SEMPAI_REFERENCE_POLICY` must match the current document/excerpt hashes and whole-unit coordinates, inventory every unit and satisfy mandatory/topic coverage. Without it, the compiler renders literal originals; strict-JSON display projection is enabled only with the reviewed policy. Stale v22/v24 policies cannot qualify edited v25 sources. |
@@ -367,7 +609,7 @@ export ORNITH_MODEL_CONFIG=/path/to/pinned-model-and-tokenizer/config.json
 export CODING_DISTILL_CACHE=/path/to/new-sempai-build-directory
 export SEMPAI_REFERENCE_POLICY=/path/to/reviewed-current-source-policy.json
 export MODEL_CONTEXT_LIMIT=131072
-export PREFIX_WORKSPACE_RESERVE_TOKENS=16384
+export PREFIX_WORKSPACE_RESERVE_TOKENS=31072
 unset CODING_REPOS CODING_WEB_SOURCES
 # Remove an inherited source-manifest setting unless it pins this exact package.
 unset SEMPAI_SOURCE_MANIFEST
@@ -376,7 +618,7 @@ unset SEMPAI_SOURCE_MANIFEST
 "$PREFIX_PYTHON" "$PREFIX_CHECKOUT/scripts/prefix/sempai-compiler.py" --mode collect
 "$PREFIX_PYTHON" "$PREFIX_CHECKOUT/scripts/prefix/sempai-compiler.py" --mode distill
 "$PREFIX_PYTHON" "$PREFIX_CHECKOUT/scripts/prefix/sempai-compiler.py" --mode reduce
-"$PREFIX_PYTHON" "$PREFIX_CHECKOUT/scripts/prefix/sempai-compiler.py" --mode context --offline --context-tokens 114688
+"$PREFIX_PYTHON" "$PREFIX_CHECKOUT/scripts/prefix/sempai-compiler.py" --mode context --offline --context-tokens 100000
 ```
 
 For a source-manifest-pinned build, explicitly set `SEMPAI_SOURCE_MANIFEST` to the
@@ -941,6 +1183,234 @@ successor as the review authority. If no usable predecessor exists, restore/buil
 reviewed bootstrap reference first; do not fall back to an ungrounded model call.
 
 ### 5.3 Database-owned model specifications and model-specific designs
+
+#### Budget-aware design and generation contract (2026-10-22)
+
+**Always-on hard limits, including when budgeting is disabled (operator
+clarification):** `max_prefix_tokens` and `max_prompt_tokens` are technical
+per-target input ceilings, not optional `ProviderTokenBudget` allowances. Their
+persistence, resolution, visibility and enforcement must never depend on
+`token_budgets_enabled`. Turning budgeting off removes discretionary slice/task
+quotas; it neither clears these fields nor bypasses a size guard. The same holds
+for deployed context and output constraints. Unknown required limits/tokenization
+block a model-facing dispatch with a setup/measurement reason; do not guess a
+character-to-token ratio or depend on the provider rejecting the request.
+
+Kohai must receive two separately identified, host-resolved limit/geometry bundles:
+the active answer provider/model and the configured Sempai provider/model. A bundle
+pins canonical policy revision, prefix generation/design, injection adapter,
+tokenizer/template, actual deployed context and output allowance. Expose both
+numeric ceilings to the selected orchestration components as typed data and to
+Sempai's trusted review instructions; model output cannot change these values.
+Do not send Sempai only its own limit while withholding the target answer limit.
+
+The pre-call review/prompt-optimization Recipe must implement this sequence:
+
+1. Build the exact Sempai request, including its own base-plus-Sempai prefix,
+   trusted instructions, original-target limits, reviewable prompt/evidence/history,
+   tools and provider framing. Check Sempai's prefix and non-prefix prompt ceilings
+   independently and complete sequence plus output against its deployed context
+   **before** dispatch. Knowledge already present in a verified identical prefix
+   need not be duplicated, but a hash/reference to absent evidence does not mean
+   Sempai inspected it. Use only qualified evidence views or multi-stage inspection
+   with explicit coverage; otherwise report Capacity blocked and preserve originals.
+2. Retain the exact Sempai request/result and coverage. Treat its revised prompt as
+   untrusted candidate data, keeping immutable prefix/tool protocol/user constraints
+   intact. Enforce the selected review-result schema and allowed-edit contract.
+3. Reassemble the **final** answer-provider request after applying the allowed edit
+   and adding actual retained history, tools, role framing and the prefix exactly
+   once. Re-tokenize/check the effective provider layout against that target's
+   prefix and non-prefix prompt ceilings and full context/output. A smaller draft
+   or Sempai's approval does not establish the final request fits. This check also
+   runs when review is disabled, returns unchanged text or produces no edit.
+4. Perform the same unconditional check at the shared last pre-dispatch boundary,
+   after provider transforms and before any real request/retry/tool continuation.
+   Detect changed target/policy/envelope identities; no stale check, hidden replay,
+   silent history truncation or fallback to the original oversized prompt. A bounded
+   explicit repair Recipe can propose another candidate; it cannot skip the guard.
+   Retaining an old task policy preserves evidence and selection, not permission
+   to exceed a newly tightened live hard ceiling. Block/reconcile that dispatch
+   explicitly without swapping the task's selected prefix or replaying effects.
+
+Post-turn review uses the same Sempai-target guard without replaying original
+effects. Prefix-Maker/design calls use their own target guard as well. Python/
+Recipes own evidence selection, permitted edits and repair decisions; shared host
+preparation/transport verifies actual identities and technical fit. Reuse one
+technical guard, rather than independent interceptor, CLI and provider algorithms.
+The current settings map and planning draft do **not** establish this runtime
+wiring; it remains a required generation/serving and Sempai cutover gate.
+
+Acceptance must run with budgeting both on and off: values survive toggle/restart;
+Kohai obtains both providers' limits; distinct-provider limits are not interchanged;
+oversized Sempai input causes zero Sempai calls; a Sempai edit that fits alone but
+overflows with history/tools/prefix causes zero final provider calls; unchanged/
+disabled review cannot bypass checks; exact boundary and one-token-over cases are
+checked after real adapter rendering, including continuations and policy races.
+
+Cutover prerequisite: enumerate the actual active answer/Sempai/design targets and
+populate/verify their canonical policies through the revisioned provider owner
+before enabling the successor serving path. Preserve existing explicit values;
+never backfill a prefix ceiling from `max_position_embeddings`, an optional budget
+or an unrelated provider's setting. Missing values remain Setup required, with
+read-only configuration/source inspection available and model dispatch blocked.
+An old application that cannot read these fields must be upgraded before a write;
+do not bypass its API with raw incompatible JSON. No optional "disable hard
+limits" switch is introduced. Test the staged upgrade and restart readback as
+well as fresh installation; retained task policy references remain readable.
+
+Model capacity is not prefix capacity. The retained Ornith configuration's
+262,144 position limit describes a model artifact; the observed server limit is
+131,072 for the whole sequence. Neither sets `max_prefix_tokens`. The requested
+operator policy remains 100,000 prefix and 14,688 non-prefix prompt tokens, keyed
+by the exact provider/model serving target. Do not replace it with 262,144 or
+copy it into a second editable prefix-database record. Prefix records reference
+the canonical provider revision and retain its historical values as evidence.
+
+Apply the following contract to **every** profile, including base, Sempai and
+Prefix-Maker, and to Generate, Regenerate, Redesign and Generate model design:
+
+1. Resolve the consumer's actual provider/model, canonical limits and revision,
+   selected accepted design, tokenizer/template/injection adapter and verified
+   deployed context/output constraints before selecting model-visible content.
+   Kohai, Sempai and the design provider may be three different targets. Missing
+   policy or geometry is an explicit prerequisite for a target-facing build;
+   source-only compilation and diagnostic measurements may still proceed.
+2. Derive the rendering budget from the smaller of the configured prefix ceiling,
+   the design's requested size and deployed context minus the permitted dynamic
+   prompt, required output and any separately accounted technical framing.
+   Account for framing exactly once. Configuration position capacity is an
+   additional compatibility bound, never evidence of deployed capacity. Reject
+   impossible reservations; do not silently reduce the promised prompt/output.
+   A design request is immutable build input, not another model-limit setting.
+3. The accepted declarative design must specify budget-dependent presentation:
+   mandatory coverage, whole-unit/dependency groups, optional-unit priorities and
+   stable tie-breaking, navigation/citation overhead, deduplication rules and
+   qualified render/selection strategy. Every supported budget band must preserve
+   required contracts, negative rules and usable complete examples. More space
+   permits additional useful examples/reference units; less space cannot discard
+   required safety or authoring knowledge. Preserve complete original sources,
+   selected/omitted dispositions and provenance outside the model-visible view.
+4. Generate/Regenerate executes those accepted rules without a provider call.
+   Equal source/design/target/**policy revision** inputs yield identical bytes.
+   A changed limit can select another already accepted budget band; it cannot
+   authorize new summarization, changed priorities or lossy compression. If no
+   accepted design covers the new budget, report Needs redesign. If mandatory
+   content cannot fit, report Capacity blocked with the exact failing coverage.
+5. Redesign and Generate model design receive these limits as typed trusted
+   inputs and review actual current content, architecture and coverage at that
+   budget. Validate the proposed rules and their candidate at the intended size,
+   including smaller/larger supported bands. No permission to increase settings,
+   alter vLLM, omit mandatory knowledge or accept the provider's fit assertion.
+   Redesign returns the complete updated candidate and reviewed design together.
+6. Exact measurement must check the complete base-plus-domain composite for that
+   consumer, with prefix injection once, actual tools/history/role framing and
+   output reservation. Use a qualified adapter-defined prefix/dynamic boundary;
+   token counts of separate text snippets are not generally additive. An LCP
+   across arbitrary probes proves shared tokens, not a semantic prefix size.
+   Validate prefix <= configured maximum, remaining prompt <= its maximum and
+   whole request plus output <= deployed context. Diagnostic probes do not prove
+   all future requests fit; final preparation repeats the check for the real input.
+   Cache alignment, stable headers, indexes, citations and padding consume this
+   budget too. A verified attention/recurrent checkpoint layout may guide complete
+   unit packing and boundary placement; never round the artifact above its cap,
+   split code/contracts to meet a chunk boundary or equate INT4 weights with KV
+   precision/capacity. A fit result proves no hybrid-state restoration/cache hit.
+7. A setting edit invalidates *new-work compatibility* and updates all settings
+   surfaces through the existing owner. Never mutate accepted historical designs,
+   artifacts, receipts or admitted task selections. Revalidate a candidate against
+   current desired policy before acceptance/activation; stale revision conflicts
+   cannot silently activate an older policy. Retained tasks keep their exact
+   request/design evidence, subject to current technical dispatch constraints.
+   Keep provider/policy revision IDs and timestamps in manifests/receipts, outside
+   the stable teaching text. A new settings revision need not change rendered
+   bytes if effective limits/content/design did not change. Reuse an identical
+   artifact only after compatibility checks; neither gratuitous metadata churn
+   nor ignoring a genuinely changed budget is a stable-prefix strategy. Cache
+   namespaces still require qualified model/template/token/state compatibility.
+
+**Implementation audit:** the packaged `measure-prefix-template-and-capacity`
+Recipe and `assess_prefix_capacity` currently establish only complete-probe plus
+explicit-reserve arithmetic. Keep their version-1 request/result contracts and
+historical receipts readable. They do not resolve the canonical provider policy,
+identify a prefix/dynamic partition, select budget-aware knowledge or qualify
+serving. Implement successor composition from shared policy-read, pure budget
+planning, accepted selection, render, exact encoding, partition/capacity checking
+and immutable receipt usages; preserve independent Tool calls as separate steps.
+Do not relabel an old `fits: true` result as per-model policy compliance.
+
+The new reusable class-22 draft `plan-prefix-model-budget` in
+`prefix_compiler_components.rs`, backed by `prefix_model_budget.py`, separates
+planning from that measurement-v1 contract. Its typed inputs are a retained
+`policy_ref`, the two canonical ceilings, deployed context, output reservation,
+additional framing and a requested design size. It returns the effective budget
+and explicit reservation/request shortfalls, without selecting content or claiming
+fit/approval. Additional framing must be outside the measured prefix and remaining
+prompt; normally zero when the prompt measurement already includes all framing.
+The provider owner must resolve and authenticate `policy_ref`; this pure export
+does not turn caller-supplied values into trusted policy. Constructor/Monty checks
+passed; no production Recipe is activated by packaging the draft.
+Wire it into the successor generation/design Recipes through normal exact pure
+qualification and retained selection, followed by real rendering/partition checks.
+
+Bounded local evidence (2026-10-22):
+`target/validation/prefix-registry-artifacts-u4w40vr0/accepted.json` records strict
+affected-library lint, worker/test builds and seven focused cases, including actual
+Monty budget arithmetic and the real PostgreSQL/provider-service limit owner.
+The latter checks Ornith 100,000/14,688, revision conflicts, preservation, clearing
+and readback. Exact/one-token context changes, separate prefix caps, requested
+design sizes, framing, impossible reservations and disabled prefix capacity are
+planner cases; they do not establish final rendered-partition enforcement.
+`target/validation/prefix-model-token-limits-ui-ld6sv9d2/accepted.json` records
+37 actual-source helper/state tests and syntax checks, including selection retention
+across a provider revision update. No browser, external-CLI push, installed-instance
+write, generation/activation or Kohai/Sempai dispatch guard acceptance follows.
+The frozen native scope overlays the corrected planner declaration onto
+`prefix-registry-source-05qej4ht`; the newer UI revision-selection correction has
+its separate receipt. Failed handler-registration/schema snapshots and logs remain
+retained rather than being rewritten as passing. Current remote application/API
+upgrade and verified canonical policy write remain prerequisites for live use.
+
+Acceptance must cover two providers serving the same named model with different
+limits, two model/tokenizer designs, exact-boundary fits and one-token overruns of
+each ceiling, impossible output reservations, missing policy, base/domain aggregate
+overflow, mandatory coverage overflow, accepted budget-band transitions, unsupported
+bands, deterministic rebuild, policy-edit races, retained old tasks, and held-out
+authoring/diagnostic quality at each accepted size. Show source-only, measured,
+policy-compatible, quality-qualified and effective states separately. Persistence
+and editor checks alone do not satisfy these generation/serving gates.
+
+**Single settings owner (2026-10-22 implementation):** mutable per-model input
+ceilings belong exclusively to `ProviderDefinition.model_token_limits[model]` in
+the existing `brassclaw_llm_providers.definition` JSON and provider revision/CAS
+contract. Both Inference and Prefix settings reuse `ModelTokenLimits`, the same
+`["llm-providers"]` query, and existing GET/POST
+`/api/webchat/v2/llm/providers`. No second settings table, config key, model-info
+writer or prefix-specific settings endpoint is permitted. The fields are
+`max_prefix_tokens` and `max_prompt_tokens` (complete remaining rendered input,
+including history/tools/framing). Combined input is their checked sum, never a
+third editable value. Output allowance and physical/deployed context remain
+distinct. The requested current Ornith policy is 100,000 + 14,688 = 114,688;
+it is instance configuration, not a global hardcoded model default.
+
+Omission preserves the map; `{}` explicitly clears it; null/duplicate model names,
+invalid numbers, overflowing totals and totals above a known default-model context
+are rejected. All edits use the provider revision and preserve unrelated model
+entries/credentials/selection. A stale editor reports a revision conflict rather
+than overwriting another page's change. Successful server snapshots update the
+shared query immediately; mounted prefix catalogue views refresh after provider
+edits. Add the same refresh to future CLI/server-push consumers using the existing
+settings notification owner; do not add a second mutable cache or private polling
+loop. Live enforcement in compilation/final prompt preparation must consume this
+canonical revision, with no copied per-profile/model-info setting.
+
+Model specifications, accepted design records, queued measurements and actual
+receipts retain immutable historical pins/observations. They are not additional
+editable owners and must be labelled with their provider revision. New captures
+include the selected model's policy from that same provider revision. Do not rewrite
+historical evidence after a setting changes. A design's requested prefix size may
+be lower than the current model ceiling; it cannot increase or replace that ceiling.
+Known model-context limits and diagnostic measurement assumptions must remain
+visibly separate from these settings. See [model token limits](../reborn/model-token-limits.md).
 
 Prefix length, formatting and cache strategy are model-dependent. Persist model
 specifications and design revisions in PostgreSQL through the final provider catalogue
@@ -1686,6 +2156,11 @@ fingerprint and first-pass/repaired results; absent measurements say Unmeasured.
 
 ### Phase A — Contracts and source inventory
 
+Current status: baseline profile/source/compiler contracts are implemented for the
+accepted source-only slices. Remaining steps 1–7 complete coverage, source jobs,
+model policy/geometry, qualified design and hard-limit contracts; this phase is
+not wholly unimplemented and its complete acceptance is not yet closed.
+
 Freeze profile IDs and source classifications; inventory current source packs,
 existing generation receipts and actual provider adapters. Specify typed input/
 result schemas, Recipe variants, one-UUID steps, Skill associations and failure
@@ -1709,6 +2184,11 @@ Specify section 8.1's used-versus-registered source inventory, registration/coll
 contracts, per-type bounded checks, availability states and source-review eligibility.
 
 ### Gate A1 — Runtime prerequisites for production Recipe jobs
+
+The closed source-only compiler has real bootstrap/global-admission evidence;
+reuse it for that exact graph. The general production successor must still satisfy
+the applicable gates below. Do not mark every prerequisite missing merely because
+normal Generate is incomplete, or infer general approval from the closed slice.
 
 Track these as explicit dependencies with implementation references and passing
 production-caller receipts, not as documentation-only completion:
@@ -1763,6 +2243,11 @@ development need not wait for every unrelated v3 cleanup, but production paths m
 pass all contracts applicable to their consumers.
 
 ### Phase B — Base compiler and release source package
+
+Current status: offline adapters, release/core packages, installed capture, shared
+source-only stages and native scoped qualification are implemented. Remaining
+steps 2–4/19 close full-library/domain parity and installation coverage; target
+fit/design/serving are separate C/C2 gates. The dated entries retain earlier bounds.
 
 Continue from the offline `base-promt-compiler.py` and shared `prefix_evidence.py`
 adapter below; do not create another copied compiler. Complete installed catalogue
@@ -1908,10 +2393,14 @@ Runtime Recipe/worker/storage/UI implementation remains in the following phases.
 
 ### Phase C — Named generations, jobs and Recipe execution
 
-Add forward migrations, registry/generation/job stores and compatibility import.
-Version the existing assembly Recipe and add reusable snapshot/compiler/validation/
-publication usages. Admit durable jobs through the runtime, preserving no-fallback,
-completion fencing, cancellation and deduplication. Implement dependency invalidation.
+Current status: registry/generation/model/source/job migrations and stores, imports,
+qualified source-only Recipe execution, durable measurements and reconnect support
+exist. Remaining steps 3–10/19 extend them to every profile and the normal
+target-aware/composite workflow. Add forward schema changes only for demonstrated
+missing selections/lineage/contracts; do not recreate stores or edit applied migrations.
+Version the existing assembly path using reusable snapshot/compiler/validation/
+publication usages. Preserve durable admission, no-fallback, completion fencing and
+deduplication; finish cancellation/recovery acceptance and dependency invalidation.
 Implement the model-free bootstrap path and composite Recipe/adapter/job contract
 above, including parent exports, evidence identity preservation and recomputed token
 geometry. Inventory existing build primitives before adding the missing worker adapter.
@@ -1946,8 +2435,9 @@ until its required composite validation completes.
 Names, labels, descriptions, positive metadata revisions and compiler entry names
 are separate from immutable model designs, generation artifacts and consumer
 selections. Compiler entry names are descriptive registration data; no filename,
-row or revision authorizes executing a compiler. Prefix-Maker has no registered
-compiler filename until its actual adapter exists. Installation inserts preserve
+row or revision authorizes executing a compiler. At this 2026-10-12 freeze,
+Prefix-Maker lacked a registered compiler filename; the later adapter/V147 entry
+below supersedes that gap. Installation inserts preserve
 existing metadata rather than overwriting operator edits.
 
 The existing `InterceptorConfigService` / facade / operator prefix-list API and
@@ -3169,9 +3659,325 @@ v4 versus 148,078 in v2/v3. All exceed the explicit 131072 context assumption;
 these are complete offline token observations, not approved content changes,
 serving hits, inference quality or evidence that model capacity was increased.
 
+#### Native Oniguruma allocation accounting (2026-10-20)
+
+The fixed encoding backend still uses tokenizers 0.23.2 with Onig. The local
+`onig_sys` 69.9.3 fork (embedded header: Oniguruma 6.9.10) adds an explicit allocator
+feature used by the encoding crate. Its embedded C malloc/calloc/realloc/free
+calls enter Rust's existing global allocator through checked, aligned private
+allocation headers. `monty_worker` already installs `LimitedAllocator`; this adds
+no second budget owner, monitoring loop or alternative encoding engine. Reallocation
+retains the original allocation's ownership across scopes. A system/dynamic
+Oniguruma override fails the build instead of bypassing these calls.
+
+`target/validation/prefix-registry-artifacts-h9i6gguf/accepted.json` (frozen source
+`prefix-registry-source-eg9b7k7n`) passes the actual shim build and layout/overflow/
+zeroing/reallocation tests. The existing isolated allocator probe calls real
+Oniguruma C region allocation/reallocation/free through the safe Onig wrapper:
+VM charges survive growth outside the original scope, free refunds the original
+owner, and a 128 MiB C allocation request under the existing 1 MiB limit produces
+the existing worker OOM exit with no successful output. This is native allocation-
+accounting evidence, not a simulated counter or total process-residency limit.
+
+The fresh shared-code batch passes in
+`target/validation/prefix-registry-artifacts-9ulny9c1/accepted.json` (frozen source
+`prefix-registry-source-us77oeu_`), including concurrent provider/model changes as
+captured: strict affected/standalone lint, actual full-token/HF checks, complete
+source jobs and twelve-case workflow qualification, durable measurement/API/no-replay,
+standalone consumers and real C allocator probe, routes and ordinary single-root
+behavior. This includes the successor safety documentation; a later build-script
+whitespace-only formatting edit leaves its allocator mappings unchanged. Keep native memory activation prerequisites open:
+allocator metadata/retained arenas, stack and other native/runtime residency still
+require the documented reserve and platform containment/qualification. This patch
+does not establish an OS RSS ceiling, cache validity, prefix acceptance or answer
+quality. Preserve generated upstream-binding warnings separately; do not suppress
+them or swap the regex backend to hide them.
+
+#### Shared Sempai source corpus (2026-10-20)
+
+Release inventory revision 2 extends the existing class-17 source owner with 69
+archived originals: all 61 files of the pinned upstream Monty v1.0.0 package and
+its original manifest, plus current compatibility/teaching source and receipt
+files and observed legacy validation/reviewer/transport references. The inventory
+now declares 270 originals. All additions are `development-only`; the thirteen
+selected reference rows and core-only source scope stay unchanged. This is source
+retention before profile-specific compatibility/content review, not Sempai
+compiler support, current worked-example approval or a new persona/schema.
+
+The same installation owner verifies complete package membership, original hashes,
+canonical paths and commit-bound upstream URLs against the embedded originals.
+The original manifest is retained; upstream SDK definitions/host examples are not
+promoted into BrassClaw callables. Negative integrity cases cover changed original
+bytes, forged hashes/URLs, path traversal, invalid flags, missing files and duplicate
+entries. No runtime checkout discovery, remote fetch, parallel document registry,
+source execution or extra validated legacy retrieval rows are introduced.
+
+`target/validation/prefix-sempai-source-archive-dli38g6q/accepted.json` verifies two
+identical offline snapshots through the existing adapter, all 270 original byte
+hashes, all 61 upstream file/URL pins and a source-only v4 build retaining thirteen
+evidence cards. The source package is
+`0c01bafbbccd68fe2e0081b9aeb634e2905f04e44ccb95f522db69392feffe7c`.
+This is document-archive evidence only. Native storage/capture and forged-manifest
+rejection subsequently pass in
+`target/validation/prefix-registry-artifacts-oq8cc7b9/accepted.json` (frozen source
+`prefix-registry-source-62an8ku2`): complete 319-source/8,499,556-byte release job,
+five native calls, reconnect without replay, exact archived bytes/dispositions and
+no additional validated legacy rows. The full twelve-case/encoding/measurement/
+API batch, affected/standalone lint, consumers, real C allocator check, routes and
+ordinary single-root regression also pass.
+
+A documentation-only successor now explicitly separates host embedding, preload
+definitions, invocation bodies and Recipe metadata. It also corrects the former
+claim that every prefix compiler runs in host Python: installed compilation uses
+Recipe-owned Monty stages. Frame/shape limits are adapter/revision observations;
+removed allocation-count APIs do not authorize silently deleting legacy settings.
+Its exact updated archive is separately verified by
+`target/validation/prefix-sempai-source-archive-qqtskksz/accepted.json`, source
+package `b70b09f04e0eec96533b1ec2553ae46273e484ca2e57ad897316de07315e0293`.
+This successor's text is not an installation-uptake claim for the preceding binary.
+
+The old worked-example source/manifest/receipt hashes remain consistent. Its 29
+examples and stated Linux-CPython/offline-design evidence are preserved, not
+re-signed as current Monty/preload/constructor or decoder approval. Bind response
+serialization to the actual supplied consumer schema, not a global summary-first
+or summary-last heuristic. Sempai source selection and contextual presentation,
+current constructor/decoder alignment, accepted model design, prefix generation/
+activation and held-out model behavior remain open work in this phase.
+
+#### Context-aware source presentation (native source-only validation passed)
+
+`literal-reference/v5-contextual-sharing` extends the same Recipe-owned renderer.
+Conservative source-family captions distinguish binding guides, component records,
+upstream SDK/API or general references, BrassClaw authoring procedures, teaching
+fixtures, implementation observations and catalogue metadata. Logical paths/kinds
+are declarations, not authentication or API availability. Captions constrain
+interpretation and confer no approval or Tool access; unknown families remain
+reference data. Full host/preload/invocation/Recipe compatibility still needs review.
+
+Exact-unit sharing is scoped by context as well as hash. Identical bytes under
+SDK/API and ordinary-reference contexts stay independently literal, preserving
+both contexts. Design `/2` retains complete included-source assignments and
+`brassclaw-prefix-render-map/2` retains exact per-context origin groups. All
+originals, original ranges and evidence identities remain unchanged; captions are
+explicitly compiler metadata rather than original quotations. Storage validates
+complete assignment/map/origin integrity without reimplementing Python policy.
+Existing v1-v4 rendering semantics and installed defaults remain unchanged.
+
+`target/validation/prefix-registry-artifacts-54gj9wx2/accepted.json` (frozen
+`prefix-registry-source-q27bdp7a`) passes both profiles/five independent fixture renderings,
+fourteen exact whole-workflow cases, re-signed missing/mismatched context and
+cross-context-origin rejection, and the real pinned core snapshot compiled through
+ordinary global admission with the explicit experimental v5 layout. No-replay,
+complete source/HF/API, lint, standalone native-C allocation, routes and global-root
+checks also pass. The documentation successor above is included in this capture.
+This option does not
+complete Sempai source selection, per-model design acceptance, normal Generate,
+serving/cache qualification or held-out model accuracy.
+
+Offline exact-token evidence in
+`target/validation/prefix-context-layout-token-stability-7pw731pl/evidence.json`
+uses one retained source package, three explicit mutations and one plain chat.
+V5 preserves 141,060 leading tokens for a reason-only edit and 140,878 for an
+appended duplicate; its 142,055-token baseline exceeds the explicit 131,072
+capacity assumption before output reserve. The duplicate intentionally changes
+context, so V5 retains a separate literal and reaches 159,086 tokens. This is
+correct contextual separation, not a regression to hide with cross-context sharing.
+These observations establish token identity only, not inference/cache/quality.
+
+#### Sempai installed source-only profile (native validation passed)
+
+The same source compiler Recipe now accepts the `sempai` profile with v5 only.
+The installation-owned declarative selection includes the complete nine mandatory
+binding/authoring/compatibility guides and all pinned upstream Monty files marked
+`model_reference` in the original manifest. Other upstream metadata, old persona/
+transport/worked-example originals remain archived. The Prefix-Maker procedure is
+excluded from the Sempai model view. No source text is summarized or silently
+truncated. Sempai requires declared-release capture; core-only capture fails.
+
+Submission/storage and offline target diagnostics reuse the existing owners.
+The older standalone `sempai-compiler.py` and the separate development build worker
+have not been replaced or falsely qualified by this installed-Recipe migration.
+The new source-only profile does not select a reviewer persona, change the supplied
+response schema, add model calls, accept a model design or activate a generation.
+Offline complete-source evidence is retained in
+`target/validation/prefix-sempai-source-profile-w37vwr4c/accepted.json`: 317
+original records, 117 included references, all 58 upstream `model_reference`
+files and two byte-identical compilations. One plain-chat exact HF probe measures
+334,756 tokens, exceeding the explicit 131,072 serving-capacity assumption and
+the retained config's 262,144 position limit before the 8,192 output reserve.
+The tokenizer's overlength warning is preserved. This proves an incompatible
+complete source design, not readiness; no source is removed to hide that result.
+The offline transfer lacks the installed capture's two provenance envelopes, so
+its 317 records must not be represented as the 319-record native capture.
+
+`target/validation/prefix-registry-artifacts-q9l8y7jj/accepted.json` (frozen
+`prefix-registry-source-8p1uye2m`) passes independent exact rendering,
+missing-guide/old-layout failure,
+real retained-worker stages and a durable full-release Sempai job through the same
+global owner, with all 319 originals, five calls, reconnect without replay and no
+activation. Fifteen exact compiler qualification cases, new-layout API acceptance
+and old-layout rejection, complete source/HF/measurement API checks, affected lint
+and the ordinary single-root regression pass. The prior guard and obsolete-API-
+fixture failures are retained in `prefix-registry-artifacts-kk07cs80/failure.json` and
+`prefix-registry-artifacts-7wv295fz/failure.json`
+under the same artifact directory family. This scoped successor reuses unchanged
+route/standalone evidence; it does not claim those were rerun. Target capacity and
+held-out reviewer behavior remain separate gates.
+
+#### Source-check prerequisites (native HTTP/storage validated; admitted workflow pending)
+
+The source-check Recipe needs the existing HTTP primitive, not a separate crawler
+or a Rust source-check workflow. The old `pc-exec-http-get` still uses runtime source
+substitution. `http_get_components.rs` prepares a typed preloadable successor and
+an explicit bounded variant of the existing `http-get` identity, with one call to
+`host.http`, fixed GET, exact byte/time inputs and complete sanitized response data.
+The owner must resolve the existing Tool/ToolSkill/Skill/code/Recipe IDs; the draft
+constructor allocates no parallel HTTP family. Merge/review other existing variants
+and compatible bindings before any coherent activation. Nothing writes legacy rows
+or grants approval from a `system` label.
+
+The finite declared HTTP profile uses object-of-string request headers and explicitly
+serialized text bodies. These are supported native profiles, not a claim that every
+native input alternative has been migrated. This usage follows no redirects and
+performs no hashing, availability decision or observation write. The source-check
+Recipe must keep these operations separate. Non-2xx is data; overflow/timeout/policy
+failure stops without automatic retry. HTTP 200 is not a content/knowledge verdict.
+Pure `prefix_source_check_components.rs` drafts separately project complete text
+and classify a response plus a separately supplied UTF-8 digest against an
+independently retained original hash. Unknown identity/content changes, redirects,
+server/rate failures and unsupported/ambiguous representations stay neutral; missing,
+authentication and empty-content outcomes are unavailable. Only exact nonempty text
+and expected-hash equality can produce available content, never knowledge approval.
+The caller must establish actual response/digest provenance; these pure components
+perform no fetch/hash/write themselves. Raw I/O/effect evidence remains separate.
+
+`target/validation/prefix-registry-artifacts-w_ij7pyl/accepted.json` (frozen
+`prefix-registry-source-xsg96z3a`) passes strict affected-library lint, the real
+retained native identity/input/preload inspection and the pure Monty classification
+matrix. The earlier failure in `7zai0t32` was a test assertion using the binding
+step's key instead of the executable invocation key; its failed receipt is retained.
+These checks perform no HTTP dispatch and establish no bootstrap approval,
+activation, observation retention or Sources readiness.
+
+The next draft composes the existing usages into an explicit diagnostic Recipe:
+validate expected identity before network effects; HTTP ToolSkill/export; pure
+complete-text batch projection; JSON ToolSkill/digest export; single-digest
+validation; pure content classification. Each component step has one UUID, each
+real dispatch has its own binding/executable pair, and inputs/results remain typed.
+The constructor neither allocates a parallel HTTP/JSON family nor writes/activates
+components. Expected hash data is not source provenance or knowledge approval.
+The real retained-native loopback test and composed graph now pass in
+`prefix-registry-artifacts-u4w40vr0/accepted.json`: complete Unicode content,
+non-followed redirects, missing responses, body overflow and live policy blocking.
+This supersedes the earlier dispatch-pending status, not its retained failures.
+
+Remaining work is exact bootstrap/graph qualification, trusted observation
+projection, admitted source jobs, generation-original adapters and UI uptake.
+Source checking remains unavailable until that complete path is qualified.
+
+The registered-source storage prerequisite now has a draft implementation in
+`builtin.prefix_source`, backed by the existing V143 registration/observation
+tables. Its only operations are an exact immutable registration read and append
+of diagnostic bytes as **unqualified** evidence. Pins include profile, source UUID,
+revision and registration checksum; a registration checksum is not the referenced
+content checksum. Append uses the real native invocation UUID, returns the same
+receipt for identical retained data and conflicts on changed data. It grants no
+availability, review, job completion or activation status. Native store transport
+does not fetch, hash responses or choose workflow steps. Reusable Skill/export/
+ToolSkill usages and separate canonical Recipes parse typed command data and call
+this primitive once; construction is not bootstrap qualification. The factory
+wires the backend, but no new eligible Skill/catalogue route is seeded or activated.
+Real PostgreSQL immutability, duplicate/conflict, malformed input and inert claimed-
+success tests, plus retained graph/preload tests, pass in the same u4w40vr0 receipt.
+These do not approve or activate a source-check Recipe or make observations
+authoritative availability facts.
+This prerequisite covers registered sources only. Generation-original observations
+must use their exact existing generation/artifact owner; do not force logical paths
+into the registration foreign key or repeatedly read a full package once per row.
+
+#### Native Sempai target measurement (native caller validation passed)
+
+Extend the existing durable measurement/API acceptance helper across both base and
+Sempai profiles. Carry the exact completed source-job IDs through the test, retain
+both resulting packages without overwriting prior artifacts, and inspect the actual
+recorded encoding arguments/answer. For Sempai, independently render/tokenize those
+same full-reference requests with the retained Hugging Face artifacts. Verify exact
+report/receipt identity, context/output/additional-input arithmetic, no truncation,
+two dispatches, reconnect without replay and no design acceptance/activation.
+This closes the current Sempai measurement-caller gap; it adds no new compiler,
+model worker, provider request or parallel measurement service. Do not replace real
+source generations with a small fixture or freeze expected content hashes/counts
+inside the compiler. Geometry and model quality remain separate gates.
+
+`target/validation/prefix-registry-artifacts-m5jf5tis/accepted.json` (frozen
+`prefix-registry-source-owlrbe32`) passes that complete native source-profile scope.
+The runner verified the entire identical source inventory, toolchain, lint evidence,
+worker/test binary hashes and runtime oracle mirror before reusing the binaries
+from `w_ij7pyl`; `build-reuse.json` retains the exact producer link. It then executed
+the real PostgreSQL/global admission/API/encoding checks and ordinary matched/
+No-Match single-root regression. This was executable evidence reuse, not a claimed
+new compilation or a substitute result.
+
+Both declared-release jobs retain 319 sources and complete with five native calls,
+reconnect without replay and no activation. Base measurement observes a largest
+effective probe of 141,978 tokens; the complete v5 Sempai generation observes
+345,129. Each durable measurement performs two actual native operations and matches
+independent Hugging Face rendering/tokenization of its actual dispatched arguments.
+The full packages are exported create-only in that receipt directory. The original
+tokenizer overlength/model-class warnings are preserved. These are observations
+for this exact source/model-artifact selection, not compiler constants or claims
+about current model weights, inference quality, GPU cache reuse or restored state.
+The complete Sempai reference exceeds both the explicit 131,072 serving capacity
+assumption and the retained config's 262,144 position limit before output reserve.
+Do not truncate or activate it: a reviewed model-specific teaching/source design
+and renewed measurement/quality qualification remain prerequisites.
+
+#### Read-only runtime discovery — 2026-10-21
+
+The documented model endpoint currently advertises Ornith with `max_model_len`
+131,072 and `/version` reports vLLM 0.31.0. Filtered read-only process arguments
+show FP8 KV dtype, prefix/chunked prefill, 8,192 batched tokens, one sequence and
+`--no-disable-hybrid-kv-cache-manager`; LMCache arguments include chunk size 1,056,
+`--separate-object-groups` and reap timeout zero. `/server_info?config_format=json`
+returns 404, so no structured effective-cache configuration was obtained.
+The filtered observation is retained at `target/validation/prefix-runtime-observation-iktd1hcc/observation.json`.
+No deployment files or service/container/environment configuration were changed;
+the inspection script was streamed, not installed, and no inference request was made. These are reported limits and arguments, not actual
+weight/serving identity, cache layout, transfer correctness or performance evidence.
+The complete 334,756-token offline Sempai reference therefore exceeds the currently
+advertised request capacity. Imported model-config observations must remain
+separate; these development observations are not silently written into a model
+specification, accepted design or reusable source package.
+
+#### Retained model-configuration inspector (native API validation passed)
+
+The existing artifact-detail owner now projects bounded declared configuration
+fields by JSON pointer, with exact model/artifact/config identities. Its existing
+GET API carries the additive observation; Model Designs exposes an explicit
+read-only inspection action. No new provider registry, model call, workflow Tool,
+source store or acceptance writer is introduced. Missing/null are distinct.
+Per-layer, position and weight-quantization declarations stay separate from null
+actual-weight, deployed-context, attention-KV and recurrent-state observations.
+Malformed/ambiguous/oversized configurations remain retained and visibly
+uninterpreted. Keep this data-only observation separate from accepted model-design
+and effective-runtime/cache qualification. The same `q9l8y7jj` receipt passes
+original file identity, unknown runtime facts, invalid/duplicate/oversized inputs
+and authenticated real-artifact API reads. Six actual frontend-source state tests
+plus syntax checks pass in `target/validation/prefix-model-config-ui-kk0ebg8y/accepted.json`. They cover explicit identity-bound reads,
+stale/unmounted response isolation, duplicate clicks and literal declaration display.
+The final UI preserves the server's observation JSON without browser numeric
+reserialization and uses a generic invalid-observation error. These final UI-only
+corrections are newer than the native receipt's embedded frontend and have separate
+source hashes in the UI receipt. Browser/product deployment acceptance remains
+open; no model/design/cache acceptance follows.
+
 ### Phase C1 — Sempai reference, review packet and component proposals
 
-Register/seed the Sempai profile and immutable compiler/source/procedure artifacts.
+Current status: profile/source seed and v5 source-only jobs/measurements are
+implemented; a fitted accepted reviewer composite and production knowledge/contract
+uptake remain open. Follow remaining steps 5–9/13/16/18 and the shared v3.5 owners.
+
+Complete Sempai compiler/source/procedure qualification from the existing seeds.
 Extend the shared compiler adapters and Recipe jobs to generate it and the
 base-plus-Sempai composite. Wire the typed review packet and actual reviewer persona/
 response schema through the existing interceptor ports, forensic storage, gateway
@@ -3225,6 +4031,13 @@ source resolution, quotation fidelity and semantic support remain separate gates
 
 ### Phase C2 — Minimum provider resolver before activation
 
+Current status: provider/specification/settings/measurement foundations exist,
+including the one mutable hard-limit owner. Named/composite consumer resolution,
+activation and unconditional runtime guards are not accepted. Remaining steps
+5–6/10–12/19–20 own this cutover. Both prefix and non-prefix limits persist and
+apply with budgeting off; Kohai checks both Sempai and final answer envelopes as
+specified in §5.3, with zero provider calls on a pre-dispatch size violation.
+
 Wire immutable selections into Kohai and Sempai independently. Implement task and
 continuation pinning, atomic freshness admission, explicit injection mode,
 duplicate-prefix prevention and base-plus-domain composite selection/capacity checks.
@@ -3263,10 +4076,15 @@ receipts. No service/package/deployment mutation occurs from a WebUI build/warm 
 
 ### Phase C3 — Prefix-Maker, Redesign and custom profile creation
 
-Seed the reviewed Prefix-Maker package/design and register its model-free compiler.
-Implement section 5.3's DB model specifications/runtime identities, reusable model
-designs, profile/consumer bindings, immutable proposal storage and migration/retention
-contracts. Implement compatible shared-engine options and exact acceptance contracts.
+Current status: offline Prefix-Maker/compiler metadata, model specifications, local
+artifact import/inspection and unaccepted declarative proposal storage exist.
+Remaining steps 7/14–15 qualify runtime Prefix-Maker and implement accepted designs,
+profile/consumer bindings and assisted design/custom creation.
+
+Build on those existing package/model/proposal owners. Complete reviewed bootstrap
+designs, runtime identities/evidence, acceptance/bindings and retention contracts;
+add missing forward schema only where needed. Implement compatible shared-engine
+options and exact acceptance contracts.
 Author the Tier-1 Redesign/Create/Generate model design Recipes,
 reusing existing provider, export, validation and proposal primitives. Production
 calls require Gate A1, Phase C/C2, usable Prefix-Maker and the lossless proposal path;
@@ -3300,7 +4118,13 @@ identical reference content needlessly. Seeded/custom model designs survive upgr
 
 ### Phase D — WebUI vertical
 
-Wire facade/HTTP/descriptor/runtime/frontend changes together. Show seeded and registered custom profiles,
+Current status: six rows, generation history/import/details, Sources inventory/
+registration, model/artifact/config inspection, measurement status and shared hard-
+limit editor exist. Check Sources/model-design generation remain unavailable;
+ordinary Generate is still legacy base-only. Remaining steps 3/5/8–17 complete
+enabled actions and real browser/product acceptance without recreating this UI.
+
+Extend the existing facade/HTTP/descriptor/runtime/frontend wiring together. Show seeded and registered custom profiles,
 durable progress, generation details and independent Activate/Warm states. Update
 translations and keyboard/accessibility behavior. No browser-triggered arbitrary
 script, source path or environment execution.
@@ -3355,6 +4179,11 @@ Generate without changing a running build. Test Needs redesign, capacity/exclusi
 reasons and no hidden LLM/source execution or automatic active-generation replacement.
 
 ### Phase E — Extended cache and answer quality
+
+Current status: standalone validators/benchmarks and historical cache experiments
+exist; production citation/configuration integration and current held-out quality/
+cache claims remain unaccepted. Remaining steps 12–13/16/18/21 close the applicable
+gates. Minimum actual injection/cache correctness remains a C2 activation gate.
 
 Build on the accepted Phase C2 resolver. Add richer cache observations and optional
 external persistence adapters. Integrate citation validation in actual answer
@@ -3459,12 +4288,16 @@ or report their explicit readiness prerequisite rather than serving mismatched c
 | --- | --- |
 | Generate a profile for a registered consumer/target | One durable operation builds/reuses eligible parents and validates the complete composite; exact source/target references and downloadable receipts are visible. |
 | Generate without a provider | A valid source artifact or explicit missing-local-artifact prerequisite; model quality/cache readiness remain Unmeasured/Unverified. |
+| Edit model limits from Inference, Prefix settings or CLI | One provider/model record and revisioned endpoint; all surfaces converge on readback, stale writes conflict, unrelated values survive, and budgeting off/restart does not remove the hard limits. |
+| Review then send an answer with budgeting off | Kohai resolves both targets; oversized complete Sempai input makes zero review calls, and an edited prompt that overflows only after history/tools/prefix assembly makes zero final calls. Exact transformed partition/context/output checks remain unconditional. |
+| Regenerate after changing a model's size limits | Accepted deterministic budget rules select a valid supported view with full provenance; unsupported bands require Redesign and mandatory overflow blocks. No implicit model call, silent source loss or metadata churn inside the stable prefix. |
 | Repeat or reconnect during Generate | Durable deduplication, progress and retained child references; no repeated confirmed publication or automatic activation. |
 | Change sources/target, cancel, or exceed context | Classified stale/blocked/cancelled outcome, preserved originals and last-good selection; no silent partial knowledge or unreviewed replacements. |
 | Rebuild on another supported worker/path | Identical canonical content, evidence IDs, rendered text and leading tokens from identical pinned inputs. |
 | Validate knowledge and teaching | Required coverage, complete evidence units, independently specified behavior checks and transitive validator receipts; first-pass/repair/transfer results remain separate. |
 | Activate with enabled external caching | Accepted exact injection plus qualified real restore correctness; known-corrupt or incompatible paths block activation without changing the deployment. |
 | Inspect an active generation | Desired/effective selection, freshness, capacity, model quality and cache observations are distinct and traceable; retained tasks keep their pinned revisions. |
+| Warm a selected target | One retained correlated provider operation with cancellation/accounting, exact generation/target identity and an honest reuse observation; no activation, deployment change or replay of a confirmed warm request. Unsupported telemetry remains Unverified. |
 | Cancel or confirm Redesign | Cancel makes no job/provider call; confirmation admits one pinned Tier-1 task, refreshes current approved content/architecture and returns a model-specific proposal plus complete updated candidate, without replacing the existing design or active prefix. |
 | Accept a redesign | Exact reviewed model-specific design and its validated updated generation are recorded/published without another Generate click; later Generate reuses the accepted design and production activation remains separate. |
 | Create a new prefix | Same-section Create Prefix tab yields a validated draft and human-accepted registered custom profile; it appears with Generate/Redesign and survives reseeding. |

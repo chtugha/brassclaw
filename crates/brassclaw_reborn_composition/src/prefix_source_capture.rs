@@ -33,9 +33,14 @@ impl InstalledMontyCatalogue {
         profile: &str,
         release_documents: bool,
     ) -> Result<String, RecipeStoreError> {
-        if !matches!(profile, "base-prompt" | "prefix-maker") {
+        if !matches!(profile, "base-prompt" | "prefix-maker" | "sempai") {
             return Err(RecipeStoreError::Invalid(
                 "unsupported core source profile".into(),
+            ));
+        }
+        if profile == "sempai" && !release_documents {
+            return Err(RecipeStoreError::Invalid(
+                "Sempai requires the declared release source inventory".into(),
             ));
         }
         self.reference_sources.verify().map_err(|_| invalid())?;

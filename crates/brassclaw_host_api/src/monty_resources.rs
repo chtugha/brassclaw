@@ -62,6 +62,48 @@ pub struct MontyExecutionLimits {
     pub default_memory_tree_depth: u32,
     #[serde(default = "default_memory_tree_max_depth")]
     pub max_memory_tree_depth: u32,
+    /// Maximum encoded file bytes read by coding read and search operations.
+    #[serde(default = "default_max_coding_read_bytes")]
+    pub max_coding_read_bytes: u64,
+    /// Maximum UTF-8 bytes written by coding write_file.
+    #[serde(default = "default_max_coding_write_bytes")]
+    pub max_coding_write_bytes: u64,
+    /// Maximum encoded input and resulting file bytes for apply_patch, including BOM and line endings.
+    #[serde(default = "default_max_coding_patch_bytes")]
+    pub max_coding_patch_bytes: u64,
+    /// Default read window when no explicit range is supplied; zero returns all eligible lines.
+    #[serde(default = "default_coding_read_lines")]
+    pub default_coding_read_lines: u64,
+    /// Maximum displayed list_dir entries; omitted entries are reported as truncated.
+    #[serde(default = "default_max_coding_directory_entries")]
+    pub max_coding_directory_entries: u64,
+    /// Default recursive list_dir depth when the caller omits max_depth.
+    #[serde(default = "default_coding_directory_depth")]
+    pub default_coding_directory_depth: u64,
+    /// Default glob result count when the caller omits max_results.
+    #[serde(default = "default_coding_max_results")]
+    pub default_coding_max_results: u64,
+    /// Maximum formatted grep content bytes; overflow is marked as truncated.
+    #[serde(default = "default_max_coding_output_bytes")]
+    pub max_coding_output_bytes: u64,
+    /// Default grep page size; zero removes this default page limit.
+    #[serde(default = "default_coding_head_lines")]
+    pub default_coding_head_lines: u64,
+    /// Maximum encoded bytes examined by one grep operation.
+    #[serde(default = "default_max_coding_scan_bytes")]
+    pub max_coding_scan_bytes: u64,
+    /// Maximum filesystem entries visited by one directory walk.
+    #[serde(default = "default_max_coding_visited_entries")]
+    pub max_coding_visited_entries: u64,
+    /// Maximum combined normalized UTF-8 input for a detailed edit preview; larger edits retain a summary.
+    #[serde(default = "default_max_coding_diff_input_bytes")]
+    pub max_coding_diff_input_bytes: u64,
+    /// Maximum displayed diff bytes, with explicit preview truncation.
+    #[serde(default = "default_max_coding_diff_preview_bytes")]
+    pub max_coding_diff_preview_bytes: u64,
+    /// Unchanged lines around each edit in a detailed diff preview.
+    #[serde(default = "default_coding_diff_context_lines")]
+    pub coding_diff_context_lines: u64,
     /// Bound for newly accepted exchanges; older credits retain their bounds.
     #[serde(default = "default_ipc_frame")]
     pub max_ipc_frame_bytes: u64,
@@ -157,6 +199,20 @@ impl Default for MontyExecutionLimits {
             default_http_response_body_bytes: default_http_response_body_bytes(),
             default_memory_tree_depth: default_memory_tree_depth(),
             max_memory_tree_depth: default_memory_tree_max_depth(),
+            max_coding_read_bytes: default_max_coding_read_bytes(),
+            max_coding_write_bytes: default_max_coding_write_bytes(),
+            max_coding_patch_bytes: default_max_coding_patch_bytes(),
+            default_coding_read_lines: default_coding_read_lines(),
+            max_coding_directory_entries: default_max_coding_directory_entries(),
+            default_coding_directory_depth: default_coding_directory_depth(),
+            default_coding_max_results: default_coding_max_results(),
+            max_coding_output_bytes: default_max_coding_output_bytes(),
+            default_coding_head_lines: default_coding_head_lines(),
+            max_coding_scan_bytes: default_max_coding_scan_bytes(),
+            max_coding_visited_entries: default_max_coding_visited_entries(),
+            max_coding_diff_input_bytes: default_max_coding_diff_input_bytes(),
+            max_coding_diff_preview_bytes: default_max_coding_diff_preview_bytes(),
+            coding_diff_context_lines: default_coding_diff_context_lines(),
             max_ipc_frame_bytes: default_ipc_frame(),
             worker_adapter_reserve_bytes: default_adapter_reserve(),
             max_workers: default_workers(),
@@ -196,6 +252,42 @@ impl MontyExecutionLimits {
     /// Representation-independent validation. Each host also checks its native
     /// integer, transport and control-response constraints before publication.
     pub fn validate(self) -> Result<(), &'static str> {
+        // A captured primitive profile must fit native indexing/allocation on
+        // this host. This is a representation boundary, not a fixed quota.
+        if [
+            self.max_coding_read_bytes,
+            self.max_coding_write_bytes,
+            self.max_coding_patch_bytes,
+            self.default_coding_read_lines,
+            self.max_coding_directory_entries,
+            self.default_coding_directory_depth,
+            self.default_coding_max_results,
+            self.max_coding_output_bytes,
+            self.default_coding_head_lines,
+            self.max_coding_scan_bytes,
+            self.max_coding_visited_entries,
+            self.max_coding_diff_input_bytes,
+            self.max_coding_diff_preview_bytes,
+            self.coding_diff_context_lines,
+        ]
+        .into_iter()
+        .any(|value| value > isize::MAX as u64)
+            || [
+                self.max_coding_read_bytes,
+                self.max_coding_write_bytes,
+                self.max_coding_patch_bytes,
+                self.max_coding_directory_entries,
+                self.default_coding_max_results,
+                self.max_coding_output_bytes,
+                self.max_coding_scan_bytes,
+                self.max_coding_visited_entries,
+                self.max_coding_diff_input_bytes,
+                self.max_coding_diff_preview_bytes,
+            ]
+            .contains(&0)
+        {
+            return Err("invalid coding execution limits");
+        }
         if self.utility_worker_memory_bytes <= self.max_ipc_frame_bytes
             || self.utility_worker_memory_bytes == u64::MAX
             || self.max_native_artifact_bytes == 0
@@ -381,4 +473,47 @@ fn default_settings_reconcile_interval() -> u64 {
 
 fn default_status_poll_interval() -> u32 {
     3_000
+}
+
+const fn default_max_coding_read_bytes() -> u64 {
+    10485760
+}
+const fn default_max_coding_write_bytes() -> u64 {
+    5242880
+}
+const fn default_max_coding_patch_bytes() -> u64 {
+    10485760
+}
+const fn default_coding_read_lines() -> u64 {
+    2000
+}
+const fn default_max_coding_directory_entries() -> u64 {
+    500
+}
+const fn default_coding_directory_depth() -> u64 {
+    3
+}
+const fn default_coding_max_results() -> u64 {
+    200
+}
+const fn default_max_coding_output_bytes() -> u64 {
+    65536
+}
+const fn default_coding_head_lines() -> u64 {
+    250
+}
+const fn default_max_coding_scan_bytes() -> u64 {
+    67108864
+}
+const fn default_max_coding_visited_entries() -> u64 {
+    50000
+}
+const fn default_max_coding_diff_input_bytes() -> u64 {
+    262144
+}
+const fn default_max_coding_diff_preview_bytes() -> u64 {
+    16384
+}
+const fn default_coding_diff_context_lines() -> u64 {
+    3
 }

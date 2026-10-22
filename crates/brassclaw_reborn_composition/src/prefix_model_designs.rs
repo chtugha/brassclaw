@@ -104,6 +104,8 @@ impl PgPrefixModelDesigns {
         };
         let bytes=json!({"format":"brassclaw-prefix-model-specification/1","provider_namespace":self.namespace,"provider_id":request.provider_id,"provider_revision":revision,"model":request.model,"protocol":retained.definition.protocol,
             "configured_context_window":context,"context_evidence":"provider-configuration-only",
+            "model_token_limits":retained.definition.model_token_limits.0.get(&request.model),
+            "model_token_limits_owner":"provider-definition-revision",
             "weights_identity":null,"config_identity":null,"tokenizer_identity":null,"template_identity":null,
             "architecture":null,"attention_recurrent_state":null,"runtime_cache":null,
             "qualification":"configured-model-contract-only"}).to_string();
@@ -140,7 +142,8 @@ impl PgPrefixModelDesigns {
         profile: &str,
         request: RetainPrefixDesignProposalRequest,
     ) -> Result<PrefixDesignProposal, Error> {
-        validate_proposal(profile, &request.specification, &request.proposal_bytes)?;
+        let value = validate_proposal(profile, &request.specification, &request.proposal_bytes)?;
+        validate_current_compiler_options(profile, &value)?;
         let id = sha(request.proposal_bytes.as_bytes());
         let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
         if client.query_opt("SELECT specification_id FROM reborn_prefix_model_specifications WHERE specification_id=$1 AND provider_namespace=$2",&[&request.specification,&self.namespace]).await.map_err(|_|Error::Unavailable)?.is_none(){return Err(bad());}
@@ -199,6 +202,7 @@ fn validate_proposal(profile: &str, specification: &str, bytes: &str) -> Result<
                     | "literal-reference/v2-deduplicated"
                     | "literal-reference/v3-trailing-inventory"
                     | "literal-reference/v4-stable-sharing"
+                    | "literal-reference/v5-contextual-sharing"
             )
         )
         || value["design"]["source_selection"] != "complete-mandatory"
@@ -209,6 +213,16 @@ fn validate_proposal(profile: &str, specification: &str, bytes: &str) -> Result<
         return Err(bad());
     }
     Ok(value)
+}
+// Current producer support is checked on new writes, separately from immutable
+// proposal parsing. Older unaccepted proposals remain readable as history.
+fn validate_current_compiler_options(profile: &str, value: &Value) -> Result<(), Error> {
+    if profile == "sempai"
+        && value["design"]["evidence_view"] != "literal-reference/v5-contextual-sharing"
+    {
+        return Err(bad());
+    }
+    Ok(())
 }
 fn specification(row: &tokio_postgres::Row) -> Result<PrefixModelSpecification, Error> {
     let bytes: String = row.get(4);
@@ -249,4 +263,39 @@ fn proposal(row: &tokio_postgres::Row) -> Result<PrefixDesignProposal, Error> {
         proposal_bytes: bytes,
         qualification: "unaccepted-proposal".into(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sempai_proposals_require_the_supported_contextual_layout() {
+        let specification = "a".repeat(64);
+        for view in [
+            "literal-reference/v1",
+            "literal-reference/v2-deduplicated",
+            "literal-reference/v3-trailing-inventory",
+            "literal-reference/v4-stable-sharing",
+            "literal-reference/v5-contextual-sharing",
+        ] {
+            for profile in ["base-prompt", "prefix-maker", "sempai"] {
+                let bytes =
+                    json!({"format":"brassclaw-prefix-design-proposal/1", "profile":profile,
+                    "specification":specification,
+                    "design":{"adapter":"ornith-qwen-system/1", "evidence_view":view,
+                        "source_selection":"complete-mandatory", "reserve_tokens":8192},
+                    "rationale":"Unaccepted offline diagnostic"})
+                    .to_string();
+                // Historical proposals must stay readable even when a current
+                // producer no longer supports their options.
+                let value = validate_proposal(profile, &specification, &bytes).unwrap();
+                assert_eq!(
+                    validate_current_compiler_options(profile, &value).is_ok(),
+                    profile != "sempai" || view == "literal-reference/v5-contextual-sharing",
+                    "{profile}/{view}"
+                );
+            }
+        }
+    }
 }

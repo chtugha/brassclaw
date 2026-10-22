@@ -64,3 +64,30 @@ The default outer ingress ceiling is 64 MiB, matching this declared import route
 Chat, attachment and ordinary settings routes retain their smaller descriptor
 limits. An explicit operator-configured smaller outer ceiling still applies and
 can reject a large artifact import; it is never silently raised by this API.
+
+
+## Retained configuration inspection
+
+The existing exact-artifact GET response additionally contains
+`configuration_observation`: a JSON observation tied to specification, artifact-set
+and original `config.json` SHA-256. The WebUI's **Inspect retained model
+configuration** action reads this response on demand. Ordinary catalogue lists do
+not fetch tokenizers/configuration bodies. No model/provider request, additional
+source store, acceptance or settings change is introduced.
+
+`brassclaw-prefix-model-config-observation/1` projects declared top-level and
+`text_config` model/layer/position/dtype fields and selected weight-quantization
+fields by JSON pointer. Missing values stay absent; explicit null stays null.
+No model-name inference, default layer pattern, derived context capacity or cache
+layout is supplied. The full original remains unchanged. `weights_identity`,
+`serving_context_limit`, `runtime_cache`, `attention_kv_cache` and `recurrent_state`
+remain null: imported declarations do not identify a deployed server or weights.
+This projection does not replace the immutable configuration-only model contract.
+
+Inspection has its own finite 1 MiB / 16,384-node / depth-32 metadata contract.
+Oversized or unsupported/invalid JSON is reported visibly without rejecting or
+clipping the retained original. Ambiguous duplicate-key JSON is not interpreted.
+Borrowed package strings avoid copying tokenizer contents to inspect a small
+configuration. UI identity checks reject a response for another model/artifact;
+late responses and unmounted views cannot replace the current observation.
+The view displays quoted JSON text and never executes imported fields.

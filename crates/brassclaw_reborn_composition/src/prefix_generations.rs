@@ -20,6 +20,33 @@ fn bad() -> Error {
         reason: "invalid or incomplete prefix generation package".into(),
     }
 }
+fn valid_source_context(value: &Value) -> bool {
+    matches!(
+        value.as_str(),
+        Some(
+            "binding-guide"
+                | "component-definition"
+                | "upstream-api"
+                | "upstream-reference"
+                | "brassclaw-authoring"
+                | "teaching-fixture"
+                | "catalogue-metadata"
+                | "implementation-observation"
+                | "reference"
+        )
+    )
+}
+fn valid_design_format(design: &Value) -> bool {
+    if design["evidence_view"] == "literal-reference/v5-contextual-sharing" {
+        design["format"] == "brassclaw-prefix-compiler-design/2"
+            && design.as_object().is_some_and(|value| value.len() == 7)
+            && design["source_contexts"]
+                .as_object()
+                .is_some_and(|value| value.values().all(valid_source_context))
+    } else {
+        design["format"] == "brassclaw-prefix-compiler-design/1"
+    }
+}
 fn sha(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
@@ -133,7 +160,7 @@ fn validate_archived_source_input(
         return Err(bad());
     }
     let design = read("profile_design.json")?;
-    if design["format"] != "brassclaw-prefix-compiler-design/1"
+    if !valid_design_format(&design)
         || design["profile"] != profile
         || text(&design["header"])?.trim().is_empty()
         || design["source_selection"] != "complete-mandatory"
@@ -144,6 +171,7 @@ fn validate_archived_source_input(
                     | "literal-reference/v2-deduplicated"
                     | "literal-reference/v3-trailing-inventory"
                     | "literal-reference/v4-stable-sharing"
+                    | "literal-reference/v5-contextual-sharing"
             )
         )
     {
@@ -223,7 +251,7 @@ pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> 
     if object.len() != 3
         || package["format"] != "brassclaw-prefix-generation-package/1"
         || package["profile"] != profile
-        || !matches!(profile, "base-prompt" | "prefix-maker")
+        || !matches!(profile, "base-prompt" | "prefix-maker" | "sempai")
     {
         return Err(bad());
     }
@@ -472,7 +500,7 @@ pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> 
         }
         hash(&manifest["compiler"]["profile_adapter_sha256"])?;
         let design = read("profile_design.json")?;
-        if design["format"] != "brassclaw-prefix-compiler-design/1"
+        if !valid_design_format(&design)
             || design["profile"] != profile
             || !matches!(
                 design["evidence_view"].as_str(),
@@ -481,6 +509,7 @@ pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> 
                         | "literal-reference/v2-deduplicated"
                         | "literal-reference/v3-trailing-inventory"
                         | "literal-reference/v4-stable-sharing"
+                        | "literal-reference/v5-contextual-sharing"
                 )
             )
             || design["source_selection"] != "complete-mandatory"
@@ -512,6 +541,45 @@ pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> 
                         | "simplified_v3.md"
                         | "scripts/prefix/prefix-maker-reference.md"
                 )
+            })
+        {
+            return Err(bad());
+        }
+    }
+    if profile == "sempai" {
+        let design = read("profile_design.json")?;
+        let required = [
+            "skills.md",
+            "recipe.md",
+            "tools.md",
+            "toolskills.md",
+            "CLAUDE.md",
+            "AGENTS.md",
+            "simplified_v3.md",
+            "scripts/prefix/sempai-authoring-reference.md",
+            "scripts/prefix/sempai-monty-compatibility.md",
+        ];
+        let coverage = design["required_sources"].as_array().ok_or_else(bad)?;
+        let names = coverage
+            .iter()
+            .map(text)
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        if manifest["compiler"]["format"] != "brassclaw-monty-prefix-compiler/1"
+            || !valid_design_format(&design)
+            || design["format"] != "brassclaw-prefix-compiler-design/2"
+            || design["profile"] != profile
+            || design["evidence_view"] != "literal-reference/v5-contextual-sharing"
+            || design["source_selection"] != "complete-mandatory"
+            || text(&design["header"])?.trim().is_empty()
+            || coverage.len() != required.len()
+            || names != required.into_iter().collect()
+            || names.iter().any(|name| {
+                !included.contains_key(*name)
+                    || sources["sources"].as_array().is_none_or(|rows| {
+                        rows.iter()
+                            .find(|row| row["path"] == *name)
+                            .is_none_or(|row| row["kind"] != "document")
+                    })
             })
         {
             return Err(bad());
@@ -584,7 +652,7 @@ pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> 
     }
     if files.contains_key("render_map.json") {
         let design = read("profile_design.json")?;
-        if design["format"] != "brassclaw-prefix-compiler-design/1"
+        if !valid_design_format(&design)
             || design["profile"] != profile
             || !matches!(
                 design["evidence_view"].as_str(),
@@ -592,6 +660,7 @@ pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> 
                     "literal-reference/v2-deduplicated"
                         | "literal-reference/v3-trailing-inventory"
                         | "literal-reference/v4-stable-sharing"
+                        | "literal-reference/v5-contextual-sharing"
                 )
             )
             || design["source_selection"] != "complete-mandatory"
@@ -599,11 +668,39 @@ pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> 
             return Err(bad());
         }
         hash(&manifest["compiler"]["renderer_sha256"])?;
-        let units: Vec<_> = mapped_units
-            .into_iter()
-            .map(|(id, origins)| json!({"unit_id":id,"canonical":origins[0],"origins":origins}))
-            .collect();
-        let expected = json!({"format":"brassclaw-prefix-render-map/1","sources":mapped_sources,"units":units});
+        let contextual = design["evidence_view"] == "literal-reference/v5-contextual-sharing";
+        let units: Vec<_> = if contextual {
+            // Context assignments are reviewed producer metadata, not inferred
+            // here from prose/path semantics. Verify exact coverage/origins only.
+            let contexts = design["source_contexts"].as_object().ok_or_else(bad)?;
+            if contexts.len() != included.len()
+                || contexts
+                    .keys()
+                    .any(|name| !included.contains_key(name.as_str()))
+            {
+                return Err(bad());
+            }
+            let mut scoped = std::collections::BTreeMap::<(String, String), Vec<Value>>::new();
+            for source in &mut mapped_sources {
+                let name = text(&source["source"])?.to_owned();
+                let scope = text(contexts.get(&name).ok_or_else(bad)?)?.to_owned();
+                source
+                    .as_object_mut()
+                    .ok_or_else(bad)?
+                    .insert("context".into(), json!(scope));
+                for part in source["parts"].as_array().ok_or_else(bad)? {
+                    scoped.entry((scope.clone(), text(&part["unit_id"])?.to_owned())).or_default()
+                        .push(json!({"source":name.as_str(),"line_start":part["line_start"],"line_end":part["line_end"]}));
+                }
+            }
+            scoped.into_iter().map(|((scope, id), origins)| json!({"context":scope,"unit_id":id,"canonical":origins[0],"origins":origins})).collect()
+        } else {
+            mapped_units
+                .into_iter()
+                .map(|(id, origins)| json!({"unit_id":id,"canonical":origins[0],"origins":origins}))
+                .collect()
+        };
+        let expected = json!({"format":if contextual {"brassclaw-prefix-render-map/2"} else {"brassclaw-prefix-render-map/1"},"sources":mapped_sources,"units":units});
         if read("render_map.json")? != expected {
             return Err(bad());
         }
@@ -614,6 +711,7 @@ pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> 
                 "literal-reference/v2-deduplicated"
                     | "literal-reference/v3-trailing-inventory"
                     | "literal-reference/v4-stable-sharing"
+                    | "literal-reference/v5-contextual-sharing"
             )
         )
     {

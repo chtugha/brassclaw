@@ -100,6 +100,87 @@ what this plan corrects.
   and explicit technical transport/resource limits; reject whole oversized data
   rather than silently truncating evidence or proposals.
 
+### Per-target token limits and size-dependent review knowledge
+
+These two input ceilings are always-on hard limits. Persist and enforce them
+even when `token_budgets_enabled = false`; no optional budget branch may clear,
+ignore or replace them. Kohai's selected workflow needs both the active answer
+target's and Sempai target's host-resolved ceilings/geometry, not just its own.
+The trusted Sempai review envelope carries the original target limits explicitly.
+Step 6 must check the complete Sempai request before review, then reassemble and
+check the final active-provider request after any Sempai edit, including actual
+history/tools/framing and prefix exactly once. Shared transport repeats the
+technical check on the actual transformed envelope immediately before dispatch,
+independently of budgeting, review mode, retries and tool continuations. Post-turn
+review has the same Sempai-target guard. Keep evidence/repair policy in Recipes.
+
+Do not push a full Kohai request into Sempai's dynamic-input allowance merely
+because both models have a large prefix cache. Its original prefix/history can
+overflow Sempai's separate prompt cap. Only a qualified nonduplicating view or
+multi-stage inspection may reduce transmitted evidence; preserve originals and
+coverage, and never imply a reference was inspected. Otherwise block visibly.
+Add Steps 10–12 acceptance with budgeting off, persisted settings after restart,
+different target caps, zero calls for oversized review input, and zero final calls
+when Sempai's edit fits alone but the complete assembled request exceeds a cap.
+Current settings/planner support is not evidence this runtime guard is wired.
+
+Concrete request-contract audit: `post_turn_request.py::prepare_post_turn_request`
+currently accepts the exact `completed-turn-review-claim/1` keys and emits prefix,
+instructions and bundle messages without either target's explicit input ceilings.
+Its `selection_bytes` alone does not establish those facts. Step 6 must define,
+qualify and retain a successor typed claim/request contract with host-resolved
+original-target and review-target references, limits and exact envelope/measurement
+evidence. Update producer, parser, instructions and transport checks together;
+keep old journal/task readers compatible and do not inject extra keys into the
+strict v1 claim or infer limits from model output. The pre-call interceptor needs
+the same shared primitive/contract, not a second Sempai-specific sizing policy.
+
+Resolve mutable input ceilings through the existing provider service:
+`ProviderDefinition.model_token_limits[model]` in
+`brassclaw_llm_providers.definition`, using the same revisioned
+GET/POST `/api/webchat/v2/llm/providers` as Inference/Prefix settings. No Sempai
+configuration copy, new limits table or alternate writer. Pin the resolved policy
+revision in admitted work and immutable prefix evidence. This implementation
+exists in source; installation/final-request enforcement remain acceptance gates.
+
+For current Ornith the requested policy is 100,000 prefix and 14,688 remaining
+prompt tokens. The 262,144 config position limit and observed 131,072 deployed
+context are distinct technical facts. Neither is an operator prefix allowance.
+Treat output, template/tool/history overhead and optional disabled token budgets
+separately. Use the prefix plan's [budget-aware design contract](prefix_v3_upgrade.md#budget-aware-design-and-generation-contract-2026-10-22),
+not a second Sempai sizing algorithm.
+
+The review's Sempai target and the original Kohai target can differ. Capture both
+identities and limits: Sempai fits its own base-plus-Sempai knowledge and evidence
+request; proposed Kohai prompt improvements respect the original target's policy.
+Prefix-Maker uses its own design-provider envelope while designing for that target.
+Never assume a policy or tokenizer transfers because a model display name matches.
+
+Extend Steps 1–3 with this owner/pin map; Step 5 composes complete correlated
+evidence independently of how much fits a model request; Step 6 uses reusable pure
+budget planning, accepted whole-unit selection and exact render/partition checking.
+When full evidence does not fit, only a reviewed multi-stage inspection Recipe may
+partition it, retaining coverage, omitted/pending ranges and exact references.
+Otherwise return Capacity blocked. Never hide incomplete evidence behind a summary
+or allow fewer tokens to weaken proposal/validation requirements. Do not truncate
+original conversations, Tool outcomes, unresolved effects or binding contracts.
+
+The Sempai prefix design needs accepted size-dependent selection/presentation rules:
+mandatory authoring/validation knowledge first, complete examples and dependencies,
+then optional units in deterministic priority order, all with provenance/citations.
+Regenerate applies existing accepted rules at the newly pinned budget; unsupported
+budgets require explicit Redesign. No hidden provider rewrite on Generate. Complete
+originals remain immutable even if only an approved view enters the model context.
+
+Steps 10–12 must demonstrate smaller/larger supported budgets with held-out prompt
+repair and component-authoring cases, aggregate base-plus-Sempai fit, real dynamic
+history/tool framing, exact-limit and one-token-over cases, missing policy,
+mandatory-content overflow, provider/model switch, concurrent policy edits and
+retained old reviews. Test both prefix and non-prefix prompt ceilings plus deployed
+context/output. Shared-prefix/LCP measurements alone do not locate the semantic
+partition or prove quality. Current measurement-v1 arithmetic is diagnostic only;
+its historical receipts must remain readable without being upgraded to compliance.
+
 ## 4. Target shared component library
 
 These are **logical responsibilities**, not existing callable names, UUIDs,

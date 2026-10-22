@@ -1,3 +1,5 @@
+import { PrefixModelConfiguration } from "./prefix-model-configuration.js";
+import { ModelTokenLimits } from "./model-token-limits.js";
 import { React, html } from "../../../lib/html.js";
 import { Button } from "../../../design-system/button.js";
 import { fetchPrefixModelDesigns, capturePrefixModel, retainPrefixModelArtifacts } from "../lib/settings-api.js";
@@ -17,9 +19,16 @@ export function PrefixModelDesigns({ t }) {
     try { const result = await fetchPrefixModelDesigns(); if (mounted.current) { setCatalogue(result); setError(null); } }
     catch (err) { if (mounted.current) setError(err.message || String(err)); }
   }
-  React.useEffect(() => { mounted.current = true; reload(); return () => { mounted.current = false; }; }, []);
+  React.useEffect(() => {
+    mounted.current = true; reload();
+    const refresh = () => reload();
+    globalThis.addEventListener?.("brassclaw-provider-settings-changed", refresh);
+    return () => { mounted.current = false; globalThis.removeEventListener?.("brassclaw-provider-settings-changed", refresh); };
+  }, []);
   const targets = catalogue?.targets || [];
-  function key(target) { return JSON.stringify([target.provider_id, target.provider_revision, target.model]); }
+  // Keep the selected serving identity when its canonical settings revision changes.
+  // The current target still supplies the exact revision for every capture.
+  function key(target) { return JSON.stringify([target.provider_id, target.model]); }
   const uniqueTargets = targets.filter((target, index) => targets.findIndex(other => key(other) === key(target)) === index);
   const target = uniqueTargets.find(item => key(item) === selected);
   async function capture() {
@@ -51,6 +60,7 @@ export function PrefixModelDesigns({ t }) {
         ${uniqueTargets.map(item => html`<option key=${key(item)} value=${key(item)}>${item.provider_id} / ${item.model} (${t("prefix.revision")} ${item.provider_revision})</option>`)}
       </select>
     </label>
+    ${target && html`<${ModelTokenLimits} key=${JSON.stringify([target.provider_id, target.model])} providerId=${target.provider_id} model=${target.model} t=${t} />`}
     <div className="flex gap-2">
       ${html`<${Button} size="sm" disabled=${!target || busy} onClick=${capture}>${t("prefix.captureModel")}<//>`}
       ${html`<${Button} size="sm" disabled=${true}>${t("prefix.generateModelDesign")}<//>`}
@@ -68,6 +78,7 @@ export function PrefixModelDesigns({ t }) {
         <summary>${t("prefix.retainedModelArtifacts")} · ${t("prefix.unknownModelArtifacts")}</summary>
         <pre className="overflow-auto whitespace-pre-wrap">${set.binding_bytes}</pre>
         <ul>${set.files.map(file => html`<li key=${file.name}>${file.name} · ${file.bytes} bytes · ${file.sha256}</li>`)}</ul>
+        <${PrefixModelConfiguration} specification=${spec.id} artifactSet=${set} t=${t} />
       </details>`)}
     </details>`)}
     ${(catalogue?.proposals || []).map(proposal => html`<details key=${proposal.id} className="text-xs">

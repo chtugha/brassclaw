@@ -405,7 +405,7 @@ Backend errors may keep raw errors for logs, but public/display errors should us
 
 ## 14. Initial Rust API sketch
 
-`read_file_bounded` returns `Ok(None)` when the file exceeds the caller's limit; streaming backends should enforce that without allocating the full file first.
+`read_file_bounded` returns `Ok(None)` when the file exceeds the caller's limit; streaming backends should enforce that without allocating the full file first. This is the opaque-file reader: structured entries require the entry API and fail closed here. The kind check must describe the same entry/body read, not just an earlier stat. PostgreSQL projects kind and bounded contents in one statement; the shared default rechecks the returned entry. Larger caller ceilings must not wrap into negative backend parameters. This does not provide immutable source identity, atomic writes or hostile local-filesystem containment.
 
 ```rust
 #[async_trait]
@@ -511,3 +511,35 @@ support. Missing differs from malformed: an absent key yields `None`, whereas
 an invalid selected value/container fails the page. It inherits the same live
 ordering, mount selection, permissions and complete-pagination responsibilities;
 it grants no authority and provides no full-record compatibility fallback.
+
+### Atomic opaque writes
+
+`RootFilesystem::put_opaque(path, body, cas)` writes bytes only when the target
+is absent or opaque. Native `Capability::OpaqueWrite` is distinct from ordinary
+write permission and is appended without renumbering older capability bits.
+The capability grants no access. Scoped calls check the current mount's write
+permission; composite routing retains longest-prefix selection. Unsupported
+backends fail before effects, with no unchecked compatibility fallback.
+
+PostgreSQL checks `kind IS NULL` in the actual conditional UPDATE/upsert under
+its existing namespace transaction. In-memory checks kind, namespace and CAS
+under one mutex. Ordinary `put` retains intentional record conversion for
+trusted entry owners. Local byte files reuse the existing Any/Absent atomic
+writer; unsupported version CAS is rejected before parent creation. Byte-only
+memory-document adapters accept only Any and retain their complete document
+safety/schema/event path, never exposing a structured Entry interface.
+
+The existing coding write/patch primitives use this operation. Their parent
+preflight validates ordinary directories; the native write creates/infers missing
+parents. This prevents a record conversion after preflight from being overwritten.
+It does not establish a versioned patch snapshot or prevent concurrent opaque
+content edits, and does not certify hostile local-directory containment. Existing
+legacy byte operations retain their migration semantics; this contract is not a
+claim that every legacy writer has been migrated.
+
+The native write audit also removes saturating record-version/event-sequence
+advancement. `checked_next` returns None at representational exhaustion; memory
+put/opaque-put/byte-append/event-append reject before publishing changes. Native
+PostgreSQL's signed version overflow aborts and rolls back. Actual maximum-state
+regressions check retained body/version/events. This is the storage integer
+representation, not a configurable resource quota; no counter can be reused.

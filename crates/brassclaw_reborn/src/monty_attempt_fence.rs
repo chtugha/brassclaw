@@ -11,9 +11,6 @@ use brassclaw_turns::run_profile::{AgentLoopHostError, AgentLoopHostErrorKind, M
 use parking_lot::Mutex;
 use tokio::{sync::Notify, time::Instant};
 
-/// Technical bound on retained concurrent host calls, separate from token budgets.
-const MAX_IN_FLIGHT_CALLS: usize = 64;
-
 /// Rust-only local address; scope is the owning fence's exact attempt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MontyHostCallId(u64);
@@ -94,12 +91,9 @@ impl MontyTaskFence {
         if calls.fenced {
             return Err(cancelled());
         }
-        if calls.active.len() >= MAX_IN_FLIGHT_CALLS {
-            return Err(AgentLoopHostError::new(
-                AgentLoopHostErrorKind::Unavailable,
-                "Monty task host-call capacity exhausted",
-            ));
-        }
+        // The global service owns the acknowledged pending-call capacity. This
+        // barrier tracks exact calls for cancellation; a second fixed ceiling
+        // would reject work even after the operator increased that capacity.
         calls.next_id = calls.next_id.checked_add(1).ok_or_else(|| {
             AgentLoopHostError::new(
                 AgentLoopHostErrorKind::Unavailable,

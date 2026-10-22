@@ -1276,26 +1276,19 @@ async fn spawn_tool_definition_is_present_in_structured_tools() {
         definition.parameters["required"],
         json!(["flavor_id", "task"])
     );
-    assert_eq!(
-        definition.parameters["properties"]["task"]["maxLength"],
-        json!(DEFAULT_SUBAGENT_GOAL_MAX_BYTES)
-    );
-    assert_eq!(
-        definition.parameters["properties"]["handoff"]["maxLength"],
-        json!(DEFAULT_SUBAGENT_GOAL_MAX_BYTES)
-    );
-    assert!(
-        definition.parameters["properties"]["task"]["description"]
-            .as_str()
-            .expect("task description")
-            .contains("UTF-8 byte budget")
-    );
-    assert!(
-        definition.parameters["properties"]["handoff"]["description"]
-            .as_str()
-            .expect("handoff description")
-            .contains("UTF-8 byte budget")
-    );
+    for field in ["task", "handoff"] {
+        assert!(
+            definition.parameters["properties"][field]
+                .get("maxLength")
+                .is_none()
+        );
+        assert!(
+            definition.parameters["properties"][field]["description"]
+                .as_str()
+                .unwrap()
+                .contains("data")
+        );
+    }
     assert!(definition.parameters["properties"].get("handoff").is_some());
     assert!(definition.parameters["properties"].get("mode").is_none());
     assert!(
@@ -1425,47 +1418,20 @@ async fn spawn_provider_tool_call_validation_rejects_missing_or_malformed_flavor
 }
 
 #[tokio::test]
-async fn spawn_provider_tool_call_validation_rejects_oversized_goal_fields() {
-    let context = test_run_context("spawn-validate-goal-size").await;
+async fn spawn_provider_tool_call_validation_preserves_large_goal_fields() {
+    let context = test_run_context("spawn-validate-large-goal").await;
     let port = spawn_test_port_with_inner(
         context,
         Arc::new(AuthPassPort),
         Arc::new(RegisteringSpawnInputCodec),
     );
-    let oversized = "x".repeat(DEFAULT_SUBAGENT_GOAL_MAX_BYTES + 1);
-
-    for (field, arguments) in [
-        (
-            "task",
-            json!({
-                "flavor_id": "general",
-                "task": oversized.clone(),
-            }),
-        ),
-        (
-            "handoff",
-            json!({
-                "flavor_id": "general",
-                "task": "investigate",
-                "handoff": oversized,
-            }),
-        ),
-    ] {
+    let exact = "ü🙂  data\n\t{{vars.source}}".repeat(9000);
+    for field in ["task", "handoff"] {
         let mut call = spawn_provider_tool_call();
-        call.arguments = arguments;
-
-        let error = port
-            .validate_provider_tool_call(&call)
-            .expect_err("oversized spawn provider tool call rejects");
-
-        assert_eq!(error.kind, AgentLoopHostErrorKind::InvalidInvocation);
-        assert!(
-            error
-                .safe_summary
-                .contains(&format!("spawn_subagent {field} is too large")),
-            "unexpected error for {field}: {}",
-            error.safe_summary
-        );
+        call.arguments[field] = json!(exact);
+        port.validate_provider_tool_call(&call)
+            .expect("complete goal is valid data");
+        assert_eq!(call.arguments[field], exact);
     }
 }
 
@@ -1731,11 +1697,14 @@ async fn invoke_spawn_submits_child_run_through_spawn_tree_port() {
     let child_runs = Arc::new(RecordingChildRuns::default());
     let goal_store = Arc::new(RecordingGoalStore::default());
     let gate_store = Arc::new(InMemorySubagentGateResolutionStore::default());
+    let threads = Arc::new(InMemorySessionThreadService::default());
+    let task = "ü🙂  task\n\n```python\nx = '{{vars.source}}'\n```".repeat(9000);
+    let handoff = "Literal documentation api_key=example_only\twith  whitespace\n\n".repeat(9000);
     let deps = Arc::new(SubagentSpawnDeps {
         coordinator: Arc::new(StaticCoordinator),
         child_runs: child_runs.clone(),
         turn_state_store: turn_store,
-        thread_service: Arc::new(InMemorySessionThreadService::default()),
+        thread_service: threads.clone(),
         goal_store: goal_store.clone(),
         gate_store: gate_store.clone(),
         definition_resolver: Arc::new(StaticDefinitionResolver {
@@ -1745,8 +1714,8 @@ async fn invoke_spawn_submits_child_run_through_spawn_tree_port() {
         spawn_input_codec: Arc::new(StaticSpawnInputCodec {
             args: SpawnSubagentArgs {
                 subagent_kind: SubagentKindId::new("general").unwrap(),
-                task: "inspect the logs".to_string(),
-                handoff: Some("return concise notes".to_string()),
+                task: task.clone(),
+                handoff: Some(handoff.clone()),
             },
         }),
         result_writer: Arc::new(NoopResultWriter),
@@ -1796,8 +1765,26 @@ async fn invoke_spawn_submits_child_run_through_spawn_tree_port() {
 
     let goals = goal_store.puts();
     assert_eq!(goals.len(), 1);
-    assert_eq!(goals[0].2.task, "inspect the logs");
-    assert_eq!(goals[0].2.handoff.as_deref(), Some("return concise notes"));
+    assert_eq!(goals[0].2.task, task);
+    assert_eq!(goals[0].2.handoff.as_deref(), Some(handoff.as_str()));
+    let history = threads
+        .list_thread_history(ThreadHistoryRequest {
+            scope: ThreadScope {
+                tenant_id: request.child_scope.tenant_id.clone(),
+                agent_id: request.child_scope.agent_id.clone().unwrap(),
+                project_id: request.child_scope.project_id.clone(),
+                owner_user_id: Some(context.actor.as_ref().unwrap().user_id.clone()),
+            },
+            thread_id: request.child_scope.thread_id.clone(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(history.messages.len(), 1);
+    let expected = format!("{task}\n\nParent handoff:\n{handoff}");
+    assert_eq!(
+        history.messages[0].content.as_deref(),
+        Some(expected.as_str())
+    );
 
     let awaited = gate_store.records();
     assert_eq!(awaited.len(), 1);
@@ -2416,66 +2403,16 @@ async fn json_spawn_input_codec_rejects_invalid_shape() {
 }
 
 #[tokio::test]
-async fn json_spawn_input_codec_rejects_oversized_goal_fields() {
-    let context = test_run_context("spawn-codec-oversized-goal").await;
-    let oversized = "x".repeat(DEFAULT_SUBAGENT_GOAL_MAX_BYTES + 1);
-    for (field, value) in [
-        (
-            "task",
-            json!({
-                "flavor_id": "general",
-                "task": oversized.clone(),
-            }),
-        ),
-        (
-            "handoff",
-            json!({
-                "flavor_id": "general",
-                "task": "investigate",
-                "handoff": oversized,
-            }),
-        ),
-    ] {
-        let codec =
-            JsonSpawnSubagentInputCodec::new(Arc::new(StaticInputResolver { value: Ok(value) }));
-
-        let error = codec.decode(&context, &input_ref()).await.unwrap_err();
-
-        assert_eq!(error.kind, AgentLoopHostErrorKind::InvalidInvocation);
-        assert!(
-            error
-                .safe_summary
-                .contains(&format!("spawn_subagent {field} is too large")),
-            "unexpected error for {field}: {}",
-            error.safe_summary
-        );
-    }
-}
-
-#[tokio::test]
-async fn json_spawn_input_codec_uses_utf8_byte_budget_for_multibyte_goal_fields() {
-    let context = test_run_context("spawn-codec-multibyte-goal").await;
-    let multibyte = "\u{8a9e}";
-    let oversized = multibyte.repeat(DEFAULT_SUBAGENT_GOAL_MAX_BYTES / multibyte.len() + 1);
-    assert!(oversized.chars().count() <= DEFAULT_SUBAGENT_GOAL_MAX_BYTES);
-    assert!(oversized.len() > DEFAULT_SUBAGENT_GOAL_MAX_BYTES);
-
+async fn json_spawn_input_codec_preserves_complete_multibyte_goal_fields() {
+    let context = test_run_context("spawn-codec-large-goal").await;
+    let task = "ü🙂  data\n\t{{vars.source}}".repeat(9000);
+    let handoff = "Full handoff\n\n```python\nx = '語'\n```".repeat(9000);
     let codec = JsonSpawnSubagentInputCodec::new(Arc::new(StaticInputResolver {
-        value: Ok(json!({
-            "flavor_id": "general",
-            "task": oversized,
-        })),
+        value: Ok(json!({"flavor_id":"general", "task":task, "handoff":handoff})),
     }));
-
-    let error = codec.decode(&context, &input_ref()).await.unwrap_err();
-
-    assert_eq!(error.kind, AgentLoopHostErrorKind::InvalidInvocation);
-    assert!(
-        error
-            .safe_summary
-            .contains("spawn_subagent task is too large")
-    );
-    assert!(error.safe_summary.contains("bytes"));
+    let args = codec.decode(&context, &input_ref()).await.unwrap();
+    assert_eq!(args.task, task);
+    assert_eq!(args.handoff.as_deref(), Some(handoff.as_str()));
 }
 
 #[tokio::test]

@@ -340,6 +340,9 @@ pub struct ProviderDefinition {
     /// Missing entries do not infer a vector shape from the model name.
     #[serde(default)]
     pub embedding_models: crate::EmbeddingModelContracts,
+    /// Single mutable owner for model prefix/non-prefix input ceilings.
+    #[serde(default)]
+    pub model_token_limits: crate::ModelTokenLimitOverrides,
     /// Unique identifier used in `LLM_BACKEND` (e.g., "groq", "tinfoil").
     pub id: String,
     /// Alternative names accepted in `LLM_BACKEND` (e.g., ["nvidia_nim", "nim"]).
@@ -616,6 +619,7 @@ mod tests {
         // Simulate user overriding tinfoil with a different default model
         all.push(ProviderDefinition {
             embedding_models: Default::default(),
+            model_token_limits: Default::default(),
             model_discovery: Default::default(),
             request_policy: Default::default(),
             id: "tinfoil".to_string(),
@@ -871,6 +875,7 @@ mod tests {
         // But if a user override adds a setup hint, it SHOULD appear.
         let mut providers: Vec<ProviderDefinition> = vec![ProviderDefinition {
             embedding_models: Default::default(),
+            model_token_limits: Default::default(),
             model_discovery: Default::default(),
             request_policy: Default::default(),
             id: "custom".to_string(),
@@ -902,6 +907,7 @@ mod tests {
         // User override adds a setup hint
         providers.push(ProviderDefinition {
             embedding_models: Default::default(),
+            model_token_limits: Default::default(),
             model_discovery: Default::default(),
             request_policy: Default::default(),
             id: "custom".to_string(),
@@ -951,6 +957,7 @@ mod tests {
         let providers = vec![
             ProviderDefinition {
                 embedding_models: Default::default(),
+                model_token_limits: Default::default(),
                 model_discovery: Default::default(),
                 request_policy: Default::default(),
                 id: "provider_a".to_string(),
@@ -981,6 +988,7 @@ mod tests {
             // User override removes setup
             ProviderDefinition {
                 embedding_models: Default::default(),
+                model_token_limits: Default::default(),
                 model_discovery: Default::default(),
                 request_policy: Default::default(),
                 id: "provider_a".to_string(),
@@ -1023,6 +1031,7 @@ mod tests {
         let providers = vec![
             ProviderDefinition {
                 embedding_models: Default::default(),
+                model_token_limits: Default::default(),
                 model_discovery: Default::default(),
                 request_policy: Default::default(),
                 id: "aaa".to_string(),
@@ -1049,6 +1058,7 @@ mod tests {
             },
             ProviderDefinition {
                 embedding_models: Default::default(),
+                model_token_limits: Default::default(),
                 model_discovery: Default::default(),
                 request_policy: Default::default(),
                 id: "bbb".to_string(),
@@ -1075,6 +1085,7 @@ mod tests {
             },
             ProviderDefinition {
                 embedding_models: Default::default(),
+                model_token_limits: Default::default(),
                 model_discovery: Default::default(),
                 request_policy: Default::default(),
                 id: "ccc".to_string(),
@@ -1102,6 +1113,7 @@ mod tests {
             // User override for B
             ProviderDefinition {
                 embedding_models: Default::default(),
+                model_token_limits: Default::default(),
                 model_discovery: Default::default(),
                 request_policy: Default::default(),
                 id: "bbb".to_string(),

@@ -97,48 +97,102 @@ fn detect_line_ending(content: &str) -> LineEnding {
     }
 }
 
+/// The output limit applies to the actual file representation, including its
+/// BOM and restored line endings, rather than the normalized UTF-8 workspace.
+#[derive(Clone, Copy)]
+pub(super) struct PatchOutputLimits {
+    pub encoding: FileEncoding,
+    pub line_ending: LineEnding,
+    pub max_bytes: u64,
+}
+
 pub(super) fn replace_content(
     content: &str,
     old_string: &str,
     new_string: &str,
     replace_all: bool,
     match_count: usize,
+    limits: PatchOutputLimits,
 ) -> Result<(String, usize), CodingCapabilityError> {
-    if replace_all {
-        let mut matches = Vec::new();
-        let mut search_offset = 0usize;
-        while let Some(item) = find_match_from(content, old_string, search_offset) {
-            if item.end <= item.start {
-                return Err(operation_error());
+    let resource_error =
+        || CodingCapabilityError::new(brassclaw_host_api::RuntimeDispatchErrorKind::Resource);
+    let mut encoded_bytes = match limits.encoding {
+        FileEncoding::Utf8 => 0,
+        FileEncoding::Utf16Le => 2u64,
+    };
+    let mut workspace_bytes = 0usize;
+    // Preflight before allocating either the replacement string or encoded
+    // output. Keep no per-match vector: a tiny file can contain millions of
+    // matches, and a small replacement can amplify it beyond available memory.
+    let replacements =
+        visit_replacement_parts(content, old_string, new_string, replace_all, |part| {
+            workspace_bytes = workspace_bytes
+                .checked_add(part.len())
+                .ok_or_else(resource_error)?;
+            let units = match limits.encoding {
+                FileEncoding::Utf8 => part.len() as u64,
+                FileEncoding::Utf16Le => (part.encode_utf16().count() as u64)
+                    .checked_mul(2)
+                    .ok_or_else(resource_error)?,
+            };
+            let extra = if limits.line_ending == LineEnding::CrLf {
+                let width = if limits.encoding == FileEncoding::Utf16Le {
+                    2
+                } else {
+                    1
+                };
+                (part.bytes().filter(|byte| *byte == b'\n').count() as u64)
+                    .checked_mul(width)
+                    .ok_or_else(resource_error)?
+            } else {
+                0
+            };
+            encoded_bytes = encoded_bytes
+                .checked_add(units)
+                .and_then(|bytes| bytes.checked_add(extra))
+                .ok_or_else(resource_error)?;
+            if encoded_bytes > limits.max_bytes || encoded_bytes > isize::MAX as u64 {
+                return Err(resource_error());
             }
-            search_offset = item.end;
-            matches.push((item.start, item.end));
-        }
-        if matches.len() != match_count {
-            return Err(operation_error());
-        }
-        let mut rebuilt = String::with_capacity(content.len());
-        let mut last = 0usize;
-        for (start, end) in matches {
-            rebuilt.push_str(&content[last..start]);
-            rebuilt.push_str(new_string);
-            last = end;
-        }
-        rebuilt.push_str(&content[last..]);
-        Ok((rebuilt, match_count))
-    } else {
-        let item = find_match(content, old_string).ok_or_else(operation_error)?;
-        let mut rebuilt =
-            String::with_capacity(content.len() - (item.end - item.start) + new_string.len());
-        rebuilt.push_str(&content[..item.start]);
-        rebuilt.push_str(new_string);
-        rebuilt.push_str(&content[item.end..]);
-        Ok((rebuilt, 1))
+            Ok(())
+        })?;
+    if replacements == 0 || replacements != match_count {
+        return Err(operation_error());
     }
+    let mut rebuilt = String::new();
+    rebuilt
+        .try_reserve_exact(workspace_bytes)
+        .map_err(|_| resource_error())?;
+    visit_replacement_parts(content, old_string, new_string, replace_all, |part| {
+        rebuilt.push_str(part);
+        Ok(())
+    })?;
+    Ok((rebuilt, replacements))
 }
 
-fn find_match(haystack: &str, needle: &str) -> Option<FuzzyMatch> {
-    find_match_from(haystack, needle, 0)
+fn visit_replacement_parts(
+    content: &str,
+    old_string: &str,
+    new_string: &str,
+    replace_all: bool,
+    mut visit: impl FnMut(&str) -> Result<(), CodingCapabilityError>,
+) -> Result<usize, CodingCapabilityError> {
+    let mut count = 0;
+    let mut last = 0;
+    while let Some(item) = find_match_from(content, old_string, last) {
+        if item.end <= item.start {
+            return Err(operation_error());
+        }
+        visit(&content[last..item.start])?;
+        visit(new_string)?;
+        last = item.end;
+        count += 1;
+        if !replace_all {
+            break;
+        }
+    }
+    visit(&content[last..])?;
+    Ok(count)
 }
 
 fn find_match_from(haystack: &str, needle: &str, start_offset: usize) -> Option<FuzzyMatch> {
@@ -278,6 +332,79 @@ pub(super) fn previous_char_boundary(value: &str, mut end: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn patch_limit_counts_the_encoded_file_and_accepts_its_exact_boundary() {
+        for (content, old, new, encoding, line_ending, max_bytes) in [
+            ("x\n", "x", "é", FileEncoding::Utf8, LineEnding::CrLf, 4),
+            ("x\n", "x", "😀", FileEncoding::Utf8, LineEnding::Lf, 5),
+            ("x\n", "x", "😀", FileEncoding::Utf8, LineEnding::Cr, 5),
+            (
+                "x\n",
+                "x",
+                "😀",
+                FileEncoding::Utf16Le,
+                LineEnding::CrLf,
+                10,
+            ),
+            ("x\n", "x", "界", FileEncoding::Utf16Le, LineEnding::Cr, 6),
+            // The normalized UTF-8 workspace exceeds the encoded file budget.
+            (
+                "x界界界界",
+                "x",
+                "y",
+                FileEncoding::Utf16Le,
+                LineEnding::Lf,
+                12,
+            ),
+        ] {
+            let limits = PatchOutputLimits {
+                encoding,
+                line_ending,
+                max_bytes,
+            };
+            let (replaced, count) = replace_content(content, old, new, false, 1, limits).unwrap();
+            assert_eq!(count, 1);
+            assert_eq!(
+                encode_text(&replaced, encoding, line_ending).len() as u64,
+                max_bytes
+            );
+            let error = replace_content(
+                content,
+                old,
+                new,
+                false,
+                1,
+                PatchOutputLimits {
+                    max_bytes: max_bytes - 1,
+                    ..limits
+                },
+            )
+            .unwrap_err();
+            assert_eq!(
+                error.kind(),
+                brassclaw_host_api::RuntimeDispatchErrorKind::Resource
+            );
+        }
+    }
+
+    #[test]
+    fn bounded_patch_preserves_exact_and_fuzzy_replacement_order() {
+        let limits = PatchOutputLimits {
+            encoding: FileEncoding::Utf8,
+            line_ending: LineEnding::Lf,
+            max_bytes: 1024,
+        };
+        // Existing behavior prefers later exact matches before earlier fuzzy
+        // matches. The limit check must not change which spans are replaced.
+        let content = "‘x’ 'x' ‘x’";
+        let (count, _) = count_matches(content, "'x'");
+        assert_eq!(count, 2);
+        let (replaced, replacements) =
+            replace_content(content, "'x'", "done", true, count, limits).unwrap();
+        assert_eq!(replacements, count);
+        assert_eq!(replaced, "‘x’ done done");
+    }
 
     #[test]
     fn count_matches_ignores_unlocatable_trailing_whitespace_normalization() {

@@ -220,8 +220,8 @@ impl OpenAiCodexProvider {
 
 #[async_trait]
 impl LlmProvider for OpenAiCodexProvider {
-    fn model_name(&self) -> &str {
-        &self.model
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(&self.model)
     }
 
     fn cost_per_token(&self) -> (Decimal, Decimal) {

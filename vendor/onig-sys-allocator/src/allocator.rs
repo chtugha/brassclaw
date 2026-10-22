@@ -41,12 +41,21 @@ unsafe fn allocate(size: usize, zeroed: bool) -> *mut c_void {
     }
 }
 
+/// Allocate a C payload through the existing Rust global allocator.
+///
+/// # Safety
+/// The returned non-null pointer must be released/reallocated only through this
+/// bridge. Reading uninitialized bytes or accessing beyond `size` is invalid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn brassclaw_onig_malloc(size: usize) -> *mut c_void {
     // SAFETY: this function returns a fresh C allocation or null.
     unsafe { allocate(size, false) }
 }
 
+/// Allocate a checked, zeroed C payload through the Rust global allocator.
+///
+/// # Safety
+/// The returned pointer has the same ownership/bounds contract as bridge malloc.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn brassclaw_onig_calloc(count: usize, size: usize) -> *mut c_void {
     let Some(bytes) = count.checked_mul(size) else {
@@ -56,6 +65,11 @@ pub unsafe extern "C" fn brassclaw_onig_calloc(count: usize, size: usize) -> *mu
     unsafe { allocate(bytes, true) }
 }
 
+/// Release a bridge allocation, preserving the global allocator's owner refund.
+///
+/// # Safety
+/// `payload` must be null or a live pointer returned by this bridge, not already
+/// freed. No aliases may access the payload after this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn brassclaw_onig_free(payload: *mut c_void) {
     if payload.is_null() {
@@ -73,6 +87,11 @@ pub unsafe extern "C" fn brassclaw_onig_free(payload: *mut c_void) {
     };
 }
 
+/// Resize without losing the global allocator's original allocation ownership.
+///
+/// # Safety
+/// `payload` obeys bridge free's contract. A successful non-null result replaces
+/// it; a null result leaves it live except when `size == 0`, which frees it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn brassclaw_onig_realloc(payload: *mut c_void, size: usize) -> *mut c_void {
     if payload.is_null() {
@@ -112,9 +131,11 @@ mod tests {
             let initial = brassclaw_onig_calloc(8, 8).cast::<u8>();
             assert!(!initial.is_null());
             assert_eq!(initial as usize % 16, 0);
-            assert!(std::slice::from_raw_parts(initial, 64)
-                .iter()
-                .all(|b| *b == 0));
+            assert!(
+                std::slice::from_raw_parts(initial, 64)
+                    .iter()
+                    .all(|b| *b == 0)
+            );
             initial.write(71);
             initial.add(63).write(93);
             assert!(brassclaw_onig_realloc(initial.cast(), usize::MAX).is_null());

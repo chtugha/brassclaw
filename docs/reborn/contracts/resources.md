@@ -360,3 +360,43 @@ artifact/storage quotas
 Memory indexing/search may initially report usage without hard reservation, but embedding provider calls and artifact writes must participate in resource accounting.
 
 Every reservation should carry tenant/user/project/agent/invocation/process scope where relevant. Reservation release/reconcile must be owned by the service that owns the side effect lifecycle.
+
+
+During this process lifetime, model-work reservations retain the exact
+configured cost row captured with their estimate and acknowledged quote-setting
+revision. Success and retained reconciliation use that original row; a changed
+effective model profile is an accounting error with the hold retained. Newly
+admitted work can use a newer configured rate. This does not establish durable
+provider-price provenance, crash-restored quote ownership or actual invoiced
+cost. The legacy conservative estimated debit for a missing meter remains a
+separate migration; observed failures never imply zero consumption.
+
+Native model evidence keeps distinct original HTTP, adapter and validated-loop
+stages. The buffered OpenAI-compatible transport owns the original bytes before
+SDK parsing, then persists lossless host-private evidence under the original
+invocation and prefix. Failed/cancelled persistence retains that observation for
+supervised persistence alone. Completed writes free their full in-memory data;
+minimal observation fences remain. The existing captured typed-data byte limit
+also bounds encoded evidence. A successful wire write is not a successful model
+classification, a public reply, a settled budget or authority to dispatch again.
+
+
+### Aggregate arithmetic and retained-ledger integrity
+
+Reservation, reconciliation and release preflight all account balances before
+publishing any of them. USD and integer counters must remain representable;
+rounding away a separately retained USD contribution is also an error. These
+are numeric representation constraints, not adjustable policy budgets. Disabled
+token budgets still retain exact counters. A rejected admission creates no
+reservation; a rejected settlement or inconsistent subtraction keeps its original
+active reservation. Existing period rollover semantics remain independent.
+
+Decoded snapshots reject duplicate identities, mismatched retained reservation
+identity/estimate/cascade, negative amounts, and active reservation totals that
+disagree with the stored balance or cannot be represented. Empty zero rows remain
+compatible, as do supported version-1 snapshots and old closed records without
+an actual-usage receipt. An inconsistent old snapshot is left unchanged and
+reported as a storage error; loading never silently clamps or releases it. This
+cannot reconstruct historical spend that an older implementation already lost.
+The existing native reconciliation contract still requires actual observations;
+restoring a coherent ledger must not replay completed external work.

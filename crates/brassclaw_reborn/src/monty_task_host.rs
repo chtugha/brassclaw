@@ -31,6 +31,7 @@ pub const POST_REPLY_CAPABILITY_ID: &str = "host.post_reply";
 pub struct MontyTaskHost {
     request: AgentLoopDriverRunRequest,
     attempt: MontyTaskAttempt,
+    claimed_run: Option<Arc<brassclaw_turns::runner::ClaimedTurnRun>>,
     host: Arc<dyn AgentLoopDriverHost + Send + Sync>,
     fence: MontyTaskFence,
     published_reply: Mutex<Option<PublishedReply>>,
@@ -70,10 +71,12 @@ struct PublishedReply {
 
 impl MontyTaskHost {
     pub fn new(handoff: MontyTaskHandoff) -> Self {
+        let claimed_run = handoff.claimed_run().cloned();
         let (request, attempt, host) = handoff.into_parts();
         Self {
             request,
             attempt,
+            claimed_run,
             host,
             fence: MontyTaskFence::new(attempt),
             published_reply: Mutex::new(None),
@@ -108,6 +111,12 @@ impl MontyTaskHost {
     /// Trusted supervisor access only; this contains the Rust-only lease token.
     pub fn attempt(&self) -> MontyTaskAttempt {
         self.attempt
+    }
+
+    /// The actual worker claim stays behind the host boundary across waits.
+    /// Durable admission must still recheck it; this is not a permission grant.
+    pub fn claimed_run(&self) -> Option<&Arc<brassclaw_turns::runner::ClaimedTurnRun>> {
+        self.claimed_run.as_ref()
     }
 
     pub fn request(&self) -> &AgentLoopDriverRunRequest {
@@ -165,9 +174,9 @@ impl MontyTaskHost {
             self.fence.close();
         }
         call.finish_retaining(result, |call_id, value| {
-            // A fence cannot reopen, and at most 64 calls were admitted before
-            // it closed. Only late successes enter this bounded receipt list;
-            // successful calls delivered to Python are not accumulated here.
+            // A fence cannot reopen. Only successful calls already active when
+            // it closed can enter this receipt list. The global service owns
+            // pending-call capacity; delivered successes are not accumulated.
             self.withheld.lock().push(WithheldTaskPortResult {
                 call_id,
                 value: retain(value),

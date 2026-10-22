@@ -1,25 +1,26 @@
-use brassclaw_host_api::{CapabilityDisplayOutputPreview, truncate_capability_display_text};
+use brassclaw_host_api::{
+    CapabilityDisplayOutputPreview, MontyExecutionLimits, truncate_capability_display_text,
+};
 use similar::{ChangeTag, TextDiff};
-
-const DIFF_CONTEXT_LINES: usize = 3;
-const DIFF_PREVIEW_DETAILED_INPUT_MAX_BYTES: usize = 256 * 1024;
-const DIFF_PREVIEW_MAX_BYTES: usize = 16 * 1024;
 
 /// Returns `true` when `new_content` is large enough that a detailed diff
 /// preview will be skipped regardless of the old content. Callers (e.g.
 /// `write_file`) can use this to avoid reading the old file unnecessarily.
-pub(super) fn will_use_large_diff_path(new_content: &str) -> bool {
-    new_content.len() > DIFF_PREVIEW_DETAILED_INPUT_MAX_BYTES / 2
+pub(super) fn will_use_large_diff_path(new_content: &str, limits: &MontyExecutionLimits) -> bool {
+    new_content.len() > limits.max_coding_diff_input_bytes as usize / 2
 }
 
 pub(super) fn file_diff_preview(
     path: &str,
     old_content: &str,
     new_content: &str,
+    limits: &MontyExecutionLimits,
 ) -> CapabilityDisplayOutputPreview {
     let diff_path = path.trim_start_matches('/');
-    if old_content.len().saturating_add(new_content.len()) > DIFF_PREVIEW_DETAILED_INPUT_MAX_BYTES {
-        return large_diff_preview(path, diff_path);
+    if old_content.len().saturating_add(new_content.len())
+        > limits.max_coding_diff_input_bytes as usize
+    {
+        return large_diff_preview(path, diff_path, limits);
     }
 
     let diff = TextDiff::from_lines(old_content, new_content);
@@ -31,8 +32,10 @@ pub(super) fn file_diff_preview(
     let mut additions = 0usize;
     let mut deletions = 0usize;
     let mut truncated = false;
-    for group in diff.grouped_ops(DIFF_CONTEXT_LINES) {
-        if output.len() >= DIFF_PREVIEW_MAX_BYTES {
+    let context = (limits.coding_diff_context_lines as usize)
+        .min(diff.old_slices().len().max(diff.new_slices().len()));
+    for group in diff.grouped_ops(context) {
+        if output.len() >= limits.max_coding_diff_preview_bytes as usize {
             truncated = true;
             break;
         }
@@ -64,7 +67,7 @@ pub(super) fn file_diff_preview(
                     ChangeTag::Equal => ' ',
                 };
                 push_diff_line(&mut output, prefix, change.value());
-                if output.len() >= DIFF_PREVIEW_MAX_BYTES {
+                if output.len() >= limits.max_coding_diff_preview_bytes as usize {
                     truncated = true;
                     break;
                 }
@@ -75,7 +78,8 @@ pub(super) fn file_diff_preview(
         }
     }
 
-    let preview_text = truncate_capability_display_text(&output, DIFF_PREVIEW_MAX_BYTES);
+    let preview_text =
+        truncate_capability_display_text(&output, limits.max_coding_diff_preview_bytes as usize);
     CapabilityDisplayOutputPreview {
         output_summary: Some(format!("Edited 1 file: +{additions}/-{deletions}")),
         output_preview: preview_text.text,
@@ -85,12 +89,18 @@ pub(super) fn file_diff_preview(
     }
 }
 
-fn large_diff_preview(path: &str, diff_path: &str) -> CapabilityDisplayOutputPreview {
+fn large_diff_preview(
+    path: &str,
+    diff_path: &str,
+    limits: &MontyExecutionLimits,
+) -> CapabilityDisplayOutputPreview {
     CapabilityDisplayOutputPreview {
         output_summary: Some("Edited 1 file (large diff preview omitted)".to_string()),
-        output_preview: format!(
-            "--- a/{diff_path}\n+++ b/{diff_path}\n@@ large diff preview omitted @@\n"
-        ),
+        output_preview: truncate_capability_display_text(
+            &format!("--- a/{diff_path}\n+++ b/{diff_path}\n@@ large diff preview omitted @@\n"),
+            limits.max_coding_diff_preview_bytes as usize,
+        )
+        .text,
         output_kind: "unified_diff".to_string(),
         subtitle: Some(path.to_string()),
         truncated: true,
@@ -111,7 +121,12 @@ fn push_diff_line(output: &mut String, prefix: char, value: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{DIFF_PREVIEW_MAX_BYTES, file_diff_preview};
+    use super::file_diff_preview as preview_with_limits;
+    use brassclaw_host_api::{CapabilityDisplayOutputPreview, MontyExecutionLimits};
+
+    fn file_diff_preview(path: &str, old: &str, new: &str) -> CapabilityDisplayOutputPreview {
+        preview_with_limits(path, old, new, &MontyExecutionLimits::default())
+    }
 
     #[test]
     fn file_diff_preview_emits_unified_diff_and_stats() {
@@ -172,7 +187,10 @@ mod tests {
                 .output_preview
                 .is_char_boundary(preview.output_preview.len())
         );
-        assert!(preview.output_preview.len() <= DIFF_PREVIEW_MAX_BYTES);
+        assert!(
+            preview.output_preview.len()
+                <= MontyExecutionLimits::default().max_coding_diff_preview_bytes as usize
+        );
     }
 
     #[test]

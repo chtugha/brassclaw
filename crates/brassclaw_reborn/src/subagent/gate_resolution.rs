@@ -11,8 +11,6 @@ use brassclaw_turns::{
 };
 use parking_lot::Mutex;
 
-const MAX_GATE_RECORDS: usize = 4096;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AwaitedChildState {
     pub record: AwaitedChildSetRecord,
@@ -34,6 +32,9 @@ pub struct AwaitedChildTerminalEvent {
     pub owner_user_id: Option<UserId>,
 }
 
+/// Retained live child-gate state. The historical type name is kept for callers;
+/// there is no fixed record-count ceiling. Explicit acknowledged deletion owns
+/// reclamation, independently of task admission and runtime resource policy.
 #[derive(Default)]
 pub struct BoundedSubagentGateResolutionStore {
     inner: Mutex<GateResolutionInner>,
@@ -48,9 +49,8 @@ struct GateResolutionInner {
     by_gate: HashMap<GateRef, Vec<AwaitedChildState>>,
     gates_by_child: HashMap<TurnRunId, Vec<GateRef>>,
     deliverable_by_child: HashMap<TurnRunId, VecDeque<GateRef>>,
-    // Cached total state count across all gate keys. Maintained alongside
-    // every push to `by_gate` and prune via `delete_awaited_child`, so the
-    // capacity check stays O(1) instead of summing every Vec under the lock.
+    // Bookkeeping only, not an admission limit. Maintain the exact count with
+    // every insertion/deletion so status queries do not scan all live gates.
     total_states: usize,
 }
 
@@ -396,11 +396,7 @@ impl BoundedSubagentGateResolutionStore {
     }
 
     pub fn len(&self) -> Result<usize, AgentLoopHostError> {
-        Ok(lock(&self.inner)?
-            .by_gate
-            .values()
-            .map(|states| states.len())
-            .sum())
+        Ok(lock(&self.inner)?.total_states)
     }
 
     pub fn is_empty(&self) -> Result<bool, AgentLoopHostError> {
@@ -416,28 +412,69 @@ impl SubagentGateResolutionStore for BoundedSubagentGateResolutionStore {
     ) -> Result<(), AgentLoopHostError> {
         let mut inner = lock(&self.inner)?;
         let gate_ref = record.gate_ref.clone();
-        if inner.by_gate.get(&gate_ref).is_some_and(|states| {
+        if let Some(owner) = inner
+            .by_gate
+            .get(&gate_ref)
+            .and_then(|states| states.first())
+            && (owner.record.parent_run_context != record.parent_run_context
+                || owner.record.tree_root_run_id != record.tree_root_run_id
+                || owner.record.mode != record.mode)
+        {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "subagent shared gate belongs to a different retained parent",
+            ));
+        }
+        if let Some(existing) = inner.by_gate.get(&gate_ref).and_then(|states| {
             states
                 .iter()
-                .any(|state| state.record.child_run_id == record.child_run_id)
+                .find(|state| state.record.child_run_id == record.child_run_id)
         }) {
-            return Ok(());
-        }
-        if inner.total_states >= MAX_GATE_RECORDS {
+            if existing.record == record {
+                return Ok(());
+            }
             return Err(AgentLoopHostError::new(
-                AgentLoopHostErrorKind::BudgetExceeded,
-                "subagent awaited-child gate store is at capacity",
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "subagent awaited-child identity conflicts with its retained record",
             ));
+        }
+        let capacity = || {
+            AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unavailable,
+                "subagent awaited-child capacity unavailable",
+            )
+        };
+        let total_states = inner.total_states.checked_add(1).ok_or_else(capacity)?;
+        // Reserve every changed index/vector before inserting logical state.
+        // An allocator error may grow capacity but cannot leave an orphan index.
+        if !inner.by_gate.contains_key(&gate_ref) {
+            inner.by_gate.try_reserve(1).map_err(|_| capacity())?;
+        }
+        if !inner.gates_by_child.contains_key(&record.child_run_id) {
+            inner
+                .gates_by_child
+                .try_reserve(1)
+                .map_err(|_| capacity())?;
+        }
+        let mut new_states = Vec::new();
+        match inner.by_gate.get_mut(&gate_ref) {
+            Some(states) => states.try_reserve(1).map_err(|_| capacity())?,
+            None => new_states.try_reserve_exact(1).map_err(|_| capacity())?,
+        }
+        let mut new_gates = Vec::new();
+        match inner.gates_by_child.get_mut(&record.child_run_id) {
+            Some(gates) => gates.try_reserve(1).map_err(|_| capacity())?,
+            None => new_gates.try_reserve_exact(1).map_err(|_| capacity())?,
         }
         inner
             .gates_by_child
             .entry(record.child_run_id)
-            .or_default()
+            .or_insert(new_gates)
             .push(gate_ref.clone());
         inner
             .by_gate
             .entry(gate_ref.clone())
-            .or_default()
+            .or_insert(new_states)
             .push(AwaitedChildState {
                 record,
                 terminal_status: None,
@@ -448,14 +485,24 @@ impl SubagentGateResolutionStore for BoundedSubagentGateResolutionStore {
                 delivery_claimed: false,
                 delivered_to_parent: false,
             });
-        inner.total_states += 1;
+        inner.total_states = total_states;
         Ok(())
     }
 
     async fn delete_awaited_child(&self, gate_ref: &GateRef) -> Result<(), AgentLoopHostError> {
         let mut inner = lock(&self.inner)?;
+        let removed_count = inner.by_gate.get(gate_ref).map_or(0, Vec::len);
+        let remaining = inner
+            .total_states
+            .checked_sub(removed_count)
+            .ok_or_else(|| {
+                AgentLoopHostError::new(
+                    AgentLoopHostErrorKind::Internal,
+                    "subagent awaited-child count is inconsistent",
+                )
+            })?;
         if let Some(old) = inner.by_gate.remove(gate_ref) {
-            inner.total_states = inner.total_states.saturating_sub(old.len());
+            inner.total_states = remaining;
             for state in old {
                 prune_child_index(
                     &mut inner.gates_by_child,
@@ -468,6 +515,10 @@ impl SubagentGateResolutionStore for BoundedSubagentGateResolutionStore {
                     gate_ref,
                 );
             }
+        }
+        if inner.total_states == 0 {
+            // All acknowledged work has drained; release backing allocations.
+            *inner = GateResolutionInner::default();
         }
         Ok(())
     }
@@ -604,16 +655,18 @@ mod tests {
             None,
             ThreadId::new("child-thread").unwrap(),
         );
-        let parent_run_id = TurnRunId::new();
+        // Shared-gate siblings belong to one exact parent selection.
+        let parent_run_id = TurnRunId::parse("6fbca5eb-20ec-43f5-8f55-bb965b2ac447").unwrap();
         let mut parent_run_context =
             brassclaw_agent_loop::test_support::test_run_context("subagent-gate");
         parent_run_context.scope = parent_scope;
         parent_run_context.thread_id = ThreadId::new("parent-thread").unwrap();
         parent_run_context.run_id = parent_run_id;
+        parent_run_context.turn_id = brassclaw_turns::TurnId::from_uuid(parent_run_id.as_uuid());
         AwaitedChildSetRecord {
             gate_ref: GateRef::new(gate_ref).unwrap(),
             parent_run_context,
-            tree_root_run_id: TurnRunId::new(),
+            tree_root_run_id: parent_run_id,
             child_scope,
             child_run_id,
             child_thread_id: ThreadId::new("child-thread").unwrap(),
@@ -679,14 +732,9 @@ mod tests {
         let store = BoundedSubagentGateResolutionStore::new();
         let child_run_id = TurnRunId::new();
         let gate = "gate:subagent-dedup";
-        store
-            .record_awaited_child(record(gate, child_run_id))
-            .await
-            .unwrap();
-        store
-            .record_awaited_child(record(gate, child_run_id))
-            .await
-            .unwrap();
+        let original = record(gate, child_run_id);
+        store.record_awaited_child(original.clone()).await.unwrap();
+        store.record_awaited_child(original.clone()).await.unwrap();
 
         assert_eq!(store.len().unwrap(), 1);
         store
@@ -1032,28 +1080,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn capacity_fails_closed_without_evicting_live_gates() {
+    async fn crossing_former_gate_count_retains_work_until_explicit_deletion() {
         let store = BoundedSubagentGateResolutionStore::new();
-        for index in 0..MAX_GATE_RECORDS {
-            store
-                .record_awaited_child(record(&format!("gate:subagent-{index}"), TurnRunId::new()))
-                .await
-                .unwrap();
+        let mut records = Vec::new();
+        for index in 0..4200 {
+            let entry = record(&format!("gate:subagent-{index}"), TurnRunId::new());
+            store.record_awaited_child(entry.clone()).await.unwrap();
+            records.push(entry);
         }
-
-        let error = store
-            .record_awaited_child(record("gate:subagent-overflow", TurnRunId::new()))
-            .await
-            .unwrap_err();
-
-        assert_eq!(error.kind, AgentLoopHostErrorKind::BudgetExceeded);
-        assert_eq!(store.len().unwrap(), MAX_GATE_RECORDS);
-        assert!(
-            store
-                .state_for_gate(&GateRef::new("gate:subagent-0").unwrap())
-                .unwrap()
-                .is_some()
-        );
+        assert_eq!(store.len().unwrap(), records.len());
+        for entry in &records {
+            assert_eq!(
+                store
+                    .state_for_gate(&entry.gate_ref)
+                    .unwrap()
+                    .unwrap()
+                    .record,
+                *entry
+            );
+            store.delete_awaited_child(&entry.gate_ref).await.unwrap();
+        }
+        let inner = lock(&store.inner).unwrap();
+        assert_eq!(inner.total_states, 0);
+        assert_eq!(inner.by_gate.capacity(), 0);
+        assert_eq!(inner.gates_by_child.capacity(), 0);
+        assert_eq!(inner.deliverable_by_child.capacity(), 0);
     }
 
     fn terminal_event(status: TurnStatus) -> AwaitedChildTerminalEvent {
@@ -1387,60 +1438,53 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn record_awaited_child_capacity_counts_total_states_not_keys() {
+    async fn shared_gate_retains_more_than_former_count_and_rejects_conflicting_replay() {
         let store = BoundedSubagentGateResolutionStore::new();
-        let shared_gate = "gate:subagent-batch-capacity";
-        // Filling the bound through a single shared gate must hit the cap.
-        for _ in 0..MAX_GATE_RECORDS {
+        let gate = "gate:subagent-batch-retained";
+        let original = record(gate, TurnRunId::new());
+        store.record_awaited_child(original.clone()).await.unwrap();
+        for _ in 1..4200 {
             store
-                .record_awaited_child(record(shared_gate, TurnRunId::new()))
+                .record_awaited_child(record(gate, TurnRunId::new()))
                 .await
                 .unwrap();
         }
-        let error = store
-            .record_awaited_child(record(shared_gate, TurnRunId::new()))
-            .await
-            .unwrap_err();
-        assert_eq!(error.kind, AgentLoopHostErrorKind::BudgetExceeded);
-    }
-
-    #[tokio::test]
-    async fn record_awaited_child_allows_duplicate_replay_at_capacity() {
-        let store = BoundedSubagentGateResolutionStore::new();
-        let gate = "gate:subagent-duplicate-at-capacity";
-        let child = TurnRunId::new();
-
-        store
-            .record_awaited_child(record(gate, child))
-            .await
-            .unwrap();
-        for index in 1..MAX_GATE_RECORDS {
+        store.record_awaited_child(original.clone()).await.unwrap();
+        assert_eq!(store.len().unwrap(), 4200);
+        let mut conflicting = original.clone();
+        conflicting.parent_run_context.run_id = TurnRunId::new();
+        assert_eq!(
             store
-                .record_awaited_child(record(
-                    &format!("gate:subagent-fill-{index}"),
-                    TurnRunId::new(),
-                ))
+                .record_awaited_child(conflicting)
                 .await
-                .unwrap();
-        }
-
-        assert_eq!(store.len().unwrap(), MAX_GATE_RECORDS);
+                .unwrap_err()
+                .kind,
+            AgentLoopHostErrorKind::InvalidInvocation
+        );
+        let mut foreign_child = record(gate, TurnRunId::new());
+        foreign_child.parent_run_context.run_id = TurnRunId::new();
+        assert_eq!(
+            store
+                .record_awaited_child(foreign_child)
+                .await
+                .unwrap_err()
+                .kind,
+            AgentLoopHostErrorKind::InvalidInvocation
+        );
+        assert_eq!(
+            store
+                .state_for_gate(&original.gate_ref)
+                .unwrap()
+                .unwrap()
+                .record,
+            original
+        );
+        assert_eq!(store.len().unwrap(), 4200);
         store
-            .record_awaited_child(record(gate, child))
+            .delete_awaited_child(&original.gate_ref)
             .await
             .unwrap();
-        assert_eq!(store.len().unwrap(), MAX_GATE_RECORDS);
-
-        let overflow = store
-            .record_awaited_child(record(
-                "gate:subagent-overflow-at-capacity",
-                TurnRunId::new(),
-            ))
-            .await;
-        assert!(matches!(
-            overflow,
-            Err(err) if err.kind == AgentLoopHostErrorKind::BudgetExceeded
-        ));
+        assert!(store.is_empty().unwrap());
     }
 
     #[tokio::test]

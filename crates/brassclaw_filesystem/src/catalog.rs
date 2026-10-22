@@ -165,6 +165,7 @@ fn validate_mount_capabilities(
         Capability::Events,
         Capability::EntryMetadata,
         Capability::EntryIndexMetadata,
+        Capability::OpaqueWrite,
     ];
     let mut shortfalls: Vec<Capability> = NEW_AXES
         .iter()
@@ -234,6 +235,18 @@ impl RootFilesystem for CompositeRootFilesystem {
         self.matching_mount(path)?
             .backend
             .put(path, entry, cas)
+            .await
+    }
+
+    async fn put_opaque(
+        &self,
+        path: &VirtualPath,
+        body: Vec<u8>,
+        cas: CasExpectation,
+    ) -> Result<RecordVersion, FilesystemError> {
+        self.matching_mount(path)?
+            .backend
+            .put_opaque(path, body, cas)
             .await
     }
 
@@ -348,6 +361,17 @@ impl RootFilesystem for CompositeRootFilesystem {
 
     async fn list_dir(&self, path: &VirtualPath) -> Result<Vec<DirEntry>, FilesystemError> {
         self.matching_mount(path)?.backend.list_dir(path).await
+    }
+
+    async fn list_dir_bounded(
+        &self,
+        path: &VirtualPath,
+        max_entries: usize,
+    ) -> Result<Vec<DirEntry>, FilesystemError> {
+        self.matching_mount(path)?
+            .backend
+            .list_dir_bounded(path, max_entries)
+            .await
     }
 
     async fn stat(&self, path: &VirtualPath) -> Result<FileStat, FilesystemError> {

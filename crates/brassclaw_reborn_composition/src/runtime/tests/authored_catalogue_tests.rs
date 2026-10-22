@@ -54,6 +54,147 @@ async fn call(
 fn reference(r: brassclaw_skills::association_contract::ComponentRevisionRef) -> Value {
     json!({"uuid":r.uuid,"class_code":r.class_code,"version":r.version,"checksum":hex::encode(r.checksum)})
 }
+
+#[tokio::test]
+async fn native_catalogue_reference_upgrade_preserves_legacy_receipts() {
+    use secrecy::ExposeSecret;
+
+    const PIN_VERSION: u32 = 174;
+    let rig = super::super::test_pg::pg_rig().await;
+    // This is a separate empty database on the fixture's private native server,
+    // not a hand-written approximation of an old schema or a shared database.
+    let database = format!("catalogue_pin_upgrade_{}", Uuid::new_v4().simple());
+    rig.pool
+        .get()
+        .await
+        .unwrap()
+        .batch_execute(&format!(
+            "CREATE DATABASE \"{database}\" TEMPLATE template0"
+        ))
+        .await
+        .unwrap();
+    let mut endpoint = url::Url::parse(rig.url.expose_secret()).unwrap();
+    endpoint.set_path(&format!("/{database}"));
+    let pool = brassclaw_pg::pool::build_pool(endpoint.as_str()).unwrap();
+    let mut client = pool.get().await.unwrap();
+    client.batch_execute("SET TIME ZONE 'UTC'").await.unwrap();
+    let runner = brassclaw_pg::migrations::migrations::runner();
+    let previous = runner
+        .get_migrations()
+        .iter()
+        .map(|migration| migration.version())
+        .filter(|version| *version < PIN_VERSION)
+        .max()
+        .unwrap();
+    runner
+        .set_target(refinery::Target::Version(previous))
+        .run_async(&mut **client)
+        .await
+        .unwrap();
+    let mut runs = Vec::new();
+    for index in 0..3_u8 {
+        let run = Uuid::new_v4();
+        let scope = brassclaw_turns::TurnScope::new_with_owner(
+            brassclaw_host_api::TenantId::new("catalogue-upgrade").unwrap(),
+            Some(brassclaw_host_api::AgentId::new("upgrade-agent").unwrap()),
+            None,
+            brassclaw_host_api::ThreadId::new(format!("legacy-{index}")).unwrap(),
+            Some(UserId::new("upgrade-owner").unwrap()),
+        );
+        client
+            .execute(
+                "INSERT INTO brassclaw_monty_task_admissions
+                 (run_id,turn_id,scope,accepted_message_ref,runner_id,claim_checksum,admission_key,phase)
+                 VALUES($1,$2,$3,$4,$5,$6,$7,'reserved')",
+                &[
+                    &run,
+                    &Uuid::new_v4(),
+                    &serde_json::to_value(scope).unwrap(),
+                    &format!("msg:{}", Uuid::new_v4()),
+                    &Uuid::new_v4(),
+                    &vec![index + 1; 32],
+                    &vec![index + 10; 32],
+                ],
+            )
+            .await
+            .unwrap();
+        if index > 0 {
+            client
+                .execute(
+                    "UPDATE brassclaw_monty_task_admissions
+                     SET phase='started',started_at=clock_timestamp() WHERE run_id=$1",
+                    &[&run],
+                )
+                .await
+                .unwrap();
+        }
+        if index == 2 {
+            client
+                .execute(
+                    "UPDATE brassclaw_monty_task_admissions SET phase='settled',
+                     settled_at=clock_timestamp(),outcome=$2
+                     WHERE run_id=$1",
+                    &[
+                        &run,
+                        &json!({"status":"failed","reason_kind":"task_cancelled"}),
+                    ],
+                )
+                .await
+                .unwrap();
+        }
+        runs.push(run);
+    }
+    // Hash the full old rows instead of printing private admission keys in a
+    // failed assertion. Only the new, explicitly unknown fields are excluded.
+    let before: std::collections::BTreeMap<Uuid, String> = client
+        .query(
+            "SELECT run_id,encode(sha256(convert_to(to_jsonb(a)::text,'UTF8')),'hex')
+             FROM brassclaw_monty_task_admissions a",
+            &[],
+        )
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|row| (row.get(0), row.get(1)))
+        .collect();
+    brassclaw_pg::migrations::migrations::runner()
+        .set_target(refinery::Target::Version(PIN_VERSION))
+        .run_async(&mut **client)
+        .await
+        .unwrap();
+    let rows = client
+        .query(
+            "SELECT run_id,catalogue_reference_version,catalogue_id,catalogue_checksum,
+                    encode(sha256(convert_to((to_jsonb(a) - ARRAY[
+                        'catalogue_reference_version','catalogue_id','catalogue_checksum'])::text,'UTF8')),'hex')
+             FROM brassclaw_monty_task_admissions a",
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 3);
+    for row in rows {
+        assert_eq!(row.get::<_, i16>(1), 0);
+        assert_eq!(row.get::<_, Option<Uuid>>(2), None);
+        assert_eq!(row.get::<_, Option<String>>(3), None);
+        assert_eq!(before[&row.get::<_, Uuid>(0)], row.get::<_, String>(4));
+    }
+    for run in runs {
+        let error = client
+            .execute(
+                "UPDATE brassclaw_monty_task_admissions
+                 SET catalogue_reference_version=1 WHERE run_id=$1",
+                &[&run],
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.code(),
+            Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+        );
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_authored_catalogue_activates_validated_usage_without_revalidation() {
     let rig = super::super::test_pg::pg_rig().await;
@@ -388,6 +529,50 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
     tokio::time::timeout(Duration::from_secs(60), captured.notified())
         .await
         .unwrap();
+    let expected_catalogue_checksum = hex::encode(<sha2::Sha256 as sha2::Digest>::digest(
+        selected.bytes.as_bytes(),
+    ));
+    let pending_run: Uuid = client
+        .query_one(
+            "SELECT run_id FROM brassclaw_monty_task_admissions
+             WHERE phase='reserved' AND scope->>'thread_id'=$1",
+            &[&chat.0.as_str()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let mut wrong_checksum = expected_catalogue_checksum.clone();
+    wrong_checksum.replace_range(
+        0..1,
+        if expected_catalogue_checksum.starts_with('0') {
+            "1"
+        } else {
+            "0"
+        },
+    );
+    let invalid_pin = client
+        .execute(
+            "UPDATE brassclaw_monty_task_admissions
+             SET phase='started',started_at=clock_timestamp(),catalogue_id=$2,catalogue_checksum=$3
+             WHERE run_id=$1",
+            &[&pending_run, &selected.generation, &wrong_checksum],
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        invalid_pin.code(),
+        Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+    );
+    let unchanged = client
+        .query_one(
+            "SELECT phase,catalogue_id,catalogue_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&pending_run],
+        )
+        .await
+        .unwrap();
+    assert_eq!(unchanged.get::<_, &str>(0), "reserved");
+    assert_eq!(unchanged.get::<_, Option<Uuid>>(1), None);
+    assert_eq!(unchanged.get::<_, Option<String>>(2), None);
     let withdrawn = json!({"activation_id":Uuid::new_v4(),"expected_generation":receipt["generation"],"recipes":[]});
     let (status, withdrawal) = call(&app, "POST", Some(&withdrawn), true).await;
     assert_eq!(status, StatusCode::OK, "{withdrawal}");
@@ -397,6 +582,30 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
         2,
         "replacement retains the original immutable graph"
     );
+    // Retained integrity and eligibility for a fresh capture are different.
+    // Verify the actual old graph/approvals in one real database snapshot while
+    // the normal task is paused before constructing its task-local bindings.
+    {
+        let mut integrity_client = rig.pool.get().await.unwrap();
+        let tx = integrity_client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .unwrap();
+        catalogue
+            .verify_retained_selection(&tx, &selected)
+            .await
+            .unwrap();
+        assert!(
+            catalogue
+                .verify_source_selection(&tx, &selected)
+                .await
+                .is_err()
+        );
+        tx.commit().await.unwrap();
+    }
     release.notify_one();
     let retained_reply = pending.await.unwrap();
     assert_eq!(retained_reply.status, TurnStatus::Completed);
@@ -404,7 +613,28 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
         retained_reply.text.as_deref(),
         Some("retained across withdrawal")
     );
-    let retained_outcome: Value = client.query_one("SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'", &[&retained_reply.run_id.as_uuid()]).await.unwrap().get(0);
+    let retained_admission = client.query_one("SELECT outcome,catalogue_id,catalogue_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'", &[&retained_reply.run_id.as_uuid()]).await.unwrap();
+    let retained_outcome: Value = retained_admission.get(0);
+    assert_eq!(retained_reply.run_id.as_uuid(), pending_run);
+    assert_eq!(
+        retained_admission.get::<_, Option<Uuid>>(1),
+        Some(selected.generation)
+    );
+    assert_eq!(
+        retained_admission.get::<_, Option<String>>(2),
+        Some(expected_catalogue_checksum)
+    );
+    let cleared = client
+        .execute(
+            "UPDATE brassclaw_monty_task_admissions SET catalogue_id=NULL,catalogue_checksum=NULL WHERE run_id=$1",
+            &[&pending_run],
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        cleared.code(),
+        Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+    );
     assert!(
         retained_outcome
             .to_string()
@@ -701,13 +931,45 @@ async fn native_catalogue_routing_choices_survive_restart_and_reactivation() {
     // Compatibility restoration must reproduce historical bytes, not upgrade
     // their identity by inserting the new empty routing field or current policy.
     let current = owner.active.read().await.clone();
-    for format in ["authored-monty-catalogue/2", "authored-monty-catalogue/1"] {
+    for (format, omit_later_settings) in [
+        ("authored-monty-catalogue/3", true),
+        ("authored-monty-catalogue/2", true),
+        ("authored-monty-catalogue/2", false),
+        ("authored-monty-catalogue/1", false),
+    ] {
         let mut document: Value = serde_json::from_str(&current.bytes).unwrap();
         document["format"] = json!(format);
-        document
-            .as_object_mut()
-            .unwrap()
-            .remove("disabled_recipe_ids");
+        if !format.ends_with("/3") {
+            document
+                .as_object_mut()
+                .unwrap()
+                .remove("disabled_recipe_ids");
+        }
+        if omit_later_settings {
+            // These settings were added after retained preparation policies.
+            // Their serde defaults must not insert new fields into old bytes.
+            let policy = document["preparation_policy"].as_object_mut().unwrap();
+            for key in [
+                "default_memory_tree_depth",
+                "max_memory_tree_depth",
+                "max_coding_read_bytes",
+                "max_coding_write_bytes",
+                "max_coding_patch_bytes",
+                "default_coding_read_lines",
+                "max_coding_directory_entries",
+                "default_coding_directory_depth",
+                "default_coding_max_results",
+                "max_coding_output_bytes",
+                "default_coding_head_lines",
+                "max_coding_scan_bytes",
+                "max_coding_visited_entries",
+                "max_coding_diff_input_bytes",
+                "max_coding_diff_preview_bytes",
+                "coding_diff_context_lines",
+            ] {
+                assert!(policy.remove(key).is_some());
+            }
+        }
         if format.ends_with("/1") {
             document
                 .as_object_mut()
@@ -734,6 +996,18 @@ async fn native_catalogue_routing_choices_survive_restart_and_reactivation() {
         assert_eq!(restored.generation, generation);
         assert_eq!(restored.bytes, bytes);
         assert!(restored.disabled_recipes.is_empty());
+        let reply = runtime
+            .send_user_message(&chat, "authored reply from historical policy")
+            .await
+            .unwrap();
+        assert_eq!(reply.status, TurnStatus::Completed);
+        assert_eq!(reply.text.as_deref(), Some("from historical policy"));
+        let retained = rig.pool.get().await.unwrap().query_one(
+            "SELECT catalogue_id,catalogue_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",
+            &[&reply.run_id.as_uuid()],
+        ).await.unwrap();
+        assert_eq!(retained.get::<_, Option<Uuid>>(0), Some(generation));
+        assert_eq!(retained.get::<_, Option<String>>(1), Some(checksum));
     }
     drop(owner);
     shutdown_shared_runtime(runtime).await.unwrap();

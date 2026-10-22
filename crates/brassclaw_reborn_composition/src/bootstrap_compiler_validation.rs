@@ -68,6 +68,21 @@ const CASES: &[(&str, &str, &str)] = &[
         "prefix-maker",
         "literal-reference/v4-stable-sharing",
     ),
+    (
+        "base-contextual",
+        "base-prompt",
+        "literal-reference/v5-contextual-sharing",
+    ),
+    (
+        "maker-contextual",
+        "prefix-maker",
+        "literal-reference/v5-contextual-sharing",
+    ),
+    (
+        "sempai-contextual",
+        "sempai",
+        "literal-reference/v5-contextual-sharing",
+    ),
     ("duplicate", "base-prompt", "literal-reference/v1"),
     ("missing-guide", "base-prompt", "literal-reference/v1"),
     ("denied", "base-prompt", "literal-reference/v1"),

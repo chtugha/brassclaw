@@ -298,6 +298,9 @@ where
     provider: Arc<P>,
     policy: LlmModelProfilePolicy,
     provider_turn_sequence: Arc<AtomicU64>,
+    /// Present only on a host-retained selection. Never re-resolve a role from
+    /// its underlying provider while dispatching this prepared operation.
+    retained_model: Option<String>,
     /// Per-provider output ceiling forwarded to `CompletionRequest.max_tokens`.
     /// Live-updatable: the settings service can call `.set()` on the shared
     /// slot and the next model call picks up the new value immediately.
@@ -309,6 +312,12 @@ where
     /// Live-updatable via the shared atomic slot.
     /// `None` inside the slot (sentinel 0) → no pre-call guard.
     total_input_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
+}
+
+struct PreparedProviderRequest {
+    completion: CompletionRequest,
+    provider_turn_scope: Option<String>,
+    replay_identity: ProviderReplayIdentity,
 }
 
 impl<P> LlmProviderModelGateway<P>
@@ -330,6 +339,7 @@ where
             provider,
             policy,
             provider_turn_sequence: Arc::new(AtomicU64::new(1)),
+            retained_model: None,
             max_output_tokens: None,
             total_input_tokens: None,
         }
@@ -389,6 +399,46 @@ impl<P> HostManagedModelGateway for LlmProviderModelGateway<P>
 where
     P: LlmProvider + ?Sized + Send + Sync,
 {
+    fn retain_model_selection(
+        &self,
+        request: &HostManagedModelRequest,
+    ) -> Result<Option<Arc<dyn HostManagedModelGateway>>, HostManagedModelError> {
+        if self.retained_model.is_some() {
+            return Ok(None);
+        }
+        let Some(selection) = self.provider.retained_provider() else {
+            return Ok(None);
+        };
+        let route = self
+            .policy
+            .route_for(&request.model_profile_id)
+            .ok_or_else(|| {
+                HostManagedModelError::safe(
+                    HostManagedModelErrorKind::PolicyDenied,
+                    "model profile is not permitted",
+                )
+            })?;
+        let model =
+            request_model_override(route, selection.provider.as_ref(), Some(&selection.model))?;
+        ProviderReplayIdentity::new(&selection.provider_id, &model)?;
+        let mut policy = self.policy.clone();
+        policy.routes.insert(
+            request.model_profile_id.clone(),
+            LlmModelProfileRoute {
+                model_override: Some(model.clone()),
+            },
+        );
+        Ok(Some(Arc::new(LlmProviderModelGateway {
+            provider_id: selection.provider_id,
+            provider: selection.provider,
+            policy,
+            provider_turn_sequence: self.provider_turn_sequence.clone(),
+            retained_model: Some(model),
+            max_output_tokens: self.max_output_tokens.clone(),
+            total_input_tokens: self.total_input_tokens.clone(),
+        })))
+    }
+
     fn supports_provider_observation(&self) -> bool {
         true
     }
@@ -400,7 +450,16 @@ where
         &self,
         request: HostManagedModelRequest,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
-        if let Some(retained) = self.provider.retained_provider() {
+        if let Some(model) = &self.retained_model {
+            self.stream_selected(
+                request,
+                self.provider.as_ref(),
+                Some((&self.provider_id, model)),
+                None,
+                None,
+            )
+            .await
+        } else if let Some(retained) = self.provider.retained_provider() {
             self.stream_selected(
                 request,
                 retained.provider.as_ref(),
@@ -420,7 +479,16 @@ where
         request: HostManagedModelRequest,
         capabilities: Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
-        if let Some(retained) = self.provider.retained_provider() {
+        if let Some(model) = &self.retained_model {
+            self.stream_selected(
+                request,
+                self.provider.as_ref(),
+                Some((&self.provider_id, model)),
+                Some(capabilities),
+                None,
+            )
+            .await
+        } else if let Some(retained) = self.provider.retained_provider() {
             self.stream_selected(
                 request,
                 retained.provider.as_ref(),
@@ -446,7 +514,16 @@ where
         capabilities: Option<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>>,
         custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
-        if let Some(retained) = self.provider.retained_provider() {
+        if let Some(model) = &self.retained_model {
+            self.stream_selected(
+                request,
+                self.provider.as_ref(),
+                Some((&self.provider_id, model)),
+                capabilities,
+                Some(custodian),
+            )
+            .await
+        } else if let Some(retained) = self.provider.retained_provider() {
             self.stream_selected(
                 request,
                 retained.provider.as_ref(),
@@ -472,17 +549,15 @@ impl<P> LlmProviderModelGateway<P>
 where
     P: LlmProvider + ?Sized + Send + Sync,
 {
-    async fn stream_selected<Q>(
+    /// Request construction. No selected model is entered here; errors
+    /// after the subsequent provider future retain their unknown effect state.
+    fn prepare_selected_request<Q: LlmProvider + ?Sized>(
         &self,
         request: HostManagedModelRequest,
         provider: &Q,
         selection: Option<(&str, &str)>,
-        capabilities: Option<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>>,
-        custodian: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>>,
-    ) -> Result<HostManagedModelResponse, HostManagedModelError>
-    where
-        Q: LlmProvider + ?Sized,
-    {
+        has_capabilities: bool,
+    ) -> Result<PreparedProviderRequest, HostManagedModelError> {
         self.check_total_input_budget(&request.messages)?;
         let route = self
             .policy
@@ -515,7 +590,7 @@ where
             })?);
         }
         add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
-        let provider_turn_scope = if capabilities.is_some() {
+        let provider_turn_scope = if has_capabilities {
             let sequence = self
                 .provider_turn_sequence
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
@@ -533,6 +608,31 @@ where
         } else {
             None
         };
+        Ok(PreparedProviderRequest {
+            completion,
+            provider_turn_scope,
+            replay_identity,
+        })
+    }
+
+    async fn stream_selected<Q>(
+        &self,
+        request: HostManagedModelRequest,
+        provider: &Q,
+        selection: Option<(&str, &str)>,
+        capabilities: Option<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>>,
+        custodian: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>>,
+    ) -> Result<HostManagedModelResponse, HostManagedModelError>
+    where
+        Q: LlmProvider + ?Sized,
+    {
+        let PreparedProviderRequest {
+            completion,
+            provider_turn_scope,
+            replay_identity,
+        } = self
+            .prepare_selected_request(request, provider, selection, capabilities.is_some())
+            .map_err(HostManagedModelError::before_provider_dispatch)?;
         complete_model_request(
             provider,
             completion,
@@ -547,6 +647,8 @@ where
 
 #[async_trait]
 pub trait ModelRouteProviderPool: Send + Sync {
+    /// Resolve configuration and an existing provider implementation. This must
+    /// not submit a model completion; the gateway owns that later boundary.
     async fn provider_for_route(
         &self,
         snapshot: &ResolvedModelRouteSnapshot,
@@ -714,45 +816,62 @@ where
         capabilities: Option<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>>,
         custodian: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
-        let slot = slot_for_model_profile(&request.model_profile_id)?;
-        let request_snapshot = request
-            .resolved_model_route
-            .as_ref()
-            .ok_or_else(missing_route_snapshot_error)?;
-        let policy_mode = self.validate_route_snapshot(slot, request_snapshot)?;
-        let snapshot = snapshot_from_host_request(slot, request_snapshot, policy_mode)?;
-        let provider = self.provider_pool.provider_for_route(&snapshot).await?;
-        let model_profile_id = request.model_profile_id.clone();
-        let run_id = request.run_id;
-        let turn_id = request.turn_id;
-        let replay_identity = ProviderReplayIdentity::new(
-            snapshot.route().provider_id(),
-            snapshot.route().model_id(),
-        )?;
-        let mut completion =
-            CompletionRequest::new(convert_messages(request.messages, &replay_identity)?);
-        completion.dispatch_policy = provider_dispatch_policy(request.dispatch_policy);
-        completion.model = Some(snapshot.route().model_id().to_string());
-        validate_provider_model_binding_matches_route(snapshot.route(), provider.as_ref())?;
-        add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
-        add_route_metadata(&mut completion, &snapshot);
+        let (provider, prepared) = async {
+            let slot = slot_for_model_profile(&request.model_profile_id)?;
+            let request_snapshot = request
+                .resolved_model_route
+                .as_ref()
+                .ok_or_else(missing_route_snapshot_error)?;
+            let policy_mode = self.validate_route_snapshot(slot, request_snapshot)?;
+            let snapshot = snapshot_from_host_request(slot, request_snapshot, policy_mode)?;
+            let provider = self.provider_pool.provider_for_route(&snapshot).await?;
+            let model_profile_id = request.model_profile_id.clone();
+            let run_id = request.run_id;
+            let turn_id = request.turn_id;
+            let replay_identity = ProviderReplayIdentity::new(
+                snapshot.route().provider_id(),
+                snapshot.route().model_id(),
+            )?;
+            let mut completion =
+                CompletionRequest::new(convert_messages(request.messages, &replay_identity)?);
+            completion.dispatch_policy = provider_dispatch_policy(request.dispatch_policy);
+            completion.model = Some(snapshot.route().model_id().to_string());
+            validate_provider_model_binding_matches_route(snapshot.route(), provider.as_ref())?;
+            add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
+            add_route_metadata(&mut completion, &snapshot);
 
-        let provider_turn_scope = if capabilities.is_some() {
-            let sequence = self
-                .provider_turn_sequence
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
-                .map_err(|_| {
-                    HostManagedModelError::safe(
-                        HostManagedModelErrorKind::PolicyDenied,
-                        "model-call identity exhausted",
-                    )
-                })?;
-            Some(format!(
-                "run={run_id}\nturn={turn_id}\nmodel_call={sequence}"
+            let provider_turn_scope = if capabilities.is_some() {
+                let sequence = self
+                    .provider_turn_sequence
+                    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
+                    .map_err(|_| {
+                        HostManagedModelError::safe(
+                            HostManagedModelErrorKind::PolicyDenied,
+                            "model-call identity exhausted",
+                        )
+                    })?;
+                Some(format!(
+                    "run={run_id}\nturn={turn_id}\nmodel_call={sequence}"
+                ))
+            } else {
+                None
+            };
+            Ok::<_, HostManagedModelError>((
+                provider,
+                PreparedProviderRequest {
+                    completion,
+                    provider_turn_scope,
+                    replay_identity,
+                },
             ))
-        } else {
-            None
-        };
+        }
+        .await
+        .map_err(HostManagedModelError::before_provider_dispatch)?;
+        let PreparedProviderRequest {
+            completion,
+            provider_turn_scope,
+            replay_identity,
+        } = prepared;
         complete_model_request(
             provider.as_ref(),
             completion,
@@ -1029,7 +1148,8 @@ where
     if let Some(capabilities) = capabilities {
         let mut tool_definitions = capabilities
             .tool_definitions()
-            .map_err(map_capability_host_error)?;
+            .map_err(map_capability_host_error)
+            .map_err(HostManagedModelError::before_provider_dispatch)?;
         // Deterministic tool ordering is required for vLLM/Anthropic-prefix
         // cache hits — the tool list is part of the stable system-prompt
         // prefix, so any reordering between turns invalidates the cache.

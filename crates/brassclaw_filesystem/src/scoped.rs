@@ -110,6 +110,19 @@ where
         self.root.put(&virtual_path, entry, cas).await
     }
 
+    /// Write opaque bytes, atomically rejecting a structured target.
+    pub async fn put_opaque(
+        &self,
+        scope: &ResourceScope,
+        path: &ScopedPath,
+        body: Vec<u8>,
+        cas: CasExpectation,
+    ) -> Result<RecordVersion, FilesystemError> {
+        let virtual_path =
+            self.resolve_with_permission(scope, path, FilesystemOperation::WriteFile)?;
+        self.root.put_opaque(&virtual_path, body, cas).await
+    }
+
     /// Read the entry at `path`, returning `None` if absent.
     pub async fn get(
         &self,

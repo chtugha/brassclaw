@@ -1,6 +1,6 @@
 //! Phase J integration tests — J.1 skill intent seeding + J.3 dependency traversal.
 //!
-//! Tests are gated to `skills-db` and skip when docker is unavailable.
+//! Tests use the shared native PostgreSQL fixture and actual migrations.
 //!
 //! ## J.1 tests
 //!
@@ -21,8 +21,6 @@
 
 #![cfg(feature = "skills-db")]
 
-use std::sync::Arc;
-
 use brassclaw_engine::memory::instruction_builder::{
     DependencyExpr, DependencyNode, DependencySubExpr,
 };
@@ -32,47 +30,8 @@ use brassclaw_engine::memory::intent_system::{
 use brassclaw_engine::memory::retrieval_source::{ComponentScope, resolve_dependencies};
 use uuid::Uuid;
 
-// ─── testcontainer rig ───────────────────────────────────────────────────────
-
-struct PgRig {
-    _container: testcontainers_modules::testcontainers::ContainerAsync<
-        testcontainers_modules::postgres::Postgres,
-    >,
-    pool: deadpool_postgres::Pool,
-}
-
-async fn pg_rig_or_skip() -> Option<PgRig> {
-    use testcontainers_modules::testcontainers::{ImageExt, runners::AsyncRunner};
-
-    let image = testcontainers_modules::postgres::Postgres::default()
-        .with_db_name("brassclaw_test")
-        .with_user("postgres")
-        .with_password("postgres")
-        .with_tag("16-alpine");
-    let container = match image.start().await {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("skipping phase_j tests: docker unavailable ({e})");
-            return None;
-        }
-    };
-    let host = container.get_host().await.ok()?;
-    let port = container.get_host_port_ipv4(5432).await.ok()?;
-    let url = format!("postgres://postgres:postgres@{host}:{port}/brassclaw_test");
-    let cfg: tokio_postgres::Config = url.parse().expect("parse url");
-    let mgr = deadpool_postgres::Manager::new(cfg, tokio_postgres::NoTls);
-    let pool = deadpool_postgres::Pool::builder(mgr)
-        .max_size(4)
-        .build()
-        .expect("pool build");
-    brassclaw_pg::migrations::run_migrations(&pool)
-        .await
-        .expect("migrations");
-    Some(PgRig {
-        _container: container,
-        pool,
-    })
-}
+#[path = "../../brassclaw_reborn/tests/common/native_pg.rs"]
+mod native_pg;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -111,7 +70,7 @@ async fn insert_validated_spec(
                 (id, tenant_id, user_id, agent_id, project_id,
                  name, description, content,
                  class_code, source, validation_status, dependency_registry)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)",
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::text::jsonb)",
             &[
                 &id,
                 &scope.tenant_id,
@@ -121,7 +80,7 @@ async fn insert_validated_spec(
                 &name,
                 &"spec description",
                 &"spec content",
-                &(12i32),
+                &(12i16),
                 &"system",
                 &"validated",
                 &dep_json,
@@ -129,23 +88,7 @@ async fn insert_validated_spec(
         )
         .await
         .expect("insert spec");
-    // Register in reborn_components (V061 trigger should fire on INSERT; this
-    // is a belt-and-suspenders guard for the test isolation case).
-    client
-        .execute(
-            "INSERT INTO reborn_components (id, tenant_id, user_id, agent_id, project_id, class_code)
-             VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING",
-            &[
-                &id,
-                &scope.tenant_id,
-                &scope.user_id,
-                &scope.agent_id,
-                &scope.project_id,
-                &(12i32),
-            ],
-        )
-        .await
-        .expect("registry row");
+
     id
 }
 
@@ -166,7 +109,7 @@ async fn insert_validated_toolskill(
                 (id, tenant_id, user_id, agent_id, project_id,
                  name, description, content,
                  class_code, source, validation_status, dependency_registry)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)",
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::text::jsonb)",
             &[
                 &id,
                 &scope.tenant_id,
@@ -176,7 +119,7 @@ async fn insert_validated_toolskill(
                 &name,
                 &"toolskill description",
                 &"toolskill content",
-                &(13i32),
+                &(13i16),
                 &"system",
                 &"validated",
                 &dep_json,
@@ -185,21 +128,7 @@ async fn insert_validated_toolskill(
         .await
         .expect("insert toolskill");
     // Belt-and-suspenders: V061 trigger fires on INSERT but guard for test isolation.
-    client
-        .execute(
-            "INSERT INTO reborn_components (id, tenant_id, user_id, agent_id, project_id, class_code)
-             VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING",
-            &[
-                &id,
-                &scope.tenant_id,
-                &scope.user_id,
-                &scope.agent_id,
-                &scope.project_id,
-                &(13i32),
-            ],
-        )
-        .await
-        .expect("registry row");
+
     id
 }
 
@@ -215,11 +144,8 @@ async fn insert_validated_toolskill(
 /// hook does) makes the examples resolvable via `resolve_intent`.
 #[tokio::test]
 async fn skill_intent_examples_seed_and_resolve() {
-    let rig = match pg_rig_or_skip().await {
-        Some(r) => r,
-        None => return,
-    };
-    let pool = Arc::new(rig.pool);
+    let rig = native_pg::NativePostgres::start().await;
+    let pool = rig.pool.clone();
     let scope = unique_scope();
 
     // Create a real skill component id to associate the intents with.
@@ -317,11 +243,8 @@ async fn skill_intent_examples_seed_and_resolve() {
 /// Chain: root → A (all) → B (no sub-deps).
 #[tokio::test]
 async fn resolve_deps_all_traversal() {
-    let rig = match pg_rig_or_skip().await {
-        Some(r) => r,
-        None => return,
-    };
-    let pool = Arc::new(rig.pool);
+    let rig = native_pg::NativePostgres::start().await;
+    let pool = rig.pool.clone();
     let scope = unique_scope();
     let comp_scope = component_scope_from(&scope);
 
@@ -379,11 +302,8 @@ async fn resolve_deps_all_traversal() {
 /// skipping index 4.
 #[tokio::test]
 async fn resolve_deps_selective_indices() {
-    let rig = match pg_rig_or_skip().await {
-        Some(r) => r,
-        None => return,
-    };
-    let pool = Arc::new(rig.pool);
+    let rig = native_pg::NativePostgres::start().await;
+    let pool = rig.pool.clone();
     let scope = unique_scope();
     let comp_scope = component_scope_from(&scope);
 
@@ -441,11 +361,8 @@ async fn resolve_deps_selective_indices() {
 /// J.3: A UUID already in the `visited` set is not re-fetched.
 #[tokio::test]
 async fn resolve_deps_deduplication() {
-    let rig = match pg_rig_or_skip().await {
-        Some(r) => r,
-        None => return,
-    };
-    let pool = Arc::new(rig.pool);
+    let rig = native_pg::NativePostgres::start().await;
+    let pool = rig.pool.clone();
     let scope = unique_scope();
     let comp_scope = component_scope_from(&scope);
 
@@ -486,11 +403,8 @@ async fn resolve_deps_deduplication() {
 /// J.3: Cycle A → B → A terminates without infinite recursion.
 #[tokio::test]
 async fn resolve_deps_cycle_guard() {
-    let rig = match pg_rig_or_skip().await {
-        Some(r) => r,
-        None => return,
-    };
-    let pool = Arc::new(rig.pool);
+    let rig = native_pg::NativePostgres::start().await;
+    let pool = rig.pool.clone();
     let scope = unique_scope();
     let comp_scope = component_scope_from(&scope);
 
@@ -512,7 +426,7 @@ async fn resolve_deps_cycle_guard() {
                     (id, tenant_id, user_id, agent_id, project_id,
                      name, description, content, class_code,
                      source, validation_status, dependency_registry)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)",
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::text::jsonb)",
                 &[
                     &id,
                     &scope.tenant_id,
@@ -522,7 +436,7 @@ async fn resolve_deps_cycle_guard() {
                     &name,
                     &"desc",
                     &"content",
-                    &(12i32),
+                    &(12i16),
                     &"system",
                     &"validated",
                     &dep.to_string(),
@@ -530,21 +444,6 @@ async fn resolve_deps_cycle_guard() {
             )
             .await
             .expect("insert spec");
-        client
-            .execute(
-                "INSERT INTO reborn_components (id, tenant_id, user_id, agent_id, project_id, class_code)
-                 VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING",
-                &[
-                    &id,
-                    &scope.tenant_id,
-                    &scope.user_id,
-                    &scope.agent_id,
-                    &scope.project_id,
-                    &(12i32),
-                ],
-            )
-            .await
-            .expect("registry");
     }
 
     let expr: DependencyExpr = vec![DependencyNode {
@@ -568,11 +467,8 @@ async fn resolve_deps_cycle_guard() {
 /// class-12 Spec dependencies route to `orchestrator_items`.
 #[tokio::test]
 async fn resolve_deps_channel_routing() {
-    let rig = match pg_rig_or_skip().await {
-        Some(r) => r,
-        None => return,
-    };
-    let pool = Arc::new(rig.pool);
+    let rig = native_pg::NativePostgres::start().await;
+    let pool = rig.pool.clone();
     let scope = unique_scope();
     let comp_scope = component_scope_from(&scope);
 

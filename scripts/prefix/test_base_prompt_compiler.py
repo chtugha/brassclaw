@@ -205,6 +205,34 @@ class BaseCompilerTests(unittest.TestCase):
             self.assertEqual(''.join(recovered), cards[source['source']]['excerpt'])
         self.assertEqual(cards['zz/reused-guide.md']['excerpt'], cards[c.MANDATORY[0]]['excerpt'])
 
+    def test_contextual_sharing_keeps_equal_bytes_in_different_contexts_separate(self):
+        common = 'Same complete reference bytes in two distinct source contexts.\n'
+        self.add('fixture/shared-a.md', common.encode())
+        self.add('fixture/shared-b.md', common.encode())
+        self.add('scripts/prefix/monty-reference/v1.0.0/docs/api/python/fixture.md', common.encode())
+        self.save()
+        result = c.compile_package(self.package, self.root / 'contextual', evidence_view='literal-reference/v5-contextual-sharing')
+        directory = self.root / 'contextual' / result['generation']
+        rendered = (directory / 'context.md').read_text()
+        self.assertEqual(rendered.count(common), 2)
+        self.assertIn('Host embedding APIs are not guest functions or BrassClaw host callables', rendered)
+        mapping = c.strict_json((directory / 'render_map.json').read_bytes())
+        design = c.strict_json((directory / 'profile_design.json').read_bytes())
+        self.assertEqual(mapping['format'], 'brassclaw-prefix-render-map/2')
+        self.assertEqual(design['format'], 'brassclaw-prefix-compiler-design/2')
+        groups = [unit for unit in mapping['units'] if unit['unit_id'] == c.sha(common.encode())]
+        self.assertEqual({unit['context'] for unit in groups}, {'reference', 'upstream-api'})
+        cards = {card['path']: card for card in c.strict_json((directory / 'evidence.json').read_bytes())}
+        units = {(unit['context'], unit['unit_id']): unit for unit in mapping['units']}
+        for source in mapping['sources']:
+            self.assertEqual(design['source_contexts'][source['source']], source['context'])
+            recovered = []
+            for part in source['parts']:
+                origin = units[(source['context'], part['unit_id'])]['canonical']
+                lines = cards[origin['source']]['excerpt'].splitlines(keepends=True)
+                recovered.append(''.join(lines[origin['line_start'] - 1:origin['line_end']]))
+            self.assertEqual(''.join(recovered), cards[source['source']]['excerpt'])
+
     def test_snapshot_uses_explicit_inventory_and_preserves_original_bytes(self):
         inventory = self.root / 'inventory.json'
         inventory.write_bytes(c.canonical({'format': 'brassclaw-prefix-source-inventory/1',

@@ -62,3 +62,6 @@ version = "1.0"
 
 [build-dependencies.pkg-config]
 version = "^0.3.16"
+
+# Keep isolated shim tests independent inside frozen validation checkouts.
+[workspace]

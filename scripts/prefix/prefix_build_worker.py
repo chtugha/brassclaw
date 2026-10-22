@@ -91,7 +91,7 @@ def build(request_bytes):
     fields(request['design'], ('evidence_view', 'reserve_tokens'))
     view = request['design']['evidence_view']
     reserve = request['design']['reserve_tokens']
-    if view not in {'literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing'} or type(reserve) is not int or not 8192 <= reserve <= 9007199254740991:
+    if view not in {'literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing', 'literal-reference/v5-contextual-sharing'} or type(reserve) is not int or not 8192 <= reserve <= 9007199254740991:
         raise ValueError('unsupported build design')
     manifest = request['source_manifest']
     fields(manifest, ('format', 'release', 'sources'))

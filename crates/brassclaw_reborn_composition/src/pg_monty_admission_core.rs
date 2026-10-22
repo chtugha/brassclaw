@@ -13,11 +13,20 @@ use brassclaw_turns::{
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tokio_postgres::Transaction;
 
 #[path = "pg_monty_invocation.rs"]
 mod invocation;
+
+/// An exact ordinary catalogue selected by its owner. This is retained data,
+/// not approval, child provenance or authority. Internal workflows retain their
+/// separate program subjects; historical/draft admissions have no such reference.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CatalogueReference {
+    pub(crate) id: uuid::Uuid,
+    pub(crate) checksum: [u8; 32],
+}
 
 /// Private admission address; neither serializable nor diagnostic-printable.
 pub(crate) struct PgMontyAdmission {
@@ -29,6 +38,7 @@ pub(crate) struct PgMontyAdmission {
     attempt: MontyTaskAttempt,
     key: [u8; 32],
     checksum: [u8; 32],
+    catalogue: OnceLock<Option<CatalogueReference>>,
 }
 
 impl PgMontyAdmission {
@@ -73,7 +83,25 @@ impl PgMontyAdmission {
             attempt,
             key: Sha256::digest(nonce).into(),
             checksum: Sha256::digest(claim).into(),
+            catalogue: OnceLock::new(),
         })
+    }
+
+    /// Freeze the actual captured ordinary source before the first host call.
+    /// Concurrent identical calls coalesce; no later source may replace it,
+    /// including replacing an explicitly absent source with the current one.
+    pub(crate) fn bind_catalogue(
+        &self,
+        reference: Option<CatalogueReference>,
+    ) -> Result<(), AgentLoopDriverError> {
+        if reference.is_some_and(|reference| reference.id.is_nil()) {
+            return Err(failed("monty_catalogue_reference_invalid"));
+        }
+        match self.catalogue.set(reference) {
+            Ok(()) => Ok(()),
+            Err(reference) if self.catalogue.get() == Some(&reference) => Ok(()),
+            Err(_) => Err(failed("monty_catalogue_reference_conflict")),
+        }
     }
 
     /// Persist this exact prepared address once. A conflict is not permission
@@ -98,8 +126,9 @@ impl PgMontyAdmission {
             .ok_or_else(|| failed("monty_admission_identity_invalid"))?
             .to_owned();
         let inserted = transaction.execute("INSERT INTO brassclaw_monty_task_admissions
-            (run_id, turn_id, scope, accepted_message_ref, runner_id, claim_checksum, admission_key, phase, trusted_internal_turn)
-            VALUES ($1,$2,$3,$4,$5::text::uuid,$6,$7,'reserved',$8) ON CONFLICT (run_id) DO NOTHING",
+            (run_id, turn_id, scope, accepted_message_ref, runner_id, claim_checksum, admission_key, phase, trusted_internal_turn,
+             catalogue_reference_version)
+            VALUES ($1,$2,$3,$4,$5::text::uuid,$6,$7,'reserved',$8,1) ON CONFLICT (run_id) DO NOTHING",
             &[&self.attempt.run_id.as_uuid(), &self.turn_id.as_uuid(), &scope, &self.accepted.as_str(),
                 &runner, &&self.checksum[..], &&self.key[..], &self.trusted_internal_turn])
             .await.map_err(|_| failed("monty_admission_database_failed"))?;
@@ -118,6 +147,12 @@ impl PgMontyAdmission {
     /// Call before one requested operation. Started/settled admission is not an
     /// operation approval; current kernel policy is independently checked later.
     pub(crate) async fn check_and_start(&self) -> Result<(), AgentLoopDriverError> {
+        // Direct internal/qualification callers explicitly freeze absence too.
+        // An unconfigured old admission cannot later acquire a fresh selection.
+        self.bind_catalogue(self.catalogue.get().copied().flatten())?;
+        let reference = self.catalogue.get().copied().flatten();
+        let catalogue_id = reference.map(|reference| reference.id);
+        let catalogue_checksum = reference.map(|reference| hex::encode(reference.checksum));
         let mut client = self
             .pool
             .get()
@@ -129,9 +164,15 @@ impl PgMontyAdmission {
             .map_err(|_| failed("monty_admission_database_failed"))?;
         self.preflight_claim(&transaction).await?;
         let changed = transaction.execute("UPDATE brassclaw_monty_task_admissions
-            SET phase='started', started_at=COALESCE(started_at,clock_timestamp())
-            WHERE run_id=$1 AND admission_key=$2 AND claim_checksum=$3 AND phase IN ('reserved','started')",
-            &[&self.attempt.run_id.as_uuid(), &&self.key[..], &&self.checksum[..]])
+            SET phase='started', started_at=COALESCE(started_at,clock_timestamp()),
+                catalogue_id=COALESCE(catalogue_id,$4),
+                catalogue_checksum=COALESCE(catalogue_checksum,$5)
+            WHERE run_id=$1 AND admission_key=$2 AND claim_checksum=$3 AND phase IN ('reserved','started')
+                AND ((catalogue_id IS NULL AND catalogue_checksum IS NULL
+                      AND ($4::uuid IS NULL OR (phase='reserved' AND catalogue_reference_version=1)))
+                     OR (catalogue_id=$4 AND catalogue_checksum=$5))",
+            &[&self.attempt.run_id.as_uuid(), &&self.key[..], &&self.checksum[..],
+                &catalogue_id, &catalogue_checksum])
             .await.map_err(|_| failed("monty_admission_database_failed"))?;
         if changed != 1 {
             return Err(failed("monty_admission_fenced"));

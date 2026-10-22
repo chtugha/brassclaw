@@ -832,11 +832,11 @@ impl TurnStateStore for InMemoryTurnStateStore {
     }
 }
 
-#[async_trait]
-impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
-    async fn submit_child_turn(
+impl InMemoryTurnStateStore {
+    async fn submit_child_with_claim(
         &self,
         request: SubmitChildRunRequest,
+        parent: Option<&ClaimedTurnRun>,
         admission_policy: &dyn TurnAdmissionPolicy,
         run_profile_resolver: &dyn RunProfileResolver,
     ) -> Result<SubmitTurnResponse, TurnError> {
@@ -847,6 +847,7 @@ impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
         {
             let mut inner = self.lock_inner()?;
             loop {
+                ensure_claimed_child_parent(&inner, &request, parent)?;
                 if let Some(result) = inner.submit_idempotency.get(&idempotency_key) {
                     return result.clone();
                 }
@@ -867,6 +868,7 @@ impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
 
         let submit_template = {
             let mut inner = self.lock_inner()?;
+            ensure_claimed_child_parent(&inner, &request, parent)?;
             if let Some(result) = inner.submit_idempotency.get(&idempotency_key).cloned() {
                 inner.submit_idempotency_in_flight.remove(&idempotency_key);
                 self.submit_idempotency_ready.notify_all();
@@ -941,6 +943,7 @@ impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
         let admission_result = admission_policy.check_submit(&submit_template);
         {
             let mut inner = self.lock_inner()?;
+            ensure_claimed_child_parent(&inner, &request, parent)?;
             if let Some(result) = inner.submit_idempotency.get(&idempotency_key).cloned() {
                 inner.submit_idempotency_in_flight.remove(&idempotency_key);
                 self.submit_idempotency_ready.notify_all();
@@ -967,6 +970,7 @@ impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
             .await;
 
         let mut inner = self.lock_inner()?;
+        ensure_claimed_child_parent(&inner, &request, parent)?;
         if let Some(result) = inner.submit_idempotency.get(&idempotency_key).cloned() {
             inner.submit_idempotency_in_flight.remove(&idempotency_key);
             self.submit_idempotency_ready.notify_all();
@@ -1221,6 +1225,72 @@ impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
         inner.submit_idempotency_in_flight.remove(&idempotency_key);
         self.submit_idempotency_ready.notify_all();
         response
+    }
+}
+
+fn ensure_claimed_child_parent(
+    inner: &Inner,
+    request: &SubmitChildRunRequest,
+    claimed: Option<&ClaimedTurnRun>,
+) -> Result<(), TurnError> {
+    let Some(claimed) = claimed else {
+        return Ok(());
+    };
+    if claimed.state.run_id != request.parent_run_id || claimed.state.scope != request.parent_scope
+    {
+        return Err(TurnError::LeaseMismatch);
+    }
+    let record = inner
+        .records
+        .get(&request.parent_run_id)
+        .filter(|record| record.scope == request.parent_scope)
+        .ok_or(TurnError::ScopeNotFound)?;
+    if record.turn_id != claimed.state.turn_id {
+        return Err(TurnError::LeaseMismatch);
+    }
+    // A claimed child inherits its parent's actor identity. In particular an
+    // actor-fallback scope alone cannot identify the owner: accepting another
+    // actor here would create a tree its original parent cannot cancel.
+    if record.actor != request.actor {
+        return Err(TurnError::Conflict {
+            reason: "child admission actor differs from the claimed parent".into(),
+        });
+    }
+    ensure_active_lease(record, claimed.runner_id, claimed.lease_token, Utc::now())?;
+    if record.status != TurnStatus::Running || record.lease_expires_at.is_none() {
+        return Err(TurnError::Conflict {
+            reason: "child admission requires a running claimed parent".into(),
+        });
+    }
+    Ok(())
+}
+
+#[async_trait]
+impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
+    async fn submit_child_turn(
+        &self,
+        request: SubmitChildRunRequest,
+        admission_policy: &dyn TurnAdmissionPolicy,
+        run_profile_resolver: &dyn RunProfileResolver,
+    ) -> Result<SubmitTurnResponse, TurnError> {
+        self.submit_child_with_claim(request, None, admission_policy, run_profile_resolver)
+            .await
+    }
+
+    async fn submit_claimed_child_turn(
+        &self,
+        request: SubmitChildRunRequest,
+        parent: &ClaimedTurnRun,
+        admission_policy: &dyn TurnAdmissionPolicy,
+        run_profile_resolver: &dyn RunProfileResolver,
+    ) -> Result<SubmitTurnResponse, TurnError> {
+        self.submit_child_with_claim(
+            request,
+            Some(parent),
+            admission_policy,
+            run_profile_resolver,
+        )
+        .await
     }
 
     async fn children_of(

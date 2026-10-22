@@ -1,4 +1,5 @@
 import { Button } from "../../../design-system/button.js";
+import { ModelTokenLimits } from "./model-token-limits.js";
 import { Badge } from "../../../design-system/badge.js";
 import { Card } from "../../../design-system/card.js";
 import { Icon } from "../../../design-system/icons.js";
@@ -215,6 +216,7 @@ export function ProviderCard({
       ${expanded &&
       html`
         <div data-testid="llm-provider-details" className="border-t border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-4 py-4 sm:px-5">
+          ${model && html`<${ModelTokenLimits} key=${JSON.stringify([provider.id, model])} providerId=${provider.id} model=${model} t=${t} />`}
           <div className="grid gap-3 text-xs text-[var(--v2-text-muted)] sm:grid-cols-3">
             <div>
               <div className="font-mono uppercase text-[10px] text-[var(--v2-text-faint)]">${t("llm.adapter")}</div>

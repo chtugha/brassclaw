@@ -33,6 +33,7 @@ use crate::{ExecutionPlan, RuntimeProcessPort};
 #[non_exhaustive]
 pub struct InvocationServices {
     pub filesystem: Arc<dyn RootFilesystem>,
+    pub child_tasks: Option<Arc<dyn crate::RuntimeChildTaskPort>>,
     pub runtime_http_egress: Option<Arc<dyn RuntimeHttpEgress>>,
     pub tool_call_http_egress: Option<Arc<dyn ToolCallHttpEgress>>,
     pub process: Arc<dyn RuntimeProcessPort>,
@@ -46,6 +47,10 @@ impl fmt::Debug for InvocationServices {
         formatter
             .debug_struct("InvocationServices")
             .field("filesystem", &"[REDACTED]")
+            .field(
+                "child_tasks",
+                &self.child_tasks.as_ref().map(|_| "[REDACTED]"),
+            )
             .field(
                 "runtime_http_egress",
                 &self.runtime_http_egress.as_ref().map(|_| "[REDACTED]"),
@@ -252,6 +257,7 @@ impl InvocationServicesResolver for LocalInvocationServicesResolver {
             return Err(InvocationServicesError::SecretAccessRequired);
         }
         Ok(InvocationServices {
+            child_tasks: None,
             filesystem: Arc::clone(&self.filesystem),
             runtime_http_egress: plan
                 .requires_network

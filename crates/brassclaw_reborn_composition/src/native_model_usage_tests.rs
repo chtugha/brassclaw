@@ -1,5 +1,8 @@
 //! Actual retained kernel + PostgreSQL + operator-selected live model candidate.
 //! Not catalogue activation, a global Recipe cutover or installed-system QA.
+#[path = "../tests/common/loopback_http.rs"]
+mod loopback_http;
+
 use std::{collections::HashMap, sync::Arc};
 
 use brassclaw_authorization::{
@@ -53,6 +56,374 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::{native_admission_fixture as admission_fixture, pg_monty_admission};
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires BRASSCLAW_TEST_MODEL_URL and BRASSCLAW_TEST_MODEL_ID for an actual operator-selected model"]
+async fn native_prepared_model_call_retains_backend_before_accounting_and_keeps_live_limits() {
+    use axum::{extract::State, routing::post};
+    use brassclaw_llm::{RegistryProviderConfig, SwappableLlmProvider};
+    use brassclaw_loop_support::ThreadBackedLoopContextPort;
+    use brassclaw_reborn::model_gateway::ThreadBackedLoopModelGateway;
+    use brassclaw_turns::run_profile::{
+        AgentLoopHostErrorKind, HostManagedLoopPromptPort, InMemoryInstructionMaterializationStore,
+        LoopModelDispatchPolicy, LoopModelGateway, LoopModelGatewayRequest, LoopModelRequest,
+        LoopPromptBundleRequest, LoopPromptPort, PromptMode,
+    };
+    struct Relay {
+        endpoint: String,
+        model: String,
+        client: reqwest::Client,
+        calls: tokio::sync::Mutex<Vec<String>>,
+    }
+    async fn relay(
+        State(state): State<Arc<Relay>>,
+        path: axum::http::Uri,
+        axum::Json(body): axum::Json<Value>,
+    ) -> ([(axum::http::HeaderName, &'static str); 1], Vec<u8>) {
+        assert_eq!(body["model"], state.model);
+        state.calls.lock().await.push(path.path().into());
+        let response = state
+            .client
+            .post(format!(
+                "{}/chat/completions",
+                state.endpoint.trim_end_matches('/')
+            ))
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert!(response.status().is_success());
+        let bytes = response.bytes().await.unwrap();
+        let actual: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(actual["choices"][0]["finish_reason"], "stop");
+        assert!(actual["choices"][0]["message"]["content"].is_string());
+        // Forward the actual upstream answer unchanged; no simulated provider
+        // success or invented token observation establishes this regression.
+        (
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            bytes.to_vec(),
+        )
+    }
+    let state = Arc::new(Relay {
+        endpoint: std::env::var("BRASSCLAW_TEST_MODEL_URL").expect("explicit live endpoint"),
+        model: std::env::var("BRASSCLAW_TEST_MODEL_ID").expect("explicit live model"),
+        client: reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .unwrap(),
+        calls: tokio::sync::Mutex::new(Vec::new()),
+    });
+    let router = axum::Router::new()
+        .route("/a/v1/chat/completions", post(relay))
+        .route("/b/v1/chat/completions", post(relay))
+        .with_state(state.clone());
+    let (address, stop, server) = loopback_http::spawn(router).await;
+    let provider = |role: &str| {
+        brassclaw_llm::create_registry_provider(
+            &RegistryProviderConfig::generic(
+                brassclaw_llm::ProviderProtocol::OpenAiCompletions,
+                format!("retained-{role}"),
+                None,
+                format!("http://{address}/{role}/v1"),
+                state.model.clone(),
+            ),
+            120,
+        )
+        .unwrap()
+    };
+    let selected = Arc::new(SwappableLlmProvider::new_with_identity(
+        provider("a"),
+        "retained-a",
+    ));
+    let input_limit = brassclaw_agent_loop::LiveTokenBudget::new(None);
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let admitted = admission_fixture::reserve(
+        rig.pool.clone(),
+        "Answer with one short sentence describing a triangle.",
+    )
+    .await;
+    let context = admitted.context;
+    let scope = ThreadScope {
+        tenant_id: context.scope.tenant_id.clone(),
+        agent_id: context.scope.agent_id.clone().unwrap(),
+        project_id: context.scope.project_id.clone(),
+        owner_user_id: None,
+    };
+    let threads = Arc::new(PgSessionThreadService::new(
+        rig.pool.clone(),
+        context.scope.tenant_id.as_str(),
+    ));
+    let model_gateway = Arc::new(
+        LlmProviderModelGateway::with_provider_identity(
+            "retained-a",
+            selected.clone(),
+            LlmModelProfilePolicy::new()
+                .allow_model_profile(context.resolved_run_profile.model_profile_id.clone(), None),
+        )
+        .with_total_input_tokens(Some(input_limit.clone())),
+    );
+    let gateway = ThreadBackedLoopModelGateway::new(
+        threads.clone(),
+        scope.clone(),
+        model_gateway.clone(),
+        16,
+        InstructionSafetyContext::local_development_noop(),
+    );
+    let prompt = HostManagedLoopPromptPort::new(
+        context.clone(),
+        Arc::new(ThreadBackedLoopContextPort::new(
+            threads,
+            scope,
+            context.clone(),
+            16,
+        )),
+        Arc::new(InMemoryLoopHostMilestoneSink::default()),
+    )
+    .with_safety_context(InstructionSafetyContext::local_development_noop())
+    .with_instruction_materialization_store(Arc::new(
+        InMemoryInstructionMaterializationStore::default(),
+    ))
+    .build_prompt_bundle(LoopPromptBundleRequest {
+        mode: PromptMode::TextOnly,
+        context_cursor: None,
+        surface_version: None,
+        checkpoint_state_ref: None,
+        max_messages: Some(16),
+        inline_messages: Vec::new(),
+        capability_view: None,
+        recipe_hint: None,
+    })
+    .await
+    .unwrap();
+    let request = || LoopModelGatewayRequest {
+        context: context.clone(),
+        request: LoopModelRequest {
+            dispatch_policy: LoopModelDispatchPolicy::SingleSubmission,
+            messages: prompt.messages.clone(),
+            ..LoopModelRequest::default()
+        },
+    };
+    let first = gateway
+        .prepare_model_call(request())
+        .await
+        .unwrap()
+        .unwrap();
+    selected.swap_with_identity(provider("b"), "retained-b");
+    assert!(
+        state.calls.lock().await.is_empty(),
+        "retention has no provider I/O"
+    );
+    let answer = first.dispatch().await.unwrap();
+    assert!(matches!(
+        answer.output,
+        brassclaw_turns::run_profile::ParentLoopOutput::AssistantReply(_)
+    ));
+    assert!(
+        answer.usage.is_some(),
+        "retain actual upstream token observation"
+    );
+    assert_eq!(*state.calls.lock().await, ["/a/v1/chat/completions"]);
+
+    let second = gateway
+        .prepare_model_call(request())
+        .await
+        .unwrap()
+        .unwrap();
+    input_limit.set(Some(1));
+    let (rejected, submission) = second.dispatch_with_submission().await;
+    assert_eq!(
+        rejected.unwrap_err().kind,
+        AgentLoopHostErrorKind::BudgetExceeded
+    );
+    assert_eq!(
+        submission,
+        brassclaw_turns::run_profile::ModelSubmission::NotSubmitted
+    );
+    assert_eq!(
+        state.calls.lock().await.len(),
+        1,
+        "live rejection precedes I/O"
+    );
+    input_limit.set(None);
+    let third = gateway
+        .prepare_model_call(request())
+        .await
+        .unwrap()
+        .unwrap();
+    third.dispatch().await.unwrap();
+    assert_eq!(
+        *state.calls.lock().await,
+        ["/a/v1/chat/completions", "/b/v1/chat/completions"]
+    );
+    // Pause the actual guarded system caller before its policy/real-governor
+    // accounting completes. The barrier delegates the ordinary policy result;
+    // it supplies neither a fake provider response nor an accounting success.
+    use brassclaw_loop_support::{
+        GuardedSystemInferencePort, ModelGatewayBackedSystemInferencePort,
+    };
+    use brassclaw_turns::run_profile::{
+        LoopModelGatewayError, LoopModelPolicyGuard, LoopRunContext, ModelWorkRequest,
+        NoOpPolicyGuard, SystemInferenceIdentity, SystemInferencePort, SystemInferenceRequest,
+        SystemInferenceTaskId, SystemPromptSource, SystemTaskKind,
+    };
+    struct PausedPolicy {
+        inner: NoOpPolicyGuard,
+        entered: tokio::sync::Notify,
+        resume: tokio::sync::Notify,
+    }
+    #[async_trait::async_trait]
+    impl LoopModelPolicyGuard for PausedPolicy {
+        async fn check_model_work_policy(
+            &self,
+            context: &LoopRunContext,
+            work: &ModelWorkRequest,
+        ) -> Result<(), LoopModelGatewayError> {
+            self.entered.notify_one();
+            self.resume.notified().await;
+            self.inner.check_model_work_policy(context, work).await
+        }
+    }
+    let paused = Arc::new(PausedPolicy {
+        inner: NoOpPolicyGuard,
+        entered: Default::default(),
+        resume: Default::default(),
+    });
+    let governor = Arc::new(brassclaw_resources::PersistentResourceGovernor::new(
+        brassclaw_resources::PgResourceGovernorStore::new(
+            rig.pool.clone(),
+            format!("system-prepared-{}", Uuid::new_v4()),
+        ),
+    ));
+    let accountant = Arc::new(brassclaw_loop_support::GovernorBackedAccountant::new(
+        governor.clone(),
+        Arc::new(brassclaw_loop_support::ZeroCostTable),
+    ));
+    let direct: Arc<dyn SystemInferencePort> = Arc::new(
+        ModelGatewayBackedSystemInferencePort::new(model_gateway, context.clone()),
+    );
+    let guarded = Arc::new(GuardedSystemInferencePort::new(
+        direct.clone(),
+        context.clone(),
+        accountant,
+        paused.clone(),
+    ));
+    let system_request = SystemInferenceRequest {
+        task_id: SystemInferenceTaskId::new(),
+        identity: SystemInferenceIdentity {
+            task_kind: SystemTaskKind::Compaction,
+            prompt_source: SystemPromptSource::Static {
+                prompt_id: "prepared_system".to_string().try_into().unwrap(),
+            },
+            system_prompt: "Answer in one short sentence.".into(),
+        },
+        input_text: "Briefly define a square.".into(),
+        max_input_tokens: 1000,
+        deadline_ms: 120000,
+    };
+    let running = tokio::spawn({
+        let guarded = guarded.clone();
+        let request = system_request.clone();
+        async move { guarded.call_system_inference(request).await }
+    });
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        paused.entered.notified(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        state.calls.lock().await.len(),
+        2,
+        "selection and policy preparation perform no model I/O"
+    );
+    selected.swap_with_identity(provider("a"), "retained-a");
+    paused.resume.notify_one();
+    let system_answer = running.await.unwrap().unwrap();
+    assert_eq!(system_answer.task_id, system_request.task_id);
+    assert!(!system_answer.output_text.is_empty());
+    let actual = system_answer.usage.expect("actual upstream system meter");
+    use brassclaw_resources::ResourceGovernor;
+    let ledger = governor
+        .account_snapshot(&brassclaw_resources::ResourceAccount::tenant(
+            context.scope.tenant_id.clone(),
+        ))
+        .unwrap()
+        .unwrap()
+        .ledger;
+    assert_eq!(ledger.spent.input_tokens, u64::from(actual.input_tokens));
+    assert_eq!(ledger.spent.output_tokens, u64::from(actual.output_tokens));
+    assert_eq!(ledger.reserved.input_tokens, 0);
+    assert_eq!(ledger.reserved.output_tokens, 0);
+    assert_eq!(
+        *state.calls.lock().await,
+        [
+            "/a/v1/chat/completions",
+            "/b/v1/chat/completions",
+            "/b/v1/chat/completions"
+        ]
+    );
+    // These are new internal operations, not retries of the completed request.
+    // A native live-input rejection and a local input preflight both prove
+    // provider non-entry. Release their actual PostgreSQL holds, retaining all
+    // previously observed spend and without another upstream request.
+    for local_preflight in [false, true] {
+        input_limit.set(if local_preflight { None } else { Some(1) });
+        let mut rejected_request = system_request.clone();
+        rejected_request.task_id = SystemInferenceTaskId::new();
+        if local_preflight {
+            rejected_request.max_input_tokens = 0;
+        }
+        paused.resume.notify_one();
+        let (rejected, submission) = guarded
+            .call_system_inference_with_submission(rejected_request)
+            .await;
+        assert!(rejected.is_err());
+        if local_preflight {
+            assert_eq!(
+                rejected.unwrap_err(),
+                brassclaw_turns::run_profile::SystemInferenceError::InputTooLarge
+            );
+        }
+        assert_eq!(
+            submission,
+            brassclaw_turns::run_profile::ModelSubmission::NotSubmitted
+        );
+        let after = governor
+            .account_snapshot(&brassclaw_resources::ResourceAccount::tenant(
+                context.scope.tenant_id.clone(),
+            ))
+            .unwrap()
+            .unwrap()
+            .ledger;
+        assert_eq!(after.spent, ledger.spent);
+        assert_eq!(after.reserved, ledger.reserved);
+        assert_eq!(state.calls.lock().await.len(), 3);
+    }
+    input_limit.set(None);
+    // A retained system selection cannot be repurposed for another task or text.
+    let retained = direct
+        .retain_model_selection(&system_request)
+        .unwrap()
+        .unwrap();
+    let mut different = system_request.clone();
+    different.input_text.push_str(" changed");
+    assert!(retained.call_system_inference(different).await.is_err());
+    let mut different = system_request.clone();
+    different.task_id = SystemInferenceTaskId::new();
+    assert!(retained.call_system_inference(different).await.is_err());
+    input_limit.set(Some(1));
+    assert!(
+        retained
+            .call_system_inference(system_request)
+            .await
+            .is_err()
+    );
+    input_limit.set(None);
+    assert_eq!(state.calls.lock().await.len(), 3);
+    stop.cancel();
+    server.await.unwrap();
+}
 
 async fn program(store: &PgComponentRevisionStore) -> Arc<RetainedToolProgram> {
     let (root, code, binding, tool, skill) = (
@@ -332,6 +703,10 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
             body["model"], state.model,
             "a pinned task cannot use the configured cheap model"
         );
+        assert!(
+            body.get("max_completion_tokens").is_none() && body.get("max_tokens").is_none(),
+            "natural-completion custody fixture has no artificial output cap"
+        );
         let actual = state
             .client
             .post(format!(
@@ -348,6 +723,10 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
         );
         let bytes = actual.bytes().await.unwrap();
         let parsed: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            parsed["choices"][0]["finish_reason"], "stop",
+            "successful-answer fixture must actually complete"
+        );
         assert!(parsed["choices"][0]["message"]["content"].is_string());
         state.actual_responses.lock().await.push(parsed.clone());
         if state.omit_usage.load(Ordering::SeqCst) {
@@ -383,19 +762,10 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
         calls: AtomicUsize::new(0),
         actual_responses: tokio::sync::Mutex::new(Vec::new()),
     });
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let stop_relay = tokio_util::sync::CancellationToken::new();
-    let stopped = stop_relay.clone();
     let router = axum::Router::new()
         .route("/v1/chat/completions", post(relay))
         .with_state(relay_state.clone());
-    let relay_server = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
-        axum::serve(listener, router)
-            .with_graceful_shutdown(stopped.cancelled_owned())
-            .await
-            .unwrap();
-    }));
+    let (address, stop_relay, relay_server) = loopback_http::spawn(router).await;
     let mut config = brassclaw_llm::build_llm_config_with_provider_policy(
         brassclaw_llm::ResolvedProviderConfig::Registry(RegistryProviderConfig::generic(
             ProviderProtocol::OpenAiCompletions,
@@ -430,7 +800,7 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
             provider,
             LlmModelProfilePolicy::new().allow_model_profile(profile, Some(model)),
         )
-        .with_max_output_tokens(Some(brassclaw_agent_loop::LiveTokenBudget::new(Some(96)))),
+        .with_max_output_tokens(None),
     );
     let system_gateway = gateway.clone();
     let thread_scope = ThreadScope {
@@ -1220,7 +1590,7 @@ mod accounting {
                     Some(model.clone()),
                 ),
             )
-            .with_max_output_tokens(Some(brassclaw_agent_loop::LiveTokenBudget::new(Some(96)))),
+            .with_max_output_tokens(None),
         );
         let selected = ModelRoute::new("native-model", &model).unwrap();
         let resolver = Arc::new(

@@ -18,7 +18,7 @@ import tempfile
 import uuid
 
 from prefix_evidence import inject_reference, source_units, template_probe_tokens
-from prefix_render import render_prefix_reference, render_deduplicated_prefix_reference, render_trailing_inventory_prefix_reference, render_stable_sharing_prefix_reference
+from prefix_render import render_prefix_reference, render_deduplicated_prefix_reference, render_trailing_inventory_prefix_reference, render_stable_sharing_prefix_reference, render_contextual_prefix_reference
 
 FORMAT = 'brassclaw-prefix-source-package/1'
 MANDATORY = ('skills.md', 'recipe.md', 'tools.md', 'toolskills.md', 'CLAUDE.md', 'AGENTS.md', 'simplified_v3.md')
@@ -124,7 +124,7 @@ def compile_package(package, output, *, tokenizer_dir=None, max_model_len=None, 
         raise ValueError('unsupported compiled profile')
     if profile != 'base-prompt' and (adapter_path is None or required_sources == MANDATORY):
         raise ValueError('registered profile adapter and explicit coverage required')
-    if evidence_view not in {'literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing'}:
+    if evidence_view not in {'literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing', 'literal-reference/v5-contextual-sharing'}:
         raise ValueError('unsupported evidence view')
     procedure_paths = {
         'compiler/entry.py': Path(__file__),
@@ -186,10 +186,12 @@ def compile_package(package, output, *, tokenizer_dir=None, max_model_len=None, 
     if len({entry['id'][:12] for entry in evidence}) != len(evidence):
         raise ValueError('compact evidence identifiers collided')
     render_map = None
-    if evidence_view in ('literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing'):
+    if evidence_view in ('literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing', 'literal-reference/v5-contextual-sharing'):
         renderer = render_trailing_inventory_prefix_reference if evidence_view == 'literal-reference/v3-trailing-inventory' else render_deduplicated_prefix_reference
         if evidence_view == 'literal-reference/v4-stable-sharing':
             renderer = render_stable_sharing_prefix_reference
+        if evidence_view == 'literal-reference/v5-contextual-sharing':
+            renderer = render_contextual_prefix_reference
         rendered = renderer(header, rendering_sources, special)
         full = rendered['context']
         render_map = rendered['render_map']
@@ -241,9 +243,13 @@ def compile_package(package, output, *, tokenizer_dir=None, max_model_len=None, 
         compiler['worker_sha256'] = sha(procedures['compiler/worker.py'])
     if adapter_path is not None:
         compiler['profile_adapter_sha256'] = sha(procedures['compiler/profile_adapter.py'])
-    payloads['profile_design.json'] = canonical({'format': 'brassclaw-prefix-compiler-design/1',
+    design = {'format': 'brassclaw-prefix-compiler-design/1',
             'profile': profile, 'header': header, 'required_sources': list(required_sources),
-            'evidence_view': evidence_view, 'source_selection': 'complete-mandatory'})
+            'evidence_view': evidence_view, 'source_selection': 'complete-mandatory'}
+    if evidence_view == 'literal-reference/v5-contextual-sharing':
+        design['format'] = 'brassclaw-prefix-compiler-design/2'
+        design['source_contexts'] = {item['source']: item['context'] for item in render_map['sources']}
+    payloads['profile_design.json'] = canonical(design)
     identity = {'profile': profile, 'compiler': compiler, 'files': {name: sha(data) for name, data in sorted(payloads.items())}, 'geometry': geometry}
     generation = sha(canonical(identity))
     receipt = {**identity, 'generation': generation, 'source_count': len(records), 'evidence_count': len(evidence),
@@ -491,7 +497,7 @@ def main(*, profile='base-prompt', header=HEADER, required_sources=MANDATORY, ad
     parser.add_argument('--tokenizer-dir', type=Path)
     parser.add_argument('--max-model-len', type=int)
     parser.add_argument('--reserve-tokens', type=int, default=8192)
-    parser.add_argument('--evidence-view', choices=('literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing'), default='literal-reference/v1')
+    parser.add_argument('--evidence-view', choices=('literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing', 'literal-reference/v5-contextual-sharing'), default='literal-reference/v1')
     args = parser.parse_args()
     if (args.export_generation is not None or args.inventory is not None) and args.evidence_view != 'literal-reference/v1':
         parser.error('--evidence-view is a compile option, not a snapshot/export transformation')

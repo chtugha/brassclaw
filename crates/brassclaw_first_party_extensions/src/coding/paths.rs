@@ -1,4 +1,4 @@
-use brassclaw_filesystem::{FileStat, FilesystemError, FilesystemOperation};
+use brassclaw_filesystem::{DirEntry, FileStat, FileType, FilesystemError, FilesystemOperation};
 use brassclaw_host_api::{RuntimeDispatchErrorKind, ScopedPath, VirtualPath};
 use brassclaw_safety::sensitive_paths::is_sensitive_path_str;
 use serde_json::Value;
@@ -12,6 +12,25 @@ use super::{
     operation_error,
     types::ResolvedPath,
 };
+
+/// Request one overflow witness beyond the remaining walk allowance. Limiting
+/// enumeration to the display/page size could hide later eligible entries;
+/// silently dropping the witness could report a partial walk as complete.
+pub(super) async fn list_walk_entries(
+    request: &CodingCapabilityRequest<'_>,
+    path: &VirtualPath,
+    visited: usize,
+) -> Result<Vec<DirEntry>, CodingCapabilityError> {
+    let probe = (request.limits.max_coding_visited_entries as usize)
+        .checked_sub(visited)
+        .and_then(|remaining| remaining.checked_add(1))
+        .ok_or_else(|| CodingCapabilityError::new(RuntimeDispatchErrorKind::Resource))?;
+    request
+        .filesystem
+        .list_dir_bounded(path, probe)
+        .await
+        .map_err(filesystem_error)
+}
 
 pub(super) fn resolve_required_path(
     request: &CodingCapabilityRequest<'_>,
@@ -116,19 +135,24 @@ pub(super) async fn stat_optional(
     }
 }
 
-pub(super) async fn create_parent_dir_unless_sensitive(
+pub(super) async fn validate_parent_directory(
     request: &CodingCapabilityRequest<'_>,
     path: &VirtualPath,
 ) -> Result<(), CodingCapabilityError> {
     let Some(parent) = virtual_parent(path)? else {
         return Ok(());
     };
-    deny_nearest_sensitive_existing_parent(request, parent.clone()).await?;
-    request
-        .filesystem
-        .create_dir_all(&parent)
-        .await
-        .map_err(filesystem_denied_if_not_found)
+    // Entry-plane backends infer directories and need not implement the legacy
+    // directory-creation operation. An existing, ordinary directory suffices.
+    if let Some(stat) = stat_optional(request, &parent).await? {
+        if stat.sensitive || stat.file_type != FileType::Directory {
+            return Err(CodingCapabilityError::new(
+                RuntimeDispatchErrorKind::FilesystemDenied,
+            ));
+        }
+        return Ok(());
+    }
+    deny_nearest_sensitive_existing_parent(request, parent).await
 }
 
 pub(super) async fn deny_sensitive_existing_path(
@@ -152,7 +176,8 @@ pub(super) async fn deny_sensitive_existing_path(
 ///
 /// Best-effort check for the local-dev threat model: assumes a trusted filesystem
 /// where parent directories do not become sensitive between this walk and the
-/// subsequent `create_dir_all` (TOCTOU).
+/// subsequent native write (TOCTOU). Native database/memory writers additionally
+/// enforce the leaf/ancestor namespace atomically.
 async fn deny_nearest_sensitive_existing_parent(
     request: &CodingCapabilityRequest<'_>,
     mut candidate: VirtualPath,
@@ -160,7 +185,7 @@ async fn deny_nearest_sensitive_existing_parent(
     loop {
         match request.filesystem.stat(&candidate).await {
             Ok(stat) => {
-                if stat.sensitive {
+                if stat.sensitive || stat.file_type != FileType::Directory {
                     return Err(CodingCapabilityError::new(
                         RuntimeDispatchErrorKind::FilesystemDenied,
                     ));
@@ -175,15 +200,6 @@ async fn deny_nearest_sensitive_existing_parent(
             }
             Err(error) => return Err(filesystem_error(error)),
         }
-    }
-}
-
-fn filesystem_denied_if_not_found(error: FilesystemError) -> CodingCapabilityError {
-    match error {
-        FilesystemError::NotFound { .. } => {
-            CodingCapabilityError::new(RuntimeDispatchErrorKind::FilesystemDenied)
-        }
-        error => filesystem_error(error),
     }
 }
 

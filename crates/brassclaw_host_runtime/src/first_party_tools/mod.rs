@@ -15,6 +15,7 @@ mod memory_tree;
 mod model_encoding;
 mod prefix_bundle;
 mod prefix_generation;
+mod prefix_source;
 mod primitive_settings;
 mod schemas;
 mod shell;
@@ -69,6 +70,10 @@ pub use prefix_bundle::{
 pub use prefix_generation::{
     PREFIX_GENERATION_CAPABILITY_ID, PrefixGenerationBackend, PrefixGenerationBackendError,
 };
+pub use prefix_source::{
+    PREFIX_SOURCE_CAPABILITY_ID, PrefixSourceBackend, PrefixSourceBackendError,
+    PrefixSourceIdentity,
+};
 pub use primitive_settings::{HostPrimitiveSettings, HostPrimitiveSettingsSource};
 pub use shell::SHELL_CAPABILITY_ID;
 pub use source_inspection::{SOURCE_INSPECTION_CAPABILITY_ID, SourceInspectionBackend};
@@ -92,8 +97,6 @@ pub const APPLY_PATCH_CAPABILITY_ID: &str = "builtin.apply_patch";
 
 /// Maximum input size (bytes) for first-party tool calls (1 MiB).
 const MAX_FIRST_PARTY_INPUT_BYTES: usize = 1_048_576;
-const MAX_WRITE_FILE_INPUT_BYTES: usize = 6 * 1024 * 1024;
-const MAX_APPLY_PATCH_INPUT_BYTES: usize = 21 * 1024 * 1024;
 const FIRST_PARTY_DEFAULT_OUTPUT_BYTES: u64 = 16 * 1024;
 /// Maximum output size (bytes) for first-party tool calls (1 MiB).
 pub(super) const FIRST_PARTY_MAX_OUTPUT_BYTES: u64 = 1_048_576;
@@ -106,7 +109,6 @@ struct CodingCapabilityMetadata {
     kind: CodingCapabilityKind,
     description: &'static str,
     effects: &'static [EffectKind],
-    max_input_bytes: usize,
 }
 
 const CODING_CAPABILITIES: &[CodingCapabilityMetadata] = &[
@@ -115,42 +117,36 @@ const CODING_CAPABILITIES: &[CodingCapabilityMetadata] = &[
         kind: CodingCapabilityKind::ReadFile,
         description: "Read a file through scoped mounts with v1 read_file output shape",
         effects: &[EffectKind::ReadFilesystem],
-        max_input_bytes: MAX_FIRST_PARTY_INPUT_BYTES,
     },
     CodingCapabilityMetadata {
         id: WRITE_FILE_CAPABILITY_ID,
         kind: CodingCapabilityKind::WriteFile,
         description: "Write content through scoped mounts with v1 write_file output shape",
         effects: &[EffectKind::WriteFilesystem],
-        max_input_bytes: MAX_WRITE_FILE_INPUT_BYTES,
     },
     CodingCapabilityMetadata {
         id: LIST_DIR_CAPABILITY_ID,
         kind: CodingCapabilityKind::ListDir,
         description: "List directory contents through scoped mounts with v1 list_dir output shape",
         effects: &[EffectKind::ReadFilesystem],
-        max_input_bytes: MAX_FIRST_PARTY_INPUT_BYTES,
     },
     CodingCapabilityMetadata {
         id: GLOB_CAPABILITY_ID,
         kind: CodingCapabilityKind::Glob,
         description: "Find files under a scoped directory with v1 glob output shape",
         effects: &[EffectKind::ReadFilesystem],
-        max_input_bytes: MAX_FIRST_PARTY_INPUT_BYTES,
     },
     CodingCapabilityMetadata {
         id: GREP_CAPABILITY_ID,
         kind: CodingCapabilityKind::Grep,
         description: "Search scoped file contents with v1 grep output modes",
         effects: &[EffectKind::ReadFilesystem],
-        max_input_bytes: MAX_FIRST_PARTY_INPUT_BYTES,
     },
     CodingCapabilityMetadata {
         id: APPLY_PATCH_CAPABILITY_ID,
         kind: CodingCapabilityKind::ApplyPatch,
         description: "Apply exact/fuzzy search-replace edits through scoped mounts",
         effects: &[EffectKind::ReadFilesystem, EffectKind::WriteFilesystem],
-        max_input_bytes: MAX_APPLY_PATCH_INPUT_BYTES,
     },
 ];
 
@@ -177,6 +173,7 @@ pub fn builtin_first_party_package() -> Result<ExtensionPackage, ExtensionError>
                 let mut capabilities = vec![
                     component_db::manifest()?,
                     prefix_generation::manifest()?,
+                    prefix_source::manifest()?,
                     echo::manifest()?,
                     time::manifest()?,
                     json::manifest()?,
@@ -211,7 +208,10 @@ fn coding_manifests() -> Result<Vec<CapabilityManifest>, ExtensionError> {
                 metadata.description,
                 metadata.effects.to_vec(),
                 PermissionMode::Allow,
-                resource_profile(),
+                Some(ResourceProfile {
+                    default_estimate: ResourceEstimate::default(),
+                    hard_ceiling: None,
+                }),
             )
         })
         .collect()
@@ -390,6 +390,10 @@ fn builtin_first_party_registry_from_tools(
         handler.clone(),
     );
     registry.insert_handler(
+        CapabilityId::new(PREFIX_SOURCE_CAPABILITY_ID)?,
+        handler.clone(),
+    );
+    registry.insert_handler(
         CapabilityId::new(SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID)?,
         handler.clone(),
     );
@@ -438,6 +442,7 @@ pub struct BuiltinFirstPartyTools {
     component_db_state: component_db::ComponentDbState,
     prefix_bundle_state: prefix_bundle::PrefixBundleCapabilityState,
     prefix_generation_state: prefix_generation::PrefixGenerationState,
+    prefix_source_state: prefix_source::PrefixSourceState,
 }
 
 impl BuiltinFirstPartyTools {
@@ -476,6 +481,10 @@ impl BuiltinFirstPartyTools {
     ) -> Self {
         self.prefix_generation_state =
             prefix_generation::PrefixGenerationState::with_backend(backend);
+        self
+    }
+    pub fn with_prefix_source_backend(mut self, backend: Arc<dyn PrefixSourceBackend>) -> Self {
+        self.prefix_source_state = prefix_source::PrefixSourceState::new(backend);
         self
     }
     /// Wire an embedding provider into the memory capability (§4.30, S10).
@@ -618,6 +627,11 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
                 .await?,
                 None,
             ),
+            PREFIX_SOURCE_CAPABILITY_ID => (
+                prefix_source::dispatch(&self.prefix_source_state, &request.input, &request.scope)
+                    .await?,
+                None,
+            ),
             SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID | STORE_PREFIX_BUNDLE_CAPABILITY_ID => (
                 prefix_bundle::dispatch(
                     &self.prefix_bundle_state,
@@ -634,13 +648,22 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
                         RuntimeDispatchErrorKind::UndeclaredCapability,
                     ));
                 };
+                let settings = match self.primitive_settings.as_deref() {
+                    Some(source) => source.snapshot().await?,
+                    None => HostPrimitiveSettings {
+                        revision: 0,
+                        limits: brassclaw_host_api::MontyExecutionLimits::default(),
+                    },
+                };
                 let request = CodingCapabilityRequest::new(
                     metadata.kind,
                     &request.scope,
                     request.mounts.as_ref(),
                     Arc::clone(&request.services.filesystem),
                     &request.input,
-                );
+                )
+                .with_execution_limits(settings.limits)
+                .map_err(coding_error)?;
                 let result = self
                     .coding_state
                     .dispatch(&request)
@@ -653,6 +676,7 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
         let output_limit_bytes = match request.capability_id.as_str() {
             PREFIX_GENERATION_CAPABILITY_ID => prefix_generation::TRANSPORT_BYTES,
             HTTP_CAPABILITY_ID | HTTP_SAVE_CAPABILITY_ID => isize::MAX as u64,
+            id if coding_capability_metadata(id).is_some() => isize::MAX as u64,
             _ => FIRST_PARTY_MAX_OUTPUT_BYTES,
         };
         let output_bytes = bounded_output_bytes(&output, output_limit_bytes).map_err(|error| {
@@ -697,9 +721,8 @@ pub(super) fn bounded_input_size(
         | HTTP_SAVE_CAPABILITY_ID
         | SOURCE_INSPECTION_CAPABILITY_ID
         | MODEL_ENCODING_CAPABILITY_ID => isize::MAX as u64,
-        _ => coding_capability_metadata(capability_id)
-            .map(|metadata| metadata.max_input_bytes)
-            .unwrap_or(MAX_FIRST_PARTY_INPUT_BYTES) as u64,
+        id if coding_capability_metadata(id).is_some() => isize::MAX as u64,
+        _ => MAX_FIRST_PARTY_INPUT_BYTES as u64,
     };
     count_json_bytes(input, max_bytes, RuntimeDispatchErrorKind::Resource).map(|_| ())
 }

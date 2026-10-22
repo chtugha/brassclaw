@@ -310,7 +310,7 @@ impl FailoverProvider {
 
 #[async_trait]
 impl LlmProvider for FailoverProvider {
-    fn model_name(&self) -> &str {
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
         self.providers[self.last_used.load(Ordering::Relaxed)].model_name()
     }
 
@@ -523,8 +523,8 @@ mod tests {
 
     #[async_trait]
     impl LlmProvider for MockProvider {
-        fn model_name(&self) -> &str {
-            &self.name
+        fn model_name(&self) -> std::borrow::Cow<'_, str> {
+            std::borrow::Cow::Borrowed(&self.name)
         }
 
         fn cost_per_token(&self) -> (Decimal, Decimal) {
@@ -818,8 +818,8 @@ mod tests {
 
     #[async_trait]
     impl LlmProvider for MultiCallMockProvider {
-        fn model_name(&self) -> &str {
-            &self.name
+        fn model_name(&self) -> std::borrow::Cow<'_, str> {
+            std::borrow::Cow::Borrowed(&self.name)
         }
 
         fn cost_per_token(&self) -> (Decimal, Decimal) {

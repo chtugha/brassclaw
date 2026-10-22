@@ -182,6 +182,32 @@ impl MemoryBackendFilesystemAdapter {
 
 #[async_trait]
 impl RootFilesystem for MemoryBackendFilesystemAdapter {
+    fn capabilities(&self) -> brassclaw_filesystem::BackendCapabilities {
+        if !self.backend.capabilities().file_documents {
+            return brassclaw_filesystem::BackendCapabilities::empty();
+        }
+        brassclaw_filesystem::BackendCapabilities::empty()
+            .with(brassclaw_filesystem::Capability::OpaqueWrite)
+    }
+
+    // This adapter exposes only document bytes, never structured Entry kinds.
+    // Preserve its own safety/schema/index/event path, and do not invent CAS.
+    async fn put_opaque(
+        &self,
+        path: &VirtualPath,
+        body: Vec<u8>,
+        cas: brassclaw_filesystem::CasExpectation,
+    ) -> Result<brassclaw_filesystem::RecordVersion, FilesystemError> {
+        if !matches!(cas, brassclaw_filesystem::CasExpectation::Any) {
+            return Err(FilesystemError::Unsupported {
+                path: path.clone(),
+                operation: FilesystemOperation::WriteFile,
+            });
+        }
+        self.write_file(path, &body).await?;
+        Ok(brassclaw_filesystem::RecordVersion::from_backend(0))
+    }
+
     async fn read_file(&self, path: &VirtualPath) -> Result<Vec<u8>, FilesystemError> {
         self.ensure_file_documents(path, FilesystemOperation::ReadFile)?;
         let document_path = self.parse_file_path(path, FilesystemOperation::ReadFile)?;
@@ -562,6 +588,29 @@ impl MemoryDocumentFilesystem {
 
 #[async_trait]
 impl RootFilesystem for MemoryDocumentFilesystem {
+    fn capabilities(&self) -> brassclaw_filesystem::BackendCapabilities {
+        brassclaw_filesystem::BackendCapabilities::empty()
+            .with(brassclaw_filesystem::Capability::OpaqueWrite)
+    }
+
+    // This adapter exposes only document bytes, never structured Entry kinds.
+    // Preserve its own safety/schema/index/event path, and do not invent CAS.
+    async fn put_opaque(
+        &self,
+        path: &VirtualPath,
+        body: Vec<u8>,
+        cas: brassclaw_filesystem::CasExpectation,
+    ) -> Result<brassclaw_filesystem::RecordVersion, FilesystemError> {
+        if !matches!(cas, brassclaw_filesystem::CasExpectation::Any) {
+            return Err(FilesystemError::Unsupported {
+                path: path.clone(),
+                operation: FilesystemOperation::WriteFile,
+            });
+        }
+        self.write_file(path, &body).await?;
+        Ok(brassclaw_filesystem::RecordVersion::from_backend(0))
+    }
+
     async fn read_file(&self, path: &VirtualPath) -> Result<Vec<u8>, FilesystemError> {
         let document_path = self.parse_file_path(path, FilesystemOperation::ReadFile)?;
         self.repository

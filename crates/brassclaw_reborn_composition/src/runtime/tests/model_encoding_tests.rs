@@ -28,6 +28,7 @@ pub(super) async fn assert_registered_encoding(
     specification: &str,
     artifact_set: &str,
     prefix_job_id: Uuid,
+    sempai_job_id: Uuid,
 ) {
     let root = runtime.global_monty_owner.client().root_identity();
     let capability = CapabilityId::new(MODEL_ENCODING_CAPABILITY_ID).unwrap();
@@ -150,26 +151,11 @@ pub(super) async fn assert_registered_encoding(
         prefix.len() > 100_000,
         "use the actual retained source compiler output"
     );
-    if let Some(path) = std::env::var_os("BRASSCLAW_TEST_CORE_GENERATION_EXPORT") {
-        use std::io::Write;
-        let directory = std::path::PathBuf::from(path);
-        let path = directory.join(format!("core-generation-{generation}.json"));
-        match std::fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&path)
-        {
-            Ok(mut file) => {
-                file.write_all(source.generation_bytes.as_bytes()).unwrap();
-                file.sync_all().unwrap();
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => assert_eq!(
-                std::fs::read(&path).unwrap(),
-                source.generation_bytes.as_bytes()
-            ),
-            Err(error) => panic!("cannot retain native prefix evidence: {error}"),
-        }
-    }
+    prefix_measurement_job_tests::retain_native_package(
+        "core",
+        generation,
+        &source.generation_bytes,
+    );
     let probes=json!(["Inspect firewall rules","Inspect router rules"].map(|question|json!({"kind":"chat","context_json":json!({"messages":[{"role":"system","content":prefix},{"role":"user","content":question}],"add_generation_prompt":true,"enable_thinking":false}).to_string()}))).to_string();
     let input =
         json!({"specification":specification,"artifact_set":artifact_set,"probes_json":probes});
@@ -351,9 +337,37 @@ pub(super) async fn assert_registered_encoding(
     prefix_measurement_job_tests::assert_durable_measurement(
         runtime,
         app,
+        "base-prompt",
         generation,
         &template_input,
-        &effective,
+        Some(&effective),
+    )
+    .await;
+    let sempai_job = runtime
+        .inspect_prefix_job("sempai", sempai_job_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        sempai_job.run_status,
+        Some(brassclaw_turns::TurnStatus::Completed)
+    );
+    let sempai_generation = sempai_job
+        .internal_receipt
+        .as_deref()
+        .unwrap()
+        .strip_prefix("prefix-generation:sempai:")
+        .unwrap();
+    let sempai_input = json!({"specification":specification,"artifact_set":artifact_set,
+        "probes_json":json!(["SEMPAI-PROBE-A", "SEMPAI-PROBE-B"].map(|content|
+            json!({"kind":"chat","context_json":json!({"messages":[{"role":"user","content":content}],
+                "add_generation_prompt":true,"enable_thinking":false}).to_string()}))).to_string()});
+    prefix_measurement_job_tests::assert_durable_measurement(
+        runtime,
+        app,
+        "sempai",
+        sempai_generation,
+        &sempai_input,
+        None,
     )
     .await;
     let mut invalid_template = template_input;

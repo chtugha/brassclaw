@@ -134,6 +134,35 @@ where
         bound.retain_native(capability, expected)
     }
 
+    /// Bind one host-owned child operation to the exact native subagent Tool.
+    /// The original handler, declaration, artifact, planner and substrate stay
+    /// retained; the supplied authorizer still checks every actual invocation.
+    /// This does not start a child, validate its provenance or issue a grant.
+    pub fn retain_native_with_child_tasks(
+        &self,
+        expected: crate::NativeImplementationRef,
+        child: Arc<dyn crate::RuntimeChildTaskPort>,
+        authorizer: Arc<dyn brassclaw_authorization::TrustAwareCapabilityDispatchAuthorizer>,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError> {
+        let capability = CapabilityId::new(crate::SPAWN_SUBAGENT_CAPABILITY_ID)
+            .map_err(|_| RetainedCapabilityError::InconsistentDeclaration)?;
+        let bound = Self {
+            registry: self.registry.clone(),
+            registrations: self.registrations.clone(),
+            kernel: self.kernel.retain_authorizer(authorizer),
+            filesystem: self.filesystem.clone(),
+            governor: self.governor.clone(),
+            services: Arc::new(crate::child_task_port::ChildTaskBoundServices::new(
+                self.services.clone(),
+                capability.clone(),
+                child,
+            )),
+            policy: self.policy.clone(),
+            events: self.events.clone(),
+        };
+        bound.retain_native(&capability, expected)
+    }
+
     /// Trusted host composition of an admitted task's implementation. The
     /// package and handler are retained together; this neither qualifies native
     /// provenance nor approves a component. The supplied live authorizer and

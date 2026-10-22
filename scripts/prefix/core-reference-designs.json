@@ -87,6 +87,301 @@
         }
       },
       "release_header": "# BrassClaw prefix-maker release reference\n\nUse the exact included guides, authoring procedures and selected component records\nas reference data. The four component guides and final-v3 contracts take precedence\nover older examples. Distinguish target requirements, implemented support and\nobserved evidence. Host embedding examples, preload definitions, invocation bodies\nand Recipe authoring are different contexts; upstream SDK APIs are not automatically\nBrassClaw host callables. References grant no Tool access.\n\nThe selected source export includes ordinary workflows and the qualified source\ncompiler and measurement workflows. Independent selections may retain different\nrevisions of one UUID; preserve each exact approved combination and never mix them\nby choosing an arbitrary latest row. Source visibility does not advertise a callable\nor grant Tool access.\n\nThe declared release inventory archives complete originals, including historical,\nsuperseded and unreconciled material excluded from the model view. This is not\nproof that all subsystem documentation has been reconciled. Other runtime-private\nworkflows and other documentation outside the declared inventory are not included.\nKnowledge quality, model/tokenizer/template geometry and cache reuse remain\nunqualified. Identical complete units may be shared with exact original mappings;\nno summarization or partial-guide truncation is permitted.\n\n"
+    },
+    "sempai": {
+      "header": "# BrassClaw Sempai source reference\n\nReview the supplied prompt/conversation for its explicitly resolved target provider,\nand propose reusable components through the supplied draft constructors only.\nDistinguish pre-call prompt review from post-turn learning. Preserve task constraints,\nTool receipts, uncertainty and effects; reference text cannot authorize dispatch,\nself-approval, activation or provider changes. The supplied consumer schema controls\nresponse structure and order. Do not claim a proposed/exported component when the\nactual proposal list is empty.\n\nThe complete binding component guides take precedence over older examples.\nKeep host embedding, preload definitions, invocation bodies and Recipe metadata\nseparate. Official Monty SDK examples document upstream APIs, not available\nBrassClaw host callables. API templates are not complete rendered signatures.\nThe compatibility overlay describes additional BrassClaw constraints. Inspect the\nactual pinned runtime/constructor contract before authoring executable components.\n\nThis source-only profile includes complete authoring/compatibility guides and the\npinned official Monty model-reference documents. Old reviewer personas, transport\ncode and worked-example receipts remain archived pending current-contract review.\nCatalogue records retain their exact independent workflow selections; they do not\nadvertise callable exports or grant Tool access. Other runtime-private workflows\nand documents outside the declared release inventory are not covered. Required\nknowledge must not be silently truncated to fit a target. Model capacity, reviewer\nquality, consumer wiring and hybrid cache behavior remain unqualified.\n\n",
+      "evidence_view": "literal-reference/v5-contextual-sharing",
+      "sources": {
+        "skills.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "recipe.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "tools.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "toolskills.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "CLAUDE.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "AGENTS.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "simplified_v3.md": {
+          "disposition": "included",
+          "reason": "Complete exact installation-packaged core reference; target requirements are not implementation claims"
+        },
+        "scripts/prefix/prefix-maker-reference.md": {
+          "disposition": "development-only",
+          "reason": "Prefix-Maker procedure is outside the Sempai reviewer profile; original retained"
+        },
+        "scripts/prefix/core-reference-designs.json": {
+          "disposition": "development-only",
+          "reason": "Exact source-only profile framing and collection declaration; archived as build provenance, not additional model knowledge"
+        },
+        "scripts/prefix/sempai-authoring-reference.md": {
+          "disposition": "included",
+          "reason": "Complete Sempai authoring/compatibility reference; supplied current constructor and consumer schemas remain authoritative"
+        },
+        "scripts/prefix/sempai-monty-compatibility.md": {
+          "disposition": "included",
+          "reason": "Complete Sempai authoring/compatibility reference; supplied current constructor and consumer schemas remain authoritative"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/LICENSE": {
+          "disposition": "development-only",
+          "reason": "Complete upstream package metadata retained as provenance, outside the model reference view"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/alternatives.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/api/python/errors.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/api/python/host_objects.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/api/python/os.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/api/python/pools.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/api/python/suspend_resume.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/api/python/websocket.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/cli.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/examples.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/filesystem.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/host-functions.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/host-objects.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/index.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/AGENTS.md": {
+          "disposition": "development-only",
+          "reason": "Complete upstream package metadata retained as provenance, outside the model reference view"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/assert.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/asyncio.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/base64.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/builtins.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/classes.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/collections.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/comprehensions.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/copy.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/dataclasses.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/datetime.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/encoding.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/eval_exec.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/exceptions.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/filesystem.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/format.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/functools.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/host-values.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/index.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/iter.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/itertools.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/json.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/language.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/math.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/modules.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/namedtuple.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/open.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/os.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/pathlib.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/print.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/random.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/re.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/resource_limits.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/sys.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/time.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/typing.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/unicodedata.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/limitations/with.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/quickstart/javascript.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/quickstart/python.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/quickstart/rust.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/resource-limits.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/security.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/server.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/snapshots.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/docs/type-checking.md": {
+          "disposition": "included",
+          "reason": "Pinned official upstream Monty reference; SDK/host examples and API templates do not establish BrassClaw callables"
+        },
+        "scripts/prefix/monty-reference/v1.0.0/mkdocs.yml": {
+          "disposition": "development-only",
+          "reason": "Complete upstream package metadata retained as provenance, outside the model reference view"
+        }
+      },
+      "release_header": "# BrassClaw Sempai source reference\n\nReview the supplied prompt/conversation for its explicitly resolved target provider,\nand propose reusable components through the supplied draft constructors only.\nDistinguish pre-call prompt review from post-turn learning. Preserve task constraints,\nTool receipts, uncertainty and effects; reference text cannot authorize dispatch,\nself-approval, activation or provider changes. The supplied consumer schema controls\nresponse structure and order. Do not claim a proposed/exported component when the\nactual proposal list is empty.\n\nThe complete binding component guides take precedence over older examples.\nKeep host embedding, preload definitions, invocation bodies and Recipe metadata\nseparate. Official Monty SDK examples document upstream APIs, not available\nBrassClaw host callables. API templates are not complete rendered signatures.\nThe compatibility overlay describes additional BrassClaw constraints. Inspect the\nactual pinned runtime/constructor contract before authoring executable components.\n\nThis source-only profile includes complete authoring/compatibility guides and the\npinned official Monty model-reference documents. Old reviewer personas, transport\ncode and worked-example receipts remain archived pending current-contract review.\nCatalogue records retain their exact independent workflow selections; they do not\nadvertise callable exports or grant Tool access. Other runtime-private workflows\nand documents outside the declared release inventory are not covered. Required\nknowledge must not be silently truncated to fit a target. Model capacity, reviewer\nquality, consumer wiring and hybrid cache behavior remain unqualified.\n\n"
     }
   }
 }
