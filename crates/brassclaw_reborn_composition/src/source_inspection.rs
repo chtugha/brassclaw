@@ -99,32 +99,99 @@ impl SourceInspectionBackend for ContainedSourceInspection {
         &self,
         source: &str,
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
-        let PreparedUtility {
-            worker,
-            limits,
-            revision,
-        } = self.prepare().await?;
-        if source.len() > limits.bounds.max_source_bytes {
+        let prepared = self.prepare().await?;
+        if source.len() > prepared.limits.bounds.max_source_bytes {
             return Err(error(RuntimeDispatchErrorKind::Resource));
         }
         let started = Instant::now();
-        let inspected = utility::execute(
-            &worker.path(),
-            UtilityRequest::InspectSource {
-                source: source.to_owned(),
-                bounds: limits.bounds,
-            },
-            limits.process,
+        let (output, usage) = prepared
+            .execute(
+                UtilityRequest::InspectSource {
+                    source: source.to_owned(),
+                    bounds: prepared.limits.bounds,
+                },
+                started,
+            )
+            .await?;
+        let UtilityOutput::Inspected { structure } = output else {
+            return Err(error(RuntimeDispatchErrorKind::OperationFailed).with_usage(usage));
+        };
+        prepared.report(
+            json!({"format":"python-source-facts/1", "preparation_revision":prepared.revision,
+            "worker_checksum":hex::encode(prepared.worker.checksum()),"facts":structure}),
+            usage,
         )
-        .await;
+    }
+
+    async fn inspect_sources(
+        &self,
+        sources: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
+        if sources
+            .iter()
+            .any(|(id, source)| id.is_empty() || !source.is_string())
+        {
+            return Err(error(RuntimeDispatchErrorKind::InputEncode));
+        }
+        let prepared = self.prepare().await?;
+        if !brassclaw_monty_host::source_inventory::source_values_within_bounds(
+            sources,
+            prepared.limits.bounds,
+            prepared.limits.process.max_frame_bytes,
+        ) {
+            return Err(error(RuntimeDispatchErrorKind::Resource));
+        }
+        let started = Instant::now();
+        let sources = sources
+            .iter()
+            .map(|(id, value)| {
+                value
+                    .as_str()
+                    .map(|source| (id.clone(), source.to_owned()))
+                    .ok_or_else(|| error(RuntimeDispatchErrorKind::InputEncode))
+            })
+            .collect::<Result<_, _>>()?;
+        let (output, usage) = prepared
+            .execute(
+                UtilityRequest::InspectSources {
+                    sources,
+                    bounds: prepared.limits.bounds,
+                },
+                started,
+            )
+            .await?;
+        let UtilityOutput::InspectedSources { sources } = output else {
+            return Err(error(RuntimeDispatchErrorKind::OperationFailed).with_usage(usage));
+        };
+        prepared.report(
+            json!({"format":"python-source-inventory/1", "preparation_revision":prepared.revision,
+            "worker_checksum":hex::encode(prepared.worker.checksum()),"sources":sources}),
+            usage,
+        )
+    }
+}
+
+pub(crate) struct PreparedUtility {
+    pub(crate) worker: Arc<PackagedExecutableImage>,
+    pub(crate) limits: UtilityLimits,
+    pub(crate) revision: u64,
+}
+impl PreparedUtility {
+    async fn execute(
+        &self,
+        request: UtilityRequest,
+        started: Instant,
+    ) -> Result<(UtilityOutput, ResourceUsage), FirstPartyCapabilityError> {
+        let single_source = matches!(&request, UtilityRequest::InspectSource { .. });
+        let inspected = utility::execute(&self.worker.path(), request, self.limits.process).await;
         let usage = ResourceUsage {
             wall_clock_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
             process_count: 1,
             ..ResourceUsage::default()
         };
-        let UtilityOutput::Inspected { structure } = inspected.map_err(|failure| {
-            // Private parser exception text may contain candidate source. Keep
-            // it out of runtime errors; no result is manufactured after failure.
+        let output = inspected.map_err(|failure| {
+            // Private Ausnahmen können Quelltext enthalten. Ein Infrastruktur-
+            // fehler wird niemals zum negativen Ergebnis einer einzelnen Quelle.
             let kind = match failure.kind {
                 brassclaw_monty_host::process::ProcessFailure::ValueLimit
                 | brassclaw_monty_host::process::ProcessFailure::FrameLimit
@@ -134,7 +201,7 @@ impl SourceInspectionBackend for ContainedSourceInspection {
                 ) => RuntimeDispatchErrorKind::Resource,
                 brassclaw_monty_host::process::ProcessFailure::Vm(
                     brassclaw_monty_host::VmFailure::Python,
-                ) => RuntimeDispatchErrorKind::InputEncode,
+                ) if single_source => RuntimeDispatchErrorKind::InputEncode,
                 _ => RuntimeDispatchErrorKind::OperationFailed,
             };
             let mut failed_usage = usage.clone();
@@ -149,12 +216,16 @@ impl SourceInspectionBackend for ContainedSourceInspection {
                 failed_usage.process_count = 0;
             }
             error(kind).with_usage(failed_usage)
-        })?
-        else {
-            return Err(error(RuntimeDispatchErrorKind::OperationFailed).with_usage(usage));
-        };
-        let output = json!({"format":"python-source-facts/1", "preparation_revision":revision,
-            "worker_checksum":hex::encode(worker.checksum()),"facts":structure});
+        })?;
+        Ok((output, usage))
+    }
+
+    fn report(
+        &self,
+        output: serde_json::Value,
+        usage: ResourceUsage,
+    ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
+        let limits = self.limits;
         let bounds = brassclaw_skills::value_contract::ContractLimits {
             max_depth: limits.bounds.max_value_depth,
             max_nodes: limits.bounds.max_value_nodes,
@@ -183,11 +254,6 @@ impl SourceInspectionBackend for ContainedSourceInspection {
     }
 }
 
-pub(crate) struct PreparedUtility {
-    pub(crate) worker: Arc<PackagedExecutableImage>,
-    pub(crate) limits: UtilityLimits,
-    pub(crate) revision: u64,
-}
 impl ContainedSourceInspection {
     /// Share one retained worker/settings owner with fixed preparation
     /// primitives. Bootstrap selection is private; ingress sees live ack limits.

@@ -370,6 +370,27 @@ using the shared opaque envelope fixture in the formatter round-trip.
 
 ## Worker packaging
 
+The current disposable utility protocol is **5**; the instance/global service
+protocol remains **20**. `InspectSources` accepts one complete map of opaque,
+nonempty IDs to source text. One retained worker process compiles/inspects the
+whole inventory without executing any opcode, under one captured preparation
+policy, deadline and allocator ceiling. Source bytes and inspected AST nodes
+are bounded across all entries; output nodes/bytes/depth and the complete encoded
+reply are bounded too. Overflow returns a whole-operation error, never a partial
+inventory. Each entry is either exact parser facts or a source-checksummed compiler
+rejection category (`syntax`, `unsupported`, `import`) under the selected profile.
+Those are mechanical observations, not semantic invalidity, Q1 or approval.
+Native resource/infrastructure failures remain errors; they cannot become a
+successful entry. The original single-source operation remains supported.
+
+The existing `builtin.source_inspection` Tool accepts exactly one of
+`source:string` and `sources:{opaque_id:string}`. Its inventory result is exact
+`python-source-inventory/1` JSON string data, retaining the actual preparation
+revision, worker checksum and complete named results. Current Tool policy still
+applies to every dispatch. This primitive chooses no class checks or workflow;
+private validator Recipes own extraction, checking and aggregation. An installed
+primitive/profile does not establish a qualified usage or class-validator route.
+
 Build `cargo build -p brassclaw -p brassclaw_monty_host --bins` (or replace the
 first package with `brassclaw_reborn_cli` for the standalone product). Install
 `monty_worker` beside the product executable. Docker and release assets include

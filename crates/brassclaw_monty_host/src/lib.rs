@@ -26,6 +26,7 @@ pub mod heap;
 pub mod process;
 mod process_recipe;
 pub mod service;
+pub mod source_inventory;
 pub mod source_structure;
 #[cfg(test)]
 mod task_clock_tests;

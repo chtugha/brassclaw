@@ -209,10 +209,41 @@ async fn native_source_inspection_is_registered_nonexecuting_and_uses_live_limit
         Some("result = inspect_python_source(inputs=inputs)")
     );
     let worker_hash = facts["worker_checksum"].clone();
+    let inventory = json!({"module Ü":source,"bad":"def private_fragment(:\n"});
+    let RuntimeCapabilityOutcome::Completed(result) = retained
+        .invoke(invoke(json!({"sources":inventory})))
+        .await
+        .unwrap()
+    else {
+        panic!("one real bounded inventory inspection required")
+    };
+    let report: serde_json::Value = serde_json::from_str(result.output.as_str().unwrap()).unwrap();
+    assert_eq!(result.usage.process_count, 1);
+    assert_eq!(report["format"], "python-source-inventory/1");
+    assert_eq!(report["worker_checksum"], worker_hash);
+    assert_eq!(report["sources"].as_object().unwrap().len(), 2);
+    assert_eq!(report["sources"]["module Ü"]["kind"], "inspected");
+    assert_eq!(
+        report["sources"]["module Ü"]["structure"]["source_checksum"],
+        facts["facts"]["source_checksum"]
+    );
+    assert_eq!(report["sources"]["bad"]["kind"], "compile_rejected");
+    assert_eq!(report["sources"]["bad"]["category"], "syntax");
+    assert!(report.get("pass").is_none());
+    assert!(report.get("approved").is_none());
+    assert!(!result.output.as_str().unwrap().contains("private_fragment"));
+    assert_eq!(
+        result.usage.output_bytes,
+        serde_json::to_vec(&result.output).unwrap().len() as u64
+    );
     for bad in [
         json!({"source":null}),
         json!({"source":source,"worker":"/arbitrary"}),
         json!({"source":"def private_fragment(:"}),
+        json!({"sources":null}),
+        json!({"sources":{"bad":null}}),
+        json!({"sources":{"":"x=1"}}),
+        json!({"source":source,"sources":inventory}),
     ] {
         match retained.invoke(invoke(bad)).await {
             Ok(RuntimeCapabilityOutcome::Failed(failure)) => {
@@ -231,6 +262,14 @@ async fn native_source_inspection_is_registered_nonexecuting_and_uses_live_limit
         panic!("disabled source Tool must fail authorization")
     };
     assert_eq!(failure.kind, RuntimeFailureKind::Authorization);
+    let RuntimeCapabilityOutcome::Failed(failure) = retained
+        .invoke(invoke(json!({"sources":inventory})))
+        .await
+        .unwrap()
+    else {
+        panic!("the same current Tool policy covers inventory inspection")
+    };
+    assert_eq!(failure.kind, RuntimeFailureKind::Authorization);
     policy.publish(2, snapshot(3, true)).unwrap();
     let settings = runtime.monty_settings_owner.store();
     let current = settings.get("default", "default").await.unwrap();
@@ -245,6 +284,16 @@ async fn native_source_inspection_is_registered_nonexecuting_and_uses_live_limit
         .await
         .unwrap();
     let large_source = format!("#{}\n", "a".repeat(1_048_577));
+    let RuntimeCapabilityOutcome::Failed(failure) = retained
+        .invoke(invoke(
+            json!({"sources":{"one":large_source,"two":large_source}}),
+        ))
+        .await
+        .unwrap()
+    else {
+        panic!("individually fitting sources cannot exceed the total acknowledged ceiling")
+    };
+    assert_eq!(failure.kind, RuntimeFailureKind::Resource);
     let RuntimeCapabilityOutcome::Completed(result) = retained
         .invoke(invoke(json!({"source":large_source})))
         .await

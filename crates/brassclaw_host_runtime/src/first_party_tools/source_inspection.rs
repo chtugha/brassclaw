@@ -19,6 +19,13 @@ pub trait SourceInspectionBackend: Send + Sync {
         &self,
         source: &str,
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError>;
+
+    /// One complete named inventory under a shared preparation budget. Values
+    /// remain borrowed until the implementation has checked current limits.
+    async fn inspect_sources(
+        &self,
+        sources: &serde_json::Map<String, Value>,
+    ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError>;
 }
 
 #[derive(Default)]
@@ -46,7 +53,7 @@ pub(super) fn manifest() -> Result<CapabilityManifest, ExtensionError> {
     // builtin defaults must not impose another hidden wall-time/output ceiling.
     super::first_party_capability_manifest(
         SOURCE_INSPECTION_CAPABILITY_ID,
-        "Inspect Python text without executing it; return parser facts, never approval or a validation verdict.",
+        "Inspect Python text or one complete named source inventory without executing it; return compiler/parser facts, never approval or a validation verdict.",
         vec![EffectKind::DispatchCapability],
         PermissionMode::Allow,
         None,
@@ -61,12 +68,18 @@ pub(super) async fn dispatch(
         .as_object()
         .filter(|object| object.len() == 1)
         .ok_or_else(super::input_error)?;
-    let source = object
-        .get("source")
-        .and_then(Value::as_str)
-        .ok_or_else(super::input_error)?;
     let backend = state.backend.as_ref().ok_or_else(super::operation_error)?;
-    let result = backend.inspect(source).await?;
+    let result = match (object.get("source"), object.get("sources")) {
+        (Some(Value::String(source)), None) => backend.inspect(source).await?,
+        (None, Some(Value::Object(sources)))
+            if sources
+                .iter()
+                .all(|(id, source)| !id.is_empty() && source.is_string()) =>
+        {
+            backend.inspect_sources(sources).await?
+        }
+        _ => return Err(super::input_error()),
+    };
     if !result.output.is_string() || result.display_preview.is_some() {
         return Err(super::operation_error());
     }

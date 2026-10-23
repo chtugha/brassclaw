@@ -5,7 +5,8 @@ started from `580a7f73e`; the raw-source checkpoint is `c52bdc2e0`. This index
 includes the successors through `747bcfff6`: pure-review prerequisites,
 independent execution coverage, captured observation limits, original-subject/input
 custody and retained global interpreter hosting, plus the subsequently validated
-reusable preload-definition rule described below.
+reusable preload-definition rule and complete native source-inventory primitive
+described below.
 It describes the source delivered with this document.
 It supersedes older present-tense implementation observations in the guides;
 their binding component, authority and failure contracts remain authoritative.
@@ -77,6 +78,15 @@ unreviewed draft without replacing authored successors or active selections.
 Original-subject/native-fact custody, complete class checks and durable review
 scheduling/evidence remain open; a positive definition result is not Q1.
 
+[Complete native source-inventory acceptance](validation/2026-10-23-source-inventory.md)
+covers 25 final-source actual-worker/PG/global/offline-model and standalone cases,
+with strict affected and separate-workspace lint. The existing source Tool now
+inspects a complete map under one process/deadline and aggregate limits, returning
+exact source/checksum/compiler facts with no candidate execution or partial success.
+Both profiles retain live policy/settings and the shared image. Utility protocol
+is 5; global protocol stays 20. Canonical inventory usage, full subject/graph checks
+and complete validator scheduling/evidence/activation remain open.
+
 ## Implemented boundaries
 
 | Area | Actual implementation and supported boundary | Remaining qualification or cutover |
@@ -140,7 +150,8 @@ new operator-adjustable policy. Distinguish desired and effective values.
 - The 600-second default is per-task executing time, not global lifetime or a
   wall-clock deadline for external work. Removed allocation-count enforcement
   is retained as retired configuration evidence, not silently treated as active.
-- Transport depth 64 and the PG/filesystem optimistic conflict-attempt counts
+- Compiler nesting depth 30 (debug) / 200 (release), transport depth 64 and the
+  PG/filesystem optimistic conflict-attempt counts
   remain implementation policies to reconcile. Do not remove a parser guard
   before safe decoding/ownership/late-error cleanup and real deep-data checks.
   Conflict retries may repeat only pure snapshot transitions, never Tools.

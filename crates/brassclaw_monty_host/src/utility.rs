@@ -28,7 +28,7 @@ use crate::{
     process::{ProcessFailure, ProcessLimits, encode, read_frame, transport_value, write_frame},
 };
 
-const PROTOCOL: u32 = 4;
+const PROTOCOL: u32 = 5;
 
 /// One accepted preparation policy. Callers resolve the authoritative settings
 /// once before an operation; later edits cannot retime or resize its worker.
@@ -90,6 +90,10 @@ pub enum UtilityRequest {
         source: String,
         bounds: VmBounds,
     },
+    InspectSources {
+        sources: BTreeMap<String, String>,
+        bounds: VmBounds,
+    },
     Evaluate {
         source: String,
         inputs: BTreeMap<String, Value>,
@@ -103,10 +107,20 @@ impl UtilityRequest {
             Self::EncodeModel { bounds, .. }
             | Self::Parse { bounds, .. }
             | Self::InspectSource { bounds, .. }
+            | Self::InspectSources { bounds, .. }
             | Self::Evaluate { bounds, .. } => *bounds,
         }
     }
     fn valid(&self, frame_limit: usize) -> bool {
+        if let Self::InspectSources { sources, bounds } = self {
+            return crate::source_inventory::sources_within_bounds(
+                sources
+                    .iter()
+                    .map(|(id, source)| (id.as_str(), source.as_str())),
+                *bounds,
+                frame_limit,
+            );
+        }
         if let Self::EncodeModel {
             request_bytes,
             bounds,
@@ -121,12 +135,16 @@ impl UtilityRequest {
             Self::Parse { source, bounds }
             | Self::InspectSource { source, bounds }
             | Self::Evaluate { source, bounds, .. } => (source, bounds),
-            Self::EncodeModel { .. } => unreachable!("encoding checked separately"),
+            Self::EncodeModel { .. } | Self::InspectSources { .. } => {
+                unreachable!("structured operation checked separately")
+            }
         };
         bounds.valid()
             && source.len() <= bounds.max_source_bytes
             && match self {
-                Self::EncodeModel { .. } => unreachable!("encoding checked separately"),
+                Self::EncodeModel { .. } | Self::InspectSources { .. } => {
+                    unreachable!("structured operation checked separately")
+                }
                 Self::Parse { .. } | Self::InspectSource { .. } => true,
                 Self::Evaluate {
                     inputs,
@@ -230,6 +248,9 @@ pub enum UtilityOutput {
     Inspected {
         structure: crate::source_structure::SourceStructure,
     },
+    InspectedSources {
+        sources: BTreeMap<String, crate::source_inventory::SourceInspection>,
+    },
     Evaluated {
         value: Value,
         stdout: String,
@@ -242,6 +263,7 @@ impl fmt::Debug for UtilityOutput {
             Self::ModelEncodingFailed { .. } => "ModelEncodingFailed(<safe failure category>)",
             Self::Parsed => "Parsed",
             Self::Inspected { .. } => "Inspected(<private source structure>)",
+            Self::InspectedSources { .. } => "InspectedSources(<private source inventory>)",
             Self::Evaluated { .. } => "Evaluated(<private result>)",
         })
     }
@@ -434,6 +456,10 @@ pub async fn execute(
                         UtilityOutput::Inspected { structure },
                     ) => structure.valid_for(source, *bounds),
                     (
+                        UtilityRequest::InspectSources { sources, bounds },
+                        UtilityOutput::InspectedSources { sources: inspected },
+                    ) => crate::source_inventory::valid_for(inspected, sources, *bounds),
+                    (
                         UtilityRequest::Evaluate { .. },
                         UtilityOutput::Evaluated { value, stdout },
                     ) => {
@@ -477,6 +503,24 @@ pub async fn execute(
     }
 }
 
+struct FrameCounter {
+    bytes: usize,
+    limit: usize,
+}
+impl io::Write for FrameCounter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.bytes = self
+            .bytes
+            .checked_add(bytes.len())
+            .filter(|total| *total <= self.limit)
+            .ok_or_else(|| io::Error::other("utility frame limit exceeded"))?;
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 pub(crate) fn worker_main(frame_limit: usize) -> Result<(), Box<dyn std::error::Error>> {
     let request: Request = read_frame(&mut io::stdin().lock(), frame_limit)
         .map_err(|_| io::Error::other("invalid utility request"))?;
@@ -496,17 +540,32 @@ pub(crate) fn worker_main(frame_limit: usize) -> Result<(), Box<dyn std::error::
             error.stdout,
         ),
     };
-    write_frame(
-        &mut io::stdout().lock(),
-        &Reply {
+    let mut reply = Reply {
+        protocol: PROTOCOL,
+        output,
+        failure,
+        diagnostic,
+        stdout,
+    };
+    if matches!(&reply.output, Some(UtilityOutput::InspectedSources { .. }))
+        && serde_json::to_writer(
+            &mut FrameCounter {
+                bytes: 0,
+                limit: frame_limit,
+            },
+            &reply,
+        )
+        .is_err()
+    {
+        reply = Reply {
             protocol: PROTOCOL,
-            output,
-            failure,
-            diagnostic,
-            stdout,
-        },
-        frame_limit,
-    )?;
+            output: None,
+            failure: Some(VmFailure::ResourceLimit),
+            diagnostic: None,
+            stdout: String::new(),
+        };
+    }
+    write_frame(&mut io::stdout().lock(), &reply, frame_limit)?;
     Ok(())
 }
 
@@ -515,6 +574,11 @@ fn evaluate(request: UtilityRequest, frame_limit: usize) -> Result<UtilityOutput
         return Err(VmError::kind(VmFailure::InvalidInputs));
     }
     let (source, inputs, bounds, compute, inspect) = match request {
+        UtilityRequest::InspectSources { sources, bounds } => {
+            return Ok(UtilityOutput::InspectedSources {
+                sources: crate::source_inventory::inspect(&sources, bounds)?,
+            });
+        }
         UtilityRequest::EncodeModel { request_bytes, .. } => {
             brassclaw_model_encoding::disable_parallelism();
             let request = serde_json::from_str::<brassclaw_model_encoding::Request>(&request_bytes)
@@ -601,3 +665,7 @@ fn evaluate(request: UtilityRequest, frame_limit: usize) -> Result<UtilityOutput
     };
     Ok(UtilityOutput::Evaluated { value, stdout })
 }
+
+#[cfg(test)]
+#[path = "utility_source_inventory_tests.rs"]
+mod source_inventory_tests;

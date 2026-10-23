@@ -48,6 +48,17 @@ original-subject/native-fact custody and complete class-22 workflow integration
 remain required. A Tool-using definition can pass this rule without becoming
 pure or receiving dispatch permission; no approval/evidence writer is added.
 
+The existing parser primitive now also has [complete named-inventory inspection](source-inventory-inspection.md)
+under one captured native process/deadline and aggregate bounds. [Final scoped
+acceptance](../validation/2026-10-23-source-inventory.md) covers real compiler
+categories, source/ID correlation, whole-operation resource failure and ordinary
+policy/settings/model consumers. This closes a mechanical prerequisite for a
+fixed private review Recipe to inspect its full source graph without per-row Tool
+occurrences. It does not qualify the inventory usage or supply subject provenance.
+Next wire pure original-subject extraction -> actual inventory Tool result ->
+definition/graph checks -> aggregate through the existing typed edges/observer.
+All required rules and durable review/evidence/approval gates below remain open.
+
 ## Declaration: `pure-component-approval/1`
 
 `PureComponentApprovalDeclaration::from_json` accepts exactly these fields:

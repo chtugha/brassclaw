@@ -10,8 +10,9 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
             "required":["specification","artifact_set","probes_json"],"additionalProperties":false
         }),
         "schemas/builtin/source_inspection.input.v1.json" => json!({
-            "type":"object","properties":{"source":{"type":"string"}},
-            "required":["source"],"additionalProperties":false
+            "type":"object","properties":{"source":{"type":"string"},
+                "sources":{"type":"object","propertyNames":{"minLength":1},"additionalProperties":{"type":"string"}}},
+            "additionalProperties":false,"oneOf":[{"required":["source"]},{"required":["sources"]}]
         }),
         "schemas/builtin/prefix_source.input.v1.json" => json!({
             "type":"object","properties":{

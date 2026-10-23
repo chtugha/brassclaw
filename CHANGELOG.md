@@ -18,6 +18,14 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- A complete named-inventory profile on the existing nonexecuting source
+  inspection primitive. Inspect all sources in one contained process with shared
+  input/output/source/node bounds and one deadline; correlate every result with
+  its original ID and source checksum. Keep compiler-profile rejections distinct
+  from whole-operation resource/native failures, reject overflow without partial
+  success, and apply the existing live Tool policy and preparation settings.
+  The paired disposable-utility protocol is now 5; global hosting remains on
+  protocol 20. Validator workflow qualification and activation remain separate.
 - A reusable pure preload-definition check for PythonCode review, with recursive
   typed parser-fact/declaration inputs and rule-correlated diagnostics for actual
   signature, symbol, constant, import and load-shape mismatches. Candidate code

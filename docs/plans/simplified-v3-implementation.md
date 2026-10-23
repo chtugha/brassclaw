@@ -13567,3 +13567,23 @@ suppression; the complete final set was rebuilt and rerun. Native original-fact
 custody and the full class workflow/durable review/evidence path remain required
 under validator's existing owner. This is neither successful class Q1 nor general
 pure approval, catalogue activation or completion of the v3 plans.
+
+### 2026-10-23 — complete native source-inventory inspection
+
+Validator Step 5's existing parser primitive now supports a complete named source
+map with one contained process/deadline/allocator and shared source, AST and output
+bounds. Actual source/checksum/compiler categories remain facts, not semantic/Q1
+verdicts. Resource/native failure rejects the whole operation without publishing
+partial success. The existing registered Tool, live policy/settings and shared
+retained image are reused; no workflow Tool, reviewer, cache or global VM is added.
+Disposable utility protocol is now 5 while the global service remains on 20.
+
+[Final scoped acceptance](../validation/2026-10-23-source-inventory.md) passes
+25 fresh normal-worker/PG/global/offline-model and standalone cases, strict affected
+and separate-workspace lints, formatting and whitespace. Earlier harness/artifact
+scope errors remain recorded; run 4 rebuilds/reruns the complete final set with
+explicit normal-versus-test worker custody. Source bytes remain data and the
+native copy/operation wall-time boundary is preserved. Inventory usage qualification,
+original-subject/graph checking, complete private class routes and durable
+review/evidence/approval remain work of the existing validator owner. This is not
+full-plan, release, platform or installed acceptance.
