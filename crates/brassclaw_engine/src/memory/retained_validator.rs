@@ -313,7 +313,7 @@ impl RetainedValidatorCoverage {
         results: &BTreeMap<String, Value>,
         limits: brassclaw_skills::value_contract::ContractLimits,
     ) -> Result<ObservedValidatorChecks, &'static str> {
-        use crate::executor::retained_recipe::typed_value_checksum;
+        use crate::executor::retained_recipe::typed_value_checksum_with_limits;
         use brassclaw_skills::value_contract::validate_data_bounds;
         let inspected = execution.inspected_program();
         let instruction = inspected.program().inputs().instruction();
@@ -355,7 +355,7 @@ impl RetainedValidatorCoverage {
                 || observed.observation_error().is_some()
                 || observed.result_checksum()
                     != Some(
-                        typed_value_checksum(value)
+                        typed_value_checksum_with_limits(value, observed.data_limits())
                             .map_err(|_| "result fingerprint cannot be verified")?,
                     )
             {

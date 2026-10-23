@@ -596,6 +596,12 @@ prerequisites, **not durable pure approval, successful whole-class Q1, trusted
 seed provenance or an activated component**. The writer/reader/activation steps
 below remain required. See [the exact prerequisite contract](docs/reborn/pure-component-review.md).
 
+**Observation resources — 2026-10-23:** result fingerprint verification now uses
+each actual executor observation's captured data limits instead of fixed default
+bounds. Later settings edits do not rewrite those accepted results. The caller's
+finite report bounds still apply independently and reject whole oversized reports;
+they never truncate diagnostics or promote an observed rejection to Q1 success.
+
 1. Reuse existing immutable submission records and make their review work discoverable
    via the existing admission/coordination services. Atomically retain submission
    and required work/outbox reference, or specify its idempotent reconciliation

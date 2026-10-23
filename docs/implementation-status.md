@@ -35,6 +35,12 @@ receipts establish their named scopes only. No full release/platform matrix,
 fresh remote installation, general crash recovery or full-plan completion is
 inferred from focused local checks.
 
+[Validator observation acceptance](validation/2026-10-23-validator-observation-limits.md)
+additionally covers seven focused actual-worker/PG consumer tests, including
+complete 300,000-item negative diagnostics under captured per-step limits after
+later live reductions. Independent report bounds and changed-result rejection
+remain enforced. This is not successful class Q1, pure approval or activation.
+
 ## Implemented boundaries
 
 | Area | Actual implementation and supported boundary | Remaining qualification or cutover |

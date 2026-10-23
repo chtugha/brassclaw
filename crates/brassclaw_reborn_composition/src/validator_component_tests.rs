@@ -323,7 +323,7 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
     let (root, rule_id) = (Uuid::new_v4(), Uuid::new_v4());
     let aggregate = aggregate_draft(Uuid::new_v4()).unwrap();
     let rule=ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":rule_id,"class_code":22,
-        "document":{"content":"def inspect_identity(inputs):\n    return {'rule_id': 'identity', 'ok': inputs['subject'] != '', 'errors': [] if inputs['subject'] != '' else ['subject missing']}",
+        "document":{"content":"def inspect_identity(inputs):\n    if inputs['subject'] == 'large diagnostics':\n        return {'rule_id': 'identity', 'ok': False, 'errors': ['observed diagnostic'] * 300000}\n    return {'rule_id': 'identity', 'ok': inputs['subject'] != '', 'errors': [] if inputs['subject'] != '' else ['subject missing']}",
             "input_contract":{"subject":{"type":"string","required":true,"checks":[]}},
             "result_contract":{"type":"object","allow_extra_fields":false,"fields":{
                 "rule_id":{"type":"string","required":true,"checks":[{"kind":"min_length","value":1}]},"ok":{"type":"boolean","required":true},
@@ -477,22 +477,34 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
         retained_source::InspectedRetainedProgram,
     };
     use brassclaw_monty_host::{
-        process::{ProcessBoundary, WorkerCommand},
+        heap::HeapSettings,
+        process::{ProcessBoundary, RecipeCommand, TaskSettings, WorkerCommand},
         transport_actor::{ActorLimits, TransportOwner},
     };
     let source = "import asyncio\nasync def observe():\n    task = await host.await_next_task(0)\n    host.enter_task(task['task_token'])\n    await host.validation_hold(task['task_token'])\nasyncio.run(observe())\n";
     let mut boot = observation_runtime::boot(source);
     boot.bounds.workers = 1;
     boot.aliases.insert("validation_hold".into());
+    boot.heap_settings = Some(HeapSettings {
+        revision: 1,
+        max_vm_bytes: 512 * 1024 * 1024,
+    });
+    boot.bounds.values.max_value_nodes = 1_048_576;
+    boot.bounds.values.max_value_bytes = 16 * 1024 * 1024;
+    let admitted_bounds = boot.bounds.values;
+    let mut transport_limits = observation_runtime::limits();
+    transport_limits.hard_memory_bytes = 1024 * 1024 * 1024;
+    transport_limits.max_frame_bytes = 32 * 1024 * 1024;
+    transport_limits.response_timeout = Duration::from_secs(30);
     let (mut owner, ready) = TransportOwner::start(
         observation_runtime::worker(),
         boot,
-        observation_runtime::limits(),
+        transport_limits,
         ActorLimits {
             max_unclaimed: 8,
-            max_reserved_frame_bytes: 4 * 1024 * 1024,
+            max_reserved_frame_bytes: 64 * 1024 * 1024,
             max_control_unclaimed: 8,
-            max_control_reserved_frame_bytes: 4 * 1024 * 1024,
+            max_control_reserved_frame_bytes: 64 * 1024 * 1024,
         },
     )
     .await
@@ -592,6 +604,136 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
         ..REVISION_LIMITS
     };
     assert!(coverage.observe(&execution, &results, small).is_err());
+
+    // Actual larger results must use their captured per-step limits, rather
+    // than the old default node ceiling or later settings. Preserve the whole
+    // negative candidate result; this is observation, not successful Q1.
+    let mut large_execution = RetainedRecipeExecution::new_child_for_behavioral_validation(
+        task,
+        parent,
+        inspected.clone(),
+    )
+    .unwrap();
+    let mut large_results: BTreeMap<String, Value> = BTreeMap::new();
+    let mut later_bounds = admitted_bounds;
+    later_bounds.max_value_nodes = 600_000;
+    for step in ["0:1", "0:2", "0:3"] {
+        if step == "0:2" {
+            let updated = observation_exchange(
+                &transport,
+                WorkerCommand::Recipe {
+                    command: RecipeCommand::UpdateRuntimeSettings {
+                        expected_revision: 1,
+                        settings: TaskSettings {
+                            revision: 2,
+                            max_compute_time: Duration::from_secs(600),
+                            token_budgets_enabled: false,
+                        },
+                        values: later_bounds,
+                        max_pending_host_calls: None,
+                        max_workers: None,
+                        max_recipe_contexts: None,
+                        adapter_reserve_bytes: None,
+                        heap_update: None,
+                        frame_update: None,
+                    },
+                },
+            )
+            .await;
+            assert_eq!(updated.root, ready.root);
+            assert_eq!(*transport.live_vm_bounds().borrow(), later_bounds);
+        }
+        let inputs = match step {
+            "0:1" => json!({"subject":"large diagnostics"}),
+            "0:2" => json!({"identity":large_results["0:1"]}),
+            "0:3" => json!({"required_rule_ids":["identity"],"checks":large_results["0:2"]}),
+            _ => unreachable!(),
+        };
+        let value = large_execution
+            .run_step(&transport, step, &inputs, None)
+            .await
+            .unwrap();
+        large_results.insert(step.to_owned(), value);
+    }
+    assert!(large_execution.is_complete());
+    assert!(large_execution.host_answers().is_empty());
+    assert_eq!(
+        large_results["0:1"]["errors"].as_array().unwrap().len(),
+        300_000
+    );
+    assert!(
+        brassclaw_engine::executor::retained_recipe::typed_value_checksum(&large_results["0:1"])
+            .is_err(),
+        "the actual output must exceed the historical default node ceiling"
+    );
+    assert_eq!(
+        large_execution.observations()["0:1"]
+            .data_limits()
+            .max_nodes,
+        admitted_bounds.max_value_nodes
+    );
+    assert_eq!(
+        large_execution.observations()["0:2"]
+            .data_limits()
+            .max_nodes,
+        later_bounds.max_value_nodes
+    );
+    let mut smaller_bounds = later_bounds;
+    smaller_bounds.max_value_nodes = 2048;
+    smaller_bounds.max_value_bytes = 16384;
+    let updated = observation_exchange(
+        &transport,
+        WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateRuntimeSettings {
+                expected_revision: 2,
+                settings: TaskSettings {
+                    revision: 3,
+                    max_compute_time: Duration::from_secs(600),
+                    token_budgets_enabled: false,
+                },
+                values: smaller_bounds,
+                max_pending_host_calls: None,
+                max_workers: None,
+                max_recipe_contexts: None,
+                adapter_reserve_bytes: None,
+                heap_update: None,
+                frame_update: None,
+            },
+        },
+    )
+    .await;
+    assert_eq!(updated.root, ready.root);
+    assert_eq!(*transport.live_vm_bounds().borrow(), smaller_bounds);
+    let report_limits = brassclaw_skills::value_contract::ContractLimits {
+        max_nodes: admitted_bounds.max_value_nodes,
+        max_bytes: admitted_bounds.max_value_bytes,
+        ..REVISION_LIMITS
+    };
+    let complete = coverage
+        .observe(&large_execution, &large_results, report_limits)
+        .unwrap();
+    assert_eq!(complete.report()["aggregation"]["pass"], false);
+    assert_eq!(
+        complete.report()["aggregation"]["errors"][0]["errors"]
+            .as_array()
+            .unwrap()
+            .len(),
+        300_000
+    );
+    assert_eq!(complete.report()["q1_qualification"], false);
+    assert!(
+        coverage
+            .observe(&large_execution, &large_results, REVISION_LIMITS)
+            .is_err(),
+        "separate report bounds still apply; they must not truncate diagnostics"
+    );
+    large_results.get_mut("0:1").unwrap()["errors"][0] = json!("changed diagnostic");
+    assert!(
+        coverage
+            .observe(&large_execution, &large_results, report_limits)
+            .is_err(),
+        "larger admitted limits must not accept changed execution data"
+    );
     owner.request_termination();
     owner.join().await.unwrap();
 

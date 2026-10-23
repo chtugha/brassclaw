@@ -63,6 +63,13 @@ association-approval formats are unchanged; no zero-Tool Skill is created.
 
 ## Original subject and remaining implementation
 
+Validator result fingerprints now use each actual step's accepted data bounds.
+This source repair preserves full diagnostics admitted under larger settings,
+even after later live reductions. Caller-owned report bounds still reject whole
+oversized reports. [Scoped actual-executor acceptance](../validation/2026-10-23-validator-observation-limits.md)
+passed with complete large negative diagnostics and live reductions; this supplies
+neither trusted Q1 evidence nor an approval writer.
+
 The existing immutable submission reader already supplies complete candidate,
 dependency and base-comparison bytes through `RetainedValidatorSubject`.
 Its submission ID/checksum and those of `RetainedValidatorSelection` are now

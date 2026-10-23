@@ -13492,3 +13492,22 @@ No old invalid dependency-only selection is silently grandfathered or routed
 to Tier 2; stored data/pointers remain available for explicit diagnosis. Installed
 repair/recovery, general pure qualification and the rest of the full v3/v3.5
 acceptance are not implied by this checkpoint.
+
+
+### 2026-10-23 — Complete retained validator diagnostics under live limits (scoped acceptance)
+
+The retained validator observer now fingerprints each actual result using that
+step's captured data limits, replacing its incorrect fixed-default checksum
+validation. The unchanged checksum format preserves old valid observations.
+The actual Monty regression emits/collects/aggregates 300,000 complete diagnostic
+strings, changes limits between steps, then reduces the live profile before
+observation. Original per-step bounds remain authoritative; changed data and
+separate report overflow reject, and the negative result remains negative. No
+successful Q1 or approval is manufactured.
+
+[The scoped report](../validation/2026-10-23-validator-observation-limits.md) records
+seven passing actual-worker/PG consumer tests, fresh root/worker/test builds,
+strict root/Engine/composition lint, format and whitespace checks, plus exact
+source/artifact hashes. It closes this consumer bug, not the eight validator
+routes, trusted durable pure evidence/Q2/bootstrap, activation or full-plan
+acceptance. Continue those remaining gates under validator Steps 3/8–10.

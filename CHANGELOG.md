@@ -157,6 +157,10 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Fixed
 
+- Verify retained validator result fingerprints with each step's actual accepted
+  data limits, preserving complete large negative diagnostics across later live
+  settings changes. Keep separate report limits and changed-result rejection;
+  observing checks remains distinct from successful Q1 or approval.
 - Check independent pure Recipe execution per variant and again for retained
   selections/MCP qualification. Tool-usage dependency membership, including
   coverage from another variant, no longer supplies independent execution
