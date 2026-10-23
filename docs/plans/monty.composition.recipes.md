@@ -1,52 +1,57 @@
 # monty.composition — Recipe execution coverage audit
 
+> **Current status — 2026-10-23:** use [the common implementation index](../implementation-status.md)
+> and [composition's remaining steps](monty.composition.md#remaining-implementation--consolidated-2026-10-22).
+> The 2026-10-09 source inventory below is a historical migration input, not a
+> claim that every listed legacy definition is still the active implementation.
+> Resolve installed identities/overrides and qualified successors before changing
+> a consumer; do not repeat completed loader, reply/history or MCP infrastructure.
+
 ## Reply/history migration review gate
 
-The existing packaged `host-post-reply` and `host-save-history` Recipes, their
-associated Skills and PythonCode are migration inputs, **not qualified current-v3
-implementations to reuse unchanged**. Updating these exact workflows is the parent
-task; implementing the qualified preload/export adapter is its prerequisite.
+The retained reply/history successors now use declared preload exports, typed
+bindings and exact qualified package/approval/native selections. Ordinary global
+execution and packaged public-reply MCP/chat/provider behavior have scoped
+acceptance in the common index. Reuse those exact successors through the existing
+selection and activation owners. The legacy bodies in this audit are historical
+migration inputs; they do not override the retained implementation.
 
-Before selecting a successor, independently review the actual retained definitions,
-interfaces, bindings, dependency graph, typed input/result handoffs and global-runtime
-callers against `recipe.md`, `skills.md` and section 24 of `monty.composition.md`.
-Upgrade the usages and Recipes for effect-free dependency-first loading, explicit
-pinned export invocation, isolated mutable state and current kernel enforcement.
-Complete the applicable exact-combination bootstrap/approval and behavioral evidence
-before activation. Names, existing package status, old acceptance receipts and the
-word “canonical” do not qualify the unchanged implementation.
+New replacements still need their exact interface/binding/dependency/native and
+behavior qualification. Preserve old task selections, reply/history ownership,
+isolated mutable state, current kernel policy and no-replay finalization. Internal
+history remains private; public discovery requires its separately qualified
+execution Recipe and command.
 
-Preserve compatible stable UUIDs and old task selections when that reviewed migration
-supports them; do not copy deprecated source substitution, ambient step state,
-module-level Tool execution or unsafe retry guidance into the new adapter. Review
-reply/history ownership, both routing branches, history framing, finalization and
-no-replay behavior together after the adapter is qualified. Keep these internal
-usages out of public MCP discovery unless a separately qualified public contract
-explicitly permits exposure. The commented instructions below are historical only.
-
-
-**MCP source status (2026-10-09):** the raw-Skill/composer serving stub has been retired and legacy outbound MCP activation/attachment has been suspended. Earlier source observations of that stub are historical. See [section 26](#26-inbound-mcp-source-review-and-transport-retirement-2026-10-09) for the repairs and the still-required Recipe/chat/Kohai implementation. The new inbound service is not yet runtime-qualified.
-
-**Updated v3 Skill definition:** a Skill is one Tool usage exposed through a preloadable Python function interface, with prose, explicit associated code, public exported names/signatures and private helper/constant dependencies. Resolve and pin its exact interface/code/association/Tool graph, load definitions in dependency-first order without effects, and invoke the selected export on demand. Loading enables no Tool; matching ToolSkill binding and live kernel checks remain required. Code/immutable constants can be shared; mutable arrays/defaults/closures/results are isolated per invocation/task/attempt. See [the binding function-interface contract](../../skills.md#preloadable-function-interface-binding-v3-target). All legacy and new Skill rows require the per-usage function migration in the implementation appendix; pure wrappers remain PythonCode documentation. This is a target and plan update, not runtime support.
-
+**MCP source status:** the old raw-Skill/composer stub and legacy outbound
+attachment are retired. The implemented ordinary-chat bridge, always-running
+listener and qualified discovery are described in [composition section 34](monty.composition.md#34-ordinary-mcp-chat-transport-and-instance-listener).
+[Section 26](monty.composition.md#26-inbound-mcp-source-review-and-transport-retirement-2026-10-09)
+retains the earlier source audit. Full public-library population remains open;
+that gap does not mean the current service is absent or unqualified in all scopes.
 
 **MCP discovery/provider lifecycle:** derive tools/list from available approved mcp-call-skill-recipes and their exact command variants. The server remains running; Kohai connects/advertises only after final prefix addition immediately before prompt send and disconnects on the complete model answer. Refresh the server list at startup/restart and qualified Skill/Recipe catalogue changes. Preserve request-local advertised contracts and ordinary-chat result recovery; see [the authoritative lifecycle](monty.composition.md#recipe-derived-discovery-and-kohai-owned-provider-connections).
 
-**Updated v3 Skill definition:** a Skill is one Tool usage exposed through a preloadable Python function interface, with prose, explicit associated code, public exported names/signatures and private helper/constant dependencies. Resolve and pin its exact interface/code/association/Tool graph, load definitions in dependency-first order without effects, and invoke the selected export on demand. Loading enables no Tool; matching ToolSkill binding and live kernel checks remain required. Code/immutable constants can be shared; mutable arrays/defaults/closures/results are isolated per invocation/task/attempt. See [the binding function-interface contract](../../skills.md#preloadable-function-interface-binding-v3-target). All legacy and new Skill rows require the per-usage function migration in the implementation appendix; pure wrappers remain PythonCode documentation. This is a target and plan update, not runtime support.
+**Skill contract:** a Skill is one Tool usage with prose and an explicitly
+associated preloadable function interface. Pure helpers remain PythonCode.
+Selected retained loading, pinned exports and typed invocation are implemented;
+the legacy rows below still need per-usage migration and exact qualification.
+Use [the binding definition](../../skills.md#preloadable-function-interface-binding-v3-target)
+and the composition owner's existing component ledger, rather than creating
+another loader or treating these proposed migrations as activated components.
 
 MCP clarification: accept the listed completed command only; open a new normal chat, send it as a user message, observe its correlated terminal response, forward that response to the client and close the chat. Normal ingress/matching/IBS/Recipe/reply/history are reused; no Python reception or direct Monty/Rust execution bridge is introduced.
 
-The [Tool/ToolSkill and cross-plan audit corrections](monty.composition.md#23-tooltoolskill-and-cross-plan-audit-corrections) apply throughout this appendix: independent evaluation/evidence and registration/selection operations remain separate; caught Python errors cannot erase authoritative host outcomes; exact native artifact retention also requires a supported compatible loading path. These are qualification requirements, not implemented support.
+The [Tool/ToolSkill and cross-plan audit corrections](monty.composition.md#23-tooltoolskill-and-cross-plan-audit-corrections) apply throughout this appendix: independent evaluation/evidence and registration/selection operations remain separate; caught Python errors cannot erase authoritative host outcomes; exact native artifact retention also requires a supported compatible loading path. These are qualification requirements; implemented boundaries and remaining gaps are recorded in the common index.
 
 This is a planning-only source audit dated 2026-10-09, supplementary to [monty.composition](monty.composition.md) and its [implementation appendix](monty.composition.implementation.md). It audits 151 legacy seeded Recipe identities: 125 literal built-in Recipes, doc-convert, the direct-upsert host-assemble-prefix-bundle, eight generated validator Recipes, ten Zencoder Recipes and six host Recipes. It also checks both newer packaged host workflows, all eight planned validator replacements, and the named workflow roles in prefix_v3_upgrade. These are repository definitions, not an inventory of live installed/operator overrides. Installation-specific UUIDs, overrides and retained revisions must be reconciled before migration. Actions are not counted as Recipes or PythonCode; doc-sync is examined only to identify the replacement Recipe's missing executable dependencies.
 
 ## What a BuildInstruction actually contains
 
-IBS emits selected references, ordering and binding/input instructions; composition resolves executable source and usage dependencies. An include of a Skill does not implicitly insert its companion code. The legacy composer collects Skill prose but selects only the first class-22 body per Orchestrator step; unresolved classes, grouped bodies and informational text do not become an executable workflow. `type:text` is skipped by IBS. `llm_call_required=true` is a tier/context flag, not a model call. A nested Recipe UUID or step goal likewise does not supply recursive execution.
+The retained runner compiles the complete selected graph with typed bindings and pinned exports. IBS emits selected references, ordering and binding/input instructions; composition resolves executable source and usage dependencies. The following composer limitations describe the legacy audit path, not ordinary retained execution. An include of a Skill does not implicitly insert its companion code. The legacy composer collects Skill prose but selects only the first class-22 body per Orchestrator step; unresolved classes, grouped bodies and informational text do not become an executable workflow. `type:text` is skipped by IBS. `llm_call_required=true` is a tier/context flag, not a model call. A nested Recipe UUID or step goal likewise does not supply recursive execution.
 
 Source evidence: [IBS](../../crates/brassclaw_engine/src/memory/instruction_builder.rs), [legacy and typed composers](../../crates/brassclaw_engine/src/memory/composition.rs), [legacy Postgres composition](../../crates/brassclaw_reborn_composition/src/pg_composition_port.rs), [retained Recipe compilation](../../crates/brassclaw_engine/src/memory/retained_instruction.rs), [retained binding preparation](../../crates/brassclaw_engine/src/memory/retained_tools.rs), [retained executor](../../crates/brassclaw_engine/src/executor/retained_recipe.rs).
 
-Every ordinary built-in `step_entry` has empty `tool_bindings`; selecting a ToolSkill row alone does not establish the explicit binding required by typed composition. All legacy rows below therefore require retained v3 conversion: exact one-UUID steps, typed input/result edges, actual prepared Tool bindings, complete immutable dependency declarations, separate trusted exact Skill-association approval, actual implementation retention and behavioral qualification. Even rows with a Python body are **not certified complete**. Old system/validated labels and Tier0 stamps do not establish the controlled system_seed evidence contract.
+Every legacy built-in `step_entry` audited in this table has empty `tool_bindings`; selecting a ToolSkill row alone does not establish the explicit binding required by typed composition. All legacy rows below therefore require retained v3 conversion: exact one-UUID steps, typed input/result edges, actual prepared Tool bindings, complete immutable dependency declarations, separate trusted exact Skill-association approval, actual implementation retention and behavioral qualification. Even rows with a Python body are **not certified complete**. Old system/validated labels and Tier0 stamps do not establish the controlled system_seed evidence contract.
 
 The Skill is selected through the explicit approved association/dependency closure of the executable usage, not added as a second UUID in the PythonCode step. ToolSkills are Rust binding steps. Pure logic needs no invented Skill. Do not rely on the legacy ComposedProgram.skills vector as proof that semantic association approval or the full graph exists. The newer retained binding path reads associations from the retained snapshot; typed composition alone is only one prerequisite.
 

@@ -23,6 +23,9 @@ The successors included in this reconciliation are:
 | `887e0ea14` | Pure-source/declaration/sealed-subject prerequisites and real PostgreSQL test transport ownership; [67 fresh scoped checks](2026-10-23-pure-review-foundation.md), separately identified reused global-root evidence. |
 | `172f8c085` | Per-variant and retained-reader independent pure-execution gate; [39 scoped checks](2026-10-23-independent-pure-execution.md). General pure approval remains open. |
 | `c5ee5ecd0` | Captured per-step validator observation limits; [seven actual-worker/PG checks](2026-10-23-validator-observation-limits.md), complete negative diagnostics and strict affected/root lint. Not successful class Q1 or activation. |
+| `1b5f32902` | Common-tree guide/plan reconciliation and actual renderer declaration regression; the four scoped checks and original artifact receipt are recorded below. |
+| `c7642a886` | Original sealed subject/selection and every executed input edge; [29 scoped checks](2026-10-23-validator-subject-inputs.md). Observations remain distinct from successful Q1 and ordinary scheduling. |
+| `747bcfff6` | One retained source-inspection/catalogue/global-hosting worker image; [16 scoped root and standalone checks](2026-10-23-retained-global-worker.md), strict lint/format in both workspaces. Durable interpreter evidence and generic crash recovery remain open. |
 
 Counts describe each named receipt and may overlap. They are not a newly executed
 combined-suite total. Frozen receipts preserve actual source/artifact inventories,
@@ -101,3 +104,42 @@ source inventory SHA-256 is
 restoration. Only this unembedded report is completed after acceptance. No full
 model/platform/installed, release or full-plan acceptance is implied. All remaining
 implementation steps retain their owning plan and acceptance requirements.
+
+## Final common-repository audit
+
+The follow-up audit on 2026-10-23 starts from `747bcfff6`. The following are
+direct repository/filesystem observations, not new runtime test results:
+
+- `git worktree list --porcelain` reports only `/Volumes/SSDE/brassclaw`, on
+  `main`, with a clean shared index and working tree before this prose update.
+- Both retained local historical branches have zero commits outside `main`
+  (`git rev-list --count main..<branch>`). Their names remain history; no agent
+  changes need cherry-picking or replacement from an older checkout.
+- `git ls-remote origin refs/heads/main` and local `main` both identify
+  `747bcfff6239f40a23bdb0b9fe8844b451ddaaea` before the final documentation commit.
+  Unrelated remote branches are not part of this consolidation claim.
+- `/Users/ollama/brassclaw-target` exists. The retired
+  `/Users/ollama/brassclaw-target2` and repository `target/debug` are absent.
+  `screen -ls` reports no running screen sessions. Immutable evidence archives
+  remain preserved; they are not a second Cargo target.
+
+All requested root plans/guides already route current status through the common
+index. Validator Step 9 additionally records both the subject/input and retained
+interpreter successors. The Unreleased changelog contains both changes and the
+combined workstreams. The extended 30-document link/anchor check found one broken
+Recipe-audit section reference and exposed its stale reply/history/MCP opening.
+The follow-up repairs that reference, removes a duplicated Skill-definition
+paragraph and distinguishes the historical legacy inventory from current retained
+execution. It reuses the existing composition owner and acceptance boundaries.
+The final update changes only this unembedded report, the unembedded index and
+that unembedded planning audit; executable/embedded inputs and historical receipts
+are unchanged. The corrected local Markdown link/anchor check passes for all 30
+selected active documents, and `git diff --check` passes. No additional Cargo run
+is warranted solely for these prose changes.
+
+The remaining work and cross-plan ownership above remain unchanged. In
+particular, this consolidation does not close the eight actual class-validator
+routes, trusted standalone-pure approval, R09/R10 qualification and consumers,
+prefix serving/final request guards, durable recovery or installed/platform
+acceptance. These are explicit implementation steps under their selected owners,
+not duplicate projects or completed release claims.

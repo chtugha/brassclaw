@@ -2,8 +2,9 @@
 
 Reconciled on **2026-10-23** against the common `main` working tree. Consolidation
 started from `580a7f73e`; the raw-source checkpoint is `c52bdc2e0`. This index
-also includes the subsequently validated pure-review prerequisites and independent
-execution guard and per-step validator observation repair described below.
+includes the successors through `747bcfff6`: pure-review prerequisites,
+independent execution coverage, captured observation limits, original-subject/input
+custody and retained global interpreter hosting, described below.
 It describes the source delivered with this document.
 It supersedes older present-tense implementation observations in the guides;
 their binding component, authority and failure contracts remain authoritative.
@@ -28,6 +29,11 @@ not a product setting or a required installation path.
 
 [The final reconciliation record](validation/2026-10-23-documentation-reconciliation.md)
 maps these successor checkpoints and explains the canonical plan choices.
+Its final repository audit confirms one registered worktree, both historical
+local work branches fully contained in `main`, and the retired second target
+absent. Historical branches and immutable evidence are not additional active
+source or build trees. The audit does not imply that unrelated GitHub branches
+have been merged or deleted.
 
 The consolidation validation result is recorded in
 [the validation record](validation/2026-10-22-consolidation.md). The subsequent
