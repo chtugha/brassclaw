@@ -13465,3 +13465,30 @@ The ordinary matched/unmatched global-root pass is separately reused from run 1.
 failed batches, exact commands/artifacts, source applicability and open boundaries.
 One common source/index and serial Cargo target remain in use. A checkpoint push
 does not close the remaining v3/v3.5 or installed-release acceptance gates.
+
+
+### 2026-10-23 — Independent pure execution coverage (scoped native acceptance)
+
+Authored preparation now checks each variant's actual unbound executable steps
+separately from Tool-usage dependency UUID coverage. A helper cannot inherit
+independent execution approval from the same usage or another variant. The only
+current independent coverage is the existing exact packaged generation workflow,
+verified against its full pinned selection. Retained-selection/MCP verification
+repeats this boundary, including child admission's retained-view caller. General
+pure evidence/approval/Q2/bootstrap/pins remain open under validator Steps 3/8–10.
+
+The [scoped validation record](../validation/2026-10-23-independent-pure-execution.md)
+records **39 passing selected tests** across the exact-source reuse chain, actual
+operator/PG/global publication/rejection, waiting-task retention, restart/old
+formats, component deployment and child callers. Strict root/composition lint,
+format and whitespace checks pass. Initial fixture/required-data/free-space
+failures and a reused-log-path receipt correction are preserved explicitly.
+The independent HF reference now loads the frozen Qwen3.5 configuration without
+a generic-config fallback, using a consistent isolated environment; full native
+comparisons pass. The actual oversized Sempai measurement remains capacity-negative
+and unactivated, with its diagnostic visible. Prefix files were not changed.
+
+No old invalid dependency-only selection is silently grandfathered or routed
+to Tier 2; stored data/pointers remain available for explicit diagnosis. Installed
+repair/recovery, general pure qualification and the rest of the full v3/v3.5
+acceptance are not implied by this checkpoint.

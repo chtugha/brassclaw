@@ -633,6 +633,16 @@ component writes, a fake human marker, old receipts or client-supplied evidence.
 
 ### Step 10 — Prepare coherent activation and update downstream readers
 
+**Reader hardening — 2026-10-23:** authored preparation now checks every unbound
+executable occurrence in each variant separately from dependency UUID coverage.
+Retained-selection/MCP verification applies the same boundary. The existing
+exact packaged generation owner remains the only admitted independent pure
+coverage on this path; its full selected workflow and evidence must agree.
+General pure evidence/approval storage, writers, Q2/bootstrap and manifest pins
+remain unfinished. Previously accepted dependency-only membership is not a
+grandfathered independent approval; invalid historical catalogues fail explicitly
+without changing their stored active pointer or becoming No-Match.
+
 1. Define the active catalogue-generation transaction linking approved immutable
    revisions, class-validator routes, required approval records, implementation
    availability and compatible intents/variants. Enforce concurrency revisions.

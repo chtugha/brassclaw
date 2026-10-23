@@ -82,6 +82,12 @@ activated pure workflow is implied by these declarations.
 
 ## Exact remaining cutover contract
 
+The per-variant independent-occurrence rejection and retained-selection/MCP
+recheck below have [scoped native acceptance](../validation/2026-10-23-independent-pure-execution.md).
+The supported independent exception still comes only from the exact packaged
+generation owner. This hardening does not implement the general approval writer
+or extend that exception to other pure components.
+
 The following details belong to **validator Steps 3/8–10**. Composition R10 and
 V35-03/04 consume this implementation; they must not create another approval
 store, scheduler or compiler exception. These are remaining requirements, not
@@ -124,16 +130,19 @@ implemented support.
    without an installed-instance human action. A `system_seed` label or null Q2
    cannot establish provenance. An uncertain commit is reconciled by original
    immutable ID/bytes, without replacing evidence or replaying effects.
-6. **Check executable occurrences, not UUID membership.** Currently
-   `authored_monty_catalogue::prepare_with_policy` accumulates every Tool usage's
-   combination into a `covered` UUID set across selected variants. A helper's
-   membership there does not establish approval for an independently selected
-   unbound invocation, including one in another variant. During this cutover,
-   check every executable step without a Tool binding for its own exact pure
-   root/export/closure approval or the existing exact closed bootstrap owner.
-   Keep usage dependency coverage separate. Inspect actually affected generations
-   and define explicit repair/recovery; do not grandfather arbitrary helpers,
-   silently omit active workflows, downgrade revisions or enter Tier 2.
+6. **Extend the independent occurrence gate with real approvals.**
+   `authored_monty_catalogue::prepare_with_policy` still accumulates Tool-usage
+   combinations into a recipe-wide `covered` UUID set for dependency coverage.
+   It now separately rejects every unbound executable step lacking the exact
+   canonical generation owner's qualification in that variant. Retained selection
+   and MCP qualification repeat the boundary against the complete pinned manifest.
+   General pure root/export/closure approval must extend this check with verified
+   durable records; never substitute usage membership or another variant's coverage.
+   Valid old selections stay fixed. Invalid historical dependency-only selections
+   fail preparation/restoration explicitly, preserving stored rows/pointers for
+   diagnosis. Inspect actually affected generations and finish supported repair/
+   recovery; do not grandfather helpers, silently omit workflows, downgrade or
+   enter Tier 2.
 7. **Carry approval pins through every reader.** Add checksummed pure references
    to catalogue prepare/serialization/restore/deployment, retained task selection,
    matching, private validator admission, child/wait and recovery readers. The

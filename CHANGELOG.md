@@ -157,6 +157,11 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Fixed
 
+- Check independent pure Recipe execution per variant and again for retained
+  selections/MCP qualification. Tool-usage dependency membership, including
+  coverage from another variant, no longer supplies independent execution
+  approval. Preserve the exact packaged workflow exception; general authored
+  pure approval remains unfinished.
 - Own real PostgreSQL acknowledgement-loss transports in optional backend test
   support, sharing byte selectors and explicit shutdown across native callers.
   Keep product-ingress architecture checks strict; the test-only proxy accepts

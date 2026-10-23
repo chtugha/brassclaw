@@ -2,7 +2,8 @@
 
 Reconciled on **2026-10-23** against the common `main` working tree. Consolidation
 started from `580a7f73e`; the raw-source checkpoint is `c52bdc2e0`. This index
-also includes the subsequently validated pure-review prerequisites described below.
+also includes the subsequently validated pure-review prerequisites and independent
+execution guard described below.
 It describes the source delivered with this document.
 It supersedes older present-tense implementation observations in the guides;
 their binding component, authority and failure contracts remain authoritative.
@@ -56,13 +57,17 @@ service path. That limited result does not establish that all plans or all
 integration suites pass on this combined tree. The validation record identifies
 which combined-tree checks have actually run.
 
-**Independent pure-step gap:** current authored preparation accumulates approved
-usage-closure UUID coverage across variants. That membership is not standalone
-pure-invocation approval. Validator Steps 3/8–10 own the per-unbound-step exact
-root/export/closure gate, durable approval pins and compatibility/repair cutover,
+**Independent pure-step support:** authored preparation now checks each variant's
+unbound executable steps separately from usage-closure UUID coverage; retained
+selection/MCP verification repeats that check. Only the exact existing packaged
+generation workflow has independent coverage on this path. [Scoped acceptance](validation/2026-10-23-independent-pure-execution.md)
+passed for the reader hardening, actual operator/PG/global publication, old
+selections, restart, deployment and child callers. Validator Steps 3/8–10
+still own general root/export/closure approval, durable pins and compatibility/repair cutover,
 as detailed in [the pure review contract](reborn/pure-component-review.md#exact-remaining-cutover-contract).
-The new source/declaration prerequisites do not themselves repair that reader or
-establish general independent pure activation.
+Neither this gate nor the source/declaration prerequisites establish general
+independent pure activation. Invalid historical dependency-only selections fail
+explicitly; they are not silently grandfathered, removed or replayed via Tier 2.
 
 ## One implementation owner per responsibility
 

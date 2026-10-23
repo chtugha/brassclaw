@@ -55,6 +55,133 @@ fn reference(r: brassclaw_skills::association_contract::ComponentRevisionRef) ->
     json!({"uuid":r.uuid,"class_code":r.class_code,"version":r.version,"checksum":hex::encode(r.checksum)})
 }
 
+async fn verify_packaged_pure_boundary(
+    catalogue: &crate::installed_monty_catalogue::InstalledMontyCatalogue,
+    pool: &brassclaw_pg::PgPool,
+    app: &axum::Router,
+) {
+    let candidate = catalogue._generation_candidates[1]
+        .program()
+        .inputs()
+        .instruction();
+    let refs: Vec<_> = candidate
+        .snapshot()
+        .revisions()
+        .values()
+        .map(|r| reference(r.reference()))
+        .collect();
+    let selection = serde_json::from_value(json!({
+        "recipe_id":candidate.recipe().uuid,"workflow_class":"deterministic",
+        "components":refs,"association_approvals":{}
+    }))
+    .unwrap();
+    let mut client = pool.get().await.unwrap();
+    let before: i64 = client
+        .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+        .await
+        .unwrap()
+        .get(0);
+    let active = catalogue.active.read().await.generation;
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    let prepared = catalogue
+        .prepare_authored(
+            &tx,
+            &[selection],
+            catalogue.preparation_policy().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(prepared.programs.len(), 1);
+    // The full canonical bootstrap manifest, exact existing evidence and pinned
+    // variant qualify this formatter. UUID membership alone does not.
+    catalogue
+        .verify_selected_approvals(&tx, &prepared.programs[0])
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    let original = &candidate.snapshot().revisions()[&candidate.recipe().uuid];
+    let successor_id = Uuid::new_v4();
+    let draft = ComponentRevisionDraft::from_json(
+        &json!({
+            "format":"component-revision/1","uuid":successor_id,"class_code":21,
+            "document":original.draft().document(),
+            "dependencies":original.draft().dependencies(),"association":null
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let successor = PgComponentRevisionStore::new(Arc::new(pool.clone()))
+        .stage(&draft, 0)
+        .await
+        .unwrap();
+    let mut replaced = refs;
+    let root = replaced
+        .iter_mut()
+        .find(|r| r["uuid"] == candidate.recipe().uuid.to_string())
+        .unwrap();
+    *root = reference(successor);
+    let proposed = json!({
+        "recipe_id":successor_id,"workflow_class":"deterministic",
+        "components":replaced,"association_approvals":{}
+    });
+    let selection = serde_json::from_value(proposed.clone()).unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    let rejected = catalogue
+        .prepare_authored(
+            &tx,
+            &[selection],
+            catalogue.preparation_policy().await.unwrap(),
+        )
+        .await;
+    assert!(matches!(rejected,
+        Err(brassclaw_product_workflow::RecipeStoreError::Invalid(reason))
+        if reason=="standalone execution lacks exact pure-component approval"));
+    tx.rollback().await.unwrap();
+    let activation = Uuid::new_v4();
+    let request = json!({"activation_id":activation,"expected_generation":active,
+        "recipes":[proposed]});
+    assert_eq!(
+        call(app, "POST", Some(&request), true).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert!(!client.query_one("SELECT EXISTS(SELECT 1 FROM brassclaw_monty_catalogue_activations WHERE activation_id=$1)", &[&activation])
+        .await.unwrap().get::<_,bool>(0));
+    assert_eq!(
+        client
+            .query_one(
+                "SELECT catalogue_id FROM brassclaw_monty_active_catalogue WHERE singleton",
+                &[]
+            )
+            .await
+            .unwrap()
+            .get::<_, Uuid>(0),
+        active
+    );
+    assert_eq!(catalogue.active.read().await.generation, active);
+    assert_eq!(
+        client
+            .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        before,
+        "approval preparation/rejection must execute no Recipe effects"
+    );
+}
+
 #[tokio::test]
 async fn native_catalogue_reference_upgrade_preserves_legacy_receipts() {
     use secrecy::ExposeSecret;
@@ -283,6 +410,7 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
     .unwrap();
     let (status, initial) = call(&app, "GET", None, true).await;
     assert_eq!(status, StatusCode::OK);
+    verify_packaged_pure_boundary(&catalogue, &rig.pool, &app).await;
     // Exact installed Tool usages remain qualified, but adding validator
     // metadata cannot bypass its private coverage contract by omitting the tag.
     // Preparation invokes no Recipe steps and cannot publish either draft.
