@@ -18,6 +18,12 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- Subject-bound validator observations: derive complete typed subject input from
+  immutable storage, compare the original stored validator selection and verify
+  every executed task-input, constant and prior-result edge under captured step
+  limits. Distinguish these observations from unbound fixtures and from successful
+  Q1, semantic approval, interpreter provenance or activation. Borrow retained
+  values for input fingerprints instead of copying intermediate result trees.
 - Independent pure-component review prerequisites: exact source/dependency views,
   checks for every declared export, strict immutable review declarations and
   original sealed subject/selection identities. Preserve Skill-association formats;

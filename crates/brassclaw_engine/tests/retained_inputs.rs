@@ -32,6 +32,61 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+#[test]
+fn borrowed_input_fingerprints_preserve_complete_object_bytes_and_shared_limits() {
+    use brassclaw_engine::executor::retained_recipe::{
+        typed_object_checksum_with_limits, typed_value_checksum_with_limits,
+    };
+    use brassclaw_skills::value_contract::{ContractLimits, EXECUTION_DATA_LIMITS};
+    use std::collections::BTreeMap;
+
+    let value = json!({"z":[null,false,true,-0.0,u64::MAX,"\"\\\nß"],
+        "a":{"nested":[{"text":"Unicode £"}]},"empty":{}});
+    let fields: BTreeMap<_, _> = value
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(name, value)| (name.clone(), value))
+        .collect();
+    assert_eq!(
+        typed_object_checksum_with_limits(&fields, EXECUTION_DATA_LIMITS).unwrap(),
+        typed_value_checksum_with_limits(&value, EXECUTION_DATA_LIMITS).unwrap()
+    );
+    for limits in [
+        ContractLimits {
+            max_depth: 1,
+            ..EXECUTION_DATA_LIMITS
+        },
+        ContractLimits {
+            max_nodes: 10,
+            ..EXECUTION_DATA_LIMITS
+        },
+        ContractLimits {
+            max_bytes: 10,
+            ..EXECUTION_DATA_LIMITS
+        },
+    ] {
+        assert!(typed_object_checksum_with_limits(&fields, limits).is_err());
+        assert!(typed_value_checksum_with_limits(&value, limits).is_err());
+    }
+    let empty = json!({});
+    assert_eq!(
+        typed_object_checksum_with_limits(&BTreeMap::new(), EXECUTION_DATA_LIMITS).unwrap(),
+        typed_value_checksum_with_limits(&empty, EXECUTION_DATA_LIMITS).unwrap()
+    );
+    let large = json!({"values":vec!["observed";300_000]});
+    let fields = BTreeMap::from([("values".to_owned(), &large["values"])]);
+    assert!(typed_object_checksum_with_limits(&fields, EXECUTION_DATA_LIMITS).is_err());
+    let larger = ContractLimits {
+        max_nodes: 400_000,
+        ..EXECUTION_DATA_LIMITS
+    };
+    assert_eq!(
+        typed_object_checksum_with_limits(&fields, larger).unwrap(),
+        typed_value_checksum_with_limits(&large, larger).unwrap()
+    );
+}
+
 #[path = "../../brassclaw_reborn/tests/common/native_pg.rs"]
 mod native_pg;
 

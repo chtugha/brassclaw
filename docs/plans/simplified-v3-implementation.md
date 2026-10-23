@@ -13511,3 +13511,22 @@ strict root/Engine/composition lint, format and whitespace checks, plus exact
 source/artifact hashes. It closes this consumer bug, not the eight validator
 routes, trusted durable pure evidence/Q2/bootstrap, activation or full-plan
 acceptance. Continue those remaining gates under validator Steps 3/8–10.
+
+### 2026-10-23 — original validator subject and actual input custody
+
+The existing private validator observer now has a distinct sealed subject-bound
+result. It derives complete subject JSON data from immutable storage, compares
+the original stored validator selection and verifies every executed input against
+the pinned task/constant/result edge using each step's captured limits. An actual
+changed subject can produce exactly the same positive output; that execution is
+rejected for the original submission. No unbound fixture or same-class subject
+can supply its observation. Borrowed complete input fingerprints preserve the
+existing format and shared depth/node/byte accounting without result-tree copies.
+
+[Scoped acceptance](../validation/2026-10-23-validator-subject-inputs.md) passed
+29 fresh contract, actual-worker/PG and ordinary-global cases, plus strict
+root/Engine/Skills/composition test lint, formatting and whitespace. This does
+not establish approved mandatory checks, retained interpreter/run/attempt/settlement
+provenance, successful class Q1, general pure approval/Q2/seed qualification or
+ordinary activation. Validator Steps 3/8–10 continue to own those remaining gates;
+composition and v3.5 consume their shared implementation.

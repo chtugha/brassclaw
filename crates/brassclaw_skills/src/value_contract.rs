@@ -1076,21 +1076,29 @@ impl SizeBudget {
 }
 
 fn check_size(value: &Value, limits: ContractLimits) -> Result<(), ContractError> {
-    enum Frame<'a> {
-        Value(&'a Value, usize),
-        Array(std::slice::Iter<'a, Value>, usize),
-        Object(serde_json::map::Iter<'a>, usize),
-    }
     let mut budget = SizeBudget {
         limits,
         nodes: 0,
         bytes: 0,
     };
+    check_size_at(value, 0, &mut budget)
+}
+
+fn check_size_at(
+    value: &Value,
+    depth: usize,
+    budget: &mut SizeBudget,
+) -> Result<(), ContractError> {
+    enum Frame<'a> {
+        Value(&'a Value, usize),
+        Array(std::slice::Iter<'a, Value>, usize),
+        Object(serde_json::map::Iter<'a>, usize),
+    }
     let mut pending = Vec::new();
     pending
         .try_reserve(1)
         .map_err(|_| error("$", "technical value capacity exceeded"))?;
-    pending.push(Frame::Value(value, 0));
+    pending.push(Frame::Value(value, depth));
     while let Some(frame) = pending.pop() {
         pending
             .try_reserve(2)
@@ -1136,6 +1144,25 @@ fn check_size(value: &Value, limits: ContractLimits) -> Result<(), ContractError
 /// Larger profiles also require depth-safe codecs, cloning and cleanup.
 pub fn validate_data_bounds(value: &Value, limits: ContractLimits) -> Result<(), ContractError> {
     check_size(value, limits.validate_data()?)
+}
+
+/// The same complete object budget without cloning retained input/result values.
+/// Keys count as nodes and bytes, and every child shares the object's budget.
+pub fn validate_borrowed_object_bounds(
+    fields: &BTreeMap<String, &Value>,
+    limits: ContractLimits,
+) -> Result<(), ContractError> {
+    let mut budget = SizeBudget {
+        limits: limits.validate_data()?,
+        nodes: 0,
+        bytes: 0,
+    };
+    budget.enter(0, 0)?;
+    for (key, value) in fields {
+        budget.enter(1, key.len())?;
+        check_size_at(value, 1, &mut budget)?;
+    }
+    Ok(())
 }
 
 /// Parse bounded data without losing duplicate keys at any nesting level.

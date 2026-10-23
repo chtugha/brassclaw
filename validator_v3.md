@@ -611,6 +611,15 @@ bounds. Later settings edits do not rewrite those accepted results. The caller's
 finite report bounds still apply independently and reject whole oversized reports;
 they never truncate diagnostics or promote an observed rejection to Q1 success.
 
+**Subject/input custody — 2026-10-23:** `subject_task_inputs` derives the complete
+sealed subject as `subject_json` string data for a selected private validator.
+`observe_subject` compares the original sealed submission and stored selection,
+then every actual input fingerprint against the pinned task/constant/result
+edges. Its distinct `ObservedSubjectValidatorChecks` remains non-Q1/non-semantic
+observation. Durable claim/attempt/settlement, approved mandatory rule coverage,
+actual retained interpreter and trusted evidence writing remain required below.
+See [the scoped implementation and acceptance record](docs/validation/2026-10-23-validator-subject-inputs.md).
+
 1. Reuse existing immutable submission records and make their review work discoverable
    via the existing admission/coordination services. Atomically retain submission
    and required work/outbox reference, or specify its idempotent reconciliation

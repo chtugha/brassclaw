@@ -330,60 +330,78 @@ pub fn typed_value_checksum_with_limits(
     limits: ContractLimits,
 ) -> Result<[u8; 32], ContractError> {
     validate_data_bounds(value, limits)?;
-    fn bytes(hash: &mut Sha256, value: &[u8]) {
-        hash.update((value.len() as u64).to_be_bytes());
-        hash.update(value);
+    let mut hash = Sha256::new();
+    hash.update(b"typed-value-sha256/1\0");
+    fingerprint_value(&mut hash, value);
+    Ok(hash.finalize().into())
+}
+
+/// Fingerprint a complete object of borrowed retained values with exactly the
+/// same budget and bytes as an owned typed Value. No result trees are cloned.
+pub fn typed_object_checksum_with_limits(
+    fields: &BTreeMap<String, &Value>,
+    limits: ContractLimits,
+) -> Result<[u8; 32], ContractError> {
+    brassclaw_skills::value_contract::validate_borrowed_object_bounds(fields, limits)?;
+    let mut hash = Sha256::new();
+    hash.update(b"typed-value-sha256/1\0");
+    hash.update([5]);
+    hash.update((fields.len() as u64).to_be_bytes());
+    for (key, value) in fields {
+        fingerprint_bytes(&mut hash, key.as_bytes());
+        fingerprint_value(&mut hash, value);
     }
-    fn walk(hash: &mut Sha256, root: &Value) {
-        enum Item<'a> {
-            Value(&'a Value),
-            Entry(&'a str, &'a Value),
-        }
-        let mut pending = vec![Item::Value(root)];
-        while let Some(item) = pending.pop() {
-            let value = match item {
-                Item::Value(value) => value,
-                Item::Entry(key, value) => {
-                    bytes(hash, key.as_bytes());
-                    pending.push(Item::Value(value));
-                    continue;
-                }
-            };
-            match value {
-                Value::Null => hash.update([0]),
-                Value::Bool(value) => hash.update([1, u8::from(*value)]),
-                Value::Number(value) => {
-                    hash.update([2]);
-                    bytes(hash, value.to_string().as_bytes());
-                }
-                Value::String(value) => {
-                    hash.update([3]);
-                    bytes(hash, value.as_bytes());
-                }
-                Value::Array(values) => {
-                    hash.update([4]);
-                    hash.update((values.len() as u64).to_be_bytes());
-                    pending.extend(values.iter().rev().map(Item::Value));
-                }
-                Value::Object(values) => {
-                    hash.update([5]);
-                    hash.update((values.len() as u64).to_be_bytes());
-                    let mut keys: Vec<_> = values.keys().collect();
-                    keys.sort_unstable();
-                    pending.extend(
-                        keys.into_iter()
-                            .rev()
-                            .map(|key| Item::Entry(key, &values[key])),
-                    );
-                }
+    Ok(hash.finalize().into())
+}
+
+fn fingerprint_bytes(hash: &mut Sha256, value: &[u8]) {
+    hash.update((value.len() as u64).to_be_bytes());
+    hash.update(value);
+}
+fn fingerprint_value(hash: &mut Sha256, root: &Value) {
+    enum Item<'a> {
+        Value(&'a Value),
+        Entry(&'a str, &'a Value),
+    }
+    let mut pending = vec![Item::Value(root)];
+    while let Some(item) = pending.pop() {
+        let value = match item {
+            Item::Value(value) => value,
+            Item::Entry(key, value) => {
+                fingerprint_bytes(hash, key.as_bytes());
+                pending.push(Item::Value(value));
+                continue;
+            }
+        };
+        match value {
+            Value::Null => hash.update([0]),
+            Value::Bool(value) => hash.update([1, u8::from(*value)]),
+            Value::Number(value) => {
+                hash.update([2]);
+                fingerprint_bytes(hash, value.to_string().as_bytes());
+            }
+            Value::String(value) => {
+                hash.update([3]);
+                fingerprint_bytes(hash, value.as_bytes());
+            }
+            Value::Array(values) => {
+                hash.update([4]);
+                hash.update((values.len() as u64).to_be_bytes());
+                pending.extend(values.iter().rev().map(Item::Value));
+            }
+            Value::Object(values) => {
+                hash.update([5]);
+                hash.update((values.len() as u64).to_be_bytes());
+                let mut keys: Vec<_> = values.keys().collect();
+                keys.sort_unstable();
+                pending.extend(
+                    keys.into_iter()
+                        .rev()
+                        .map(|key| Item::Entry(key, &values[key])),
+                );
             }
         }
     }
-
-    let mut hash = Sha256::new();
-    hash.update(b"typed-value-sha256/1\0");
-    walk(&mut hash, value);
-    Ok(hash.finalize().into())
 }
 
 /// Fingerprint the actual answer variant as well as its contents. A returned
@@ -514,6 +532,12 @@ impl RetainedRecipeExecution {
             data_limits: EXECUTION_DATA_LIMITS,
             transport_failure: None,
         })
+    }
+
+    /// Actual admitted worker routing identity. This is not a durable run claim,
+    /// attempt identity, approval or proof of task settlement.
+    pub fn task_handle(&self) -> TaskHandle {
+        self.task
     }
 
     pub fn latest_snapshot(&self) -> Option<&ProcessSnapshot> {

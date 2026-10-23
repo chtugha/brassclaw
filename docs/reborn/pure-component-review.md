@@ -76,6 +76,18 @@ Its submission ID/checksum and those of `RetainedValidatorSelection` are now
 available without accepting caller-authored success JSON. Subject identity is
 distinct from the validator workflow's pinned manifest/checksum.
 
+`RetainedValidatorCoverage::subject_task_inputs` now derives complete JSON string
+data from that sealed reader, checks the selected task schema and requires an
+actual `subject_json` edge. `observe_subject` compares the original persisted
+preparation, full concrete results and each begun step's input fingerprint against
+the pinned task/constant/prior-result layout. Borrowed values share the actual
+captured step bounds and existing fingerprint format; intermediate result trees
+are not copied for this comparison. Its distinct sealed result uses
+`observed-subject-validator-checks/1`, retaining original submission/checksum and
+the actual worker task handle, with Q1 and semantic flags false. A task handle is
+not a durable run/attempt/settlement receipt. [The acceptance record](../validation/2026-10-23-validator-subject-inputs.md)
+states the current test scope; this is still not the missing trusted writer.
+
 Next, extend the existing trusted review owner with necessary linked immutable
 evidence/approval storage and checked readers. Bind actual complete Q1 coverage,
 per-export observed behavior and authenticated exact-view Human Q2 for installed
@@ -116,11 +128,14 @@ implemented support.
    context, not an extra executable dependency. Reuse exact retained roots when
    approving a changed dependency combination; do not force meaningless code edits.
    A supported combination-review submission route must preserve those identities.
-   Derive each expected validator input from that sealed subject and its selected
-   typed input layout, and compare it with the actual executed input/observation.
-   A separately observed fixture or same-class subject cannot be promoted to Q1
-   for another submission. Include wrong-subject/input, swapped dependency and
-   changed-base negatives before enabling a trusted evidence writer.
+   Use the implemented `subject_task_inputs`/`observe_subject` boundary to derive
+   the complete sealed subject and compare all actual input edges. Its
+   [scoped acceptance](../validation/2026-10-23-validator-subject-inputs.md) rejects
+   unrelated fixtures, changed input with identical outputs and another retained
+   same-class submission. The trusted writer must consume that sealed bound result,
+   not the unbound report or caller JSON, and additionally bind real admitted
+   run/attempt/settlement and approved checks/interpreter. Swapped dependency and
+   changed-base writer/activation negatives remain required before enabling it.
 3. **Observe required checks and every export.** Use actual inspected facts and
    `RetainedValidatorCoverage`, plus settled per-export behavior with meaningful
    valid/invalid cases. Candidate-supplied empty case lists, flags or expectations

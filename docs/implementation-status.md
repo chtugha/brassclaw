@@ -44,6 +44,15 @@ complete 300,000-item negative diagnostics under captured per-step limits after
 later live reductions. Independent report bounds and changed-result rejection
 remain enforced. This is not successful class Q1, pure approval or activation.
 
+[Original-subject/input acceptance](validation/2026-10-23-validator-subject-inputs.md)
+covers 29 focused contract, actual-worker/PG and ordinary-global cases. A distinct
+sealed observer now verifies the original stored submission/validator selection
+and every actual input edge under captured limits; identical outputs from changed
+subject data cannot be relabelled as its observations. Shared borrowed fingerprints
+preserve historical bytes and aggregate limits without cloning result trees.
+Trusted Q1 writers, approved mandatory rules, interpreter/run/attempt/settlement
+correlation and general pure activation remain open.
+
 ## Implemented boundaries
 
 | Area | Actual implementation and supported boundary | Remaining qualification or cutover |

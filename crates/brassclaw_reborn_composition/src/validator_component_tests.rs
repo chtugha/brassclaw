@@ -350,8 +350,8 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
         {"stepnumber":2,"knowledge":"orchestrator","goal":"Collect rule results","content":"","type":"component","include":[collector_id]},
         {"stepnumber":3,"knowledge":"orchestrator","goal":"Aggregate rules","content":"","type":"component","include":[aggregate.uuid()]}
     ]}],"input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":{
-        "subject":{"type":"string","required":true,"checks":[]}},
-        "steps":{"0:1":{"subject":{"kind":"task_input","reference":"{{vars.subject}}"}},"0:2":{"identity":{"kind":"result","step_id":"0:1","path":[]}},"0:3":{
+        "subject_json":{"type":"string","required":true,"checks":[]}},
+        "steps":{"0:1":{"subject":{"kind":"task_input","reference":"{{vars.subject_json}}"}},"0:2":{"identity":{"kind":"result","step_id":"0:1","path":[]}},"0:3":{
             "checks":{"kind":"result","step_id":"0:2","path":[]},"required_rule_ids":{"kind":"constant","value":["identity"]}
         }}}}});
     let prepare_with_collector = |document: Value, collector: &ComponentRevisionDraft| {
@@ -734,9 +734,6 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
             .is_err(),
         "larger admitted limits must not accept changed execution data"
     );
-    owner.request_termination();
-    owner.join().await.unwrap();
-
     // Persist only the constrained fixture's preparation selection. This
     // neither activates the fixture nor produces successful Q1/approval data.
     use brassclaw_skills::{
@@ -822,6 +819,154 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
     assert_eq!(view.review_selection_bytes.as_deref(), Some(bytes.as_str()));
     assert_eq!(view.receipt.review_status, "unreviewed");
     assert!(!view.receipt.catalogue_activated);
+    // Preparation for the same class cannot relabel earlier unrelated results.
+    // Those executions returned the same positive rule output, but never saw
+    // this sealed original candidate/base/dependency subject.
+    assert!(
+        coverage
+            .observe_subject(&subject, &saved, &execution, &results, REVISION_LIMITS)
+            .is_err()
+    );
+    let subject_inputs = coverage
+        .subject_task_inputs(&subject, inspected.program().inputs(), REVISION_LIMITS)
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(subject_inputs["subject_json"].as_str().unwrap()).unwrap(),
+        *subject.value()
+    );
+    assert!(
+        coverage
+            .subject_task_inputs(&subject, inspected.program().inputs(), small)
+            .is_err()
+    );
+    assert!(
+        coverage
+            .subject_task_inputs(&subject, other_program.inputs(), REVISION_LIMITS)
+            .is_err()
+    );
+    // Restore live capacity after the earlier reduction without replacing the
+    // task/root. New observations capture revision 4, not another VM/session.
+    let update = observation_exchange(
+        &transport,
+        WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateRuntimeSettings {
+                expected_revision: 3,
+                settings: TaskSettings {
+                    revision: 4,
+                    max_compute_time: Duration::from_secs(600),
+                    token_budgets_enabled: false,
+                },
+                values: admitted_bounds,
+                max_pending_host_calls: None,
+                max_workers: None,
+                max_recipe_contexts: None,
+                adapter_reserve_bytes: None,
+                heap_update: None,
+                frame_update: None,
+            },
+        },
+    )
+    .await;
+    assert_eq!(update.root, root_progress.root);
+    assert_eq!(*transport.live_vm_bounds().borrow(), admitted_bounds);
+    async fn execute_subject(
+        task: brassclaw_monty_host::process::TaskHandle,
+        parent: brassclaw_monty_host::process::RecipeContextId,
+        inspected: Arc<InspectedRetainedProgram>,
+        transport: &brassclaw_monty_host::transport_actor::TransportClient,
+        subject_json: &Value,
+    ) -> (RetainedRecipeExecution, BTreeMap<String, Value>) {
+        let mut execution =
+            RetainedRecipeExecution::new_child_for_behavioral_validation(task, parent, inspected)
+                .unwrap();
+        let mut results = BTreeMap::new();
+        let rule = execution
+            .run_step(transport, "0:1", &json!({"subject":subject_json}), None)
+            .await
+            .unwrap();
+        let collection = execution
+            .run_step(transport, "0:2", &json!({"identity":rule}), None)
+            .await
+            .unwrap();
+        let aggregation = execution
+            .run_step(
+                transport,
+                "0:3",
+                &json!({"required_rule_ids":["identity"],"checks":collection}),
+                None,
+            )
+            .await
+            .unwrap();
+        results.insert("0:1".into(), rule);
+        results.insert("0:2".into(), collection);
+        results.insert("0:3".into(), aggregation);
+        (execution, results)
+    }
+    let (subject_execution, subject_results) = execute_subject(
+        task,
+        parent,
+        inspected.clone(),
+        &transport,
+        &subject_inputs["subject_json"],
+    )
+    .await;
+    let correlated = coverage
+        .observe_subject(
+            &subject,
+            &saved,
+            &subject_execution,
+            &subject_results,
+            REVISION_LIMITS,
+        )
+        .unwrap();
+    assert_eq!(correlated.report()["submission_id"], json!(subject_id));
+    assert_eq!(
+        correlated.report()["format"],
+        "observed-subject-validator-checks/1"
+    );
+    assert_eq!(
+        correlated.report()["subject_checksum"],
+        subject.subject_checksum()
+    );
+    assert_eq!(correlated.report()["task_handle"], json!(task));
+    assert_eq!(correlated.report()["q1_qualification"], false);
+    assert_eq!(correlated.report()["semantic_approval"], false);
+    assert_eq!(subject_execution.task_handle(), task);
+    assert_eq!(
+        subject_execution.latest_snapshot().unwrap().root,
+        root_progress.root
+    );
+    let mut wrong_input = subject.value().clone();
+    wrong_input["actor"] = json!("unrelated fixture");
+    let (wrong_execution, wrong_results) = execute_subject(
+        task,
+        parent,
+        inspected.clone(),
+        &transport,
+        &json!(wrong_input.to_string()),
+    )
+    .await;
+    assert_eq!(wrong_results, subject_results);
+    assert!(
+        coverage
+            .observe(&wrong_execution, &wrong_results, REVISION_LIMITS)
+            .is_ok(),
+        "unbound result consistency cannot establish original-subject custody"
+    );
+    assert!(
+        coverage
+            .observe_subject(
+                &subject,
+                &saved,
+                &wrong_execution,
+                &wrong_results,
+                REVISION_LIMITS,
+            )
+            .is_err(),
+        "same concrete outputs from a different subject are not its evidence"
+    );
+    owner.request_termination();
+    owner.join().await.unwrap();
     let root_revision = &inspected
         .program()
         .inputs()
@@ -931,6 +1076,18 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
     .await
     .unwrap()
     .unwrap();
+    assert!(
+        coverage
+            .observe_subject(
+                &bad_subject,
+                &saved,
+                &subject_execution,
+                &subject_results,
+                REVISION_LIMITS,
+            )
+            .is_err(),
+        "a different retained same-class submission cannot reuse this selection"
+    );
     let mut bad: Value = serde_json::from_str(
         &RetainedValidatorCoverage::selection_bytes(&bad_subject, &inspected, REVISION_LIMITS)
             .unwrap(),

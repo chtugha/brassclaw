@@ -7,6 +7,12 @@ use serde_json::{Value, json};
 
 use super::{retained_inputs::RetainedRecipeInputs, typed_bindings::PreparedReference};
 
+#[cfg(feature = "skills-db")]
+#[path = "retained_validator_subject.rs"]
+mod subject;
+#[cfg(feature = "skills-db")]
+pub use subject::ObservedSubjectValidatorChecks;
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Declaration {
