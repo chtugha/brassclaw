@@ -1179,6 +1179,8 @@ mod prefix_sources;
 mod test_loopback_http;
 #[cfg(all(test, feature = "skills-db"))]
 mod validator_component_tests;
+#[cfg(all(test, feature = "skills-db"))]
+mod validator_preload_tests;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod global_monty_startup;

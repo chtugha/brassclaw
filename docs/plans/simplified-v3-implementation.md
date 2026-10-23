@@ -13550,3 +13550,20 @@ The final source rebuilt and reran all 16 cases; the failed receipt remains.
 This closes live hosting identity/custody, not durable interpreter/run/attempt/
 settlement records, complete class Q1/pure approval, automatic crash recovery,
 platform/installed release acceptance or the remaining implementation plans.
+
+### 2026-10-23 — reusable pure preload-definition rule
+
+Validator Step 5 now has a pure PythonCode rule comparing declared signatures,
+symbols, constants/imports and preload shape with complete typed native parser
+facts. Candidate source remains data; the rule writes no approval/evidence and
+does not replace dependency, call-graph, invocation, behavior or provenance checks.
+The existing installation owner retains the exact unreviewed draft idempotently,
+preserving historical revisions, authored successors and active selections.
+
+[Scoped acceptance](../validation/2026-10-23-validator-preload-definition.md)
+passes nine actual worker/PG/global/guide tests and strict affected/root test lint
+and formatting. Earlier test-build/schema mistakes were corrected without
+suppression; the complete final set was rebuilt and rerun. Native original-fact
+custody and the full class workflow/durable review/evidence path remain required
+under validator's existing owner. This is neither successful class Q1 nor general
+pure approval, catalogue activation or completion of the v3 plans.

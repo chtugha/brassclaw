@@ -18,6 +18,13 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- A reusable pure preload-definition check for PythonCode review, with recursive
+  typed parser-fact/declaration inputs and rule-correlated diagnostics for actual
+  signature, symbol, constant, import and load-shape mismatches. Candidate code
+  remains inspection data; this rule neither invokes it nor establishes complete
+  class Q1, dependency/Tool-use approval, trusted provenance or activation.
+  Retain its exact installation draft idempotently while preserving authored
+  successors, older revisions and active selections.
 - Subject-bound validator observations: derive complete typed subject input from
   immutable storage, compare the original stored validator selection and verify
   every executed task-input, constant and prior-result edge under captured step

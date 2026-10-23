@@ -8,6 +8,74 @@ use uuid::Uuid;
 pub const AGGREGATE_SOURCE: &str = include_str!("validator_aggregate.py");
 pub const COLLECT_SOURCE: &str = include_str!("validator_collect.py");
 pub const STRUCTURAL_PRESENCE_SOURCE: &str = include_str!("validator_structural_presence.py");
+pub const PRELOAD_DEFINITION_SOURCE: &str = include_str!("validator_preload_definition.py");
+
+/// Compare one declared function library with actual mechanical parser facts.
+/// This rule neither executes the candidate nor resolves/approves its dependency
+/// graph, reachable Tool usage, behavior or provenance. The review owner must
+/// supply the exact original declaration and matching native observations.
+pub fn preload_definition_draft(id: Uuid) -> Result<ComponentRevisionDraft, RevisionError> {
+    let text = json!({"type":"string"});
+    let strings = json!({"type":"list","items":text});
+    let count = json!({"type":"integer","checks":[{"kind":"min","value":0}]});
+    let mapping = |values| json!({"type":"object","fields":{},"allow_extra_fields":true,"extra_fields":values});
+    let required = |mut schema: serde_json::Value| {
+        schema["required"] = json!(true);
+        schema
+    };
+    let export = json!({"type":"object","allow_extra_fields":false,"fields":{
+        "symbol":required(text.clone()),"parameters":required(strings.clone()),
+        "mapping":{"type":"boolean","required":true}
+    }});
+    let declaration = json!({"type":"object","required":true,"nullable":true,"checks":[],"allow_extra_fields":false,"fields":{
+        "format":required(text.clone()),"exports":required(mapping(export)),
+        "private_functions":required(mapping(strings.clone())),"constants":required(strings.clone()),
+        "imports":required(strings.clone()),"dependencies":required(strings.clone()),
+        "default_export":{"type":"string","required":false,"nullable":true}
+    }});
+    let scope = json!({"type":"object","allow_extra_fields":false,"fields":{
+        "references":required(strings.clone()),"calls":required(mapping(count.clone())),
+        "value_references":required(strings.clone()),"nested_functions":{"type":"boolean","required":true},
+        "start":required(count.clone()),"end":required(count.clone())
+    }});
+    let observed_preload = json!({"type":"object","required":true,"nullable":true,"allow_extra_fields":false,"fields":{
+        "scopes":required(mapping(scope)),"functions":required(mapping(strings.clone())),
+        "constants":required(strings.clone()),"references":required(strings.clone())
+    }});
+    let callsite = json!({"type":"object","allow_extra_fields":false,"fields":{
+        "attribute":required(text.clone()),"start":required(count.clone()),"end":required(count.clone()),
+        "repeatable":{"type":"boolean","required":true}
+    }});
+    let observations = json!({"type":"object","required":true,"checks":[],"allow_extra_fields":false,"fields":{
+        "source_checksum":required(text),"preload":observed_preload,
+        "direct_host_calls":{"type":"list","required":true,"items":callsite},
+        "imports":required(strings.clone()),"relative_imports":{"type":"boolean","required":true},
+        "host_value_references":required(count.clone()),"reserved_name_references":required(strings),
+        "result_store_sites":required(count.clone()),"inspected_nodes":required(count)
+    }});
+    let draft = ComponentRevisionDraft::from_json(&json!({
+        "format":"component-revision/1","uuid":id,"class_code":22,
+        "document":{
+            "name":"check-preload-definition",
+            "description":"Compare one exact preload declaration with actual nonexecuting source observations: declared signatures, symbols, constants, imports and effect-free definition shape. Dependency resolution, invocation contracts, Tool effects and trusted provenance require separate review checks; this rule writes no evidence or approval.",
+            "content":PRELOAD_DEFINITION_SOURCE,"includes":[],"dependency_registry":null,
+            "input_contract":{"declaration":declaration,"observations":observations},
+            "result_contract":rule_contract(),
+            "preload":{"format":"python-preload/2","exports":{
+                "check_preload_definition":{"symbol":"check_preload_definition","parameters":["inputs"],"mapping":true}
+            },"private_functions":{"_validator_preload_identifier":["name"]},"constants":[],"imports":[],"dependencies":[],"default_export":"check_preload_definition"}
+        },"dependencies":[],"association":null
+    }).to_string())?;
+    crate::value_contract::InputContract::from_value(
+        &draft.document()["input_contract"],
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    crate::value_contract::ValueContract::result_from_value(
+        &draft.document()["result_contract"],
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    Ok(draft)
+}
 
 /// Typed successor to the legacy three-string seed check. This intentionally
 /// checks only presence; it is not a class validator, semantic/behavioral review

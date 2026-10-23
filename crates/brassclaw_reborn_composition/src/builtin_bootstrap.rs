@@ -820,23 +820,9 @@ pub async fn seed_builtin_components(
     // Tier-0 structural validator Recipe per component class.  Seeds `05:validator`
     // Recipes that `find_validator_recipe` (q1_orchestrator.rs) can look up.
     seed_validator_recipes(&stores).await?;
-    // Typed replacement checking component only. Preserve every historical
-    // validator/body; do not substitute it into legacy routing, raise confidence
-    // or manufacture activation/Q1 evidence for this limited presence check.
-    let presence = brassclaw_skills::validator_components::structural_presence_draft(
-        brassclaw_skills::global_bootstrap_components::packaged_component_id(
-            "validator:structural-presence",
-        ),
-    )
-    .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
-        reason: error.to_string(),
-    })?;
-    brassclaw_skills::revision_store::PgComponentRevisionStore::new(stores.pool.clone())
-        .retain_packaged_draft(&presence)
-        .await
-        .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
-            reason: error.to_string(),
-        })?;
+    // Prüfbausteine nur unveränderlich hinterlegen. Historische Validatoren,
+    // aktive Auswahlen und Operatoränderungen bleiben dabei erhalten.
+    retain_validator_check_drafts(&stores.pool).await?;
 
     // Pass 8–14 — workflow domain skills (Phase P.1): coding, commit, github,
     // code-review, qa-review, security-review, plan-mode.
@@ -875,6 +861,33 @@ pub async fn seed_builtin_components(
     .await
     .map_err(|reason| SeedBuiltinBootstrapError::Db { reason })?;
 
+    Ok(())
+}
+
+/// Installation-owned draft retention only. No class route, confidence,
+/// evidence, human review or active catalogue selection is created here.
+pub(crate) async fn retain_validator_check_drafts(
+    pool: &Arc<PgPool>,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    use brassclaw_skills::{
+        global_bootstrap_components::packaged_component_id,
+        validator_components::{preload_definition_draft, structural_presence_draft},
+    };
+
+    let store = brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone());
+    for draft in [
+        structural_presence_draft(packaged_component_id("validator:structural-presence")),
+        preload_definition_draft(packaged_component_id("validator:preload-definition")),
+    ] {
+        let draft = draft.map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
+            reason: error.to_string(),
+        })?;
+        store.retain_packaged_draft(&draft).await.map_err(|error| {
+            SeedBuiltinBootstrapError::ComponentRevision {
+                reason: error.to_string(),
+            }
+        })?;
+    }
     Ok(())
 }
 

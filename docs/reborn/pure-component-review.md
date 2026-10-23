@@ -34,6 +34,20 @@ original review subject, actual validator selection/attempt and interpreter
 identity still need their trusted evidence. No parsed source fact grants Tool
 permission or certifies a whole Recipe.
 
+## Reusable definition check
+
+`preload_definition_draft` now supplies a pure PythonCode rule with complete
+typed declaration/parser-fact inputs and the ordinary rule-result contract.
+It compares signatures, public/private symbols, constants/imports and preload
+shape without executing the candidate. The installation owner retains an exact
+unreviewed draft through the existing revision store, preserving operator
+successors. [Scoped acceptance](../validation/2026-10-23-validator-preload-definition.md)
+covers real parser/invocation and PostgreSQL/global callers. This implements one
+validator Step 5 building block. Dependency/call/invocation/schema/behavior rules,
+original-subject/native-fact custody and complete class-22 workflow integration
+remain required. A Tool-using definition can pass this rule without becoming
+pure or receiving dispatch permission; no approval/evidence writer is added.
+
 ## Declaration: `pure-component-approval/1`
 
 `PureComponentApprovalDeclaration::from_json` accepts exactly these fields:

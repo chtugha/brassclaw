@@ -4,7 +4,8 @@ Reconciled on **2026-10-23** against the common `main` working tree. Consolidati
 started from `580a7f73e`; the raw-source checkpoint is `c52bdc2e0`. This index
 includes the successors through `747bcfff6`: pure-review prerequisites,
 independent execution coverage, captured observation limits, original-subject/input
-custody and retained global interpreter hosting, described below.
+custody and retained global interpreter hosting, plus the subsequently validated
+reusable preload-definition rule described below.
 It describes the source delivered with this document.
 It supersedes older present-tense implementation observations in the guides;
 their binding component, authority and failure contracts remain authoritative.
@@ -67,6 +68,14 @@ Actual start after removal of a temporary installation source, image lifetime,
 policy/limits, activation/restart, child selection and cancellation/settlement
 callers pass, with strict lint/format in both workspaces. This repairs live hosting
 identity; durable interpreter/Q1 records and generic crash recovery remain open.
+
+[Preload-definition checking acceptance](validation/2026-10-23-validator-preload-definition.md)
+covers nine fresh actual-worker/PG/ordinary-global and guide checks, plus strict
+affected/root lint. A reusable pure rule compares native definition facts with
+declared signatures/symbols/constants/imports. Installation retains its exact
+unreviewed draft without replacing authored successors or active selections.
+Original-subject/native-fact custody, complete class checks and durable review
+scheduling/evidence remain open; a positive definition result is not Q1.
 
 ## Implemented boundaries
 
