@@ -1,6 +1,7 @@
 //! Database-instance ownership bound to actual global service settlement.
 //! Cutover candidate: application ABI/resource/catalogue gates still apply.
 use crate::monty_instance_owner::{OwnershipError, PgMontyOwner};
+use brassclaw_host_runtime::PackagedExecutableImage;
 use brassclaw_monty_host::{
     process::{ProcessLimits, RootBoot},
     service::{ServiceClient, ServiceExit, ServiceFailure, ServiceOwner},
@@ -9,7 +10,6 @@ use brassclaw_monty_host::{
 use brassclaw_pg::PgPool;
 use brassclaw_resources::LiveMontyTaskSettings;
 use std::{
-    path::Path,
     sync::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
@@ -115,6 +115,7 @@ pub(crate) struct GlobalServiceExit {
 }
 
 pub(crate) struct GlobalMontyOwner {
+    worker_image: Arc<PackagedExecutableImage>,
     service: ServiceClient,
     check: GlobalOwnerCheck,
     shutdown: watch::Sender<bool>,
@@ -123,7 +124,7 @@ pub(crate) struct GlobalMontyOwner {
 impl GlobalMontyOwner {
     pub(crate) async fn start(
         pool: &PgPool,
-        executable: &Path,
+        executable: Arc<PackagedExecutableImage>,
         config: GlobalServiceConfig,
     ) -> Result<Self, GlobalOwnerError> {
         let control = OwnershipControl::new(config.live.current().revision, config.ownership)?;
@@ -134,7 +135,7 @@ impl GlobalMontyOwner {
         // Register ownership before the first worker-start await. The
         // process registry also retains quarantine if this caller or supervisor
         // disappears; dropping a returned evidence object cannot unlock it.
-        let guard = RetainedOwnership::register(guard)?;
+        let guard = RetainedOwnership::register(guard, executable.clone())?;
         let closed = Arc::new(AtomicBool::new(false));
         let (requests, inbox) = mpsc::unbounded_channel();
         let check = GlobalOwnerCheck {
@@ -144,7 +145,7 @@ impl GlobalMontyOwner {
         };
         let (shutdown, stopping) = watch::channel(false);
         let (ready, started) = oneshot::channel();
-        let executable = executable.to_owned();
+        let worker_image = executable.clone();
         let join = tokio::spawn(bootstrap(
             guard,
             executable,
@@ -156,6 +157,7 @@ impl GlobalMontyOwner {
         ));
         let service = started.await.map_err(|_| GlobalOwnerError::Join)??;
         Ok(Self {
+            worker_image,
             service,
             check,
             shutdown,
@@ -164,6 +166,25 @@ impl GlobalMontyOwner {
     }
     pub(crate) fn client(&self) -> ServiceClient {
         self.service.clone()
+    }
+    /// Exact retained spawn input, not semantic approval or a durable task claim.
+    pub(crate) fn worker_image(&self) -> &Arc<PackagedExecutableImage> {
+        &self.worker_image
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn retained_test_worker(
+        executable: &std::path::Path,
+    ) -> Arc<PackagedExecutableImage> {
+        let policy = brassclaw_monty_host::utility::UtilityLimits::from_execution(
+            brassclaw_host_api::MontyExecutionLimits::default(),
+        )
+        .expect("valid fixture preparation policy");
+        Arc::new(
+            PackagedExecutableImage::capture(executable, policy.max_native_artifact_bytes)
+                .await
+                .expect("retain actual fixture worker"),
+        )
     }
     pub(crate) fn ownership_check(&self) -> GlobalOwnerCheck {
         self.check.clone()
@@ -193,9 +214,15 @@ static RETAINED_OWNERS: OnceLock<Mutex<Vec<Arc<RetainedOwnership>>>> = OnceLock:
 
 pub(crate) struct RetainedOwnership {
     guard: tokio::sync::Mutex<Option<PgMontyOwner>>,
+    // A lost supervisor/unknown process must not discard the exact worker image
+    // while its database singleton is retained. This shares the existing copy.
+    _worker_image: Arc<PackagedExecutableImage>,
 }
 impl RetainedOwnership {
-    fn register(guard: PgMontyOwner) -> Result<Arc<Self>, OwnershipError> {
+    fn register(
+        guard: PgMontyOwner,
+        worker_image: Arc<PackagedExecutableImage>,
+    ) -> Result<Arc<Self>, OwnershipError> {
         let mut registry = RETAINED_OWNERS
             .get_or_init(Mutex::default)
             .lock()
@@ -205,6 +232,7 @@ impl RetainedOwnership {
             .map_err(|_| OwnershipError::Connection)?;
         let retained = Arc::new(Self {
             guard: tokio::sync::Mutex::new(Some(guard)),
+            _worker_image: worker_image,
         });
         registry.push(retained.clone());
         Ok(retained)
@@ -232,7 +260,7 @@ impl RetainedOwnership {
 
 async fn bootstrap(
     guard: Arc<RetainedOwnership>,
-    executable: std::path::PathBuf,
+    executable: Arc<PackagedExecutableImage>,
     config: GlobalServiceConfig,
     inbox: mpsc::UnboundedReceiver<OwnershipRequest>,
     stopping: watch::Receiver<bool>,
@@ -241,7 +269,7 @@ async fn bootstrap(
 ) -> Option<GlobalServiceExit> {
     let boot_timeout = config.ownership.check_timeout;
     let mut owner = match ServiceOwner::start_with_hosting_limits(
-        &executable,
+        &executable.path(),
         config.boot,
         config.process,
         config.actor,
@@ -468,12 +496,95 @@ async fn settle_ownership(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::monty_test_support as support;
+
+    #[tokio::test]
+    async fn native_global_owner_uses_retained_worker_after_installed_source_is_removed() {
+        use sha2::{Digest, Sha256};
+
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let directory = tempfile::tempdir().unwrap();
+        let installed = directory.path().join(if cfg!(windows) {
+            "monty_worker.exe"
+        } else {
+            "monty_worker"
+        });
+        std::fs::copy(support::worker(), &installed).unwrap();
+        let image = GlobalMontyOwner::retained_test_worker(&installed).await;
+        let private_path = image.path();
+        let checksum = image.checksum();
+        let weak_image = Arc::downgrade(&image);
+        // Remove only this fixture's installation projection. The actual
+        // packaged worker and retained copy are untouched. Reopening that source
+        // could no longer start a worker or supply a valid retained identity.
+        drop(directory);
+        assert!(!installed.exists());
+        assert!(private_path.is_file());
+        let source = "import asyncio\nasync def main():\n    await host.await_next_task(0)\nasyncio.run(main())\n";
+        let mut boot = support::boot(source);
+        boot.bounds.workers = 1;
+        let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
+        let mut owner = GlobalMontyOwner::start(
+            &rig.pool,
+            image.clone(),
+            GlobalServiceConfig {
+                ownership: OwnershipLimits::from_execution(Default::default()),
+                boot,
+                process: support::limits(),
+                actor: ActorLimits {
+                    max_unclaimed: 8,
+                    max_reserved_frame_bytes: 4 * support::limits().max_frame_bytes,
+                    max_control_unclaimed: 4,
+                    max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
+                },
+                queue_capacity: 4,
+                queue_bytes: 64 * 1024 * 1024,
+                max_pending_settings: 8,
+                max_retained_attempts: 2,
+                live,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(Arc::ptr_eq(owner.worker_image(), &image));
+        assert_eq!(owner.worker_image().checksum(), checksum);
+        let expected: [u8; 32] = Sha256::digest(source.as_bytes()).into();
+        assert_eq!(owner.client().root_identity().source_checksum(), expected);
+        assert!(owner.client().worker_process_id().is_some());
+        assert!(matches!(
+            PgMontyOwner::acquire(&rig.pool).await,
+            Err(OwnershipError::AlreadyOwned)
+        ));
+        owner.request_shutdown();
+        let exit = owner.join().await.unwrap();
+        assert!(exit.service.is_ok());
+        assert!(matches!(
+            exit.ownership,
+            OwnershipSettlement::ReleaseAttempt(Ok(()))
+        ));
+        drop(owner);
+        drop(image);
+        assert!(weak_image.upgrade().is_none());
+        assert!(!private_path.exists());
+        PgMontyOwner::acquire(&rig.pool)
+            .await
+            .unwrap()
+            .release()
+            .await
+            .unwrap();
+    }
 
     #[tokio::test]
     async fn native_quarantine_evidence_drop_does_not_unlock_instance() {
         let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
         let guard = PgMontyOwner::acquire(&rig.pool).await.unwrap();
-        let retained = RetainedOwnership::register(guard).unwrap();
+        let image = GlobalMontyOwner::retained_test_worker(
+            &brassclaw_monty_host::process::installed_worker().unwrap(),
+        )
+        .await;
+        let image_path = image.path();
+        let weak_image = Arc::downgrade(&image);
+        let retained = RetainedOwnership::register(guard, image).unwrap();
         let receipt = OwnershipSettlement::Quarantined(retained.clone());
         let weak = Arc::downgrade(&retained);
         drop(retained);
@@ -486,8 +597,16 @@ mod tests {
             .upgrade()
             .expect("registry must own abandoned quarantine");
         retained.check().await.unwrap();
+        assert!(weak_image.upgrade().is_some());
+        assert!(
+            image_path.is_file(),
+            "quarantine must retain its worker image"
+        );
         // This fixture started no worker or host future; quiescence is known.
         retained.release_quiescent().await.unwrap();
+        drop(retained);
+        assert!(weak_image.upgrade().is_none());
+        assert!(!image_path.exists());
         PgMontyOwner::acquire(&rig.pool)
             .await
             .unwrap()

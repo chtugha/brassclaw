@@ -13,7 +13,7 @@ async fn explicit_child_entry_preserves_typed_inputs_and_cannot_rematch_or_fall_
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,

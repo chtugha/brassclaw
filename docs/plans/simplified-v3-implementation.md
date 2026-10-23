@@ -13530,3 +13530,23 @@ not establish approved mandatory checks, retained interpreter/run/attempt/settle
 provenance, successful class Q1, general pure approval/Q2/seed qualification or
 ordinary activation. Validator Steps 3/8–10 continue to own those remaining gates;
 composition and v3.5 consume their shared implementation.
+
+### 2026-10-23 — one retained interpreter image for ordinary global hosting
+
+Ordinary startup now reuses Source-Inspection's existing retained worker image
+through catalogue inspection and GlobalMontyOwner's actual service spawn. The
+constructor no longer accepts/reopens a mutable installed pathname. The catalogue,
+source backend and live owner share the same artifact; the existing singleton
+registry retains it through unknown quiescence/dropped quarantine receipts. This
+adds no production image capture, manager, VM or resource setting. The existing
+acknowledged artifact policy still controls preparation. Sixteen standalone
+fixture constructors now consume the same retained-image boundary.
+
+[Scoped acceptance](../validation/2026-10-23-retained-global-worker.md) passes
+16 actual-worker/PG/ordinary and standalone lifecycle cases, root and standalone
+strict test lint and formatting. Initial strict lint found duplicate fixture
+loading; importing the already loaded fixture fixed it without an exemption.
+The final source rebuilt and reran all 16 cases; the failed receipt remains.
+This closes live hosting identity/custody, not durable interpreter/run/attempt/
+settlement records, complete class Q1/pure approval, automatic crash recovery,
+platform/installed release acceptance or the remaining implementation plans.

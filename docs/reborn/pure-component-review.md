@@ -150,6 +150,13 @@ implemented support.
    reinspection. `NativeExecutableImage` identifies the application and is a
    different artifact. Behavior must also identify the actual executing worker
    and service generation. A mutable pathname or caller checksum is insufficient.
+   Ordinary hosting now shares the Source-Inspection retained image with the
+   catalogue and global owner, including unknown-ownership quarantine; see
+   [the accepted hosting record](../validation/2026-10-23-retained-global-worker.md)
+   covers 16 real ordinary/PG/global and separate-workspace lifecycle cases.
+   Consume that owner rather than capturing the installation path again. Durable
+   review artifact references and exact run/attempt/settlement correlation remain
+   to be integrated into trusted Q1/behavior writers and checked readers.
 5. **Finish both trusted approval paths.** Extend the existing authenticated
    operator prepare/approve routes for exact-view authored Human Q2. Model/Recipe
    ports cannot write successful human evidence. Shipped packages instead need

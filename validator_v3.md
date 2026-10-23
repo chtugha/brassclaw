@@ -620,6 +620,14 @@ observation. Durable claim/attempt/settlement, approved mandatory rule coverage,
 actual retained interpreter and trusted evidence writing remain required below.
 See [the scoped implementation and acceptance record](docs/validation/2026-10-23-validator-subject-inputs.md).
 
+**Interpreter hosting — 2026-10-23:** ordinary startup now shares the existing
+Source-Inspection `PackagedExecutableImage` with the catalogue and global owner.
+Hosting consumes that exact retained object, not a reopened installation path;
+unknown ownership retains the image alongside the singleton guard. This repairs
+the hosting/inspection identity gap. Durable interpreter references, actual
+review run/attempt/settlement and trusted evidence persistence are still required.
+See [the scoped hosting record](docs/validation/2026-10-23-retained-global-worker.md).
+
 1. Reuse existing immutable submission records and make their review work discoverable
    via the existing admission/coordination services. Atomically retain submission
    and required work/outbox reference, or specify its idempotent reconciliation

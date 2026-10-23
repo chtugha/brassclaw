@@ -171,6 +171,11 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Fixed
 
+- Keep the same retained worker image across source inspection, catalogue
+  qualification and ordinary global Monty startup. Stop reopening the mutable
+  installed pathname after inspection. Retain that image with quarantined
+  singleton ownership until actual worker/service quiescence; share the existing
+  copy rather than adding another image capture or process manager.
 - Verify retained validator result fingerprints with each step's actual accepted
   data limits, preserving complete large negative diagnostics across later live
   settings changes. Keep separate report limits and changed-result rejection;

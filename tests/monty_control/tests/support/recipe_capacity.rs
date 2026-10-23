@@ -231,7 +231,7 @@ async fn nine_executed_recipes_settle_after_live_selection_capacity_is_reduced()
     let live = crate::LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,

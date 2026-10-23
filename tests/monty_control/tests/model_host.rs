@@ -89,6 +89,7 @@ mod runtime {
 mod pg_monty_admission;
 #[path = "support/runtime.rs"]
 mod support;
+use support as monty_test_support;
 // Explicit fixture resource configuration; catalogue approval and actual
 // worker/database execution remain with the existing owners.
 struct FixtureRecipeCapacity;
@@ -688,7 +689,7 @@ async fn global_no_match_uses_actual_scoped_model_and_persisted_reply_ports() {
     .unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot: support::boot(SOURCE),
@@ -967,7 +968,7 @@ async fn global_model_tool_followup_uses_real_mount_kernel_and_retained_output()
     let context = task_host.run_context().clone();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot: support::boot(SOURCE),
@@ -1263,7 +1264,7 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
@@ -1623,7 +1624,7 @@ async fn global_no_match_reply_obeys_live_tool_policy_without_model_replay() {
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
@@ -1775,7 +1776,7 @@ async fn unsubmitted_cancellation_retains_exact_proof_until_database_acknowledge
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
@@ -2011,7 +2012,7 @@ async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admi
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
@@ -2154,7 +2155,7 @@ async fn owned_task_factory_retains_cancelled_catalogue_preparation() {
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
@@ -2239,7 +2240,7 @@ async fn global_owner_loses_real_database_session_and_fences_new_task_dispatch()
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
@@ -2340,7 +2341,7 @@ async fn cancelled_boot_retains_instance_ownership_until_actual_worker_settlemen
     let startup = tokio::spawn(async move {
         global_monty_owner::GlobalMontyOwner::start(
             &pool,
-            support::worker(),
+            global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
             global_monty_owner::GlobalServiceConfig {
                 ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
                 boot,
@@ -2881,7 +2882,7 @@ async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay(
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
@@ -3048,7 +3049,7 @@ async fn dropped_turn_waiter_requires_worker_and_durable_cancellation_acknowledg
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
@@ -3280,7 +3281,7 @@ async fn completed_reply_survives_waiter_fencing_before_durable_settlement() {
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
@@ -3453,7 +3454,7 @@ async fn rejection_owner_with_retention(
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,

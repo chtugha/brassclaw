@@ -112,6 +112,32 @@ async fn native_source_inspection_is_registered_nonexecuting_and_uses_live_limit
     };
     let facts: serde_json::Value = serde_json::from_str(result.output.as_str().unwrap()).unwrap();
     assert_eq!(facts["format"], "python-source-facts/1");
+    let inspection_worker = runtime
+        .services
+        .source_inspection
+        .as_ref()
+        .unwrap()
+        .prepare()
+        .await
+        .unwrap()
+        .worker;
+    assert!(Arc::ptr_eq(
+        &inspection_worker,
+        &runtime.installed_catalogue.worker_image
+    ));
+    assert!(Arc::ptr_eq(
+        &inspection_worker,
+        runtime.global_monty_owner.worker_image()
+    ));
+    assert_eq!(runtime.installed_catalogue.worker, inspection_worker.path());
+    assert_ne!(
+        runtime.installed_catalogue.worker,
+        brassclaw_monty_host::process::installed_worker().unwrap()
+    );
+    assert_eq!(
+        facts["worker_checksum"],
+        hex::encode(inspection_worker.checksum())
+    );
     assert_eq!(
         facts["facts"]["source_checksum"],
         hex::encode(sha2::Sha256::digest(source.as_bytes()))
@@ -170,7 +196,7 @@ async fn native_source_inspection_is_registered_nonexecuting_and_uses_live_limit
     let inspected =
         brassclaw_engine::executor::retained_source::InspectedRetainedProgram::inspect_with_limits(
             brassclaw_engine::executor::retained_recipe::RetainedProgram::Tools(Arc::new(prepared)),
-            &brassclaw_monty_host::process::installed_worker().unwrap(),
+            &runtime.installed_catalogue.worker,
             brassclaw_monty_host::utility::UtilityLimits::from_execution(
                 effective.execution_limits,
             )

@@ -13,7 +13,7 @@ use brassclaw_host_api::MountView;
 use brassclaw_monty_host::{
     global::GlobalBounds,
     heap::HeapSettings,
-    process::{ProcessLimits, RootBoot, TaskSettings, installed_worker},
+    process::{ProcessLimits, RootBoot, TaskSettings},
 };
 use brassclaw_pg::PgPool;
 use brassclaw_product_workflow::MontyVmSettingsStore;
@@ -41,7 +41,6 @@ pub(crate) async fn start(
     ),
     RebornRuntimeError,
 > {
-    let worker = installed_worker().map_err(|error| invalid(error.to_string()))?;
     let root = crate::global_root_seed::retain_packaged_global_root(
         pool.clone(),
         crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED,
@@ -94,10 +93,18 @@ pub(crate) async fn start(
         .bind(primitive_settings.clone())
         .await
         .map_err(|error| invalid(error.to_string()))?;
+    // Source facts, catalogue inspection and the ordinary global process share
+    // the already retained installation image. Never reopen the mutable installed
+    // pathname after qualification or lose the copy during abandoned startup.
+    let worker_image = source_inspection
+        .prepare()
+        .await
+        .map_err(|_| invalid("Monty retained worker preparation unavailable"))?
+        .worker;
     let catalogue = InstalledMontyCatalogue::boot(
         pool.clone(),
         kernel.clone(),
-        &worker,
+        worker_image,
         scope,
         mounts,
         root.reference(),
@@ -162,7 +169,7 @@ pub(crate) async fn start(
     };
     let mut owner = GlobalMontyOwner::start(
         &pool,
-        &worker,
+        catalogue.worker_image.clone(),
         GlobalServiceConfig {
             boot,
             process: ProcessLimits {
@@ -186,6 +193,8 @@ pub(crate) async fn start(
     )
     .await
     .map_err(|error| invalid(error.to_string()))?;
+    tracing::info!(worker_checksum=%hex::encode(owner.worker_image().checksum()),
+        "global Monty retained worker started");
     let measurement_status =
         if settings.memory_policy.mode == brassclaw_product_workflow::MontyMemoryMode::Manual {
             "disabled"

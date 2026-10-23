@@ -1,7 +1,7 @@
 //! Coherent catalogue of packaged workflows and explicitly activated authored
 //! workflows. Row labels never establish approval. Each ordinary task captures
 //! its immutable generation before matching or execution.
-use std::{collections::BTreeMap, path::Path, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
 use brassclaw_engine::{
@@ -23,8 +23,8 @@ use brassclaw_host_api::{
     RuntimeKind, TrustClass,
 };
 use brassclaw_host_runtime::{
-    NativeExecutableImage, RetainedFirstPartyCapability, RuntimeCapabilityOutcome,
-    RuntimeCapabilityRequest,
+    NativeExecutableImage, PackagedExecutableImage, RetainedFirstPartyCapability,
+    RuntimeCapabilityOutcome, RuntimeCapabilityRequest,
 };
 use brassclaw_loop_support::SystemBundleSource;
 use brassclaw_monty_host::{
@@ -142,6 +142,7 @@ pub(crate) struct InstalledMontyCatalogue {
     pub(crate) mcp_discovery: Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery>,
     pub(crate) qualification_scope: IntentScope,
     pub(crate) worker: std::path::PathBuf,
+    pub(crate) worker_image: Arc<PackagedExecutableImage>,
     pub(crate) active:
         tokio::sync::RwLock<Arc<crate::authored_monty_catalogue::CatalogueGeneration>>,
     pub(crate) activation: tokio::sync::Mutex<()>,
@@ -407,7 +408,7 @@ impl InstalledMontyCatalogue {
     pub(crate) async fn boot(
         pool: Arc<PgPool>,
         kernel: Arc<dyn MontyKernelSnapshot>,
-        worker: &Path,
+        worker_image: Arc<PackagedExecutableImage>,
         scope: &IntentScope,
         memory_mounts: MountView,
         root: brassclaw_skills::association_contract::ComponentRevisionRef,
@@ -416,6 +417,8 @@ impl InstalledMontyCatalogue {
         let preparation =
             brassclaw_monty_host::utility::UtilityLimits::from_execution(preparation_policy)
                 .map_err(invalid)?;
+        let worker_path = worker_image.path();
+        let worker = worker_path.as_path();
         let image = NativeExecutableImage::capture_with_verification(
             preparation.max_native_artifact_bytes,
             brassclaw_host_runtime::NativeVerificationLimits::new(
@@ -825,6 +828,7 @@ impl InstalledMontyCatalogue {
             #[cfg(test)]
             capture_gate: tokio::sync::Mutex::new(None),
             worker: worker.to_owned(),
+            worker_image,
             active: tokio::sync::RwLock::new(active),
             activation: tokio::sync::Mutex::new(()),
             discovery_publication: tokio::sync::Mutex::new(()),

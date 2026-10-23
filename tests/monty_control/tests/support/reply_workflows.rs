@@ -527,7 +527,7 @@ async fn whole_match(block_history: bool, skip_history: bool) {
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
-        support::worker(),
+        global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
         global_monty_owner::GlobalServiceConfig {
             ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,

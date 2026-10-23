@@ -1040,6 +1040,9 @@ mod two_tenant_isolation_tests {
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod global_monty_owner;
 
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+use pg_association_review::tests::native_evidence::support as monty_test_support;
+
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod global_monty_driver;
 

@@ -53,6 +53,15 @@ preserve historical bytes and aggregate limits without cloning result trees.
 Trusted Q1 writers, approved mandatory rules, interpreter/run/attempt/settlement
 correlation and general pure activation remain open.
 
+[Retained global-worker acceptance](validation/2026-10-23-retained-global-worker.md)
+covers 16 fresh ordinary/PG/global and separate-workspace lifecycle cases.
+Source-Inspection, catalogue preparation and ordinary global hosting now share
+the existing private worker image, retained with unknown singleton ownership.
+Actual start after removal of a temporary installation source, image lifetime,
+policy/limits, activation/restart, child selection and cancellation/settlement
+callers pass, with strict lint/format in both workspaces. This repairs live hosting
+identity; durable interpreter/Q1 records and generic crash recovery remain open.
+
 ## Implemented boundaries
 
 | Area | Actual implementation and supported boundary | Remaining qualification or cutover |
