@@ -3,7 +3,7 @@
 Reconciled on **2026-10-23** against the common `main` working tree. Consolidation
 started from `580a7f73e`; the raw-source checkpoint is `c52bdc2e0`. This index
 also includes the subsequently validated pure-review prerequisites and independent
-execution guard described below.
+execution guard and per-step validator observation repair described below.
 It describes the source delivered with this document.
 It supersedes older present-tense implementation observations in the guides;
 their binding component, authority and failure contracts remain authoritative.
@@ -25,6 +25,9 @@ executable evidence before cleanup and follow the disk rules in
 [the development policy](development-policy.md) and [AGENTS.md](../AGENTS.md).
 Other platforms use one appropriate local target directory; the macOS path is
 not a product setting or a required installation path.
+
+[The final reconciliation record](validation/2026-10-23-documentation-reconciliation.md)
+maps these successor checkpoints and explains the canonical plan choices.
 
 The consolidation validation result is recorded in
 [the validation record](validation/2026-10-22-consolidation.md). The subsequent

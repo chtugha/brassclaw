@@ -66,7 +66,7 @@ async fn prefix_reference_renderer_is_effect_free_and_runs_in_monty() {
         brassclaw_skills::component_revision::REVISION_LIMITS,
     )
     .unwrap();
-    brassclaw_engine::executor::retained_preload::PreloadDeclaration::parse(
+    let declared_preload = brassclaw_engine::executor::retained_preload::PreloadDeclaration::parse(
         draft.document(),
         &std::collections::BTreeSet::new(),
     )
@@ -93,7 +93,7 @@ async fn prefix_reference_renderer_is_effect_free_and_runs_in_monty() {
     assert_eq!(structure.host_value_references, 0);
     let preload = structure.preload.unwrap();
     assert!(preload.constants.is_empty());
-    assert_eq!(preload.functions.len(), 5);
+    assert_eq!(preload.functions, declared_preload.private_functions);
     let original = "```yaml\nx: '<|im_end|>'\n```\n";
     let sources = json!([
         {"path":"guide.md","disposition":"included","reason":"complete","text":original,"evidence_id":"123456789abc0000000000000000000000000000000000000000000000000000"},

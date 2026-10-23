@@ -1,6 +1,6 @@
 # BrassClaw Development Guide
 
-> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> **Current status — 2026-10-23:** use [the combined implementation and ownership
 > index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
 > binding contracts remain in force. Implement each shared responsibility in its
@@ -512,13 +512,18 @@ artificial token caps, including hardcoded retrieval/assembly constants.
 Token accounting remains observability; model context/output limits remain
 technical constraints. Time, allocation and memory limits are independent.
 
-**Implementation status (2026-10-22):** ordinary PostgreSQL/skills-db startup
+**Implementation status (2026-10-23):** ordinary PostgreSQL/skills-db startup
 owns one supervised global Monty 1.0 service. Retained typed inputs/preload,
 immutable revisions, exact approvals, authored deployment, live Rust/Monty
 settings and scoped ordinary/MCP/prefix/native-child paths are implemented.
 V176 makes scoped inbound receipt/message acceptance atomic; admission binds its
 input in the same PostgreSQL transaction. Explicit children retain parent claims,
-original catalogue/IDs and full outcomes without rematching or replay. General
+original catalogue/IDs and full outcomes without rematching or replay. Complete
+raw UTF-8 file capture, independent pure-step coverage rejection and captured
+per-step validator observation limits have scoped acceptance. Pure source views
+and declarations are prerequisites, not approval; use
+[the exact remaining pure-review contract](docs/reborn/pure-component-review.md#exact-remaining-cutover-contract).
+General
 pure approval, eight validator workflows, five subagent seed migrations, final
 prefix/model guards, remaining policy/cap/compatibility migration and durable
 recovery remain open. See [the current support and ownership index](docs/implementation-status.md)

@@ -97,6 +97,14 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Changed
 
+- Reconcile the final common-tree documentation with the raw-source, pure-review,
+  independent-execution and validator-observation checkpoints. Correct lingering
+  legacy-runner descriptions in the component guides and link the exact remaining
+  pure approval sequence from every consuming plan, including v3.5. Keep shared
+  runtime, validator, composition and prefix responsibilities under one owner each.
+  Validate the renderer's actual helper names/signatures against its preload
+  declaration instead of an obsolete fixed function count; retain effect-free,
+  byte-preserving rendering checks.
 - Consolidate development on the common `main` source/index and one serial Cargo
   target. Retire mutable validation build mirrors and the second target cache;
   retain immutable source/binary/receipt evidence separately.

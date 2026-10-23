@@ -1,6 +1,6 @@
 # ToolSkill definition and authoring instructions — final v3
 
-> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> **Current status — 2026-10-23:** use [the combined implementation and ownership
 > index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
 > binding contracts remain in force. Implement each shared responsibility in its
@@ -397,7 +397,7 @@ The resulting descriptor must still concern one Tool binding. Do not assume
 the current engine composer recursively expands these descriptions; verify the
 actual consumer or record missing implementation.
 
-### Current composition is not proof of final binding support
+### Legacy composition and implemented retained bindings
 
 The [IBS types](crates/brassclaw_engine/src/types/ibs.rs) define `ToolBinding`
 separately from a stored ToolSkill. It has `tool_id`, `tool_name`, `params` and
@@ -411,7 +411,7 @@ its `skills` array if they are included there. Final authoring keeps ToolSkill
 UUIDs on the Rust channel; do not use this legacy collection behavior to execute
 binding text or insert multi-component steps.
 
-Current `rust_directives` are derived from explicit Rust-step `tool_bindings`,
+Legacy `rust_directives` are derived from explicit Rust-step `tool_bindings`,
 not automatically from every class-13 include. Existing seed helpers can leave
 `tool_bindings` empty. A ToolSkill reference or returned directive therefore
 does not by itself prove registration, dynamic loading or binding occurred.

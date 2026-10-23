@@ -1,6 +1,6 @@
 # monty.composition — component implementation instructions
 
-> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> **Current status — 2026-10-23:** use [the combined implementation and ownership
 > index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
 > binding contracts remain in force. Implement each shared responsibility in its
@@ -16,6 +16,14 @@ Its examples are not allocated/activated components. Resolve canonical identitie
 replace historical bodies with declared preload exports, bind typed inputs and
 qualify each exact graph/native implementation through the existing stores and
 runner. Reuse compatible helpers; do not create a second copy for every consumer.
+
+Independent pure steps now require their own exact coverage at preparation and
+retained verification. Being present in a Tool usage's dependency closure does
+not qualify an independent invocation, even in another variant. General pure
+approval is still incomplete; implement [validator's exact shared sequence](../reborn/pure-component-review.md#exact-remaining-cutover-contract)
+once before activating the dependent examples in this appendix. Current source
+views/declarations and complete observation-limit handling supply prerequisites,
+not successful Q1 or public activation.
 
 - Complete each legacy/new/proposed entry's exact recursive contract, executable
   association, export/dependency graph, canonical Recipe/command, actual adapter

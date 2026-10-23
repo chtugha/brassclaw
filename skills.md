@@ -1,6 +1,6 @@
 # Skill definition and authoring instructions
 
-> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> **Current status — 2026-10-23:** use [the combined implementation and ownership
 > index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
 > binding contracts remain in force. Implement each shared responsibility in its
@@ -723,9 +723,9 @@ Tool calls. The direct dependent-chain exception in recipe.md remains valid,
 but does not justify a multi-Tool leaf Skill. Keep the Skill's purpose one usage;
 do not hide a larger workflow inside its entry point.
 
-The target PythonCode interface reads step-local typed values from
-`inputs["local_name"]`. This interface is specified by recipe.md and still
-requires actual runner support. A component can reuse internal code helpers,
+The retained PythonCode runner reads step-local typed values from
+`inputs["local_name"]` through the supported `recipe-input-layout/1` contract.
+Legacy source substitution is not this path. A component can reuse internal code helpers,
 but their inputs, outputs, assembly order and selected versions must be explicit.
 Validate the resulting assembled code as well as individual components.
 
@@ -754,10 +754,13 @@ No runtime output or user input may be pasted into approved Python source.
 Code assembly combines validated PythonCode components; data binding supplies
 values. They are different operations.
 
-Do not assume `variable_patterns` rejects invalid values: today's capture
-helper can retain raw positional values after refinement fails. Do not assume
-local variables survive today's fresh-state nested step execution. Specify the
-target contract and demonstrate the actual path, or record it as unsupported.
+Do not assume legacy `variable_patterns` rejects invalid values: that capture
+helper can retain raw positional values after refinement fails. The retained
+runner validates typed bindings and keeps intermediate results in the task's
+selected execution context; unrelated tasks and attempts remain isolated.
+Child execution uses explicit typed handoff and the captured catalogue on the
+global service. It does not inherit arbitrary Python locals. Qualify each
+consumer's actual path; general crash recovery and dynamic occurrences remain open.
 
 ## 9. Complete worked design: read a specified line interval
 

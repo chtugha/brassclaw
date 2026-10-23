@@ -1,6 +1,6 @@
 # Simplified v3: Plan zur Vereinfachung von Sicherheitsmodell, Runtime und WebUI
 
-> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> **Current status — 2026-10-23:** use [the combined implementation and ownership
 > index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
 > binding contracts remain in force. Implement each shared responsibility in its
@@ -15,6 +15,13 @@ restart of completed implementation. Use the [shared status/owner index](docs/im
 and [dated evidence journal](docs/plans/simplified-v3-implementation.md). The
 contracts and acceptance matrices below remain binding; old descriptions of a
 per-chat VM, absent immutable storage or absent typed bindings are historical.
+
+The 2026-10-23 successors additionally provide complete native raw-file capture,
+sealed pure-review source/subject prerequisites, independent pure-execution
+coverage rejection and per-step observation limits. Their scoped receipts are
+linked from the status index. None completes general pure approval or class Q1.
+Consume [validator's exact remaining contract](docs/reborn/pure-component-review.md#exact-remaining-cutover-contract)
+for those gaps; do not add a runtime approval exception or duplicate writer here.
 
 1. **Finish authority and product-surface cutover (Phases 0–3/4–5, §§8–10).**
    Complete the consumer-by-consumer scope/role/profile/grant inventory and the

@@ -1,6 +1,6 @@
 # Recipe authoring instructions
 
-> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> **Current status — 2026-10-23:** use [the combined implementation and ownership
 > index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
 > binding contracts remain in force. Implement each shared responsibility in its
@@ -463,8 +463,10 @@ Rules:
   must be explicit; internal composition cannot conceal independent Tool
   dispatches or bypass the dependent-chain rule. Source assembly combines
   validated component code; runtime inputs/results remain typed data.
-  The current engine composer does not implement a general recursive include
-  expansion: the existence of an `includes` storage column is not proof of it.
+  The legacy text composer does not implement a general recursive include
+  expansion. The retained path resolves declared preload dependencies through
+  `retained_source`/`retained_preload`, with exact revisions and export selection.
+  An `includes` storage column alone does not select that path or qualify a graph.
 - Every Rust ToolSkill binding step MUST be immediately followed by matching
   orchestrator PythonCode that calls the Tool. A binding does not execute it.
 - ToolSkill UUIDs stay on the Rust channel. Skill prose stays off that channel.

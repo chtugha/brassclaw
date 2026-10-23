@@ -1,6 +1,6 @@
 # Path to v3.5 — qualified Recipe-first execution
 
-> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> **Current status — 2026-10-23:** use [the combined implementation and ownership
 > index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
 > binding contracts remain in force. Implement each shared responsibility in its
@@ -8,7 +8,14 @@
 > activation, deployed support or full-v3 completion.
 
 
-**Date:** 2026-10-17; source/plan reconciliation 2026-10-22. **State:** coordinated roadmap; named v3 prerequisites are implemented, while the remaining v3.5 semantic/flow/connection/cutover work and acceptance remain open. **Execution checklist:** the Zenflow To-do tab for task `6326cc40-3f63-4867-8a8b-9f4f3455ded5`, using stable work IDs `V35-01`–`V35-30`. This document is the substantive architecture/acceptance artifact, not a second checklist.
+**Date:** 2026-10-17; source/plan reconciliation 2026-10-23. **State:** coordinated roadmap; named v3 prerequisites are implemented, while the remaining v3.5 semantic/flow/connection/cutover work and acceptance remain open. **Execution checklist:** the Zenflow To-do tab for task `6326cc40-3f63-4867-8a8b-9f4f3455ded5`, using stable work IDs `V35-01`–`V35-30`. This document is the substantive architecture/acceptance artifact, not a second checklist.
+
+The latest prerequisites include complete native raw-file capture, sealed
+pure-source/subject views, independent pure-step coverage rejection and complete
+per-step observation bounds. They do not complete V35-03/04. Those work IDs
+consume [validator's exact remaining approval/evidence/pin sequence](docs/reborn/pure-component-review.md#exact-remaining-cutover-contract);
+V35-13/14 retain ownership of future dynamic occurrences. Do not create a
+parallel approval store or relax current execution fencing to accelerate either.
 
 ## Purpose, authority and scope
 

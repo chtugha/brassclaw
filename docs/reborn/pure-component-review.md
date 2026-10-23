@@ -116,6 +116,11 @@ implemented support.
    context, not an extra executable dependency. Reuse exact retained roots when
    approving a changed dependency combination; do not force meaningless code edits.
    A supported combination-review submission route must preserve those identities.
+   Derive each expected validator input from that sealed subject and its selected
+   typed input layout, and compare it with the actual executed input/observation.
+   A separately observed fixture or same-class subject cannot be promoted to Q1
+   for another submission. Include wrong-subject/input, swapped dependency and
+   changed-base negatives before enabling a trusted evidence writer.
 3. **Observe required checks and every export.** Use actual inspected facts and
    `RetainedValidatorCoverage`, plus settled per-export behavior with meaningful
    valid/invalid cases. Candidate-supplied empty case lists, flags or expectations

@@ -1,6 +1,6 @@
 # monty.composition
 
-> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> **Current status — 2026-10-23:** use [the combined implementation and ownership
 > index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
 > binding contracts remain in force. Implement each shared responsibility in its
@@ -16,6 +16,13 @@ scoped public-reply/MCP execution already exist. Use the
 rather than early descriptions of an absent loader/activation path. The seven
 original failures were resolved in their recorded scope; full library migration
 and this plan's acceptance remain open.
+
+The 2026-10-23 independent-execution guard now rejects dependency-only approval
+coverage for an unbound pure step, per variant and again on retained restoration.
+The existing exact packaged generation exception remains narrow. R10 and other
+independent pure components consume [validator's remaining approval/pin sequence](../reborn/pure-component-review.md#exact-remaining-cutover-contract);
+this plan owns their component contracts and consumers, not another evidence
+writer, Human Q2 route or compiler exception.
 
 1. **Close the installed identity/consumer ledger (§§6.1/18/21–25).** Resolve actual
    stable UUIDs/revisions/checksums, usage/code/ToolSkill/native associations,

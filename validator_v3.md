@@ -1,6 +1,6 @@
 # Validator v3 implementation plan
 
-> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> **Current status — 2026-10-23:** use [the combined implementation and ownership
 > index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
 > binding contracts remain in force. Implement each shared responsibility in its
@@ -15,6 +15,15 @@ retained inspector/runner, human association review, component deployment and
 single global service. The [support index](docs/implementation-status.md) records
 those bounded capabilities. The following are the remaining gates for the existing
 Steps 1–12; the legacy three-field checker does not close any class route.
+
+As of 2026-10-23, complete pure-source views, strict untrusted declarations and
+sealed subject/selection identities exist. Independent executable steps cannot
+borrow coverage from usage dependencies, including during retained restoration.
+Actual observation fingerprints use each begun step's captured limits, retaining
+complete negative diagnostics after later live reductions. These are validated
+prerequisites. The authoritative remaining writer/reader/Q2/seed/pin/compatibility
+sequence is [the exact pure-review cutover contract](docs/reborn/pure-component-review.md#exact-remaining-cutover-contract),
+implemented by this plan's Steps 3/8–10 and consumed by composition/v3.5.
 
 1. **Complete actual subjects and immutable validator selections (Steps 1–3).**
    Inventory real installed UUIDs/overrides and every proposal/edit/resubmit/

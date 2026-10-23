@@ -1,6 +1,6 @@
 # Tool definition and authoring instructions — final v3
 
-> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> **Current status — 2026-10-23:** use [the combined implementation and ownership
 > index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
 > binding contracts remain in force. Implement each shared responsibility in its
@@ -523,10 +523,10 @@ process/output contract. Global allow/block, sandbox, network/secret limits and
 cancellation still apply. A compiler exit code alone does not establish Tool
 approval, loading, behavioral correctness or availability in `host.*`.
 
-### D. Composition and Python execution are Rust-side host operations
+### D. Legacy compose/run operations and the retained production path
 
 `host.compose_orchestrator` and `host.run_program` have Rust handlers in the
-[current orchestrator bridge](crates/brassclaw_engine/src/executor/orchestrator.rs).
+[legacy orchestrator bridge](crates/brassclaw_engine/src/executor/orchestrator.rs).
 They are infrastructure Tools/host operations; they do not compile a new Rust
 program merely because a Recipe is composed.
 
@@ -541,9 +541,12 @@ program merely because a Recipe is composed.
   as its second positional argument and delegates it as data. This is evidence
   of a state-handoff path, not proof of the complete target `inputs` interface,
   recursive schema validation or global-Monty production cutover.
-- The inspected composer still substitutes values into source and does not
-  establish the complete target immutable manifest/binding preparation. These
-  are implementation gaps; ordinary inputs/results must use typed data in v3.
+- That legacy composer substitutes values into source and does not establish
+  immutable manifest/binding preparation. Ordinary global tasks instead use
+  retained instructions, recursive typed inputs, pinned preload exports and
+  exact Tool/association selections. Migrate remaining legacy consumers to
+  that existing path; do not recreate the retained runner or execute raw input
+  through compose/run as a substitute.
 
 Do not infer a universal keyword schema from seed prose. The reply adapter now
 accepts the canonical `host.post_reply(answer=<string>)` contract. It retains
