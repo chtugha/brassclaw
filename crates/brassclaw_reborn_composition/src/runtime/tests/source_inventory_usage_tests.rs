@@ -35,6 +35,9 @@ use uuid::Uuid;
 #[path = "source_subject_inventory_tests.rs"]
 mod source_subject_inventory_tests;
 
+#[path = "python_structure_review_tests.rs"]
+mod python_structure_review_tests;
+
 #[tokio::test]
 async fn native_source_entry_decoder_preserves_text_and_rejects_duplicate_or_malformed_pairs() {
     use brassclaw_monty_host::{

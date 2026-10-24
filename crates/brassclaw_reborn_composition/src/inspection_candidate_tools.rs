@@ -9,14 +9,15 @@ pub(crate) fn source_inventory_candidate_tools(
     admission: Arc<PgMontyAdmission>,
     program: Arc<RetainedToolProgram>,
 ) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
-    if program.bindings().len() != 2
-        || program.bindings().get("0:3").is_none_or(|binding| {
+    let bindings = program.bindings();
+    let optional_reply = bindings.len() == 2
+        && bindings
+            .get("0:5")
+            .is_some_and(|binding| binding.capability_id() == "host.post_reply");
+    if (bindings.len() != 1 && !optional_reply)
+        || bindings.get("0:3").is_none_or(|binding| {
             binding.capability_id() != brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID
         })
-        || program
-            .bindings()
-            .get("0:5")
-            .is_none_or(|binding| binding.capability_id() != "host.post_reply")
     {
         return Err(invalid("source inventory candidate binding differs"));
     }

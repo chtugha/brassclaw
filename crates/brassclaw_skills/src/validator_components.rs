@@ -9,6 +9,10 @@ use uuid::Uuid;
 mod source_inventory;
 pub use source_inventory::{SOURCE_ENTRIES_SOURCE, source_inventory_drafts};
 
+#[path = "validator_python_structure.rs"]
+mod python_structure;
+pub use python_structure::{python_definitions_draft, python_structure_drafts};
+
 pub const AGGREGATE_SOURCE: &str = include_str!("validator_aggregate.py");
 pub const COLLECT_SOURCE: &str = include_str!("validator_collect.py");
 pub const STRUCTURAL_PRESENCE_SOURCE: &str = include_str!("validator_structural_presence.py");

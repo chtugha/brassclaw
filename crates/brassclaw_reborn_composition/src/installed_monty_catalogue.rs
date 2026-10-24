@@ -696,13 +696,20 @@ impl InstalledMontyCatalogue {
                 "installed source inspection requires reply components",
             ));
         };
-        crate::source_inspection_components::retain(
+        let inventory_usage = crate::source_inspection_components::retain(
             pool.clone(),
             kernel.as_ref(),
             &scope.tenant_id,
             reply_components,
         )
         .await?;
+        crate::builtin_bootstrap::retain_validator_structure_drafts(&pool, inventory_usage)
+            .await
+            .map_err(|error| {
+                invalid(format!(
+                    "retain private validator structure drafts: {error}"
+                ))
+            })?;
         let mut documents = BTreeMap::new();
         let mut references = BTreeMap::new();
         for selected in [&reply, &history] {

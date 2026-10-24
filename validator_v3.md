@@ -419,6 +419,14 @@ input data; the original remains retained and its limitations are visible.
 
 ### Step 5 — Implement reusable facts and checking components
 
+**Scoped prerequisite — 2026-10-24:** installation now retains the private
+source → existing native inventory → definition/contract checks → existing
+Collection/Aggregation/receipt draft. [Actual closed-flow acceptance](docs/validation/2026-10-24-python-structure-review.md)
+covers exact source/native answer/interpreter/input-result edges and ten cases;
+it is not complete class-22 Q1 or production admission. Reuse these components
+and the existing parser. Graph/call/binding/behavior coverage and trusted durable
+evidence remain in this step and Steps 3/8–10, under the shared cutover contract.
+
 1. Reuse `value_contract.rs`, `association_contract.rs`, retained graph readers
    and source-inspection observations. Fix any spec discrepancies there with
    focused consumer tests rather than introducing another schema framework.
@@ -442,9 +450,13 @@ input data; the original remains retained and its limitations are visible.
    dynamic calls under the unsupported profile. Do not just relax the current
    `result_store_sites`/direct-call restriction. Function definitions use `return`;
    the qualified invocation boundary captures their returned result.
-6. Internal includes require real recursive resolution/assembly and checksum
-   pinning. The current retained Tool program rejects nested code; extend its
-   supported assembler and tests before approving validators that depend on it.
+6. Reuse the implemented dependency-first retained preload graph and exact
+   transitive revision/checksum selection for internal PythonCode composition.
+   Qualified function dependencies are distinct from legacy nested `includes`
+   and source-substitution bodies; do not rebuild completed preload support or
+   treat unsupported compatibility paths as approval. Verify actual declarations,
+   symbol resolution and selected exports through the retained caller before
+   approving each complete validator workflow.
 7. Likewise, implement permitted dependent-chain binding layouts explicitly.
    Until supported, those drafts cannot activate; do not redefine permitted v3
    chains as authoring defects or silently exclude an already-active workflow.

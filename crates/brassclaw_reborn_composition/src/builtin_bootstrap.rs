@@ -86,9 +86,16 @@ pub(crate) const GLOBAL_ORCHESTRATOR_SEED: &str =
     include_str!("../../brassclaw_engine/orchestrator/global_mode.py");
 
 /// Installation draft only; execution reads its retained immutable selection.
-#[cfg(feature = "skills-db")]
 pub(crate) const VALIDATOR_PYTHON_CONTRACTS_SEED: &str =
     include_str!("../../brassclaw_skills/src/validator_python_contracts.py");
+
+/// Installation-only comparison rule over exact subject/native parser facts.
+pub(crate) const VALIDATOR_PYTHON_DEFINITIONS_SEED: &str =
+    include_str!("../../brassclaw_skills/src/validator_python_definitions.py");
+
+#[cfg(feature = "skills-db")]
+pub(crate) const VALIDATOR_STRUCTURE_RECEIPT_SEED: &str =
+    include_str!("../../brassclaw_skills/src/validator_structure_receipt.py");
 
 /// Seed content for the codeact_preamble (class 10).
 pub(crate) const CODEACT_PREAMBLE_SEED: &str =
@@ -897,8 +904,8 @@ pub(crate) async fn retain_validator_check_drafts(
     use brassclaw_skills::{
         global_bootstrap_components::packaged_component_id,
         validator_components::{
-            preload_definition_draft, python_contracts_draft, recursive_contract_draft,
-            structural_presence_draft, subject_sources_draft,
+            preload_definition_draft, python_contracts_draft, python_definitions_draft,
+            recursive_contract_draft, structural_presence_draft, subject_sources_draft,
         },
     };
 
@@ -913,10 +920,41 @@ pub(crate) async fn retain_validator_check_drafts(
             packaged_component_id("validator:recursive-contract"),
             VALIDATOR_PYTHON_CONTRACTS_SEED,
         ),
+        python_definitions_draft(
+            packaged_component_id("validator:python-definitions"),
+            packaged_component_id("validator:preload-definition"),
+            VALIDATOR_PYTHON_DEFINITIONS_SEED,
+        ),
     ] {
         let draft = draft.map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
             reason: error.to_string(),
         })?;
+        store.retain_packaged_draft(&draft).await.map_err(|error| {
+            SeedBuiltinBootstrapError::ComponentRevision {
+                reason: error.to_string(),
+            }
+        })?;
+    }
+    Ok(())
+}
+
+/// Retain the private incomplete source/definition/contract Recipe after the
+/// existing inventory owner has retained its real Tool and usage combination.
+/// This neither adds a second Q1 scheduler nor publishes a routing selection.
+#[cfg(feature = "skills-db")]
+pub(crate) async fn retain_validator_structure_drafts(
+    pool: &Arc<PgPool>,
+    inventory: brassclaw_skills::global_bootstrap_components::UsageComponentIds,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    let drafts = brassclaw_skills::validator_components::python_structure_drafts(
+        inventory,
+        VALIDATOR_STRUCTURE_RECEIPT_SEED,
+    )
+    .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
+        reason: error.to_string(),
+    })?;
+    let store = brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone());
+    for draft in drafts {
         store.retain_packaged_draft(&draft).await.map_err(|error| {
             SeedBuiltinBootstrapError::ComponentRevision {
                 reason: error.to_string(),

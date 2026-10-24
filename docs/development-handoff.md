@@ -2,7 +2,31 @@
 
 ## Wiederaufnahme und aktueller Stand
 
-Neuester lokaler Schritt: [der vollständige Subject-Vertragsprüfer](validation/2026-10-24-python-contract-review.md)
+**Neuester geprüfter Schritt:** [private Source-/Definitions-/Vertrags-Recipe](validation/2026-10-24-python-structure-review.md).
+Elf frische native Monty/PG-Tests und drei anwendbare Einzelresultate bestehen;
+strenges Vollfeature- und PostgreSQL-Default-Clippy, Format und Whitespace ebenfalls.
+Die echte Installation behält private Entwürfe, Originale und Operator-Nachfolger;
+der geschlossene globale Flow erfasst alle zehn Positiv-/Negativ-/Substitutionsfälle
+mit einem echten Inventar-Dispatch je Fall und versiegelten Input-/Result-Kanten.
+Keine Q1-Evidenz, Aktivierung oder vollständige Klassenfreigabe entsteht.
+
+Die ersten Fehlversuche (Fehlerkonvertierung, nicht unterstütztes Monty-set-`<=`)
+bleiben erhalten. Ein gezielter echter Worker-Versuch begründet die Reparatur;
+die drei bestandenen Inventar-Fälle aus einem insgesamt fehlgeschlagenen Selector
+werden nur als diese Einzelresultate weiterverwendet. Abschluss:
+`target/accepted-evidence/python-structure-review-20261024/run-3/accepted.json`,
+SHA-256 `3015768427ace11305f4d8cca52c23c4207689bf2fa064ac7455cce2eb349bd1`.
+Der PostgreSQL-Bootstrap-Source-Gate-Fehler ohne `skills-db` ist repariert und durch
+Default-Feature-Clippy bestätigt. Es läuft kein eigener Cargo-Prüflauf mehr.
+
+Nächster Schritt bleibt der bestehende Validator-Owner: vollständige Graph-/Aufruf-/
+Bindungs-/Verhaltensregeln, private Produktionsadmission und vertrauenswürdige
+Run-/Attempt-/Settlement-/Interpreter-Evidenz samt checked writer/readers.
+Die laufenden parallelen Guide-/Plan-/Scanner-Änderungen bleiben erhalten und
+brauchen ihre eigene gemeinsame Prüfung; aktuelle eingebettete Guides und die
+endgültige reguläre App sind vom isolierten Prüfergebnis nicht umfasst.
+
+Vorheriger gesicherter Schritt (`bc05b5547` auf `main`): [der vollständige Subject-Vertragsprüfer](validation/2026-10-24-python-contract-review.md)
 ist implementiert und mit acht tatsächlichen Monty/PG-Tests, strengem betroffenem
 Root-/Skills-/Composition-Clippy, Format und Whitespace geprüft. Er verbindet
 den gepinnten rekursiven Checker mit vorhandener Collection/Aggregation und dem
@@ -26,7 +50,7 @@ dauerhafte Evidenz im bestehenden Validator-Owner. Die vollständige private Q1,
 allgemeine Pure-Freigabe und Gesamtpläne bleiben offen. Der Benutzer hat weiterhin
 Fortsetzung beauftragt; kein neuer Stopp oder Abschluss ist erfolgt.
 
-Neuester Implementierungsschritt: [der reine rekursive Vertragsprüfer](reborn/recursive-contract-check.md)
+Davor abgeschlossen: [der reine rekursive Vertragsprüfer](reborn/recursive-contract-check.md)
 ist ergänzt und [mit 15 passenden Tests sowie strengem Clippy/Format geprüft](validation/2026-10-24-recursive-contract.md).
 Der vorangehende Source-Extraction-Zwischenstand ist als `04e4f5e41` auf `main`
 gepusht. Beim neuen Prüflauf wurde eine externe, reine Ergänzung der

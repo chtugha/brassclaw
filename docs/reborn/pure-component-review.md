@@ -90,6 +90,18 @@ helper-only contracts stay optional; declared invalid dependency contracts are
 checked. This one-rule fixture is not complete class-22 Q1. Native definition,
 dependency/call/binding rules and trusted durable evidence remain required below.
 
+The [private source/definition/contract Recipe draft](../validation/2026-10-24-python-structure-review.md)
+now retains that explicit sequence at installation after the real inventory usage
+is available. It feeds exact original source/native result edges into definition
+and contract rules, then the existing Collection/Aggregation and sealed observer.
+The definition consumer checks all candidate/dependency declarations against the
+complete native inventory, preserving compiler-profile/load/signature/shape errors.
+Actual native journal/interpreter checks and ten closed flow cases have scoped
+acceptance. Retention and a two-rule coverage declaration are still not complete
+class-22 qualification, an ordinary production Q1 producer, settled durable
+evidence or activation. Complete graph/call/binding/behavior and the existing
+trusted review owner below remain required; do not build another parser/scheduler.
+
 ## Declaration: `pure-component-approval/1`
 
 `PureComponentApprovalDeclaration::from_json` accepts exactly these fields:

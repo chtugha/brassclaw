@@ -13679,3 +13679,23 @@ claim; current embedded-guide payload and the final regular app still require
 combined acceptance. All failed attempts and exact reused worker identity remain
 recorded. Full definitions/dependency/call/binding rules, durable Q1 evidence and
 activation remain in validator Steps 3/8–10; composition/v3.5 reuse that owner.
+
+### 2026-10-24 — installed private source/definition/contract Recipe draft
+
+The existing installation owners retain a private eight-step Recipe: complete
+subject sources, one existing native inventory usage, separate definition and
+contract checks, existing Collection/Aggregation and a complete receipt for the
+sealed observer. Exact original drafts/operator successors stay retained; the
+inventory owner supplies its actual identity without another native lookup.
+[Scoped acceptance](../validation/2026-10-24-python-structure-review.md) covers
+ten actual closed flow cases and native journal/interpreter/input-result checks.
+Eleven fresh tests plus three applicable individual inventory results pass, with
+strict full-feature and PostgreSQL-default lint, format and whitespace. The
+definition check uses Monty-supported membership operations; default PostgreSQL
+bootstrap retains the checker even without `skills-db`. Earlier failures remain
+recorded. No incomplete selector is labelled passed.
+
+This remains a private unreviewed partial class-22 Recipe, not the full mandatory
+check set, ordinary Q1 admission, trusted settled evidence, approval or activation.
+Validator Steps 3/8–10 still own those gates. Updated guide payloads and final
+regular product artifacts require separate combined acceptance.

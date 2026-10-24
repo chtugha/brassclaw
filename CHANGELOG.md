@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 This development checkpoint collects the parallel v3 implementation work through
-2026-10-23, including the prefix and runtime/resource workstreams. The qualified
+2026-10-24, including the prefix and runtime/resource workstreams. The qualified
 packaged reply has local MCP chat/provider acceptance; completed-turn review and
 its native effect/accounting custody are implemented in bounded scopes. Full v3
 acceptance, broader public Recipe population, reusable Sempai workflow conversion,
@@ -18,6 +18,11 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- A private immutable source/definition/contract review Recipe draft that reuses
+  the existing native inventory usage, checks every selected declaration against
+  actual parser facts, and preserves both complete rule results through existing
+  Collection/Aggregation. It has no public command or activation and remains
+  incomplete for full class Q1, dependency/call/binding and behavioral review.
 - A retained PythonCode contract-review draft that checks the complete sealed
   candidate/dependency graph through the pinned recursive checker. A closed
   Monty Recipe composes it with existing Collection/Aggregation and verifies
@@ -205,6 +210,8 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Fixed
 
+- Keep the installation-retained contract checker available to PostgreSQL
+  bootstrap when the optional `skills-db` runner feature is disabled.
 - Keep the same retained worker image across source inspection, catalogue
   qualification and ordinary global Monty startup. Stop reopening the mutable
   installed pathname after inspection. Retain that image with quarantined

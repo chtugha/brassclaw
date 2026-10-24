@@ -134,6 +134,18 @@ are no Tool effects, model exchanges or new review evidence. The isolated scope
 does not certify concurrent embedded-guide edits or a final regular app artifact;
 full mandatory coverage and durable Q1/approval remain open.
 
+[Private structure-Recipe acceptance](validation/2026-10-24-python-structure-review.md)
+adds installation-retained source → native inventory → definitions/contracts →
+Collection/Aggregation/receipt drafts. Actual ordinary startup preserves their
+original bytes and operator successor; a closed global flow covers ten positive/
+negative/substitution cases, exact native answers, worker identity and original
+input/result edges with one journalled inventory dispatch each. Eleven fresh tests
+and three applicable inventory results pass, with strict full-feature and
+PostgreSQL-default lint, format and whitespace. The unsupported set operator is
+repaired through an actual worker diagnostic; the bootstrap feature gate works
+without `skills-db`. Complete mandatory rules, ordinary private Q1 and durable
+review/approval remain open; edited guides/final regular app are outside this scope.
+
 ## Implemented boundaries
 
 | Area | Actual implementation and supported boundary | Remaining qualification or cutover |

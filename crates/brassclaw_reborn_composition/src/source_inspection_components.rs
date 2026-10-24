@@ -44,7 +44,7 @@ pub(super) async fn retain(
     kernel: &dyn MontyKernelSnapshot,
     tenant: &str,
     reply: &RetainedToolProgram,
-) -> Result<(), RebornBuildError> {
+) -> Result<UsageComponentIds, RebornBuildError> {
     let binding = reply
         .bindings()
         .get("0:2")
@@ -99,5 +99,5 @@ pub(super) async fn retain(
         "INSERT INTO brassclaw_instance_tool_settings(tool_id) VALUES($1) ON CONFLICT(tool_id) DO NOTHING",
         &[&tool],
     ).await.map_err(invalid)?;
-    Ok(())
+    Ok(usage_ids(tool, true))
 }
