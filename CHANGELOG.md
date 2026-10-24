@@ -18,6 +18,10 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- A pure recursive-contract checking draft for retained validator Recipes,
+  covering current consumer-input, Tool-parameter and result grammar, nested
+  defaults, missing/null distinctions and exact numeric bounds. Its position
+  is selected by the consuming Recipe; retention grants no review or activation.
 - A retained pure source-extraction draft for validator Recipes. It forwards all
   class-22 candidate/dependency text, including empty sources, to the existing
   inventory usage as typed data while excluding the comparison base. Retention

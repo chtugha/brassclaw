@@ -892,7 +892,8 @@ pub(crate) async fn retain_validator_check_drafts(
     use brassclaw_skills::{
         global_bootstrap_components::packaged_component_id,
         validator_components::{
-            preload_definition_draft, structural_presence_draft, subject_sources_draft,
+            preload_definition_draft, recursive_contract_draft, structural_presence_draft,
+            subject_sources_draft,
         },
     };
 
@@ -901,6 +902,7 @@ pub(crate) async fn retain_validator_check_drafts(
         structural_presence_draft(packaged_component_id("validator:structural-presence")),
         preload_definition_draft(packaged_component_id("validator:preload-definition")),
         subject_sources_draft(packaged_component_id("validator:subject-sources")),
+        recursive_contract_draft(packaged_component_id("validator:recursive-contract")),
     ] {
         let draft = draft.map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
             reason: error.to_string(),

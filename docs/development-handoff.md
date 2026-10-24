@@ -2,6 +2,21 @@
 
 ## Wiederaufnahme und aktueller Stand
 
+Neuester Implementierungsschritt: [der reine rekursive Vertragsprüfer](reborn/recursive-contract-check.md)
+ist ergänzt und [mit 15 passenden Tests sowie strengem Clippy/Format geprüft](validation/2026-10-24-recursive-contract.md).
+Der vorangehende Source-Extraction-Zwischenstand ist als `04e4f5e41` auf `main`
+gepusht. Beim neuen Prüflauf wurde eine externe, reine Ergänzung der
+Entwicklungsrichtlinie erkannt und beibehalten; 13 unverändert anwendbare Tests
+und die tatsächlichen Builds wurden nach vollständigem Hashvergleich verwendet,
+zwei offene Tests und die Abschlussprüfungen danach bestanden. Die ursprüngliche
+Source-Drift-Datei bleibt erhalten. Der neue Baustein prüft Grammatik/Defaults,
+keine Ressourcenfreigabe, computed arguments oder Übergabekompatibilität.
+Nächster Schritt bleibt die vollständige private Validator-Recipe mit
+obligatorischer Regelabdeckung, Originalsubject/native facts und vertrauenswürdiger
+dauerhafter Evidenz. Keinen weiteren Parser, Scheduler oder Freigabe-Store parallel
+erfinden. Die folgenden Absätze beschreiben die vorherige Source-Extraction-
+Wiederaufnahme und den historischen Stopp.
+
 **Der Benutzer hat die Fortsetzung ausdrücklich beauftragt.** Die unten
 dokumentierte Pause ist historisch. Die Wiederaufnahme hat alle unveränderten
 Quellen und 34 Artefakte geprüft; nur die drei damaligen unembedded Übergabe-,

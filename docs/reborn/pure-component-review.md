@@ -73,6 +73,15 @@ Use this existing usage rather than creating another parser wrapper or approval
 owner. All required rules, original-subject/native-fact custody and durable
 review/evidence/approval gates below remain open.
 
+The retained [recursive-contract checker](recursive-contract-check.md) now supplies
+another pure rule: current consumer-input, Tool-parameter and result grammar,
+recursive defaults and exact numeric constraints. [Scoped acceptance](../validation/2026-10-24-recursive-contract.md)
+compares actual Monty results with native readers and preserves operator versions.
+Its position must come from the pinned validator Recipe. Technical admission,
+computed arguments and producer/consumer compatibility remain separate; a positive
+grammar result grants no Q1, behavior, provenance or approval. Finish the complete
+subject-bound check/aggregate/evidence path below before activation.
+
 ## Declaration: `pure-component-approval/1`
 
 `PureComponentApprovalDeclaration::from_json` accepts exactly these fields:

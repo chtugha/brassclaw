@@ -125,27 +125,67 @@ an explicit sequence of existing usages. Rust infrastructure work may be needed
 for runner, binding, persistence, lifecycle or kernel support. Repair those gaps
 in their owning layers; they do not justify hiding a user workflow in a new Tool.
 
-Read actual signatures and implementations. Trace data, errors, ownership,
-wrappers, feature gates, persistence and side effects through the affected path.
-Find all implementations when changing a trait. Review edge cases and complete
-a coherent implementation before compiling. Do not use compiler failures to
-discover interfaces that are already available in source. Small experiments
-are appropriate when source inspection cannot resolve a concrete uncertainty;
-state what the experiment will establish.
+Before changing an interface, read its actual definition, the implementation
+selected by the relevant feature configuration, and the affected callers.
+Trace data, errors, ownership, wrappers, persistence and side effects through
+the affected path. Find all implementations when changing a trait. Do not infer
+APIs, fields or behavior from similar names or memory, or use compiler failures
+to discover interfaces already available in source. Resolve relevant assumptions
+through source inspection before relying on them. When inspection cannot resolve
+a concrete uncertainty, run a small targeted experiment and state what it will
+establish; this may require compilation before the work package is complete.
 
 Before making the change, reason through the exact argument and return types,
 ownership and borrow lifetimes, mutability, async/Send requirements, imports and
 visibility, feature-gated code and every affected trait implementation. Check
 the intended edits against neighboring working code and the actual dependency
 APIs. Resolve predictable compilation errors in this review before editing.
-After editing, inspect the complete diff for the same issues before the first
-targeted compilation. Reasoning reduces avoidable failures; it does not replace
-the real compiler when changed Rust requires verification.
+Reasoning reduces avoidable failures; it does not replace the real compiler when
+changed Rust requires verification.
 
-Before each additional executable check, identify the changed behavior or
-unanswered question it covers. Do not stack check, build, test, all-feature
-lint and release build by habit. A test build may already cover the required
-compilation; a separate binary build is necessary when exercising that binary.
+## Implement and validate coherent work packages
+
+This sequence adds no requirement for a separate planning document, approval or
+subagent; existing authorization and component approval requirements still apply.
+Scale the analysis to the change; a small fix needs only a brief review.
+
+1. **Define one bounded behavior change.** Identify the expected result, affected
+   contracts and callers, existing applicable evidence, and the required checks
+   from the table below and subsystem acceptance criteria. Include the producer,
+   data handoffs and consumers needed to make this change complete. Split unrelated
+   changes into separate packages; do not batch an entire plan before testing.
+2. **Complete the connected implementation.** Update the affected contracts,
+   implementations and callers together, including necessary regression coverage.
+   Avoid compiling after each small edit. Compile earlier when a concrete unresolved
+   question blocks further work or when a shared boundary needs an intermediate
+   check before dependent changes would make failures difficult to isolate.
+3. **Review the complete relevant diff before validation.** Check argument/result
+   types, ownership, feature configurations and affected callers. Trace normal,
+   missing, empty, invalid and interrupted cases where applicable. Check error
+   propagation, retained revisions, cancellation and completed/unknown effects
+   when affected. Confirm the intended production caller reaches the change.
+   Correct source-visible defects together and identify remaining questions that
+   require execution. A mental walkthrough is not observed behavioral evidence.
+4. **Run the smallest sufficient validation batch.** Cover the required behavior,
+   remaining uncertainties and affected-package linting where required. An existing
+   caller-level test may cover several properties; add separate tests only for
+   important cases it does not reliably exercise. Do not routinely stack check,
+   build, test, all-feature lint and release build. A test build can supply the
+   compilation evidence for its actual targets/features; build another binary only
+   when that artifact or a different configuration is required. A batch may need
+   several commands and must not omit required acceptance cases to save time.
+5. **Repair causes before rerunning.** Read the complete available diagnostics,
+   trace the causes and fix the connected set of defects before the next expensive
+   run. Review the corrections, then repeat failed checks and any previously passed
+   checks whose applicability those corrections invalidate. Do not start a new
+   compilation for every individual diagnostic fix.
+
+Before each expensive executable check, identify the requirement or unresolved
+question it covers and why existing evidence is insufficient. Keep this rationale
+brief in the validation record or progress update; do not create a new reporting
+framework. Stop after the required applicable checks pass. Broader combined-product
+and release acceptance still runs at its required integration/cutover milestones;
+a local work package is not a substitute for those gates.
 
 ## Choose evidence by the claim
 

@@ -14,6 +14,42 @@ pub const COLLECT_SOURCE: &str = include_str!("validator_collect.py");
 pub const STRUCTURAL_PRESENCE_SOURCE: &str = include_str!("validator_structural_presence.py");
 pub const PRELOAD_DEFINITION_SOURCE: &str = include_str!("validator_preload_definition.py");
 pub const SUBJECT_SOURCES_SOURCE: &str = include_str!("validator_subject_sources.py");
+pub const RECURSIVE_CONTRACT_SOURCE: &str = include_str!("validator_recursive_contract.py");
+
+/// Check the current recursive consumer/result/Tool-parameter grammar as pure
+/// Recipe logic. The owner supplies JSON encoded from the strict retained reader;
+/// this rule is not duplicate-key/integrity provenance or behavioral approval.
+/// Computed arguments, handoff compatibility and resource admission stay separate.
+pub fn recursive_contract_draft(id: Uuid) -> Result<ComponentRevisionDraft, RevisionError> {
+    let draft = ComponentRevisionDraft::from_json(&json!({
+        "format":"component-revision/1","uuid":id,"class_code":22,
+        "document":{
+            "name":"check-recursive-contract",
+            "description":"Check one complete recursively declared contract in the current input, parameters or result position, supplied as JSON string data encoded from the strict retained subject reader. Verify closed fields, required/null/default rules, items/object fields/extras, supported checks, exact decimal bounds and cross-input targets; inspect defaults without filling or changing data. Defaults may fill missing consumer fields only. Do not execute candidates, infer compatibility or behavior, establish provenance/duplicate-key validation, approve components or write evidence. Computed arguments require their separate owner; unsupported positions fail. Existing task/data limits apply without a new checker cap. Integer range constants describe the native JSON wire representation, not a task budget.",
+            "content":RECURSIVE_CONTRACT_SOURCE,"includes":[],"dependency_registry":null,
+            "input_contract":{
+                "contract_json":{"type":"string","required":true,"checks":[]},
+                "position":{"type":"string","required":true,"checks":[]}
+            },"result_contract":rule_contract(),
+            "preload":{"format":"python-preload/2","exports":{
+                "check_recursive_contract":{"symbol":"check_recursive_contract","parameters":["inputs"],"mapping":true}
+            },"private_functions":{
+                "_validator_contract_name":["name"],"_validator_contract_number":["value"],
+                "_validator_contract_parts":["value"],"_validator_contract_compare":["left","right"],
+                "_validator_contract_default":["schema","value"]
+            },"constants":[],"imports":["json"],"dependencies":[],"default_export":"check_recursive_contract"}
+        },"dependencies":[],"association":null
+    }).to_string())?;
+    crate::value_contract::InputContract::from_value(
+        &draft.document()["input_contract"],
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    crate::value_contract::ValueContract::result_from_value(
+        &draft.document()["result_contract"],
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    Ok(draft)
+}
 
 /// Extract all class-22 sources from the sealed reader's complete subject. The
 /// comparison base is excluded; non-Python dependencies remain in the original

@@ -115,6 +115,15 @@ reuses five completed unchanged-source cases and completes ten after the deliber
 pause. The interruption is preserved. Mandatory rules, complete private class
 routes and trusted run/attempt/settlement/evidence writers remain required.
 
+[Recursive-contract rule acceptance](validation/2026-10-24-recursive-contract.md)
+adds a retained pure checker for the current input/Tool-parameter/result grammar,
+recursive defaults and exact numeric constraints. Actual Monty verdicts match
+native readers across more than 140 cases; operator successors remain intact.
+The 15-test scope retains 13 results after a verified unembedded policy change
+and completes two remaining tests plus strict lint/format. This is grammar
+coverage, not resource admission, computed arguments, handoff compatibility,
+complete class Q1 or approval. See [the exact component scope](reborn/recursive-contract-check.md).
+
 ## Implemented boundaries
 
 | Area | Actual implementation and supported boundary | Remaining qualification or cutover |

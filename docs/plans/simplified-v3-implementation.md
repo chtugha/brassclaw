@@ -13642,3 +13642,22 @@ input/result fingerprints are checked. No new Rust workflow, parser, evidence
 writer, approval or active route is introduced. Complete mandatory class rules,
 private production scheduling and durable review/pure approval remain with
 validator Steps 3/8–10; composition and v3.5 consume that owner.
+
+### 2026-10-24 — reusable pure recursive-contract check
+
+Validator Step 5 now has a retained preloadable pure grammar checker for current
+consumer inputs, Tool parameters and results. It checks recursive defaults/null/
+presence rules, fields/items/extras, supported checks, cross-input targets and
+normalized decimal bounds without modifying data or adding resource caps.
+The installation owner preserves originals/operator successors without approval.
+
+[Scoped native acceptance](../validation/2026-10-24-recursive-contract.md) verifies
+more than 140 actual Monty/native-reader comparisons and PG retention, plus the
+existing validator/inventory/global/startup consumers. Fifteen applicable tests,
+strict root/affected lint and format pass. An external unembedded policy addition
+stopped run 1 after 13 completed tests; exact source/artifact checks support their
+reuse while run 2 completes the remaining two tests and final checks. Original
+failure and both runners are preserved. This is not technical resource admission,
+computed-argument or handoff compatibility, complete private Q1, trusted durable
+evidence or pure approval. Those remain under the existing validator owner;
+composition/v3.5 consume it and Prefix implementation is unchanged.
