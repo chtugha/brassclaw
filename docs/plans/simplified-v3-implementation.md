@@ -13661,3 +13661,21 @@ failure and both runners are preserved. This is not technical resource admission
 computed-argument or handoff compatibility, complete private Q1, trusted durable
 evidence or pure approval. Those remain under the existing validator owner;
 composition/v3.5 consume it and Prefix implementation is unchanged.
+
+### 2026-10-24 — sealed-subject contract rule through the global Recipe
+
+The installation-retained `python_contracts` draft consumes the complete sealed
+subject and its pinned recursive checker. A closed four-step Recipe composes
+it with existing Collection/Aggregation and the sealed input/result observer.
+[Scoped acceptance](../validation/2026-10-24-python-contract-review.md) passes
+eight actual Monty/PG tests, strict affected/root lint, format and whitespace.
+Invalid root/private dependency contracts aggregate negative; another original
+subject with identical outputs is rejected at receipt validation. No Tool effect,
+model exchange or review evidence is created. The packaged source embed belongs
+to the existing bootstrap owner, without a runtime fallback.
+
+Concurrent reference-guide edits are excluded only from this isolated runtime-code
+claim; current embedded-guide payload and the final regular app still require
+combined acceptance. All failed attempts and exact reused worker identity remain
+recorded. Full definitions/dependency/call/binding rules, durable Q1 evidence and
+activation remain in validator Steps 3/8–10; composition/v3.5 reuse that owner.

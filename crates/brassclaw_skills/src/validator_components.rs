@@ -16,6 +16,43 @@ pub const PRELOAD_DEFINITION_SOURCE: &str = include_str!("validator_preload_defi
 pub const SUBJECT_SOURCES_SOURCE: &str = include_str!("validator_subject_sources.py");
 pub const RECURSIVE_CONTRACT_SOURCE: &str = include_str!("validator_recursive_contract.py");
 
+/// Review every selected PythonCode's public contracts using the existing pure
+/// grammar export. The exact original subject and helper selection are supplied
+/// by the review owner; this code grants no provenance or component approval.
+pub fn python_contracts_draft(
+    id: Uuid,
+    recursive_rule: Uuid,
+    source: &str,
+) -> Result<ComponentRevisionDraft, RevisionError> {
+    if id.is_nil() || recursive_rule.is_nil() || id == recursive_rule {
+        return Err(RevisionError::Invalid(
+            "distinct Python contract rule identities required",
+        ));
+    }
+    let draft = ComponentRevisionDraft::from_json(&json!({
+        "format":"component-revision/1","uuid":id,"class_code":22,
+        "document":{
+            "name":"check-review-python-contracts",
+            "description":"Inspect all class-22 candidate/dependency public input/result contracts from the complete strict retained subject using the pinned check_recursive_contract export with fixed input/result positions. Preserve every negative diagnostic; exclude the comparison base and leave non-Python records for their own checks. Private helper-only libraries need no invented public boundary, but any present contract is checked. Do not execute candidate source, infer binding/call/semantic agreement, establish native resource admission/provenance, write evidence or approve components. The original sealed subject and actual result/input edges must be observed by the existing trusted review owner.",
+            "content":source,"includes":[],"dependency_registry":null,
+            "input_contract":{"subject_json":{"type":"string","required":true,"checks":[]}},
+            "result_contract":rule_contract(),
+            "preload":{"format":"python-preload/2","exports":{
+                "check_review_python_contracts":{"symbol":"check_review_python_contracts","parameters":["inputs"],"mapping":true}
+            },"private_functions":{},"constants":[],"imports":["json"],"dependencies":[recursive_rule],"default_export":"check_review_python_contracts"}
+        },"dependencies":[recursive_rule],"association":null
+    }).to_string())?;
+    crate::value_contract::InputContract::from_value(
+        &draft.document()["input_contract"],
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    crate::value_contract::ValueContract::result_from_value(
+        &draft.document()["result_contract"],
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    Ok(draft)
+}
+
 /// Check the current recursive consumer/result/Tool-parameter grammar as pure
 /// Recipe logic. The owner supplies JSON encoded from the strict retained reader;
 /// this rule is not duplicate-key/integrity provenance or behavioral approval.

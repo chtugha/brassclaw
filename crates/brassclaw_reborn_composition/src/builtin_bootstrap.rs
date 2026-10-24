@@ -85,6 +85,11 @@ pub(crate) const DEFAULT_ORCHESTRATOR_SEED: &str =
 pub(crate) const GLOBAL_ORCHESTRATOR_SEED: &str =
     include_str!("../../brassclaw_engine/orchestrator/global_mode.py");
 
+/// Installation draft only; execution reads its retained immutable selection.
+#[cfg(feature = "skills-db")]
+pub(crate) const VALIDATOR_PYTHON_CONTRACTS_SEED: &str =
+    include_str!("../../brassclaw_skills/src/validator_python_contracts.py");
+
 /// Seed content for the codeact_preamble (class 10).
 pub(crate) const CODEACT_PREAMBLE_SEED: &str =
     include_str!("../../brassclaw_engine/prompts/codeact_preamble.md");
@@ -892,8 +897,8 @@ pub(crate) async fn retain_validator_check_drafts(
     use brassclaw_skills::{
         global_bootstrap_components::packaged_component_id,
         validator_components::{
-            preload_definition_draft, recursive_contract_draft, structural_presence_draft,
-            subject_sources_draft,
+            preload_definition_draft, python_contracts_draft, recursive_contract_draft,
+            structural_presence_draft, subject_sources_draft,
         },
     };
 
@@ -903,6 +908,11 @@ pub(crate) async fn retain_validator_check_drafts(
         preload_definition_draft(packaged_component_id("validator:preload-definition")),
         subject_sources_draft(packaged_component_id("validator:subject-sources")),
         recursive_contract_draft(packaged_component_id("validator:recursive-contract")),
+        python_contracts_draft(
+            packaged_component_id("validator:python-contracts"),
+            packaged_component_id("validator:recursive-contract"),
+            VALIDATOR_PYTHON_CONTRACTS_SEED,
+        ),
     ] {
         let draft = draft.map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
             reason: error.to_string(),

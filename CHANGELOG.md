@@ -18,6 +18,11 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- A retained PythonCode contract-review draft that checks the complete sealed
+  candidate/dependency graph through the pinned recursive checker. A closed
+  Monty Recipe composes it with existing Collection/Aggregation and verifies
+  original subject/result edges, including equal-output subject substitution.
+  This remains prerequisite validation, without Q1 evidence or activation.
 - A pure recursive-contract checking draft for retained validator Recipes,
   covering current consumer-input, Tool-parameter and result grammar, nested
   defaults, missing/null distinctions and exact numeric bounds. Its position

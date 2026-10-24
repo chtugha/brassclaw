@@ -124,6 +124,16 @@ and completes two remaining tests plus strict lint/format. This is grammar
 coverage, not resource admission, computed arguments, handoff compatibility,
 complete class Q1 or approval. See [the exact component scope](reborn/recursive-contract-check.md).
 
+[Sealed-subject contract-Recipe acceptance](validation/2026-10-24-python-contract-review.md)
+adds the retained `python_contracts` draft and composes its pinned recursive helper
+with existing Collection/Aggregation on the real closed global Python flow.
+Eight native worker/PG tests plus strict affected/root lint and format pass.
+Invalid root/dependency contracts aggregate negative; swapped original subject
+data fails the sealed receipt check even with identical positive output. There
+are no Tool effects, model exchanges or new review evidence. The isolated scope
+does not certify concurrent embedded-guide edits or a final regular app artifact;
+full mandatory coverage and durable Q1/approval remain open.
+
 ## Implemented boundaries
 
 | Area | Actual implementation and supported boundary | Remaining qualification or cutover |

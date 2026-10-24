@@ -38,3 +38,20 @@ blindly. The installation owner preserves original drafts and operator successor
 without approval or activation. Integrate through [the existing validator owner](pure-component-review.md#exact-remaining-cutover-contract)
 with actual subject/native facts, run/attempt/settlement/interpreter records and
 approved mandatory coverage before production Q1 or general pure approval.
+
+## Complete subject consumer
+
+`python_contracts_draft` composes the pinned checker over all class-22 candidate
+and dependency documents from `subject_json`, supplied by the existing sealed
+reader. The installation bootstrap owns its packaged source; the factory receives
+that source explicitly and creates no runtime fallback. Positions are fixed to
+input/result by the consumer code. Missing public contracts yield diagnostics;
+private helper-only libraries need none, but any present contract is checked.
+The comparison base and non-Python dependencies remain outside this grammar rule.
+
+[Scoped actual execution](../validation/2026-10-24-python-contract-review.md)
+connects this draft to existing Collection/Aggregation and the sealed observer
+through the real closed global Python flow. An invalid dependency is not omitted;
+another sealed subject with equal outputs fails receipt validation. All results
+remain observations with Q1/semantic flags false. This integration adds no public
+command, Tool, Skill, evidence writer or active production validator.

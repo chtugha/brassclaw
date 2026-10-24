@@ -2,6 +2,30 @@
 
 ## Wiederaufnahme und aktueller Stand
 
+Neuester lokaler Schritt: [der vollständige Subject-Vertragsprüfer](validation/2026-10-24-python-contract-review.md)
+ist implementiert und mit acht tatsächlichen Monty/PG-Tests, strengem betroffenem
+Root-/Skills-/Composition-Clippy, Format und Whitespace geprüft. Er verbindet
+den gepinnten rekursiven Checker mit vorhandener Collection/Aggregation und dem
+versiegelten Observer im geschlossenen globalen Python-Flow. Ungültige Haupt-/
+Abhängigkeitsverträge sind negative Ergebnisse; ein vertauschter Prüfling mit
+gleichem Ergebnis scheitert bei der tatsächlichen Abschlussprüfung. Es entsteht
+keine Q1-Evidenz oder Aktivierung. Der neue Source-Embed liegt beim Bootstrap-Owner.
+
+Parallel werden AGENTS/CLAUDE/recipe und Entwicklungsrichtlinie von einem anderen
+Arbeitsstrang überarbeitet; `mythbuster.md` kommt ebenfalls von dort. Diese
+Änderungen bleiben erhalten. Der neue isolierte Prüfbereich konsumiert keine
+Markdown-Payloads und bestätigt nur unveränderte Runtime-/Schema-/Python-Quellen.
+Aktuelle eingebettete Guides und das endgültige reguläre App-Artefakt sind damit
+noch nicht bestätigt. Alte reguläre Builds nicht als aktuellen kombinierten
+Produktstand deklarieren. Tatsächliche Fehlversuche und Runner bleiben unter
+`target/accepted-evidence/python-contract-review-20261024/` erhalten.
+
+Nächster Schritt: Originalsubject/native Inventardaten → vollständige Definitions-,
+Abhängigkeits-/Aufruf-/Bindungsregeln → vorhandene Aggregation → vertrauenswürdige
+dauerhafte Evidenz im bestehenden Validator-Owner. Die vollständige private Q1,
+allgemeine Pure-Freigabe und Gesamtpläne bleiben offen. Der Benutzer hat weiterhin
+Fortsetzung beauftragt; kein neuer Stopp oder Abschluss ist erfolgt.
+
 Neuester Implementierungsschritt: [der reine rekursive Vertragsprüfer](reborn/recursive-contract-check.md)
 ist ergänzt und [mit 15 passenden Tests sowie strengem Clippy/Format geprüft](validation/2026-10-24-recursive-contract.md).
 Der vorangehende Source-Extraction-Zwischenstand ist als `04e4f5e41` auf `main`

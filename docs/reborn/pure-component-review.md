@@ -82,6 +82,14 @@ computed arguments and producer/consumer compatibility remain separate; a positi
 grammar result grants no Q1, behavior, provenance or approval. Finish the complete
 subject-bound check/aggregate/evidence path below before activation.
 
+The [complete-subject grammar consumer](../validation/2026-10-24-python-contract-review.md)
+now composes that pinned checker with existing Collection/Aggregation in a closed
+global Python Recipe. The sealed observer accepts actual positive/negative
+results and rejects a substituted subject even when its outputs agree. Private
+helper-only contracts stay optional; declared invalid dependency contracts are
+checked. This one-rule fixture is not complete class-22 Q1. Native definition,
+dependency/call/binding rules and trusted durable evidence remain required below.
+
 ## Declaration: `pure-component-approval/1`
 
 `PureComponentApprovalDeclaration::from_json` accepts exactly these fields:

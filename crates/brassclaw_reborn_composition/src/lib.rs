@@ -1184,6 +1184,8 @@ mod validator_component_tests;
 #[cfg(all(test, feature = "skills-db"))]
 mod validator_preload_tests;
 #[cfg(all(test, feature = "skills-db"))]
+mod validator_python_contract_tests;
+#[cfg(all(test, feature = "skills-db"))]
 mod validator_recursive_contract_tests;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
