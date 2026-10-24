@@ -13607,3 +13607,38 @@ test-only caller change. Full original-subject extraction, class checks, trusted
 durable evidence, pure approval and ordinary command/MCP qualification remain
 under validator's existing owner, consumed by composition and v3.5. No Prefix
 implementation is changed or full-plan/release/platform acceptance inferred.
+
+### 2026-10-24 — operator pause and restart handoff
+
+The canonical inventory checkpoint is committed/pushed as `9c063c7be`. A local
+uncommitted successor adds pure source extraction from the existing sealed
+candidate/dependency subject, excluding its comparison base, and installation
+draft retention. The actual closed Python-flow/native inventory integration,
+canonical inventory callers, sealed graph and live parser profiles passed five
+tests after successful regular app/worker and test builds. The operator then
+requested a stop: the ordinary global-root regression was interrupted, remaining
+tests/lint/final acceptance are incomplete. No code/test failure or full success
+is inferred from the interruption. The goal is paused; own processes are stopped.
+See [the durable restart handoff](../development-handoff.md) for exact files,
+hashes, archived runners, missing checks and the continuation sequence. This is
+not full class-22 Q1, trusted durable evidence, pure approval or activation.
+
+### 2026-10-24 — source-extraction validation resumed and completed
+
+The operator resumed work. The source and all 34 retained artifacts were checked
+against the interrupted run: only its three unembedded handoff/status/journal
+documents differed. The regular app/worker, test build and five completed tests
+remain applicable; ten open tests now pass, including a complete rerun of the
+interrupted ordinary global regression. Strict affected/root lint, format and
+whitespace pass. The original interrupted receipt is preserved without relabelling
+it as success. [The successor acceptance record](../validation/2026-10-24-subject-source-inventory.md)
+documents the exact 15-test combined scope and restored canonical binary pair.
+
+The existing installation owner retains the pure source-extraction draft and
+operator successors. Actual sealed candidate/dependency sources reach the existing
+inventory usage through Python/typed Recipe edges, excluding comparison-only
+base and non-Python metadata. Native hashes, journal arguments and original
+input/result fingerprints are checked. No new Rust workflow, parser, evidence
+writer, approval or active route is introduced. Complete mandatory class rules,
+private production scheduling and durable review/pure approval remain with
+validator Steps 3/8–10; composition and v3.5 consume that owner.

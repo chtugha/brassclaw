@@ -13,6 +13,37 @@ pub const AGGREGATE_SOURCE: &str = include_str!("validator_aggregate.py");
 pub const COLLECT_SOURCE: &str = include_str!("validator_collect.py");
 pub const STRUCTURAL_PRESENCE_SOURCE: &str = include_str!("validator_structural_presence.py");
 pub const PRELOAD_DEFINITION_SOURCE: &str = include_str!("validator_preload_definition.py");
+pub const SUBJECT_SOURCES_SOURCE: &str = include_str!("validator_subject_sources.py");
+
+/// Extract all class-22 sources from the sealed reader's complete subject. The
+/// comparison base is excluded; non-Python dependencies remain in the original
+/// subject for their separate checks. This transformation is not a provenance
+/// verifier: the review owner must bind/observe the actual retained subject.
+pub fn subject_sources_draft(id: Uuid) -> Result<ComponentRevisionDraft, RevisionError> {
+    let draft = ComponentRevisionDraft::from_json(&json!({
+        "format":"component-revision/1","uuid":id,"class_code":22,
+        "document":{
+            "name":"extract-review-python-sources",
+            "description":"Extract every exact class-22 content string from the complete retained candidate/dependency subject into a UUID-keyed inventory, preserving empty text and excluding the comparison base. Non-Python records remain available in the original subject for separate checks. No candidate executes, source is not normalized or truncated, and this pure transformation establishes no integrity, review provenance, verdict or approval. The trusted owner must supply the sealed subject and observe its actual typed input/result edges.",
+            "content":SUBJECT_SOURCES_SOURCE,"includes":[],"dependency_registry":null,
+            "input_contract":{"subject_json":{"type":"string","required":true,"checks":[]}},
+            "result_contract":{"type":"object","checks":[],"fields":{},"allow_extra_fields":true,
+                "extra_fields":{"type":"string","checks":[]}},
+            "preload":{"format":"python-preload/2","exports":{
+                "extract_review_python_sources":{"symbol":"extract_review_python_sources","parameters":["inputs"],"mapping":true}
+            },"private_functions":{},"constants":[],"imports":["json"],"dependencies":[],"default_export":"extract_review_python_sources"}
+        },"dependencies":[],"association":null
+    }).to_string())?;
+    crate::value_contract::InputContract::from_value(
+        &draft.document()["input_contract"],
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    crate::value_contract::ValueContract::result_from_value(
+        &draft.document()["result_contract"],
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    Ok(draft)
+}
 
 /// Compare one declared function library with actual mechanical parser facts.
 /// This rule neither executes the candidate nor resolves/approves its dependency

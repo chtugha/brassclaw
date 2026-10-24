@@ -18,6 +18,10 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- A retained pure source-extraction draft for validator Recipes. It forwards all
+  class-22 candidate/dependency text, including empty sources, to the existing
+  inventory usage as typed data while excluding the comparison base. Retention
+  preserves operator successors and grants no review evidence or activation.
 - Canonical complete-inventory Skill/export/association and Recipe drafts for
   the existing source-inspection Tool. Decode explicit ID/source pairs as typed
   data, reject duplicate IDs before any native call and publish the unchanged

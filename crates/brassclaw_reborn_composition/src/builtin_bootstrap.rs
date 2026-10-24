@@ -891,13 +891,16 @@ pub(crate) async fn retain_validator_check_drafts(
 ) -> Result<(), SeedBuiltinBootstrapError> {
     use brassclaw_skills::{
         global_bootstrap_components::packaged_component_id,
-        validator_components::{preload_definition_draft, structural_presence_draft},
+        validator_components::{
+            preload_definition_draft, structural_presence_draft, subject_sources_draft,
+        },
     };
 
     let store = brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone());
     for draft in [
         structural_presence_draft(packaged_component_id("validator:structural-presence")),
         preload_definition_draft(packaged_component_id("validator:preload-definition")),
+        subject_sources_draft(packaged_component_id("validator:subject-sources")),
     ] {
         let draft = draft.map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
             reason: error.to_string(),

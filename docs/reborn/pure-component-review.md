@@ -55,8 +55,14 @@ categories, source/ID correlation, whole-operation resource failure and ordinary
 policy/settings/model consumers. This closes a mechanical prerequisite for a
 fixed private review Recipe to inspect its full source graph without per-row Tool
 occurrences. It does not qualify the inventory usage or supply subject provenance.
-Next wire pure original-subject extraction -> actual inventory Tool result ->
-definition/graph checks -> aggregate through the existing typed edges/observer.
+The pure original-subject extraction draft now feeds all actual class-22 source
+text into this existing usage through typed Recipe edges; [scoped acceptance](../validation/2026-10-24-subject-source-inventory.md)
+covers exact source/worker hashes, captured input/result fingerprints, original
+dependency selection and pre-effect malformed-input failures. The comparison
+base remains separate and non-Python records stay in the original review subject.
+This transformation is not a provenance verifier or trusted Q1 writer. Next wire
+the complete required definition/graph/call/schema checks -> aggregate and trusted
+subject/native-fact custody through the existing observer and durable owner.
 The [canonical usage successor](../validation/2026-10-24-source-inventory-usage.md)
 now retains exact source/inventory drafts and their actual native Tool identity
 at ordinary startup. Its command Recipe separates pure pair decoding, one parser

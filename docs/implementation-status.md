@@ -1,5 +1,11 @@
 # v3 implementation status and work ownership
 
+> **Resumed by the operator — 2026-10-24:** [the restart handoff](development-handoff.md)
+> records the preserved interruption and its completed successor. Source extraction
+> now has scoped acceptance: five applicable earlier tests plus ten completed
+> successor tests, strict affected/root lint and formatting. Full class Q1 and
+> trusted durable review/approval remain open.
+
 Reconciled on **2026-10-24** against the common `main` working tree. Consolidation
 started from `580a7f73e`; the raw-source checkpoint is `c52bdc2e0`. This index
 includes the successors through `747bcfff6`: pure-review prerequisites,
@@ -97,6 +103,17 @@ ID/source pairs before the native call; the canonical command Recipe posts the
 unchanged report through the existing reply usage. Actual closed global-flow and
 PG journal observations cover completion and failure. This is not public command/
 MCP activation, complete class Q1 or original-subject/native-fact custody.
+
+[Sealed-subject source-extraction acceptance](validation/2026-10-24-subject-source-inventory.md)
+adds the pure `extract_review_python_sources` draft, retained at startup without
+approval or activation. All class-22 candidate/dependency sources, including empty
+text, reach the existing inventory usage as typed data; the comparison base and
+non-Python metadata are excluded from that parser input. Actual closed Python-flow,
+native hashes, PG arguments and captured input/result fingerprints cover original
+selection, operator successors and six pre-effect failures. The 15-test scope
+reuses five completed unchanged-source cases and completes ten after the deliberate
+pause. The interruption is preserved. Mandatory rules, complete private class
+routes and trusted run/attempt/settlement/evidence writers remain required.
 
 ## Implemented boundaries
 

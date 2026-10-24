@@ -76,8 +76,13 @@ Ordinary startup retains exact drafts and native identity through the existing
 immutable store, without replacing operator successors, enabling blocked Tools,
 writing approval or publishing a route. [Scoped acceptance](../validation/2026-10-24-source-inventory-usage.md)
 uses the actual global Python flow/kernel/PG journal; it is not ordinary matched
-command/MCP qualification. Qualification, original-subject source extraction and
-the complete class-22 workflow remain under
+command/MCP qualification. The installed pure `subject_sources_draft` now extracts
+every class-22 source from the sealed candidate/dependency subject without reading
+its comparison base or treating non-Python metadata as code. [Scoped native
+acceptance](../validation/2026-10-24-subject-source-inventory.md) checks the complete
+typed flow, retained original versions, actual hashes/journal and pre-effect
+failures. The pure transformation establishes no integrity or review provenance.
+Qualification, complete subject-bound checking and the class-22 workflow remain under
 [validator Step 5–10](../../validator_v3.md#remaining-implementation--consolidated-2026-10-22).
 Use actual Tool-result edges and the existing subject-bound observer. Caller-shaped
 facts or these report fields alone are not trusted review evidence. General pure
