@@ -13699,3 +13699,17 @@ This remains a private unreviewed partial class-22 Recipe, not the full mandator
 check set, ordinary Q1 admission, trusted settled evidence, approval or activation.
 Validator Steps 3/8–10 still own those gates. Updated guide payloads and final
 regular product artifacts require separate combined acceptance.
+
+### 2026-10-24 — pinned retained profile and private Python graph rule
+
+The existing preflight predicates and read-only name facts share one declaration;
+all 50 builtin and 18 import names remain unchanged. The installation owner pins
+the profile in the existing private Recipe alongside actual prerequisite results.
+The ninth step/third rule checks dependency closure/cycles, physical and public
+symbols, positional signatures and original references without recursive graph
+walks or full transitive symbol-set copies per component. No kernel authority or
+new budget is introduced. [Scoped acceptance](../validation/2026-10-24-python-graph-review.md)
+passes 50 actual tests, 17 closed Recipe cases, full-feature/default strict lint,
+format and whitespace. Complete pure/call/binding/behavior checks, ordinary private
+Q1 admission, trusted settled evidence and activation remain validator-owned work.
+Current embedded-guide and final regular product acceptance remain separate.

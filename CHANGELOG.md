@@ -18,6 +18,10 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- Read-only retained-preflight profile facts derived from the same native name
+  declarations as enforcement, plus a private graph-checking draft and typed
+  profile/prerequisite-result edges. These remain unreviewed Recipe data; current
+  kernel policy and runtime preflight continue independently.
 - A private immutable source/definition/contract review Recipe draft that reuses
   the existing native inventory usage, checks every selected declaration against
   actual parser facts, and preserves both complete rule results through existing

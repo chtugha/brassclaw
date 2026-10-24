@@ -2,7 +2,40 @@
 
 ## Wiederaufnahme und aktueller Stand
 
-**Neuester geprüfter Schritt:** [private Source-/Definitions-/Vertrags-Recipe](validation/2026-10-24-python-structure-review.md).
+**Neuester abgeschlossener Prüfschritt:** [native Profilfakten und private Graphregel](validation/2026-10-24-python-graph-review.md).
+50 tatsächliche Tests, striktes Root/Engine/Skills/Composition-Clippy mit
+Vollfeatures und PostgreSQL-Defaults, Format und Whitespace sind bestanden.
+Die private Recipe hat neun Schritte und drei Regeln. Profilkonstanten stammen
+aus denselben unveränderten 50 Builtin-/18 Import-Deklarationen wie die native
+Preflight-Prüfung. Originalsubject/native Fakten und tatsächliche Definitions-/
+Vertragsresultate sind gepinnt. 17 geschlossene Recipe-Fälle belegen Graph-,
+Symbol-, Alias-, Positions-, Geschwister-/Transitivitäts- und Substitutionsfälle.
+Keine Q1-Evidenz, Pure-Freigabe oder Aktivierung entsteht.
+
+Belege: `target/accepted-evidence/python-graph-review-20261024/run-1/`;
+`accepted.json` SHA-256
+`f245d05f4db0d2555861267e128d1b9a9e62d1fd07be9caff424870d65257485`.
+Alle Runtime-Quellen und Artefakte sind nach Abschluss erneut hashgeprüft.
+Runner/Logs/Native-Diagnosen sind erhalten. Es läuft kein eigener Cargo-Lauf mehr.
+Aktuelle parallele Guide-/Plan-/Scanneränderungen und die endgültige reguläre
+App bleiben außerhalb dieses isolierten Prüfergebnisses.
+
+**Nächste Implementierung:** separate private Reinheits-Recipe über denselben
+Bausteinen, damit Tool verwendender PythonCode nicht von einer allgemeinen
+Strukturregel abgelehnt wird. Ein erster reiner Aufrufprüfer liegt vorläufig in
+`/private/tmp/brassclaw-validator-python-pure-calls.py`, seine Factory als Entwurf
+in `/private/tmp/brassclaw-validator-python-pure.rs`. Noch nicht im Produktbaum.
+Echte Worker-Diagnosen für Hostaufrufe, Selbst-/Helper-/unselected-export-Rekursion,
+Konstantenaufruf, reine Funktionswerte und erlaubte unbenutzte reine Rekursion
+bestehen (`/private/tmp/brassclaw-python-pure-calls-diagnostic.py`, Daten unter
+`target/accepted-evidence/python-pure-calls-review-20261024/diagnostic/`).
+Das sind synthetische Diagnoseenvelopes mit echten Parserfakten, keine
+versiegelte Abnahme/Behavior/Q1. Factory/Bootstrap/Recipe/Observer-Integration
+zusammen fertigstellen und erst danach gezielt prüfen. Private Produktionsadmission,
+vertrauenswürdige Run-/Attempt-/Settlement-/Interpreter-Evidenz, vollständige
+Verhaltenschecks und checked writer/readers bleiben im bestehenden Validator-Owner.
+
+**Vorheriger geprüfter Schritt:** [private Source-/Definitions-/Vertrags-Recipe](validation/2026-10-24-python-structure-review.md).
 Elf frische native Monty/PG-Tests und drei anwendbare Einzelresultate bestehen;
 strenges Vollfeature- und PostgreSQL-Default-Clippy, Format und Whitespace ebenfalls.
 Die echte Installation behält private Entwürfe, Originale und Operator-Nachfolger;

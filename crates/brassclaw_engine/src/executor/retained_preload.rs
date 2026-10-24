@@ -218,61 +218,7 @@ pub(crate) fn dependency_order(
 
 /// Only pinned declarations and the interpreter's qualified pure builtins may
 /// satisfy free symbols. Imports are validated independently by source inspection.
-pub fn builtin(name: &str) -> bool {
-    matches!(
-        name,
-        "host"
-            | "abs"
-            | "all"
-            | "any"
-            | "bool"
-            | "bytes"
-            | "bytearray"
-            | "chr"
-            | "dict"
-            | "divmod"
-            | "enumerate"
-            | "filter"
-            | "float"
-            | "format"
-            | "frozenset"
-            | "hash"
-            | "hex"
-            | "int"
-            | "isinstance"
-            | "issubclass"
-            | "iter"
-            | "len"
-            | "list"
-            | "map"
-            | "max"
-            | "min"
-            | "next"
-            | "ord"
-            | "pow"
-            | "range"
-            | "repr"
-            | "reversed"
-            | "round"
-            | "set"
-            | "slice"
-            | "sorted"
-            | "str"
-            | "sum"
-            | "tuple"
-            | "type"
-            | "zip"
-            | "Exception"
-            | "ValueError"
-            | "TypeError"
-            | "KeyError"
-            | "IndexError"
-            | "RuntimeError"
-            | "AssertionError"
-            | "ZeroDivisionError"
-            | "StopIteration"
-    )
-}
+pub use super::retained_profile::builtin;
 
 #[cfg(test)]
 mod tests {

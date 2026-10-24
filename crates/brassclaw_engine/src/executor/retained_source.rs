@@ -12,7 +12,7 @@ use brassclaw_monty_host::{
 use brassclaw_skills::association_contract::ComponentRevisionRef;
 use uuid::Uuid;
 
-use super::retained_recipe::RetainedProgram;
+use super::{retained_profile::supported_import, retained_recipe::RetainedProgram};
 
 #[derive(thiserror::Error)]
 pub enum RetainedSourceError {
@@ -518,29 +518,6 @@ impl InspectedRetainedProgram {
 // adapter compatibility, not a license to run module I/O: any OS request still
 // needs the executor's explicit kernel-controlled boundary. os is forbidden by
 // the PythonCode contract even though the interpreter can parse its import.
-fn supported_import(name: &str) -> bool {
-    matches!(
-        name,
-        "asyncio"
-            | "base64"
-            | "binascii"
-            | "collections"
-            | "copy"
-            | "dataclasses"
-            | "datetime"
-            | "functools"
-            | "itertools"
-            | "json"
-            | "math"
-            | "pathlib"
-            | "random"
-            | "re"
-            | "sys"
-            | "time"
-            | "typing"
-            | "unicodedata"
-    )
-}
 
 // Conservative structural qualification, not behavioral approval. Tool-calling
 // recursion, closures, first-class aliases and repeatable dispatches require a

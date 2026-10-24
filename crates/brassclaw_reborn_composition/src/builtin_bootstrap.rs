@@ -93,6 +93,9 @@ pub(crate) const VALIDATOR_PYTHON_CONTRACTS_SEED: &str =
 pub(crate) const VALIDATOR_PYTHON_DEFINITIONS_SEED: &str =
     include_str!("../../brassclaw_skills/src/validator_python_definitions.py");
 
+pub(crate) const VALIDATOR_PYTHON_GRAPH_SEED: &str =
+    include_str!("../../brassclaw_skills/src/validator_python_graph.py");
+
 #[cfg(feature = "skills-db")]
 pub(crate) const VALIDATOR_STRUCTURE_RECEIPT_SEED: &str =
     include_str!("../../brassclaw_skills/src/validator_structure_receipt.py");
@@ -905,7 +908,8 @@ pub(crate) async fn retain_validator_check_drafts(
         global_bootstrap_components::packaged_component_id,
         validator_components::{
             preload_definition_draft, python_contracts_draft, python_definitions_draft,
-            recursive_contract_draft, structural_presence_draft, subject_sources_draft,
+            python_graph_draft, recursive_contract_draft, structural_presence_draft,
+            subject_sources_draft,
         },
     };
 
@@ -924,6 +928,10 @@ pub(crate) async fn retain_validator_check_drafts(
             packaged_component_id("validator:python-definitions"),
             packaged_component_id("validator:preload-definition"),
             VALIDATOR_PYTHON_DEFINITIONS_SEED,
+        ),
+        python_graph_draft(
+            packaged_component_id("validator:python-graph"),
+            VALIDATOR_PYTHON_GRAPH_SEED,
         ),
     ] {
         let draft = draft.map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
@@ -949,6 +957,11 @@ pub(crate) async fn retain_validator_structure_drafts(
     let drafts = brassclaw_skills::validator_components::python_structure_drafts(
         inventory,
         VALIDATOR_STRUCTURE_RECEIPT_SEED,
+        serde_json::to_value(brassclaw_engine::executor::retained_profile::profile()).map_err(
+            |error| SeedBuiltinBootstrapError::ComponentRevision {
+                reason: error.to_string(),
+            },
+        )?,
     )
     .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
         reason: error.to_string(),

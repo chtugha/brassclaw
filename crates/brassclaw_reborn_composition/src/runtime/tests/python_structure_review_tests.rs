@@ -77,7 +77,7 @@ impl InternalRecipeSource for StructureInvocation {
             .filter(|v| {
                 v.keys()
                     .map(String::as_str)
-                    .eq(["0:1", "0:3", "0:4", "0:5", "0:6", "0:7"])
+                    .eq(["0:1", "0:3", "0:4", "0:5", "0:6", "0:7", "0:8"])
             })
             .ok_or_else(invalid)?;
         if !matches!(&execution.host_answers()[0].1,PortAnswer::Return {value}
@@ -94,7 +94,7 @@ impl InternalRecipeSource for StructureInvocation {
             .iter()
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
-        results.insert("0:8".into(), json!(receipt));
+        results.insert("0:9".into(), json!(receipt));
         assert!(!self.receipt_seen.swap(true, Ordering::SeqCst));
         let observed = self
             .coverage
@@ -154,6 +154,7 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
     let drafts = python_structure_drafts(
         usage,
         crate::builtin_bootstrap::VALIDATOR_STRUCTURE_RECEIPT_SEED,
+        serde_json::to_value(brassclaw_engine::executor::retained_profile::profile()).unwrap(),
     )
     .unwrap();
     let recipe = drafts.iter().find(|d| d.class_code() == 21).unwrap();
@@ -258,7 +259,7 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
         .get::<_, i64>(0);
     let source = "def candidate(inputs):\n    return helper(inputs['text'])\n";
     let mut first_inputs = None;
-    for case in 0..10 {
+    for case in 0..17 {
         let helper = Uuid::new_v4();
         let candidate = Uuid::new_v4();
         let mut helper_doc = python(helper, &[], "def helper(value):\n    return value\n", false);
@@ -284,7 +285,60 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
                     json!({"type":"string","default":"invalid output default"})
             }
             8 => candidate_doc["document"]["preload"]["dependencies"] = json!([]),
+            10 => {
+                candidate_doc["document"]["content"] =
+                    json!("def candidate(inputs):\n    return missing(inputs['text'])\n")
+            }
+            11 => {
+                candidate_doc["document"]["content"] =
+                    json!("def candidate(inputs):\n    return inputs['text']\n");
+                helper_doc["document"]["content"] =
+                    json!("def candidate(value):\n    return value\n");
+                helper_doc["document"]["preload"]["private_functions"] =
+                    json!({"candidate":["value"]});
+            }
+            12 => {
+                helper_doc["document"]["preload"]["exports"] =
+                    json!({"candidate":{"symbol":"helper","parameters":["value"],"mapping":false}});
+                helper_doc["document"]["preload"]["private_functions"] = json!({});
+                helper_doc["document"]["preload"]["default_export"] = json!("candidate");
+                helper_doc["document"]["input_contract"] =
+                    json!({"value":{"type":"string","required":true,"checks":[]}});
+                helper_doc["document"]["result_contract"] = json!({"type":"string"});
+            }
+            13 => {
+                candidate_doc["document"]["preload"]["exports"]["candidate"]["mapping"] =
+                    json!(false)
+            }
+            16 => {
+                candidate_doc["document"]["content"] =
+                    json!("def candidate(inputs):\n    return __execute_action__('not executed')\n")
+            }
             _ => {}
+        }
+        let mut dependency_refs = Vec::new();
+        if case == 14 || case == 15 {
+            let other = Uuid::new_v4();
+            let mut other_doc = python(other, &[], "def other(value):\n    return value\n", false);
+            other_doc["document"]["preload"]["private_functions"] = json!({"other":["value"]});
+            dependency_refs.push(
+                store
+                    .stage(
+                        &ComponentRevisionDraft::from_json(&other_doc.to_string()).unwrap(),
+                        0,
+                    )
+                    .await
+                    .unwrap(),
+            );
+            helper_doc["document"]["content"] =
+                json!("def helper(value):\n    return other(value)\n");
+            if case == 14 {
+                candidate_doc["dependencies"] = json!([helper, other]);
+                candidate_doc["document"]["preload"]["dependencies"] = json!([helper, other]);
+            } else {
+                helper_doc["dependencies"] = json!([other]);
+                helper_doc["document"]["preload"]["dependencies"] = json!([other]);
+            }
         }
         let helper_ref = store
             .stage(
@@ -293,6 +347,7 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
             )
             .await
             .unwrap();
+        dependency_refs.push(helper_ref);
         let submission = Uuid::new_v4();
         PgReviewSubmissionStore::new(rig.pool.clone())
             .submit(
@@ -301,7 +356,7 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
                     "development-python-structure-review",
                     ComponentRevisionDraft::from_json(&candidate_doc.to_string()).unwrap(),
                     None,
-                    vec![helper_ref],
+                    dependency_refs,
                 )
                 .unwrap(),
             )
@@ -439,11 +494,11 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
             assert_eq!(report["semantic_approval"], false);
             assert_eq!(
                 report["aggregation"]["pass"],
-                case == 0,
+                case == 0 || case == 15,
                 "case {case}: {report}"
             );
             let rules = report["rules"].as_array().unwrap();
-            assert_eq!(rules.len(), 2);
+            assert_eq!(rules.len(), 3);
             assert_eq!(
                 rules
                     .iter()
@@ -456,7 +511,15 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
                     .iter()
                     .find(|r| r["rule_id"] == "python_definitions")
                     .unwrap()["ok"],
-                case == 0 || case == 6 || case == 7
+                case == 0 || case == 6 || case == 7 || case >= 10
+            );
+            assert_eq!(
+                rules
+                    .iter()
+                    .find(|r| r["rule_id"] == "python_graph")
+                    .unwrap()["ok"],
+                case == 0 || case == 15,
+                "case {case}: {report}"
             );
         }
         bootstrap_validation::settle_closed(&admitted)

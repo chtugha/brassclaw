@@ -102,6 +102,15 @@ class-22 qualification, an ordinary production Q1 producer, settled durable
 evidence or activation. Complete graph/call/binding/behavior and the existing
 trusted review owner below remain required; do not build another parser/scheduler.
 
+The [pinned native profile/graph rule](../validation/2026-10-24-python-graph-review.md)
+now extends the private draft to nine steps and three rules. Actual retained-host
+name facts are pinned as a typed constant, and real prior definition/contract
+results precede dependency/closure/cycle/namespace/reference checks. Fifty tests,
+including 17 closed Recipe cases, and strict relevant lint pass. This does not
+establish a host-free closure, complete Tool-call/binding or behavior agreement,
+production review admission, Q1 evidence, pure approval or activation. Finish
+these existing-owner gates below; do not introduce another parser or scheduler.
+
 ## Declaration: `pure-component-approval/1`
 
 `PureComponentApprovalDeclaration::from_json` accepts exactly these fields:

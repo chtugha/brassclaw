@@ -148,6 +148,17 @@ review/approval remain open; edited guides/final regular app are outside this sc
 
 ## Implemented boundaries
 
+[Pinned native profile/graph acceptance](validation/2026-10-24-python-graph-review.md)
+extends the private structure draft to nine steps and three rules. Actual native
+preflight name facts are pinned as typed constants; the new rule checks exact
+dependencies, cycles, closure, symbol/export conflicts, positional interfaces and
+original references after actual definition/contract results. Fifty native/PG/
+Engine/architecture tests and strict full-feature/default lint pass, with 17 cases
+in the closed Recipe. This remains partial structural review, not pure or complete
+class Q1, Tool-call/binding/behavior approval, ordinary private admission, trusted
+settled evidence or activation. Current embedded guide/final-app acceptance stays
+separate from this isolated runtime-source batch.
+
 | Area | Actual implementation and supported boundary | Remaining qualification or cutover |
 | --- | --- | --- |
 | Global Monty | `global_monty_startup.rs`, `GlobalMontyOwner`, `GlobalMontyDriver`, `global_task_factory.rs` start one supervised Monty 1.0 worker before ordinary workers/producers. Opaque input IDs, isolated tasks, typed retained Recipe execution and reply/history use that service. The per-chat lazy driver is removed; there is no Rust-loop fallback. | Supervised durable recovery/replacement, unresolved effects, broader wait/child/restart and platform acceptance. A completed task does not stop the instance VM. |
