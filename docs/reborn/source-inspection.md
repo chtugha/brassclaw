@@ -5,14 +5,23 @@ Python text and return parser facts. It does not run the candidate, choose class
 checks, decide a validation verdict, write evidence or activate components.
 The validator Recipe owns those steps.
 
-The Tool accepts exactly `{"source": "..."}`. Source is a required non-null
+The single-source profile accepts exactly `{"source": "..."}`. Source is a required non-null
 string; quotes, Unicode and template-looking text remain unchanged. Empty Python
 text is parseable; a consuming validation rule may separately require content.
 Caller-selected workers, limits, host objects and extra fields are rejected.
+The same Tool also accepts [one complete named inventory](source-inventory-inspection.md)
+as `{"sources":{"ID":"..."}}`, with aggregate limits and mechanical compiler
+categories. Exactly one profile is allowed; neither returns a review verdict.
 The preloadable `inspect_python_source(inputs)` Skill export makes one
 `host.source_inspection(source=inputs["source"])` call. Its canonical execution
 Recipe prepares the matching ToolSkill before invoking that selected export.
 These component drafts require qualification and coherent activation separately.
+Ordinary startup now retains both usages' immutable drafts with the actual native
+Tool identity and one shared ToolSkill. The inventory's canonical command Recipe
+decodes a JSON list of ID/source pairs, calls the inventory export and publishes
+the exact report through the existing reply usage. The pure decoder rejects
+duplicates before making a map. Operator successors, original revisions and live
+blocks are preserved; retention does not activate these commands or add evidence.
 
 The result is exact JSON text with `format="python-source-facts/1"`, the
 acknowledged `preparation_revision`, retained `worker_checksum` and `facts`.

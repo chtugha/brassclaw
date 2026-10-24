@@ -57,7 +57,15 @@ fixed private review Recipe to inspect its full source graph without per-row Too
 occurrences. It does not qualify the inventory usage or supply subject provenance.
 Next wire pure original-subject extraction -> actual inventory Tool result ->
 definition/graph checks -> aggregate through the existing typed edges/observer.
-All required rules and durable review/evidence/approval gates below remain open.
+The [canonical usage successor](../validation/2026-10-24-source-inventory-usage.md)
+now retains exact source/inventory drafts and their actual native Tool identity
+at ordinary startup. Its command Recipe separates pure pair decoding, one parser
+usage and the existing reply usage; private review reuses only the typed parser
+usage. Closed actual execution and PG journals cover duplicate/invalid pairs,
+exact complete reports and live denial, preserving operator successors/blocks.
+Use this existing usage rather than creating another parser wrapper or approval
+owner. All required rules, original-subject/native-fact custody and durable
+review/evidence/approval gates below remain open.
 
 ## Declaration: `pure-component-approval/1`
 

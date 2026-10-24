@@ -682,6 +682,26 @@ pub(crate) async fn seed_model_encoding_tool(
 }
 
 #[cfg(feature = "skills-db")]
+pub(crate) async fn seed_source_inspection_tool(
+    pool: Arc<PgPool>,
+    tenant_id: &str,
+) -> Result<Uuid, SeedBuiltinBootstrapError> {
+    seed_primitive_registration(
+        pool,
+        tenant_id,
+        registered_primitive_row(
+            tenant_id,
+            "source_inspection",
+            "Inspect Python text or a complete named source inventory without execution, review evidence or approval.",
+            "read",
+            brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID,
+        ),
+        brassclaw_skills::global_bootstrap_components::packaged_component_id("validator:inspection:tool"),
+    )
+    .await
+}
+
+#[cfg(feature = "skills-db")]
 pub(crate) async fn seed_json_primitive_tool(
     pool: Arc<PgPool>,
     tenant_id: &str,

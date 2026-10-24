@@ -13587,3 +13587,23 @@ native copy/operation wall-time boundary is preserved. Inventory usage qualifica
 original-subject/graph checking, complete private class routes and durable
 review/evidence/approval remain work of the existing validator owner. This is not
 full-plan, release, platform or installed acceptance.
+
+### 2026-10-24 — canonical complete-inventory usage drafts
+
+Validator Step 5 now has the exact one-Tool inventory Skill/export/association,
+shared ToolSkill and canonical command Recipe. Pure PythonCode decodes explicit
+ID/source pairs, rejecting duplicates before making a typed map. Independent
+steps invoke the native inventory usage and existing reply usage, publishing the
+exact parser report. Private validators reuse the typed usage without chat steps.
+Ordinary startup retains original package drafts/native identity, operator
+successors and live blocks; it writes no Q1 or catalogue activation.
+
+[Scoped native acceptance](../validation/2026-10-24-source-inventory-usage.md)
+covers 14 fresh actual-worker/PG/global and consumer tests, strict affected/root
+lint, format and whitespace. Failed type/contract and post-settlement test calls
+remain archived with their exact scope; the task fence and schema rules are not
+relaxed. The final regular app/worker build is reused only across a verified
+test-only caller change. Full original-subject extraction, class checks, trusted
+durable evidence, pure approval and ordinary command/MCP qualification remain
+under validator's existing owner, consumed by composition and v3.5. No Prefix
+implementation is changed or full-plan/release/platform acceptance inferred.

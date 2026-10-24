@@ -98,6 +98,12 @@ Compile that source directly with one canonical Cargo target; on this host it is
 or mutable validation build mirrors. Coordinate writers before final staging;
 never replace current source with an older frozen projection.
 
+Codex configuration already supplies `CARGO_TARGET_DIR`. Invoke Cargo directly,
+for example `cargo clean -p package_name`, without an inline target assignment
+or an explicit `/bin/zsh -lc` wrapper. Background runners inherit that configured
+environment rather than overriding the target themselves. The one-target,
+serial-execution and disk-space rules still apply.
+
 Keep immutable historical source/binary/receipt archives for evidence reuse and
 failure diagnosis. They are not competing development trees or build inputs.
 Preserve actual needed executables before cleaning disposable caches; do not

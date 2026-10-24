@@ -4190,6 +4190,9 @@ mod tests {
     #[path = "source_inspection_tests.rs"]
     mod source_inspection_tests;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "source_inventory_usage_tests.rs"]
+    mod source_inventory_usage_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "tool_output_policy.rs"]
     mod tool_output_policy;
 

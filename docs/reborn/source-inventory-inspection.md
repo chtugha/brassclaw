@@ -61,9 +61,24 @@ must remain paired. [Scoped native acceptance](../validation/2026-10-23-source-i
 includes both profiles, actual policy/settings, existing parser/formatter consumers
 and the unchanged model-encoding operation against a real offline reference.
 
-The canonical inventory Skill/export/ToolSkill/execution Recipe, original-subject
-source extraction and complete class-22 checking workflow still need qualification
-and integration under [validator Step 5–10](../../validator_v3.md#remaining-implementation--consolidated-2026-10-22).
+`source_inventory_drafts` now defines the one-Tool Skill/export/association,
+shared ToolSkill and canonical execution Recipe. The command
+`inspect Python inventory entries %` captures `entries_json` as literal string
+data: a JSON list of `[ID, source]` pairs. A separate pure PythonCode decoder
+rejects duplicate IDs, including escaped equivalents, before constructing a map.
+The Recipe then binds/invokes the inventory usage and binds/invokes the existing
+reply usage to publish the exact native JSON string. Ten anchored templates share
+that layout; empty `[]` is an explicit empty inventory. No captured value becomes
+Python source. Private validators bind their typed source map directly to the
+inventory usage and do not run the command decoder or reply steps.
+
+Ordinary startup retains exact drafts and native identity through the existing
+immutable store, without replacing operator successors, enabling blocked Tools,
+writing approval or publishing a route. [Scoped acceptance](../validation/2026-10-24-source-inventory-usage.md)
+uses the actual global Python flow/kernel/PG journal; it is not ordinary matched
+command/MCP qualification. Qualification, original-subject source extraction and
+the complete class-22 workflow remain under
+[validator Step 5–10](../../validator_v3.md#remaining-implementation--consolidated-2026-10-22).
 Use actual Tool-result edges and the existing subject-bound observer. Caller-shaped
 facts or these report fields alone are not trusted review evidence. General pure
 approval, mandatory rules, durable scheduling/claim/attempt/settlement/interpreter

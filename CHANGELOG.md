@@ -18,6 +18,12 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- Canonical complete-inventory Skill/export/association and Recipe drafts for
+  the existing source-inspection Tool. Decode explicit ID/source pairs as typed
+  data, reject duplicate IDs before any native call and publish the unchanged
+  report through the existing reply usage. Startup retains exact drafts/native
+  identity while preserving operator successors and live blocks; review and
+  activation remain separate.
 - A complete named-inventory profile on the existing nonexecuting source
   inspection primitive. Inspect all sources in one contained process with shared
   input/output/source/node bounds and one deadline; correlate every result with

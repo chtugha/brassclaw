@@ -1121,6 +1121,8 @@ mod monty_kernel;
 mod resource_store_settings;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod source_inspection;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod source_inspection_components;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod installed_monty_catalogue;

@@ -691,6 +691,18 @@ impl InstalledMontyCatalogue {
                 reply // Never-activated candidate remains pending under a first-time block.
             }
         };
+        let RetainedProgram::Tools(reply_components) = reply.program() else {
+            return Err(invalid(
+                "installed source inspection requires reply components",
+            ));
+        };
+        crate::source_inspection_components::retain(
+            pool.clone(),
+            kernel.as_ref(),
+            &scope.tenant_id,
+            reply_components,
+        )
+        .await?;
         let mut documents = BTreeMap::new();
         let mut references = BTreeMap::new();
         for selected in [&reply, &history] {
@@ -1251,22 +1263,12 @@ pub(super) fn bootstrap_encoding_tools(
 }
 
 #[cfg(test)]
-pub(crate) fn response_parser_candidate_tools(
-    pool: Arc<PgPool>,
-    kernel: Arc<dyn MontyKernelSnapshot>,
-    host: Arc<MontyTaskHost>,
-    admission: Arc<PgMontyAdmission>,
-    program: Arc<RetainedToolProgram>,
-) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
-    if program.bindings().len() != 1
-        || program.bindings().get("0:2").is_none_or(|binding| {
-            binding.capability_id() != brassclaw_host_runtime::JSON_CAPABILITY_ID
-        })
-    {
-        return Err(invalid("response parser candidate binding differs"));
-    }
-    bootstrap_builtin_tools(pool, kernel, host, admission, program, false)
-}
+#[path = "inspection_candidate_tools.rs"]
+mod inspection_candidate_tools;
+#[cfg(test)]
+pub(crate) use inspection_candidate_tools::{
+    response_parser_candidate_tools, source_inventory_candidate_tools,
+};
 
 pub(super) fn bootstrap_measurement_tools(
     pool: Arc<PgPool>,

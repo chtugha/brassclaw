@@ -1,11 +1,12 @@
 # v3 implementation status and work ownership
 
-Reconciled on **2026-10-23** against the common `main` working tree. Consolidation
+Reconciled on **2026-10-24** against the common `main` working tree. Consolidation
 started from `580a7f73e`; the raw-source checkpoint is `c52bdc2e0`. This index
 includes the successors through `747bcfff6`: pure-review prerequisites,
 independent execution coverage, captured observation limits, original-subject/input
 custody and retained global interpreter hosting, plus the subsequently validated
-reusable preload-definition rule and complete native source-inventory primitive
+reusable preload-definition rule, complete native source-inventory primitive
+and its canonical usage drafts
 described below.
 It describes the source delivered with this document.
 It supersedes older present-tense implementation observations in the guides;
@@ -21,9 +22,10 @@ validation/build mirrors are retired after their exact inventories are checked
 against retained evidence. Historical immutable sources, binaries and receipts
 are evidence archives, not alternative development trees or Cargo build inputs.
 
-On the current development host use only
-`CARGO_TARGET_DIR=/Users/ollama/brassclaw-target`, with serial Cargo executions
-from the repository root. `brassclaw-target2` is retired. Preserve relevant
+On the current development host Codex configuration supplies `CARGO_TARGET_DIR`
+as `/Users/ollama/brassclaw-target`. Invoke Cargo directly, with serial executions
+from the repository root and no inline target assignment or explicit shell wrapper.
+`brassclaw-target2` is retired. Preserve relevant
 executable evidence before cleanup and follow the disk rules in
 [the development policy](development-policy.md) and [AGENTS.md](../AGENTS.md).
 Other platforms use one appropriate local target directory; the macOS path is
@@ -84,8 +86,17 @@ with strict affected and separate-workspace lint. The existing source Tool now
 inspects a complete map under one process/deadline and aggregate limits, returning
 exact source/checksum/compiler facts with no candidate execution or partial success.
 Both profiles retain live policy/settings and the shared image. Utility protocol
-is 5; global protocol stays 20. Canonical inventory usage, full subject/graph checks
+is 5; global protocol stays 20. Canonical inventory usage qualification, full subject/graph checks
 and complete validator scheduling/evidence/activation remain open.
+
+[Canonical inventory-usage acceptance](validation/2026-10-24-source-inventory-usage.md)
+adds 14 fresh scoped tests and strict affected/root lint. Ordinary startup retains
+the exact native Tool and both usage drafts with one shared ToolSkill, preserving
+operator successors and live blocks. A pure decoder rejects duplicate or malformed
+ID/source pairs before the native call; the canonical command Recipe posts the
+unchanged report through the existing reply usage. Actual closed global-flow and
+PG journal observations cover completion and failure. This is not public command/
+MCP activation, complete class Q1 or original-subject/native-fact custody.
 
 ## Implemented boundaries
 
@@ -150,7 +161,8 @@ new operator-adjustable policy. Distinguish desired and effective values.
 - The 600-second default is per-task executing time, not global lifetime or a
   wall-clock deadline for external work. Removed allocation-count enforcement
   is retained as retired configuration evidence, not silently treated as active.
-- Compiler nesting depth 30 (debug) / 200 (release), transport depth 64 and the
+- Compiler nesting depth 30 (debug) / 200 (release), standard-library JSON
+  recursion depth 200, transport depth 64 and the
   PG/filesystem optimistic conflict-attempt counts
   remain implementation policies to reconcile. Do not remove a parser guard
   before safe decoding/ownership/late-error cleanup and real deep-data checks.

@@ -5,6 +5,10 @@ use crate::global_bootstrap_components::UsageComponentIds;
 use serde_json::json;
 use uuid::Uuid;
 
+#[path = "validator_source_inventory.rs"]
+mod source_inventory;
+pub use source_inventory::{SOURCE_ENTRIES_SOURCE, source_inventory_drafts};
+
 pub const AGGREGATE_SOURCE: &str = include_str!("validator_aggregate.py");
 pub const COLLECT_SOURCE: &str = include_str!("validator_collect.py");
 pub const STRUCTURAL_PRESENCE_SOURCE: &str = include_str!("validator_structural_presence.py");
