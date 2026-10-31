@@ -2,8 +2,9 @@
 //! This is runner lifecycle custody, not a checkpoint, Tool permission or proof
 //! that authentication was completed. Composition must verify the original
 //! native invocation and host-derived preflight evidence before using the port.
-use brassclaw_host_api::{AuthDispatchBoundary, InvocationId, RuntimeCredentialAuthRequirement};
+use brassclaw_host_api::{AuthDispatchBoundary, RuntimeCredentialAuthRequirement};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{GateRef, TurnError, TurnLeaseToken, TurnRunId, TurnRunnerId, TurnScope};
 
@@ -14,7 +15,8 @@ pub struct BlockNativeAuthRequest {
     pub run_id: TurnRunId,
     pub runner_id: TurnRunnerId,
     pub lease_token: TurnLeaseToken,
-    pub invocation_id: InvocationId,
+    /// Opaque original occurrence supplied by the native owner; not a Tool grant.
+    pub gate_ref: GateRef,
     pub boundary: AuthDispatchBoundary,
     pub credential_requirements: Vec<RuntimeCredentialAuthRequirement>,
 }
@@ -34,25 +36,35 @@ enum NativeAuthWaitFormat {
 
 /// Persist only the original occurrence and lifecycle phase. Actual inputs,
 /// credentials, selection, flow evidence and effects stay with their existing
-/// native owners. Deserializing this reference grants no dispatch authority.
+/// native owners. The private UUID preserves the existing /1 storage bytes;
+/// public turn APIs exchange only the canonical GateRef, not a host identifier.
+/// Deserializing this reference grants no dispatch authority.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NativeAuthWait {
     format: NativeAuthWaitFormat,
-    invocation_id: InvocationId,
+    invocation_id: Uuid,
     phase: NativeAuthWaitPhase,
 }
 
 impl NativeAuthWait {
-    pub(crate) fn new(invocation_id: InvocationId) -> Result<Self, TurnError> {
-        native_auth_gate(invocation_id)?;
+    pub(crate) fn new(gate_ref: &GateRef) -> Result<Self, TurnError> {
+        let invocation_id = gate_ref
+            .as_str()
+            .strip_prefix("gate:auth:native:")
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .ok_or_else(|| TurnError::InvalidRequest {
+                reason: "native authentication occurrence is missing".into(),
+            })?;
+        if native_auth_gate(invocation_id)?.as_str() != gate_ref.as_str() {
+            return Err(TurnError::InvalidRequest {
+                reason: "native authentication occurrence reference is not canonical".into(),
+            });
+        }
         Ok(Self {
             format: NativeAuthWaitFormat::V1,
             invocation_id,
             phase: NativeAuthWaitPhase::Waiting,
         })
-    }
-    pub fn invocation_id(&self) -> InvocationId {
-        self.invocation_id
     }
     pub fn is_waiting(&self) -> bool {
         self.phase == NativeAuthWaitPhase::Waiting
@@ -70,19 +82,21 @@ impl<'de> Deserialize<'de> for NativeAuthWait {
         #[serde(deny_unknown_fields)]
         struct Record {
             format: NativeAuthWaitFormat,
-            invocation_id: InvocationId,
+            invocation_id: Uuid,
             phase: NativeAuthWaitPhase,
         }
         let record = Record::deserialize(deserializer)?;
-        let mut wait = Self::new(record.invocation_id).map_err(serde::de::Error::custom)?;
-        wait.format = record.format;
-        wait.phase = record.phase;
-        Ok(wait)
+        native_auth_gate(record.invocation_id).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            format: record.format,
+            invocation_id: record.invocation_id,
+            phase: record.phase,
+        })
     }
 }
 
-pub fn native_auth_gate(invocation_id: InvocationId) -> Result<GateRef, TurnError> {
-    if invocation_id.as_uuid().is_nil() {
+fn native_auth_gate(invocation_id: Uuid) -> Result<GateRef, TurnError> {
+    if invocation_id.is_nil() {
         return Err(TurnError::InvalidRequest {
             reason: "native authentication occurrence is missing".into(),
         });

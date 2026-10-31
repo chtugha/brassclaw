@@ -586,6 +586,9 @@ pub struct RebornProductAuthServices {
     /// by product-auth issue #4112 and remains genuinely optional until the
     /// durable backend exposes the same scoped projection as the in-memory port.
     flow_record_source: Option<Arc<dyn AuthFlowRecordSource>>,
+    /// Shared acknowledged instance policy. Standalone host-only composition
+    /// has no Monty owner and intentionally uses the canonical defaults.
+    primitive_settings: Option<Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
 }
 
 impl std::fmt::Debug for RebornProductAuthServices {
@@ -624,6 +627,57 @@ impl std::fmt::Debug for RebornProductAuthServices {
 }
 
 impl RebornProductAuthServices {
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    pub(crate) fn with_primitive_settings_source(
+        mut self,
+        source: Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>,
+    ) -> Self {
+        self.primitive_settings = Some(source);
+        self
+    }
+
+    pub(crate) async fn backend_timeout(&self) -> Result<std::time::Duration, AuthProductError> {
+        let limits = crate::oauth_provider_client::acknowledged_oauth_limits(
+            self.primitive_settings.as_ref(),
+        )
+        .await?;
+        Ok(std::time::Duration::from_millis(u64::from(
+            limits.auth_backend_timeout_millis,
+        )))
+    }
+
+    /// Candidate for a new original only. The native original owner compares
+    /// the complete request and keeps its first expiry on every repeat/CAS race.
+    pub(crate) async fn manual_token_setup_expiry(
+        &self,
+    ) -> Result<chrono::DateTime<Utc>, AuthProductError> {
+        let limits = crate::oauth_provider_client::acknowledged_oauth_limits(
+            self.primitive_settings.as_ref(),
+        )
+        .await?;
+        Utc::now()
+            .checked_add_signed(chrono::Duration::seconds(i64::from(
+                limits.manual_token_setup_ttl_secs,
+            )))
+            .ok_or(AuthProductError::BackendUnavailable)
+    }
+
+    /// Called after original recovery by the Extension credential adapter.
+    /// A missing/unacknowledged configured owner must never choose a default.
+    pub(crate) async fn extension_manual_token_setup_expiry(
+        &self,
+    ) -> Result<chrono::DateTime<Utc>, AuthProductError> {
+        let limits = crate::oauth_provider_client::acknowledged_oauth_limits(
+            self.primitive_settings.as_ref(),
+        )
+        .await?;
+        Utc::now()
+            .checked_add_signed(chrono::Duration::seconds(i64::from(
+                limits.extension_manual_token_setup_ttl_secs,
+            )))
+            .ok_or(AuthProductError::BackendUnavailable)
+    }
+
     pub fn new(
         flow_manager: Arc<dyn AuthFlowManager>,
         interaction_service: Arc<dyn AuthInteractionService>,
@@ -650,6 +704,7 @@ impl RebornProductAuthServices {
             dcr_oauth_registry: None,
             oauth_gate_registry: None,
             flow_record_source: None,
+            primitive_settings: None,
         }
     }
 

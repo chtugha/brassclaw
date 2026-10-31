@@ -41,6 +41,25 @@ Product adapters must continue to use `TurnCoordinator`. Runner transition APIs 
 - `complete_run`, runner-side `cancel_run`, and `fail_run` require the matching, unexpired lease and release the active lock exactly once at terminal state.
 - Failure and recovery/cancel reasons are stable sanitized categories only; raw prompts, tool input, host paths, backend errors, and secrets stay out of turn state and lifecycle events.
 
+### Native authentication wait references
+
+The trusted `block_native_auth` transition carries the existing canonical
+`GateRef`, scope and original run/runner/lease. The native host owner binds that
+opaque gate to its actual invocation and host-proven `BeforeDispatch` boundary;
+turn APIs do not expose host invocation/process identifier types or replace
+them with a run ID. Malformed, nil or noncanonical native gates fail before any
+store mutation. A reference or supplied boundary label alone proves neither
+authentication completion nor permission to dispatch.
+
+This wait retains the original claim and active-thread lock without a loop
+checkpoint or replacement queued attempt. Resolution, cancellation and expiry
+keep their existing original-claim checks. The private `native-auth-wait/1`
+storage retains the original UUID/phase fields and bytes; the public GateRef
+boundary does not reinterpret old snapshots or introduce a new storage format.
+The native invocation's inputs, credentials, effects and actual continuation
+remain with their owning host/runtime services. Store lifecycle support alone
+is not complete global Auth-wait or component qualification.
+
 ---
 
 ## 5. Loop exit validation

@@ -26,7 +26,6 @@ use std::{
     hash::Hash,
     num::{NonZeroU32, NonZeroU64, NonZeroUsize},
     sync::{Arc, Mutex},
-    time::Duration,
 };
 
 use axum::{
@@ -148,7 +147,6 @@ const OAUTH_RATE_WINDOW_SECONDS: NonZeroU32 = match NonZeroU32::new(60) {
     None => unreachable!(),
 };
 const PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS: i64 = 10 * 60;
-const PRODUCT_AUTH_BACKEND_TIMEOUT: Duration = Duration::from_secs(30);
 const OAUTH_CALLBACK_QUERY_MAX_BYTES: usize = 16 * 1024;
 const OAUTH_CALLBACK_FIELD_MAX_BYTES: usize = 512;
 const OAUTH_CALLBACK_SCOPES_MAX_BYTES: usize = 4 * 1024;
@@ -1428,13 +1426,15 @@ pub(super) fn parse_optional_extension(
 /// having to re-derive the same four lines and keeps the failure projection
 /// identical across routes.
 pub(super) async fn run_with_backend_timeout<T, E, F>(
+    product_auth: &RebornProductAuthServices,
     future: F,
 ) -> Result<T, ProductAuthRouteFailure>
 where
     F: std::future::Future<Output = Result<T, E>>,
     ProductAuthRouteFailure: From<E>,
 {
-    match tokio::time::timeout(PRODUCT_AUTH_BACKEND_TIMEOUT, future).await {
+    let timeout = product_auth.backend_timeout().await?;
+    match tokio::time::timeout(timeout, future).await {
         Ok(Ok(value)) => Ok(value),
         Ok(Err(error)) => Err(error.into()),
         Err(_) => Err(ProductAuthRouteFailure::backend_timeout()),

@@ -624,7 +624,11 @@ async fn native_auth_wait_retains_pg_claim_on_resume_and_fences_missing_cancel_a
             run_id: claim.state.run_id,
             runner_id: claim.runner_id,
             lease_token: claim.lease_token,
-            invocation_id: InvocationId::new(),
+            gate_ref: brassclaw_turns::GateRef::new(format!(
+                "gate:auth:native:{}",
+                InvocationId::new()
+            ))
+            .unwrap(),
             boundary: AuthDispatchBoundary::BeforeDispatch,
             credential_requirements: vec![brassclaw_host_api::RuntimeCredentialAuthRequirement {
                 requirement: Some(usage(false)),
@@ -646,8 +650,13 @@ async fn native_auth_wait_retains_pg_claim_on_resume_and_fences_missing_cancel_a
         assert_eq!(original.claim_count, 1);
         assert!(original.checkpoint_id.is_none());
         assert_eq!(
-            original.native_auth_wait.as_ref().unwrap().invocation_id(),
-            wait.invocation_id
+            original
+                .native_auth_wait
+                .as_ref()
+                .unwrap()
+                .gate_ref()
+                .unwrap(),
+            wait.gate_ref
         );
         assert_eq!(
             reopened

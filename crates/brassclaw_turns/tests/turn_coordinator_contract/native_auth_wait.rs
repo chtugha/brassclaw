@@ -1,10 +1,7 @@
 //! Actual neutral-store custody tests, not global Monty/Auth/component activation.
 use super::*;
 use brassclaw_host_api::{AuthDispatchBoundary, InvocationId};
-use brassclaw_turns::{
-    ResumeTurnPrecondition,
-    runner::native_auth::{BlockNativeAuthRequest, native_auth_gate},
-};
+use brassclaw_turns::{ResumeTurnPrecondition, runner::native_auth::BlockNativeAuthRequest};
 
 async fn setup(
     thread: &str,
@@ -33,7 +30,7 @@ async fn setup(
         run_id: claimed.state.run_id,
         runner_id: claimed.runner_id,
         lease_token: claimed.lease_token,
-        invocation_id: InvocationId::new(),
+        gate_ref: GateRef::new(format!("gate:auth:native:{}", InvocationId::new())).unwrap(),
         boundary: AuthDispatchBoundary::BeforeDispatch,
         credential_requirements: Vec::new(),
     };
@@ -44,7 +41,7 @@ fn resume(request: &BlockNativeAuthRequest, state: &TurnRunState) -> ResumeTurnR
         scope: state.scope.clone(),
         actor: actor(),
         run_id: request.run_id,
-        gate_resolution_ref: native_auth_gate(request.invocation_id).unwrap(),
+        gate_resolution_ref: request.gate_ref.clone(),
         source_binding_ref: state.source_binding_ref.clone(),
         reply_target_binding_ref: state.reply_target_binding_ref.clone(),
         idempotency_key: IdempotencyKey::new("native-wait-resume").unwrap(),
@@ -75,6 +72,21 @@ async fn native_auth_wait_retains_claim_across_snapshot_and_resumes_without_queu
     assert_eq!(blocked.runs[0].lease_token, Some(claimed.lease_token));
     assert_eq!(blocked.runs[0].claim_count, before.runs[0].claim_count);
     assert!(blocked.checkpoints.is_empty());
+    // Keep the existing persisted /1 representation exactly while the public
+    // runner boundary carries an opaque gate, not a host-runtime identifier.
+    let original_wait = serde_json::json!({
+        "format":"native-auth-wait/1",
+        "invocation_id":request.gate_ref.as_str().strip_prefix("gate:auth:native:").unwrap(),
+        "phase":"waiting",
+    });
+    assert_eq!(
+        serde_json::to_value(&blocked.runs[0].native_auth_wait).unwrap(),
+        original_wait
+    );
+    let restored_wait: brassclaw_turns::runner::native_auth::NativeAuthWait =
+        serde_json::from_value(original_wait.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&restored_wait).unwrap(), original_wait);
+    assert_eq!(restored_wait.gate_ref().unwrap(), request.gate_ref);
     let bytes = serde_json::to_vec(&blocked).unwrap();
     let reopened = InMemoryTurnStateStore::from_persistence_snapshot(
         serde_json::from_slice(&bytes).unwrap(),
@@ -126,6 +138,20 @@ async fn native_auth_wait_retains_claim_across_snapshot_and_resumes_without_queu
 async fn native_auth_wait_rejects_dispatch_unknown_stale_scope_and_changed_binding() {
     let (_, store, _, request) = setup("native-wait-reject").await;
     let before = store.persistence_snapshot();
+    for invalid_gate in [
+        "gate:auth:other:58e131d7-33c9-48c7-b958-92c56ca84500",
+        "gate:auth:native:not-a-uuid",
+        "gate:auth:native:00000000-0000-0000-0000-000000000000",
+        "gate:auth:native:58E131D7-33C9-48C7-B958-92C56CA84500",
+    ] {
+        let mut rejected = request.clone();
+        rejected.gate_ref = GateRef::new(invalid_gate).unwrap();
+        assert!(matches!(
+            store.block_native_auth(rejected).await,
+            Err(TurnError::InvalidRequest { .. })
+        ));
+        assert_eq!(store.persistence_snapshot(), before);
+    }
     for boundary in [
         AuthDispatchBoundary::DispatchAttempted,
         AuthDispatchBoundary::Unproven,

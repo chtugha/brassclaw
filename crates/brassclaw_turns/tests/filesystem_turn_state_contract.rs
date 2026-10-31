@@ -805,7 +805,11 @@ async fn filesystem_native_auth_wait_reopens_and_resumes_original_claim_without_
         run_id: claim.state.run_id,
         runner_id: claim.runner_id,
         lease_token: claim.lease_token,
-        invocation_id: InvocationId::new(),
+        gate_ref: brassclaw_turns::GateRef::new(format!(
+            "gate:auth:native:{}",
+            InvocationId::new()
+        ))
+        .unwrap(),
         boundary: AuthDispatchBoundary::BeforeDispatch,
         credential_requirements: Vec::new(),
     };
@@ -909,7 +913,11 @@ async fn filesystem_native_auth_wait_on_byte_only_owner_preserves_original_custo
         run_id: claim.state.run_id,
         runner_id: claim.runner_id,
         lease_token: claim.lease_token,
-        invocation_id: InvocationId::new(),
+        gate_ref: brassclaw_turns::GateRef::new(format!(
+            "gate:auth:native:{}",
+            InvocationId::new()
+        ))
+        .unwrap(),
         boundary: AuthDispatchBoundary::BeforeDispatch,
         credential_requirements: Vec::new(),
     };

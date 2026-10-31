@@ -34,7 +34,7 @@ pub(super) async fn prepare(
     let package = LifecyclePackageRef::new(LifecyclePackageKind::Extension, requester.as_str())
         .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
     let candidate = tokio::time::timeout(
-        PRODUCT_AUTH_BACKEND_TIMEOUT,
+        state.product_auth.backend_timeout().await?,
         services.resolve_extension_oauth_requirement(
             caller.clone(),
             package,
@@ -74,11 +74,12 @@ pub(super) async fn prepare(
         ExtensionCredentialTarget::New {} => None,
         ExtensionCredentialTarget::Existing { account_id } => Some(*account_id),
     };
-    run_with_backend_timeout(state.product_auth.prepare_extension_oauth_requirement(
-        scope,
-        candidate,
-        requested_account,
-    ))
+    run_with_backend_timeout(
+        state.product_auth.as_ref(),
+        state
+            .product_auth
+            .prepare_extension_oauth_requirement(scope, candidate, requested_account),
+    )
     .await
 }
 
@@ -89,13 +90,16 @@ pub(super) async fn verify(
     requester: &ExtensionId,
     request: &ExtensionOAuthStartRequest,
 ) -> Result<(), ProductAuthRouteFailure> {
-    run_with_backend_timeout(state.product_auth.verify_extension_oauth_original(
-        scope,
-        flow,
-        requester,
-        request.requirement.as_deref(),
-        request.target.as_ref(),
-    ))
+    run_with_backend_timeout(
+        state.product_auth.as_ref(),
+        state.product_auth.verify_extension_oauth_original(
+            scope,
+            flow,
+            requester,
+            request.requirement.as_deref(),
+            request.target.as_ref(),
+        ),
+    )
     .await
 }
 

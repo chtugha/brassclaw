@@ -11,6 +11,400 @@ use std::sync::{
 };
 use tokio::sync::Notify;
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_auth_backend_wait_captures_acknowledged_policy_without_retiming_a_call() {
+    use crate::{RebornRuntimeIdentity, RebornRuntimeInput, build_reborn_runtime};
+    use axum::{http::StatusCode, response::IntoResponse};
+    use brassclaw_auth::AuthProductError;
+
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(MontyMemoryMode::Manual).await;
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = Box::pin(build_reborn_runtime(
+        RebornRuntimeInput::from_services(
+            rig.build_input("auth-backend-wait", directory.path())
+                .with_tenant_id("default")
+                .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
+        )
+        .with_identity(RebornRuntimeIdentity {
+            tenant_id: "default".into(),
+            ..RebornRuntimeIdentity::reborn_cli()
+        }),
+    ))
+    .await
+    .unwrap();
+    let settings = runtime.webui_monty_settings_store();
+    let original = settings.get("default", "default").await.unwrap();
+    let auth = runtime.services().product_auth.as_ref().unwrap().clone();
+    let mut limits = original.execution_limits;
+    limits.auth_backend_timeout_millis = 5000;
+    let first = settings
+        .upsert(
+            "default",
+            "default",
+            &serde_json::from_value(serde_json::json!({
+                "expected_revision": original.revision, "execution_limits": limits
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        auth.backend_timeout().await.unwrap(),
+        Duration::from_secs(5)
+    );
+
+    // This observes the route's wait mechanism, not a successful Auth/Tool call.
+    // No business result, credential or approval is synthesized by the future.
+    let entered = Arc::new(Notify::new());
+    let released = Arc::new(Notify::new());
+    let pending = {
+        let auth = auth.clone();
+        let entered = entered.clone();
+        let released = released.clone();
+        tokio::spawn(async move {
+            crate::product_auth_serve::run_with_backend_timeout(auth.as_ref(), async {
+                entered.notify_one();
+                released.notified().await;
+                Err::<(), _>(AuthProductError::BackendUnavailable)
+            })
+            .await
+        })
+    };
+    tokio::time::timeout(Duration::from_secs(5), entered.notified())
+        .await
+        .unwrap();
+    limits.auth_backend_timeout_millis = 1;
+    let second = settings
+        .upsert(
+            "default",
+            "default",
+            &serde_json::from_value(serde_json::json!({
+                "expected_revision": first.revision, "execution_limits": limits
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        auth.backend_timeout().await.unwrap(),
+        Duration::from_millis(1)
+    );
+    let effective = settings
+        .runtime_status()
+        .await
+        .unwrap()
+        .unwrap()
+        .execution_limits
+        .unwrap();
+    assert_eq!(effective.effective_revision, second.revision);
+    assert_eq!(effective.limits.auth_backend_timeout_millis, 1);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        !pending.is_finished(),
+        "a live edit must not retime an accepted call"
+    );
+    released.notify_one();
+    assert_eq!(
+        pending.await.unwrap().unwrap_err().into_response().status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    let timed_out = crate::product_auth_serve::run_with_backend_timeout(
+        auth.as_ref(),
+        std::future::pending::<Result<(), AuthProductError>>(),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        timed_out.into_response().status(),
+        StatusCode::GATEWAY_TIMEOUT
+    );
+
+    // An actual unbound owner fails before polling the backend, never silently
+    // adopting a default when configured policy is unavailable.
+    let unavailable = (*auth).clone().with_primitive_settings_source(Arc::new(
+        crate::host_primitive_settings::AcknowledgedPrimitiveSettings::new(),
+    ));
+    let polled = AtomicBool::new(false);
+    let denied = crate::product_auth_serve::run_with_backend_timeout(&unavailable, async {
+        polled.store(true, Ordering::SeqCst);
+        Err::<(), _>(AuthProductError::BackendUnavailable)
+    })
+    .await
+    .unwrap_err();
+    assert_eq!(
+        denied.into_response().status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert!(!polled.load(Ordering::SeqCst));
+    settings
+        .upsert(
+            "default",
+            "default",
+            &serde_json::from_value(serde_json::json!({
+                "expected_revision": second.revision, "execution_limits": original.execution_limits
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        auth.backend_timeout().await.unwrap(),
+        Duration::from_millis(u64::from(
+            original.execution_limits.auth_backend_timeout_millis
+        ),)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_manual_setup_lifetimes_follow_acknowledged_settings_and_keep_originals() {
+    use crate::{RebornRuntimeIdentity, RebornRuntimeInput, build_reborn_runtime};
+    use brassclaw_auth::{
+        AuthContinuationRef, AuthProductError, AuthProviderId, AuthSurface, CredentialAccountLabel,
+        ManualTokenSetupIdentity,
+    };
+    use brassclaw_product_workflow::{
+        ExtensionCredentialPrepareRequest, ExtensionCredentialSetupService,
+        ExtensionCredentialTarget,
+    };
+
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(MontyMemoryMode::Manual).await;
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = Box::pin(build_reborn_runtime(
+        RebornRuntimeInput::from_services(
+            rig.build_input("manual-setup-lifetimes", directory.path())
+                .with_tenant_id("default")
+                .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
+        )
+        .with_identity(RebornRuntimeIdentity {
+            tenant_id: "default".into(),
+            ..RebornRuntimeIdentity::reborn_cli()
+        }),
+    ))
+    .await
+    .unwrap();
+    let settings = runtime.webui_monty_settings_store();
+    let original = settings.get("default", "default").await.unwrap();
+    let auth = runtime.services().product_auth.as_ref().unwrap().clone();
+    let mut scope = sample_auth_scope();
+    scope.surface = AuthSurface::Web;
+    let mut limits = original.execution_limits;
+    limits.manual_token_setup_ttl_secs = 30;
+    limits.extension_manual_token_setup_ttl_secs = 45;
+    let first = settings.upsert("default", "default", &serde_json::from_value(
+        serde_json::json!({"expected_revision":original.revision,"execution_limits":limits})
+    ).unwrap()).await.unwrap();
+    // Enter the existing protected handler with an authenticated caller. This
+    // exercises route/facade/native storage; bearer enforcement is separate.
+    use tower::ServiceExt;
+    let caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
+        scope.resource.tenant_id.clone(),
+        scope.resource.user_id.clone(),
+        scope.resource.agent_id.clone(),
+        scope.resource.project_id.clone(),
+    );
+    let app = crate::product_auth_serve::product_auth_route_mount(
+        crate::product_auth_serve::ProductAuthRouteState::new(
+            auth.clone(),
+            scope.resource.tenant_id.clone(),
+            scope.resource.agent_id.clone(),
+            scope.resource.project_id.clone(),
+        ),
+    )
+    .protected
+    .layer(axum::Extension(caller));
+    async fn post_setup(app: &axum::Router, body: &serde_json::Value) -> serde_json::Value {
+        use axum::{
+            body::{Body, to_bytes},
+            http::Request,
+        };
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(crate::product_auth_serve::MANUAL_TOKEN_SETUP_PATH)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
+    }
+    let route_request = serde_json::json!({"identity":ManualTokenSetupIdentity::default(),
+        "invocation_id":InvocationId::new(),"provider":"route-lifetime","account_label":"route lifetime"});
+    let before = Utc::now();
+    let route_first = post_setup(&app, &route_request).await;
+    let route_expiry: chrono::DateTime<Utc> =
+        serde_json::from_value(route_first["expires_at"].clone()).unwrap();
+    assert!(route_expiry >= before + chrono::Duration::seconds(30));
+    assert!(route_expiry <= Utc::now() + chrono::Duration::seconds(30));
+    let identity = ManualTokenSetupIdentity::default();
+    let before = Utc::now();
+    let expiry = auth.manual_token_setup_expiry().await.unwrap();
+    let after = Utc::now();
+    assert!(expiry >= before + chrono::Duration::seconds(30));
+    assert!(expiry <= after + chrono::Duration::seconds(30));
+    let request = crate::RebornManualTokenSetupRequest::new(
+        scope.clone(),
+        AuthProviderId::new("manual-lifetime-provider").unwrap(),
+        CredentialAccountLabel::new("original lifetime").unwrap(),
+        AuthContinuationRef::SetupOnly,
+        expiry,
+    );
+    let accepted = auth
+        .request_original_manual_token_setup(identity, request.clone())
+        .await
+        .unwrap();
+    assert_eq!(accepted.challenge.expires_at, expiry);
+
+    let concurrent_id = ManualTokenSetupIdentity::default();
+    let mut another_candidate = request.clone();
+    another_candidate.expires_at += chrono::Duration::seconds(5);
+    let (a, b) = tokio::join!(
+        auth.request_original_manual_token_setup(concurrent_id, request.clone()),
+        auth.request_original_manual_token_setup(concurrent_id, another_candidate)
+    );
+    assert_eq!(
+        a.unwrap(),
+        b.unwrap(),
+        "concurrent creation retains one winning first expiry"
+    );
+
+    let adapter =
+        crate::webui_extension_credentials::ProductAuthExtensionCredentialSetup::new(auth.clone());
+    let requirement = crate::webui_extension_credentials::test_requirement(
+        "extension-lifetime-provider",
+        "extension-lifetime",
+        "access",
+        &[],
+    );
+    let extension = ExtensionCredentialPrepareRequest {
+        scope: scope.clone(),
+        requester_extension: requirement.requester_extension().clone(),
+        requirement_name: requirement.reference().unwrap(),
+        candidate_requirement: Some(requirement),
+        identity: ManualTokenSetupIdentity::default(),
+        target: ExtensionCredentialTarget::New {},
+    };
+    let before = Utc::now();
+    let extension_first = adapter
+        .prepare_manual_token(extension.clone())
+        .await
+        .unwrap();
+    assert!(extension_first.expires_at >= before + chrono::Duration::seconds(45));
+    assert!(extension_first.expires_at <= Utc::now() + chrono::Duration::seconds(45));
+
+    limits.manual_token_setup_ttl_secs = 1;
+    limits.extension_manual_token_setup_ttl_secs = u32::MAX;
+    let second = settings
+        .upsert(
+            "default",
+            "default",
+            &serde_json::from_value(
+                serde_json::json!({"expected_revision":first.revision,"execution_limits":limits}),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let effective = settings
+        .runtime_status()
+        .await
+        .unwrap()
+        .unwrap()
+        .execution_limits
+        .unwrap();
+    assert_eq!(effective.effective_revision, second.revision);
+    assert_eq!(effective.limits.manual_token_setup_ttl_secs, 1);
+    assert_eq!(
+        effective.limits.extension_manual_token_setup_ttl_secs,
+        u32::MAX
+    );
+    assert_eq!(
+        post_setup(&app, &route_request).await,
+        route_first,
+        "a route retry must keep the original expiry after a reduction"
+    );
+    let mut retry = request.clone();
+    retry.expires_at = auth.manual_token_setup_expiry().await.unwrap();
+    let (a, b) = tokio::join!(
+        auth.request_original_manual_token_setup(identity, retry.clone()),
+        auth.request_original_manual_token_setup(identity, retry.clone())
+    );
+    assert_eq!(a.unwrap().challenge.expires_at, expiry);
+    assert_eq!(b.unwrap().challenge.expires_at, expiry);
+    let recovered = adapter
+        .prepare_manual_token(extension.clone())
+        .await
+        .unwrap();
+    assert_eq!(recovered, extension_first);
+    let mut changed = request.clone();
+    changed.label = CredentialAccountLabel::new("changed original").unwrap();
+    assert!(
+        auth.request_original_manual_token_setup(identity, changed)
+            .await
+            .is_err()
+    );
+    let mut new_extension = extension;
+    new_extension.identity = ManualTokenSetupIdentity::default();
+    let before = Utc::now();
+    let large = adapter.prepare_manual_token(new_extension).await.unwrap();
+    assert!(large.expires_at >= before + chrono::Duration::seconds(i64::from(u32::MAX)));
+    assert!(large.expires_at <= Utc::now() + chrono::Duration::seconds(i64::from(u32::MAX)));
+    let short_identity = ManualTokenSetupIdentity::default();
+    retry.expires_at = auth.manual_token_setup_expiry().await.unwrap();
+    let short = auth
+        .request_original_manual_token_setup(short_identity, retry.clone())
+        .await
+        .unwrap();
+    assert!(short.challenge.expires_at < expiry);
+    tokio::time::sleep(
+        (short.challenge.expires_at - Utc::now())
+            .to_std()
+            .unwrap_or_default()
+            + Duration::from_millis(25),
+    )
+    .await;
+    retry.expires_at = auth.manual_token_setup_expiry().await.unwrap();
+    assert_eq!(
+        auth.request_original_manual_token_setup(short_identity, retry)
+            .await
+            .unwrap_err()
+            .code,
+        brassclaw_auth::AuthErrorCode::UnknownOrExpiredFlow
+    );
+    let retained = auth
+        .recover_original_manual_token_setup(&scope, short_identity)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(retained.expires_at, short.challenge.expires_at);
+
+    let unavailable = auth
+        .as_ref()
+        .clone()
+        .with_primitive_settings_source(Arc::new(
+            crate::host_primitive_settings::AcknowledgedPrimitiveSettings::new(),
+        ));
+    assert!(matches!(
+        unavailable.manual_token_setup_expiry().await,
+        Err(AuthProductError::BackendUnavailable)
+    ));
+    assert!(matches!(
+        unavailable.extension_manual_token_setup_expiry().await,
+        Err(AuthProductError::BackendUnavailable)
+    ));
+    settings.upsert("default", "default", &serde_json::from_value(
+        serde_json::json!({"expected_revision":second.revision,"execution_limits":original.execution_limits})
+    ).unwrap()).await.unwrap();
+}
+
 #[derive(Debug, PartialEq, Eq)]
 struct ObservedBounds {
     method: NetworkMethod,

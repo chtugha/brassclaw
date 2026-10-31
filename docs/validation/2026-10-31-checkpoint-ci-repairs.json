@@ -1,0 +1,2167 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-020",
+  "status": "passed",
+  "base_commit": "2b932590c4cd1b3c0162dc48a320eea55fe4c6e0",
+  "package": "/private/tmp/brassclaw-ci-repairs-20261031-qsds28la",
+  "package_after_sha256": "b5d5249b71ca5f9328e60527cf2d01f3f9ea4925102d0f3708909ad08e7fb80e",
+  "sources": {
+    "crates/brassclaw_turns/src/native_auth_wait.rs": "b4be51963d2602631c6611937f12bf7059eee9a4baff35e51ac1b76ee36f0b54",
+    "crates/brassclaw_turns/src/memory.rs": "56005f4860aa6a87247f566d2cecbcffbbfcafe80c76f715179feb1275d03a02",
+    "crates/brassclaw_turns/tests/turn_coordinator_contract/native_auth_wait.rs": "329c117280597d57ece8de7055cd38881e6e8aa37e56be1b29a556b114ebdc7d",
+    "crates/brassclaw_turns/tests/filesystem_turn_state_contract.rs": "2c20813a1495f215ae7b5c2f1597aa0331167d7d137241ec2cfdb0e113f03e82",
+    "crates/brassclaw_reborn_composition/src/pg_auth_requirement_tests.rs": "eff0a28bf65d1ba925bcdfd1b69f1b2c5b9ef29c007c44201136db73ff30374b",
+    "crates/brassclaw_reborn_composition/src/prefix_acceptance_tests.rs": "e0b5f42f3465e8647bed893aff8cd4110adb9c8bed07f499486327c28d7e5380",
+    ".github/workflows/reborn-tests.yml": "ebb1739cfe8805708b513944448330acf54ae0de127eed1f602edac7fc166cb3",
+    "crates/brassclaw_llm/src/failover.rs": "e6340e64831f73cc3d4baf21ba3fc059fb759bdbb1601f85813222499f052eb0",
+    "crates/brassclaw_reborn/src/model_gateway.rs": "1b66b1f96a1162e5f08c581ebc9442ae4fc0c3224fcc7749cd6eecf94b1b25bf",
+    "crates/brassclaw_pg/src/test_support.rs": "e3d8ecf17d74137e51d81f92e9c26896d40fb4ebba3c1ba5db151a5bd5807173",
+    "tests/support/instrumented_llm.rs": "c3c0e41f3d85d0cdea68ce414672f9457a756df84b6b3da99c8031e023eeb9de",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/provider_request_policy_tests.rs": "ff54b5f8e26dac7e7d509aedd6a30c791399aa4f4805fe56a08807916dfdee31",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/provider_boot_tests.rs": "b7ffcff81d65ca858e5e5a070312d10c0991f85a8199f7ae6dbeb2cd4fe0a638",
+    "tests/reborn_subagent_spawn_e2e.rs": "19e5e5e5323efec48a877f98705c33395424b8ff23e03426a94a0c68e1b64873",
+    "tests/support/reborn/harness.rs": "b439b90b1816cf47f85054966a922d5e5efa2168a3b8e95ef48c3d267bc72c75",
+    "tests/monty_v1_upgrade/Cargo.lock": "3926df3125599131f26b408b5f367075dcc90b3fa6dfac8070b71c303f14f835",
+    "tests/monty_legacy_baseline/Cargo.lock": "ae085fb2d634478b02b9493f3175597b3eb8e85d22da5ab754248c9a6a69a7d7",
+    "tests/monty_control/Cargo.lock": "847a3b2246cb2860428e18e7250f84da83a7eb8d15278edea5fd607cb206d951",
+    "tests/monty_scheduler/Cargo.lock": "cbe6c36eff43c0d228c867d2d53245ff802934803f07d6c84ca79a084693cf6d",
+    "crates/brassclaw_skills/src/validator_review_subject.py": "98a9add85fc9d39f3d955ddd5098a569bd9fda37336f7d8cda21f878beae78e1",
+    "docs/reborn/contracts/turn-runner.md": "e90fd49a0331686d90cf6780f7910a58805ed9de2516a6a7a0d3662d016cbbf4",
+    "CHANGELOG.md": "4eb965764dc3d4b12cc28140dd5555dac27356b767c2c4831850aabc05e89cb4",
+    "tests/monty_v1_upgrade/tests/global_lifecycle.rs": "d7316b25ebd9d6ec2891307d710431023abf506b5fc980034e45ef55a407c1ad"
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/source.json",
+    "sha256": "25d3db9916edd7ca2341ebdb4e0304a7add0c9e11c1662ec33199fd0937313f5",
+    "entries": 8233,
+    "note": "8233 named source/embedded/isolated-workspace inputs. R1/R2 Composition capture had8190 entries and omitted isolated test sources; R3/R4 add them. Unchanged Composition input/image scope is reused, not falsely recompiled."
+  },
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1",
+      "status": "failed",
+      "stage": "native-coding-protection",
+      "progress_sha256": "4bd76f589f4495a34b505a6af465d912f446d88eb3632cd3e97c19752335cf20",
+      "source_sha256": "29d086e2e9a8b2581257203660326ccd12070eab4d5e8c0b168833974ecaed7c",
+      "runner_sha256": "866d3bfdcf510e8fc92c551decbf40178258980e3108b6ad810c6adb8366b101",
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-ci-repairs-20261031-qsds28la/validate.py\", line 175, in <module>\n    tests('native-review-ack-custody', 'brassclaw_reborn_composition', 'pg_function_review_submission_tests::')\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-ci-repairs-20261031-qsds28la/validate.py\", line 122, in tests\n    assert candidates, (label, selector)\n           ^^^^^^^^^^\nAssertionError: ('native-review-ack-custody', 'pg_function_review_submission_tests::')\n",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.3309779579285532,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.24759708414785564,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "workflow-lint",
+          "exit_code": 0,
+          "seconds": 0.3291803749743849,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "worker-build",
+          "exit_code": 0,
+          "seconds": 6.308499542064965,
+          "log_sha256": "c6af325224014b9e55283b9cf31c868f463906846c81aeee45557b5c72726f12"
+        },
+        {
+          "stage": "connected-unit-images",
+          "exit_code": 0,
+          "seconds": 263.6511011249386,
+          "log_sha256": "3c91c51a014015f09c55375c2e542e771b733988c8ad10b0272619061b8cc632"
+        },
+        {
+          "stage": "native-auth-pg",
+          "exit_code": 0,
+          "seconds": 3.123685040976852,
+          "log_sha256": "40ffb40070a8dc15f7555d1323d67dc2b6a25c2bcea7eb275888747f14644b31",
+          "passed": 1,
+          "tests": [
+            "pg_auth_product_services::requirement_tests::native_auth_wait_retains_pg_claim_on_resume_and_fences_missing_cancel_ack"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-prefix-sdk",
+          "exit_code": 0,
+          "seconds": 5.074418209027499,
+          "log_sha256": "16286770c48a348c496e1adcfcccf7de8d1a0d366ec128856538a1bb817fefb5",
+          "passed": 1,
+          "tests": [
+            "prefix_acceptances::tests::native_scoped_acceptance_retains_sources_and_guards_both_task_roles"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-provider-policy",
+          "exit_code": 0,
+          "seconds": 11.46729295887053,
+          "log_sha256": "235f3f086df43bba55987176ab6ea4371a71c9df8dc13e353475c29fd46d0cc1",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::provider_request_policy_tests::native_live_provider_request_policy_reaches_selected_clients"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-coding-protection",
+          "exit_code": 0,
+          "seconds": 5.316134459106252,
+          "log_sha256": "3870929ed84f16e3719fa3987845ceed63cee2ef7e37c04c9e97a8735d2cb30b",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::provider_boot_tests::native_coding_primitives_protect_structured_entries_on_both_backends"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        }
+      ]
+    },
+    "run-2": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2",
+      "status": "failed",
+      "stage": "monty_v1_upgrade-actual-gate",
+      "progress_sha256": "cf3b1417399edc3b6a742ae080f78bb9378b36c017a5eb56ea737a73736752d1",
+      "source_sha256": "29d086e2e9a8b2581257203660326ccd12070eab4d5e8c0b168833974ecaed7c",
+      "runner_sha256": "fc3d53418f09b67b15302624e369162fd8a74cb96f2b8da6b814fa01a431e69e",
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-ci-repairs-20261031-qsds28la/resume.py\", line 177, in <module>\n    run(manifest + '-actual-gate', ['cargo', '+1.96.0', 'test', '--manifest-path', 'tests/' + manifest + '/Cargo.toml', '--locked', '--all-targets', '--message-format=json', '--', '--test-threads=1', '--nocapture'], manifest + '-')\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-ci-repairs-20261031-qsds28la/resume.py\", line 114, in run\n    assert code == 0, (label, code)\n           ^^^^^^^^^\nAssertionError: ('monty_v1_upgrade-actual-gate', 101)\n",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.3309779579285532,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.24759708414785564,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "workflow-lint",
+          "exit_code": 0,
+          "seconds": 0.3291803749743849,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "worker-build",
+          "exit_code": 0,
+          "seconds": 6.308499542064965,
+          "log_sha256": "c6af325224014b9e55283b9cf31c868f463906846c81aeee45557b5c72726f12"
+        },
+        {
+          "stage": "connected-unit-images",
+          "exit_code": 0,
+          "seconds": 263.6511011249386,
+          "log_sha256": "3c91c51a014015f09c55375c2e542e771b733988c8ad10b0272619061b8cc632"
+        },
+        {
+          "stage": "native-auth-pg",
+          "exit_code": 0,
+          "seconds": 3.123685040976852,
+          "log_sha256": "40ffb40070a8dc15f7555d1323d67dc2b6a25c2bcea7eb275888747f14644b31",
+          "passed": 1,
+          "tests": [
+            "pg_auth_product_services::requirement_tests::native_auth_wait_retains_pg_claim_on_resume_and_fences_missing_cancel_ack"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-prefix-sdk",
+          "exit_code": 0,
+          "seconds": 5.074418209027499,
+          "log_sha256": "16286770c48a348c496e1adcfcccf7de8d1a0d366ec128856538a1bb817fefb5",
+          "passed": 1,
+          "tests": [
+            "prefix_acceptances::tests::native_scoped_acceptance_retains_sources_and_guards_both_task_roles"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-provider-policy",
+          "exit_code": 0,
+          "seconds": 11.46729295887053,
+          "log_sha256": "235f3f086df43bba55987176ab6ea4371a71c9df8dc13e353475c29fd46d0cc1",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::provider_request_policy_tests::native_live_provider_request_policy_reaches_selected_clients"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-coding-protection",
+          "exit_code": 0,
+          "seconds": 5.316134459106252,
+          "log_sha256": "3870929ed84f16e3719fa3987845ceed63cee2ef7e37c04c9e97a8735d2cb30b",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::provider_boot_tests::native_coding_primitives_protect_structured_entries_on_both_backends"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-review-ack-custody",
+          "exit_code": 0,
+          "seconds": 11.634142249822617,
+          "log_sha256": "8b9ef93784439cac0d64c96339f70a68cba88ab6ac73b4acb523dbed3dca54f3",
+          "passed": 5,
+          "tests": [
+            "pg_review_submission::function_tests::native_function_subject_atomically_retains_both_edits_and_exact_unknown_commit_retry",
+            "pg_review_submission::function_tests::native_function_subject_forward_migration_preserves_old_subjects_and_intents",
+            "pg_review_submission::function_tests::native_function_subject_keeps_unchanged_skill_as_context_without_allocating_it",
+            "pg_review_submission::function_tests::native_function_subject_rejects_partial_single_class_preparation_at_both_owners",
+            "pg_review_submission::function_tests::native_function_subject_second_root_conflict_rolls_back_first_and_races_coherently"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-subject-reader",
+          "exit_code": 0,
+          "seconds": 7.044931124895811,
+          "log_sha256": "6d98562847b9fde92b1c45a74371131e28f8105721ae028aeb381acd5aab0ceb",
+          "passed": 3,
+          "tests": [
+            "validator_skill_interface_tests::native_skill_interface_and_shared_reader_use_actual_pinned_function_pairs",
+            "validator_skill_interface_tests::native_skill_interface_rejects_disagreement_and_shared_reader_rejects_forged_context",
+            "validator_skill_interface_tests::packaged_function_check_drafts_retain_private_dependency_and_preserve_operator_successors"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-pure-structure",
+          "exit_code": 0,
+          "seconds": 40.519006999908015,
+          "log_sha256": "49a5bcf70f9ad60e8566378b061ce702075f31dcdff067ddda4d6bce1da71800",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::source_inventory_usage_tests::python_structure_review_tests::native_private_pure_structure_recipe_checks_all_exports_and_hidden_host_calls"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-global-embedded",
+          "exit_code": 0,
+          "seconds": 382.01469641691074,
+          "log_sha256": "b549ea247c98ac25e4914cb7c7e539dc0668259d34266764b363d6f7406e0b63",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::authored_catalogue_tests::component_deployment_tests::native_component_deployment_preserves_recipes_and_pins_review_subjects"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "llm-failover",
+          "exit_code": 0,
+          "seconds": 0.26414812495931983,
+          "log_sha256": "90f0577ad028c72952f764634106aaba023863e7c02ad342380af8714dc056b8",
+          "passed": 27,
+          "tests": [
+            "failover::tests::all_providers_fail_returns_error_not_panic",
+            "failover::tests::all_providers_fail_returns_last_error",
+            "failover::tests::complete_with_tools_failover",
+            "failover::tests::cooldown_activates_after_threshold",
+            "failover::tests::cooldown_at_nanos_zero_still_activates",
+            "failover::tests::cooldown_expires_after_duration",
+            "failover::tests::effective_model_name_is_request_scoped_under_concurrency",
+            "failover::tests::empty_providers_returns_error",
+            "failover::tests::failover_with_tools_follows_same_path",
+            "failover::tests::failure_health_counter_keeps_its_threshold_after_integer_exhaustion",
+            "failover::tests::hanging_provider_failover_to_healthy_one",
+            "failover::tests::list_models_aggregates_all",
+            "failover::tests::model_name_and_cost_track_last_used_provider",
+            "failover::tests::never_skip_all_providers",
+            "failover::tests::non_retryable_does_not_increment_cooldown",
+            "failover::tests::non_retryable_error_fails_immediately",
+            "failover::tests::primary_fails_retryable_fallback_succeeds",
+            "failover::tests::primary_succeeds_no_failover",
+            "failover::tests::reset_on_success",
+            "failover::tests::retryable_classification",
+            "failover::tests::set_model_propagates_to_all_providers",
+            "failover::tests::single_provider_failover_still_works",
+            "failover::tests::test_failover_all_providers_fail_no_panic",
+            "failover::tests::test_failover_with_single_provider_failing",
+            "failover::tests::three_providers_first_two_fail_third_succeeds",
+            "failover::tests::three_providers_mixed_cooldown",
+            "failover::tests::threshold_boundary"
+          ],
+          "image_key": "brassclaw_llm"
+        },
+        {
+          "stage": "model-identity-exhaustion",
+          "exit_code": 0,
+          "seconds": 0.2374728750437498,
+          "log_sha256": "161771376c81a2bba917fdb575defda676ed2e8a49e2294047951fe07212768f",
+          "passed": 1,
+          "tests": [
+            "model_gateway::tests::concurrent_provider_call_identities_exhaust_without_reuse_or_wrap"
+          ],
+          "image_key": "brassclaw_reborn"
+        },
+        {
+          "stage": "native-pg-transport",
+          "exit_code": 0,
+          "seconds": 0.23399291699752212,
+          "log_sha256": "fd07cd1cc6f235cf40f6fc9ea877746ed934dc836bd79996bedb98a508a97b18",
+          "passed": 3,
+          "tests": [
+            "test_support::tests::bind_selectors_require_every_literal_and_exclude_forbidden_bytes",
+            "test_support::tests::invalid_rules_schemes_and_nonloopback_upstreams_reject_before_connecting",
+            "test_support::tests::postgres_literal_loopbacks_resolve_without_domain_lookup"
+          ],
+          "image_key": "brassclaw_pg"
+        },
+        {
+          "stage": "turn-images",
+          "exit_code": 0,
+          "seconds": 8.493564499774948,
+          "log_sha256": "46f304d27c0da8094424aabe30f275f0acb5668494df4689709664beda2a8f64"
+        },
+        {
+          "stage": "native-auth-memory",
+          "exit_code": 0,
+          "seconds": 0.23479374987073243,
+          "log_sha256": "14165184c852f00e356bf39570979f1bf83c8460819eeeb0c4423c4c50d10f57",
+          "passed": 13,
+          "tests": [
+            "native_auth_wait_contract::native_auth_cancel_ack_expiry_fails_and_fences_without_fabricating_ack",
+            "native_auth_wait_contract::native_auth_resolved_cancellation_preserves_the_bounded_ack_deadline",
+            "native_auth_wait_contract::native_auth_resolved_custody_cannot_become_a_legacy_checkpoint",
+            "native_auth_wait_contract::native_auth_resume_original_survives_restore_and_conflicting_retry_is_rejected",
+            "native_auth_wait_contract::native_auth_resume_publishes_lifecycle_without_a_worker_wake",
+            "native_auth_wait_contract::native_auth_resume_rejects_corrupt_persisted_originals",
+            "native_auth_wait_contract::native_auth_resume_requires_auth_precondition_and_preserves_the_original_wait",
+            "native_auth_wait_contract::native_auth_runner_failure_is_not_vm_cancellation_acknowledgement",
+            "native_auth_wait_contract::native_auth_wait_cancellation_requires_original_runner_acknowledgement",
+            "native_auth_wait_contract::native_auth_wait_expiry_and_relinquish_never_queue_a_replacement_attempt",
+            "native_auth_wait_contract::native_auth_wait_rejects_dispatch_unknown_stale_scope_and_changed_binding",
+            "native_auth_wait_contract::native_auth_wait_retains_claim_across_snapshot_and_resumes_without_queue_or_checkpoint",
+            "native_auth_wait_contract::native_auth_wait_snapshot_rejects_erased_claim_or_queued_custody"
+          ],
+          "image_key": "turn_coordinator_contract"
+        },
+        {
+          "stage": "native-auth-filesystem",
+          "exit_code": 0,
+          "seconds": 0.27769720810465515,
+          "log_sha256": "d408c56def75102391db70db8827ff1505c26a217baa1b6945f976a9fb1a5902",
+          "passed": 2,
+          "tests": [
+            "filesystem_native_auth_wait_on_byte_only_owner_preserves_original_custody",
+            "filesystem_native_auth_wait_reopens_and_resumes_original_claim_without_worker_queue"
+          ],
+          "image_key": "filesystem_turn_state_contract"
+        },
+        {
+          "stage": "model-gateway-image",
+          "exit_code": 0,
+          "seconds": 14.70037933299318,
+          "log_sha256": "0382c6f546298dea1c5b4fb76db13db1e4c41d97be86d0236f1e49aa50c19f4b"
+        },
+        {
+          "stage": "model-gateway-callers",
+          "exit_code": 0,
+          "seconds": 0.2547045829705894,
+          "log_sha256": "1edd5524198eb3c60871344b2b0e8c3e778988dedd53f5528497b27ea2293d28",
+          "passed": 60,
+          "tests": [
+            "gateway_calls_llm_provider_for_allowed_model_profile",
+            "gateway_cleans_flattened_tool_history_from_text_only_assistant_reply",
+            "gateway_cleans_flattened_tool_history_from_tool_capable_stop_reply",
+            "gateway_cleans_legacy_tool_marker_from_text_only_assistant_reply",
+            "gateway_cleans_legacy_tool_marker_from_tool_capable_stop_reply",
+            "gateway_coalesces_late_system_messages_before_provider_call",
+            "gateway_degrades_provider_tool_replay_from_different_provider_route_to_summary",
+            "gateway_degrades_resolved_orphan_tool_result_to_safe_summary",
+            "gateway_degrades_resolved_provider_mismatch_to_safe_summary",
+            "gateway_falls_back_to_safe_summary_for_invalid_model_observation",
+            "gateway_keeps_same_turn_provider_roundtrip_when_plain_tool_result_is_interleaved",
+            "gateway_maps_nearai_credit_exhaustion_to_safe_summary",
+            "gateway_preserves_structured_tool_calls_when_content_has_legacy_marker",
+            "gateway_preserves_text_only_provider_reasoning",
+            "gateway_reconstructs_multi_tool_provider_turn_from_grouped_result_references",
+            "gateway_reconstructs_provider_tool_roundtrip_from_tool_result_reference",
+            "gateway_recovers_capability_calls_from_textual_tool_syntax",
+            "gateway_rejects_content_filtered_provider_responses",
+            "gateway_rejects_empty_tool_capable_stop_response_without_text_only_retry",
+            "gateway_rejects_invalid_provider_tool_batch_before_any_registration",
+            "gateway_rejects_tool_result_without_typed_replay_content",
+            "gateway_rejects_tool_use_provider_responses",
+            "gateway_rejects_tool_use_without_tool_calls_on_capability_path",
+            "gateway_rejects_truncated_provider_responses",
+            "gateway_rejects_unknown_finish_reason_provider_responses",
+            "gateway_rejects_unknown_model_profile_without_calling_provider",
+            "gateway_rejects_unknown_provider_tool_call_before_registration",
+            "gateway_rejects_unpinned_model_profile_when_active_model_is_default",
+            "gateway_rejects_unrecovered_textual_tool_syntax",
+            "gateway_replays_model_observation_for_orphan_tool_reference",
+            "gateway_replays_model_observation_from_tool_result_reference_before_safe_summary",
+            "gateway_replays_resolved_tool_result_content_instead_of_summary",
+            "gateway_sanitizes_provider_errors",
+            "gateway_splits_adjacent_provider_tool_results_from_different_turns",
+            "gateway_uses_active_provider_model_for_unpinned_model_profile",
+            "gateway_with_empty_tool_definitions_uses_plain_complete",
+            "gateway_with_tool_surface_calls_complete_with_tools_and_returns_capability_calls",
+            "gateway_with_two_tool_calls_returns_two_candidates",
+            "host_managed_model_request_accepts_legacy_string_identity_wire_shape",
+            "host_managed_model_request_rejects_invalid_legacy_identity_strings",
+            "output_token_limit_overflow_fails_before_provider_dispatch",
+            "production_loop_model_gateway_fails_closed_before_provider_call",
+            "production_loop_model_gateway_includes_configured_safety_context",
+            "production_loop_model_gateway_keeps_instruction_stores_isolated_across_concurrent_calls",
+            "production_loop_model_gateway_maps_provider_auth_and_session_to_credential_unavailable",
+            "production_loop_model_gateway_preserves_error_kind_when_summary_is_resanitized",
+            "production_loop_model_gateway_rejects_forged_context_summary_before_provider_call",
+            "production_loop_model_gateway_rejects_unvalidated_surface_before_provider_call",
+            "production_loop_model_gateway_resolves_thread_refs_and_emits_milestones",
+            "production_loop_model_gateway_sanitizes_provider_output_before_public_chunks",
+            "provider_pool_rejects_route_bound_to_wrong_active_model",
+            "provider_pool_rejects_wrong_provider_identity_with_same_model",
+            "routed_gateway_accepts_mission_model_profile_when_slot_route_configured",
+            "routed_gateway_rejects_missing_route_snapshot_before_provider_call",
+            "routed_gateway_rejects_provider_that_ignores_route_model_override_at_call_time",
+            "routed_gateway_rejects_route_snapshot_denied_by_policy",
+            "routed_gateway_reports_configuration_error_for_missing_provider_pool_entry",
+            "routed_gateway_reports_configuration_error_for_missing_resolver_slot",
+            "routed_gateway_uses_provider_pool_route_not_request_model_override",
+            "routed_gateway_uses_request_route_snapshot"
+          ],
+          "image_key": "llm_gateway"
+        },
+        {
+          "stage": "root-subagent-image",
+          "exit_code": 0,
+          "seconds": 107.92770020803437,
+          "log_sha256": "70a3bcde57748d08a5cf92e247549f078f2a153868d9272688c3b65e33523fb6"
+        },
+        {
+          "stage": "root-subagent-parallel",
+          "exit_code": 0,
+          "seconds": 5.865797332953662,
+          "log_sha256": "2226d667847cd3918eca158926e2361eecc8728550e54fb30431db156144f0fb",
+          "passed": 5,
+          "tests": [
+            "background_spawn_is_rejected_before_child_run_or_auth_invocation",
+            "blocking_spawn_parks_parent_then_resumes_with_child_result",
+            "blocking_spawn_waits_while_child_is_blocked_on_approval_then_resumes",
+            "legacy_explicit_blocking_spawn_still_parks_parent_and_resumes",
+            "parallel_blocking_spawn_resumes_once_after_last_child"
+          ],
+          "image_key": "reborn_subagent_spawn_e2e"
+        },
+        {
+          "stage": "required-composition-cache-clean-1",
+          "exit_code": 0,
+          "seconds": 0.7151057498995215,
+          "log_sha256": "7d5a8580e93850968406125421ec91139d6b9e0f8a8dcf33b8eab2a85d53b301"
+        },
+        {
+          "stage": "architecture",
+          "exit_code": 0,
+          "seconds": 1.2684757080860436,
+          "log_sha256": "3ea942034bb6e80624c0f903667b525f8f88f5e757a7af0f001e144054dff6b7"
+        },
+        {
+          "stage": "monty_v1_upgrade-actual-gate",
+          "exit_code": 101,
+          "seconds": 16.84052854194306,
+          "log_sha256": "dfea2bdd435a8761d8ada89fed898a7348e1461e0a8ffb8afcc0a7269057d459"
+        }
+      ]
+    },
+    "run-3": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-3",
+      "status": "failed",
+      "stage": "required-composition-cache-clean-2",
+      "progress_sha256": "015a16451f60530710c0af40060c50dc087bd219f164b4ac1ce86dc797baafb3",
+      "source_sha256": "25d3db9916edd7ca2341ebdb4e0304a7add0c9e11c1662ec33199fd0937313f5",
+      "runner_sha256": "971f78703a6905077328530eb0c3a836dd8ae54e11d5abcb8843a3c72fc1530f",
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-ci-repairs-20261031-qsds28la/resume-r3.py\", line 161, in <module>\n    run(manifest + '-actual-gate', ['cargo', '+1.96.0', 'test', '--manifest-path', 'tests/' + manifest + '/Cargo.toml', '--locked', '--all-targets', '--message-format=json', '--', '--test-threads=1', '--nocapture'], manifest + '-')\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-ci-repairs-20261031-qsds28la/resume-r3.py\", line 82, in run\n    assert disk_ok(label + '-after-clean'), 'required package cleanup insufficient; stop and inspect'\n           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: required package cleanup insufficient; stop and inspect\n",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.3309779579285532,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.24759708414785564,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "workflow-lint",
+          "exit_code": 0,
+          "seconds": 0.3291803749743849,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "worker-build",
+          "exit_code": 0,
+          "seconds": 6.308499542064965,
+          "log_sha256": "c6af325224014b9e55283b9cf31c868f463906846c81aeee45557b5c72726f12"
+        },
+        {
+          "stage": "connected-unit-images",
+          "exit_code": 0,
+          "seconds": 263.6511011249386,
+          "log_sha256": "3c91c51a014015f09c55375c2e542e771b733988c8ad10b0272619061b8cc632"
+        },
+        {
+          "stage": "native-auth-pg",
+          "exit_code": 0,
+          "seconds": 3.123685040976852,
+          "log_sha256": "40ffb40070a8dc15f7555d1323d67dc2b6a25c2bcea7eb275888747f14644b31",
+          "passed": 1,
+          "tests": [
+            "pg_auth_product_services::requirement_tests::native_auth_wait_retains_pg_claim_on_resume_and_fences_missing_cancel_ack"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-prefix-sdk",
+          "exit_code": 0,
+          "seconds": 5.074418209027499,
+          "log_sha256": "16286770c48a348c496e1adcfcccf7de8d1a0d366ec128856538a1bb817fefb5",
+          "passed": 1,
+          "tests": [
+            "prefix_acceptances::tests::native_scoped_acceptance_retains_sources_and_guards_both_task_roles"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-provider-policy",
+          "exit_code": 0,
+          "seconds": 11.46729295887053,
+          "log_sha256": "235f3f086df43bba55987176ab6ea4371a71c9df8dc13e353475c29fd46d0cc1",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::provider_request_policy_tests::native_live_provider_request_policy_reaches_selected_clients"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-coding-protection",
+          "exit_code": 0,
+          "seconds": 5.316134459106252,
+          "log_sha256": "3870929ed84f16e3719fa3987845ceed63cee2ef7e37c04c9e97a8735d2cb30b",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::provider_boot_tests::native_coding_primitives_protect_structured_entries_on_both_backends"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-review-ack-custody",
+          "exit_code": 0,
+          "seconds": 11.634142249822617,
+          "log_sha256": "8b9ef93784439cac0d64c96339f70a68cba88ab6ac73b4acb523dbed3dca54f3",
+          "passed": 5,
+          "tests": [
+            "pg_review_submission::function_tests::native_function_subject_atomically_retains_both_edits_and_exact_unknown_commit_retry",
+            "pg_review_submission::function_tests::native_function_subject_forward_migration_preserves_old_subjects_and_intents",
+            "pg_review_submission::function_tests::native_function_subject_keeps_unchanged_skill_as_context_without_allocating_it",
+            "pg_review_submission::function_tests::native_function_subject_rejects_partial_single_class_preparation_at_both_owners",
+            "pg_review_submission::function_tests::native_function_subject_second_root_conflict_rolls_back_first_and_races_coherently"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-subject-reader",
+          "exit_code": 0,
+          "seconds": 7.044931124895811,
+          "log_sha256": "6d98562847b9fde92b1c45a74371131e28f8105721ae028aeb381acd5aab0ceb",
+          "passed": 3,
+          "tests": [
+            "validator_skill_interface_tests::native_skill_interface_and_shared_reader_use_actual_pinned_function_pairs",
+            "validator_skill_interface_tests::native_skill_interface_rejects_disagreement_and_shared_reader_rejects_forged_context",
+            "validator_skill_interface_tests::packaged_function_check_drafts_retain_private_dependency_and_preserve_operator_successors"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-pure-structure",
+          "exit_code": 0,
+          "seconds": 40.519006999908015,
+          "log_sha256": "49a5bcf70f9ad60e8566378b061ce702075f31dcdff067ddda4d6bce1da71800",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::source_inventory_usage_tests::python_structure_review_tests::native_private_pure_structure_recipe_checks_all_exports_and_hidden_host_calls"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-global-embedded",
+          "exit_code": 0,
+          "seconds": 382.01469641691074,
+          "log_sha256": "b549ea247c98ac25e4914cb7c7e539dc0668259d34266764b363d6f7406e0b63",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::authored_catalogue_tests::component_deployment_tests::native_component_deployment_preserves_recipes_and_pins_review_subjects"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "llm-failover",
+          "exit_code": 0,
+          "seconds": 0.26414812495931983,
+          "log_sha256": "90f0577ad028c72952f764634106aaba023863e7c02ad342380af8714dc056b8",
+          "passed": 27,
+          "tests": [
+            "failover::tests::all_providers_fail_returns_error_not_panic",
+            "failover::tests::all_providers_fail_returns_last_error",
+            "failover::tests::complete_with_tools_failover",
+            "failover::tests::cooldown_activates_after_threshold",
+            "failover::tests::cooldown_at_nanos_zero_still_activates",
+            "failover::tests::cooldown_expires_after_duration",
+            "failover::tests::effective_model_name_is_request_scoped_under_concurrency",
+            "failover::tests::empty_providers_returns_error",
+            "failover::tests::failover_with_tools_follows_same_path",
+            "failover::tests::failure_health_counter_keeps_its_threshold_after_integer_exhaustion",
+            "failover::tests::hanging_provider_failover_to_healthy_one",
+            "failover::tests::list_models_aggregates_all",
+            "failover::tests::model_name_and_cost_track_last_used_provider",
+            "failover::tests::never_skip_all_providers",
+            "failover::tests::non_retryable_does_not_increment_cooldown",
+            "failover::tests::non_retryable_error_fails_immediately",
+            "failover::tests::primary_fails_retryable_fallback_succeeds",
+            "failover::tests::primary_succeeds_no_failover",
+            "failover::tests::reset_on_success",
+            "failover::tests::retryable_classification",
+            "failover::tests::set_model_propagates_to_all_providers",
+            "failover::tests::single_provider_failover_still_works",
+            "failover::tests::test_failover_all_providers_fail_no_panic",
+            "failover::tests::test_failover_with_single_provider_failing",
+            "failover::tests::three_providers_first_two_fail_third_succeeds",
+            "failover::tests::three_providers_mixed_cooldown",
+            "failover::tests::threshold_boundary"
+          ],
+          "image_key": "brassclaw_llm"
+        },
+        {
+          "stage": "model-identity-exhaustion",
+          "exit_code": 0,
+          "seconds": 0.2374728750437498,
+          "log_sha256": "161771376c81a2bba917fdb575defda676ed2e8a49e2294047951fe07212768f",
+          "passed": 1,
+          "tests": [
+            "model_gateway::tests::concurrent_provider_call_identities_exhaust_without_reuse_or_wrap"
+          ],
+          "image_key": "brassclaw_reborn"
+        },
+        {
+          "stage": "native-pg-transport",
+          "exit_code": 0,
+          "seconds": 0.23399291699752212,
+          "log_sha256": "fd07cd1cc6f235cf40f6fc9ea877746ed934dc836bd79996bedb98a508a97b18",
+          "passed": 3,
+          "tests": [
+            "test_support::tests::bind_selectors_require_every_literal_and_exclude_forbidden_bytes",
+            "test_support::tests::invalid_rules_schemes_and_nonloopback_upstreams_reject_before_connecting",
+            "test_support::tests::postgres_literal_loopbacks_resolve_without_domain_lookup"
+          ],
+          "image_key": "brassclaw_pg"
+        },
+        {
+          "stage": "turn-images",
+          "exit_code": 0,
+          "seconds": 8.493564499774948,
+          "log_sha256": "46f304d27c0da8094424aabe30f275f0acb5668494df4689709664beda2a8f64"
+        },
+        {
+          "stage": "native-auth-memory",
+          "exit_code": 0,
+          "seconds": 0.23479374987073243,
+          "log_sha256": "14165184c852f00e356bf39570979f1bf83c8460819eeeb0c4423c4c50d10f57",
+          "passed": 13,
+          "tests": [
+            "native_auth_wait_contract::native_auth_cancel_ack_expiry_fails_and_fences_without_fabricating_ack",
+            "native_auth_wait_contract::native_auth_resolved_cancellation_preserves_the_bounded_ack_deadline",
+            "native_auth_wait_contract::native_auth_resolved_custody_cannot_become_a_legacy_checkpoint",
+            "native_auth_wait_contract::native_auth_resume_original_survives_restore_and_conflicting_retry_is_rejected",
+            "native_auth_wait_contract::native_auth_resume_publishes_lifecycle_without_a_worker_wake",
+            "native_auth_wait_contract::native_auth_resume_rejects_corrupt_persisted_originals",
+            "native_auth_wait_contract::native_auth_resume_requires_auth_precondition_and_preserves_the_original_wait",
+            "native_auth_wait_contract::native_auth_runner_failure_is_not_vm_cancellation_acknowledgement",
+            "native_auth_wait_contract::native_auth_wait_cancellation_requires_original_runner_acknowledgement",
+            "native_auth_wait_contract::native_auth_wait_expiry_and_relinquish_never_queue_a_replacement_attempt",
+            "native_auth_wait_contract::native_auth_wait_rejects_dispatch_unknown_stale_scope_and_changed_binding",
+            "native_auth_wait_contract::native_auth_wait_retains_claim_across_snapshot_and_resumes_without_queue_or_checkpoint",
+            "native_auth_wait_contract::native_auth_wait_snapshot_rejects_erased_claim_or_queued_custody"
+          ],
+          "image_key": "turn_coordinator_contract"
+        },
+        {
+          "stage": "native-auth-filesystem",
+          "exit_code": 0,
+          "seconds": 0.27769720810465515,
+          "log_sha256": "d408c56def75102391db70db8827ff1505c26a217baa1b6945f976a9fb1a5902",
+          "passed": 2,
+          "tests": [
+            "filesystem_native_auth_wait_on_byte_only_owner_preserves_original_custody",
+            "filesystem_native_auth_wait_reopens_and_resumes_original_claim_without_worker_queue"
+          ],
+          "image_key": "filesystem_turn_state_contract"
+        },
+        {
+          "stage": "model-gateway-image",
+          "exit_code": 0,
+          "seconds": 14.70037933299318,
+          "log_sha256": "0382c6f546298dea1c5b4fb76db13db1e4c41d97be86d0236f1e49aa50c19f4b"
+        },
+        {
+          "stage": "model-gateway-callers",
+          "exit_code": 0,
+          "seconds": 0.2547045829705894,
+          "log_sha256": "1edd5524198eb3c60871344b2b0e8c3e778988dedd53f5528497b27ea2293d28",
+          "passed": 60,
+          "tests": [
+            "gateway_calls_llm_provider_for_allowed_model_profile",
+            "gateway_cleans_flattened_tool_history_from_text_only_assistant_reply",
+            "gateway_cleans_flattened_tool_history_from_tool_capable_stop_reply",
+            "gateway_cleans_legacy_tool_marker_from_text_only_assistant_reply",
+            "gateway_cleans_legacy_tool_marker_from_tool_capable_stop_reply",
+            "gateway_coalesces_late_system_messages_before_provider_call",
+            "gateway_degrades_provider_tool_replay_from_different_provider_route_to_summary",
+            "gateway_degrades_resolved_orphan_tool_result_to_safe_summary",
+            "gateway_degrades_resolved_provider_mismatch_to_safe_summary",
+            "gateway_falls_back_to_safe_summary_for_invalid_model_observation",
+            "gateway_keeps_same_turn_provider_roundtrip_when_plain_tool_result_is_interleaved",
+            "gateway_maps_nearai_credit_exhaustion_to_safe_summary",
+            "gateway_preserves_structured_tool_calls_when_content_has_legacy_marker",
+            "gateway_preserves_text_only_provider_reasoning",
+            "gateway_reconstructs_multi_tool_provider_turn_from_grouped_result_references",
+            "gateway_reconstructs_provider_tool_roundtrip_from_tool_result_reference",
+            "gateway_recovers_capability_calls_from_textual_tool_syntax",
+            "gateway_rejects_content_filtered_provider_responses",
+            "gateway_rejects_empty_tool_capable_stop_response_without_text_only_retry",
+            "gateway_rejects_invalid_provider_tool_batch_before_any_registration",
+            "gateway_rejects_tool_result_without_typed_replay_content",
+            "gateway_rejects_tool_use_provider_responses",
+            "gateway_rejects_tool_use_without_tool_calls_on_capability_path",
+            "gateway_rejects_truncated_provider_responses",
+            "gateway_rejects_unknown_finish_reason_provider_responses",
+            "gateway_rejects_unknown_model_profile_without_calling_provider",
+            "gateway_rejects_unknown_provider_tool_call_before_registration",
+            "gateway_rejects_unpinned_model_profile_when_active_model_is_default",
+            "gateway_rejects_unrecovered_textual_tool_syntax",
+            "gateway_replays_model_observation_for_orphan_tool_reference",
+            "gateway_replays_model_observation_from_tool_result_reference_before_safe_summary",
+            "gateway_replays_resolved_tool_result_content_instead_of_summary",
+            "gateway_sanitizes_provider_errors",
+            "gateway_splits_adjacent_provider_tool_results_from_different_turns",
+            "gateway_uses_active_provider_model_for_unpinned_model_profile",
+            "gateway_with_empty_tool_definitions_uses_plain_complete",
+            "gateway_with_tool_surface_calls_complete_with_tools_and_returns_capability_calls",
+            "gateway_with_two_tool_calls_returns_two_candidates",
+            "host_managed_model_request_accepts_legacy_string_identity_wire_shape",
+            "host_managed_model_request_rejects_invalid_legacy_identity_strings",
+            "output_token_limit_overflow_fails_before_provider_dispatch",
+            "production_loop_model_gateway_fails_closed_before_provider_call",
+            "production_loop_model_gateway_includes_configured_safety_context",
+            "production_loop_model_gateway_keeps_instruction_stores_isolated_across_concurrent_calls",
+            "production_loop_model_gateway_maps_provider_auth_and_session_to_credential_unavailable",
+            "production_loop_model_gateway_preserves_error_kind_when_summary_is_resanitized",
+            "production_loop_model_gateway_rejects_forged_context_summary_before_provider_call",
+            "production_loop_model_gateway_rejects_unvalidated_surface_before_provider_call",
+            "production_loop_model_gateway_resolves_thread_refs_and_emits_milestones",
+            "production_loop_model_gateway_sanitizes_provider_output_before_public_chunks",
+            "provider_pool_rejects_route_bound_to_wrong_active_model",
+            "provider_pool_rejects_wrong_provider_identity_with_same_model",
+            "routed_gateway_accepts_mission_model_profile_when_slot_route_configured",
+            "routed_gateway_rejects_missing_route_snapshot_before_provider_call",
+            "routed_gateway_rejects_provider_that_ignores_route_model_override_at_call_time",
+            "routed_gateway_rejects_route_snapshot_denied_by_policy",
+            "routed_gateway_reports_configuration_error_for_missing_provider_pool_entry",
+            "routed_gateway_reports_configuration_error_for_missing_resolver_slot",
+            "routed_gateway_uses_provider_pool_route_not_request_model_override",
+            "routed_gateway_uses_request_route_snapshot"
+          ],
+          "image_key": "llm_gateway"
+        },
+        {
+          "stage": "root-subagent-image",
+          "exit_code": 0,
+          "seconds": 107.92770020803437,
+          "log_sha256": "70a3bcde57748d08a5cf92e247549f078f2a153868d9272688c3b65e33523fb6"
+        },
+        {
+          "stage": "root-subagent-parallel",
+          "exit_code": 0,
+          "seconds": 5.865797332953662,
+          "log_sha256": "2226d667847cd3918eca158926e2361eecc8728550e54fb30431db156144f0fb",
+          "passed": 5,
+          "tests": [
+            "background_spawn_is_rejected_before_child_run_or_auth_invocation",
+            "blocking_spawn_parks_parent_then_resumes_with_child_result",
+            "blocking_spawn_waits_while_child_is_blocked_on_approval_then_resumes",
+            "legacy_explicit_blocking_spawn_still_parks_parent_and_resumes",
+            "parallel_blocking_spawn_resumes_once_after_last_child"
+          ],
+          "image_key": "reborn_subagent_spawn_e2e"
+        },
+        {
+          "stage": "required-composition-cache-clean-1",
+          "exit_code": 0,
+          "seconds": 0.7151057498995215,
+          "log_sha256": "7d5a8580e93850968406125421ec91139d6b9e0f8a8dcf33b8eab2a85d53b301"
+        },
+        {
+          "stage": "architecture",
+          "exit_code": 0,
+          "seconds": 1.2684757080860436,
+          "log_sha256": "3ea942034bb6e80624c0f903667b525f8f88f5e757a7af0f001e144054dff6b7"
+        },
+        {
+          "stage": "format-new-upstream",
+          "exit_code": 0,
+          "seconds": 0.24239666713401675,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace-r3",
+          "exit_code": 0,
+          "seconds": 0.24184295814484358,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "monty_v1_upgrade-actual-gate",
+          "exit_code": 0,
+          "seconds": 3.163196915993467,
+          "log_sha256": "085da9a7290a9ecbeba764d6efdb32c76b75df1b04e4fd0ea97146693a54068a"
+        },
+        {
+          "stage": "required-composition-cache-clean-2",
+          "exit_code": 0,
+          "seconds": 0.42514220788143575,
+          "log_sha256": "0bdaeb2aa6a92a0fdfec2d2cc4d0ab71946de5d0654e08c526e4629130ae0f28"
+        }
+      ]
+    },
+    "run-4": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4",
+      "status": "passed",
+      "stage": "terminal",
+      "progress_sha256": "c41dceb9b771e235e6ca5e1b3a76d72471ba7e43afb445ea4ff36517cd2c1b2c",
+      "source_sha256": "25d3db9916edd7ca2341ebdb4e0304a7add0c9e11c1662ec33199fd0937313f5",
+      "runner_sha256": "735cc242dcb0167ba01a7743110694d0a92dcd6353b5826397b045e32febfb22",
+      "diagnostic": null,
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.3309779579285532,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.24759708414785564,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "workflow-lint",
+          "exit_code": 0,
+          "seconds": 0.3291803749743849,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "worker-build",
+          "exit_code": 0,
+          "seconds": 6.308499542064965,
+          "log_sha256": "c6af325224014b9e55283b9cf31c868f463906846c81aeee45557b5c72726f12"
+        },
+        {
+          "stage": "connected-unit-images",
+          "exit_code": 0,
+          "seconds": 263.6511011249386,
+          "log_sha256": "3c91c51a014015f09c55375c2e542e771b733988c8ad10b0272619061b8cc632"
+        },
+        {
+          "stage": "native-auth-pg",
+          "exit_code": 0,
+          "seconds": 3.123685040976852,
+          "log_sha256": "40ffb40070a8dc15f7555d1323d67dc2b6a25c2bcea7eb275888747f14644b31",
+          "passed": 1,
+          "tests": [
+            "pg_auth_product_services::requirement_tests::native_auth_wait_retains_pg_claim_on_resume_and_fences_missing_cancel_ack"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-prefix-sdk",
+          "exit_code": 0,
+          "seconds": 5.074418209027499,
+          "log_sha256": "16286770c48a348c496e1adcfcccf7de8d1a0d366ec128856538a1bb817fefb5",
+          "passed": 1,
+          "tests": [
+            "prefix_acceptances::tests::native_scoped_acceptance_retains_sources_and_guards_both_task_roles"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-provider-policy",
+          "exit_code": 0,
+          "seconds": 11.46729295887053,
+          "log_sha256": "235f3f086df43bba55987176ab6ea4371a71c9df8dc13e353475c29fd46d0cc1",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::provider_request_policy_tests::native_live_provider_request_policy_reaches_selected_clients"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-coding-protection",
+          "exit_code": 0,
+          "seconds": 5.316134459106252,
+          "log_sha256": "3870929ed84f16e3719fa3987845ceed63cee2ef7e37c04c9e97a8735d2cb30b",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::provider_boot_tests::native_coding_primitives_protect_structured_entries_on_both_backends"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-review-ack-custody",
+          "exit_code": 0,
+          "seconds": 11.634142249822617,
+          "log_sha256": "8b9ef93784439cac0d64c96339f70a68cba88ab6ac73b4acb523dbed3dca54f3",
+          "passed": 5,
+          "tests": [
+            "pg_review_submission::function_tests::native_function_subject_atomically_retains_both_edits_and_exact_unknown_commit_retry",
+            "pg_review_submission::function_tests::native_function_subject_forward_migration_preserves_old_subjects_and_intents",
+            "pg_review_submission::function_tests::native_function_subject_keeps_unchanged_skill_as_context_without_allocating_it",
+            "pg_review_submission::function_tests::native_function_subject_rejects_partial_single_class_preparation_at_both_owners",
+            "pg_review_submission::function_tests::native_function_subject_second_root_conflict_rolls_back_first_and_races_coherently"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-subject-reader",
+          "exit_code": 0,
+          "seconds": 7.044931124895811,
+          "log_sha256": "6d98562847b9fde92b1c45a74371131e28f8105721ae028aeb381acd5aab0ceb",
+          "passed": 3,
+          "tests": [
+            "validator_skill_interface_tests::native_skill_interface_and_shared_reader_use_actual_pinned_function_pairs",
+            "validator_skill_interface_tests::native_skill_interface_rejects_disagreement_and_shared_reader_rejects_forged_context",
+            "validator_skill_interface_tests::packaged_function_check_drafts_retain_private_dependency_and_preserve_operator_successors"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-pure-structure",
+          "exit_code": 0,
+          "seconds": 40.519006999908015,
+          "log_sha256": "49a5bcf70f9ad60e8566378b061ce702075f31dcdff067ddda4d6bce1da71800",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::source_inventory_usage_tests::python_structure_review_tests::native_private_pure_structure_recipe_checks_all_exports_and_hidden_host_calls"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-global-embedded",
+          "exit_code": 0,
+          "seconds": 382.01469641691074,
+          "log_sha256": "b549ea247c98ac25e4914cb7c7e539dc0668259d34266764b363d6f7406e0b63",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::authored_catalogue_tests::component_deployment_tests::native_component_deployment_preserves_recipes_and_pins_review_subjects"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "llm-failover",
+          "exit_code": 0,
+          "seconds": 0.26414812495931983,
+          "log_sha256": "90f0577ad028c72952f764634106aaba023863e7c02ad342380af8714dc056b8",
+          "passed": 27,
+          "tests": [
+            "failover::tests::all_providers_fail_returns_error_not_panic",
+            "failover::tests::all_providers_fail_returns_last_error",
+            "failover::tests::complete_with_tools_failover",
+            "failover::tests::cooldown_activates_after_threshold",
+            "failover::tests::cooldown_at_nanos_zero_still_activates",
+            "failover::tests::cooldown_expires_after_duration",
+            "failover::tests::effective_model_name_is_request_scoped_under_concurrency",
+            "failover::tests::empty_providers_returns_error",
+            "failover::tests::failover_with_tools_follows_same_path",
+            "failover::tests::failure_health_counter_keeps_its_threshold_after_integer_exhaustion",
+            "failover::tests::hanging_provider_failover_to_healthy_one",
+            "failover::tests::list_models_aggregates_all",
+            "failover::tests::model_name_and_cost_track_last_used_provider",
+            "failover::tests::never_skip_all_providers",
+            "failover::tests::non_retryable_does_not_increment_cooldown",
+            "failover::tests::non_retryable_error_fails_immediately",
+            "failover::tests::primary_fails_retryable_fallback_succeeds",
+            "failover::tests::primary_succeeds_no_failover",
+            "failover::tests::reset_on_success",
+            "failover::tests::retryable_classification",
+            "failover::tests::set_model_propagates_to_all_providers",
+            "failover::tests::single_provider_failover_still_works",
+            "failover::tests::test_failover_all_providers_fail_no_panic",
+            "failover::tests::test_failover_with_single_provider_failing",
+            "failover::tests::three_providers_first_two_fail_third_succeeds",
+            "failover::tests::three_providers_mixed_cooldown",
+            "failover::tests::threshold_boundary"
+          ],
+          "image_key": "brassclaw_llm"
+        },
+        {
+          "stage": "model-identity-exhaustion",
+          "exit_code": 0,
+          "seconds": 0.2374728750437498,
+          "log_sha256": "161771376c81a2bba917fdb575defda676ed2e8a49e2294047951fe07212768f",
+          "passed": 1,
+          "tests": [
+            "model_gateway::tests::concurrent_provider_call_identities_exhaust_without_reuse_or_wrap"
+          ],
+          "image_key": "brassclaw_reborn"
+        },
+        {
+          "stage": "native-pg-transport",
+          "exit_code": 0,
+          "seconds": 0.23399291699752212,
+          "log_sha256": "fd07cd1cc6f235cf40f6fc9ea877746ed934dc836bd79996bedb98a508a97b18",
+          "passed": 3,
+          "tests": [
+            "test_support::tests::bind_selectors_require_every_literal_and_exclude_forbidden_bytes",
+            "test_support::tests::invalid_rules_schemes_and_nonloopback_upstreams_reject_before_connecting",
+            "test_support::tests::postgres_literal_loopbacks_resolve_without_domain_lookup"
+          ],
+          "image_key": "brassclaw_pg"
+        },
+        {
+          "stage": "turn-images",
+          "exit_code": 0,
+          "seconds": 8.493564499774948,
+          "log_sha256": "46f304d27c0da8094424aabe30f275f0acb5668494df4689709664beda2a8f64"
+        },
+        {
+          "stage": "native-auth-memory",
+          "exit_code": 0,
+          "seconds": 0.23479374987073243,
+          "log_sha256": "14165184c852f00e356bf39570979f1bf83c8460819eeeb0c4423c4c50d10f57",
+          "passed": 13,
+          "tests": [
+            "native_auth_wait_contract::native_auth_cancel_ack_expiry_fails_and_fences_without_fabricating_ack",
+            "native_auth_wait_contract::native_auth_resolved_cancellation_preserves_the_bounded_ack_deadline",
+            "native_auth_wait_contract::native_auth_resolved_custody_cannot_become_a_legacy_checkpoint",
+            "native_auth_wait_contract::native_auth_resume_original_survives_restore_and_conflicting_retry_is_rejected",
+            "native_auth_wait_contract::native_auth_resume_publishes_lifecycle_without_a_worker_wake",
+            "native_auth_wait_contract::native_auth_resume_rejects_corrupt_persisted_originals",
+            "native_auth_wait_contract::native_auth_resume_requires_auth_precondition_and_preserves_the_original_wait",
+            "native_auth_wait_contract::native_auth_runner_failure_is_not_vm_cancellation_acknowledgement",
+            "native_auth_wait_contract::native_auth_wait_cancellation_requires_original_runner_acknowledgement",
+            "native_auth_wait_contract::native_auth_wait_expiry_and_relinquish_never_queue_a_replacement_attempt",
+            "native_auth_wait_contract::native_auth_wait_rejects_dispatch_unknown_stale_scope_and_changed_binding",
+            "native_auth_wait_contract::native_auth_wait_retains_claim_across_snapshot_and_resumes_without_queue_or_checkpoint",
+            "native_auth_wait_contract::native_auth_wait_snapshot_rejects_erased_claim_or_queued_custody"
+          ],
+          "image_key": "turn_coordinator_contract"
+        },
+        {
+          "stage": "native-auth-filesystem",
+          "exit_code": 0,
+          "seconds": 0.27769720810465515,
+          "log_sha256": "d408c56def75102391db70db8827ff1505c26a217baa1b6945f976a9fb1a5902",
+          "passed": 2,
+          "tests": [
+            "filesystem_native_auth_wait_on_byte_only_owner_preserves_original_custody",
+            "filesystem_native_auth_wait_reopens_and_resumes_original_claim_without_worker_queue"
+          ],
+          "image_key": "filesystem_turn_state_contract"
+        },
+        {
+          "stage": "model-gateway-image",
+          "exit_code": 0,
+          "seconds": 14.70037933299318,
+          "log_sha256": "0382c6f546298dea1c5b4fb76db13db1e4c41d97be86d0236f1e49aa50c19f4b"
+        },
+        {
+          "stage": "model-gateway-callers",
+          "exit_code": 0,
+          "seconds": 0.2547045829705894,
+          "log_sha256": "1edd5524198eb3c60871344b2b0e8c3e778988dedd53f5528497b27ea2293d28",
+          "passed": 60,
+          "tests": [
+            "gateway_calls_llm_provider_for_allowed_model_profile",
+            "gateway_cleans_flattened_tool_history_from_text_only_assistant_reply",
+            "gateway_cleans_flattened_tool_history_from_tool_capable_stop_reply",
+            "gateway_cleans_legacy_tool_marker_from_text_only_assistant_reply",
+            "gateway_cleans_legacy_tool_marker_from_tool_capable_stop_reply",
+            "gateway_coalesces_late_system_messages_before_provider_call",
+            "gateway_degrades_provider_tool_replay_from_different_provider_route_to_summary",
+            "gateway_degrades_resolved_orphan_tool_result_to_safe_summary",
+            "gateway_degrades_resolved_provider_mismatch_to_safe_summary",
+            "gateway_falls_back_to_safe_summary_for_invalid_model_observation",
+            "gateway_keeps_same_turn_provider_roundtrip_when_plain_tool_result_is_interleaved",
+            "gateway_maps_nearai_credit_exhaustion_to_safe_summary",
+            "gateway_preserves_structured_tool_calls_when_content_has_legacy_marker",
+            "gateway_preserves_text_only_provider_reasoning",
+            "gateway_reconstructs_multi_tool_provider_turn_from_grouped_result_references",
+            "gateway_reconstructs_provider_tool_roundtrip_from_tool_result_reference",
+            "gateway_recovers_capability_calls_from_textual_tool_syntax",
+            "gateway_rejects_content_filtered_provider_responses",
+            "gateway_rejects_empty_tool_capable_stop_response_without_text_only_retry",
+            "gateway_rejects_invalid_provider_tool_batch_before_any_registration",
+            "gateway_rejects_tool_result_without_typed_replay_content",
+            "gateway_rejects_tool_use_provider_responses",
+            "gateway_rejects_tool_use_without_tool_calls_on_capability_path",
+            "gateway_rejects_truncated_provider_responses",
+            "gateway_rejects_unknown_finish_reason_provider_responses",
+            "gateway_rejects_unknown_model_profile_without_calling_provider",
+            "gateway_rejects_unknown_provider_tool_call_before_registration",
+            "gateway_rejects_unpinned_model_profile_when_active_model_is_default",
+            "gateway_rejects_unrecovered_textual_tool_syntax",
+            "gateway_replays_model_observation_for_orphan_tool_reference",
+            "gateway_replays_model_observation_from_tool_result_reference_before_safe_summary",
+            "gateway_replays_resolved_tool_result_content_instead_of_summary",
+            "gateway_sanitizes_provider_errors",
+            "gateway_splits_adjacent_provider_tool_results_from_different_turns",
+            "gateway_uses_active_provider_model_for_unpinned_model_profile",
+            "gateway_with_empty_tool_definitions_uses_plain_complete",
+            "gateway_with_tool_surface_calls_complete_with_tools_and_returns_capability_calls",
+            "gateway_with_two_tool_calls_returns_two_candidates",
+            "host_managed_model_request_accepts_legacy_string_identity_wire_shape",
+            "host_managed_model_request_rejects_invalid_legacy_identity_strings",
+            "output_token_limit_overflow_fails_before_provider_dispatch",
+            "production_loop_model_gateway_fails_closed_before_provider_call",
+            "production_loop_model_gateway_includes_configured_safety_context",
+            "production_loop_model_gateway_keeps_instruction_stores_isolated_across_concurrent_calls",
+            "production_loop_model_gateway_maps_provider_auth_and_session_to_credential_unavailable",
+            "production_loop_model_gateway_preserves_error_kind_when_summary_is_resanitized",
+            "production_loop_model_gateway_rejects_forged_context_summary_before_provider_call",
+            "production_loop_model_gateway_rejects_unvalidated_surface_before_provider_call",
+            "production_loop_model_gateway_resolves_thread_refs_and_emits_milestones",
+            "production_loop_model_gateway_sanitizes_provider_output_before_public_chunks",
+            "provider_pool_rejects_route_bound_to_wrong_active_model",
+            "provider_pool_rejects_wrong_provider_identity_with_same_model",
+            "routed_gateway_accepts_mission_model_profile_when_slot_route_configured",
+            "routed_gateway_rejects_missing_route_snapshot_before_provider_call",
+            "routed_gateway_rejects_provider_that_ignores_route_model_override_at_call_time",
+            "routed_gateway_rejects_route_snapshot_denied_by_policy",
+            "routed_gateway_reports_configuration_error_for_missing_provider_pool_entry",
+            "routed_gateway_reports_configuration_error_for_missing_resolver_slot",
+            "routed_gateway_uses_provider_pool_route_not_request_model_override",
+            "routed_gateway_uses_request_route_snapshot"
+          ],
+          "image_key": "llm_gateway"
+        },
+        {
+          "stage": "root-subagent-image",
+          "exit_code": 0,
+          "seconds": 107.92770020803437,
+          "log_sha256": "70a3bcde57748d08a5cf92e247549f078f2a153868d9272688c3b65e33523fb6"
+        },
+        {
+          "stage": "root-subagent-parallel",
+          "exit_code": 0,
+          "seconds": 5.865797332953662,
+          "log_sha256": "2226d667847cd3918eca158926e2361eecc8728550e54fb30431db156144f0fb",
+          "passed": 5,
+          "tests": [
+            "background_spawn_is_rejected_before_child_run_or_auth_invocation",
+            "blocking_spawn_parks_parent_then_resumes_with_child_result",
+            "blocking_spawn_waits_while_child_is_blocked_on_approval_then_resumes",
+            "legacy_explicit_blocking_spawn_still_parks_parent_and_resumes",
+            "parallel_blocking_spawn_resumes_once_after_last_child"
+          ],
+          "image_key": "reborn_subagent_spawn_e2e"
+        },
+        {
+          "stage": "required-composition-cache-clean-1",
+          "exit_code": 0,
+          "seconds": 0.7151057498995215,
+          "log_sha256": "7d5a8580e93850968406125421ec91139d6b9e0f8a8dcf33b8eab2a85d53b301"
+        },
+        {
+          "stage": "architecture",
+          "exit_code": 0,
+          "seconds": 1.2684757080860436,
+          "log_sha256": "3ea942034bb6e80624c0f903667b525f8f88f5e757a7af0f001e144054dff6b7"
+        },
+        {
+          "stage": "format-new-upstream",
+          "exit_code": 0,
+          "seconds": 0.24239666713401675,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace-r3",
+          "exit_code": 0,
+          "seconds": 0.24184295814484358,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "monty_v1_upgrade-actual-gate",
+          "exit_code": 0,
+          "seconds": 3.163196915993467,
+          "log_sha256": "085da9a7290a9ecbeba764d6efdb32c76b75df1b04e4fd0ea97146693a54068a"
+        },
+        {
+          "stage": "required-composition-cache-clean-2",
+          "exit_code": 0,
+          "seconds": 0.42514220788143575,
+          "log_sha256": "0bdaeb2aa6a92a0fdfec2d2cc4d0ab71946de5d0654e08c526e4629130ae0f28"
+        },
+        {
+          "stage": "format-new-upstream",
+          "exit_code": 0,
+          "seconds": 0.24540470889769495,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace-r3",
+          "exit_code": 0,
+          "seconds": 0.23951408406719565,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "required-llm-cache-clean-1",
+          "exit_code": 0,
+          "seconds": 0.4283300831448287,
+          "log_sha256": "6ce2f76df27cd4e3d74432b22a07c62b803dd0a087898d373d3aa9975ff69a5a"
+        },
+        {
+          "stage": "monty_v1_upgrade-actual-gate",
+          "exit_code": 0,
+          "seconds": 0.9504464170895517,
+          "log_sha256": "f2cab8c2531234443be92c0e18391e3521331bea43aec28ae351228e0b4a73cb"
+        },
+        {
+          "stage": "monty_legacy_baseline-actual-gate",
+          "exit_code": 0,
+          "seconds": 10.92340504215099,
+          "log_sha256": "bd8820c5ba01a435bd6edf96bba086e3450652fb5dd1dadbdf3918739e790f37"
+        },
+        {
+          "stage": "connected-strict",
+          "exit_code": 0,
+          "seconds": 119.29456712515093,
+          "log_sha256": "b2e244beb795d0c346b03e112586929cb60abc7548bb379550afc045468a0e63"
+        },
+        {
+          "stage": "monty_v1_upgrade-strict",
+          "exit_code": 0,
+          "seconds": 8.819797707954422,
+          "log_sha256": "e74d1d5e48a71e26b6f743f436c534a122553891b130a7a352b8f149cadc1fb5"
+        },
+        {
+          "stage": "required-composition-cache-clean-4",
+          "exit_code": 0,
+          "seconds": 0.6239399171900004,
+          "log_sha256": "2a110b56eb54fc324c238b0ba57d37fb2474f79979ab29a91ff3193a76a21233"
+        },
+        {
+          "stage": "monty_legacy_baseline-strict",
+          "exit_code": 0,
+          "seconds": 5.365157792111859,
+          "log_sha256": "a694647366469daac68693aaba844283f1b40b81aad78a0018c78c152db25454"
+        }
+      ]
+    }
+  },
+  "results": [
+    {
+      "stage": "format",
+      "exit_code": 0,
+      "seconds": 0.3309779579285532,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "whitespace",
+      "exit_code": 0,
+      "seconds": 0.24759708414785564,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "workflow-lint",
+      "exit_code": 0,
+      "seconds": 0.3291803749743849,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "worker-build",
+      "exit_code": 0,
+      "seconds": 6.308499542064965,
+      "log_sha256": "c6af325224014b9e55283b9cf31c868f463906846c81aeee45557b5c72726f12"
+    },
+    {
+      "stage": "connected-unit-images",
+      "exit_code": 0,
+      "seconds": 263.6511011249386,
+      "log_sha256": "3c91c51a014015f09c55375c2e542e771b733988c8ad10b0272619061b8cc632"
+    },
+    {
+      "stage": "native-auth-pg",
+      "exit_code": 0,
+      "seconds": 3.123685040976852,
+      "log_sha256": "40ffb40070a8dc15f7555d1323d67dc2b6a25c2bcea7eb275888747f14644b31",
+      "passed": 1,
+      "tests": [
+        "pg_auth_product_services::requirement_tests::native_auth_wait_retains_pg_claim_on_resume_and_fences_missing_cancel_ack"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "native-prefix-sdk",
+      "exit_code": 0,
+      "seconds": 5.074418209027499,
+      "log_sha256": "16286770c48a348c496e1adcfcccf7de8d1a0d366ec128856538a1bb817fefb5",
+      "passed": 1,
+      "tests": [
+        "prefix_acceptances::tests::native_scoped_acceptance_retains_sources_and_guards_both_task_roles"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "native-provider-policy",
+      "exit_code": 0,
+      "seconds": 11.46729295887053,
+      "log_sha256": "235f3f086df43bba55987176ab6ea4371a71c9df8dc13e353475c29fd46d0cc1",
+      "passed": 1,
+      "tests": [
+        "runtime::tests::provider_request_policy_tests::native_live_provider_request_policy_reaches_selected_clients"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "native-coding-protection",
+      "exit_code": 0,
+      "seconds": 5.316134459106252,
+      "log_sha256": "3870929ed84f16e3719fa3987845ceed63cee2ef7e37c04c9e97a8735d2cb30b",
+      "passed": 1,
+      "tests": [
+        "runtime::tests::provider_boot_tests::native_coding_primitives_protect_structured_entries_on_both_backends"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "native-review-ack-custody",
+      "exit_code": 0,
+      "seconds": 11.634142249822617,
+      "log_sha256": "8b9ef93784439cac0d64c96339f70a68cba88ab6ac73b4acb523dbed3dca54f3",
+      "passed": 5,
+      "tests": [
+        "pg_review_submission::function_tests::native_function_subject_atomically_retains_both_edits_and_exact_unknown_commit_retry",
+        "pg_review_submission::function_tests::native_function_subject_forward_migration_preserves_old_subjects_and_intents",
+        "pg_review_submission::function_tests::native_function_subject_keeps_unchanged_skill_as_context_without_allocating_it",
+        "pg_review_submission::function_tests::native_function_subject_rejects_partial_single_class_preparation_at_both_owners",
+        "pg_review_submission::function_tests::native_function_subject_second_root_conflict_rolls_back_first_and_races_coherently"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "native-subject-reader",
+      "exit_code": 0,
+      "seconds": 7.044931124895811,
+      "log_sha256": "6d98562847b9fde92b1c45a74371131e28f8105721ae028aeb381acd5aab0ceb",
+      "passed": 3,
+      "tests": [
+        "validator_skill_interface_tests::native_skill_interface_and_shared_reader_use_actual_pinned_function_pairs",
+        "validator_skill_interface_tests::native_skill_interface_rejects_disagreement_and_shared_reader_rejects_forged_context",
+        "validator_skill_interface_tests::packaged_function_check_drafts_retain_private_dependency_and_preserve_operator_successors"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "native-pure-structure",
+      "exit_code": 0,
+      "seconds": 40.519006999908015,
+      "log_sha256": "49a5bcf70f9ad60e8566378b061ce702075f31dcdff067ddda4d6bce1da71800",
+      "passed": 1,
+      "tests": [
+        "runtime::tests::source_inventory_usage_tests::python_structure_review_tests::native_private_pure_structure_recipe_checks_all_exports_and_hidden_host_calls"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "native-global-embedded",
+      "exit_code": 0,
+      "seconds": 382.01469641691074,
+      "log_sha256": "b549ea247c98ac25e4914cb7c7e539dc0668259d34266764b363d6f7406e0b63",
+      "passed": 1,
+      "tests": [
+        "runtime::tests::authored_catalogue_tests::component_deployment_tests::native_component_deployment_preserves_recipes_and_pins_review_subjects"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "llm-failover",
+      "exit_code": 0,
+      "seconds": 0.26414812495931983,
+      "log_sha256": "90f0577ad028c72952f764634106aaba023863e7c02ad342380af8714dc056b8",
+      "passed": 27,
+      "tests": [
+        "failover::tests::all_providers_fail_returns_error_not_panic",
+        "failover::tests::all_providers_fail_returns_last_error",
+        "failover::tests::complete_with_tools_failover",
+        "failover::tests::cooldown_activates_after_threshold",
+        "failover::tests::cooldown_at_nanos_zero_still_activates",
+        "failover::tests::cooldown_expires_after_duration",
+        "failover::tests::effective_model_name_is_request_scoped_under_concurrency",
+        "failover::tests::empty_providers_returns_error",
+        "failover::tests::failover_with_tools_follows_same_path",
+        "failover::tests::failure_health_counter_keeps_its_threshold_after_integer_exhaustion",
+        "failover::tests::hanging_provider_failover_to_healthy_one",
+        "failover::tests::list_models_aggregates_all",
+        "failover::tests::model_name_and_cost_track_last_used_provider",
+        "failover::tests::never_skip_all_providers",
+        "failover::tests::non_retryable_does_not_increment_cooldown",
+        "failover::tests::non_retryable_error_fails_immediately",
+        "failover::tests::primary_fails_retryable_fallback_succeeds",
+        "failover::tests::primary_succeeds_no_failover",
+        "failover::tests::reset_on_success",
+        "failover::tests::retryable_classification",
+        "failover::tests::set_model_propagates_to_all_providers",
+        "failover::tests::single_provider_failover_still_works",
+        "failover::tests::test_failover_all_providers_fail_no_panic",
+        "failover::tests::test_failover_with_single_provider_failing",
+        "failover::tests::three_providers_first_two_fail_third_succeeds",
+        "failover::tests::three_providers_mixed_cooldown",
+        "failover::tests::threshold_boundary"
+      ],
+      "image_key": "brassclaw_llm"
+    },
+    {
+      "stage": "model-identity-exhaustion",
+      "exit_code": 0,
+      "seconds": 0.2374728750437498,
+      "log_sha256": "161771376c81a2bba917fdb575defda676ed2e8a49e2294047951fe07212768f",
+      "passed": 1,
+      "tests": [
+        "model_gateway::tests::concurrent_provider_call_identities_exhaust_without_reuse_or_wrap"
+      ],
+      "image_key": "brassclaw_reborn"
+    },
+    {
+      "stage": "native-pg-transport",
+      "exit_code": 0,
+      "seconds": 0.23399291699752212,
+      "log_sha256": "fd07cd1cc6f235cf40f6fc9ea877746ed934dc836bd79996bedb98a508a97b18",
+      "passed": 3,
+      "tests": [
+        "test_support::tests::bind_selectors_require_every_literal_and_exclude_forbidden_bytes",
+        "test_support::tests::invalid_rules_schemes_and_nonloopback_upstreams_reject_before_connecting",
+        "test_support::tests::postgres_literal_loopbacks_resolve_without_domain_lookup"
+      ],
+      "image_key": "brassclaw_pg"
+    },
+    {
+      "stage": "turn-images",
+      "exit_code": 0,
+      "seconds": 8.493564499774948,
+      "log_sha256": "46f304d27c0da8094424aabe30f275f0acb5668494df4689709664beda2a8f64"
+    },
+    {
+      "stage": "native-auth-memory",
+      "exit_code": 0,
+      "seconds": 0.23479374987073243,
+      "log_sha256": "14165184c852f00e356bf39570979f1bf83c8460819eeeb0c4423c4c50d10f57",
+      "passed": 13,
+      "tests": [
+        "native_auth_wait_contract::native_auth_cancel_ack_expiry_fails_and_fences_without_fabricating_ack",
+        "native_auth_wait_contract::native_auth_resolved_cancellation_preserves_the_bounded_ack_deadline",
+        "native_auth_wait_contract::native_auth_resolved_custody_cannot_become_a_legacy_checkpoint",
+        "native_auth_wait_contract::native_auth_resume_original_survives_restore_and_conflicting_retry_is_rejected",
+        "native_auth_wait_contract::native_auth_resume_publishes_lifecycle_without_a_worker_wake",
+        "native_auth_wait_contract::native_auth_resume_rejects_corrupt_persisted_originals",
+        "native_auth_wait_contract::native_auth_resume_requires_auth_precondition_and_preserves_the_original_wait",
+        "native_auth_wait_contract::native_auth_runner_failure_is_not_vm_cancellation_acknowledgement",
+        "native_auth_wait_contract::native_auth_wait_cancellation_requires_original_runner_acknowledgement",
+        "native_auth_wait_contract::native_auth_wait_expiry_and_relinquish_never_queue_a_replacement_attempt",
+        "native_auth_wait_contract::native_auth_wait_rejects_dispatch_unknown_stale_scope_and_changed_binding",
+        "native_auth_wait_contract::native_auth_wait_retains_claim_across_snapshot_and_resumes_without_queue_or_checkpoint",
+        "native_auth_wait_contract::native_auth_wait_snapshot_rejects_erased_claim_or_queued_custody"
+      ],
+      "image_key": "turn_coordinator_contract"
+    },
+    {
+      "stage": "native-auth-filesystem",
+      "exit_code": 0,
+      "seconds": 0.27769720810465515,
+      "log_sha256": "d408c56def75102391db70db8827ff1505c26a217baa1b6945f976a9fb1a5902",
+      "passed": 2,
+      "tests": [
+        "filesystem_native_auth_wait_on_byte_only_owner_preserves_original_custody",
+        "filesystem_native_auth_wait_reopens_and_resumes_original_claim_without_worker_queue"
+      ],
+      "image_key": "filesystem_turn_state_contract"
+    },
+    {
+      "stage": "model-gateway-image",
+      "exit_code": 0,
+      "seconds": 14.70037933299318,
+      "log_sha256": "0382c6f546298dea1c5b4fb76db13db1e4c41d97be86d0236f1e49aa50c19f4b"
+    },
+    {
+      "stage": "model-gateway-callers",
+      "exit_code": 0,
+      "seconds": 0.2547045829705894,
+      "log_sha256": "1edd5524198eb3c60871344b2b0e8c3e778988dedd53f5528497b27ea2293d28",
+      "passed": 60,
+      "tests": [
+        "gateway_calls_llm_provider_for_allowed_model_profile",
+        "gateway_cleans_flattened_tool_history_from_text_only_assistant_reply",
+        "gateway_cleans_flattened_tool_history_from_tool_capable_stop_reply",
+        "gateway_cleans_legacy_tool_marker_from_text_only_assistant_reply",
+        "gateway_cleans_legacy_tool_marker_from_tool_capable_stop_reply",
+        "gateway_coalesces_late_system_messages_before_provider_call",
+        "gateway_degrades_provider_tool_replay_from_different_provider_route_to_summary",
+        "gateway_degrades_resolved_orphan_tool_result_to_safe_summary",
+        "gateway_degrades_resolved_provider_mismatch_to_safe_summary",
+        "gateway_falls_back_to_safe_summary_for_invalid_model_observation",
+        "gateway_keeps_same_turn_provider_roundtrip_when_plain_tool_result_is_interleaved",
+        "gateway_maps_nearai_credit_exhaustion_to_safe_summary",
+        "gateway_preserves_structured_tool_calls_when_content_has_legacy_marker",
+        "gateway_preserves_text_only_provider_reasoning",
+        "gateway_reconstructs_multi_tool_provider_turn_from_grouped_result_references",
+        "gateway_reconstructs_provider_tool_roundtrip_from_tool_result_reference",
+        "gateway_recovers_capability_calls_from_textual_tool_syntax",
+        "gateway_rejects_content_filtered_provider_responses",
+        "gateway_rejects_empty_tool_capable_stop_response_without_text_only_retry",
+        "gateway_rejects_invalid_provider_tool_batch_before_any_registration",
+        "gateway_rejects_tool_result_without_typed_replay_content",
+        "gateway_rejects_tool_use_provider_responses",
+        "gateway_rejects_tool_use_without_tool_calls_on_capability_path",
+        "gateway_rejects_truncated_provider_responses",
+        "gateway_rejects_unknown_finish_reason_provider_responses",
+        "gateway_rejects_unknown_model_profile_without_calling_provider",
+        "gateway_rejects_unknown_provider_tool_call_before_registration",
+        "gateway_rejects_unpinned_model_profile_when_active_model_is_default",
+        "gateway_rejects_unrecovered_textual_tool_syntax",
+        "gateway_replays_model_observation_for_orphan_tool_reference",
+        "gateway_replays_model_observation_from_tool_result_reference_before_safe_summary",
+        "gateway_replays_resolved_tool_result_content_instead_of_summary",
+        "gateway_sanitizes_provider_errors",
+        "gateway_splits_adjacent_provider_tool_results_from_different_turns",
+        "gateway_uses_active_provider_model_for_unpinned_model_profile",
+        "gateway_with_empty_tool_definitions_uses_plain_complete",
+        "gateway_with_tool_surface_calls_complete_with_tools_and_returns_capability_calls",
+        "gateway_with_two_tool_calls_returns_two_candidates",
+        "host_managed_model_request_accepts_legacy_string_identity_wire_shape",
+        "host_managed_model_request_rejects_invalid_legacy_identity_strings",
+        "output_token_limit_overflow_fails_before_provider_dispatch",
+        "production_loop_model_gateway_fails_closed_before_provider_call",
+        "production_loop_model_gateway_includes_configured_safety_context",
+        "production_loop_model_gateway_keeps_instruction_stores_isolated_across_concurrent_calls",
+        "production_loop_model_gateway_maps_provider_auth_and_session_to_credential_unavailable",
+        "production_loop_model_gateway_preserves_error_kind_when_summary_is_resanitized",
+        "production_loop_model_gateway_rejects_forged_context_summary_before_provider_call",
+        "production_loop_model_gateway_rejects_unvalidated_surface_before_provider_call",
+        "production_loop_model_gateway_resolves_thread_refs_and_emits_milestones",
+        "production_loop_model_gateway_sanitizes_provider_output_before_public_chunks",
+        "provider_pool_rejects_route_bound_to_wrong_active_model",
+        "provider_pool_rejects_wrong_provider_identity_with_same_model",
+        "routed_gateway_accepts_mission_model_profile_when_slot_route_configured",
+        "routed_gateway_rejects_missing_route_snapshot_before_provider_call",
+        "routed_gateway_rejects_provider_that_ignores_route_model_override_at_call_time",
+        "routed_gateway_rejects_route_snapshot_denied_by_policy",
+        "routed_gateway_reports_configuration_error_for_missing_provider_pool_entry",
+        "routed_gateway_reports_configuration_error_for_missing_resolver_slot",
+        "routed_gateway_uses_provider_pool_route_not_request_model_override",
+        "routed_gateway_uses_request_route_snapshot"
+      ],
+      "image_key": "llm_gateway"
+    },
+    {
+      "stage": "root-subagent-image",
+      "exit_code": 0,
+      "seconds": 107.92770020803437,
+      "log_sha256": "70a3bcde57748d08a5cf92e247549f078f2a153868d9272688c3b65e33523fb6"
+    },
+    {
+      "stage": "root-subagent-parallel",
+      "exit_code": 0,
+      "seconds": 5.865797332953662,
+      "log_sha256": "2226d667847cd3918eca158926e2361eecc8728550e54fb30431db156144f0fb",
+      "passed": 5,
+      "tests": [
+        "background_spawn_is_rejected_before_child_run_or_auth_invocation",
+        "blocking_spawn_parks_parent_then_resumes_with_child_result",
+        "blocking_spawn_waits_while_child_is_blocked_on_approval_then_resumes",
+        "legacy_explicit_blocking_spawn_still_parks_parent_and_resumes",
+        "parallel_blocking_spawn_resumes_once_after_last_child"
+      ],
+      "image_key": "reborn_subagent_spawn_e2e"
+    },
+    {
+      "stage": "required-composition-cache-clean-1",
+      "exit_code": 0,
+      "seconds": 0.7151057498995215,
+      "log_sha256": "7d5a8580e93850968406125421ec91139d6b9e0f8a8dcf33b8eab2a85d53b301"
+    },
+    {
+      "stage": "architecture",
+      "exit_code": 0,
+      "seconds": 1.2684757080860436,
+      "log_sha256": "3ea942034bb6e80624c0f903667b525f8f88f5e757a7af0f001e144054dff6b7"
+    },
+    {
+      "stage": "format-new-upstream",
+      "exit_code": 0,
+      "seconds": 0.24239666713401675,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "whitespace-r3",
+      "exit_code": 0,
+      "seconds": 0.24184295814484358,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "monty_v1_upgrade-actual-gate",
+      "exit_code": 0,
+      "seconds": 3.163196915993467,
+      "log_sha256": "085da9a7290a9ecbeba764d6efdb32c76b75df1b04e4fd0ea97146693a54068a"
+    },
+    {
+      "stage": "required-composition-cache-clean-2",
+      "exit_code": 0,
+      "seconds": 0.42514220788143575,
+      "log_sha256": "0bdaeb2aa6a92a0fdfec2d2cc4d0ab71946de5d0654e08c526e4629130ae0f28"
+    },
+    {
+      "stage": "format-new-upstream",
+      "exit_code": 0,
+      "seconds": 0.24540470889769495,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "whitespace-r3",
+      "exit_code": 0,
+      "seconds": 0.23951408406719565,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "required-llm-cache-clean-1",
+      "exit_code": 0,
+      "seconds": 0.4283300831448287,
+      "log_sha256": "6ce2f76df27cd4e3d74432b22a07c62b803dd0a087898d373d3aa9975ff69a5a"
+    },
+    {
+      "stage": "monty_v1_upgrade-actual-gate",
+      "exit_code": 0,
+      "seconds": 0.9504464170895517,
+      "log_sha256": "f2cab8c2531234443be92c0e18391e3521331bea43aec28ae351228e0b4a73cb"
+    },
+    {
+      "stage": "monty_legacy_baseline-actual-gate",
+      "exit_code": 0,
+      "seconds": 10.92340504215099,
+      "log_sha256": "bd8820c5ba01a435bd6edf96bba086e3450652fb5dd1dadbdf3918739e790f37"
+    },
+    {
+      "stage": "connected-strict",
+      "exit_code": 0,
+      "seconds": 119.29456712515093,
+      "log_sha256": "b2e244beb795d0c346b03e112586929cb60abc7548bb379550afc045468a0e63"
+    },
+    {
+      "stage": "monty_v1_upgrade-strict",
+      "exit_code": 0,
+      "seconds": 8.819797707954422,
+      "log_sha256": "e74d1d5e48a71e26b6f743f436c534a122553891b130a7a352b8f149cadc1fb5"
+    },
+    {
+      "stage": "required-composition-cache-clean-4",
+      "exit_code": 0,
+      "seconds": 0.6239399171900004,
+      "log_sha256": "2a110b56eb54fc324c238b0ba57d37fb2474f79979ab29a91ff3193a76a21233"
+    },
+    {
+      "stage": "monty_legacy_baseline-strict",
+      "exit_code": 0,
+      "seconds": 5.365157792111859,
+      "log_sha256": "a694647366469daac68693aaba844283f1b40b81aad78a0018c78c152db25454"
+    }
+  ],
+  "original_log_candidates": {
+    "format": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/format.log"
+      ]
+    ],
+    "whitespace": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/whitespace.log"
+      ]
+    ],
+    "workflow-lint": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/workflow-lint.log"
+      ]
+    ],
+    "worker-build": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/worker-build.log"
+      ]
+    ],
+    "connected-unit-images": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/connected-unit-images.log"
+      ]
+    ],
+    "native-auth-pg": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/native-auth-pg.log"
+      ]
+    ],
+    "native-prefix-sdk": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/native-prefix-sdk.log"
+      ]
+    ],
+    "native-provider-policy": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/native-provider-policy.log"
+      ]
+    ],
+    "native-coding-protection": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/native-coding-protection.log"
+      ]
+    ],
+    "native-review-ack-custody": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/native-review-ack-custody.log"
+      ]
+    ],
+    "native-subject-reader": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/native-subject-reader.log"
+      ]
+    ],
+    "native-pure-structure": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/native-pure-structure.log"
+      ]
+    ],
+    "native-global-embedded": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/native-global-embedded.log"
+      ]
+    ],
+    "llm-failover": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/llm-failover.log"
+      ]
+    ],
+    "model-identity-exhaustion": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/model-identity-exhaustion.log"
+      ]
+    ],
+    "native-pg-transport": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/native-pg-transport.log"
+      ]
+    ],
+    "turn-images": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/turn-images.log"
+      ]
+    ],
+    "native-auth-memory": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/native-auth-memory.log"
+      ]
+    ],
+    "native-auth-filesystem": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/native-auth-filesystem.log"
+      ]
+    ],
+    "model-gateway-image": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/model-gateway-image.log"
+      ]
+    ],
+    "model-gateway-callers": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/model-gateway-callers.log"
+      ]
+    ],
+    "root-subagent-image": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/root-subagent-image.log"
+      ]
+    ],
+    "root-subagent-parallel": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/root-subagent-parallel.log"
+      ]
+    ],
+    "required-composition-cache-clean-1": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/required-composition-cache-clean-1.log"
+      ]
+    ],
+    "architecture": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/architecture.log"
+      ]
+    ],
+    "format-new-upstream": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-3/format-new-upstream.log",
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/format-new-upstream.log"
+      ],
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-3/format-new-upstream.log",
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/format-new-upstream.log"
+      ]
+    ],
+    "whitespace-r3": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-3/whitespace-r3.log",
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/whitespace-r3.log"
+      ],
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-3/whitespace-r3.log",
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/whitespace-r3.log"
+      ]
+    ],
+    "monty_v1_upgrade-actual-gate": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-3/monty_v1_upgrade-actual-gate.log"
+      ],
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_v1_upgrade-actual-gate.log"
+      ]
+    ],
+    "required-composition-cache-clean-2": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-3/required-composition-cache-clean-2.log"
+      ]
+    ],
+    "required-llm-cache-clean-1": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/required-llm-cache-clean-1.log"
+      ]
+    ],
+    "monty_legacy_baseline-actual-gate": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_legacy_baseline-actual-gate.log"
+      ]
+    ],
+    "connected-strict": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/connected-strict.log"
+      ]
+    ],
+    "monty_v1_upgrade-strict": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_v1_upgrade-strict.log"
+      ]
+    ],
+    "required-composition-cache-clean-4": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/required-composition-cache-clean-4.log"
+      ]
+    ],
+    "monty_legacy_baseline-strict": [
+      [
+        "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_legacy_baseline-strict.log"
+      ]
+    ]
+  },
+  "counts": {
+    "native_cases": 125,
+    "architecture_cases": 32,
+    "tagged_monty_cases": 24,
+    "legacy_cases": 1,
+    "ignored": 0
+  },
+  "images": {
+    "monty_worker": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/monty_worker",
+      "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+      "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+      "features": [],
+      "compilation_stage": "worker-build",
+      "test_image": false
+    },
+    "brassclaw_pg": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/brassclaw_pg-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_pg-83a5ddf2ca933691",
+      "sha256": "b20948acd5a3c6b973931af0e61705762bdd7797de064181903dbba802d01d2e",
+      "features": [
+        "test-support"
+      ],
+      "compilation_stage": "connected-unit-images",
+      "test_image": true
+    },
+    "brassclaw_llm": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/brassclaw_llm-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_llm-00baf46daf7e3a02",
+      "sha256": "0cfa5e696ff0699939b44806907d594bde28b833b78e47cbc975f21c2b4b7aa4",
+      "features": [
+        "default",
+        "registry-provider-factory"
+      ],
+      "compilation_stage": "connected-unit-images",
+      "test_image": true,
+      "original_removed_by_required_package_clean": true
+    },
+    "brassclaw_reborn": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/brassclaw_reborn-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn-4a174277d12baa26",
+      "sha256": "9767aa28f09880887f2a45d8cd0bb8649282b31b16ba2b0caa51cc7975d7523f",
+      "features": [
+        "default",
+        "root-llm-provider"
+      ],
+      "compilation_stage": "connected-unit-images",
+      "test_image": true
+    },
+    "brassclaw_reborn_composition": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-db7a04feb66dba98",
+      "sha256": "8c7550fa38bba3c8e4af1c16092273c29af03ac030a003a2bb92bc315419ccfe",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ],
+      "compilation_stage": "connected-unit-images",
+      "test_image": true,
+      "original_removed_by_required_package_clean": true
+    },
+    "filesystem_turn_state_contract": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/filesystem_turn_state_contract-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/filesystem_turn_state_contract-118c04fc9746d3a4",
+      "sha256": "23250f9eeaffc48278192e2e668d4da39daa1424a60d233cfc4045c7e999f770",
+      "features": [
+        "default"
+      ],
+      "compilation_stage": "turn-images",
+      "test_image": true
+    },
+    "turn_coordinator_contract": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/turn_coordinator_contract-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/turn_coordinator_contract-202f2e056a8e34c9",
+      "sha256": "1b877a471635318bcd69ace69c2f21cb4465f39e758313cd1affe35afa076a88",
+      "features": [
+        "default"
+      ],
+      "compilation_stage": "turn-images",
+      "test_image": true
+    },
+    "llm_gateway": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/llm_gateway-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/llm_gateway-17d6db576c2a9be9",
+      "sha256": "bee6e1d9601012efc6c4b9f841058d9a2f76e9854cb1e8957efd7a4c6b489db5",
+      "features": [
+        "default",
+        "root-llm-provider"
+      ],
+      "compilation_stage": "model-gateway-image",
+      "test_image": true
+    },
+    "brassclaw": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/brassclaw",
+      "original": "/Users/ollama/brassclaw-target/debug/brassclaw",
+      "sha256": "c3ffa1abdc2832b5b1d0fb1adefdea7f93377d70d83043e4567bab1dedc5d3b0",
+      "features": [
+        "default",
+        "html-to-markdown",
+        "postgres",
+        "tui"
+      ],
+      "compilation_stage": "root-subagent-image",
+      "test_image": false
+    },
+    "reborn_subagent_spawn_e2e": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/reborn_subagent_spawn_e2e-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/reborn_subagent_spawn_e2e-15b6e22ea11d45be",
+      "sha256": "73bc1657496848cb408cde93fd05e7186c7993bf2eff7d0966a1d270b4573f95",
+      "features": [
+        "default",
+        "html-to-markdown",
+        "postgres",
+        "tui"
+      ],
+      "compilation_stage": "root-subagent-image",
+      "test_image": true
+    },
+    "monty_v1_upgrade-brassclaw_monty_v1_upgrade_tests": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_v1_upgrade-brassclaw_monty_v1_upgrade_tests-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_monty_v1_upgrade_tests-212f71894a0a7d7f",
+      "sha256": "e21907c6de9199c4420f5e0f3a718ad8f2864b199b66dc0d7b41749a864d0df4",
+      "features": [],
+      "compilation_stage": "monty_v1_upgrade-actual-gate",
+      "test_image": true
+    },
+    "monty_v1_upgrade-allocator_isolation": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_v1_upgrade-allocator_isolation-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/allocator_isolation-a8916f07c1719cc5",
+      "sha256": "4554e4b1a42782ac4785b6d3e968ad84c3b66fdd29096e093c550a7acbfe961f",
+      "features": [],
+      "compilation_stage": "monty_v1_upgrade-actual-gate",
+      "test_image": true
+    },
+    "monty_v1_upgrade-allocator_probe": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_v1_upgrade-allocator_probe-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/allocator_probe-e79cea5f8ed07609",
+      "sha256": "decfa31232dab582ae29b0bf2236cd953fad1dff0eb7686bb4ba257b65e1751d",
+      "features": [],
+      "compilation_stage": "monty_v1_upgrade-actual-gate",
+      "test_image": true
+    },
+    "monty_v1_upgrade-latency_baseline": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_v1_upgrade-latency_baseline-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/latency_baseline-30e947331be663a2",
+      "sha256": "ca12c99ea99db86df00bc9b7bcc2ea9b41ae17627c71269b2d61890a80dd42ec",
+      "features": [],
+      "compilation_stage": "monty_v1_upgrade-actual-gate",
+      "test_image": true
+    },
+    "monty_v1_upgrade-recipe_failure_contract": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_v1_upgrade-recipe_failure_contract-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/recipe_failure_contract-12deb99479852a92",
+      "sha256": "d1c65bd77f8b1dbbffa4e1a472543fb52f5c469868fec4b4b0aa78c1359f0142",
+      "features": [],
+      "compilation_stage": "monty_v1_upgrade-actual-gate",
+      "test_image": true
+    },
+    "monty_v1_upgrade-recipe_state": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_v1_upgrade-recipe_state-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/recipe_state-01d140d5c5ddbc2a",
+      "sha256": "c1090061e4275a113f4fdcf6060fc29d19d388333a049d93476ceb90a166fb9f",
+      "features": [],
+      "compilation_stage": "monty_v1_upgrade-actual-gate",
+      "test_image": true
+    },
+    "monty_v1_upgrade-global_lifecycle": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_v1_upgrade-global_lifecycle-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/global_lifecycle-ea57a2e90dc619ef",
+      "sha256": "51d3da31a4b448240ce015f8fdaf77acbaf8a2c9e17854e39697360c1cb21263",
+      "features": [],
+      "compilation_stage": "monty_v1_upgrade-actual-gate",
+      "test_image": true
+    },
+    "monty_v1_upgrade-compatibility": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_v1_upgrade-compatibility-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/compatibility-91239f947f9fd043",
+      "sha256": "7803515cc60c4ff73b9f746716b89edc2862f2df42fe9650b60189b05686d2a8",
+      "features": [],
+      "compilation_stage": "monty_v1_upgrade-actual-gate",
+      "test_image": true
+    },
+    "monty_v1_upgrade-task_accounting": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_v1_upgrade-task_accounting-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/task_accounting-5cb5db624f6c6998",
+      "sha256": "d70ecd2345fab8309b5ba047c2b0b468a0dd5bf5bda0503e60d3b34884e41703",
+      "features": [],
+      "compilation_stage": "monty_v1_upgrade-actual-gate",
+      "test_image": true
+    },
+    "monty_legacy_baseline-brassclaw_monty_legacy_baseline": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_legacy_baseline-brassclaw_monty_legacy_baseline-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_monty_legacy_baseline-65740bac383acc17",
+      "sha256": "e8f28708c041a013cc244529586b15f4c40f666d751a46325ee000ee6651ed3b",
+      "features": [],
+      "compilation_stage": "monty_legacy_baseline-actual-gate",
+      "test_image": true
+    },
+    "monty_legacy_baseline-latency_baseline": {
+      "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_legacy_baseline-latency_baseline-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/latency_baseline-2584333dc5011353",
+      "sha256": "cb88e71b87fa48dbdcc8f0366ef62696ab01d86e67b5cbc2a19cb7488952920b",
+      "features": [],
+      "compilation_stage": "monty_legacy_baseline-actual-gate",
+      "test_image": true
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+    "features": [],
+    "compilation_stage": "worker-build",
+    "test_image": false,
+    "status": "fresh actual worker build"
+  },
+  "python_runtime": {
+    "executable": "/Users/ollama/brassclaw-target/model-oracle-venv/bin/python",
+    "executable_sha256": "b502cb4c5b46b8d4192ec6bcb600ce8922f1afc396fcf646e8765c6eba74a0bf",
+    "lock": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/oracle-runtime.lock.txt",
+    "lock_sha256": "7536189a2d395534a3b9fcede8592fa28e4cc7c148c95fdbe062cde57388b331",
+    "typed_smoke": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/typed-config-smoke.json",
+    "typed_smoke_sha256": "6cad79b6d6f3478b67b5a2e13ab3d0131be5dc1b1d71e2ca5730cd9b15436870",
+    "pip_reports": {
+      "pip-tool-report.json": "da03a6240915d00ce6b133ccb40fe83c3ab1f00f4c96ba9cb0a28f01d1cc7e08",
+      "pip-oracle-report.json": "d9d988bc1ef49841862076995cdcc462b41bd58951f1d7ad8351122cc4b81a01",
+      "pip-torch-report.json": "ea8df324bfb5531a28cc055b2dffd2574191a7a7bcc1b5bb30a005639e2da5b9"
+    }
+  },
+  "model_assets": {
+    "retained": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2/model-artifacts",
+    "files": {
+      "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+      "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+      "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+      "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+      "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+      "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+    },
+    "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6"
+  },
+  "cache_reclamations": [
+    {
+      "stage": "required-composition-cache-clean-1",
+      "reason": "Actual >90 percent or <15 GiB guard; retained images/worker verified before disposable Composition package cache cleanup.",
+      "disk_evidence": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/architecture-disk.txt",
+      "disk_evidence_sha256": "7cee0deb5cffba4fcb4594c7937b7fa23cae25dcca1e6394d361f01b9c9a3bae"
+    },
+    {
+      "stage": "required-composition-cache-clean-2",
+      "reason": "Actual >90 percent or <15 GiB guard; retained images/worker verified before disposable Composition package cache cleanup.",
+      "disk_evidence": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-3/monty_legacy_baseline-actual-gate-disk.txt",
+      "disk_evidence_sha256": "bb59ca7cb925e7cdc10e30bbe62b2edc891a8bf6594ea67a433adf332b523aec"
+    },
+    {
+      "stage": "required-llm-cache-clean-1",
+      "reason": "Real >90 percent disk guard; Composition cleanup was insufficient/empty. Preserve verified actual LLM/root/other images and worker, then reclaim only LLM package caches.",
+      "disk_evidence": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/before-required-llm-reclamation-disk.txt",
+      "disk_evidence_sha256": "84d6daafde45cc4e2f9855eeca933d1ea322a0c1647ca1ee06abedd7c88772f9"
+    },
+    {
+      "stage": "required-composition-cache-clean-4",
+      "reason": "Actual >90 percent or <15 GiB guard; retained images/worker verified before disposable Composition package cache cleanup.",
+      "disk_evidence": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-4/monty_legacy_baseline-strict-disk.txt",
+      "disk_evidence_sha256": "79e48a88319434436260fca9f85277f5ca84e0b66af669a743b4fe3fdc84e37f"
+    }
+  ],
+  "workflow_shell_checks": {
+    "path": "/private/tmp/brassclaw-checkpoint-ci-repairs-20261031/ci-rollup-private-checks.json",
+    "sha256": "24ecce53b573ef66b9ddf9b9f9b48c93e369691e4f4fb346e1291814680a51f8",
+    "cases": 33,
+    "reason": "Exact same actual workflow bytes, already executed rendered-shell cases; no GitHub execution claim."
+  },
+  "scope": [
+    "macOS aarch64, actual Rust1.96.0 and pinned dependencies; no fresh GitHub/Windows/Linux deployment claim",
+    "GateRef public boundary with private immutable native-auth-wait/1 UUID bytes; original memory/FS/PG fencing",
+    "Existing Prefix SDK test transport, checked atomics and native storage preparation before bounded legacy parity harness startup; no production Rust fallback",
+    "Upstream test driver observes the existing pool coordinator and closes it only at instance shutdown; production root unchanged",
+    "Strict connected six-package tests and isolated tagged/legacy Clippy pass with -D warnings",
+    "BUILD021 browser acceptance remains separate; this receipt grants no component Q1/Q2/activation, general Pure/S/Free, release or full-plan completion"
+  ],
+  "termination": {
+    "runner_exited": true,
+    "common_lock_independently_acquired": true
+  },
+  "attempt_accounting_note": "R3 passed the corrected tagged Monty gate before its disk guard stopped the legacy gate. R4 repeated that fast tagged gate after targeted cache recovery; the24 cases are counted once. Original per-attempt results/logs remain unchanged. An earlier handoff sentence saying R3 stopped before all upstream execution was corrected."
+}

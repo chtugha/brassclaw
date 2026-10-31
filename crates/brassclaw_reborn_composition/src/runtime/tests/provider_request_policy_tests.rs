@@ -20,6 +20,25 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
         notify_failures: std::sync::atomic::AtomicBool,
         failure_seen: tokio::sync::Notify,
     }
+    impl Endpoint {
+        fn take_failure(&self) -> bool {
+            let mut previous = self.failures.load(Ordering::SeqCst);
+            loop {
+                let Some(next) = previous.checked_sub(1) else {
+                    return false;
+                };
+                match self.failures.compare_exchange_weak(
+                    previous,
+                    next,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                ) {
+                    Ok(_) => return true,
+                    Err(current) => previous = current,
+                }
+            }
+        }
+    }
     async fn endpoint(
         State(state): State<Arc<Endpoint>>,
         Json(body): Json<serde_json::Value>,
@@ -27,13 +46,7 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
         state.calls.fetch_add(1, Ordering::SeqCst);
         match state.mode.load(Ordering::SeqCst) {
             1 => tokio::time::sleep(Duration::from_millis(1300)).await,
-            2 if state
-                .failures
-                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
-                    count.checked_sub(1)
-                })
-                .is_ok() =>
-            {
+            2 if state.take_failure() => {
                 if state.notify_failures.load(Ordering::SeqCst) {
                     state.failure_seen.notify_one();
                 }

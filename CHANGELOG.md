@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Make new chat and Extension manual-token setup lifetimes configurable through
+  acknowledged instance settings, with EN/DE explanations. Preserve every
+  accepted original expiry across retries, concurrent creation and live edits;
+  OAuth lifetimes and browser request deadlines remain independent.
+
+- Expose the per-call ProductAuth backend wait through the existing acknowledged
+  Rust/Monty settings and EN/DE controls. Preserve in-flight deadlines and
+  explicit database overrides; issuer HTTP limits, browser waits and accepted
+  setup expiry remain independent.
+- Repair native browser limit clearing with real controlled-input events and a
+  bounded pinned CLI process, retaining revision-conflict/lost-ack checks. Keep
+  the actual Monty pool coordinator parked across lifecycle test task failures
+  and close it only during explicit instance shutdown.
+- Retain complete immutable Skill/PythonCode function review submissions with
+  atomic per-root head checks, exact unchanged-partner context and complete typed
+  validator input. Share one private subject reader across existing checks and
+  add recursive Skill-interface/export declaration checks in Monty. Full joint
+  Q1/behavior/human-Q2, compatible publication and general Pure/S qualification
+  remain open; partial single-class preparation cannot approve half a function.
+- Keep one permanent Root build owner, common checkout/index/target and central
+  development build queue. Chats submit bounded changes and check requests;
+  source freezes end after terminal batches without transferring Cargo ownership.
+- Preserve native authentication wait custody through canonical turn gate refs
+  while keeping historical private `/1` storage unchanged. Reuse the existing
+  host-owned HTTP test fixture for Prefix acceptance and prepare PostgreSQL test
+  resources before the bounded Subagent harness startup, preserving turn limits.
+- Replace deprecated atomic update calls with portable checked/saturating
+  compare-and-exchange operations. Make complete CI validation an explicit input
+  shared by manual/reusable workflows, honor its Docker option and require actual
+  installer and native-browser outcomes in the test rollup. These repairs do not
+  constitute a release or full-plan/platform acceptance.
+
 - Add contained final SDK-body rendering/tokenization with original model assets,
   one full token partition and canonical live input limits; require an explicit
   native acceptance verifier. Remove duplicate model fields for unchanged selected

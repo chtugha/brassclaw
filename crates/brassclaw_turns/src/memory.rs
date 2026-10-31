@@ -1663,7 +1663,7 @@ impl TurnRunTransitionPort for InMemoryTurnStateStore {
                 reason: "native auth waiting requires host-proven preflight".into(),
             });
         }
-        let wait = crate::runner::native_auth::NativeAuthWait::new(request.invocation_id)?;
+        let wait = crate::runner::native_auth::NativeAuthWait::new(&request.gate_ref)?;
         let gate = wait.gate_ref()?;
         let mut inner = self.lock_inner()?;
         let mut record = inner.take_record(request.run_id)?;
@@ -1674,7 +1674,7 @@ impl TurnRunTransitionPort for InMemoryTurnStateStore {
             let now = Utc::now();
             ensure_active_lease(&record, request.runner_id, request.lease_token, now)?;
             if let Some(original) = &record.native_auth_wait {
-                if original.invocation_id() == wait.invocation_id() {
+                if original.gate_ref()? == gate {
                     if original.is_waiting()
                         && record.status == TurnStatus::BlockedAuth
                         && record.gate_ref.as_ref() == Some(&gate)

@@ -1,3 +1,449 @@
+## 2026-10-31 — BUILD024 ACCEPTED; checkpoint then continue K3 OAuth
+
+Receipt docs/validation/2026-10-31-manual-setup-lifetimes.json SHA
+1b983910ef51893b1377903927210d7f1e07bb4359852d2b3f700f079ad852e5.
+14 package paths,8239 captured inputs;46 native cases+32architecture/0ignored.
+One successful original run: clean compilation256.7s,35 settings/SQL upgrades,
+4 Auth/DCR policy cases including actual PG route/adapter/live/CAS/expired-original,
+3 PG/FS custody consumers, actual HTTP lost-ack/timeout, manual browser46.1s,
+resource browser111.5s, global embedded/base/Sempai383.1s, connected strict104.9s
+and default strict51.2s. No failures/warnings or extra compilation in024.
+Independent finalization verified original23514 exited/common lock available,
+actual source/image/worker/log identities; sourcefreeze is released, Root retains
+sole Cargo. Current worker be0f0d6e28779c258595ce2bdcd05e75c388ffd126bf5e76121feedd10f7e93a.
+Root321 manifest /private/tmp/brassclaw-manual-setup-lifetimes-20261031/current-root-inputs-manual-setup-lifetimes.json
+SHA40febe75932469e69f32f78c8559737bd962787b1b348b7ac92826af34a7d4db,
+selected by /private/tmp/brassclaw-root-reviewed-current.txt.
+
+New manual_token_setup_ttl_secs600 / extension_manual_token_setup_ttl_secs300
+use the existing acknowledged neutral owner/Auth facade/actual routes and
+Extension adapter. V195 preserves partial/full overrides, unrelated defaults and
+Auth originals. Original first expiry stays exact across edits/retries/CAS;
+Extension recovery precedes new defaults. Direct native explicit-expiry contract
+is unchanged. Both ENDE controls/help and actual Rust/Monty uptake are proven.
+
+Next: secure accepted020/021/022/024 shared changes on main, trigger/observe the
+repaired full GitHub workflow, then continue WITHOUT stopping. No release/tag/
+version bump or testserver install yet: full goals remain incomplete.
+OAuth default/max/client expiry, gate600s, popup observation/2000ms interval,
+browser transport, Auth ingress and other K3–K7/Validator/Pure/S/Prefix/recovery/
+platform/release gates are OPEN. No component/Serving/Free approval granted.
+
+Read-only OAuth source map /private/tmp/brassclaw-k3-oauth-expiry-source-20261031.md
+and original constraints /private/tmp/brassclaw-k3-next-expiry-reasoning-20261031.md.
+Private UNAPPLIED two-file watcher proposal:
+/private/tmp/brassclaw-k3-oauth-observation-proposal-20261031/proposal.patch.
+It consumes actual confirmed receipt expiry, removes fresh10min watcher cap and
+also observes popup-blocked recovery links. Needs exact-type guard, actual hook/
+controller/native-browser checks; integrate with next coherent OAuth lifetime
+package where practical. Keep original popup synchronously opened, old local
+formats1/2 and explicit expiry comparison; no silent rewriting retry bytes or
+stale client-side TTL grant. GateDefault currently ONLY TurnGateResume, not an
+existing SetupOnly default. New default-input mode needs checked original context,
+concurrent winner/receipt/readers together. No migration reserved after195.
+
+Prefix peer010 private precondition audit received;009Pair-only remains Proposed,
+002/003/007/008 not integrated/ready,004 test entrypoint already013. No peer Cargo.
+
+## BUILD024 validation ACTIVE — manual setup lifetimes, Root retains Cargo
+
+Original Screen brassclaw-manual-setup-lifetimes-20261031, runner23514;
+package /private/tmp/brassclaw-manual-setup-lifetimes-20261031,
+evidence /private/tmp/brassclaw-manual-setup-lifetimes-validation-20261031/run-1.
+Captured14path successor includes neutral defaults600/300, acknowledged runtime
+projection/Auth facade, actual generic handlers/Extension adapter, V195, ENDE
+controls/help, real PG route/adapter/live/CAS/expiry tests and SQL boundary case,
+resource browser with complete shared restoration, changelog/plan truth.
+Compilation passed256.7s with no warnings/errors;35 settings/migration cases,
+4 actual native Auth/DCR policy cases,3 original PG/FS cases, HTTP lost-ack1,
+manual browser1 and resource browser1 passed:45 native so far. Actual global
+embedded/base/Sempai consumer is running; architecture and strict remain.
+Current fresh worker be0f0d6e28779c258595ce2bdcd05e75c388ffd126bf5e76121feedd10f7e93a.
+Not yet accepted. Inspect original progress/process/common lock before
+replacement; no simultaneous Cargo. Fresh worker build then one Composition
+image, native settings/PG/FS/original/HTTP/browser/global consumers, architecture
+and connected/default strict. Canonical source frozen until terminal, Root keeps
+Cargo afterwards. No new setup/settings/approval owner or OAuth format change.
+
+OAuth fixed maximum/client expiry/popup cap, browser transport/ingress and other
+K3–K7/Validator/Pure/S/Prefix/recovery/platform/release remain open. Do not treat
+this package as full K3 or overall completion. Current accepted022 baseline is
+still authoritative until024 actual acceptance.
+
+## 2026-10-31 — BUILD022 ACCEPTED; continue K3 lifetimes, no full-goal completion
+
+Receipt docs/validation/2026-10-31-auth-backend-wait.json SHA
+92a818595d49de3847f11bce7410882a743b5e685260fd5c54901a7b12e766d2.
+21paths;42 actual native cases+32architecture/0ignored. R1 clean compilation257.1s
+and40 native passes; R2 only .mjs restoration/enrollment repair reused exact
+unchanged Rust/embedded inputs, worker/image/runtime/results. Corrected resource
+browser108.3s, global/base/Sempai385.4s, connected strict106.0s and Composition
+default strict50.7s passed. Original R1 failed restoration remains recorded, no
+assertion weakening or extra compilation. Initial queued finalizer wrote no
+receipt; rerunning its independent verification after terminal parent exit
+succeeded. No tests or Cargo rerun for finalization.
+
+Root319 reviewed pointer /private/tmp/brassclaw-root-reviewed-current.txt ->
+/private/tmp/brassclaw-auth-backend-wait-20261031/current-root-inputs-auth-backend-wait.json,
+SHA831ff4bde38ce9deed7c35b24e2f1684a24e368e0c58f6afb5abd83e2fa2d78d.
+Current worker161293a4356eb7ef3c8c593a388906aa064b7347ac19b5b4cb6344f07934d119.
+Actual source/image/worker/log hashes verified; original20338 exited and common
+lock independently acquired. Sourcefreeze released, Root keeps sole Cargo.
+No commit/tag/push/version change since2b932590c yet. All current shared020/021/022
+source/report/docs changes are in the one local main checkout. Prefix009 and
+older003–008 remain private/proposed, not integrated components.
+
+Next BUILD024 is the existing K3 step6 lifetimes/browser expiry owner. Read-only
+/private/tmp/brassclaw-k3-next-expiry-reasoning-20261031.md captures stale-client TTL,
+missing/null/mode, concurrent generated-default equality and original recovery
+constraints. No API or future migration number reserved (current latest194).
+Trace actual existing manual original owner first: Auth facade already uses
+retained first expiry; Extension manual service recovers before creation. Browser
+manual cards already consume confirmed challenge expiry. Manual600/Extension300
+server defaults can be a bounded next change; generic/OAuth max600 and its client
+producer/popup cap require their complete connected contract, not a partial slider.
+Never silently rewrite retry bytes or infer original authority from DTOs. New
+defaults must use the same acknowledged owner; accepted originals keep expiry.
+
+Remaining K3 browser transport/ingress and every later K4–K7, general
+A/Pure/S/function/behavior/Q1Q2/publication, Composition/library/subagent/Prefix/
+recovery/platform/release gate stay open. Active goal must continue; a checkpoint
+commit/push never means stop. Release/tag/bump and testserver fresh install/QA
+remain after actual full implementation, per the original human instruction.
+
+## BUILD022 Run2 ACTIVE — exact Rust/worker reuse after JS restore repair
+
+R1 application compiled257.1s without warnings/errors;34 real settings upgrades,
+3 acknowledged Auth/DCR policy cases, actual original PG Auth custody1, HTTP
+lost-ack/real timeout1 and actual manual-token browser1 passed:40 cases/0ignored.
+New5000->1ms test confirms original deadline retention/new timeout/unavailable
+configured owner before poll. Migration194/default/legacy-reader/invalid bounds
+and all existing settings upgrades passed. Worker161293a4… is current.
+
+R1 resource browser proved new61000 value persistence/effective revision/ENDE
+help but FAILED exact restoration: I omitted the new field from old restore and
+finally lists (actual61000 vs expected30000). Original failure retained. Root fixed
+ONLY tests/browser/monty-vm-resource-limits.mjs: one complete field->label mapping
+feeds normal restore and failure cleanup; each initial edit must register there
+before mutating a field. Original deep equality and exact two writes are retained.
+No production/Rust/worker changes or weakened assertion. Node syntax/whitespace pass.
+
+Current sole Screen brassclaw-auth-backend-wait-r2-20261031, runner20338,
+/private/tmp/brassclaw-auth-backend-wait-20261031/resume.py;
+evidence /private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-2.
+It verifies only that runtime .mjs input changed, reuses exact compiled image,
+worker/runtime/assets and40 actual prior passes, then runs the corrected browser,
+remaining global embedded/base/Sempai consumer, architecture and connected/default
+strict. No additional compilation for a JS-only test correction. P/after-r2.json
+is a successor; original after.json/R1 maps/logs remain unchanged. Source freeze
+continues; Root retains all Cargo. Inspect original progress/process/lock before
+replacement. No022 acceptance or full K3 completion yet.
+
+Next lifetime reasoning is private /private/tmp/brassclaw-k3-next-expiry-reasoning-20261031.md,
+not an approved API/reserved migration. Preserve original inputs/first expiry and
+legacy explicit expiry contracts. Do not replace local600s with a stale render-time
+policy grant or silently rewrite a retry. Current original-ID/custody owner must
+choose/retain any future server-selected first expiry under checked successor
+formats; missing/null/input-mode distinctions and actual browser/native negatives
+must be handled together. No extra setup/approval/settings owner.
+
+## BUILD022 latest observation — fresh worker built; original compilation active
+
+Original runner17372/Cargo17416 is compiling the Composition image; no compiler
+warning/error observed at this point. Format/whitespace/browser-syntax passed;
+fresh real worker build6.2s passed. Current canonical worker SHA
+161293a4356eb7ef3c8c593a388906aa064b7347ac19b5b4cb6344f07934d119.
+Prior227a is archived in the batch and previous receipts; never restore it over
+this actual worker. No022 runtime acceptance yet. Continue observing original
+/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/progress.json.
+
+Read-only next-lifetime reasoning: current Auth facade's original manual setup
+already derives its first expiry from the retained flow and validates provider/
+label/continuation/requirement/target lineage. Do not add TTL lookup before
+original recovery merely to change a deadline. Current Extension OAuth UI saves
+its first client-generated600s expiry synchronously; refreshing a policy on render
+can become stale before first Start after a reduction, leaving an unknown
+original with no admitted flow. A future server-selected expiry must use the
+existing original-ID/retained-first-input contract and preserve legacy explicit
+expiry formats, rather than silently rewriting a retry's bytes or introducing
+another setup/approval owner. Complete the connected contract/negatives before
+changing those producers. This is reasoning, no implementation/API reservation.
+
+## BUILD022 validation STARTED — inspect original runner before replacement
+
+Screen brassclaw-auth-backend-wait-20261031, original runner17372; package
+/private/tmp/brassclaw-auth-backend-wait-current.txt ->
+/private/tmp/brassclaw-auth-backend-wait-20261031; evidence
+/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1.
+Script validate.py is copied into the evidence directory. Initial observed
+status starting; no acceptance/compilation result yet. Use progress.json and
+original process/lock to observe, never restart because an observation times out.
+Captured inputs are frozen; Root sole Cargo. Prefix peer informed.
+
+Package is21 paths, after/before/paths.json recorded. Final source review caught
+and removed now-unused std::time::Duration before compilation. Initial whole
+format passed4.74s; targeted final formatting and whitespace/Node syntax pass.
+Includes neutral field/Auth routes/common factory/live projection, V194,
+new original-deadline/unbound-owner test, actual SQL upgrade/default/invalid
+bounds and legacy typed-reader case, resource browser61000ms save/effective/
+ENDE assertions and bounded native CLI preserving its override, README help,
+changelog and an honest source-boundary note in simplified_v3.md.
+
+Batch: fresh actual worker (preserves old227a first); Composition image with
+skills-db,test-support,migrate-from-libsql; all pg_monty_vm_settings tests,
+oauth_dcr::limits_tests (incl new case), actual original PG Auth wait,
+existing lost-ACK/timeout HTTP case, actual original manual-token browser,
+new resource browser, actual global embedded/base/Sempai source consumer,
+architecture, four-package connected strict and Composition default strict.
+Original parsed selector prefixes were checked against prior actual listing;
+new image rechecks its own list before running. No fabricated backend/Tool success.
+Browser waits use real inputs; exact unchanged HF venv/model artifacts reused.
+Default/connected feature/config variants and all current source changes reviewed.
+
+No other Cargo is running or authorized. No inline CARGO_TARGET_DIR assignment
+or testserver compilation. New migration is194. Pending source is not accepted;
+do not advance Root313 baseline or mark022/K3/full plans complete before required
+actual results. Continue original goals after this batch; lifetime/browser expiry,
+ingress limits, Q1/Pure/S/function/Prefix/platform/recovery/release remain open.
+
+## Current WIP — BUILD022 source applied, NOT compiled or accepted
+
+After successful020/021, Root applied the reviewed14path private proposal-r3.patch
+from /private/tmp/brassclaw-k3-auth-backend-proposal-20261031. Neutral new
+MontyExecutionLimits.auth_backend_timeout_millis default30000/nonzero u32; actual
+Live observed_limits projection; private Auth facade source/getter; common factory
+attachment after the custom/PG/FS branch; all protected route/backend helpers now
+read the same acknowledged source. Source-less host-only composition keeps its
+canonical default; configured unavailable source fails before polling a backend.
+Helper takes the existing Auth facade directly, avoiding owned/borrowed State
+mismatches. EN/DE settings control/help added. No workflow/authority/Recipe change.
+
+Root inspected latest migrations and created V194__product_auth_backend_timeout.sql:
+add missing field with revision bump, preserve explicit values/unrelated defaults,
+positive u32 SQL constraint. No applied historical migration altered.
+
+New actual native settings/factory mechanical deadline case is in existing
+src/oauth_dcr_limits_tests.rs: real PG/global acknowledged5000->1ms edit, original
+pending call retains deadline, next call actually times out504, unavailable real
+unbound owner prevents poll; no successful Auth/Tool result fabricated. Original
+settings explicitly restored. NOT yet run. Pure controlled future proves wait
+mechanics, not durable credential custody; retain/run applicable actual PG Auth
+and existing lost-ack route cases for that claim.
+
+Still BEFORE compilation: finish SQL upgrade/default/invalid-boundary regression,
+update existing resource browser test with actual new field save/effective/help
+checks and its bounded native CLI pattern (preserve executable override), review
+all source diffs/types/cfg/error conversions and source-less callers, update
+changelog and affected remaining-plan/status truth, snapshot exact package and run
+one serial Screen batch with fresh worker, targeted native/browser/strict/default
+acceptance. Inspect existing tests rather than inventing APIs/mocks. No Cargo has
+run since020 completed. One target inherited from config, no inline override.
+
+Lifetimes (600/300s), browser expiry producers/popup waiting and independent browser
+transport timeout remain open in the existing K3 step6; do not claim full022/K3.
+Accepted reviewed Root313 manifest below is the prior baseline; these WIP changes
+are intentionally pending and require their new receipt before advancing it.
+
+## 2026-10-31 — BUILD020 and021 accepted; resume existing K3 step6
+
+BUILD020 receipt docs/validation/2026-10-31-checkpoint-ci-repairs.json SHA
+fa2c25d18741999120cd6ee3aa7479065a2c9105b73d0ce5322611f8ccca85f6.
+125 native +32 architecture +24 tagged Monty +1 legacy case/0ignored; connected
+compilation and connected/isolated strict -Dwarnings pass. R3 actually passed the
+corrected upstream gate before its legacy disk guard; R4 also repeated that fast
+gate, counted once. Original attempts/logs/sources are unchanged. Only actual
+required package caches cleaned; preserved executables/worker verified.
+
+BUILD021 receipt docs/validation/2026-10-31-native-browser-limit-clear.json SHA
+c14fdf2ffc2c244b251da24c745f3e85dcab34389bf89c9d2a9d55c020c0ff4d.
+Two original real native browser consumers pass: Tool-policy104.46s, resource
+controls111.95s. Focus/SelectAll failures retained. Final test uses real invalid
+space fill/Backspace, verifies unsaveable intermediate state, then exact null
+write/revision; all original large-value/conflict/lost-ACK/no-replay assertions
+remain. Pinned native CLI has a bounded configurable command timeout, validated
+before creating a listener; failed R3 actually exercised that bound. No new
+Rust compilation. Unchanged second resource script freshly passed. Its old CLI
+wrapper should move to the same bounded native pattern when adding the new K3
+control acceptance, preserving its explicit executable override.
+
+Original BUILD020 runner14367 and all5 browser runners exited; independent
+common-lock and actual image/source verification succeeded. Source freeze is
+released. Root remains sole Cargo/integration owner; no build-window transfer.
+Reviewed Root pointer /private/tmp/brassclaw-root-reviewed-current.txt ->
+/private/tmp/brassclaw-ci-repairs-20261031-qsds28la/current-root-inputs-ci-and-browser.json,
+313 paths SHAafd6e5fdcfe24ab9f3c4bab90826eaececbeae93122a62cf0f6cdbbecd1f09bb.
+Full named input map8233 SHA25d3db9916edd7ca2341ebdb4e0304a7add0c9e11c1662ec33199fd0937313f5.
+Worker remains227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624.
+Rust proof is local1.96.0/macOS; a new Linux/Windows/GitHub/release deployment is
+not claimed. No Git commit/push/tag/version change after2b932590c yet.
+
+Continue BUILD022, the already outstanding K3 step6 Auth lifecycle/backend/browser
+limits. Read-only /private/tmp/brassclaw-k3-auth-lifecycle-readonly-20261031.md.
+Private14-path backend proposal latest proposal-r3.patch under
+/private/tmp/brassclaw-k3-auth-backend-proposal-20261031; not integrated/compiled
+and lacks migration/native custody/uptake/UI acceptance. R3 fixes predictable
+error conversion/cfg/dead-code/double-borrow issues in the proposal. Before
+integration recheck hashes, finish coherent implementation and regressions;
+current latest SQL is V193, no new version reserved. Keep new setup expiry and
+browser producers coordinated; accepted originals retain their first expiry.
+Backend transport deadlines remain distinct from setup lifetime/browser wait.
+No extra settings registry or workflow owner. Compile only after the connected
+package is complete; serial Screen/common lock/canonical inherited target apply.
+
+Exact009 independent pair acceptance is private BUILD023. Proposal SHA03e3c6c7…,
+eight preconditions c09d8027…. V183 pair-only and V184 generation-only contracts
+need one connected writer/caller/receipt/retry/GC review. Never place a Pair ID in
+generation_qualification or generation-only approved_retry. No table/migration/
+activation permission or complete Design/Pure/S/Behavior/Serving support is
+implied. Other peer003–008 remain private; Root acknowledged this boundary.
+All full original plans/goals and remote release/reinstall/QA remain incomplete.
+
+## 2026-10-31 — BUILD020 upstream driver repaired; BUILD021 browser repair validating
+
+Original BUILD020 R2 passed125 native cases/0ignored plus architecture4+28,
+including all60 model gateway callers,13 memory/2 FS Auth cases and all5 root
+Subagent cases with5threads. Global embedded/base/Sempai consumer passed382s.
+Upstream tagged Monty gate then failed its global_lifecycle test: the old raw
+driver lacked await_pool_update although production already parks that coordinator.
+Only tests/monty_v1_upgrade/tests/global_lifecycle.rs changed: validate zero args,
+keep coordinator pending across every host error and explicitly close it after
+both workers at instance shutdown. No production VM/dispatch change or assertion
+relaxation. R3 expands source capture to every rg-listed file in all4 isolated
+workspaces (these were absent from the earlier Composition map); do not claim
+the old map captured those test sources. R3 passed the corrected tagged gate, then stopped at actual91% disk before
+legacy execution; a second Composition cleanup was empty/insufficient.
+
+Current BUILD020 continuation is /private/tmp/brassclaw-ci-repairs-20261031-qsds28la/resume-r4.py,
+Screen brassclaw-ci-repairs-r4-20261031, evidence run-4 in the same validation root.
+It waits for the browser's same serial lock, verifies every retained needed image
+and worker, then reclaims only brassclaw_llm package caches if the real disk guard
+still fails. No whole clean, target change, source rollback or repeated successful
+native tests. Actual new upstream/legacy and connected strict remain unaccepted.
+
+Browser original diagnostic did reproduce focus loss: after click and each
+Home/Shift+End/Backspace, focused=false, unchanged exact9007199254740993 and Save
+disabled. Old CLI wait finally failed after transport retries; total native test
+212.66s. A requested SIGTERM found that leaf already exited; no successful kill
+occurred. Existing original policy cleanup ran, no session remained. R1 diagnostic
+was never executed (terminal-state guard); R2 actual failure/log retained.
+
+Root changed ONLY tests/browser/instance-tool-policy.mjs: wait enabled, explicit
+focus, platform SelectAll/Backspace and require empty value plus enabled Save;
+all real PostgreSQL writes/revisions/BigInt/409/lost-ACK/no-replay assertions remain.
+It now invokes the pinned native CLI directly with a positive bounded command
+deadline, preventing the Node wrapper from orphaning a timed-out child. Actual
+native acceptance is running via /private/tmp/brassclaw-native-browser-clear-20261031/validate-r3.py,
+Screen brassclaw-browser-clear-r3-20261031, evidence run-3. No Cargo for this JS-only
+repair; original Composition image8c7550fa… and8190 matching inputs are verified.
+This test script is outside BUILD020's captured Rust/embedded set. No browser
+pass yet. Check original progress/process/lock before another run.
+
+BUILD022 is next existing K3 step6, not a new owner. Current read-only consumer
+trace: /private/tmp/brassclaw-k3-auth-lifecycle-readonly-20261031.md. An INCOMPLETE
+14path private backend-timeout proposal is in /private/tmp/brassclaw-k3-auth-backend-proposal-20261031;
+manifest says not applied/compiled and lists review corrections. No migration
+reserved. It still needs completed error/type/cfg review, proper native custody/
+uptake and UI/migration acceptance; do not blindly apply it or claim K3 complete.
+
+## Earlier BUILD020 selector repair observation (superseded above)
+
+Run1 compilation passed in263.7s without diagnostics; actual PG Auth, Prefix SDK,
+provider policy and protected coding paths each passed. The private runner then
+stopped before executing review custody because its module filter was wrong.
+Original10680/10748 exited; no source change or repeat compilation was needed.
+Run2 /private/tmp/brassclaw-ci-repairs-validation-20261031/run-2 uses
+/private/tmp/brassclaw-ci-repairs-20261031-qsds28la/resume.py under Screen
+brassclaw-ci-repairs-resume-20261031. It verifies exact source/image/runtime hashes,
+reuses the nine successful Run1 stages and prechecks existing-image selectors
+against actual compiled listings. Correct module: pg_review_submission::function_tests::.
+Inspect original progress/process/lock before replacement. Root alone owns Cargo.
+
+New diagnostic from checkpoint CI: native Chromium settings job124439530797
+failed while clearing the German Tool result limit with Home/Shift+End/Backspace;
+the Save button never enabled. Earlier real writes, stale revision409, lost commit
+acknowledgement and exact >2^53 value passed. Product defect versus keyboard/focus
+is not established. BUILD021 owns actual real-backend browser reproduction and
+repair, preserving every policy/custody assertion. Pinned local/global
+agent-browser0.27.1 and Node25.6.1 are installed. The browser script is outside
+BUILD020's captured inputs; product static modules remain frozen. No fake DOM
+events or backend responses, no relaxed assertions, no additional Cargo solely
+for test-script changes. Reuse unchanged actual compiled native image if applicable.
+
+## Earlier BUILD020 start observation (superseded by the entry above)
+
+Human explicitly confirmed the app update and requested continuation. The former
+checkpoint freeze is lifted; Root remains the permanent sole builder. Current
+technical batch source/embedded inputs are frozen. Do not start another Cargo
+run or let peers modify captured inputs before this original batch is terminal.
+
+Sole Screen brassclaw-ci-repairs-20261031 runs
+/private/tmp/brassclaw-ci-repairs-20261031-qsds28la/validate.py;
+validation directory /private/tmp/brassclaw-ci-repairs-validation-20261031/run-1.
+Observed runner10680/Cargo10748, fresh actual worker build6.3s passed and
+connected Compilation running. Inspect original progress/process/common lock
+before replacement; an observation timeout is not terminal. No020 acceptance yet.
+Original unified exec Screen session64987 may still be observed independently.
+
+Package /private/tmp/brassclaw-ci-repairs-current.txt ->
+/private/tmp/brassclaw-ci-repairs-20261031-qsds28la.22 captured paths/19 changed;
+afterf5a0810e7f7cb9a7299f2d2507841e6bd26f688d9cc13aebdb3a7f116e73e7a0,
+patchf6b1e31be09fb90906f4a3af7198f08b2f240ed24b6b713adf2a282d843e663d.
+Real current input map includes019's recorded EOF delta and updated embedded
+CHANGELOG/turn-runner contract. Prior receipts remain byte- and scope-unchanged.
+
+Connected repairs implemented before Compilation:
+
+- Neutral public native-auth runner API uses existing GateRef, with strict
+  canonical/nonnil reference validation before store mutation. Private UUID,
+  native-auth-wait/1 serialization and original lease/cancel/no-requeue behavior
+  remain. Actual memory/FS/PG callers updated; negative refs and old /1 roundtrip
+  exercised by the pending existing native tests. No alias conceals a host ID.
+- Prefix SDK fixture reuses existing test_loopback_http::spawn and its owned
+  graceful/AbortOnDrop lifecycle. No real SDK assertions or architecture guards
+  removed. Prefix production/Golden/B1B2/Packet files untouched by Root.
+- All eight owned fetch_update sites replaced with portable domain-specific CAS
+  operations preserving ordering, saturation/overflow denial and observed token
+  accounting. Both gateway identity paths share one private allocator; new
+  concurrent near-exhaustion case proves unique identities/no wrapping.
+- Native database semaphore/startup/migrations are prepared BEFORE the existing
+  3-second bounded Subagent harness initialization. Existing constructor accepts
+  prepared shared storage; both actual callers updated. No arbitrary timeout
+  increase, serialization of the5cases or production Rust-loop fallback.
+- Actual serial background preparation passed: format4.95s, offline targeted
+  v1/control Cargo lock repairs0.4s each. v1 adds missing serde_stacker; control
+  corrects seven existing Windows dependency edges using Cargo's real resolver,
+  preserving package versions and pinned Monty references. Other two captured
+  isolated locks are unchanged. --locked remains required at execution.
+- CI full_validation is an explicit default-true manual/reusable boolean; job,
+  risk/matrix, Docker and rollup conditions agree. Required rollup includes actual
+  installer and eligible native browser results. Fork PR cache writes remain
+  excluded. Actual actionlint passes;33 exact rendered-shell cases are reusable
+  from the private check because current canonical YAML bytes are identical.
+  GitHub reusable github context retains its caller's event; do not restore
+  event_name==workflow_call or escaped cache expressions. Actual new GitHub
+  execution/OS acceptance still required after a future checkpoint.
+
+Original checkpoint CI41167958830 is still diagnostic, not acceptance of these
+new bytes. Its root0 subagent startup failures and Atomic deprecations were
+read from actual job124439530957; two cancelled sibling shards were not passes.
+Memory gates Linux/macOS had passed; Windows/browser/control were still live
+at the last observation. Do not redispatch merely because an observation expires.
+
+The current runner validates actual memory/FS/PG custody, original Prefix SDK,
+provider policy/coding stat handshake, original review ACK custody, subject/pure
+and global embedded/base/Sempai consumers, LLM failover and both model gateway
+paths, five parallel root Subagent cases, architecture, real tagged Monty/legacy
+gates and affected connected strict. It verifies original offline model/Python
+inputs, builds a fresh worker and archives actual images before any required
+package-only cache cleanup. Disk guards stay unchanged; no routine/whole clean.
+Compilation/test outcomes must be inspected before advancing Root receipt/pointer.
+
+This maintenance batch is additional required work, not a replacement for full
+Validator A/Pure/S/joint execution/custody/Q1Q2/publication, Composition migration,
+remaining K3/policy/budget/recovery or Prefix I1/I2/Serving/platform gates below.
+Both authorized peers were informed of integration and Root ownership; continue
+their bounded proposal process after the current batch is terminal.
+
 ## 2026-10-31 — App-update checkpoint: all shared work, Root retains build ownership
 
 The human requested committing and pushing ALL shared checkout changes to

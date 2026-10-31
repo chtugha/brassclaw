@@ -26,9 +26,13 @@ fn package(id: String) -> Result<LifecyclePackageRef, WebUiV2HttpError> {
     LifecyclePackageRef::new(LifecyclePackageKind::Extension, id).map_err(|_| invalid())
 }
 async fn bounded<T>(
+    state: &ProductAuthRouteState,
     future: impl std::future::Future<Output = Result<T, RebornServicesError>>,
 ) -> Result<T, WebUiV2HttpError> {
-    match tokio::time::timeout(PRODUCT_AUTH_BACKEND_TIMEOUT, future).await {
+    let timeout = state.product_auth.backend_timeout().await.map_err(|_| {
+        RebornServicesError::from_status(RebornServicesErrorCode::Unavailable, 503, true)
+    })?;
+    match tokio::time::timeout(timeout, future).await {
         Ok(result) => result.map_err(Into::into),
         Err(_) => {
             Err(
@@ -47,9 +51,12 @@ pub(super) async fn setup(
 ) -> Result<Json<ExtensionManualTokenSetupReceipt>, WebUiV2HttpError> {
     let Json(request) = payload?;
     let services = state.services()?;
-    bounded(services.prepare_extension_manual_token(caller, package(id)?, request))
-        .await
-        .map(Json)
+    bounded(
+        &state,
+        services.prepare_extension_manual_token(caller, package(id)?, request),
+    )
+    .await
+    .map(Json)
 }
 
 pub(super) async fn submit(
@@ -67,16 +74,19 @@ pub(super) async fn submit(
         .map_err(|_| invalid())?
         .into_secret();
     let services = state.services()?;
-    bounded(services.submit_extension_manual_token(
-        caller,
-        package(id)?,
-        WebUiExtensionManualTokenSubmitRequest {
-            requirement: request.requirement,
-            identity,
-            invocation_id,
-            secret,
-        },
-    ))
+    bounded(
+        &state,
+        services.submit_extension_manual_token(
+            caller,
+            package(id)?,
+            WebUiExtensionManualTokenSubmitRequest {
+                requirement: request.requirement,
+                identity,
+                invocation_id,
+                secret,
+            },
+        ),
+    )
     .await
     .map(Json)
 }
@@ -89,9 +99,12 @@ pub(super) async fn continue_saved(
 ) -> Result<Json<ExtensionManualTokenCompletion>, WebUiV2HttpError> {
     let Json(request) = payload?;
     let services = state.services()?;
-    bounded(services.continue_extension_manual_token(caller, package(id)?, request))
-        .await
-        .map(Json)
+    bounded(
+        &state,
+        services.continue_extension_manual_token(caller, package(id)?, request),
+    )
+    .await
+    .map(Json)
 }
 
 pub(super) async fn cancel(
@@ -102,7 +115,10 @@ pub(super) async fn cancel(
 ) -> Result<Json<ExtensionManualTokenSetupReceipt>, WebUiV2HttpError> {
     let Json(request) = payload?;
     let services = state.services()?;
-    bounded(services.cancel_extension_manual_token(caller, package(id)?, request))
-        .await
-        .map(Json)
+    bounded(
+        &state,
+        services.cancel_extension_manual_token(caller, package(id)?, request),
+    )
+    .await
+    .map(Json)
 }

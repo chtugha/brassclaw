@@ -1,0 +1,199 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-021",
+  "status": "passed",
+  "sources": {
+    "tests/browser/instance-tool-policy.mjs": "600c0ff825a64fe14b854acff9dc9a645086fd8216de4dc1ad47ba05d6c9faa3"
+  },
+  "unchanged_resource_script": {
+    "path": "tests/browser/monty-vm-resource-limits.mjs",
+    "sha256": "2379dbb2a2ced51102039e57978d93b466c05228c81d0212420e3f46c7f8fd22"
+  },
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-native-browser-clear-20261031/run-1",
+      "progress_sha256": "f7ecc8941c989bb34ab2c785984a1a57ae9c0f331e24247b0fdb827d1bb7aceb",
+      "result": {
+        "status": "failed",
+        "runner_pid": 11799,
+        "process_pid": null,
+        "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-native-browser-clear-20261031/validate.py\", line 16, in <module>\n    assert prior['status']=='passed', ('Original BUILD020 must be terminal/pass first',prior['status'],prior.get('diagnostic'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('Original BUILD020 must be terminal/pass first', 'running', None)\n"
+      }
+    },
+    "run-2": {
+      "path": "/private/tmp/brassclaw-native-browser-clear-20261031/run-2",
+      "progress_sha256": "10d94892d65ac831b66b3d800c12a9c7f3f6dc2eb988e05d21071797b3c06cae",
+      "result": {
+        "status": "failed",
+        "runner_pid": 13649,
+        "process_pid": null,
+        "source_scope": "Actual unchanged Composition image/source; upstream-only test fixture repair is outside its captured input set. BUILD020 is not yet accepted.",
+        "source_receipt": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/progress.json",
+        "image": {
+          "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+          "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-db7a04feb66dba98",
+          "sha256": "8c7550fa38bba3c8e4af1c16092273c29af03ac030a003a2bb92bc315419ccfe",
+          "features": [
+            "default",
+            "postgres",
+            "root-llm-provider",
+            "skills-db",
+            "test-support"
+          ],
+          "compilation_stage": "connected-unit-images",
+          "test_image": true,
+          "original_removed_by_required_package_clean": true
+        },
+        "script_sha256": "ec2d97edc50ee2ab517c5d7bbdf1ccc327f5b8adff8ad5eaa9da1ed7665e61d2",
+        "command": [
+          "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+          "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match",
+          "--exact",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 101,
+        "log_sha256": "f56eb2a7801f1bbf46dec8fa2bde853186f02ad0758e65dcf63f456dc4210053",
+        "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-native-browser-clear-20261031/validate-r2.py\", line 43, in <module>\n    assert code==0\n           ^^^^^^^\nAssertionError\n"
+      }
+    },
+    "run-3": {
+      "path": "/private/tmp/brassclaw-native-browser-clear-20261031/run-3",
+      "progress_sha256": "099cbf2879fe8650553bc0e299bacc60c861935d0f5365163e8671835e7e9936",
+      "result": {
+        "status": "failed",
+        "runner_pid": 14210,
+        "process_pid": null,
+        "source_scope": "Actual unchanged Composition image/source; upstream-only test fixture repair is outside its captured input set. BUILD020 is not yet accepted.",
+        "source_receipt": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/progress.json",
+        "image": {
+          "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+          "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-db7a04feb66dba98",
+          "sha256": "8c7550fa38bba3c8e4af1c16092273c29af03ac030a003a2bb92bc315419ccfe",
+          "features": [
+            "default",
+            "postgres",
+            "root-llm-provider",
+            "skills-db",
+            "test-support"
+          ],
+          "compilation_stage": "connected-unit-images",
+          "test_image": true,
+          "original_removed_by_required_package_clean": true
+        },
+        "script_sha256": "57bc070aabb1925e530037b1c1c09ef04d5941ace24cbcd906b08df1027aff43",
+        "command": [
+          "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+          "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match",
+          "--exact",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 101,
+        "log_sha256": "6fb9bd9d4a0177ce75e327b9e6885a69b600e8e773b32f4106e7f2d93c309db1",
+        "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-native-browser-clear-20261031/validate-r3.py\", line 44, in <module>\n    assert code==0\n           ^^^^^^^\nAssertionError\n"
+      }
+    },
+    "run-4": {
+      "path": "/private/tmp/brassclaw-native-browser-clear-20261031/run-4",
+      "progress_sha256": "192fb1faff554dd3e9cda05fe05d09a2733fd3adb155529b3877918847cd0604",
+      "result": {
+        "status": "passed",
+        "runner_pid": 14989,
+        "process_pid": null,
+        "source_scope": "Actual unchanged Composition image/source; upstream-only test fixture repair is outside its captured input set. BUILD020 is not yet accepted.",
+        "source_receipt": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/progress.json",
+        "image": {
+          "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+          "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-db7a04feb66dba98",
+          "sha256": "8c7550fa38bba3c8e4af1c16092273c29af03ac030a003a2bb92bc315419ccfe",
+          "features": [
+            "default",
+            "postgres",
+            "root-llm-provider",
+            "skills-db",
+            "test-support"
+          ],
+          "compilation_stage": "connected-unit-images",
+          "test_image": true,
+          "original_removed_by_required_package_clean": true
+        },
+        "script_sha256": "600c0ff825a64fe14b854acff9dc9a645086fd8216de4dc1ad47ba05d6c9faa3",
+        "command": [
+          "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+          "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match",
+          "--exact",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "log_sha256": "39fb1d0751ede170969636eb6d476bcd32f68a14231890d3614846b3f469e8c5"
+      }
+    },
+    "run-5": {
+      "path": "/private/tmp/brassclaw-native-browser-clear-20261031/run-5",
+      "progress_sha256": "64f1ebeacbb485a0d4cfeb88a1a8250242218b5f72a50a1037a5ed3617af30fb",
+      "result": {
+        "status": "passed",
+        "runner_pid": 15781,
+        "process_pid": null,
+        "source_scope": "Actual unchanged Composition image/source; upstream-only test fixture repair is outside its captured input set. BUILD020 is not yet accepted.",
+        "source_receipt": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/progress.json",
+        "image": {
+          "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+          "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-db7a04feb66dba98",
+          "sha256": "8c7550fa38bba3c8e4af1c16092273c29af03ac030a003a2bb92bc315419ccfe",
+          "features": [
+            "default",
+            "postgres",
+            "root-llm-provider",
+            "skills-db",
+            "test-support"
+          ],
+          "compilation_stage": "connected-unit-images",
+          "test_image": true,
+          "original_removed_by_required_package_clean": true
+        },
+        "script_sha256": "2379dbb2a2ced51102039e57978d93b466c05228c81d0212420e3f46c7f8fd22",
+        "command": [
+          "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+          "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match",
+          "--exact",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "log_sha256": "b6d33b451190b926032d10ea9b6144a4c50a0121223e5056f755698663a325a6"
+      }
+    }
+  },
+  "counts": {
+    "native_browser_cases": 2,
+    "ignored": 0
+  },
+  "runtime": {
+    "node": "v25.6.1",
+    "agent_browser": "0.27.1",
+    "browser": "Chrome for Testing149.0.7827.54",
+    "platform": "macOS aarch64"
+  },
+  "compiled_inputs": {
+    "path": "/private/tmp/brassclaw-ci-repairs-validation-20261031/run-2/source.json",
+    "entries": 8190,
+    "sha256": "29d086e2e9a8b2581257203660326ccd12070eab4d5e8c0b168833974ecaed7c"
+  },
+  "scope": [
+    "Original real router/facade/PostgreSQL/global Monty and original React/Query/static modules; no fabricated backend success or DOM input events",
+    "Real invalid intermediate space then Backspace clears the field; exact null write, revision, >2^53, 409 and lost-ACK/no-replay assertions retained",
+    "Explicit pinned native CLI deadline bounded R3 failed attempt; valid default checked before opening a listening socket",
+    "Original second CI browser consumer confirms live resource/settings revision uptake and EN/DE help; unchanged script, freshly executed",
+    "No Rust compilation for browser-only change; no Linux/Windows/deployment/full-plan or component activation claim"
+  ],
+  "termination": {
+    "original_runners_exited": true,
+    "common_lock_independently_acquired": true,
+    "ps_evidence": "/private/tmp/brassclaw-native-browser-clear-20261031/terminal-process-check.json",
+    "ps_evidence_sha256": "eee42d68dbb2ac201b1380e1a7a6623da6c0984986052b35b7d2b887eb5b3cc4"
+  }
+}

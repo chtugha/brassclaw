@@ -373,18 +373,10 @@ async fn native_scoped_acceptance_retains_sources_and_guards_both_task_roles() {
         )
     }
     let calls: Calls = Default::default();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let stop = tokio_util::sync::CancellationToken::new();
-    let server_stop = stop.clone();
     let app = Router::new()
         .route("/v1/chat/completions", post(receive))
         .with_state(calls.clone());
-    let server = tokio::spawn(async move {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(server_stop.cancelled_owned())
-            .await
-    });
+    let (address, stop, server) = crate::test_loopback_http::spawn(app).await;
     let rig = crate::runtime::test_pg::pg_rig().await;
     let (admitted, _claim) = crate::native_admission_fixture::reserve_unstarted_with_claim(
         rig.pool.clone(),
@@ -795,7 +787,7 @@ async fn native_scoped_acceptance_retains_sources_and_guards_both_task_roles() {
             .unwrap()
     );
     stop.cancel();
-    server.await.unwrap().unwrap();
+    server.await.unwrap();
 }
 
 /// Actual native data qualification reused by the ordinary task-host test.

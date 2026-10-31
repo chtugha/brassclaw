@@ -1,3 +1,56 @@
+## 2026-10-31 — acknowledged manual-token setup lifetimes accepted
+
+[BUILD024](validation/2026-10-31-manual-setup-lifetimes.md) connects the two new
+manual setup defaults through the existing acknowledged settings/Auth owner,
+actual generic HTTP handlers and Extension adapter. V195 preserves partial/full
+operator values, complete unrelated defaults and every old Auth original. The
+first accepted expiry survives live changes, retries and concurrent creation;
+expired originals are not renewed. Direct native explicit-expiry calls keep their
+contract. EN/DE controls/help and real Rust/Monty effective uptake are covered.
+
+46 native cases+32architecture/0ignored, fresh compilation, actual PG/FS/HTTP/
+browser/global consumers and connected/default strict Clippy passed. Exact source,
+images and original logs are in the receipt. This is local macOS evidence, not
+new GitHub/platform/deployed support or full K3 completion. OAuth default/max/gate
+and browser expiry/popup/transport/ingress controls and all remaining owner gates
+stay open. Root retains central Cargo ownership after releasing the sourcefreeze.
+
+## 2026-10-31 — acknowledged credential-backend wait accepted
+
+[BUILD022](validation/2026-10-31-auth-backend-wait.md) connects the existing neutral
+acknowledged policy to every protected Auth backend wrapper and the common
+custom/PG/FS factory attachment. V194 preserves explicit values/unrelated defaults;
+EN/DE WebUI controls/help and actual effective status are covered. Live reduction
+retains an in-flight deadline; configured unavailable policy prevents backend poll.
+All34 settings upgrades and real original PG/HTTP/manual-browser/resource-browser
+consumers pass:42 native+32architecture cases/0ignored, connected/default strict.
+The script-only restoration repair reuses unchanged compiled code and preserves
+full equality/two-write checks. No new settings/workflow/approval owner.
+
+This is per-backend-call waiting, not complete Auth lifecycle control. Setup
+lifetimes, browser expiry producers/popup waits and independent browser/ingress
+limits remain open in the same K3 owner. General approval/Prefix/recovery/platform/
+release/full-plan work remains open. See the exact receipt rather than treating
+a source or local acceptance result as installed support.
+
+## 2026-10-31 — checkpoint CI repairs and native browser editing
+
+[BUILD020](validation/2026-10-31-checkpoint-ci-repairs.md) passes connected
+compilation,125 native cases,32 architecture checks,24 tagged Monty cases,1 legacy
+case and connected/isolated strict lint. The neutral Auth boundary retains its
+original private wire identity; atomics preserve overflow/saturation; original
+five Subagent parity cases pass with concurrent native storage preparation.
+The upstream test driver now observes the already existing pool coordinator.
+Production orchestration has no Rust-loop fallback.
+
+[BUILD021](validation/2026-10-31-native-browser-limit-clear.md) passes both original
+Chromium settings consumers against real PostgreSQL/global runtime. Limit clearing,
+exact large values, conflicts, lost acknowledgements, live effective revisions and
+EN/DE help are checked. This JS-only repair reuses the actual unchanged native
+image. Original failures remain attributed. No new Linux/Windows/GitHub deployment,
+release, component approval or full-plan completion is established. Existing
+K3 Auth lifecycle/transport controls and all later owner gates remain open.
+
 ## 2026-10-31 — Shared review-subject reader and Skill declaration checks accepted
 
 [BUILD019](validation/2026-10-31-joint-validator-checks.md) connects one private

@@ -357,10 +357,21 @@ async fn relay(
                     .compare_exchange(phase, 0, Ordering::AcqRel, Ordering::Acquire)
                     .is_ok()
             {
-                cut.fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
-                    count.checked_add(1)
-                })
-                .map_err(|_| io::Error::other("ACK cut counter exhausted"))?;
+                let mut previous = cut.load(Ordering::Acquire);
+                loop {
+                    let next = previous
+                        .checked_add(1)
+                        .ok_or_else(|| io::Error::other("ACK cut counter exhausted"))?;
+                    match cut.compare_exchange_weak(
+                        previous,
+                        next,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    ) {
+                        Ok(_) => break,
+                        Err(current) => previous = current,
+                    }
+                }
                 to_client.shutdown().await?;
                 return Ok(());
             }

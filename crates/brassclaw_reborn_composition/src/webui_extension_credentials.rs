@@ -13,13 +13,13 @@ use brassclaw_product_workflow::{
     ExtensionManualTokenOriginal, ExtensionManualTokenSetupReceipt, RebornServicesError,
     RebornServicesErrorCode, RebornServicesErrorKind, extension_manual_token_label,
 };
-use chrono::{Duration as ChronoDuration, Utc};
+#[cfg(test)]
+use chrono::Duration as ChronoDuration;
+use chrono::Utc;
 
 use crate::{
     RebornManualTokenSetupRequest, RebornManualTokenSubmitRequest, RebornProductAuthServices,
 };
-
-const EXTENSION_CREDENTIAL_SETUP_TTL_SECONDS: i64 = 300;
 
 #[derive(Clone)]
 pub(crate) struct ProductAuthExtensionCredentialSetup {
@@ -153,7 +153,10 @@ impl ExtensionCredentialSetupService for ProductAuthExtensionCredentialSetup {
             provider.clone(),
             label,
             AuthContinuationRef::SetupOnly,
-            Utc::now() + ChronoDuration::seconds(EXTENSION_CREDENTIAL_SETUP_TTL_SECONDS),
+            self.product_auth
+                .extension_manual_token_setup_expiry()
+                .await
+                .map_err(|error| map_auth_error(error.into()))?,
         )
         .with_requirement_setup(setup);
         if let ExtensionCredentialTarget::Existing { account_id } = request.target {

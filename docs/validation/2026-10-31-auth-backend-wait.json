@@ -1,0 +1,673 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-022",
+  "status": "passed",
+  "package": "/private/tmp/brassclaw-auth-backend-wait-20261031",
+  "package_after_sha256": "6ace3ee5c85d50493d0c3c234a33a24dcd50019ec32a538ab102407c29b7d144",
+  "sources": {
+    "CHANGELOG.md": "6c3a07644123cfaf38bfaa9fbaf79c0e453a7dfcbe6c0d73ceecd8155e0ae6cf",
+    "crates/brassclaw_host_api/src/monty_resources.rs": "26e08b5893ca7f810759488ac60990866eed7647c7c31b06afa82a951e9f020d",
+    "crates/brassclaw_pg/migrations/V194__product_auth_backend_timeout.sql": "e1b80233b8c14de1abf63b343632a70da400cb4120165aca3df358d577083bd1",
+    "crates/brassclaw_reborn_composition/src/auth.rs": "46e2b4929367d0b243b90638f0f250d2ea9eb3d2ce144f4ea70fbc616abb7ced",
+    "crates/brassclaw_reborn_composition/src/factory.rs": "0d63c1827cd0bc21197b4133e45a2f3fc993ba726097498d767ae4b55320eb09",
+    "crates/brassclaw_reborn_composition/src/live_monty_settings.rs": "6ea850a3349417585ac972f490b2fbfb68389ead9ca0753987c44bafc2c6d583",
+    "crates/brassclaw_reborn_composition/src/oauth_dcr_limits_tests.rs": "564e12bdfced6a1031f49b0f7e4d70eb84df336f637d882245d9782fc55aa6de",
+    "crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs": "500ce43c05b2deb3c60887b2542c8e63d05ce48fef22cf128b5fa19e174b8d65",
+    "crates/brassclaw_reborn_composition/src/product_auth_serve/accounts.rs": "a27f3ae0e26fc7311785ebd931add55fc9fbddea0652667041e0e2b9ac4e80a0",
+    "crates/brassclaw_reborn_composition/src/product_auth_serve/extension_manual_token.rs": "415f487b2a6bc27d039a5d68ca2b5d58829f395b8b3bc2874523bfd13d9437c4",
+    "crates/brassclaw_reborn_composition/src/product_auth_serve/extension_oauth_requirement.rs": "d55cc4141bb818c1458a61936132d8879626233b00225400b0a516a54812f9c6",
+    "crates/brassclaw_reborn_composition/src/product_auth_serve/lifecycle.rs": "fa6ec658d64162442be5111137985b6afda41ae61bf9c16d2f45f8d0809eb27f",
+    "crates/brassclaw_reborn_composition/src/product_auth_serve/manual_token.rs": "4abec579cf4c490eb2a31e5d2979180c9c1ed8b5a67f27eb04ca761de294cae8",
+    "crates/brassclaw_reborn_composition/src/product_auth_serve/mod.rs": "3678643d24e04511e658b9af8fff58ee8b26c2879918c46854eed4f95af18025",
+    "crates/brassclaw_reborn_composition/src/product_auth_serve/oauth.rs": "7f46129aa0cea6decb32baaaee5aa0f3a6526e349f54640ba84b1fd22931a744",
+    "crates/brassclaw_webui_v2_static/static/js/i18n/de.js": "f4fbf205e02a511842d1ed177effbaa444c753d1c628e15fd34602a28500505b",
+    "crates/brassclaw_webui_v2_static/static/js/i18n/en.js": "994de031052aa5a03a78c9bdbc220d751c4979b8dbafb02b8e55bb556205238d",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/monty-vm-tab.js": "1bf8d1938df4a8c287c5be1f573ab9c72bd1eaed66790adffabed5db36932a36",
+    "simplified_v3.md": "5a02f2ec2cfd438ee05e1e4a83dda9541391be100ee7b2fdafff08f0f8dcdc13",
+    "tests/browser/README.md": "44393141ef1c081a5c016a2db58a265b08ddce1667b1dbc822d584f67f76e22c",
+    "tests/browser/monty-vm-resource-limits.mjs": "5b0a2937fcfdf0218f08795689cc089ddd5ac56dc8b9ff0156a50e4e0edb2e06"
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-2/source.json",
+    "sha256": "a2e9551a46c1b1c5c021b1130b9b5a91a7368fc8be086245a6581e7263f30c32",
+    "entries": 8238,
+    "embedded_input_map": "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-2/embedded-inputs.json",
+    "embedded_input_map_sha256": "e1d124176414d8413518646d0d81bbe0611c874ebb0254452a8142213bd17059",
+    "reviewed_root": "/private/tmp/brassclaw-auth-backend-wait-20261031/current-root-inputs-auth-backend-wait.json",
+    "reviewed_root_sha256": "831ff4bde38ce9deed7c35b24e2f1684a24e368e0c58f6afb5abd83e2fa2d78d",
+    "reviewed_root_paths": 319
+  },
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1",
+      "status": "failed",
+      "stage": "native-resource-browser",
+      "progress_sha256": "7a258f691f7a60e10a06d1c78bb04c480553d3302aab92e5298e3fc63f597cb0",
+      "source_sha256": "c90e40bc340162c228583c174789898bcf966c21647c0e89725d0ec8b8932eed",
+      "runner_sha256": "a98b965a69b914155f799c39af9525d98c13c5c93f77583e432069257b3c8e66",
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-auth-backend-wait-20261031/validate.py\", line 171, in <module>\n    tests('native-resource-browser','brassclaw_reborn_composition','native_global_runtime_retains_one_root_across_match_and_no_match')\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-auth-backend-wait-20261031/validate.py\", line 125, in tests\n    output = run(label, arguments)\n  File \"/private/tmp/brassclaw-auth-backend-wait-20261031/validate.py\", line 114, in run\n    assert code == 0, (label, code)\n           ^^^^^^^^^\nAssertionError: ('native-resource-browser', 101)\n",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.32909874990582466,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.2537911250256002,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "browser-syntax",
+          "exit_code": 0,
+          "seconds": 0.25628970796242356,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "worker-build",
+          "exit_code": 0,
+          "seconds": 6.170210249954835,
+          "log_sha256": "8657c1675744572ce37df17961f67d5273ef15aaa97608e0f5a086efde16db3d"
+        },
+        {
+          "stage": "composition-image",
+          "exit_code": 0,
+          "seconds": 257.05487412493676,
+          "log_sha256": "893e0267666dabea6a1a6e68b40e7c6a957bb2ef8e02a7e7aeaeea7ecb21457a"
+        },
+        {
+          "stage": "native-settings-upgrades",
+          "exit_code": 0,
+          "seconds": 79.31399654201232,
+          "log_sha256": "3d5abc8dde009f1c5c760e642febdb4551bf841216894158913c63c8ed0380d3",
+          "passed": 34,
+          "tests": [
+            "pg_monty_vm_settings::auth_backend_timeout_upgrade_tests::native_auth_backend_timeout_upgrade_preserves_overrides_and_rejects_bad_bounds",
+            "pg_monty_vm_settings::dcr_http_upgrade_tests::native_dcr_http_upgrade_preserves_explicit_and_partial_values",
+            "pg_monty_vm_settings::dcr_metadata_cache_upgrade_tests::native_dcr_metadata_cache_upgrade_preserves_zero_overrides_and_defaults",
+            "pg_monty_vm_settings::oauth_transport_upgrade_tests::native_oauth_transport_upgrade_preserves_explicit_and_partial_values",
+            "pg_monty_vm_settings::tests::native_actor_capacity_upgrade_preserves_explicit_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_adapter_reserve_upgrade_preserves_zero_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_attempt_retention_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_backlog_upgrade_preserves_explicit_limits_and_rejects_invalid_numbers",
+            "pg_monty_vm_settings::tests::native_browser_status_interval_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_cancellation_deadline_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_catalogue_policy_upgrade_preserves_explicit_values_and_rejects_invalid_bounds",
+            "pg_monty_vm_settings::tests::native_child_context_upgrade_pins_default_and_preserves_explicit_values",
+            "pg_monty_vm_settings::tests::native_coding_limits_upgrade_preserves_overrides_and_default_evaluation",
+            "pg_monty_vm_settings::tests::native_duration_upgrade_preserves_values_and_allows_positive_int_range",
+            "pg_monty_vm_settings::tests::native_hosting_deadline_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_http_cache_upgrade_preserves_disabled_and_explicit_settings",
+            "pg_monty_vm_settings::tests::native_http_defaults_upgrade_retains_explicit_values_and_rejects_invalid",
+            "pg_monty_vm_settings::tests::native_ipc_frame_upgrade_preserves_explicit_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_mcp_capacity_upgrade_preserves_overrides_and_default_evaluation",
+            "pg_monty_vm_settings::tests::native_mcp_transport_upgrade_preserves_partial_overrides_and_defaults",
+            "pg_monty_vm_settings::tests::native_memory_policy_upgrade_preserves_limits_and_new_rows_size_once",
+            "pg_monty_vm_settings::tests::native_memory_tree_upgrade_preserves_overrides_and_single_default_evaluation",
+            "pg_monty_vm_settings::tests::native_model_quote_upgrade_preserves_explicit_estimates_and_rejects_invalid",
+            "pg_monty_vm_settings::tests::native_monty_settings_patch_is_revision_checked_and_atomic",
+            "pg_monty_vm_settings::tests::native_ownership_controls_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_pending_host_call_upgrade_preserves_values_defaults_and_atomic_rejection",
+            "pg_monty_vm_settings::tests::native_preparation_upgrade_preserves_explicit_values_and_larger_frames",
+            "pg_monty_vm_settings::tests::native_recipe_capacity_upgrade_preserves_settings_and_revision",
+            "pg_monty_vm_settings::tests::native_reconcile_interval_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_removed_allocation_limit_preserves_evidence_and_rejects_writes",
+            "pg_monty_vm_settings::tests::native_resource_deadline_upgrade_preserves_values_and_rejects_invalid",
+            "pg_monty_vm_settings::tests::native_settings_capacity_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_settings_deadline_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_worker_pool_upgrade_preserves_overrides_and_evaluates_defaults_once"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-auth-and-dcr-policy",
+          "exit_code": 0,
+          "seconds": 115.6233939579688,
+          "log_sha256": "30d526b2aaa80be7bf7eca0f65319ceffcbcc2c4c089aebb21cc79914457ff0b",
+          "passed": 3,
+          "tests": [
+            "oauth_dcr::limits_tests::native_auth_backend_wait_captures_acknowledged_policy_without_retiming_a_call",
+            "oauth_dcr::limits_tests::native_dcr_gate_recovers_preparation_after_flow_insert_failure_without_rebinding",
+            "oauth_dcr::limits_tests::native_dcr_http_limits_refresh_between_requests_and_do_not_spend_unbound_claim"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "original-auth-pg-custody",
+          "exit_code": 0,
+          "seconds": 2.192495542112738,
+          "log_sha256": "18405f4a879205a6d804a05e28a887e055f702d77114f27fb5d0da1f64fa03dd",
+          "passed": 1,
+          "tests": [
+            "pg_auth_product_services::requirement_tests::native_auth_wait_retains_pg_claim_on_resume_and_fences_missing_cancel_ack"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "original-http-lost-ack",
+          "exit_code": 0,
+          "seconds": 30.275059083011,
+          "log_sha256": "6b7a16d53d83f7f11e332d1c58b00a600d14df4284a5019e0be453d2de3216f3",
+          "passed": 1,
+          "tests": [
+            "product_auth_serve::caller_contract_tests::http_manual_submit_error_and_real_timeout_preserve_the_acknowledged_account"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-manual-browser",
+          "exit_code": 0,
+          "seconds": 46.868320333072916,
+          "log_sha256": "6c4cea4bf426e4484ae8fca49fbc618ec04718945deed6f3309d1911cbc8ae63",
+          "passed": 1,
+          "tests": [
+            "runtime::auth_interaction_tests::local_dev_runtime_auth_interactions_use_flow_record_source"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-resource-browser",
+          "exit_code": 101,
+          "seconds": 68.33843562495895,
+          "log_sha256": "416c8bb46f45a27c8d550908f21ff08995de63d740771d4ea4645ff6de0faebd"
+        }
+      ]
+    },
+    "run-2": {
+      "path": "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-2",
+      "status": "passed",
+      "stage": "terminal",
+      "progress_sha256": "1b086bbc94a91ee415436ec60e5991cec98ddf1f5f248fcde6350ccc11cf8dfd",
+      "source_sha256": "a2e9551a46c1b1c5c021b1130b9b5a91a7368fc8be086245a6581e7263f30c32",
+      "runner_sha256": "f6a80e833a7b7e8361a62e493e262071800fd04b4c9c6d7b24c98dd86ba4c861",
+      "diagnostic": null,
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.32909874990582466,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.2537911250256002,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "browser-syntax",
+          "exit_code": 0,
+          "seconds": 0.25628970796242356,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "worker-build",
+          "exit_code": 0,
+          "seconds": 6.170210249954835,
+          "log_sha256": "8657c1675744572ce37df17961f67d5273ef15aaa97608e0f5a086efde16db3d"
+        },
+        {
+          "stage": "composition-image",
+          "exit_code": 0,
+          "seconds": 257.05487412493676,
+          "log_sha256": "893e0267666dabea6a1a6e68b40e7c6a957bb2ef8e02a7e7aeaeea7ecb21457a"
+        },
+        {
+          "stage": "native-settings-upgrades",
+          "exit_code": 0,
+          "seconds": 79.31399654201232,
+          "log_sha256": "3d5abc8dde009f1c5c760e642febdb4551bf841216894158913c63c8ed0380d3",
+          "passed": 34,
+          "tests": [
+            "pg_monty_vm_settings::auth_backend_timeout_upgrade_tests::native_auth_backend_timeout_upgrade_preserves_overrides_and_rejects_bad_bounds",
+            "pg_monty_vm_settings::dcr_http_upgrade_tests::native_dcr_http_upgrade_preserves_explicit_and_partial_values",
+            "pg_monty_vm_settings::dcr_metadata_cache_upgrade_tests::native_dcr_metadata_cache_upgrade_preserves_zero_overrides_and_defaults",
+            "pg_monty_vm_settings::oauth_transport_upgrade_tests::native_oauth_transport_upgrade_preserves_explicit_and_partial_values",
+            "pg_monty_vm_settings::tests::native_actor_capacity_upgrade_preserves_explicit_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_adapter_reserve_upgrade_preserves_zero_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_attempt_retention_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_backlog_upgrade_preserves_explicit_limits_and_rejects_invalid_numbers",
+            "pg_monty_vm_settings::tests::native_browser_status_interval_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_cancellation_deadline_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_catalogue_policy_upgrade_preserves_explicit_values_and_rejects_invalid_bounds",
+            "pg_monty_vm_settings::tests::native_child_context_upgrade_pins_default_and_preserves_explicit_values",
+            "pg_monty_vm_settings::tests::native_coding_limits_upgrade_preserves_overrides_and_default_evaluation",
+            "pg_monty_vm_settings::tests::native_duration_upgrade_preserves_values_and_allows_positive_int_range",
+            "pg_monty_vm_settings::tests::native_hosting_deadline_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_http_cache_upgrade_preserves_disabled_and_explicit_settings",
+            "pg_monty_vm_settings::tests::native_http_defaults_upgrade_retains_explicit_values_and_rejects_invalid",
+            "pg_monty_vm_settings::tests::native_ipc_frame_upgrade_preserves_explicit_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_mcp_capacity_upgrade_preserves_overrides_and_default_evaluation",
+            "pg_monty_vm_settings::tests::native_mcp_transport_upgrade_preserves_partial_overrides_and_defaults",
+            "pg_monty_vm_settings::tests::native_memory_policy_upgrade_preserves_limits_and_new_rows_size_once",
+            "pg_monty_vm_settings::tests::native_memory_tree_upgrade_preserves_overrides_and_single_default_evaluation",
+            "pg_monty_vm_settings::tests::native_model_quote_upgrade_preserves_explicit_estimates_and_rejects_invalid",
+            "pg_monty_vm_settings::tests::native_monty_settings_patch_is_revision_checked_and_atomic",
+            "pg_monty_vm_settings::tests::native_ownership_controls_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_pending_host_call_upgrade_preserves_values_defaults_and_atomic_rejection",
+            "pg_monty_vm_settings::tests::native_preparation_upgrade_preserves_explicit_values_and_larger_frames",
+            "pg_monty_vm_settings::tests::native_recipe_capacity_upgrade_preserves_settings_and_revision",
+            "pg_monty_vm_settings::tests::native_reconcile_interval_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_removed_allocation_limit_preserves_evidence_and_rejects_writes",
+            "pg_monty_vm_settings::tests::native_resource_deadline_upgrade_preserves_values_and_rejects_invalid",
+            "pg_monty_vm_settings::tests::native_settings_capacity_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_settings_deadline_upgrade_preserves_values_and_fails_atomically",
+            "pg_monty_vm_settings::tests::native_worker_pool_upgrade_preserves_overrides_and_evaluates_defaults_once"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-auth-and-dcr-policy",
+          "exit_code": 0,
+          "seconds": 115.6233939579688,
+          "log_sha256": "30d526b2aaa80be7bf7eca0f65319ceffcbcc2c4c089aebb21cc79914457ff0b",
+          "passed": 3,
+          "tests": [
+            "oauth_dcr::limits_tests::native_auth_backend_wait_captures_acknowledged_policy_without_retiming_a_call",
+            "oauth_dcr::limits_tests::native_dcr_gate_recovers_preparation_after_flow_insert_failure_without_rebinding",
+            "oauth_dcr::limits_tests::native_dcr_http_limits_refresh_between_requests_and_do_not_spend_unbound_claim"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "original-auth-pg-custody",
+          "exit_code": 0,
+          "seconds": 2.192495542112738,
+          "log_sha256": "18405f4a879205a6d804a05e28a887e055f702d77114f27fb5d0da1f64fa03dd",
+          "passed": 1,
+          "tests": [
+            "pg_auth_product_services::requirement_tests::native_auth_wait_retains_pg_claim_on_resume_and_fences_missing_cancel_ack"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "original-http-lost-ack",
+          "exit_code": 0,
+          "seconds": 30.275059083011,
+          "log_sha256": "6b7a16d53d83f7f11e332d1c58b00a600d14df4284a5019e0be453d2de3216f3",
+          "passed": 1,
+          "tests": [
+            "product_auth_serve::caller_contract_tests::http_manual_submit_error_and_real_timeout_preserve_the_acknowledged_account"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-manual-browser",
+          "exit_code": 0,
+          "seconds": 46.868320333072916,
+          "log_sha256": "6c4cea4bf426e4484ae8fca49fbc618ec04718945deed6f3309d1911cbc8ae63",
+          "passed": 1,
+          "tests": [
+            "runtime::auth_interaction_tests::local_dev_runtime_auth_interactions_use_flow_record_source"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "browser-syntax-r2",
+          "exit_code": 0,
+          "seconds": 0.2675432919058949,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace-r2",
+          "exit_code": 0,
+          "seconds": 0.24497591704130173,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "native-resource-browser",
+          "exit_code": 0,
+          "seconds": 108.28455112501979,
+          "log_sha256": "187515fd7433326c290c4b2457ee46c45b4ff5cd8aad65b83b64a97a62b42328",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "native-global-embedded",
+          "exit_code": 0,
+          "seconds": 385.35135566606186,
+          "log_sha256": "f5c83c6bfecff05f92d73e4decdf32a7b9d2196554c1561fb241fd4cdfa73813",
+          "passed": 1,
+          "tests": [
+            "runtime::tests::authored_catalogue_tests::component_deployment_tests::native_component_deployment_preserves_recipes_and_pins_review_subjects"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "architecture",
+          "exit_code": 0,
+          "seconds": 1.5031716669909656,
+          "log_sha256": "872464100293a8c7ec8baba18425c052cff8a4bd84871a1138effcb41207277e"
+        },
+        {
+          "stage": "connected-strict",
+          "exit_code": 0,
+          "seconds": 106.04829629207961,
+          "log_sha256": "422feb32fb8de9ec90934fdf2e4227d73e63278ac1b3671e90cd5e768a9336a2"
+        },
+        {
+          "stage": "default-strict",
+          "exit_code": 0,
+          "seconds": 50.65548604191281,
+          "log_sha256": "43f2a25d67aabecabf04f00f8a1bb49cacf42712d612080bccce89997e8d8c69"
+        }
+      ]
+    }
+  },
+  "results": [
+    {
+      "stage": "format",
+      "exit_code": 0,
+      "seconds": 0.32909874990582466,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "whitespace",
+      "exit_code": 0,
+      "seconds": 0.2537911250256002,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "browser-syntax",
+      "exit_code": 0,
+      "seconds": 0.25628970796242356,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "worker-build",
+      "exit_code": 0,
+      "seconds": 6.170210249954835,
+      "log_sha256": "8657c1675744572ce37df17961f67d5273ef15aaa97608e0f5a086efde16db3d"
+    },
+    {
+      "stage": "composition-image",
+      "exit_code": 0,
+      "seconds": 257.05487412493676,
+      "log_sha256": "893e0267666dabea6a1a6e68b40e7c6a957bb2ef8e02a7e7aeaeea7ecb21457a"
+    },
+    {
+      "stage": "native-settings-upgrades",
+      "exit_code": 0,
+      "seconds": 79.31399654201232,
+      "log_sha256": "3d5abc8dde009f1c5c760e642febdb4551bf841216894158913c63c8ed0380d3",
+      "passed": 34,
+      "tests": [
+        "pg_monty_vm_settings::auth_backend_timeout_upgrade_tests::native_auth_backend_timeout_upgrade_preserves_overrides_and_rejects_bad_bounds",
+        "pg_monty_vm_settings::dcr_http_upgrade_tests::native_dcr_http_upgrade_preserves_explicit_and_partial_values",
+        "pg_monty_vm_settings::dcr_metadata_cache_upgrade_tests::native_dcr_metadata_cache_upgrade_preserves_zero_overrides_and_defaults",
+        "pg_monty_vm_settings::oauth_transport_upgrade_tests::native_oauth_transport_upgrade_preserves_explicit_and_partial_values",
+        "pg_monty_vm_settings::tests::native_actor_capacity_upgrade_preserves_explicit_values_and_fails_atomically",
+        "pg_monty_vm_settings::tests::native_adapter_reserve_upgrade_preserves_zero_and_fails_atomically",
+        "pg_monty_vm_settings::tests::native_attempt_retention_upgrade_preserves_values_and_fails_atomically",
+        "pg_monty_vm_settings::tests::native_backlog_upgrade_preserves_explicit_limits_and_rejects_invalid_numbers",
+        "pg_monty_vm_settings::tests::native_browser_status_interval_upgrade_preserves_values_and_fails_atomically",
+        "pg_monty_vm_settings::tests::native_cancellation_deadline_upgrade_preserves_values_and_fails_atomically",
+        "pg_monty_vm_settings::tests::native_catalogue_policy_upgrade_preserves_explicit_values_and_rejects_invalid_bounds",
+        "pg_monty_vm_settings::tests::native_child_context_upgrade_pins_default_and_preserves_explicit_values",
+        "pg_monty_vm_settings::tests::native_coding_limits_upgrade_preserves_overrides_and_default_evaluation",
+        "pg_monty_vm_settings::tests::native_duration_upgrade_preserves_values_and_allows_positive_int_range",
+        "pg_monty_vm_settings::tests::native_hosting_deadline_upgrade_preserves_values_and_fails_atomically",
+        "pg_monty_vm_settings::tests::native_http_cache_upgrade_preserves_disabled_and_explicit_settings",
+        "pg_monty_vm_settings::tests::native_http_defaults_upgrade_retains_explicit_values_and_rejects_invalid",
+        "pg_monty_vm_settings::tests::native_ipc_frame_upgrade_preserves_explicit_values_and_fails_atomically",
+        "pg_monty_vm_settings::tests::native_mcp_capacity_upgrade_preserves_overrides_and_default_evaluation",
+        "pg_monty_vm_settings::tests::native_mcp_transport_upgrade_preserves_partial_overrides_and_defaults",
+        "pg_monty_vm_settings::tests::native_memory_policy_upgrade_preserves_limits_and_new_rows_size_once",
+        "pg_monty_vm_settings::tests::native_memory_tree_upgrade_preserves_overrides_and_single_default_evaluation",
+        "pg_monty_vm_settings::tests::native_model_quote_upgrade_preserves_explicit_estimates_and_rejects_invalid",
+        "pg_monty_vm_settings::tests::native_monty_settings_patch_is_revision_checked_and_atomic",
+        "pg_monty_vm_settings::tests::native_ownership_controls_upgrade_preserves_values_and_fails_atomically",
+        "pg_monty_vm_settings::tests::native_pending_host_call_upgrade_preserves_values_defaults_and_atomic_rejection",
+        "pg_monty_vm_settings::tests::native_preparation_upgrade_preserves_explicit_values_and_larger_frames",
+        "pg_monty_vm_settings::tests::native_recipe_capacity_upgrade_preserves_settings_and_revision",
+        "pg_monty_vm_settings::tests::native_reconcile_interval_upgrade_preserves_values_and_fails_atomically",
+        "pg_monty_vm_settings::tests::native_removed_allocation_limit_preserves_evidence_and_rejects_writes",
+        "pg_monty_vm_settings::tests::native_resource_deadline_upgrade_preserves_values_and_rejects_invalid",
+        "pg_monty_vm_settings::tests::native_settings_capacity_upgrade_preserves_values_and_fails_atomically",
+        "pg_monty_vm_settings::tests::native_settings_deadline_upgrade_preserves_values_and_fails_atomically",
+        "pg_monty_vm_settings::tests::native_worker_pool_upgrade_preserves_overrides_and_evaluates_defaults_once"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "native-auth-and-dcr-policy",
+      "exit_code": 0,
+      "seconds": 115.6233939579688,
+      "log_sha256": "30d526b2aaa80be7bf7eca0f65319ceffcbcc2c4c089aebb21cc79914457ff0b",
+      "passed": 3,
+      "tests": [
+        "oauth_dcr::limits_tests::native_auth_backend_wait_captures_acknowledged_policy_without_retiming_a_call",
+        "oauth_dcr::limits_tests::native_dcr_gate_recovers_preparation_after_flow_insert_failure_without_rebinding",
+        "oauth_dcr::limits_tests::native_dcr_http_limits_refresh_between_requests_and_do_not_spend_unbound_claim"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "original-auth-pg-custody",
+      "exit_code": 0,
+      "seconds": 2.192495542112738,
+      "log_sha256": "18405f4a879205a6d804a05e28a887e055f702d77114f27fb5d0da1f64fa03dd",
+      "passed": 1,
+      "tests": [
+        "pg_auth_product_services::requirement_tests::native_auth_wait_retains_pg_claim_on_resume_and_fences_missing_cancel_ack"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "original-http-lost-ack",
+      "exit_code": 0,
+      "seconds": 30.275059083011,
+      "log_sha256": "6b7a16d53d83f7f11e332d1c58b00a600d14df4284a5019e0be453d2de3216f3",
+      "passed": 1,
+      "tests": [
+        "product_auth_serve::caller_contract_tests::http_manual_submit_error_and_real_timeout_preserve_the_acknowledged_account"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "native-manual-browser",
+      "exit_code": 0,
+      "seconds": 46.868320333072916,
+      "log_sha256": "6c4cea4bf426e4484ae8fca49fbc618ec04718945deed6f3309d1911cbc8ae63",
+      "passed": 1,
+      "tests": [
+        "runtime::auth_interaction_tests::local_dev_runtime_auth_interactions_use_flow_record_source"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "browser-syntax-r2",
+      "exit_code": 0,
+      "seconds": 0.2675432919058949,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "whitespace-r2",
+      "exit_code": 0,
+      "seconds": 0.24497591704130173,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "native-resource-browser",
+      "exit_code": 0,
+      "seconds": 108.28455112501979,
+      "log_sha256": "187515fd7433326c290c4b2457ee46c45b4ff5cd8aad65b83b64a97a62b42328",
+      "passed": 1,
+      "tests": [
+        "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "native-global-embedded",
+      "exit_code": 0,
+      "seconds": 385.35135566606186,
+      "log_sha256": "f5c83c6bfecff05f92d73e4decdf32a7b9d2196554c1561fb241fd4cdfa73813",
+      "passed": 1,
+      "tests": [
+        "runtime::tests::authored_catalogue_tests::component_deployment_tests::native_component_deployment_preserves_recipes_and_pins_review_subjects"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "architecture",
+      "exit_code": 0,
+      "seconds": 1.5031716669909656,
+      "log_sha256": "872464100293a8c7ec8baba18425c052cff8a4bd84871a1138effcb41207277e"
+    },
+    {
+      "stage": "connected-strict",
+      "exit_code": 0,
+      "seconds": 106.04829629207961,
+      "log_sha256": "422feb32fb8de9ec90934fdf2e4227d73e63278ac1b3671e90cd5e768a9336a2"
+    },
+    {
+      "stage": "default-strict",
+      "exit_code": 0,
+      "seconds": 50.65548604191281,
+      "log_sha256": "43f2a25d67aabecabf04f00f8a1bb49cacf42712d612080bccce89997e8d8c69"
+    }
+  ],
+  "original_logs": {
+    "format": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/format.log"
+    ],
+    "whitespace": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/whitespace.log"
+    ],
+    "browser-syntax": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/browser-syntax.log"
+    ],
+    "worker-build": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/worker-build.log"
+    ],
+    "composition-image": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/composition-image.log"
+    ],
+    "native-settings-upgrades": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/native-settings-upgrades.log"
+    ],
+    "native-auth-and-dcr-policy": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/native-auth-and-dcr-policy.log"
+    ],
+    "original-auth-pg-custody": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/original-auth-pg-custody.log"
+    ],
+    "original-http-lost-ack": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/original-http-lost-ack.log"
+    ],
+    "native-manual-browser": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/native-manual-browser.log"
+    ],
+    "browser-syntax-r2": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-2/browser-syntax-r2.log"
+    ],
+    "whitespace-r2": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-2/whitespace-r2.log"
+    ],
+    "native-resource-browser": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-2/native-resource-browser.log"
+    ],
+    "native-global-embedded": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-2/native-global-embedded.log"
+    ],
+    "architecture": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-2/architecture.log"
+    ],
+    "connected-strict": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-2/connected-strict.log"
+    ],
+    "default-strict": [
+      "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-2/default-strict.log"
+    ]
+  },
+  "counts": {
+    "native_cases": 42,
+    "architecture_cases": 32,
+    "ignored": 0
+  },
+  "images": {
+    "monty_worker": {
+      "path": "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/monty_worker",
+      "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+      "sha256": "161293a4356eb7ef3c8c593a388906aa064b7347ac19b5b4cb6344f07934d119",
+      "features": [],
+      "compilation_stage": "worker-build",
+      "test_image": false
+    },
+    "brassclaw_reborn_composition": {
+      "path": "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-cde394fcf1f47f30",
+      "sha256": "f89c19923c3651debdad146435257c4af25cd2f6603d54fa60c21b4b0466f63e",
+      "features": [
+        "default",
+        "migrate-from-libsql",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ],
+      "compilation_stage": "composition-image",
+      "test_image": true
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-auth-backend-wait-validation-20261031/run-1/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "161293a4356eb7ef3c8c593a388906aa064b7347ac19b5b4cb6344f07934d119",
+    "features": [],
+    "compilation_stage": "worker-build",
+    "test_image": false,
+    "status": "fresh actual worker build"
+  },
+  "python_runtime": {
+    "executable": "/Users/ollama/brassclaw-target/model-oracle-venv/bin/python",
+    "executable_sha256": "b502cb4c5b46b8d4192ec6bcb600ce8922f1afc396fcf646e8765c6eba74a0bf",
+    "lock": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/oracle-runtime.lock.txt",
+    "lock_sha256": "7536189a2d395534a3b9fcede8592fa28e4cc7c148c95fdbe062cde57388b331",
+    "typed_smoke": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/typed-config-smoke.json",
+    "typed_smoke_sha256": "6cad79b6d6f3478b67b5a2e13ab3d0131be5dc1b1d71e2ca5730cd9b15436870",
+    "pip_reports": {
+      "pip-tool-report.json": "da03a6240915d00ce6b133ccb40fe83c3ab1f00f4c96ba9cb0a28f01d1cc7e08",
+      "pip-oracle-report.json": "d9d988bc1ef49841862076995cdcc462b41bd58951f1d7ad8351122cc4b81a01",
+      "pip-torch-report.json": "ea8df324bfb5531a28cc055b2dffd2574191a7a7bcc1b5bb30a005639e2da5b9"
+    }
+  },
+  "model_assets": {
+    "retained": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2/model-artifacts",
+    "files": {
+      "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+      "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+      "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+      "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+      "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+      "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+    },
+    "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6"
+  },
+  "browser_runtime": {
+    "cli": "/Volumes/SSDE/brassclaw/tests/browser/node_modules/agent-browser/bin/agent-browser-darwin-arm64",
+    "sha256": "5ff18a2f0c7d4c662d638b8ac5ce434b589be5f6bde8b8fe7e25c3658e2bcbf9",
+    "node_version": "v25.6.1"
+  },
+  "scope": [
+    "Existing acknowledged neutral policy, Auth facade/common factory attachment, every protected backend wrapper and ENDE control/help; no new workflow/settings owner",
+    "V194 preserves explicit values and unrelated defaults; positive u32 validation, absent legacy field and all existing settings migrations actually exercised",
+    "Actual native5000-to1ms policy edit keeps in-flight deadline; next call times out504 and an actual unbound configured owner denies before polling",
+    "Original PG Auth custody, HTTP lost-ack/timeout and actual manual-token browser remain covered; no successful Auth/Tool result fabricated by the pure wait-mechanism future",
+    "Resource browser proves61000ms persisted/effective/help and complete restoration; R1 failed only its omitted new restore field, R2 preserves all equality/two-write assertions with one cleanup registry and enrollment guard",
+    "Exact unchanged R1 Rust/embedded image, worker and40 passing cases reused; only runtime .mjs correction changed. Actual global embedded/base/Sempai consumer, architecture, four-package connected and Composition default strict pass",
+    "Local macOS/Rust1.96.0 acceptance, no new GitHub/Linux/Windows deployment, release, component approval or full-plan completion",
+    "Setup lifetimes, browser expiry production/popup waiting, ingress limits and remaining K3\u2013K7/Pure/S/function/Prefix/recovery remain open"
+  ],
+  "termination": {
+    "original_runner_exited": true,
+    "common_lock_independently_acquired": true
+  }
+}

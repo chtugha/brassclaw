@@ -908,17 +908,7 @@ where
         completion.max_tokens = requested.or(configured);
         add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
         let provider_turn_scope = if has_capabilities {
-            let sequence = self
-                .provider_turn_sequence
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-                    value.checked_add(1)
-                })
-                .map_err(|_| {
-                    HostManagedModelError::safe(
-                        HostManagedModelErrorKind::PolicyDenied,
-                        "model-call identity exhausted",
-                    )
-                })?;
+            let sequence = next_provider_turn_sequence(&self.provider_turn_sequence)?;
             Some(format!(
                 "run={run_id}\nturn={turn_id}\nmodel_call={sequence}"
             ))
@@ -1194,15 +1184,7 @@ where
             add_route_metadata(&mut completion, &snapshot);
 
             let provider_turn_scope = if capabilities.is_some() {
-                let sequence = self
-                    .provider_turn_sequence
-                    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
-                    .map_err(|_| {
-                        HostManagedModelError::safe(
-                            HostManagedModelErrorKind::PolicyDenied,
-                            "model-call identity exhausted",
-                        )
-                    })?;
+                let sequence = next_provider_turn_sequence(&self.provider_turn_sequence)?;
                 Some(format!(
                     "run={run_id}\nturn={turn_id}\nmodel_call={sequence}"
                 ))
@@ -1252,6 +1234,24 @@ where
         self.route_resolver
             .validate_model_route(slot, &route)
             .map_err(map_model_route_error)
+    }
+}
+
+/// Allocate one original provider-call identity without wrapping or requiring
+/// a newer atomic API than this workspace's supported Rust toolchain.
+fn next_provider_turn_sequence(counter: &AtomicU64) -> Result<u64, HostManagedModelError> {
+    let mut previous = counter.load(Ordering::Relaxed);
+    loop {
+        let next = previous.checked_add(1).ok_or_else(|| {
+            HostManagedModelError::safe(
+                HostManagedModelErrorKind::PolicyDenied,
+                "model-call identity exhausted",
+            )
+        })?;
+        match counter.compare_exchange_weak(previous, next, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(original) => return Ok(original),
+            Err(current) => previous = current,
+        }
     }
 }
 
@@ -2341,6 +2341,36 @@ fn is_credit_exhaustion_error(error: &LlmError) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn concurrent_provider_call_identities_exhaust_without_reuse_or_wrap() {
+        let start = u64::MAX - 32;
+        let counter = Arc::new(AtomicU64::new(start));
+        let workers: Vec<_> = (0..8)
+            .map(|_| {
+                let counter = Arc::clone(&counter);
+                std::thread::spawn(move || {
+                    (0..16)
+                        .filter_map(|_| match next_provider_turn_sequence(&counter) {
+                            Ok(identity) => Some(identity),
+                            Err(error) => {
+                                assert_eq!(error.kind, HostManagedModelErrorKind::PolicyDenied);
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        let mut identities: Vec<_> = workers
+            .into_iter()
+            .flat_map(|worker| worker.join().expect("identity allocator worker"))
+            .collect();
+        identities.sort_unstable();
+        assert_eq!(identities, (start..u64::MAX).collect::<Vec<_>>());
+        assert_eq!(counter.load(Ordering::Relaxed), u64::MAX);
+        assert!(next_provider_turn_sequence(&counter).is_err());
+    }
 
     #[test]
     fn incomplete_or_filtered_textual_proposals_cannot_be_recovered_as_tool_use() {

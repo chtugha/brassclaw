@@ -17,6 +17,7 @@ pub(super) async fn lifecycle_cleanup_handler(
     };
 
     let report = run_with_backend_timeout(
+        state.product_auth.as_ref(),
         state
             .product_auth
             .cleanup_credentials_for_lifecycle(cleanup_request),

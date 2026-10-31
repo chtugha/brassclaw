@@ -7,6 +7,17 @@ import http from "node:http";
 import { resolve, sep, extname } from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { fileURLToPath } from "node:url";
+
+// Bound the pinned native CLI itself; its Node wrapper does not forward signals.
+// Keep the explicit native-executable override used by Windows runners.
+const platform = process.platform === "linux" && !process.report.getReport().header.glibcVersionRuntime
+  ? "linux-musl" : process.platform;
+const browserExecutable = process.env.AGENT_BROWSER_EXECUTABLE || fileURLToPath(new URL(
+  `./node_modules/agent-browser/bin/agent-browser-${platform}-${process.arch}${process.platform === "win32" ? ".exe" : ""}`, import.meta.url,
+));
+const commandTimeoutMs = Number(process.env.BRASSCLAW_BROWSER_COMMAND_TIMEOUT_MS || 30000);
+assert(Number.isSafeInteger(commandTimeoutMs) && commandTimeoutMs > 0 && commandTimeoutMs <= 2147483647);
 
 const [upstream, source] = process.argv.slice(2);
 const target = new URL(upstream);
@@ -68,16 +79,17 @@ const server = http.createServer(async (req, res) => {
 server.listen(0, "127.0.0.1"); await once(server, "listening");
 const origin = `http://127.0.0.1:${server.address().port}`;
 const session = `brassclaw-monty-limits-${process.pid}`;
-// Windows runners can point at the installed native .exe, avoiding a shell shim.
-const browserExecutable = process.env.AGENT_BROWSER_EXECUTABLE || "agent-browser";
 function browser(...args) {
   return new Promise((accept, reject) => {
-    const process = spawn(browserExecutable, ["--session", session, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    const process = spawn(browserExecutable, ["--session", session, ...args], {
+      stdio: ["ignore", "pipe", "pipe"], timeout: commandTimeoutMs,
+    });
     let stdout = "", stderr = "";
     process.stdout.on("data", bytes => { stdout += bytes; });
     process.stderr.on("data", bytes => { stderr += bytes; });
     process.on("error", reject);
-    process.on("close", code => code === 0 ? accept(stdout) : reject(Error(`${args.join(" ")} failed: ${stderr} ${stdout}`)));
+    process.on("close", (code, signal) => code === 0 ? accept(stdout)
+      : reject(Error(`${args.join(" ")} failed (${signal ?? code}): ${stderr} ${stdout}`)));
   });
 }
 async function settings() {
@@ -90,6 +102,21 @@ async function status() {
 }
 const request = "#monty-max_mcp_request_bytes";
 const response = "#monty-max_mcp_response_bytes";
+// Both normal restoration and failure cleanup cover the same complete edits.
+const editedFields = {
+  oauth_token_timeout_millis: "OAuth token timeout (ms)",
+  oauth_token_response_body_bytes: "OAuth token response limit (bytes)",
+  oauth_dcr_timeout_millis: "OAuth registration HTTP timeout (ms)",
+  oauth_dcr_response_body_bytes: "OAuth registration HTTP body limit (bytes)",
+  oauth_dcr_metadata_cache_ttl_secs: "OAuth metadata cache lifetime (s)",
+  auth_backend_timeout_millis: "ProductAuth backend wait (ms)",
+  manual_token_setup_ttl_secs: "Manual-token setup lifetime (s)",
+  extension_manual_token_setup_ttl_secs: "Extension manual-token setup lifetime (s)",
+  default_memory_tree_depth: "Default Memory tree depth",
+  max_memory_tree_depth: "Maximum requested Memory tree depth",
+  max_mcp_request_bytes: "MCP request bytes",
+  max_mcp_response_bytes: "MCP response bytes",
+};
 let initial;
 try {
   initial = await settings();
@@ -103,6 +130,7 @@ try {
   assert((await browser("get", "text", response+"-help")).includes("without truncation"));
   console.log("Details after open:",await browser("eval","JSON.stringify(Array.from(document.querySelectorAll('details')).map(el=>el.open))"));
   async function fillObserved(label,value) {
+    assert(Object.values(editedFields).includes(label), "edited field must be registered for restoration: "+label);
     const snapshot=await browser("snapshot","-i");
     console.log(snapshot);
     const row=snapshot.split("\n").find(line=>line.includes('spinbutton "'+label+'"'));
@@ -123,6 +151,12 @@ try {
   assert((await browser("get", "text", "#monty-oauth_dcr_response_body_bytes-help")).includes("without truncation"));
   await fillObserved("OAuth token timeout (ms)","47000");
   await fillObserved("OAuth token response limit (bytes)","32769");
+  await fillObserved("ProductAuth backend wait (ms)","61000");
+  await fillObserved("Manual-token setup lifetime (s)","1777");
+  await fillObserved("Extension manual-token setup lifetime (s)","1555");
+  assert((await browser("get", "text", "#monty-manual_token_setup_ttl_secs-help")).includes("first expiry"));
+  assert((await browser("get", "text", "#monty-extension_manual_token_setup_ttl_secs-help")).includes("confirmed server expiry"));
+  assert((await browser("get", "text", "#monty-auth_backend_timeout_millis-help")).includes("committed work"));
   assert((await browser("get", "text", "#monty-oauth_token_timeout_millis-help")).includes("acknowledged revision"));
   assert((await browser("get", "text", "#monty-oauth_token_response_body_bytes-help")).includes("without truncation"));
   await fillObserved("MCP request bytes","2097153");
@@ -149,6 +183,9 @@ try {
   assert.equal(changed.execution_limits.oauth_dcr_response_body_bytes,131079);
   assert.equal(changed.execution_limits.oauth_token_timeout_millis,47000);
   assert.equal(changed.execution_limits.oauth_token_response_body_bytes,32769);
+  assert.equal(changed.execution_limits.auth_backend_timeout_millis,61000);
+  assert.equal(changed.execution_limits.manual_token_setup_ttl_secs,1777);
+  assert.equal(changed.execution_limits.extension_manual_token_setup_ttl_secs,1555);
   assert.equal(changed.execution_limits.default_memory_tree_depth,2);
   assert.equal(changed.execution_limits.max_memory_tree_depth,12);
   assert.equal(changed.execution_limits.max_mcp_request_bytes,2097153);
@@ -161,6 +198,9 @@ try {
   assert.equal(effective.limits.oauth_dcr_response_body_bytes,131079);
   assert.equal(effective.limits.oauth_token_timeout_millis,47000);
   assert.equal(effective.limits.oauth_token_response_body_bytes,32769);
+  assert.equal(effective.limits.auth_backend_timeout_millis,61000);
+  assert.equal(effective.limits.manual_token_setup_ttl_secs,1777);
+  assert.equal(effective.limits.extension_manual_token_setup_ttl_secs,1555);
   assert.equal(effective.limits.default_memory_tree_depth,2);
   assert.equal(effective.limits.max_memory_tree_depth,12);
   assert.equal(effective.limits.max_mcp_request_bytes,2097153);
@@ -176,6 +216,9 @@ try {
   assert((await browser("get", "text", "#monty-oauth_dcr_response_body_bytes-help")).includes("bestätigte Revision"));
   assert((await browser("get", "text", "#monty-oauth_token_timeout_millis-help")).includes("bestätigte Revision"));
   assert((await browser("get", "text", "#monty-oauth_token_response_body_bytes-help")).includes("erneutes Senden"));
+  assert((await browser("get", "text", "#monty-auth_backend_timeout_millis-help")).includes("Original prüfen"));
+  assert((await browser("get", "text", "#monty-manual_token_setup_ttl_secs-help")).includes("erste Ablaufzeit"));
+  assert((await browser("get", "text", "#monty-extension_manual_token_setup_ttl_secs-help")).includes("Server-Ablaufzeit"));
   assert((await browser("get", "text", "#monty-default_memory_tree_depth-help")).includes("keine Tiefe"));
   assert((await browser("get", "text", "#monty-max_memory_tree_depth-help")).includes("stiller Begrenzung"));
   assert((await browser("get", "text", request+"-help")).includes("bestätigte Grenze"));
@@ -184,23 +227,14 @@ try {
   await browser("wait", "--load", "networkidle");
   await browser("scrollintoview", "summary");
   await browser("click", "summary");
-  for (const field of ["oauth_token_timeout_millis","oauth_token_response_body_bytes","oauth_dcr_timeout_millis","oauth_dcr_response_body_bytes","oauth_dcr_metadata_cache_ttl_secs"]) {
+  for (const [field, label] of Object.entries(editedFields)) {
     const snapshot=await browser("snapshot","-i");
-    const label={oauth_token_timeout_millis:"OAuth token timeout (ms)",oauth_token_response_body_bytes:"OAuth token response limit (bytes)",oauth_dcr_timeout_millis:"OAuth registration HTTP timeout (ms)",oauth_dcr_response_body_bytes:"OAuth registration HTTP body limit (bytes)",oauth_dcr_metadata_cache_ttl_secs:"OAuth metadata cache lifetime (s)"}[field];
     const row=snapshot.split("\n").find(line=>line.includes('spinbutton "'+label+'"'));
     const ref=row?.match(/\[ref=(e[0-9]+)\]/)?.[1];
     assert(ref,"visible restore field missing: "+label);
     await browser("scrollintoview","@"+ref);
     await browser("fill","@"+ref,String(initial.execution_limits[field]));
   }
-  await browser("scrollintoview", "#monty-default_memory_tree_depth");
-  await browser("fill", "#monty-default_memory_tree_depth", String(initial.execution_limits.default_memory_tree_depth));
-  await browser("scrollintoview", "#monty-max_memory_tree_depth");
-  await browser("fill", "#monty-max_memory_tree_depth", String(initial.execution_limits.max_memory_tree_depth));
-  await browser("scrollintoview", request);
-  await browser("fill", request, String(initial.execution_limits.max_mcp_request_bytes));
-  await browser("scrollintoview", response);
-  await browser("fill", response, String(initial.execution_limits.max_mcp_response_bytes));
   {
     const snapshot=await browser("snapshot","-i");
     console.log(snapshot);
@@ -218,7 +252,7 @@ try {
   try {
     if (initial) {
       const current = await settings();
-      const edited=["max_mcp_request_bytes","max_mcp_response_bytes","default_memory_tree_depth","max_memory_tree_depth","oauth_token_timeout_millis","oauth_token_response_body_bytes","oauth_dcr_timeout_millis","oauth_dcr_response_body_bytes","oauth_dcr_metadata_cache_ttl_secs"];
+      const edited=Object.keys(editedFields);
       if (edited.some(field=>current.execution_limits[field]!==initial.execution_limits[field])) {
         const limits={...current.execution_limits};
         for (const field of edited) limits[field]=initial.execution_limits[field];

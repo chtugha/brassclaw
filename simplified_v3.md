@@ -163,6 +163,32 @@ und Modelllimit-Fälle gezielt ergänzen. Der noch offene vollständige finale
 Render-/Größenguard bleibt beim Prefix-Owner; seine komplette neue Servingpipeline
 ist keine Voraussetzung, diesen bestehenden DB-/Dispatchübergang zu reparieren.
 
+**Backend-Wartezeit, Quellpfad 31.10.2026:** Der vorhandene quittierte
+`MontyExecutionLimits`-Owner trägt `auth_backend_timeout_millis` für jeden
+geschützten ProductAuth-Backend-Aufruf. Die gemeinsame Factory-Anbindung umfasst
+Custom-, PostgreSQL- und Dateisystem-Ports; neue Aufrufe übernehmen den wirksamen
+Wert, laufende behalten ihre erfasste Frist. V194 erhält explizite Werte und
+unabhängige INSERT-Defaults. WebUI-Steuerung und EN/DE-Hilfe gehören zu demselben
+Pfad. Ein Timeout bestätigt keinen fehlgeschlagenen Effekt und erlaubt keine
+Wiederholung. Quellcode allein ist keine Abnahme: aktuelle native DB-/Aufruf-/
+Browser-/Worker-/Lint-Belege stehen im Implementierungsindex. Setup-Laufzeiten,
+deren Browser-Expiry-Produzenten und unabhängige Browser-Wartezeiten bleiben
+offene Arbeit im bestehenden K3-Schritt6; damit ist K3 nicht geschlossen. Keine
+zweite Settings-Verwaltung oder neue Auth-/Workflow-Engine einführen.
+
+**Manuelle Setup-Laufzeiten, Quellpfad 31.10.2026:**
+`manual_token_setup_ttl_secs` (600 s) und
+`extension_manual_token_setup_ttl_secs` (300 s) ersetzen die festen Vorgaben
+für neue manuelle Token-Einrichtungen im vorhandenen quittierten Settings-Owner.
+V195 ergänzt fehlende Werte, erhält explizite Vorgaben und verändert keine
+Auth-Originale. Die nativen Original-Owner behalten die erste Ablaufzeit bei
+Wiederholung und konkurrierender Anlage; der Extension-Adapter liest bestehende
+Originale vor neuen Vorgaben. Direkte native Aufrufer mit expliziter Ablaufzeit
+behalten ihren Vertrag. WebUI und EN/DE-Hilfe sind angeschlossen; Abnahmebelege
+werden im Implementierungsindex geführt. OAuth-Maximum/Browser-Produzent,
+Popup- und Browser-Anfragefristen sowie Ingress-Grenzen bleiben offen. Dieser
+Quellstand schließt weder K3 noch die Gesamtpläne.
+
 ### K4 — Bereits qualifizierte Loader-, Child- und MCP-Grenzen abgleichen
 
 **Nachweisabgleich; kein pauschal festgestellter Neubau. Owner:** Phase 0a/3a,

@@ -28,8 +28,11 @@ pub(super) async fn accounts_list_handler(
         .validate()
         .map_err(ProductAuthRouteFailure::from)?;
 
-    let page =
-        run_with_backend_timeout(state.product_auth.list_credential_accounts(list_request)).await?;
+    let page = run_with_backend_timeout(
+        state.product_auth.as_ref(),
+        state.product_auth.list_credential_accounts(list_request),
+    )
+    .await?;
 
     Ok(Json(page))
 }
@@ -53,9 +56,11 @@ pub(super) async fn accounts_select_handler(
         choice_request = choice_request.for_extension(extension_id);
     }
 
-    let projection =
-        run_with_backend_timeout(state.product_auth.select_credential_account(choice_request))
-            .await?;
+    let projection = run_with_backend_timeout(
+        state.product_auth.as_ref(),
+        state.product_auth.select_credential_account(choice_request),
+    )
+    .await?;
 
     Ok(Json(projection))
 }
@@ -78,6 +83,7 @@ pub(super) async fn accounts_recovery_handler(
     }
 
     let projection = run_with_backend_timeout(
+        state.product_auth.as_ref(),
         state
             .product_auth
             .project_credential_recovery(recovery_request),
@@ -110,6 +116,7 @@ pub(super) async fn accounts_refresh_handler(
     }
 
     let report = run_with_backend_timeout(
+        state.product_auth.as_ref(),
         state
             .product_auth
             .refresh_credential_account(refresh_request),

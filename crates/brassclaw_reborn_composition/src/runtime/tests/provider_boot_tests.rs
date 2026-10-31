@@ -6337,16 +6337,26 @@ async fn native_coding_primitives_protect_structured_entries_on_both_backends() 
             path: &VirtualPath,
         ) -> Result<brassclaw_filesystem::FileStat, brassclaw_filesystem::FilesystemError> {
             let stat = self.inner.stat(path).await?;
-            if path == &self.target
-                && matches!(
-                    self.target_stats_before_pause.fetch_update(
+            let pauses = path == &self.target && {
+                let mut previous = self
+                    .target_stats_before_pause
+                    .load(std::sync::atomic::Ordering::Acquire);
+                loop {
+                    let Some(next) = previous.checked_sub(1) else {
+                        break false;
+                    };
+                    match self.target_stats_before_pause.compare_exchange_weak(
+                        previous,
+                        next,
                         std::sync::atomic::Ordering::AcqRel,
                         std::sync::atomic::Ordering::Acquire,
-                        |remaining| remaining.checked_sub(1),
-                    ),
-                    Ok(1)
-                )
-            {
+                    ) {
+                        Ok(original) => break original == 1,
+                        Err(current) => previous = current,
+                    }
+                }
+            };
+            if pauses {
                 self.entered.notify_one();
                 self.resume.notified().await;
             }

@@ -7,6 +7,15 @@ import http from "node:http";
 import { resolve, sep, extname } from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { fileURLToPath } from "node:url";
+
+// Use the pinned native CLI so a command deadline also terminates its process.
+// The package's Node wrapper does not forward termination to its child.
+const platform = process.platform === "linux" && !process.report.getReport().header.glibcVersionRuntime
+  ? "linux-musl" : process.platform;
+const executable = fileURLToPath(new URL(`./node_modules/agent-browser/bin/agent-browser-${platform}-${process.arch}${process.platform === "win32" ? ".exe" : ""}`, import.meta.url));
+const commandTimeoutMs = Number(process.env.BRASSCLAW_BROWSER_COMMAND_TIMEOUT_MS || 30000);
+assert(Number.isSafeInteger(commandTimeoutMs) && commandTimeoutMs > 0 && commandTimeoutMs <= 2147483647);
 
 const [upstream, source] = process.argv.slice(2);
 const target = new URL(upstream);
@@ -70,12 +79,15 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 const session = `brassclaw-tool-policy-${process.pid}`;
 function browser(...args) {
   return new Promise((accept, reject) => {
-    const process = spawn("agent-browser", ["--session", session, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    const process = spawn(executable, ["--session", session, ...args], {
+      stdio: ["ignore", "pipe", "pipe"], timeout: commandTimeoutMs,
+    });
     let stdout = "", stderr = "";
     process.stdout.on("data", bytes => { stdout += bytes; });
     process.stderr.on("data", bytes => { stderr += bytes; });
     process.on("error", reject);
-    process.on("close", code => code === 0 ? accept(stdout) : reject(Error(`${args.join(" ")} failed: ${stderr} ${stdout}`)));
+    process.on("close", (code, signal) => code === 0 ? accept(stdout)
+      : reject(Error(`${args.join(" ")} failed (${signal ?? code}): ${stderr} ${stdout}`)));
   });
 }
 async function policies() {
@@ -162,13 +174,15 @@ try {
   const germanLimit=`input[aria-label="Ergebnisgrenze für Werkzeug ${toolId}"]`;
   const germanSave=`button[aria-label="Ergebnisgrenze für Werkzeug ${toolId} speichern"]`;
   await browser("wait","--fn",`document.querySelector(${JSON.stringify(germanLimit)}).value === '9007199254740993'`);
-  // Clear through real keyboard input; the CLI's empty fill can change the DOM
-  // value without the input event observed by React's controlled state.
-  await browser("click",germanLimit);
-  await browser("press","Home");
-  await browser("press","Shift+End");
+  // The CLI's empty fill can miss React's input event, while pointer focus and
+  // OS Select All shortcuts proved unreliable. Fill one invalid space, verify
+  // Save is disabled, then delete it with a real Backspace.
+  await browser("wait","--fn",`!document.querySelector(${JSON.stringify(germanLimit)}).disabled`);
+  await browser("fill",germanLimit," ");
+  await browser("wait","--fn",`document.querySelector(${JSON.stringify(germanLimit)}).value === ' ' && document.querySelector(${JSON.stringify(germanLimit)}).getAttribute('aria-invalid') === 'true' && document.querySelector(${JSON.stringify(germanSave)}).disabled`);
+  await browser("focus",germanLimit);
   await browser("press","Backspace");
-  await browser("wait","--fn",`!document.querySelector(${JSON.stringify(germanSave)}).disabled`);
+  await browser("wait","--fn",`document.querySelector(${JSON.stringify(germanLimit)}).value === '' && !document.querySelector(${JSON.stringify(germanSave)}).disabled`);
   const beforeClear=requests.filter(value=>value.method==="PUT").length;
   await browser("click",germanSave);
   await browser("wait","--fn",`window.nativePolicyFetches.some(value=>JSON.parse(value.body).limits.max_output_bytes === null && JSON.parse(value.body).expected_revision === ${JSON.stringify(limitedBlocked.revision)})`);

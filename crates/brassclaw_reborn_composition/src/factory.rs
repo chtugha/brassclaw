@@ -1004,6 +1004,13 @@ async fn build_local_dev(
             }
         }
     };
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let product_auth = match primitive_settings.as_ref() {
+        Some(source) => Arc::new(
+            Arc::unwrap_or_clone(product_auth).with_primitive_settings_source(source.clone()),
+        ),
+        None => product_auth,
+    };
     services = services.with_runtime_credential_account_resolver(Arc::new(
         ProductAuthRuntimeCredentialResolver::new(
             product_auth.runtime_credential_account_selection_service(),

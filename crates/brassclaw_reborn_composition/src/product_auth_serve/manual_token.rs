@@ -64,9 +64,10 @@ pub(super) async fn manual_token_submit_handler(
         .into_validated()
         .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
     let continuation = manual_token_continuation(Some(&request.run_id), Some(&request.gate_ref))?;
-    let expires_at = Utc::now() + ChronoDuration::seconds(PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS);
-    let original =
-        run_with_backend_timeout(state.product_auth.request_original_manual_token_setup(
+    let expires_at = state.product_auth.manual_token_setup_expiry().await?;
+    let original = run_with_backend_timeout(
+        state.product_auth.as_ref(),
+        state.product_auth.request_original_manual_token_setup(
             identity,
             RebornManualTokenSetupRequest::new(
                 scope.clone(),
@@ -75,8 +76,9 @@ pub(super) async fn manual_token_submit_handler(
                 continuation,
                 expires_at,
             ),
-        ))
-        .await?;
+        ),
+    )
+    .await?;
     ready_for_raw(original.status)?;
     let submitted =
         submit_original_manual_token_request(&state, &scope, identity, token.into_secret()).await?;
@@ -95,10 +97,13 @@ pub(super) async fn submit_original_manual_token_request(
     identity: ManualTokenSetupIdentity,
     secret: SecretString,
 ) -> Result<RebornManualTokenSubmitResponse, ProductAuthRouteFailure> {
-    run_with_backend_timeout(state.product_auth.submit_original_manual_token(
-        identity,
-        RebornManualTokenSubmitRequest::new(scope.clone(), identity.interaction_id, secret),
-    ))
+    run_with_backend_timeout(
+        state.product_auth.as_ref(),
+        state.product_auth.submit_original_manual_token(
+            identity,
+            RebornManualTokenSubmitRequest::new(scope.clone(), identity.interaction_id, secret),
+        ),
+    )
     .await
 }
 
@@ -122,11 +127,14 @@ pub(super) async fn manual_token_setup_handler(
         .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
     let continuation =
         manual_token_continuation(request.run_id.as_deref(), request.gate_ref.as_deref())?;
-    let expires_at = Utc::now() + ChronoDuration::seconds(PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS);
-    let receipt = run_with_backend_timeout(state.product_auth.request_original_manual_token_setup(
-        identity,
-        RebornManualTokenSetupRequest::new(scope, provider, label, continuation, expires_at),
-    ))
+    let expires_at = state.product_auth.manual_token_setup_expiry().await?;
+    let receipt = run_with_backend_timeout(
+        state.product_auth.as_ref(),
+        state.product_auth.request_original_manual_token_setup(
+            identity,
+            RebornManualTokenSetupRequest::new(scope, provider, label, continuation, expires_at),
+        ),
+    )
     .await?;
     Ok(Json(ManualTokenSetupResponse {
         identity: receipt.identity,
@@ -179,6 +187,7 @@ pub(super) async fn manual_token_continue_handler(
         request.invocation_id,
     )?;
     let submitted = run_with_backend_timeout(
+        state.product_auth.as_ref(),
         state
             .product_auth
             .continue_original_manual_token(&scope, identity),

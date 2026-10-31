@@ -13,7 +13,10 @@ use brassclaw_loop_support::{
 use brassclaw_turns::TurnStatus;
 use reborn_support::{
     config::WaitConfig,
-    harness::{RebornBinaryE2EHarness, RecordingTestCapabilityPort, SubmittedTurn},
+    harness::{
+        RebornBinaryE2EHarness, RebornHarnessSharedStorage, RecordingTestCapabilityPort,
+        SubmittedTurn,
+    },
     model_replay::{
         RebornModelReplayStep, RebornScriptedProviderToolCall, RebornTraceReplayModelGateway,
     },
@@ -220,12 +223,16 @@ async fn blocking_spawn_waits_while_child_is_blocked_on_approval_then_resumes() 
             expected_tool_results: Vec::new(),
         },
     ]);
+    let storage = RebornHarnessSharedStorage::new()
+        .await
+        .expect("prepare native subagent storage");
     let mut harness = tokio::time::timeout(
         WaitConfig::default().timeout,
         RebornBinaryE2EHarness::with_harness_blocked_evidence_unscoped_worker(
             "room-subagent-child-approval",
             model_gateway,
             RecordingTestCapabilityPort::approval_then_allowed_tool_with_spawn_subagent(),
+            storage,
         ),
     )
     .await
@@ -401,12 +408,16 @@ async fn spawn_harness(
     conversation_id: &str,
     model_gateway: RebornTraceReplayModelGateway,
 ) -> RebornBinaryE2EHarness {
+    let storage = RebornHarnessSharedStorage::new()
+        .await
+        .expect("prepare native subagent storage");
     tokio::time::timeout(
         WaitConfig::default().timeout,
         RebornBinaryE2EHarness::with_harness_blocked_evidence_unscoped_worker(
             conversation_id,
             model_gateway,
             RecordingTestCapabilityPort::echo_with_spawn_subagent(),
+            storage,
         ),
     )
     .await

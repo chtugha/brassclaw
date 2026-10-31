@@ -68,6 +68,17 @@ pub struct MontyExecutionLimits {
     pub oauth_dcr_timeout_millis: u32,
     #[serde(default = "default_oauth_dcr_response_bytes")]
     pub oauth_dcr_response_body_bytes: u64,
+    /// Outer ProductAuth route wait, independent of issuer HTTP deadlines.
+    /// A timeout leaves accepted work unresolved; it never permits a replay.
+    #[serde(default = "default_oauth_token_timeout")]
+    pub auth_backend_timeout_millis: u32,
+    /// Lifetime of a new chat/manual-token setup, not a transport deadline.
+    /// Accepted originals retain their first expiry across settings changes.
+    #[serde(default = "default_manual_token_setup_ttl")]
+    pub manual_token_setup_ttl_secs: u32,
+    /// Lifetime of a new Extension manual-token setup. Independent of OAuth.
+    #[serde(default = "default_extension_manual_token_setup_ttl")]
+    pub extension_manual_token_setup_ttl_secs: u32,
     /// Maximum age of discovered OAuth server metadata. Zero disables reuse.
     /// This never changes an accepted Auth flow's expiry or registration.
     #[serde(default = "default_oauth_dcr_metadata_cache_ttl")]
@@ -218,6 +229,9 @@ impl Default for MontyExecutionLimits {
             oauth_dcr_timeout_millis: default_oauth_token_timeout(),
             oauth_dcr_response_body_bytes: default_oauth_dcr_response_bytes(),
             oauth_dcr_metadata_cache_ttl_secs: default_oauth_dcr_metadata_cache_ttl(),
+            auth_backend_timeout_millis: default_oauth_token_timeout(),
+            manual_token_setup_ttl_secs: default_manual_token_setup_ttl(),
+            extension_manual_token_setup_ttl_secs: default_extension_manual_token_setup_ttl(),
             default_memory_tree_depth: default_memory_tree_depth(),
             max_memory_tree_depth: default_memory_tree_max_depth(),
             max_coding_read_bytes: default_max_coding_read_bytes(),
@@ -320,6 +334,9 @@ impl MontyExecutionLimits {
             || self.oauth_token_response_body_bytes == 0
             || self.oauth_token_response_body_bytes > isize::MAX as u64
             || self.oauth_dcr_timeout_millis == 0
+            || self.auth_backend_timeout_millis == 0
+            || self.manual_token_setup_ttl_secs == 0
+            || self.extension_manual_token_setup_ttl_secs == 0
             || self.oauth_dcr_response_body_bytes == 0
             || self.oauth_dcr_response_body_bytes > isize::MAX as u64
             || self.default_memory_tree_depth == 0
@@ -417,6 +434,12 @@ fn default_resource_store_timeout() -> u64 {
 
 fn default_oauth_token_timeout() -> u32 {
     30_000
+}
+fn default_manual_token_setup_ttl() -> u32 {
+    600
+}
+fn default_extension_manual_token_setup_ttl() -> u32 {
+    300
 }
 fn default_oauth_token_response_bytes() -> u64 {
     16 * 1024

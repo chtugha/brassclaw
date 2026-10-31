@@ -488,13 +488,23 @@ impl RebornBinaryE2EHarness {
         conversation_id: &str,
         model_gateway: RebornTraceReplayModelGateway,
         capability_port: RecordingTestCapabilityPort,
+        shared_storage: RebornHarnessSharedStorage,
     ) -> HarnessResult<Self> {
-        Self::with_model_gateway_options_and_worker_scope(
+        // Native database capacity, process startup and migrations are prepared
+        // by the caller before charging the bounded harness/turn wait.
+        Self::with_model_gateway_capability_mode_identity_source_trigger_worker_scope_storage_and_adapter(
             conversation_id,
             model_gateway,
-            capability_port,
+            HarnessCapabilityMode::Recording(capability_port),
             true,
             false,
+            ProductTriggerReason::DirectChat,
+            Arc::new(EmptyIdentityContextSource),
+            product_scope(),
+            Some(shared_storage),
+            "reborn-test",
+            "install-1",
+            "alice",
         )
         .await
     }

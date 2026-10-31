@@ -78,6 +78,24 @@ impl InstrumentedLlm {
         self.records.lock().await.clone()
     }
 
+    fn add_token_usage(counter: &AtomicU32, amount: u32) -> bool {
+        let mut previous = counter.load(Ordering::Relaxed);
+        loop {
+            let Some(next) = previous.checked_add(amount) else {
+                return false;
+            };
+            match counter.compare_exchange_weak(
+                previous,
+                next,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return true,
+                Err(current) => previous = current,
+            }
+        }
+    }
+
     async fn record_call(
         &self,
         usage: Option<brassclaw_llm::TokenUsage>,
@@ -88,17 +106,9 @@ impl InstrumentedLlm {
         let input_tokens = usage.map(|usage| usage.input_tokens);
         let output_tokens = usage.map(|usage| usage.output_tokens);
         if let Some(usage) = usage {
-            let input = self.total_input_tokens.fetch_update(
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-                |total| total.checked_add(usage.input_tokens),
-            );
-            let output = self.total_output_tokens.fetch_update(
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-                |total| total.checked_add(usage.output_tokens),
-            );
-            if input.is_err() || output.is_err() {
+            let input = Self::add_token_usage(&self.total_input_tokens, usage.input_tokens);
+            let output = Self::add_token_usage(&self.total_output_tokens, usage.output_tokens);
+            if !input || !output {
                 self.complete_meter.store(false, Ordering::Relaxed);
             }
         } else {

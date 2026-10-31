@@ -34,6 +34,12 @@ Linux. Browser-script and dependency changes participate in Reborn test-scope
 detection. Windows/macOS release and full installed-instance acceptance remain
 separate gates.
 
+The settings scripts invoke the pinned native CLI with a 30-second deadline per
+browser command. Set `BRASSCLAW_BROWSER_COMMAND_TIMEOUT_MS` to a positive value
+up to 2,147,483,647 to change that test deadline. This does not change product
+timeouts. The resource-limits script also retains `AGENT_BROWSER_EXECUTABLE` for
+an explicit native executable, including Windows `.exe` installations.
+
 
 ## Original manual credential setup
 

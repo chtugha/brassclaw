@@ -76,15 +76,21 @@ impl ProviderCooldown {
     }
 
     /// Record a retryable failure. Returns `true` if the threshold was
-    /// just reached (caller should activate cooldown).
+    /// reached or exceeded (caller should activate cooldown).
     fn record_failure(&self, threshold: u32) -> bool {
-        let prev = self
-            .failure_count
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-                Some(value.saturating_add(1))
-            })
-            .expect("saturating failure update always succeeds");
-        prev.saturating_add(1) >= threshold
+        let mut previous = self.failure_count.load(Ordering::Relaxed);
+        loop {
+            let next = previous.saturating_add(1);
+            match self.failure_count.compare_exchange_weak(
+                previous,
+                next,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return next >= threshold,
+                Err(current) => previous = current,
+            }
+        }
     }
 
     /// Activate cooldown at the given timestamp.

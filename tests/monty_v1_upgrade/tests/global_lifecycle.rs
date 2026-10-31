@@ -65,6 +65,7 @@ fn task(token: &str, question: &str) -> MontyObject {
 fn global_vm_is_waiting_at_boot_and_keeps_running_after_task_host_errors() {
     let mut progress = start();
     let mut inboxes = HashMap::new();
+    let mut pool_wait = None;
     let mut intents = HashMap::new();
     let mut finished = Vec::new();
     let mut acknowledgements = HashMap::new();
@@ -79,6 +80,12 @@ fn global_vm_is_waiting_at_boot_and_keeps_running_after_task_host_errors() {
             RunProgress::FunctionCall(call) => {
                 assert_eq!(call.object_id, Some(HOST_INSTANCE_ID));
                 match call.function_name.as_str() {
+                    "await_pool_update" => {
+                        assert_eq!(call.args.args().len(), 0);
+                        assert_eq!(call.args.kwargs().len(), 0);
+                        assert!(pool_wait.replace(call.call_id).is_none());
+                        call.resume_pending(PrintWriter::Disabled).unwrap()
+                    }
                     "enter_task" => {
                         let mut args = call.args.args();
                         let token = args.next().unwrap().as_str().unwrap().to_owned();
@@ -138,6 +145,12 @@ fn global_vm_is_waiting_at_boot_and_keeps_running_after_task_host_errors() {
                 }
             }
             RunProgress::ResolveFutures(waiting) => {
+                assert!(
+                    waiting
+                        .pending_call_ids()
+                        .contains(pool_wait.as_ref().unwrap()),
+                    "the instance pool coordinator stays parked until shutdown"
+                );
                 if let Some(id) = acknowledgements.keys().copied().next() {
                     assert!(waiting.pending_call_ids().contains(&id));
                     finished.push(acknowledgements.remove(&id).unwrap());
@@ -160,6 +173,7 @@ fn global_vm_is_waiting_at_boot_and_keeps_running_after_task_host_errors() {
                             "both workers wait before the first message"
                         );
                         assert!(intents.is_empty());
+                        assert_eq!(waiting.pending_call_ids().len(), 3);
                         let id = inboxes.remove(&0).unwrap();
                         assert!(admitted.insert("a".to_owned()));
                         (id, ExtFunctionResult::Return(task("a", query_a)))
@@ -245,6 +259,14 @@ fn global_vm_is_waiting_at_boot_and_keeps_running_after_task_host_errors() {
                         let id = inboxes.remove(&1).unwrap();
                         (id, ExtFunctionResult::Return(MontyObject::none()))
                     }
+                    8 => {
+                        assert!(inboxes.is_empty());
+                        assert!(admitted.is_empty());
+                        assert!(entered.is_empty());
+                        assert_eq!(waiting.pending_call_ids().len(), 1);
+                        let id = pool_wait.take().unwrap();
+                        (id, ExtFunctionResult::Return(MontyObject::none()))
+                    }
                     _ => panic!("unexpected work wait"),
                 };
                 phase += 1;
@@ -253,7 +275,7 @@ fn global_vm_is_waiting_at_boot_and_keeps_running_after_task_host_errors() {
                     .unwrap()
             }
             RunProgress::Complete(_) => {
-                assert_eq!(phase, 8, "only instance shutdown ends the global VM");
+                assert_eq!(phase, 9, "only instance shutdown ends the global VM");
                 return;
             }
             _ => panic!("unexpected VM suspension"),
