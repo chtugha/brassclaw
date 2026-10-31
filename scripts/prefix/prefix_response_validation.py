@@ -17,13 +17,36 @@ import sys
 import urllib.request
 
 
+# Shared with the existing generated-answer schema, including saved-response checks.
+MAX_CLAIMS = 8
+MAX_CLAIM_CHARACTERS = 500
+MAX_CITATIONS_PER_CLAIM = 4
+MAX_MISSING_INFORMATION = 12
+
+
+def strict_json(text):
+    """Reject ambiguous duplicate fields and non-JSON numeric constants."""
+    def object_fields(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError('Duplicate JSON field')
+            value[key] = item
+        return value
+
+    def invalid_constant(_):
+        raise ValueError('Non-JSON numeric constant')
+
+    return json.loads(text, object_pairs_hook=object_fields, parse_constant=invalid_constant)
+
+
 def sha(text):
     return hashlib.sha256(text.encode()).hexdigest()
 
 
 def load_bundle(bundle):
     bundle = Path(bundle)
-    manifest = json.loads((bundle / 'prefix_manifest.json').read_text())
+    manifest = strict_json((bundle / 'prefix_manifest.json').read_text())
     raw = (bundle / 'evidence_cards.jsonl').read_bytes()
     if hashlib.sha256(raw).hexdigest() != manifest['evidence_cards_sha256']:
         raise ValueError('Evidence manifest fingerprint mismatch')
@@ -32,7 +55,7 @@ def load_bundle(bundle):
             raise ValueError('Bundle fingerprint mismatch: ' + name)
     cards = {}
     for line in raw.decode('utf-8').splitlines():
-        card = json.loads(line)
+        card = strict_json(line)
         identity = card['id']
         if not re.fullmatch('[a-f0-9]{64}', identity) or identity in cards:
             raise ValueError('Invalid/duplicate evidence identity')
@@ -52,7 +75,7 @@ def load_bundle(bundle):
         view_raw = (bundle / 'evidence_view_manifest.json').read_bytes()
         if hashlib.sha256(view_raw).hexdigest() != view_hash:
             raise ValueError('Evidence view manifest fingerprint mismatch')
-        view = json.loads(view_raw)
+        view = strict_json(view_raw)
         rows = view.get('cards', [])
         if (len(rows) != len(cards) or {row.get('id') for row in rows} != set(cards)
                 or any(row.get('original_excerpt_sha256') != cards[row['id']]['excerpt_sha256']
@@ -78,13 +101,13 @@ def response_schema(cards, configuration_kind='none'):
                     'card_id': {'type': 'string', 'enum': sorted(cards)},
                     'quote_index': {'type': 'integer', 'minimum': 0, 'maximum': 99}}}
     claim = {'type': 'object', 'additionalProperties': False, 'required': ['text', 'citations'],
-             'properties': {'text': dict(string, minLength=1, maxLength=500), 'citations': {
-                 'type': 'array', 'minItems': 1, 'maxItems': 4, 'items': citation}}}
+             'properties': {'text': dict(string, minLength=1, maxLength=MAX_CLAIM_CHARACTERS), 'citations': {
+                 'type': 'array', 'minItems': 1, 'maxItems': MAX_CITATIONS_PER_CLAIM, 'items': citation}}}
     return {'type': 'object', 'additionalProperties': False,
             'required': ['claims', 'configuration', 'missing_information'], 'properties': {
-                'claims': {'type': 'array', 'maxItems': 8, 'items': claim},
+                'claims': {'type': 'array', 'maxItems': MAX_CLAIMS, 'items': claim},
                 'configuration': {'type': 'string', **({'enum': ['']} if configuration_kind == 'none' else {})},
-                'missing_information': {'type': 'array', 'maxItems': 12, 'items': string}}}
+                'missing_information': {'type': 'array', 'maxItems': MAX_MISSING_INFORMATION, 'items': string}}}
 
 
 def check_citations(answer, cards):
@@ -95,10 +118,14 @@ def check_citations(answer, cards):
             or not isinstance(answer['missing_information'], list)
             or any(not isinstance(x, str) for x in answer['missing_information'])):
         return {'status': 'failed', 'errors': ['Invalid response field types'], 'sources': []}
+    if len(answer['claims']) > MAX_CLAIMS or len(answer['missing_information']) > MAX_MISSING_INFORMATION:
+        return {'status': 'failed', 'errors': ['Response exceeds declared schema limits'], 'sources': []}
     for index, claim in enumerate(answer['claims']):
         if (not isinstance(claim, dict) or set(claim) != {'text', 'citations'}
                 or not isinstance(claim['text'], str) or not claim['text'].strip()
-                or not isinstance(claim['citations'], list) or not claim['citations']):
+                or len(claim['text']) > MAX_CLAIM_CHARACTERS
+                or not isinstance(claim['citations'], list) or not claim['citations']
+                or len(claim['citations']) > MAX_CITATIONS_PER_CLAIM):
             errors.append(f'Claim {index}: a factual claim requires citations'); continue
         for citation in claim['citations']:
             try:
@@ -151,7 +178,7 @@ def check_configuration(text, kind, ha_python=None, ha_version=None):
         proc = subprocess.run(argv, input=text, text=True, capture_output=True, timeout=45)
         if proc.returncode not in (0, 1):
             raise ValueError('Validator process did not complete normally')
-        checked = json.loads(proc.stdout)
+        checked = strict_json(proc.stdout)
         if not isinstance(checked, dict) or set(checked) != set(result):
             raise ValueError('Invalid validator result')
         return checked
@@ -252,7 +279,7 @@ def validated_generate(generate, task, cards, kind='none', ha_python=None, ha_ve
             attempts.append({'answer': None, 'checks': checks})
             break
         try:
-            answer = materialize_quotes(json.loads(raw), selected)
+            answer = materialize_quotes(strict_json(raw), selected)
             checks = validate_response(answer, cards, kind, ha_python, ha_version)
         except (ValueError, TypeError) as exc:
             answer = None
@@ -277,7 +304,7 @@ def post(server, endpoint, payload):
     request = urllib.request.Request(server.rstrip('/')+endpoint, data=json.dumps(payload).encode(),
                                      headers=headers)
     with urllib.request.urlopen(request, timeout=1800) as response:
-        return json.load(response)
+        return strict_json(response.read())
 
 
 def verify_server_prefix(server, manifest, messages):
@@ -297,8 +324,12 @@ def run_compiler_task(task, *, system, server, prefix_file, verify_local, stream
         raise ValueError('Validated run requires VLLM_SERVER_PREFIX_FILE from the active immutable generation')
     if kind != 'none' and not ha_version:
         raise ValueError('Set PREFIX_HA_VERSION to the exact target release for configuration checks')
-    verify_local()
-    manifest, cards = load_bundle(Path(prefix_file).resolve().parent)
+    prefix_path = Path(prefix_file).resolve()
+    local_prefix = verify_local()
+    manifest, cards = load_bundle(prefix_path.parent)
+    if (not isinstance(local_prefix, str) or sha(local_prefix) != manifest['sha256']
+            or hashlib.sha256(prefix_path.read_bytes()).hexdigest() != manifest['sha256']):
+        raise ValueError('Configured/active prefix differs from verified evidence generation')
     def generate(instruction, schema):
         verify_server_prefix(server.rstrip('/').removesuffix('/v1'), manifest,
                              [{'role': 'system', 'content': system}, {'role': 'user', 'content': instruction}])
@@ -332,7 +363,7 @@ def main():
     manifest, cards = load_bundle(args.bundle)
     requests = []
     if args.response:
-        answer = json.loads(args.response.read_text())
+        answer = strict_json(args.response.read_text())
         checks = validate_response(answer, cards, args.configuration_kind, args.ha_python, args.ha_version)
         result = {'accepted': checks['accepted'], 'answer': answer if checks['accepted'] else None, 'checks': checks}
     else:

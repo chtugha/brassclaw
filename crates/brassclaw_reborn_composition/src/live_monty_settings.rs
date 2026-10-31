@@ -483,6 +483,7 @@ fn observed_limits(
         auth_backend_timeout_millis: preparation.auth_backend_timeout_millis,
         manual_token_setup_ttl_secs: preparation.manual_token_setup_ttl_secs,
         extension_manual_token_setup_ttl_secs: preparation.extension_manual_token_setup_ttl_secs,
+        turn_gate_oauth_setup_ttl_secs: preparation.turn_gate_oauth_setup_ttl_secs,
         default_memory_tree_depth: preparation.default_memory_tree_depth,
         max_memory_tree_depth: preparation.max_memory_tree_depth,
         max_coding_read_bytes: preparation.max_coding_read_bytes,

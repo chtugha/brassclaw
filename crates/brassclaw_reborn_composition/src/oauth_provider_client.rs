@@ -21,6 +21,55 @@ use brassclaw_secrets::SecretStore;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 
+/// Host input for the existing original owner, never a browser expiry override.
+/// A gate captures its first expiry at preparation; repeats adopt that original.
+#[derive(Clone, Copy)]
+pub(crate) enum OAuthSetupDeadline {
+    Exact(brassclaw_auth::Timestamp),
+    GateDefault,
+}
+
+impl OAuthSetupDeadline {
+    pub(crate) fn validate_continuation(
+        self,
+        continuation: &brassclaw_auth::AuthContinuationRef,
+    ) -> Result<(), AuthProductError> {
+        if matches!(self, Self::GateDefault)
+            && !matches!(
+                continuation,
+                brassclaw_auth::AuthContinuationRef::TurnGateResume { .. }
+            )
+        {
+            return Err(AuthProductError::BackendConflict);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn matches_expiry(self, original: brassclaw_auth::Timestamp) -> bool {
+        match self {
+            Self::Exact(expiry) => expiry == original,
+            Self::GateDefault => true,
+        }
+    }
+
+    pub(crate) async fn resolve_new(
+        self,
+        source: Option<&Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
+    ) -> Result<brassclaw_auth::Timestamp, AuthProductError> {
+        match self {
+            Self::Exact(expiry) => Ok(expiry),
+            Self::GateDefault => {
+                let limits = acknowledged_oauth_limits(source).await?;
+                chrono::Utc::now()
+                    .checked_add_signed(chrono::Duration::seconds(i64::from(
+                        limits.turn_gate_oauth_setup_ttl_secs,
+                    )))
+                    .ok_or(AuthProductError::BackendUnavailable)
+            }
+        }
+    }
+}
+
 /// Both OAuth protocol clients use the existing acknowledged host policy.
 /// A configured unavailable owner never falls back to local canonical defaults.
 pub(super) async fn acknowledged_oauth_limits(

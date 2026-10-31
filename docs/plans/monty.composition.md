@@ -2323,3 +2323,61 @@ consumes these qualified readers; Simplified remains the single catalogue
 publisher. Preparation, serialization, retained task, private review, child/wait/
 restore and affected Prefix/MCP readers must agree before new-profile publication.
 Old exact task selections and original S/authored records keep their meaning.
+
+
+## Open Prefixless construction successor — existing owner contribution
+
+**Open future work, not implemented.** Consume the one
+[construction-selection contract](../reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection)
+from the adopted [Prefixless plan](../../Prefixless_redefine_at_K3.md).
+This contribution begins after the actually current bounded owner packet and
+Root027/necessary028 repair integration, not after completion of all older plans.
+Earlier accepted/running steps and protected002/023/I1I2 criteria are unchanged.
+Contradictory earlier construction-only requirements are scoped below for the
+new qualified workflow revision; original jobs/records keep their old contract.
+The shared contract remains normative; this section only assigns implementation.
+
+### One connected construction workflow; actual selection implementation here
+
+Input: Prefix owner's submitted job choice/options qualification and the approved
+Recipe/catalogue plus original executing model/auth route. The existing shared
+lifecycle owner supplies only required task/child/continuation mechanics. Detailed
+native extension steps belong once to the `.implementation.md` successor below;
+this plan owns Recipe assembly, family sequencing and the outgoing gates.
+
+1. Design/reuse the actual construction Recipe: deterministic source/metadata
+   preparation, optional model-assisted interpretation, strict original-source
+   response checks, retained job result and completion. No LLM for UI suggestion
+   and no Rust Tool hiding a generation workflow. Fixed B1/B2 packets stay exact.
+2. Carry the Prefix owner's submitted job choice into the supported declaration
+   and capture path before effects; distinguish it from saved profile-level
+   Recipe configuration. Existing /1 records and old jobs remain exact. A normal
+   Recipe Prefixless choice needs actual support, not an invented bootstrap
+   purpose, absent metadata or new per-step field.
+3. Consume one native capture/guard/response implementation from the existing
+   model-usage owner in the implementation appendix. Shared ToolSkills/usages,
+   original claim/model/auth and own approval scopes remain unchanged. Never
+   activate new variants against a still-rejected native branch.
+4. Required child/review Recipes use original lineage and their own captured
+   execution context; consume Simplified mechanics and Validator review checks.
+   They do not independently implement options/eligibility, selection or guards.
+
+Output to next open affected Recipe-family/deployment gate: exact assembly and
+real complete workflow behavior. The Prefix production gate consumes it before
+exposing the new Generate/Create/Regenerate/Redesign revision. Cover all three
+actual construction branches, original source-bound optional B1/B2, literal data,
+unsupported ordinary-Recipe Prefixless rejection, real child/review handoffs,
+completion and effect-safe failures through existing PG/SDK/global callers.
+
+Scope of preceding construction instructions: “Open K3-2” future-consumer clauses
+requiring inherited prefix-free construction/review, no accepted-prefix lookup
+throughout the whole workflow or a Maker connection only in v3.5 remain original
+historical/old-profile references. They do not govern the new revision's submitted
+context. Ordinary independent role/Recipe defaults and reviewer contracts remain.
+No old completed step, test, B1/B2 packet, Golden or acceptance result is edited.
+
+Local supersession reference: the preceding **Open K3-2 follow-up from K4 — Provider setup and design bootstrap composition**,
+characteristic sentence “Carry the workflow standard through qualified recursive child/review edges”, describes the earlier
+construction contract. For the new qualified revision, use the shared successor's
+captured submitted context and own-route child/review rules; no automatic runtime
+preference and no edits to that earlier section's original criteria.

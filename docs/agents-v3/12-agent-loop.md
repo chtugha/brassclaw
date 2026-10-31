@@ -420,16 +420,17 @@ Phase K.3.
 
 ## Open K3-2 consumer successor — prefix selection and construction requests
 
-For new affected consumers, use the operator-confirmed
-[shared K3-2 selection/lifecycle contract](../reborn/model-token-limits.md#open-k3-2-successor--retained-prefix-selection-and-prefix-free-construction-workflows)
-and [Exact §5.2](../plans/Exact_V3_definition_update_at_K3-2.md#52-bestehende-retained-prefixbindung-um-drei-auswahlzustände-erweitern).
-This explicit successor replaces earlier unconditional Use→Base and required
-Prefix-Maker-prefix instructions for construction workflows, without rewriting
-historical behavior or claiming current runtime uptake.
+For new construction revisions, follow the one
+[visible construction-selection successor](../reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection).
+The earlier [K3-2 contract](../reborn/model-token-limits.md#open-k3-2-successor--retained-prefix-selection-and-prefix-free-construction-workflows)
+and its [Exact §5.2](../plans/Exact_V3_definition_update_at_K3-2.md#52-bestehende-retained-prefixbindung-um-drei-auswahlzustände-erweitern)
+retain their old-profile/accepted scope. Their mandatory prefix-free construction
+and v3.5-only Maker clauses no longer prescribe the new workflow's context.
 
-Default follows declared role/Recipe rules; explicit Selected never silently
-falls back; PrefixFreeWorkflow intentionally omits generated prefixes throughout
-required child/review work. Independent ordinary chat/Sempai reviews keep their
-normal selection. FinalBoundary defers insertion and does not mean prefix-free.
-Generation includes all Prefix-Q1 checks; publication leaves human Q2 activation
-outstanding. A future v3.5 Prefix-Maker prefix is not a present dependency.
+The submitted visible choice is captured before effect; required construction
+children/reviews keep original lineage and their own executing-pair choice.
+Ordinary independent chat/Sempai contracts remain. General Recipe Prefixless is
+not enabled by absence, a new JSON tag or an invented bootstrap purpose. Native
+reader/guard/response/UI support and the existing workflow qualification remain
+open; a new target statement is no runtime/activation acceptance. Component and
+Prefix-Q1/Q2 scopes, exact insertion and effect-safe retry/retention stay unchanged.

@@ -35,3 +35,45 @@ test("older incomplete API responses fail closed", () => {
   const r = row({ name: "homeassistant" });
   assert.equal(r.disabled, true); r.click(); assert.deepEqual(r.calls, []);
 });
+
+function actualProfileKeys(entries) {
+  const context = { html: (strings,...values)=>({strings:[...strings],values}),
+    Card:"Card",Button:"Button",Badge:"Badge",PrefixModelDesigns:"Designs",
+    PrefixGenerationHistory:"History",PrefixSourcesPanel:"Sources",Date,
+    useT:()=>key=>key,
+    usePrefixes:()=>({entries,isLoading:false,loadError:null,regenerating:new Set(),
+      regenerateError:null,handleRegenerate(){},reload(){}}),
+  };
+  vm.createContext(context);
+  vm.runInContext(source+"\nglobalThis.tab=PrefixTab;globalThis.row=PrefixEntryRow;",context);
+  const rows=[];
+  function visit(node){
+    if(Array.isArray(node)){node.forEach(visit);return;}
+    if(!node?.strings)return;
+    if(node.values.includes(context.row)){
+      const key=node.strings.findIndex(s=>s.endsWith("key="));
+      const entry=node.strings.findIndex(s=>s.endsWith("entry="));
+      rows.push({key:node.values[key],entry:node.values[entry]});
+    }
+    node.values.forEach(visit);
+  }
+  visit(context.tab());return rows;
+}
+
+test("actual parent keys retain profile ownership through changed equal and swapped labels",()=>{
+  const a={name:"base-prompt",label:"Operator A",profile_revision:1};
+  const b={name:"prefix-maker",label:"Operator B",profile_revision:1};
+  for(const entries of [
+    [a,b],
+    [{...a,label:"Renamed A",profile_revision:2},b],
+    [{...a,label:"Shared label"},{...b,label:"Shared label"}],
+    [{...a,label:b.label},{...b,label:a.label}],
+    [{...b,label:a.label},{...a,label:b.label}],
+  ]){
+    const rows=actualProfileKeys(entries);
+    assert.equal(rows.length,2);
+    assert.deepEqual(rows.map(row=>row.key),entries.map(entry=>entry.name));
+    assert.equal(new Set(rows.map(row=>row.key)).size,2);
+    for(const row of rows)assert.equal(row.entry,entries.find(entry=>entry.name===row.key));
+  }
+});

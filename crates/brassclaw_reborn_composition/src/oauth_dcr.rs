@@ -21,7 +21,9 @@ use brassclaw_host_api::{
 use brassclaw_product_adapters::AuthPromptChallengeKind;
 use brassclaw_secrets::{SecretMaterial, SecretStore};
 use brassclaw_turns::{TurnRunId, TurnScope};
-use chrono::{Duration as ChronoDuration, Utc};
+#[cfg(test)]
+use chrono::Duration as ChronoDuration;
+use chrono::Utc;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -59,11 +61,9 @@ use crate::oauth_dcr_protocol::{
     validate_endpoint_origin, validate_issuer_related_to_resource,
 };
 use crate::oauth_provider_client::{
-    HostOAuthProviderSpec, OAuthClientMaterial, OAuthClientMaterialSource,
+    HostOAuthProviderSpec, OAuthClientMaterial, OAuthClientMaterialSource, OAuthSetupDeadline,
     acknowledged_oauth_limits, authorize_oauth_egress, oauth_endpoint_host, oauth_network_policy,
 };
-
-const DCR_FLOW_TTL_SECONDS: i64 = 600;
 
 /// One accepted HTTP request retains a coherent policy across asynchronous work.
 /// This is technical request data, not an execution/registration permission.
@@ -226,7 +226,7 @@ impl OAuthDcrProvider {
                     provider_scopes: original.requested_scopes,
                     continuation,
                     update_binding: None,
-                    expires_at: original.expires_at,
+                    deadline: OAuthSetupDeadline::Exact(original.expires_at),
                 }
             }
             None => DcrOriginalStart {
@@ -237,7 +237,7 @@ impl OAuthDcrProvider {
                 provider_scopes: self.scopes.clone(),
                 continuation,
                 update_binding: None,
-                expires_at: Utc::now() + ChronoDuration::seconds(DCR_FLOW_TTL_SECONDS),
+                deadline: OAuthSetupDeadline::GateDefault,
             },
         };
         let flow = self
@@ -820,7 +820,7 @@ impl OAuthDcrProviderRegistry {
                     account_label,
                     provider_scopes,
                     update_binding,
-                    expires_at,
+                    deadline: OAuthSetupDeadline::Exact(expires_at),
                     continuation: AuthContinuationRef::SetupOnly,
                 },
             )
@@ -1248,7 +1248,7 @@ mod tests {
                     account_label: CredentialAccountLabel::new("work notion").unwrap(),
                     provider_scopes: vec![],
                     update_binding: None,
-                    expires_at: Utc::now() + ChronoDuration::seconds(DCR_FLOW_TTL_SECONDS),
+                    deadline: OAuthSetupDeadline::Exact(Utc::now() + ChronoDuration::seconds(600)),
                     continuation: AuthContinuationRef::SetupOnly,
                 },
             )
@@ -1304,7 +1304,7 @@ mod tests {
                     account_label: CredentialAccountLabel::new("work notion").unwrap(),
                     provider_scopes: vec![ProviderScope::new("read").unwrap()],
                     update_binding: None,
-                    expires_at: Utc::now() + ChronoDuration::seconds(DCR_FLOW_TTL_SECONDS),
+                    deadline: OAuthSetupDeadline::Exact(Utc::now() + ChronoDuration::seconds(600)),
                     continuation: AuthContinuationRef::SetupOnly,
                 },
             )
@@ -1433,7 +1433,7 @@ mod tests {
                 let scope = sample_auth_scope();
                 let flow_id = AuthFlowId::new();
                 let label = CredentialAccountLabel::new("original notion").unwrap();
-                let expiry = Utc::now() + ChronoDuration::seconds(DCR_FLOW_TTL_SECONDS);
+                let expiry = Utc::now() + ChronoDuration::seconds(600);
                 let request = DcrOriginalStart {
                     requirement_setup: None,
                     flow_id,
@@ -1442,7 +1442,7 @@ mod tests {
                     provider_scopes: vec![],
                     continuation: AuthContinuationRef::SetupOnly,
                     update_binding: None,
-                    expires_at: expiry,
+                    deadline: OAuthSetupDeadline::Exact(expiry),
                 };
                 let first = provider
                     .start_original_registration(&manager, request.clone())

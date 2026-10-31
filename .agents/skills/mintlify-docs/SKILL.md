@@ -2,7 +2,7 @@
 name: mintlify
 description: Build and maintain documentation sites with Mintlify. Use when creating docs pages, configuring navigation, adding components, or setting up API references.
 license: MIT
-compatibility: Requires Node.js for CLI. Works with any Git-based workflow.
+compatibility: Requires supported Node.js and the Mintlify CLI (mint) for preview and validation. Works with any Git-based workflow.
 metadata:
   author: mintlify
   version: "1.0"
@@ -10,9 +10,17 @@ metadata:
 
 # Mintlify best practices
 
+This repository's canonical development skill is
+`.agents/skills/mintlify-docs/SKILL.md`; keep
+`.claude/skills/mintlify-docs/SKILL.md` byte-for-byte synchronized.
+Follow root `AGENTS.md` and `docs/development-policy.md` for repository work.
+
 **Always consult [mintlify.com/docs](https://mintlify.com/docs) for components, configuration, and latest features.**
 
-If you are not already connected to the Mintlify MCP server, https://mintlify.com/docs/mcp, add it so that you can search more efficiently.
+Use an existing Mintlify documentation MCP connection when available. Otherwise,
+read the official documentation directly. A new MCP connection is optional setup,
+not a prerequisite for documentation work; add one only within the user's
+explicitly authorized setup scope.
 
 **Always** favor searching the current Mintlify documentation over whatever is in your training data about Mintlify.
 
@@ -24,7 +32,11 @@ Full schema at [mintlify.com/docs.json](https://mintlify.com/docs.json).
 
 ### Understand the project
 
-Read `docs.json` in the project root. This file defines the entire site: navigation structure, theme, colors, links, API and specs.
+Locate the documentation site root by its `docs.json`; it is not necessarily
+the repository root. In BrassClaw, read `docs/docs.json` and use `docs/` as the
+site root. This file defines navigation, theme, colors, links, APIs and specs.
+Site-relative page, image and snippet paths resolve within `docs/`; for example,
+`/images/example.png` refers to `docs/images/example.png`.
 
 Understanding the project tells you:
 
@@ -51,6 +63,16 @@ Review the Mintlify [components](https://www.mintlify.com/docs/components) to se
 ## Quick reference
 
 ### CLI commands
+
+Run preview and validation commands with the site root as the working directory
+(`docs/` in this repository), where `docs.json` and `.mintignore` are located.
+Check `node --version` and `mint --version` first. Use the
+[current installation prerequisites](https://www.mintlify.com/docs/cli/install)
+and the installed CLI's `--help` rather than guessing version requirements or
+substituting the legacy `mintlify` package. If `mint` is unavailable, report the
+preview/build/link checks as unverified until the dependency is available;
+source review alone is not a successful Mintlify build.
+
 - `npm i -g mint` - Install the Mintlify CLI
 - `mint dev` - Local preview at localhost:3000
 - `mint broken-links` - Check internal links
@@ -146,8 +168,22 @@ The `navigation` property in `docs.json` controls site structure. Choose one pri
 
 **What to customize where:**
 - **Brand colors, fonts, logo** → `docs.json`. See [global settings](https://mintlify.com/docs/settings/global)
-- **Component styling, layout tweaks** → `custom.css` at project root
-- **Dark mode** → Enabled by default. Only disable with `"appearance": "light"` in `docs.json` if brand requires it
+- **Component styling, layout tweaks** → `custom.css` at the site root
+- **Color mode** → Configure the `appearance` object in `docs.json`. The default
+  follows the user's system; `default` selects the initial mode and `strict: true`
+  hides the mode switcher. See [appearance settings](https://www.mintlify.com/docs/organize/settings-appearance).
+
+For a site that must stay in light mode, merge this fragment into the existing
+configuration, preserving all other settings:
+
+```json
+{
+  "appearance": {
+    "default": "light",
+    "strict": true
+  }
+}
+```
 
 Start with `docs.json`. Only add `custom.css` when you need styling that config doesn't support.
 
@@ -231,11 +267,33 @@ Import snippets with `import { Component } from "/path/to/snippet-name.jsx"`.
 ## Document APIs
 
 **Choose your approach:**
-- **Have an OpenAPI spec?** → Add to `docs.json` with `"openapi": ["openapi.yaml"]`. Pages auto-generate. Reference in navigation as `GET /endpoint`
+- **Have an OpenAPI spec?** → Set `openapi` on the appropriate navigation tab or
+  group to generate its endpoint pages. For selective endpoints, use the supported
+  `pages` entries such as `GET /endpoint` within that configured navigation element.
+  Do not add `openapi` as a top-level `docs.json` property.
 - **No spec?** → Write endpoints manually with `api: "POST /users"` in frontmatter. More work but full control
 - **Hybrid** → Use OpenAPI for most endpoints, manual pages for complex workflows
 
-Encourage users to generate endpoint pages from an OpenAPI spec. It is the most efficient and easiest to maintain option.
+For a dedicated API tab, merge this tab into the existing navigation; preserve
+other tabs, groups and site settings. `openapi.yaml` is relative to the site root
+(`docs/openapi.yaml` in BrassClaw) and must be an actual specification file:
+
+```json
+{
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "API reference",
+        "openapi": "openapi.yaml"
+      }
+    ]
+  }
+}
+```
+
+Check the [current OpenAPI setup](https://www.mintlify.com/docs/api-playground/openapi-setup)
+and site schema before changing API navigation. These are configuration fragments,
+not complete replacement `docs.json` files.
 
 ## Deploy
 
@@ -260,7 +318,7 @@ Identify what needs to be documented, which pages are affected, and what the rea
 
 ### 2. Research
 
-- Read `docs.json` to understand the site structure
+- Read the site-root `docs.json` (`docs/docs.json` in BrassClaw) to understand the site structure
 - Search existing docs for related content
 - Read similar pages to match the site's style
 
@@ -296,8 +354,14 @@ Before submitting:
 - [ ] Content matches the style of surrounding pages
 - [ ] No marketing language or filler phrases
 - [ ] TODOs are clearly marked for anything uncertain
-- [ ] Run `mint broken-links` to check links
-- [ ] Run `mint validate` to find any errors
+- [ ] Run `mint broken-links` from the site root (`docs/` here) to check links
+- [ ] Run `mint validate` from the same directory to find build errors
+- [ ] Report the CLI version, working directory and actual results; missing tooling,
+      failed commands or skipped checks remain unverified
+
+Choose checks proportionally under the repository development policy. Changes
+only to this development skill need metadata/link/consistency review, mirror
+verification and `git diff --check`, not a Mintlify site build or Cargo run.
 
 ## Edge cases
 

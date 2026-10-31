@@ -18,8 +18,13 @@ All persistence uses **PostgreSQL** — the only supported backend. There is no 
 3. Implement in the `Pg*` concrete type in the same crate (naming pattern: `PgTurnStateStore`, `PgApprovalRequestStore`, etc.).
 4. Add a migration if needed:
    - New file: `crates/brassclaw_pg/migrations/VNNN__description.sql`
-   - **Version numbering**: always number after the highest existing migration. Check with `git ls-files crates/brassclaw_pg/migrations/` to find the current highest `VNNN`. Never reuse or insert before an existing version.
-5. Run `cargo test -p <crate_name>` and `cargo test -p <crate_name> --features integration` to verify.
+   - **Version numbering**: number after the highest existing migration, including untracked work. Use `rg --files crates/brassclaw_pg/migrations/` and check the central owner's current reservations before choosing `VNNN`; tracked files alone miss in-progress migrations. Never reuse or insert before an existing version.
+5. Follow [the development policy](../../docs/development-policy.md) and
+   [testing rules](testing.md). Select the owning crate's actual caller/integration
+   target and features; preserve central Cargo ownership. SQL/migration/transaction
+   claims need real PostgreSQL coverage of applicable success and failure cases,
+   plus relevant affected-package linting. Reuse adequate existing evidence;
+   an unavailable database or skipped test remains unverified, not a waiver.
 
 ## SQL Dialect
 

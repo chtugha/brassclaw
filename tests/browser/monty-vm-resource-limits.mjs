@@ -112,6 +112,7 @@ const editedFields = {
   auth_backend_timeout_millis: "ProductAuth backend wait (ms)",
   manual_token_setup_ttl_secs: "Manual-token setup lifetime (s)",
   extension_manual_token_setup_ttl_secs: "Extension manual-token setup lifetime (s)",
+  turn_gate_oauth_setup_ttl_secs: "Task-gate OAuth setup lifetime (s)",
   default_memory_tree_depth: "Default Memory tree depth",
   max_memory_tree_depth: "Maximum requested Memory tree depth",
   max_mcp_request_bytes: "MCP request bytes",
@@ -154,8 +155,10 @@ try {
   await fillObserved("ProductAuth backend wait (ms)","61000");
   await fillObserved("Manual-token setup lifetime (s)","1777");
   await fillObserved("Extension manual-token setup lifetime (s)","1555");
+  await fillObserved("Task-gate OAuth setup lifetime (s)","1779");
   assert((await browser("get", "text", "#monty-manual_token_setup_ttl_secs-help")).includes("first expiry"));
   assert((await browser("get", "text", "#monty-extension_manual_token_setup_ttl_secs-help")).includes("confirmed server expiry"));
+  assert((await browser("get", "text", "#monty-turn_gate_oauth_setup_ttl_secs-help")).includes("first expiry"));
   assert((await browser("get", "text", "#monty-auth_backend_timeout_millis-help")).includes("committed work"));
   assert((await browser("get", "text", "#monty-oauth_token_timeout_millis-help")).includes("acknowledged revision"));
   assert((await browser("get", "text", "#monty-oauth_token_response_body_bytes-help")).includes("without truncation"));
@@ -186,6 +189,7 @@ try {
   assert.equal(changed.execution_limits.auth_backend_timeout_millis,61000);
   assert.equal(changed.execution_limits.manual_token_setup_ttl_secs,1777);
   assert.equal(changed.execution_limits.extension_manual_token_setup_ttl_secs,1555);
+  assert.equal(changed.execution_limits.turn_gate_oauth_setup_ttl_secs,1779);
   assert.equal(changed.execution_limits.default_memory_tree_depth,2);
   assert.equal(changed.execution_limits.max_memory_tree_depth,12);
   assert.equal(changed.execution_limits.max_mcp_request_bytes,2097153);
@@ -201,6 +205,7 @@ try {
   assert.equal(effective.limits.auth_backend_timeout_millis,61000);
   assert.equal(effective.limits.manual_token_setup_ttl_secs,1777);
   assert.equal(effective.limits.extension_manual_token_setup_ttl_secs,1555);
+  assert.equal(effective.limits.turn_gate_oauth_setup_ttl_secs,1779);
   assert.equal(effective.limits.default_memory_tree_depth,2);
   assert.equal(effective.limits.max_memory_tree_depth,12);
   assert.equal(effective.limits.max_mcp_request_bytes,2097153);
@@ -219,6 +224,7 @@ try {
   assert((await browser("get", "text", "#monty-auth_backend_timeout_millis-help")).includes("Original prüfen"));
   assert((await browser("get", "text", "#monty-manual_token_setup_ttl_secs-help")).includes("erste Ablaufzeit"));
   assert((await browser("get", "text", "#monty-extension_manual_token_setup_ttl_secs-help")).includes("Server-Ablaufzeit"));
+  assert((await browser("get", "text", "#monty-turn_gate_oauth_setup_ttl_secs-help")).includes("erste Ablaufzeit"));
   assert((await browser("get", "text", "#monty-default_memory_tree_depth-help")).includes("keine Tiefe"));
   assert((await browser("get", "text", "#monty-max_memory_tree_depth-help")).includes("stiller Begrenzung"));
   assert((await browser("get", "text", request+"-help")).includes("bestätigte Grenze"));

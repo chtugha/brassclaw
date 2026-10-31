@@ -74,7 +74,7 @@ export function PrefixTab() {
                 ${entries.map(
                   (entry) =>
                     html`<${PrefixEntryRow}
-                      key=${entry.label || entry.name}
+                      key=${entry.name}
                       entry=${entry}
                       isRegenerating=${regenerating.has(entry.name)}
                       onRegenerate=${handleRegenerate}

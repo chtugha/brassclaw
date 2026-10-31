@@ -79,6 +79,10 @@ pub struct MontyExecutionLimits {
     /// Lifetime of a new Extension manual-token setup. Independent of OAuth.
     #[serde(default = "default_extension_manual_token_setup_ttl")]
     pub extension_manual_token_setup_ttl_secs: u32,
+    /// Lifetime of a new OAuth challenge that resumes a waiting task.
+    /// Existing originals and explicit standalone setup expiries stay fixed.
+    #[serde(default = "default_turn_gate_oauth_setup_ttl")]
+    pub turn_gate_oauth_setup_ttl_secs: u32,
     /// Maximum age of discovered OAuth server metadata. Zero disables reuse.
     /// This never changes an accepted Auth flow's expiry or registration.
     #[serde(default = "default_oauth_dcr_metadata_cache_ttl")]
@@ -232,6 +236,7 @@ impl Default for MontyExecutionLimits {
             auth_backend_timeout_millis: default_oauth_token_timeout(),
             manual_token_setup_ttl_secs: default_manual_token_setup_ttl(),
             extension_manual_token_setup_ttl_secs: default_extension_manual_token_setup_ttl(),
+            turn_gate_oauth_setup_ttl_secs: default_turn_gate_oauth_setup_ttl(),
             default_memory_tree_depth: default_memory_tree_depth(),
             max_memory_tree_depth: default_memory_tree_max_depth(),
             max_coding_read_bytes: default_max_coding_read_bytes(),
@@ -337,6 +342,7 @@ impl MontyExecutionLimits {
             || self.auth_backend_timeout_millis == 0
             || self.manual_token_setup_ttl_secs == 0
             || self.extension_manual_token_setup_ttl_secs == 0
+            || self.turn_gate_oauth_setup_ttl_secs == 0
             || self.oauth_dcr_response_body_bytes == 0
             || self.oauth_dcr_response_body_bytes > isize::MAX as u64
             || self.default_memory_tree_depth == 0
@@ -440,6 +446,9 @@ fn default_manual_token_setup_ttl() -> u32 {
 }
 fn default_extension_manual_token_setup_ttl() -> u32 {
     300
+}
+fn default_turn_gate_oauth_setup_ttl() -> u32 {
+    600
 }
 fn default_oauth_token_response_bytes() -> u64 {
     16 * 1024

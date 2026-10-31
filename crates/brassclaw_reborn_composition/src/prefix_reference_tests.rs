@@ -141,6 +141,39 @@ async fn prefix_reference_renderer_is_effect_free_and_runs_in_monty() {
             "rendering must not mutate input/original bytes"
         );
     }
+    // UTF-8 special-token strings are part of the existing renderer contract.
+    // Supplementary characters must remain recoverable from their visible
+    // JSON Unicode escapes in the actual contained interpreter as well.
+    let unicode_original = "🧭 token, ä token, ordinary 😀 text\r\n";
+    let unicode_sources = json!([{
+        "path":"unicode.md", "disposition":"included", "reason":"literal fixture",
+        "text":unicode_original, "evidence_id":"unicode-fixture"
+    }]);
+    let UtilityOutput::Evaluated { value, stdout } = utility::execute(
+        &worker,
+        UtilityRequest::Evaluate {
+            source: format!(
+                "{REFERENCE_RENDER_SOURCE}\nrender_prefix_reference(header, sources, special_tokens)\n"
+            ),
+            inputs: BTreeMap::from([
+                ("header".into(), json!("# Reference\n")),
+                ("sources".into(), unicode_sources.clone()),
+                ("special_tokens".into(), json!(["🧭", "ä"])),
+            ]),
+            bounds: limits.bounds,
+            max_compute_time: Duration::from_secs(5),
+        },
+        limits.process,
+    )
+    .await
+    .unwrap() else {
+        panic!("Unicode rendering required")
+    };
+    assert!(stdout.is_empty());
+    let rendered = value.as_str().unwrap();
+    assert!(rendered.contains("\\ud83e\\udded token, \\u00e4 token, ordinary 😀 text\r\n"));
+    assert!(!rendered.contains('🧭'));
+    assert_eq!(unicode_sources[0]["text"], unicode_original);
     let duplicated = json!([sources[0].clone(), sources[0].clone()]);
     assert!(
         utility::execute(&worker, evaluate(duplicated), limits.process)
@@ -551,6 +584,20 @@ async fn prefix_compiler_stages_preserve_originals_in_monty() {
             json!([
             {"line_start":1,"line_end":5,"text":"# Real\nBefore.\n```md\n# Fake\n```\n","parent":""},
             {"line_start":6,"line_end":7,"text":"## Next\nDetails.\n","parent":"# Real\nBefore.\n```md\n# Fake\n```\n"}]),
+        ),
+        (
+            ".md",
+            "# Procedure\n```sh\ncat <<'EOF'\n```yaml\n# literal firewall policy\npolicy: deny\nEOF\n```\n## Verify\nInspect rules.\n",
+            json!([
+            {"line_start":1,"line_end":8,"text":"# Procedure\n```sh\ncat <<'EOF'\n```yaml\n# literal firewall policy\npolicy: deny\nEOF\n```\n","parent":""},
+            {"line_start":9,"line_end":10,"text":"## Verify\nInspect rules.\n","parent":"# Procedure\n```sh\ncat <<'EOF'\n```yaml\n# literal firewall policy\npolicy: deny\nEOF\n```\n"}]),
+        ),
+        (
+            ".md",
+            "# Procedure\r\n~~~sh\r\n~~~yaml\r\n# literal command\r\n~~~~ \t\r\n## Verify\r\nKeep rollback.\r\n",
+            json!([
+            {"line_start":1,"line_end":5,"text":"# Procedure\r\n~~~sh\r\n~~~yaml\r\n# literal command\r\n~~~~ \t\r\n","parent":""},
+            {"line_start":6,"line_end":7,"text":"## Verify\r\nKeep rollback.\r\n","parent":"# Procedure\r\n~~~sh\r\n~~~yaml\r\n# literal command\r\n~~~~ \t\r\n"}]),
         ),
     ] {
         let result = utility::execute(

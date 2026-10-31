@@ -1,0 +1,31 @@
+{
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "revision": "3a8b7f60f01d9df1d2191c62c4e7fc0dd311e779",
+  "files": {
+    "chat_template.jinja": {
+      "sha256": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+      "bytes": 7593
+    },
+    "config.json": {
+      "sha256": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+      "bytes": 14269
+    },
+    "merges.txt": {
+      "sha256": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d",
+      "bytes": 3353259
+    },
+    "tokenizer.json": {
+      "sha256": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+      "bytes": 19989424
+    },
+    "tokenizer_config.json": {
+      "sha256": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+      "bytes": 1125
+    },
+    "vocab.json": {
+      "sha256": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+      "bytes": 6722759
+    }
+  },
+  "scope": "Independent native encoding test fixture; no provider selection, weights, serving qualification or approval."
+}

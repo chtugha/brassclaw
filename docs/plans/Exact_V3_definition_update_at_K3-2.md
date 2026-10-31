@@ -3123,3 +3123,137 @@ V193 ist nun tatsächlich belegt; spätere Migrationsnummern erst bei Integratio
 vergeben. Die Sourcefreeze dieses Batches ist beendet; Cargo bleibt dauerhaft
 beim zentralen Root. B1/B2-, Packet-/Schema-/Goldenbytes und historische Planbytes
 bleiben unverändert; dieser Absatz ist ausschließlich angehängt.
+
+
+## 18. Open Prefixless successor — visible construction choice
+
+**Offener nachgelagerter Auftrag, 2026-10-31; nicht durch diesen Text implementiert.**
+Einziger Auswahlvertrag ist der [gemeinsame Prefixless-Nachfolger](../reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection).
+[Prefixless redefine, §§2.2/5.1/8](../../Prefixless_redefine_at_K3.md) besitzt das
+Änderungsinventar. Dieser Abschnitt ordnet nur den Exact-Anschluss zu, ohne einen
+weiteren Resolver, Runtime-/Approvalowner oder eine zweite Trackingstruktur.
+
+### 18.1 Anschluss, Scope und konkrete Ablösung
+
+Anschlusskante ist der dann tatsächlich integrierte Stand der bestehenden
+I1/I2-/BUILD-002-Arbeit und der getrennten I3-/BUILD-023-Arbeit, einschließlich des
+zugewiesenen B1/B2-Draft-/Inspectorpakets. Deren aktuelle Kriterien, Originalbytes,
+Prüfgrenzen und §§17.1–17.20 bleiben unverändert. Eine Submitted-/Inspected-
+Deklaration ist weder erfolgreiche Workflowqualifikation noch Admission.
+Root wählt nach dem jeweiligen aktuellen Paket den verbundenen Nachfolger;
+dafür muss nicht erst jeder frühere Gesamtplan abgeschlossen sein. Laufende
+K3-Auth-/CI-/Reviewpakete erhalten keine neue Prefix-Voraussetzung.
+
+Nur für **neue ausdrücklich qualifizierte Erstellungsrevisionen** gilt statt
+pauschaler Prefixfreiheit die sichtbare, editierbare Vorausfüllung und danach die
+exakte tatsächliche Betreiberwahl des gemeinsamen Vertrags. Die folgende Tabelle
+benennt die begrenzt abgelösten Aussagen; Originalstellen werden nicht editiert.
+Unabhängige gewöhnliche Chats und Reviews sowie abgenommene Altjobs behalten ihre
+Verträge. Fehlende Nachfolgerunterstützung wird nicht als heutige Fähigkeit gemeldet.
+
+| Alte Fundstelle in diesem Plan / charakteristischer Satz | Geltung des neuen Nachfolgers |
+| --- | --- |
+| §1.1 Nr.2 „bei Bedarf prefixfreie LLM-Auswertung“ und Nr.8 „standardmäßig **keinen** generierten BrassClaw-Prefix“, „auch … bei vorhandenem … Artefakt“ | Neue optionale Modellarbeit konsumiert die vor Admission sichtbare gewählte Option; deterministische Abfragen bleiben modellfrei. Explizites Prefixless bleibt auch bei vorhandenem Maker/Base zulässig. |
+| §1.1 Nr.8 „ausschließlich eine zukünftige v3.5-Option“; §1.7 Nr.6 „v3.5 nicht vorwegnehmen“ | Makeranschluss ist heutiger offener Nachfolgerauftrag, kein zusätzlicher erforderlicher Seed/Artefakt und keine Begrenzung sämtlicher Makerarbeit auf v3.5. Unabhängige v3.5-Funktionen bleiben unverändert. |
+| §1.7 Nr.1 „Workflowstandard festlegen, pro Dispatch nachweisen“, Nr.3 „Child-/Review-/Evaluationsschritte übernehmen den prefixfreien Arbeitsstandard“ | Tatsächliche Choice/Instruktions-/Ausführerbindung pro unterstützter Route übernehmen und pro Versand nachweisen; keine pauschale Übernahme anderer Paarbytes oder neue Präferenzsuche im Child. Kandidaten-Verhaltenstest bleibt ausdrücklich eigener Prüfgegenstand. |
+| §2 Änderungsinventar D03 „optionale Anbindung ausschließlich als v3.5-Vormerkung“ und D13 „alle erforderlichen Child-/Sempai-/Reviewschritte den prefixfreien Standard“ | Die bestehenden Prefix-/Composition-/Reviewowner übernehmen das nachgelagerte Delta gemäß gemeinsamem Vertrag. Die Matrix ist kein Auftrag, aktuelle Pakete oder normale Reviewerrollen rückwirkend umzubauen. |
+| P01 §3 „Use-Folgejob darf … prefixfreie Auswertungen“; P02 §4.1 „B1 … prefixfrei senden“ sowie P02-Abnahme „bedarfsabhängige prefixfreie Aufrufe bereits im Use-Folgejob“ | Neue modellgestützte Vorbereitung braucht ihre sichtbare/gespeicherte ausdrückliche Wahl vor Admission; kein Hintergrundcall übernimmt Maker/Base nur wegen eines Vorschlags. Originales Use, technische Discovery und ältere bereits zugelassene Jobs werden nicht nachträglich ersetzt. |
+| P02 §§4.2–4.6 Originalpacket, §4.3 Promptwortlaut, §4.4 Schema und §4.5 deterministische Prüfung | Quellenbindung, rohe Originalantwort, deterministische Prüfungen und Payloadhash bleiben. Prefixwissen ist keine Providerquelle. Nötiger Instruktionsnachfolger wird vom bestehenden Artefaktowner versioniert; alte v1-Bytes/Manifeste und Belege nicht umschreiben. Vollständige Requestidentität bindet zusätzlich die konkrete Choice/Instruktionen. |
+| P03 §5 Nr.1 „eine aktuelle Standardbetriebsart“, Nr.3 „Kein zusätzlicher Setup-/Generate-Klick“, Nr.4 „unabhängig vom vorhandenen Prefixbestand“, Nr.6/10 erforderliche Reviews bleiben prefixfrei | Neuer sichtbarer Erstellungsauftrag verwendet die gewählte Option. Kein zusätzliches Bestätigungsmodal nötig; keine Modellwirkung ohne verfügbare ursprüngliche Choice. Technische/Quellen-/Qualifikationsgates und fehlende Runtimegrenzen bleiben bestehen. |
+| §5.1 „Nur Vormerkung“, „kein Prefixlookup/kein Anhängen“, „ausschließlich“ spätere Makeranbindung | Lookup dient dem sichtbaren Anfangsvorschlag; Admission prüft die tatsächliche Wahl und die Anzeige-/Bindungsrevision. Der erfasste explizite Prefixless-Versand macht keine neue Maker/Base-Suche. Ein aktiver Maker ist weder Pflicht noch seine Abwesenheit ein Prefixless-Zulassungsgate. |
+| §5.2.1 Tabelle PrefixFreeWorkflow „keinen Prefixbestand lesen“ und entsprechende Caller-/Abnahmekarten in §5.2 | Alte /1- und Capturebytes bleiben ihrem alten Scope zugeordnet. Im neuen Consumer unterscheiden sich Formularvorausfüllung, Choice-Admission und nachfolgender prefixfreier Versand. Neue Darstellung/Reader zuerst vollständig beim bestehenden Owner inventarisieren; keine unimplementierten Tags in /1 schreiben. |
+| P04 §6 Nr.10 „Arbeitsinstruktions-Prefixanteil ist aktuell 0“; P07 §9 Nr.10 Childs übernehmen prefixfreien Standard | Im neuen Request wird der tatsächlich gewählte Prefix mit allen übrigen Anteilen gemessen. Beim expliziten Prefixless bleibt der generierte Prefixanteil 0. Inhaltliche Pflichtprüfungen bleiben im Generierungs-Recipe; kein zweiter Prefix-Q1. |
+| §12 Nr.2 frühere Pflichtmakertexte durch prefixfreien Standard/„nur v3.5“ abgrenzen | Nur für neue Revisionen die hier benannte aktive Nachfolgerregel verwenden. Geschützte historische Texte/Abnahmen weder löschen noch in-place umetikettieren. |
+| §13 I1/I2 „qualifizierten prefixfreien Standard“, „optionalen Anschluss nur nach §5.1“ sowie §14 Erststart-/Erstellungs-/Catalogue-/SDK-/Ordinary-chat-Zeilen | Diese alten Paketkriterien bleiben. Nachgelagerte native Fälle konsumieren den gemeinsamen expliziten Choice-Vertrag. Allgemeines Recipe-Prefixless erhält einen normalen gespeicherten Vertrag und keine erfundene Bootstrap-Purpose; heutige Runnerrejektion bleibt bis verbundenem Cutover. |
+
+### 18.2 Wiederverwendung und Delta
+
+Prefix ist fachlicher Owner für verfügbare aktive Optionen, Eignung und
+Instruktionszusammensetzung. Der [Prefix-Folgeauftrag](prefix_v3_upgrade.md#open-prefixless-follow-up--visible-construction-choice)
+führt dessen Schritte; Exact dupliziert sie nicht. Bestehende `PgPrefixAcceptances`
+(`bindings`, checked `record`/`resolve`) und Target-/Generationsowner liefern die
+qualifizierten ursprünglichen Artefakte; gespeicherter Draft/Profilname reicht nicht.
+
+Composition/Simplified behalten `RecipeModelInput`, `TaskRoleSource::capture`,
+`TaskSelection`, `global_recipe_ports`, native Child-/Reviewweitergabe sowie
+`pg_monty_model_response`/`ContainedFinalRequestMeasurer` und den finalen SDKguard.
+Die dortigen Reader müssen die ausdrückliche Wahl, ursprüngliche Route und reale
+Qualifikation tragen; Exact schafft keine neue Aufgaben-, Credential- oder
+Auswahlstruktur. Aktuelle /1-/Selected-Profil-/Free-Capture-Grenzen sind zu prüfen,
+nicht durch neue JSONschlüssel oder ein Browser-Bypassflag umzudeuten.
+
+### 18.3 Eingang und Ergebnis
+
+Eingang ist der originale Auftrag mit Ziel, **Ausführerpaar**, Workflowrevision,
+Instruktions-/Quellenstand und tatsächlichem Formularwert samt angezeigter
+Generation/Revision. Ergebnis ist die exakt qualifizierte aktive Generation oder
+explizite Prefixless-Bindung mit vertrauenswürdiger Herkunft und eigener
+Instruktions-/Requestidentität. Vorschlagsgrund und Betreiberwahl getrennt im
+bestehenden Job-/Resultatowner erhalten. Kein Prefix darf daraus ein anderes Modell,
+Authmaterial oder neue Quelle machen. Empfänger sind vorhandene Admission,
+Request-/Child-/Review-/Evidenceconsumer, UI und tatsächliche Retentionsreferenzen.
+
+### 18.4 Begrenzte Umsetzungsschritte
+
+1. **Reader/Vertrag:** Root mit den bestehenden Composition-/UI-/Validatorownern
+   stimmt versionierten Choice-/Capture-/Receiptanschluss nach aktueller
+   Consumerinventur ab. Alte gespeicherte Declarations/Records und Selektionen
+   bleiben unverändert; neue Writer/Seeds nicht vor qualifizierten Readern aktivieren.
+2. **Optionen/UI:** Vor jeder neuen modellgestützten Vorbereitung eine sichtbare,
+   editierbare Wahl anbieten. Nur den initialen Vorschlag deterministisch bilden;
+   andere passende aktive Prefixe und Prefixless wählbar lassen. Manuelle Wahl
+   bleibt bei Refresh/Notifications/Reconnect erhalten. Paarwechsel/stale Revision
+   erzeugt sichtbaren Konflikt; kein unsichtbares Überschreiben. API/CLI geben die
+   ausdrückliche unterstützte Choice über ihren bestehenden Owner mit.
+3. **Originale Admission:** Die sichtbare Auswahl beim ausdrücklichen Auftrag
+   serverseitig kohärent überprüfen/pinnen; ursprüngliches Use-/Job-/Mutations-ID-
+   Readback und tatsächliche positive Outputvorgaben verwenden. Neues Formular nach
+   ungewissem ACK ersetzt den bereits zugelassenen Auftrag nicht. Kein neues Modal,
+   keine zweite Queue oder Replay einer erfolgreichen Wirkung.
+4. **Requests und Unterabläufe:** Vorhandenen einmaligen Einfüge-/Encoder-/Guardpfad
+   gemäß gemeinsamer Choice verwenden. Fixed B1/B2-Regeln bleiben vollständig;
+   ein kollidierender Prefix ist für diesen Zweck ungeeignet, kein angehängtes
+   „ignoriere frühere Anweisungen“ heilt ihn. Erforderliche Childs/Reviews behalten
+   ihre eigene ursprüngliche Paar-/Occurrencebindung; keine Laufzeitvorschlagskette.
+   Gewöhnlicher unabhängiger Sempai-Review bleibt sein eigener Vertrag.
+5. **Evidence/Retention/Anzeige:** Tatsächliche Choice, Instruktionen, SDK-/Response-
+   und Attemptkorrelation im vorhandenen Belegowner verbinden, UI-Readiness ehrlich
+   darstellen und echte lebende Artefaktreferenzen durch den Retentionsowner schützen.
+   Recipe-Editor speichert/prüft eine Profil-/Prefixless-Wahl (bestehendes Default
+   beschriftet erhalten); genaue Generation bei Taskstart auflösen, kein Generate-
+   Button oder eingebrannte Formular-Generation im wiederverwendbaren Recipe.
+
+### 18.5 Fehler und Rückwärtskompatibilität
+
+DB-/Integritäts-/Resolverfehler sind Fehler, keine Abwesenheitsbelege; fehlender
+Reader/technischer Erststartpfad ist Readinessarbeit, keine erfolgreiche dritte
+Option. Nach Admission lösen Policy-/Fit-/Transport-/Messfehler keine neue Wahl,
+keinen Ersatzattempt und keinen Tier-2-Fallback aus. Erlaubter Retry/Wait/Resume
+behält dieselben Pins und ursprünglichen Effekt-/Attemptstand. Deaktivierte
+Tokenbudgets schaffen keine neuen Caps; tatsächliche technische Grenzen,
+Instruktionen und Outputreserve bleiben in allen Zweigen vollständig geprüft.
+
+### 18.6 Zuständige Abnahme und Abschlussgrenze
+
+[Die gemeinsame Fallmatrix](../../Prefixless_redefine_at_K3.md#82-fallmatrix)
+bleibt vollständig maßgeblich. Der Prefix-Folgeauftrag führt folgende fachliche
+Gruppen mit echten Callern; die übrigen bestehenden Owner qualifizieren ihre
+Anschlusskanten statt paralleler Testsuiten:
+
+| Gruppe / vorhandener echter Anschluss | Neues beobachtbares Sollresultat |
+| --- | --- |
+| Prefixoptionen und Formular, vorhandene Settings-API/Facade + Browser | Maker/Base nur als Anfangsvorschlag; Prefixless/anderer kompatibler Prefix ausdrücklich wählbar; manuelle Wahl bleibt; Fehler/stale Stand wird sichtbar, keine Modellwirkung durch Anzeige. |
+| Use/B1/B2, vorhandener Original-Mutations-/Job-/Quellenowner | Keine Modellwirkung vor neuer Choice-Admission; gleiche festen Quellen-/Antwortregeln bei jedem gewählten Kontext; Erststart ohne Artefakt bleibt technisch qualifiziert. Alte Jobs behalten alten Vertrag. |
+| SDK-/Response-/Encoderpfad, `task_model_provider`, `pg_monty_model_response`, `final_model_encoding` | Tatsächlich nur gewählte Bytes einmalig oder kein generierter Prefix, voller Fit/Livepolicy und originale native Belege; keine Ersatzwahl bei Fehler oder deaktivierten Tokenbudgets. |
+| Child/Review/normaler Chat, bestehende native Child-/Custodycaller | Paar- und Zweckbindung sowie erlaubte Familienherkunft erhalten, keine neue Rolle aus Abwesenheit, keine fremden Prefixbytes oder rollenabhängige Guard-Leckage. |
+| Alt-/neue Reader und Recipe-Editor, vorhandene Parser/Retained-/Operatorpfade | Keine heuristische /1-Migration oder neue Felder in alten strikten DTOs; neue tatsächlich gespeicherte Choice vor Aktivierung unterstützt; normale Review-/Taskcapturepfade und kein Recipe-Generate. |
+| Originalretry/Wait/GC, vorhandene Admission-/Lifecycle-/Generation-/Taskreferenzen | Neue Notification/Generation oder geändertes Formular verändert zugelassenen Job nicht; tatsächlich neue Wahl ist neuer ausdrücklicher Auftrag; ältere lebend benötigte Generation bleibt bis Referenzfreigabe erhalten. |
+
+Alle konkreten Callerfälle bleiben **noch auszuführen**, soweit kein exakt
+anwendbarer Nachfolgerbeleg vorliegt. Die neue Consumer-/Workflowrevision wird
+qualifiziert, unveränderte freigegebene Komponenten/Prefixe erhalten keine neue
+per-Job-Q1/Q2. A-own/joint, kontrolliertes S, unabhängige Pure-/Serving-/Behavior-
+Gates und individuelle Prefix-Q1/Q2 werden nicht durch Auswahltext ersetzt.
+Textpatch, Sourceprüfung, Integration, installierter Uptake und Aktivierung sind
+getrennt zu berichten. Dieser offene Folgeabschnitt schließt weder bestehende
+002/023/I1/I2-Pakete noch den Gesamtplan und ermächtigt zu keinem Effekt oder Delete.

@@ -189,6 +189,19 @@ werden im Implementierungsindex geführt. OAuth-Maximum/Browser-Produzent,
 Popup- und Browser-Anfragefristen sowie Ingress-Grenzen bleiben offen. Dieser
 Quellstand schließt weder K3 noch die Gesamtpläne.
 
+**OAuth-Challenges wartender Tasks, Quellpfad 31.10.2026:**
+`turn_gate_oauth_setup_ttl_secs` (600 s, positive u32) ersetzt ausschließlich
+den festen Default neuer Google-/DCR-Gate-Originale. Beide Provider verwenden
+denselben internen Exact-/GateDefault-Vertrag und den vorhandenen quittierten
+Settings-Owner. Das Original wird vor einer neuen Vorgabe nachgelesen; parallele
+Erstellungen übernehmen die Ablaufzeit des authentifizierten Gewinners.
+GateDefault verlangt weiterhin TurnGateResume; explizite native und Browser-
+Setup-Eingaben bleiben exakt. V196 ergänzt nur fehlende Settings, erhält größere
+oder kleinere gültige Betreiberwerte und alle vorhandenen Auth-Originale.
+WebUI-Steuerung und EN/DE-Hilfe gehören dazu. Diese Quelländerung benötigt noch
+die tatsächliche native/Browser/Worker-Abnahme im bestehenden K3-Schritt6;
+eigenständige OAuth-Defaults/-Maxima und Browser-/Ingress-Grenzen bleiben offen.
+
 ### K4 — Bereits qualifizierte Loader-, Child- und MCP-Grenzen abgleichen
 
 **Nachweisabgleich; kein pauschal festgestellter Neubau. Owner:** Phase 0a/3a,
@@ -2025,3 +2038,59 @@ support does not require completing an obsolete general A reapproval engine.
 consume both Validator evidence and Composition directed readers before new
 selection profiles. BUILD-002 Free and BUILD-010 V2 bridge work remain separately
 owned. B1/B2 bytes, I1 activation and the running BUILD-014 scope are unchanged.
+
+
+## Open Prefixless construction successor — existing owner contribution
+
+**Open future work, not implemented.** Consume the one
+[construction-selection contract](docs/reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection)
+from the adopted [Prefixless plan](Prefixless_redefine_at_K3.md).
+This contribution begins after the actually current bounded owner packet and
+Root027/necessary028 repair integration, not after completion of all older plans.
+Earlier accepted/running steps and protected002/023/I1I2 criteria are unchanged.
+Contradictory earlier construction-only requirements are scoped below for the
+new qualified workflow revision; original jobs/records keep their old contract.
+The shared contract remains normative; this section only assigns implementation.
+
+### Shared lifecycle contribution; consumer, not selection owner
+
+Input: the existing Prefix/Composition owner's exact admitted workflow and
+submitted context. Composition owns the actual selection/capture/native-request
+implementation listed in its successor; Prefix owns options/qualification/UI
+and job identity. This plan supplies only missing shared task/child/continuation
+mechanics through its existing Phase0a/3a/6/8 boundaries. No second resolver,
+provider snapshot, queue or workflow loop.
+
+1. Inspect actual `LoopTaskModelSelection`/`capture_task_models`,
+   `global_recipe_ports` and native child admission. Preserve the original model/
+   credential/catalogue absence or exact choice through Wait/Resume/Retry; neither
+   runtime pressure nor a new active prefix permits latest lookup or reselection.
+2. When Composition identifies a real missing parent/family/occurrence transport
+   contract, implement it once in the current shared owner. Do not require literal
+   parent capture equality where a legitimate child has its own recipe identity;
+   still reject foreign lineage and never lend another pair's prefix/auth.
+3. Preserve the actual task/attempt claim, outcome/effect reconciliation and
+   original pending request. Old jobs keep their original contracts. Existing
+   reference-safe retention consumes new live job references; no new GC engine
+   or deletion from an archive-count assumption.
+
+Output to Composition/Prefix: supported original task/child/continuation and
+artifact reference lifetime, not a new selection or approval. The next actually
+open affected lifecycle/upgrade gate consumes this contribution before new
+workflow publication. Focused actual PG/global/child cases: legitimate different
+occurrences versus foreign parent, inherited absent model, post-capture activation,
+wait/retry original selection/count, live denial and old retained artifact. No
+native/activation acceptance is inferred from this appended work instruction.
+
+Scope of preceding construction instructions: “Open K3-2” future-consumer clauses
+requiring inherited prefix-free construction/review, no accepted-prefix lookup
+throughout the whole workflow or a Maker connection only in v3.5 remain original
+historical/old-profile references. They do not govern the new revision's submitted
+context. Ordinary independent role/Recipe defaults and reviewer contracts remain.
+No old completed step, test, B1/B2 packet, Golden or acceptance result is edited.
+
+Local supersession reference: the preceding **Offener Folgeauftrag K3-2 ab K4 — Provider-/Design-Ersteinrichtung und Prefix-Lebenszyklus**,
+characteristic sentence “Der prefixfreie Konstruktionworkflow benötigt keine Accepted-Prefixgeneration”, describes the earlier
+construction contract. For the new qualified revision, use the shared successor's
+captured submitted context and own-route child/review rules; no automatic runtime
+preference and no edits to that earlier section's original criteria.

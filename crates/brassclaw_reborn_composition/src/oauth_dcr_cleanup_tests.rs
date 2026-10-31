@@ -50,7 +50,7 @@ async fn cancellation_while_dcr_post_is_running_captures_return_and_cleans_same_
         provider_scopes: vec![],
         continuation: AuthContinuationRef::SetupOnly,
         update_binding: None,
-        expires_at: Utc::now() + ChronoDuration::seconds(DCR_FLOW_TTL_SECONDS),
+        deadline: OAuthSetupDeadline::Exact(Utc::now() + ChronoDuration::seconds(600)),
     };
     let worker = {
         let provider = provider.clone();
@@ -199,7 +199,7 @@ async fn malformed_client_reply_still_retains_and_cleans_valid_management_origin
         provider_scopes: vec![],
         continuation: AuthContinuationRef::SetupOnly,
         update_binding: None,
-        expires_at: Utc::now() + ChronoDuration::seconds(DCR_FLOW_TTL_SECONDS),
+        deadline: OAuthSetupDeadline::Exact(Utc::now() + ChronoDuration::seconds(600)),
     };
     assert!(
         provider
@@ -253,7 +253,7 @@ async fn original(
         provider_scopes: vec![],
         continuation: AuthContinuationRef::SetupOnly,
         update_binding: None,
-        expires_at: Utc::now() + ChronoDuration::seconds(DCR_FLOW_TTL_SECONDS),
+        deadline: OAuthSetupDeadline::Exact(Utc::now() + ChronoDuration::seconds(600)),
     };
     let flow = provider
         .start_original_registration(manager, request)
@@ -479,7 +479,7 @@ async fn canceled_pre_dispatch_original_closes_all_local_names_without_issuer_ef
         provider_scopes: vec![],
         continuation: AuthContinuationRef::SetupOnly,
         update_binding: None,
-        expires_at: Utc::now() + ChronoDuration::seconds(DCR_FLOW_TTL_SECONDS),
+        deadline: OAuthSetupDeadline::Exact(Utc::now() + ChronoDuration::seconds(600)),
     };
     assert!(
         provider

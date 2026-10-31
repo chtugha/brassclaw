@@ -7,6 +7,9 @@ argument-hint: "[pr-number (optional, auto-detects from branch)]"
 
 # Review and Address PR Comments
 
+Follow root `AGENTS.md`, [the development policy](../../docs/development-policy.md)
+and [testing rules](../rules/testing.md), including central Cargo ownership.
+
 ## Step 1: Find the PR
 
 If `$ARGUMENTS` is provided, use that as the PR number. Otherwise, detect the PR for the current branch:
@@ -53,17 +56,24 @@ Present the plan as a table to the user:
 | # | Issue | File:Line | Severity | Status | Planned Fix |
 |---|-------|-----------|----------|--------|-------------|
 
-Wait for user confirmation before proceeding to implementation.
+Proceed when the user has authorized these fixes; otherwise obtain authorization
+for the concrete proposed changes. Do not repeat an already granted approval.
 
 ## Step 4: Implement fixes
 
-After user confirms:
+For the authorized fixes:
 
 1. Implement each fix in the plan.
-2. Run BrassClaw's quality gate to verify nothing breaks:
-   - `cargo fmt`
-   - `cargo clippy --all --benches --tests --examples --all-features`
-   - `cargo test --lib`
+2. Review the connected diff and choose policy-required evidence for the affected
+   callers/features. Reuse adequate existing regressions; add missing caller-level
+   coverage and run relevant affected-package linting for Rust behavior. Real
+   backend, migration, security and lifecycle claims need actual integration/
+   production-path checks and applicable failures. Preserve component/seed gates.
+   Route Cargo requests to its designated owner and respect source freezes. Fix
+   causes before repeating failed/invalidated checks; stop when required checks
+   pass. Ordinary prose needs links/consistency review and `git diff --check`.
+   Report skipped/zero-case/unavailable checks and baseline blockers explicitly;
+   they do not pass required acceptance.
 3. Commit with a descriptive message referencing the PR review.
 4. Push to the branch.
 

@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
-function fixture({ inactive = false } = {}) {
+function fixture({ inactive = false, records = {} } = {}) {
   const state = [], captures = [], imports = [], pairImports = [], effects = [], listeners = new Map(), fetches = []; let cursor = 0, deferred = false;
   const target = { provider_id: "registered", provider_revision: 3, model: "active-model", consumer: "kohai", configured_context_window: null };
   let catalogue = { targets: [target, { ...target, consumer: "sempai" }], specifications: [], proposals: [], design_generation_available: false, blocked_reason: "prefix.modelDesignPrerequisites" };
+  catalogue = { ...catalogue, ...records };
   if (inactive) catalogue.targets.push({ ...target, model: "configured-model", consumer: "configured" });
   const context = { PrefixModelSetupDraft: "PrefixModelSetupDraft", TextDecoder, PrefixPairCases: "PrefixPairCases", addEventListener: (name, listener) => listeners.set(name, listener), removeEventListener: name => listeners.delete(name), React: {
     useState(initial) { const i=cursor++; if (!(i in state)) state[i]=typeof initial === "function" ? initial() : initial; return [state[i], value => { state[i]=typeof value === "function" ? value(state[i]) : value; }]; },
@@ -141,4 +142,55 @@ test("invalid or oversized pair files are rejected before dispatch and can be re
   }
   assert.equal(f.pairImports.length,0);assert.equal(f.captures.length,1);
   assert.ok(nodes(f.render()).some(node=>node.values.includes("prefix.pairProposalInvalid")));
+});
+
+
+test("retained identities and optional originals preserve exact text and existing child bindings", async () => {
+  const specId = "a".repeat(64), pairId = "b".repeat(64), profileId = "c".repeat(64), setId = "d".repeat(64), fileHash = "e".repeat(64);
+  const raw = kind => ` {"kind":"${kind}","integer":18446744073709551615,"data":"<script>literal</script>"}\r\n `;
+  const spec = { id: specId, provider_id: "<provider>", provider_revision: 7, model: "<model>", specification_bytes: raw("specification"), qualification: "unknown-model-artifacts" };
+  const pair = { id: pairId, specification: specId, proposal_bytes: raw("pair"), qualification: "unaccepted-pair-construction-proposal" };
+  // Historical content remains literal data; the presentation must not parse it.
+  const profile = { id: profileId, profile: "<profile>", specification: specId, proposal_bytes: "historical raw text\r\n<template>not HTML</template>", qualification: "unaccepted-proposal" };
+  const set = { id: setId, specification: specId, files: [{name: "config.json", sha256: fileHash, bytes: 123}], binding_bytes: raw("binding"), qualification: "unverified-model-artifacts" };
+  const records = { specifications: [spec], pair_proposals: [pair], proposals: [profile], artifact_sets: [set] };
+  const originals = JSON.stringify(records);
+  const f = fixture({ records }); await new Promise(setImmediate);
+  let root = f.render();
+  const specDetails = nodes(root).find(node => node.strings[0].startsWith("<details key=") && node.values[0] === specId);
+  assert.ok(specDetails);
+  value(specDetails, "onToggle")({ currentTarget: { open: true } }); root = f.render();
+  const all = nodes(root);
+  const hasText = (node, text) => nodes(node).some(part => part.values.includes(text));
+  // The existing fixture records htm templates, not parsed DOM elements.
+  // Inspect their actual label/value slots without claiming browser rendering.
+  const fields = label => all.flatMap(node => node.values.flatMap((item, i) => item === label && node.strings[i].endsWith("<dt>") ? [node.values[i + 1]] : []));
+  assert.deepEqual(fields("llm.providerId"), ["<provider>"]);
+  assert.deepEqual(fields("llm.model"), ["<model>"]);
+  assert.deepEqual(fields("prefix.providerConfigurationRevision"), [7]);
+  assert.deepEqual(fields("prefix.specificationId"), [specId, specId, specId, specId]);
+  assert.deepEqual(fields("prefix.proposalId"), [pairId, profileId]);
+  assert.deepEqual(fields("prefix.artifactSetId"), [setId]);
+  for (const [label, text] of [["prefix.originalSpecification", spec.specification_bytes], ["prefix.originalProposal", pair.proposal_bytes], ["prefix.originalProposal", profile.proposal_bytes], ["prefix.originalArtifactBinding", set.binding_bytes]]) {
+    const node = all.find(part => part.values.some((item, i) => item === label && part.values[i + 1] === text));
+    assert.ok(node, label);
+    const i = node.values.indexOf(label, node.values.indexOf(text) - 1);
+    assert.match(node.strings[i], /<details>\s*<summary>$/);
+    assert.match(node.strings[i + 1], /^<\/summary>\s*<pre [^>]*>$/);
+    assert.match(node.strings[i + 2], /^<\/pre>\s*<\/details>/);
+    assert.equal(node.values[i + 1], text, "complete original string is a text child, without reserialization");
+  }
+  const file = all.find(node => node.strings[0].startsWith("<li key="));
+  assert.ok(file.values.includes(fileHash)); assert.ok(file.values.includes(123)); assert.ok(file.values.includes("config.json"));
+  const setup = all.find(node => node.values.includes("PrefixModelSetupDraft"));
+  assert.equal(value(setup, "key"), specId); assert.equal(value(setup, "specification"), spec);
+  const cases = all.find(node => node.values.includes("PrefixPairCases"));
+  assert.equal(value(cases, "key"), pairId); assert.equal(value(cases, "specification"), specId); assert.equal(value(cases, "proposal"), pairId);
+  const inspector = all.find(node => node.values.includes("PrefixModelConfiguration"));
+  assert.equal(value(inspector, "specification"), specId); assert.equal(value(inspector, "artifactSet"), set);
+  assert.equal(value(button(root, "prefix.generateModelDesign"), "disabled"), true);
+  assert.ok(hasText(root, "prefix.unacceptedPairProposal")); assert.ok(hasText(root, "prefix.unacceptedProposal"));
+  assert.ok(hasText(root, "prefix.unknownModelArtifacts")); assert.ok(hasText(root, "<profile>"));
+  assert.equal(JSON.stringify(records), originals);
+  assert.deepEqual([f.captures.length, f.imports.length, f.pairImports.length], [0, 0, 0], "read-only presentation introduces no mutations");
 });

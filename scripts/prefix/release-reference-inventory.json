@@ -1,6 +1,6 @@
 {
   "format": "brassclaw-prefix-source-inventory/1",
-  "release": "brassclaw/1.7.0-rc.4/release-reference-inventory/2",
+  "release": "brassclaw/1.7.0-rc.4/release-reference-inventory/3",
   "sources": [
     {
       "disposition": "included",
@@ -25,6 +25,12 @@
       "kind": "document",
       "path": "CONTRIBUTING.md",
       "reason": "Preserve exact release context; not selected into model view without current final-v3 source/behavior reconciliation"
+    },
+    {
+      "disposition": "development-only",
+      "kind": "document",
+      "path": "Prefixless_redefine_at_K3.md",
+      "reason": "Retain complete declared-root source and current target/observation context; model-facing use requires its existing source/behavior review. Archival is not runtime support, component approval or Prefix selection."
     },
     {
       "disposition": "development-only",
@@ -55,6 +61,12 @@
       "kind": "document",
       "path": "README.zh-CN.md",
       "reason": "Preserve exact release context; not selected into model view without current final-v3 source/behavior reconciliation"
+    },
+    {
+      "disposition": "development-only",
+      "kind": "document",
+      "path": "SECURITY.md",
+      "reason": "Retain complete declared-root source and current target/observation context; model-facing use requires its existing source/behavior review. Archival is not runtime support, component approval or Prefix selection."
     },
     {
       "disposition": "development-only",
@@ -219,9 +231,9 @@
       "reason": "Preserve exact release context; not selected into model view without current final-v3 source/behavior reconciliation"
     },
     {
-      "path": "crates/brassclaw_engine/prompts/sempai_audit.md",
-      "kind": "document",
       "disposition": "development-only",
+      "kind": "document",
+      "path": "crates/brassclaw_engine/prompts/sempai_audit.md",
       "reason": "Observed legacy reviewer persona; archive only; current host schema and binding component guides take precedence"
     },
     {
@@ -333,9 +345,9 @@
       "reason": "Preserve exact release context; not selected into model view without current final-v3 source/behavior reconciliation"
     },
     {
-      "path": "crates/brassclaw_interceptor/src/packet.rs",
-      "kind": "document",
       "disposition": "development-only",
+      "kind": "document",
+      "path": "crates/brassclaw_interceptor/src/packet.rs",
       "reason": "Observed reviewer/proposal transport source; archive only; not a component-store constructor or approval contract"
     },
     {
@@ -681,9 +693,9 @@
       "reason": "Preserve exact release context; not selected into model view without current final-v3 source/behavior reconciliation"
     },
     {
-      "path": "docs/agents-v3/14-validation-queue.md",
-      "kind": "document",
       "disposition": "development-only",
+      "kind": "document",
+      "path": "docs/agents-v3/14-validation-queue.md",
       "reason": "Legacy validation subsystem reference; archive only; root component/approval guides take precedence"
     },
     {
@@ -1097,8 +1109,20 @@
     {
       "disposition": "development-only",
       "kind": "document",
+      "path": "docs/reborn/model-token-limits.md",
+      "reason": "Retain complete declared-root source and current target/observation context; model-facing use requires its existing source/behavior review. Archival is not runtime support, component approval or Prefix selection."
+    },
+    {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "docs/reborn/post-turn-review-reconciliation.md",
       "reason": "Preserve exact release context; not selected into model view without current final-v3 source/behavior reconciliation"
+    },
+    {
+      "disposition": "development-only",
+      "kind": "document",
+      "path": "docs/reborn/prefix-budget-design.md",
+      "reason": "Retain complete declared-root source and current target/observation context; model-facing use requires its existing source/behavior review. Archival is not runtime support, component approval or Prefix selection."
     },
     {
       "disposition": "included",
@@ -1113,10 +1137,34 @@
       "reason": "Source-reviewed subsystem reference; retain its explicit implementation scope and acceptance limitations"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
+      "path": "docs/reborn/pure-component-review.md",
+      "reason": "Retain complete declared-root source and current target/observation context; model-facing use requires its existing source/behavior review. Archival is not runtime support, component approval or Prefix selection."
+    },
+    {
+      "disposition": "development-only",
+      "kind": "document",
+      "path": "docs/reborn/raw-file-snapshot.md",
+      "reason": "Retain complete declared-root source and current target/observation context; model-facing use requires its existing source/behavior review. Archival is not runtime support, component approval or Prefix selection."
+    },
+    {
+      "disposition": "development-only",
+      "kind": "document",
+      "path": "docs/reborn/recursive-contract-check.md",
+      "reason": "Retain complete declared-root source and current target/observation context; model-facing use requires its existing source/behavior review. Archival is not runtime support, component approval or Prefix selection."
+    },
+    {
       "disposition": "included",
       "kind": "document",
       "path": "docs/reborn/source-inspection.md",
       "reason": "Source-reviewed subsystem reference; retain its explicit implementation scope and acceptance limitations"
+    },
+    {
+      "disposition": "development-only",
+      "kind": "document",
+      "path": "docs/reborn/source-inventory-inspection.md",
+      "reason": "Retain complete declared-root source and current target/observation context; model-facing use requires its existing source/behavior review. Archival is not runtime support, component approval or Prefix selection."
     },
     {
       "disposition": "development-only",
@@ -1141,6 +1189,12 @@
       "kind": "document",
       "path": "docs/reborn/subagent-spawn/phase-3-integration.md",
       "reason": "Preserve exact release context; not selected into model view without current final-v3 source/behavior reconciliation"
+    },
+    {
+      "disposition": "development-only",
+      "kind": "document",
+      "path": "mythbuster.md",
+      "reason": "Retain complete declared-root source and current target/observation context; model-facing use requires its existing source/behavior review. Archival is not runtime support, component approval or Prefix selection."
     },
     {
       "disposition": "development-only",
@@ -1173,375 +1227,375 @@
       "reason": "Preserve exact release context; not selected into model view without current final-v3 source/behavior reconciliation"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/LICENSE",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Pinned upstream package metadata/license; original provenance, not model instructions"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/alternatives.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/api/python/errors.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/api/python/host_objects.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/api/python/os.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/api/python/pools.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/api/python/suspend_resume.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/api/python/websocket.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/cli.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/examples.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/filesystem.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/host-functions.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/host-objects.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/index.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
-      "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/AGENTS.md",
-      "kind": "document",
       "disposition": "development-only",
+      "kind": "document",
+      "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/AGENTS.md",
       "reason": "Pinned upstream package metadata/license; original provenance, not model instructions"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/assert.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/asyncio.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/base64.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/builtins.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/classes.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/collections.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/comprehensions.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/copy.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/dataclasses.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/datetime.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/encoding.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/eval_exec.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/exceptions.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/filesystem.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/format.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/functools.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/host-values.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/index.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/iter.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/itertools.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/json.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/language.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/math.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/modules.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/namedtuple.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/open.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/os.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/pathlib.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/print.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/random.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/re.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/resource_limits.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/sys.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/time.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/typing.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/unicodedata.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/limitations/with.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/quickstart/javascript.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/quickstart/python.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/quickstart/rust.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/resource-limits.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/security.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/server.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/snapshots.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
+      "disposition": "development-only",
+      "kind": "document",
       "path": "scripts/prefix/monty-reference/v1.0.0/docs/type-checking.md",
-      "kind": "document",
-      "disposition": "development-only",
       "reason": "Complete original pinned upstream Monty reference; archive until profile-specific compatibility/source review; host SDK examples are not BrassClaw callables"
     },
     {
-      "path": "scripts/prefix/monty-reference/v1.0.0/manifest.json",
-      "kind": "document",
       "disposition": "development-only",
+      "kind": "document",
+      "path": "scripts/prefix/monty-reference/v1.0.0/manifest.json",
       "reason": "Pinned upstream Monty package manifest and provenance; archive only, not BrassClaw runtime or model-quality approval"
     },
     {
-      "path": "scripts/prefix/monty-reference/v1.0.0/mkdocs.yml",
-      "kind": "document",
       "disposition": "development-only",
+      "kind": "document",
+      "path": "scripts/prefix/monty-reference/v1.0.0/mkdocs.yml",
       "reason": "Pinned upstream package metadata/license; original provenance, not model instructions"
     },
     {
@@ -1569,27 +1623,27 @@
       "reason": "Packaged authoring procedure; component guides govern; host examples, preload definitions, invocation bodies and Recipe authoring remain distinct"
     },
     {
-      "path": "scripts/prefix/sempai-monty-compatibility.md",
-      "kind": "document",
       "disposition": "development-only",
+      "kind": "document",
+      "path": "scripts/prefix/sempai-monty-compatibility.md",
       "reason": "Existing BrassClaw/Monty compatibility overlay; retain exact source, reconcile against current qualified runtime before selecting a Sempai model view"
     },
     {
-      "path": "scripts/prefix/sempai-worked-examples.json",
-      "kind": "document",
       "disposition": "development-only",
+      "kind": "document",
+      "path": "scripts/prefix/sempai-worked-examples.json",
       "reason": "Existing worked-example source records; archive only, not approved executable components"
     },
     {
-      "path": "scripts/prefix/sempai-worked-examples.md",
-      "kind": "document",
       "disposition": "development-only",
+      "kind": "document",
+      "path": "scripts/prefix/sempai-worked-examples.md",
       "reason": "Existing complete worked examples; retain exact source, revalidate current constructors/contracts before selecting a Sempai model view"
     },
     {
-      "path": "scripts/prefix/sempai-worked-examples.receipt.json",
-      "kind": "document",
       "disposition": "development-only",
+      "kind": "document",
+      "path": "scripts/prefix/sempai-worked-examples.receipt.json",
       "reason": "Existing worked-example receipt; retain provenance, not current behavioral/combination approval"
     },
     {

@@ -16,12 +16,6 @@ use crate::oauth_dcr_protocol::StoredDcrClientMaterial as StoredClientMaterial;
 
 /// Host-captured setup inputs, never raw browser/provider material. A repeated
 /// start compares these with the retained first definition before new work.
-#[derive(Clone, Copy)]
-pub(crate) enum GoogleSetupDeadline {
-    Exact(brassclaw_auth::Timestamp),
-    GateDefault,
-}
-
 #[derive(Clone)]
 pub(crate) struct GoogleSetupRequest {
     pub(crate) scope: AuthProductScope,
@@ -32,7 +26,7 @@ pub(crate) struct GoogleSetupRequest {
     pub(crate) requirement_setup: Option<Box<CredentialRequirementSetup>>,
     pub(crate) update_binding: Option<CredentialAccountUpdateBinding>,
     pub(crate) update_account_snapshot: Option<CredentialAccount>,
-    pub(crate) deadline: GoogleSetupDeadline,
+    pub(crate) deadline: OAuthSetupDeadline,
 }
 
 impl GoogleSetupRequest {
@@ -49,7 +43,7 @@ impl GoogleSetupRequest {
             || self.requirement_setup != definition.requirement_setup
             || self.update_binding != definition.update_binding
             || self.update_account_snapshot != definition.update_account_snapshot
-            || matches!(self.deadline, GoogleSetupDeadline::Exact(expiry) if expiry != definition.expires_at)
+            || !self.deadline.matches_expiry(definition.expires_at)
         {
             return Err(AuthProductError::BackendConflict);
         }
@@ -192,14 +186,9 @@ impl GoogleOAuthGateProvider {
         &self,
         request: GoogleSetupRequest,
     ) -> Result<OAuthSetupOriginal, AuthProductError> {
-        if matches!(request.deadline, GoogleSetupDeadline::GateDefault)
-            && !matches!(
-                request.continuation,
-                AuthContinuationRef::TurnGateResume { .. }
-            )
-        {
-            return Err(AuthProductError::BackendConflict);
-        }
+        request
+            .deadline
+            .validate_continuation(&request.continuation)?;
         if let Some(original) = self
             .retained_setup_original(&request.scope, request.flow_id)
             .await?
@@ -207,13 +196,11 @@ impl GoogleOAuthGateProvider {
             request.verify(&original)?;
             return Ok(original);
         }
+        let expires_at = request
+            .deadline
+            .resolve_new(self.primitive_settings.as_ref())
+            .await?;
         let now = Utc::now();
-        let expires_at = match request.deadline {
-            GoogleSetupDeadline::Exact(expiry) => expiry,
-            GoogleSetupDeadline::GateDefault => {
-                now + ChronoDuration::seconds(GATE_FLOW_TTL_SECONDS)
-            }
-        };
         if expires_at <= now {
             return Err(AuthProductError::UnknownOrExpiredFlow);
         }

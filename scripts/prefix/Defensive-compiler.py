@@ -16,7 +16,7 @@ Source fidelity is checked; improved task accuracy must be measured separately.
 from __future__ import annotations
 
 from prefix_procedure import snapshot_procedure, finish_procedure
-from prefix_evidence import markdown_literal, template_probe_tokens
+from prefix_evidence import markdown_literal, source_units as shared_source_units, template_probe_tokens
 
 import argparse
 import hashlib
@@ -1754,34 +1754,7 @@ def source_units(text: str, suffix: str = '.md') -> list[tuple[int, int, str, st
     lines=text.splitlines(keepends=True)
     if suffix not in {'.md','.rst','.adoc','.txt'}:
         return [(1,len(lines),text,'')] if lines else []
-    boundaries=[0]; parents={}; stack=[]; fence=None; rst_levels={}
-    for index,line in enumerate(lines):
-        heading=None
-        if suffix=='.rst':
-            if (line.strip() and not line[0].isspace() and index+1<len(lines)
-                and re.fullmatch(r'([=\-~^"\x27`:+*#_])\1{3,}\s*',lines[index+1])
-                and len(lines[index+1].strip())>=len(line.strip())):
-                marker=lines[index+1].strip()[0]
-                if marker not in rst_levels: rst_levels[marker]=len(rst_levels)+1
-                heading=rst_levels[marker]
-        else:
-            marker=re.match(r'^\s{0,3}(`{3,}|~{3,})',line)
-            if marker:
-                value=marker.group(1)
-                if fence is None: fence=value
-                elif value[0]==fence[0] and len(value)>=len(fence): fence=None
-                continue
-            match=re.match(r'^(#{1,6})\s+',line) if fence is None else None
-            if suffix=='.adoc': match=re.match(r'^(={1,6})\s+',line) if fence is None else None
-            if match: heading=len(match.group(1))
-        if heading:
-            stack=[(depth,start) for depth,start in stack if depth<heading]
-            parents[index]=[start for _,start in stack]; stack.append((heading,index))
-            if index: boundaries.append(index)
-    boundaries.append(len(lines)); ends=dict(zip(boundaries,boundaries[1:]))
-    return [(start+1,end,''.join(lines[start:end]),
-             '\n'.join(''.join(lines[parent:ends[parent]]) for parent in parents.get(start,[])))
-            for start,end in zip(boundaries,boundaries[1:]) if end>start]
+    return shared_source_units(text,suffix)
 
 
 
@@ -1849,7 +1822,17 @@ def transport_text(text):
                   lambda match: match.group().replace('<',r'\u003c').replace('>',r'\u003e'),text)
     for token in sorted(tokenizer().all_special_tokens, key=len, reverse=True):
         if token and token in text:
-            text = text.replace(token, ''.join('\\u%04x'%ord(char) for char in token))
+            characters = []
+            for character in token:
+                codepoint = ord(character)
+                if codepoint <= 0xffff:
+                    characters.append('\\u%04x' % codepoint)
+                else:
+                    # Supplementary scalars require two UTF-16 code-unit escapes.
+                    scalar = codepoint - 0x10000
+                    characters.append('\\u%04x' % (0xd800 + scalar // 0x400)
+                                      + '\\u%04x' % (0xdc00 + scalar % 0x400))
+            text = text.replace(token, ''.join(characters))
     return text
 
 

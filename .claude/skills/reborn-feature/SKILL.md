@@ -139,9 +139,34 @@ new DTOs or invent fields for old constructors, Recipe JSON or association forma
 - Deterministic eligible usages may be Tier 0; shell and subagent Recipes are
   Tier 1. Development reasoning is not restricted by product Tier-0 rules.
 
-Installed authored changes need trusted Q1/behavior and human Q2 for the exact
-reviewed subject/combination. Bundled successors use the installation owner's
-noncircular `system_seed` integrity/Q1/behavior path without extra instance Q2.
+Follow the [own functional approval and successor compatibility contract](../../../skills.md#own-functional-approval-and-successor-compatibility):
+
+- **Authored changes (A):** each changed revision needs own trusted Q1, observed
+  behavior and human Q2. Skill and implementing PythonCode share one functional
+  review with separate immutable IDs. If both change, coordinate their own
+  approvals atomically; an unchanged approved partner or dependency is context,
+  not another review candidate. Reuse implementing-code subchecks instead of
+  creating a second full review.
+- **Compatible A successors:** preserve contracts still needed by valid consumers
+  for new use. Unchanged consumers keep their approvals; the qualified successor
+  path needs no extra authored combination approval. Running/waiting/resumed tasks
+  keep their exact original selection and artifacts.
+- **Shipped qualification (S):** the installation owner independently qualifies
+  Tool, then ToolSkill, then Skill/code together through noncircular
+  `system_seed` integrity/Q1/behavior evidence. Retain exact Skill-usage
+  qualification without additional installed or external-maintainer human Q2.
+  Its dependency closure identifies tested bytes, not individual approvals for
+  every member. Provenance belongs to the actual revision/usage, including mixed
+  graphs; a label cannot turn an installed edit into S.
+- **Recipe changes:** validate the supported workflows/variants and their actual
+  handoffs, effects, failures and completion using approved components; do not
+  reapprove unchanged constituent components.
+
+These successor rules are targets, not proof of connected reader/writer support.
+Inspect the selected review/publication consumers before relying on them. Existing
+exact authored approval profiles retain their original meaning and scope until
+qualified cutover; never reinterpret historical evidence or bypass a missing gate.
+
 A source/status label, development test or task manifest supplies neither approval
 nor authority. Submit immutable unreviewed revisions with exact predecessor and
 dependency references; preserve overrides and old task selections. Successful

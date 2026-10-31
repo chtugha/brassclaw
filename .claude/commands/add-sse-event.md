@@ -91,11 +91,21 @@ If the event needs custom UI (cards, badges, etc.), add styles to the appropriat
 
 ## Step 7: Quality gate
 
-```bash
-cargo fmt
-cargo clippy --all --benches --tests --examples --all-features -- -D warnings
-cargo test -p brassclaw_event_projections
-```
+Follow [the development policy](../../docs/development-policy.md) and
+[testing rules](../rules/testing.md). Review the connected emit → persistence →
+projection → frontend diff, then select the smallest sufficient checks for the
+actual changed callers/features. Reuse adequate existing evidence. Add focused
+coverage where needed for event payload/projection and relevant failure paths;
+Rust changes also need relevant affected-package linting. Persistence/lifecycle
+claims need their real backend/caller, and changed frontend behavior needs its
+actual syntax/UI checks. Do not assume one projection-crate test proves the full
+event path or require a workspace all-feature run for every event.
+
+Only the designated central owner runs Cargo, including fmt; submit bounded
+requests and preserve its source freeze and configured target. Report skipped,
+zero-case or unavailable checks as unverified. Fix causes before repeating failed
+or invalidated checks; stop when required acceptance passes. Ordinary prose needs
+links/consistency review and `git diff --check`, not Cargo.
 
 Verify the `// projection-exempt:` rule is NOT needed — the event flows through the projection layer, not a direct broadcast.
 
@@ -109,6 +119,6 @@ Before finishing, verify:
 - [ ] Frontend `addEventListener` added
 - [ ] Frontend handler function created
 - [ ] CSS styles added (if needed)
-- [ ] `cargo fmt` clean
-- [ ] `cargo clippy` clean with `-D warnings`
+- [ ] Required caller/projection/frontend evidence and affected-package linting established
+- [ ] Required backend/lifecycle checks completed; unverified checks explicitly reported
 - [ ] No direct `broadcast` call added outside the projection dispatcher

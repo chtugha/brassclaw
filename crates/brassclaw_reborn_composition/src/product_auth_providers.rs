@@ -52,10 +52,10 @@ fn compose_provider_client_with_runtime(
     for config in configs {
         let provider_id = config.spec.provider_id;
         let client = if provider_id == GOOGLE_PROVIDER_ID {
-            let provider = Arc::new(GoogleOAuthGateProvider::new(
-                config.client,
-                Arc::clone(&secret_store),
-            ));
+            let provider = Arc::new(
+                GoogleOAuthGateProvider::new(config.client, Arc::clone(&secret_store))
+                    .with_primitive_settings_source(runtime_ports.primitive_settings.clone()),
+            );
             let client = HostOAuthProviderClient::new_with_client_material(
                 config.spec,
                 runtime_ports.runtime_http_egress(),
@@ -715,8 +715,9 @@ mod tests {
         scope: &AuthProductScope,
         refresh: &SecretHandle,
     ) {
-        use crate::oauth_gate::{GoogleSetupDeadline, GoogleSetupRequest};
+        use crate::oauth_gate::GoogleSetupRequest;
         use crate::oauth_provider_client::OAuthClientMaterialSource;
+        use crate::oauth_provider_client::OAuthSetupDeadline;
         let provider = composition
             .gate_registry
             .as_ref()
@@ -733,7 +734,7 @@ mod tests {
                 requirement_setup: None,
                 update_binding: None,
                 update_account_snapshot: None,
-                deadline: GoogleSetupDeadline::Exact(
+                deadline: OAuthSetupDeadline::Exact(
                     chrono::Utc::now() + chrono::Duration::minutes(5),
                 ),
             })

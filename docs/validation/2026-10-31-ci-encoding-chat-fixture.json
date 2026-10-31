@@ -1,0 +1,283 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-028",
+  "status": "passed-local-ci-pending",
+  "sources": {
+    ".github/workflows/reborn-tests.yml": "44a12081bd6dfdf6cf4ec6db75a6ed23948fbbdb6736f099ae483ab9c54b5fc7",
+    "tests/monty_control/tests/encoding_host.rs": "6e54b7615124fa1ac172e15797cbae598f1bf8f4e61e89f0cd1088c890d17378",
+    "tests/reborn_direct_chat_user_scope_isolation_parity.rs": "d042b9298055f69b8bccdbfb4ecd9e5acb35e354a05d27bc3b7dec252116c139",
+    "crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py": "3d298924ade17bb5a6c2b0e28322105ffe45fa1e72c7973402e180fcdd0b5a0b",
+    "crates/brassclaw_model_encoding/tests/ornith-originals.json": "7a442312ca50ee3e841c04ef3dd20b7d6386a1cc04ca88f609c81d9952c6d7ac"
+  },
+  "package": "/private/tmp/brassclaw-ci-followup-20261031",
+  "package_after_sha256": "54e374d499eba9416d4bf32eb658bfa9e591918ff10b1aa07f9d89fc3b8f7dca",
+  "run": {
+    "path": "/private/tmp/brassclaw-ci-followup-validation-20261031/run-1",
+    "progress_sha256": "fec7a771981dccf1aa2eedd4ad711a4f389e64c67f8037650a23b1cbe0fccfd8",
+    "runner_sha256": "1bd2b022f70a4d6789c686f4a61aaa7779eec9f1dd3d3bd1d586241ed2d1c2ec",
+    "results": [
+      {
+        "stage": "format",
+        "exit_code": 0,
+        "seconds": 0.23895770800299942,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "whitespace",
+        "exit_code": 0,
+        "seconds": 0.24456366687081754,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "workflow-lint",
+        "exit_code": 0,
+        "seconds": 0.3342214999720454,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "fixture-offline-cli",
+        "exit_code": 0,
+        "seconds": 0.31231758394278586,
+        "log_sha256": "85407f22198279467f17e49b5f9418162cf125a6adbb042ebbd78708a33f2dc8"
+      },
+      {
+        "stage": "fixture-acceptance",
+        "exit_code": 0,
+        "seconds": 0.9380722499918193,
+        "log_sha256": "0eb11a9bc200ba3cf36d11181e7f68cf46b5a5da33bc7eebf6471e382e70830a"
+      },
+      {
+        "stage": "encoding-image",
+        "exit_code": 0,
+        "seconds": 1.7370700838509947,
+        "log_sha256": "f1232e614af44f33701b54ab0fe503007dff1c012dc975907343b492b13c7366"
+      },
+      {
+        "stage": "actual-encoding-host",
+        "exit_code": 0,
+        "seconds": 8.7864737091586,
+        "log_sha256": "aba927704fb249b32bd163202eb65732aa2280aaf9080fc4fd11e24d3ff7b9ce",
+        "passed": 1,
+        "tests": [
+          "contained_model_encoding_matches_offline_oracle_and_rejects_bad_input"
+        ],
+        "image_key": "encoding-encoding_host"
+      },
+      {
+        "stage": "direct-chat-images",
+        "exit_code": 0,
+        "seconds": 109.3726299579721,
+        "log_sha256": "df809c7a6ce8bf96edb9bc05756ca88671f12b2bb4ce121a4c4df073cb514f48"
+      },
+      {
+        "stage": "actual-two-worker-direct-chat",
+        "exit_code": 0,
+        "seconds": 3.1221459170337766,
+        "log_sha256": "80201c9b3be4dedaebc85f0c3795d4039b1887a5fb5400887fe78e5bc716a49c",
+        "passed": 1,
+        "tests": [
+          "reborn_direct_chat_user_scope_isolation_parity"
+        ],
+        "image_key": "root-reborn_direct_chat_user_scope_isolation_parity"
+      },
+      {
+        "stage": "original-strict-error-evidence",
+        "exit_code": 0,
+        "seconds": 5.856630124850199,
+        "log_sha256": "b1afc4fcf7d6211e6ce7bc40b212f9be70937af85a7c47f107e61e288bc80d70",
+        "passed": 2,
+        "tests": [
+          "reborn_trace_error_path_parity",
+          "reborn_trace_unadvertised_capability_is_rejected"
+        ],
+        "image_key": "root-reborn_trace_error_path_parity"
+      },
+      {
+        "stage": "encoding-strict",
+        "exit_code": 0,
+        "seconds": 5.344361333874986,
+        "log_sha256": "59d17e8edc362b71341667520cd276f0d0b4443053f3bdadf88113781b24ef48"
+      },
+      {
+        "stage": "direct-chat-strict",
+        "exit_code": 0,
+        "seconds": 55.83874999987893,
+        "log_sha256": "2036d3017d377899fd8bee76fb1c1da624c49893aec52120644b6bfa1a520b5a"
+      }
+    ],
+    "images": {
+      "encoding-monty_worker": {
+        "path": "/private/tmp/brassclaw-ci-followup-validation-20261031/run-1/encoding-monty_worker",
+        "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+        "sha256": "b6d1101c3b58c9103368097336116ec0b9c9196a1067fc4cfdf1d77d1af05ae6",
+        "features": [],
+        "compilation_stage": "encoding-image",
+        "test_image": false
+      },
+      "encoding-encoding_host": {
+        "path": "/private/tmp/brassclaw-ci-followup-validation-20261031/run-1/encoding-encoding_host-tests",
+        "original": "/Users/ollama/brassclaw-target/debug/deps/encoding_host-5e7f4a4fa9c46812",
+        "sha256": "e39fcff8ceaf206da297b8f4ba514032816eeef76f82882f5f4e8ca86914d545",
+        "features": [],
+        "compilation_stage": "encoding-image",
+        "test_image": true
+      },
+      "root-brassclaw": {
+        "path": "/private/tmp/brassclaw-ci-followup-validation-20261031/run-1/root-brassclaw",
+        "original": "/Users/ollama/brassclaw-target/debug/brassclaw",
+        "sha256": "72a33bd3a8f156e59fbc45f1d18334235165603af280f1e56e39b0d2ab71edfc",
+        "features": [
+          "integration",
+          "libsql",
+          "migrate-from-libsql",
+          "postgres"
+        ],
+        "compilation_stage": "direct-chat-images",
+        "test_image": false
+      },
+      "root-reborn_direct_chat_user_scope_isolation_parity": {
+        "path": "/private/tmp/brassclaw-ci-followup-validation-20261031/run-1/root-reborn_direct_chat_user_scope_isolation_parity-tests",
+        "original": "/Users/ollama/brassclaw-target/debug/deps/reborn_direct_chat_user_scope_isolation_parity-1419844b60960421",
+        "sha256": "b66a51f2383e112d74493b3ff7dadd36e00d3aba9dc4f7cd99cd6f3940c0ffac",
+        "features": [
+          "integration",
+          "libsql",
+          "migrate-from-libsql",
+          "postgres"
+        ],
+        "compilation_stage": "direct-chat-images",
+        "test_image": true
+      },
+      "root-reborn_trace_error_path_parity": {
+        "path": "/private/tmp/brassclaw-ci-followup-validation-20261031/run-1/root-reborn_trace_error_path_parity-tests",
+        "original": "/Users/ollama/brassclaw-target/debug/deps/reborn_trace_error_path_parity-b3e9dfb90312164a",
+        "sha256": "1af1bcbab847900cc2f85b35ac39fef4cba391980927c8781292daef00cf1284",
+        "features": [
+          "integration",
+          "libsql",
+          "migrate-from-libsql",
+          "postgres"
+        ],
+        "compilation_stage": "direct-chat-images",
+        "test_image": true
+      }
+    }
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-ci-followup-validation-20261031/run-1/source.json",
+    "sha256": "bb1306798d97f68780c1aac314af3c53dbc691f36f69dc9ebeb7b40ea10babf5",
+    "entries": 8250,
+    "supplement": "/private/tmp/brassclaw-ci-followup-20261031/root-test-supplemental-inputs.json",
+    "supplement_sha256": "8a6929e207250be67f6b745c7266c10fa5763773f905ba317ac1444c747b1470",
+    "additional_entries": 132,
+    "supplement_limitation": "Supplemental132 unchanged root/support/fixture files captured during compilation, before native cases; each predates initial capture and matches current Git index. Verify again at terminal; original runner captured8250 inputs. No source edits authorized during batch.",
+    "reviewed_root": "/private/tmp/brassclaw-ci-followup-20261031/current-root-inputs-ci-followup.json",
+    "reviewed_root_sha256": "a7821faa1dfd43ee5991cd8115403ee9eba8ce0a462d8ae9d41f36cf53ea5c86",
+    "reviewed_root_paths": 343
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-ci-followup-validation-20261031/run-1/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "b6d1101c3b58c9103368097336116ec0b9c9196a1067fc4cfdf1d77d1af05ae6",
+    "features": [],
+    "compilation_stage": "worker-build",
+    "test_image": false,
+    "status": "exact fresh027 worker reused;028 changes no normal/build worker dependency"
+  },
+  "python_runtime": {
+    "executable": "/Users/ollama/brassclaw-target/model-oracle-venv/bin/python",
+    "executable_sha256": "b502cb4c5b46b8d4192ec6bcb600ce8922f1afc396fcf646e8765c6eba74a0bf",
+    "lock": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/oracle-runtime.lock.txt",
+    "lock_sha256": "7536189a2d395534a3b9fcede8592fa28e4cc7c148c95fdbe062cde57388b331",
+    "typed_smoke": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/typed-config-smoke.json",
+    "typed_smoke_sha256": "6cad79b6d6f3478b67b5a2e13ab3d0131be5dc1b1d71e2ca5730cd9b15436870",
+    "pip_reports": {
+      "pip-tool-report.json": "da03a6240915d00ce6b133ccb40fe83c3ab1f00f4c96ba9cb0a28f01d1cc7e08",
+      "pip-oracle-report.json": "d9d988bc1ef49841862076995cdcc462b41bd58951f1d7ad8351122cc4b81a01",
+      "pip-torch-report.json": "ea8df324bfb5531a28cc055b2dffd2574191a7a7bcc1b5bb30a005639e2da5b9"
+    }
+  },
+  "model_assets": {
+    "retained": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2/model-artifacts",
+    "files": {
+      "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+      "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+      "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+      "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+      "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+      "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+    },
+    "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6"
+  },
+  "fixture_acceptance": {
+    "path": "/private/tmp/brassclaw-ci-followup-20261031/fixture-acceptance-result.json",
+    "sha256": "185ac90f9e59c61c13f06a7a11b1fff2eb9a463fc5dba887205bd4cfba7c13b0",
+    "results": {
+      "cases": [
+        {
+          "case": "real pinned public download",
+          "exit_code": 0,
+          "stdout": "{\"files\": {\"chat_template.jinja\": {\"bytes\": 7593, \"sha256\": \"9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235\"}, \"config.json\": {\"bytes\": 14269, \"sha256\": \"0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9\"}, \"merges.txt\": {\"bytes\": 3353259, \"sha256\": \"a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d\"}, \"tokenizer.json\": {\"bytes\": 19989424, \"sha256\": \"e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7\"}, \"tokenizer_config.json\": {\"bytes\": 1125, \"sha256\": \"9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d\"}, \"vocab.json\": {\"bytes\": 6722759, \"sha256\": \"ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003\"}}, \"model\": \"cyankiwi/Ornith-1.5-9B-AWQ-INT4\", \"offline\": false, \"revision\": \"3a8b7f60f01d9df1d2191c62c4e7fc0dd311e779\"}\n",
+          "stderr": ""
+        },
+        {
+          "case": "reject existing bytes without replacement",
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "Traceback (most recent call last):\n  File \"/Volumes/SSDE/brassclaw/crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py\", line 88, in <module>\n    main()\n    ~~~~^^\n  File \"/Volumes/SSDE/brassclaw/crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py\", line 84, in main\n    print(json.dumps(prepare(args.destination, manifest, args.offline, args.timeout_secs), sort_keys=True))\n                     ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Volumes/SSDE/brassclaw/crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py\", line 44, in prepare\n    verify(target, expected)\n    ~~~~~~^^^^^^^^^^^^^^^^^^\n  File \"/Volumes/SSDE/brassclaw/crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py\", line 30, in verify\n    raise ValueError(f\"retained fixture bytes differ: {path.name}\")\nValueError: retained fixture bytes differ: chat_template.jinja\n"
+        },
+        {
+          "case": "reject offline missing file",
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "Traceback (most recent call last):\n  File \"/Volumes/SSDE/brassclaw/crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py\", line 88, in <module>\n    main()\n    ~~~~^^\n  File \"/Volumes/SSDE/brassclaw/crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py\", line 84, in main\n    print(json.dumps(prepare(args.destination, manifest, args.offline, args.timeout_secs), sort_keys=True))\n                     ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Volumes/SSDE/brassclaw/crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py\", line 47, in prepare\n    raise ValueError(f\"missing offline retained file: {name}\")\nValueError: missing offline retained file: chat_template.jinja\n"
+        },
+        {
+          "case": "reject symlink fixture",
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "Traceback (most recent call last):\n  File \"/Volumes/SSDE/brassclaw/crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py\", line 88, in <module>\n    main()\n    ~~~~^^\n  File \"/Volumes/SSDE/brassclaw/crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py\", line 84, in main\n    print(json.dumps(prepare(args.destination, manifest, args.offline, args.timeout_secs), sort_keys=True))\n                     ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Volumes/SSDE/brassclaw/crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py\", line 44, in prepare\n    verify(target, expected)\n    ~~~~~~^^^^^^^^^^^^^^^^^^\n  File \"/Volumes/SSDE/brassclaw/crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py\", line 20, in verify\n    raise ValueError(f\"expected a regular retained file: {path.name}\")\nValueError: expected a regular retained file: chat_template.jinja\n"
+        },
+        {
+          "case": "reject nonfinite timeout",
+          "exit_code": 2,
+          "stdout": "",
+          "stderr": "usage: prepare_ornith_originals.py [-h] [--offline]\n                                   [--timeout-secs TIMEOUT_SECS]\n                                   destination\nprepare_ornith_originals.py: error: timeout must be finite and positive\n"
+        }
+      ],
+      "passed": 5,
+      "downloaded_file": "tokenizer_config.json",
+      "downloaded_bytes": 1125,
+      "other_assets": "exact already retained hardlinks; no model weights downloaded"
+    }
+  },
+  "counts": {
+    "native_cases": 4,
+    "fixture_cli_cases": 5,
+    "ignored": 0
+  },
+  "termination": {
+    "original_runner_exited": true,
+    "common_lock_independently_acquired": true,
+    "process_evidence": {
+      "runner_pid": 40798,
+      "command": [
+        "ps",
+        "-p",
+        "40798,41446",
+        "-o",
+        "pid=,etime=,stat=,command="
+      ],
+      "exit_code": 1,
+      "output": "",
+      "source": "Actual Root exec_command process observation after terminal028, 2026-10-31"
+    }
+  },
+  "scope": [
+    "Actual retained worker/independent HF oracle encoding consumer, exact GitHub heavy feature configuration two-worker PG chat isolation, both original strict error-evidence regressions and affected Clippy pass",
+    "Actual helper CLI verifies six retained assets, downloads one1125-byte pinned public asset, rejects incompatible retained bytes/symlinks/missing offline inputs/nonfinite timeout without replacing originals; actionlint passes",
+    "GitHub workflow wires the actual CPU oracle dependencies, immutable tokenizer fixture, actual Cargo worker path and four existing explicit retained HF oracle cases. New GitHub execution remains pending; cancelled old jobs are not passes",
+    "No production workflow fallback, trust/approval relaxation, fake acknowledgement or removed test. Local macOS only, not full CI/platform/Serving/Prefixless/K3/plan/release acceptance"
+  ]
+}

@@ -1918,7 +1918,17 @@ def transport_text(text):
                   lambda match: match.group().replace('<',r'\u003c').replace('>',r'\u003e'),text)
     for token in sorted(tokenizer().all_special_tokens, key=len, reverse=True):
         if token and token in text:
-            text = text.replace(token, ''.join('\\u%04x'%ord(char) for char in token))
+            characters = []
+            for character in token:
+                codepoint = ord(character)
+                if codepoint <= 0xffff:
+                    characters.append('\\u%04x' % codepoint)
+                else:
+                    # Supplementary scalars require two UTF-16 code-unit escapes.
+                    scalar = codepoint - 0x10000
+                    characters.append('\\u%04x' % (0xd800 + scalar // 0x400)
+                                      + '\\u%04x' % (0xdc00 + scalar % 0x400))
+            text = text.replace(token, ''.join(characters))
     return text
 
 

@@ -677,3 +677,22 @@ to actual ordinary Recipes, never to a new protected Sempai component kind.
 **Outgoing gate:** next open Steps11/12 library/proposal/production successor and
 its existing V35 handoff must consume the qualified Validator/Composition records
 before new A publication; current proposal or source-only results do not grant it.
+
+
+## Open construction-choice handoff
+
+For new qualified construction workflows, consume the single
+[visible construction-selection contract](../reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection).
+The earlier K3-2 clauses requiring prefix-free construction children/reviews or
+placing every Maker connection exclusively in v3.5 retain their original old-job
+scope. The new consumer binds its actual submitted context before effects, with
+its own executing route and retained lineage. Ordinary independent Sempai and
+provider-connection contracts stay unchanged.
+
+Composition owns the actual declaration/capture/request/response/guard delta;
+Prefix owns qualified options, forms and original job identity. These plans reuse
+those implementations and their connected acceptance. They add no resolver,
+provider catalogue, queue, approval or invocation mode. Reader and workflow
+qualification must precede exposure; current missing native/Free/UI support stays
+explicitly open. Protected packets, old criteria and retained selections remain
+unchanged. This handoff is a target reference, not implementation or deployment.

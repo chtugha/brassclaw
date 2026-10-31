@@ -7,6 +7,9 @@ argument-hint: "[path/to/crate]"
 
 # Rust Crate Audit
 
+Read root `AGENTS.md`, [the development policy](../../docs/development-policy.md)
+and [testing rules](../rules/testing.md), including central Cargo ownership.
+
 You are performing a thorough audit of a Rust crate. Your goal is to find every vulnerability, bug, unfinished piece of work, inconsistency, and oversight before it ships. Leave no stone unturned.
 
 ## Step 1: Locate the crate
@@ -30,25 +33,26 @@ Read `CLAUDE.md`, `README.md`, or top-level documentation if present to understa
 Read `src/lib.rs` or `src/main.rs` to get the module tree. Then read each module's `mod.rs` or top-level file to build a mental map of the crate's structure before diving into details.
 Read all Rust files (`src/*.rs`) to make sure everything is in context when you are reasoning.
 
-## Step 3: Run the compiler's checks
+## Step 3: Plan checks from source and existing evidence
 
-Run these commands and capture output. Do NOT fix anything, just collect findings:
+Complete the source review in Steps 4–8 before choosing executable checks.
+Identify the behavior/risk each check establishes, actual caller/feature/backend,
+applicable subsystem acceptance and reusable evidence. Do not start a blanket
+all-feature/pedantic/nursery test campaign or normalize formatting in this audit.
 
-```
-cargo fmt --check 2>&1
-```
+Where fresh checks are needed, route the smallest sufficient batch to the central
+Cargo owner and preserve its source freeze, canonical target and serial execution.
+Use relevant affected-package linting and actual caller regressions for Rust
+claims; database, migration, security and lifecycle claims need real backend/
+production-path acceptance with relevant failures. Read actual test gates/features
+rather than assuming a universal `integration` feature. Ordinary prose needs
+links/consistency review and `git diff --check`, not a build.
 
-```
-cargo clippy --all --benches --tests --examples --all-features -- -W clippy::all -W clippy::pedantic -W clippy::nursery 2>&1
-```
-
-```
-cargo test --lib 2>&1
-```
-
-If any of these fail, record the failures as findings. If `cargo test` has ignored tests, note which ones and why.
-
-Note: Integration tests (`--features integration`) require a PostgreSQL database. Only report `--lib` test failures as blocking.
+Record diagnostics and exercised targets/features without fixing code. Distinguish
+actual defects, unrelated baseline failures and unverified checks. Missing DBs,
+skipped/ignored cases and zero selected tests never establish a pass or waive a
+required integration gate. A successful focused audit does not certify release,
+component approval or full-platform acceptance.
 
 ## Step 4: Scan for unfinished work
 
@@ -102,7 +106,8 @@ Search for string formatting used in SQL queries, shell commands, or HTML:
 - String interpolation in query construction vs parameterized queries
 - User input flowing into file paths (`Path::new`, `std::fs::`)
 
-BrassClaw has two database backends (PostgreSQL and libSQL). Check both for injection vectors.
+Trace the actual selected stores and callers, including PostgreSQL query paths;
+do not impose the retired libSQL dual-backend model on current Reborn work.
 
 ### 5d. Cryptographic issues
 
@@ -176,8 +181,9 @@ BrassClaw key traits: `LlmProvider`, `SecretStore`, `AgentLoopDriverHost` + its 
 
 ### 7c. Test coverage gaps
 
-- Are there public functions without any test?
-- Are there error paths without tests?
+- Does meaningful existing caller-level coverage establish the relevant behavior?
+- Are important failure/boundary cases unverified? Identify missing coverage by
+  the behavior it would establish, not merely by an untested function name.
 - Are there recently-changed functions where the tests still assert old behavior?
 
 ### 7d. Documentation drift
@@ -189,7 +195,10 @@ BrassClaw key traits: `LlmProvider`, `SecretStore`, `AgentLoopDriverHost` + its 
 
 Review `Cargo.toml` and `Cargo.lock`:
 - Are there duplicate versions of the same crate in the lock file? (potential version conflicts)
-- Are there dependencies with known security advisories? Run `cargo audit` to check (install with `cargo install cargo-audit` if not present).
+- Are there dependencies with known security advisories? Reuse an applicable
+  current audit or request `cargo audit` through the designated Cargo owner when
+  fresh evidence is needed. Missing tooling/data is unverified; do not install
+  tooling implicitly during a read-only audit.
 - Are there heavy dependencies used for trivial functionality?
 - Are dependency features minimal?
 

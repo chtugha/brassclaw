@@ -653,7 +653,7 @@ async fn native_dcr_http_limits_refresh_between_requests_and_do_not_spend_unboun
         provider_scopes: vec![],
         continuation: AuthContinuationRef::SetupOnly,
         update_binding: None,
-        expires_at: Utc::now() + ChronoDuration::seconds(300),
+        deadline: OAuthSetupDeadline::Exact(Utc::now() + ChronoDuration::seconds(300)),
     };
     // The original is accepted under a real acknowledged cache policy. Stop
     // its real flow insert once, then verify unavailable HTTP settings cannot
@@ -947,7 +947,9 @@ async fn native_dcr_gate_recovers_preparation_after_flow_insert_failure_without_
                             provider_scopes: provider.scopes.clone(),
                             continuation: AuthContinuationRef::SetupOnly,
                             update_binding: None,
-                            expires_at: Utc::now() + ChronoDuration::seconds(120),
+                            deadline: OAuthSetupDeadline::Exact(
+                                Utc::now() + ChronoDuration::seconds(120),
+                            ),
                         },
                     )
                     .await
@@ -1076,4 +1078,384 @@ async fn native_dcr_gate_recovers_preparation_after_flow_insert_failure_without_
         );
     }
     runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_gate_oauth_lifetimes_keep_concurrent_originals_and_observe_acknowledged_settings() {
+    use crate::input::OAuthClientConfig;
+    use crate::oauth_gate::{GoogleOAuthGateProvider, GoogleSetupRequest};
+    use crate::{RebornRuntimeIdentity, RebornRuntimeInput, build_reborn_runtime};
+
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(MontyMemoryMode::Manual).await;
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = Box::pin(build_reborn_runtime(
+        RebornRuntimeInput::from_services(
+            rig.build_input("gate-oauth-lifetimes", directory.path())
+                .with_tenant_id("default")
+                .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
+        )
+        .with_identity(RebornRuntimeIdentity {
+            tenant_id: "default".into(),
+            ..RebornRuntimeIdentity::reborn_cli()
+        }),
+    ))
+    .await
+    .unwrap();
+    let settings = runtime.webui_monty_settings_store();
+    let original = settings.get("default", "default").await.unwrap();
+    let source = runtime
+        .services()
+        .primitive_settings
+        .as_ref()
+        .unwrap()
+        .clone();
+    let secrets = runtime.services().secret_store.clone();
+    let manager = runtime
+        .services()
+        .product_auth
+        .as_ref()
+        .unwrap()
+        .flow_manager();
+    let mut limits = original.execution_limits;
+    limits.turn_gate_oauth_setup_ttl_secs = 30;
+    let first_revision = settings.upsert("default", "default", &serde_json::from_value(
+        serde_json::json!({"expected_revision":original.revision,"execution_limits":limits})
+    ).unwrap()).await.unwrap();
+
+    let google = GoogleOAuthGateProvider::new(
+        OAuthClientConfig::new(
+            "controlled-gate-client",
+            "https://app.example/api/reborn/product-auth/oauth/google/callback",
+            Some("controlled-gate-secret".into()),
+        )
+        .unwrap(),
+        secrets.clone(),
+    )
+    .with_primitive_settings_source(Some(source.clone()));
+    let google_request = GoogleSetupRequest {
+        scope: sample_auth_scope(),
+        flow_id: AuthFlowId::new(),
+        account_label: CredentialAccountLabel::new("native google gate lifetime").unwrap(),
+        requested_scopes: vec![
+            ProviderScope::new(brassclaw_auth::GOOGLE_CALENDAR_READONLY_SCOPE).unwrap(),
+        ],
+        continuation: AuthContinuationRef::TurnGateResume {
+            turn_run_ref: TurnRunRef::new(TurnRunId::new().to_string()).unwrap(),
+            gate_ref: AuthGateRef::new("native-google-lifetime").unwrap(),
+        },
+        requirement_setup: None,
+        update_binding: None,
+        update_account_snapshot: None,
+        deadline: OAuthSetupDeadline::GateDefault,
+    };
+    let before = Utc::now();
+    let (a, b) = tokio::join!(
+        google.prepare_setup_original(google_request.clone()),
+        google.prepare_setup_original(google_request.clone())
+    );
+    let google_original = a.unwrap();
+    google_original.verify(&b.unwrap()).unwrap();
+    assert!(google_original.definition.expires_at >= before + ChronoDuration::seconds(30));
+    assert!(google_original.definition.expires_at <= Utc::now() + ChronoDuration::seconds(30));
+    let published = google
+        .restore_setup_original(&manager, google_original.clone(), None)
+        .await
+        .unwrap();
+    assert_eq!(
+        published.flow.expires_at,
+        google_original.definition.expires_at
+    );
+
+    // The existing real host/network guard denies the test endpoint. Metadata
+    // is validated fixture data; no successful issuer/Tool reply is invented.
+    let services = BuiltinObligationServices::new(
+        Arc::new(brassclaw_events::InMemoryAuditSink::new()),
+        secrets.clone(),
+        Arc::new(brassclaw_resources::InMemoryResourceGovernor::new()),
+    );
+    let egress = Arc::new(ObservedEgress {
+        inner: Arc::new(services.host_http_egress(
+            brassclaw_network::PolicyNetworkHttpEgress::new(
+                brassclaw_network::ReqwestNetworkTransport::default(),
+            ),
+        )),
+        observations: Mutex::new(vec![]),
+        failures: Mutex::new(vec![]),
+        pause_once: AtomicBool::new(false),
+        entered: Notify::new(),
+        released: Notify::new(),
+    });
+    let mut config = test_config();
+    config.spec.resource = Some("https://127.0.0.1:9/mcp");
+    let dcr = OAuthDcrProvider::new(
+        config,
+        egress.clone(),
+        secrets,
+        Arc::new(services.obligation_handler()),
+    )
+    .unwrap()
+    .with_primitive_settings_source(Some(source));
+    *dcr.metadata_cache.write().await = Some(metadata_fixture());
+    let dcr_request = DcrOriginalStart {
+        requirement_setup: None,
+        scope: sample_auth_scope(),
+        flow_id: AuthFlowId::new(),
+        account_label: CredentialAccountLabel::new("native dcr gate lifetime").unwrap(),
+        provider_scopes: vec![],
+        continuation: AuthContinuationRef::TurnGateResume {
+            turn_run_ref: TurnRunRef::new(TurnRunId::new().to_string()).unwrap(),
+            gate_ref: AuthGateRef::new("native-dcr-lifetime").unwrap(),
+        },
+        update_binding: None,
+        deadline: OAuthSetupDeadline::GateDefault,
+    };
+    let before = Utc::now();
+    let rejected = reject_flow_insert(rig.pool.as_ref(), dcr_request.flow_id, async {
+        let (a, b) = tokio::join!(
+            dcr.start_original_registration(&manager, dcr_request.clone()),
+            dcr.start_original_registration(&manager, dcr_request.clone())
+        );
+        assert_eq!(a.unwrap_err(), AuthProductError::BackendUnavailable);
+        assert_eq!(b.unwrap_err(), AuthProductError::BackendUnavailable);
+        Err(AuthProductError::BackendUnavailable)
+    })
+    .await;
+    assert_eq!(rejected.unwrap_err(), AuthProductError::BackendUnavailable);
+    let dcr_original = dcr
+        .retained_preparation_original(&dcr_request.scope, dcr_request.flow_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(dcr_original.expires_at >= before + ChronoDuration::seconds(30));
+    assert!(dcr_original.expires_at <= Utc::now() + ChronoDuration::seconds(30));
+    assert!(egress.observations.lock().unwrap().is_empty());
+
+    limits.turn_gate_oauth_setup_ttl_secs = 1;
+    let second_revision=settings.upsert("default","default",&serde_json::from_value(
+        serde_json::json!({"expected_revision":first_revision.revision,"execution_limits":limits})
+    ).unwrap()).await.unwrap();
+    let effective = settings
+        .runtime_status()
+        .await
+        .unwrap()
+        .unwrap()
+        .execution_limits
+        .unwrap();
+    assert_eq!(effective.effective_revision, second_revision.revision);
+    assert_eq!(effective.limits.turn_gate_oauth_setup_ttl_secs, 1);
+    let unbound_source: Arc<dyn HostPrimitiveSettingsSource> =
+        Arc::new(crate::host_primitive_settings::AcknowledgedPrimitiveSettings::new());
+    let unbound_google = google
+        .clone()
+        .with_primitive_settings_source(Some(unbound_source.clone()));
+    google_original
+        .verify(
+            &unbound_google
+                .prepare_setup_original(google_request.clone())
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+    let unbound_dcr = dcr
+        .clone()
+        .with_primitive_settings_source(Some(unbound_source));
+    assert_eq!(
+        unbound_dcr
+            .start_original_registration(&manager, dcr_request.clone())
+            .await
+            .unwrap_err(),
+        AuthProductError::BackendUnavailable
+    );
+    let restored = manager
+        .read_dcr_registration(&dcr_request.scope, dcr_request.flow_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(restored.action.original, dcr_original);
+    assert_eq!(restored.flow.expires_at, dcr_original.expires_at);
+    assert!(matches!(
+        restored.action.outcome,
+        brassclaw_auth::DcrRegistrationOutcome::Prepared
+    ));
+    assert!(
+        egress.observations.lock().unwrap().is_empty(),
+        "unavailable HTTP policy must not spend the recovered original claim"
+    );
+
+    let mut next_google = google_request.clone();
+    next_google.flow_id = AuthFlowId::new();
+    assert_eq!(
+        unbound_google
+            .prepare_setup_original(next_google.clone())
+            .await
+            .unwrap_err(),
+        AuthProductError::BackendUnavailable
+    );
+    assert!(
+        unbound_google
+            .retained_setup_original(&next_google.scope, next_google.flow_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let before = Utc::now();
+    let reduced_google_request = next_google.clone();
+    let reduced = google
+        .prepare_setup_original(next_google.clone())
+        .await
+        .unwrap();
+    assert!(reduced.definition.expires_at >= before + ChronoDuration::seconds(1));
+    assert!(reduced.definition.expires_at <= Utc::now() + ChronoDuration::seconds(1));
+    let mut next_dcr = dcr_request.clone();
+    next_dcr.flow_id = AuthFlowId::new();
+    assert_eq!(
+        unbound_dcr
+            .start_original_registration(&manager, next_dcr.clone())
+            .await
+            .unwrap_err(),
+        AuthProductError::BackendUnavailable
+    );
+    assert!(
+        unbound_dcr
+            .retained_preparation_original(&next_dcr.scope, next_dcr.flow_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let before = Utc::now();
+    let reduced_outcome = reject_flow_insert(rig.pool.as_ref(), next_dcr.flow_id, async {
+        match dcr
+            .start_original_registration(&manager, next_dcr.clone())
+            .await
+        {
+            Ok(flow) => {
+                assert_eq!(flow.status, brassclaw_auth::AuthFlowStatus::Expired);
+                assert!(flow.challenge.is_none());
+                assert!(flow.credential_account_id.is_none());
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    })
+    .await;
+    assert!(
+        matches!(
+            reduced_outcome,
+            Ok(())
+                | Err(AuthProductError::BackendUnavailable | AuthProductError::UnknownOrExpiredFlow)
+        ),
+        "one-second preparation can expire before flow insertion: {reduced_outcome:?}"
+    );
+    // Expiry can publish a retired flow before the rejected pending insert and
+    // close its private preparation. Read the same original from its Auth owner.
+    let reduced_dcr = match manager
+        .read_dcr_registration(&next_dcr.scope, next_dcr.flow_id)
+        .await
+        .unwrap()
+    {
+        Some(state) => state.action.original,
+        None => dcr
+            .retained_preparation_original(&next_dcr.scope, next_dcr.flow_id)
+            .await
+            .unwrap()
+            .unwrap(),
+    };
+    assert!(reduced_dcr.expires_at >= before + ChronoDuration::seconds(1));
+    assert!(reduced_dcr.expires_at <= Utc::now() + ChronoDuration::seconds(1));
+
+    // Host default mode is never an escape from exact standalone input checks.
+    let mut invalid_google = google_request.clone();
+    invalid_google.continuation = AuthContinuationRef::SetupOnly;
+    assert_eq!(
+        google
+            .prepare_setup_original(invalid_google)
+            .await
+            .unwrap_err(),
+        AuthProductError::BackendConflict
+    );
+    let mut invalid_dcr = dcr_request.clone();
+    invalid_dcr.continuation = AuthContinuationRef::SetupOnly;
+    assert_eq!(
+        dcr.start_original_registration(&manager, invalid_dcr)
+            .await
+            .unwrap_err(),
+        AuthProductError::BackendConflict
+    );
+    let mut changed_google = google_request.clone();
+    changed_google.account_label = CredentialAccountLabel::new("changed gate account").unwrap();
+    assert_eq!(
+        google
+            .prepare_setup_original(changed_google)
+            .await
+            .unwrap_err(),
+        AuthProductError::BackendConflict
+    );
+    let mut changed_dcr = dcr_request.clone();
+    changed_dcr.account_label = CredentialAccountLabel::new("changed gate account").unwrap();
+    assert_eq!(
+        dcr.start_original_registration(&manager, changed_dcr)
+            .await
+            .unwrap_err(),
+        AuthProductError::BackendConflict
+    );
+
+    limits.turn_gate_oauth_setup_ttl_secs = u32::MAX;
+    let maximum_revision=settings.upsert("default","default",&serde_json::from_value(
+        serde_json::json!({"expected_revision":second_revision.revision,"execution_limits":limits})
+    ).unwrap()).await.unwrap();
+    next_google.flow_id = AuthFlowId::new();
+    let before = Utc::now();
+    let maximum = google.prepare_setup_original(next_google).await.unwrap();
+    assert!(maximum.definition.expires_at >= before + ChronoDuration::seconds(i64::from(u32::MAX)));
+    assert!(
+        maximum.definition.expires_at <= Utc::now() + ChronoDuration::seconds(i64::from(u32::MAX))
+    );
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    // An expired original keeps its deadline after the large live increase.
+    google_original
+        .verify(&google.prepare_setup_original(google_request).await.unwrap())
+        .unwrap();
+    reduced
+        .verify(
+            &google
+                .prepare_setup_original(reduced_google_request)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+    let retired = google
+        .restore_setup_original(&manager, reduced.clone(), None)
+        .await
+        .unwrap();
+    assert_eq!(retired.flow.status, brassclaw_auth::AuthFlowStatus::Expired);
+    assert_eq!(retired.flow.expires_at, reduced.definition.expires_at);
+    let retired_dcr = dcr
+        .start_original_registration(&manager, next_dcr.clone())
+        .await
+        .unwrap();
+    assert_eq!(retired_dcr.status, brassclaw_auth::AuthFlowStatus::Expired);
+    assert_eq!(retired_dcr.expires_at, reduced_dcr.expires_at);
+    assert_eq!(
+        retired_dcr.error,
+        Some(brassclaw_auth::AuthErrorCode::UnknownOrExpiredFlow)
+    );
+    assert!(retired_dcr.challenge.is_none());
+    assert!(retired_dcr.credential_account_id.is_none());
+    reduced_dcr
+        .verify(
+            &manager
+                .read_dcr_registration(&next_dcr.scope, next_dcr.flow_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .action
+                .original,
+        )
+        .unwrap();
+    assert!(egress.observations.lock().unwrap().is_empty());
+    settings.upsert("default","default",&serde_json::from_value(
+        serde_json::json!({"expected_revision":maximum_revision.revision,"execution_limits":original.execution_limits})
+    ).unwrap()).await.unwrap();
 }

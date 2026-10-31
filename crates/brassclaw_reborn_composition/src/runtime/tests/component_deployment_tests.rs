@@ -1,5 +1,7 @@
 //! Retained review submissions -> read-only preparation -> actual operator
 //! publication -> ordinary global Monty. Reuses actual bundled usage approval.
+#[path = "prefix_generation_history_http_tests.rs"]
+mod history_http_tests;
 #[path = "prefix_pair_construction_tests.rs"]
 mod pair_construction_tests;
 #[path = "prefix_model_setup_http_tests.rs"]
@@ -822,6 +824,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
             .iter()
             .any(|g| g["generation"] == exported["generation_package"])
     );
+    history_http_tests::exercise(&app, Some(&exported_path)).await;
     let storage_client = pool.get().await.unwrap();
     let legacy_count: i64 = storage_client
         .query_one("SELECT count(*) FROM reborn_basic_prompt_store", &[])
@@ -985,6 +988,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     drop(source_client);
     exercise_prefix_maker_import(&app, &checkout, root.path()).await;
     exercise_prefix_model_records(&model_app, &pool, &runtime, prefix_job_id, sempai_job_id).await;
+    history_http_tests::exercise(&model_app, None).await;
     let initial = at(&app, "GET", "/api/webchat/v2/catalogue", None, true)
         .await
         .1;
@@ -1573,7 +1577,7 @@ async fn exercise_prefix_model_records(
         sempai_job_id,
     )
     .await;
-    let proposal_bytes = json!({"format":"brassclaw-prefix-design-proposal/1","profile":"sempai","specification":specification["id"],"design":{"adapter":"ornith-qwen-system/1","evidence_view":"literal-reference/v5-contextual-sharing","source_selection":"complete-mandatory","reserve_tokens":8192},"rationale":"Recorded proposal; no quality or architecture qualification asserted."}).to_string();
+    let proposal_bytes = json!({"format":"brassclaw-prefix-design-proposal/1","profile":"sempai","specification":specification["id"],"design":{"adapter":"ornith-qwen-system/1","evidence_view":"literal-reference/v5-contextual-sharing","source_selection":"complete-mandatory","reserve_tokens":8192},"rationale":"Recorded proposal <img src=x onerror='window.prefixOriginalExecuted=true'>; no quality or architecture qualification asserted."}).to_string();
     let proposal_request =
         json!({"specification":specification["id"],"proposal_bytes":proposal_bytes});
     let route = "/api/webchat/v2/prefixes/sempai/design-proposals";

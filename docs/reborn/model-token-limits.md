@@ -433,3 +433,158 @@ up to provider handoff, not monitoring undisclosed provider-internal changes.
 A generated per-pair Prefix-Maker prefix is only the v3.5 idea in Exact §5.1.
 Document the future optional selection/insertion seam in the existing owner; do
 not require a current artefact, resolver, migration or feature flag for it.
+
+
+## Open Prefixless successor — visible Maker/Base/Prefixless construction selection
+
+**Binding target for new qualified workflow revisions; runtime integration is
+open.** This is the single selection contract for the future construction work
+in [Prefixless redefine at K3](../../Prefixless_redefine_at_K3.md). It changes the
+construction instruction-context requirement, not existing job selections,
+accepted packets, protected criteria or general component/Prefix approval rules.
+Ordinary independent chats/reviews keep their existing selection contracts.
+The earlier sections and their anchors remain exact references to their own
+contracts; the supersession map below identifies what changes for this successor.
+No typed state, API field, schema or qualified dispatch support is added by prose.
+
+### Visible suggestion and submitted choice
+
+Maker → Base → Prefixless is **only the initial visible, editable UI suggestion**
+for a construction form. It is not a dispatch preference or a fallback algorithm.
+Deterministically suggest an eligible active approved Maker for the executing
+pair and purpose; otherwise an eligible active approved Base; otherwise Prefixless.
+Offer other approved compatible profiles too. Prefixless remains explicitly
+selectable even when Maker or Base is available. No model call computes this
+suggestion, and viewing or refreshing the form causes no Use/Generate/activation.
+
+Eligibility means exact qualification and active publication for the namespace,
+executing provider/model route, accepted executor design/adapter and instruction
+composition required by this work. A stored profile, generated draft or shipped
+documentation-only baseline is insufficient. A newer draft does not invalidate
+a still-valid active artifact. Do not search archived generations for a hidden
+fallback. Missing/incompatible artifacts differ from database, integrity or
+resolver errors. Technical failure is an error, not evidence that a prefix is
+absent; an unavailable required reader is an implementation/readiness gap.
+
+The visible field precedes every new model-assisted construction admission,
+including optional Use/configuration B1/B2 work, design/Create/Generate/Regenerate/
+Redesign and their required reviews. Deterministic preparation stays deterministic.
+The operator's manual choice wins over the suggestion and survives refresh,
+notifications and reconnect. A pair change revalidates it; an invalid choice or
+stale displayed generation/revision is a visible conflict, never an automatic
+replacement. No extra confirmation modal is required before the explicit action.
+Headless callers provide the corresponding explicit supported choice; they do
+not acquire a hidden runtime Maker/Base chain.
+
+At submission, validate the actual visible choice against the coherent qualified
+selection and displayed revision, then durably bind its exact generation or
+intentional absence, executor route, instructions, workflow and original job
+before the first affected model effect. Keep the suggestion/reason distinct from
+the operator's submitted choice. Do not substitute latest between display and
+admission. After capture, changes require a genuinely new explicit job; duplicate
+clicks and uncertain-response retries retain original request identity and bytes.
+No later fit, policy, transport or measurement failure reselects a prefix or
+replays an effect. Eligible retries retain selection and durable attempt state.
+
+### Three qualified request constructions
+
+The following rows name instruction-context choices, not new runtime enum tags.
+All fixed task/response/source rules and current technical authority still apply.
+
+| Submitted context | Required construction and qualification |
+| --- | --- |
+| Approved Maker | Use the exact compatible retained Maker generation once, under its qualified pair design/adapter. It may replace only instruction sections explicitly covered by a qualified replacement contract; otherwise keep fixed instructions. No self-approval by the successor being generated. |
+| Approved Base or another compatible approved prefix | Insert the selected artifact exactly once under its actual qualified design/adapter, alongside complete fixed task instructions. Do not prepend an additional whole Base to a selected Maker/role prefix, perform a second format pass, or treat source facts as prefix knowledge. |
+| Explicit Prefixless | Insert no generated prefix and require no manufactured artifact or proof that Maker/Base is absent. Keep fixed instructions, original route/auth/model, technical encoder/protocol, full request guard and correlated native response/effect evidence. A capture declaration or measured string alone cannot qualify this branch. |
+
+First construction must remain possible without an existing generated artifact;
+it still requires a genuinely supported technical request boundary. Missing
+encoder/protocol/guard/admission/response support is explicit readiness work,
+not permission for an unqualified template, alternate SDK path or a bypass flag.
+Reusing an eligible older active Maker to construct its successor is allowed;
+a candidate behavior test binds that candidate as the test subject and does not
+activate it or turn it into its own independent reviewer.
+
+B1/B2 remain restricted to their original supplied source/option packets and
+strict answer checks. Selected-prefix knowledge cannot fill unknown provider
+facts. Preserve old fixed prompt/packet and payload-hash bytes; any genuinely
+needed instruction artifact successor is versioned by its existing owner.
+The full request identity additionally binds the chosen generation/instructions.
+If a prefix conflicts with those fixed contracts, it is ineligible for that
+purpose; appending a generic instruction to ignore the conflict is no proof.
+
+### Capture, children and ordinary Recipe configuration
+
+Selection belongs to the actual executing pair, not merely the design target.
+Known required child/review routes receive their own visible or stored qualified
+choices before admission. Later supported children bind only original retained
+route/catalogue data before their first effect. They do not repeat the suggestion
+chain, borrow another pair's prefix, invent an absent role or read global latest.
+Keep legitimate parent/family/occurrence lineage and reject foreign children.
+Same-pair reuse still requires compatible purpose/instruction context; shared
+clients do not imply shared request-dependent guards. Normal independent Sempai
+review keeps its separate reviewer contract. Exact final-target handoff and
+single insertion rules remain; the construction-review request uses its own
+captured context, not the candidate or parent's bytes by implication.
+
+The existing Recipe editor exposes the same explicit Prefixless/approved-profile
+choices in its qualified successor, retaining the labelled existing Default where supported.
+There is **no Recipe Generate button** and no automatic Maker/Base default for
+all Recipes. Save/review the Recipe or variant's profile-level choice normally;
+resolve and pin its exact generation at task start. Unlike a construction form's
+submit-time revision check, this does not bake a displayed generation/version
+into the reusable Recipe. No new per-step JSON overrides are implied. General
+Recipe Prefixless requires its real qualified reader/runtime profile; do not
+encode it as absence, an invented bootstrap purpose or an unknown old-format tag.
+Existing strict Default/Selected/PrefixFreeWorkflow records retain their meanings.
+
+### Guard, approval, old jobs and connected implementation
+
+Measure the actual full provider-bound request: chosen prefix if any, fixed and
+dynamic instructions, sources, history, tools, framing and real output setting.
+Hard prefix/prompt/context/output/protocol constraints, live policy, cancellation
+and limits remain effective in every branch. Disabled discretionary token budgets
+create no artificial caps or reserve constants and do not disable technical
+limits. An oversized request is rejected without clipping, fallback or another
+provider attempt. Retain actual guard/response/wire/effect correlation; no success
+claim from a serialized getter, declaration or source-only check.
+
+The changed consumer/workflow needs its own qualification against existing prefix
+contracts. Unchanged approved prefixes/components gain no extra per-job Q1/Q2;
+component A-own/joint and S-bootstrap scopes remain unchanged. Prefix-Q1 and
+human Prefix-Q2 stay with the existing generation/publication owner. Generation,
+review, publication and activation remain distinct; this choice activates none.
+
+Old running/waiting/resumed jobs retain their actual original contract and exact
+payload/design/adapter/qualification pins, including old prefix-free workflows.
+Never infer a new mode from a name or missing field. New construction references
+protect artifacts through the existing retention owner, even beyond the ordinary
+two-predecessor archive target while needed; no deletion or evidence rewrite
+follows from this text. Live technical policy continues independently.
+
+The existing Prefix owner owns options/eligibility and construction qualification;
+Composition/Simplified own coherent declaration/admission/capture, real native
+request/child/response/guard and continuation support. Existing UI/facade and
+Validator owners consume those contracts. Connect and qualify the readers before
+new writers/seeds/workflow activation. No parallel resolver, client, VM, queue,
+review engine or mutable consumer registry. Current native Free rejection,
+profile-only Selected data and missing UI/job/Recipe support are explicit gaps,
+not implemented capability. Complete the adopted plan's future native PG/SDK/
+HTTP/browser/retention cases through the existing owners before claiming uptake.
+
+### Exact scope of superseded construction requirements
+
+Only the following requirements change for this successor's new qualified
+workflows. All accepted original bytes and ordinary contracts remain intact.
+
+| Earlier local section and characteristic text | Successor scope |
+| --- | --- |
+| “Prefix selection, pair design and assembly” — “When none specifies one, select the compatible base-prompt”; “Sempai's own call uses its own prefix” | Still governs ordinary independent calls. New construction calls use the submitted visible choice and required construction-review calls their own captured compatible choice; pair design/framing and final-target handoff remain. |
+| “Generation prompts: missing selection and model Use” — unconditional post-Use “Generate the base prompt” dialog | Already superseded by the preceding K3-2 workflow contract. Do not reinstate it or trigger model work before the new choice is available. Preserve committed Use, original mutation/job identity and explicit remedies. |
+| “Open K3-2 successor” — “use PrefixFreeWorkflow even when other prefixes exist”; required child/review edges “inherit this qualified workflow standard” | New construction revision uses the exact submitted choice; each required route binds its own context without re-running a runtime preference. Existing admitted old jobs keep their original prefix-free contract. |
+| “Open K3-2 successor” — “Use optional prefix-free B1/B2 calls”; “Optional model work remains prefix-free” | Optional model work stays optional and source-bound; new calls use the captured choice, with no deterministic-to-LLM conversion and no weakening of fixed B1/B2 packets. |
+| “Open K3-2 successor” — Maker is “only the v3.5 idea” and requires no current artifact/resolver | Maker integration is now authorized future owner work, not restricted to v3.5. Maker availability is never required for first construction; an optional profile row is not qualification or runtime readiness. |
+
+Keep existing anchors usable. The adopted plan's inventory must route current
+summaries and consumers to this section and scope protected earlier passages,
+without editing their original acceptance or hiding unresolved active conflicts.

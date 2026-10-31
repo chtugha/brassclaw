@@ -57,14 +57,17 @@ async fn contained_model_encoding_matches_offline_oracle_and_rejects_bad_input()
     assert!(actual["common_prefix_tokens"].as_u64().unwrap() > 1024);
     let oracle =
         std::env::var_os("BRASSCLAW_TEST_ENCODING_ORACLE").expect("captured oracle required");
-    let mut python = Command::new("python3")
-        .arg(oracle)
-        .env("HF_HUB_OFFLINE", "1")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .unwrap();
+    let mut python = Command::new(
+        std::env::var_os("BRASSCLAW_TEST_PYTHON")
+            .unwrap_or_else(|| if cfg!(windows) { "python" } else { "python3" }.into()),
+    )
+    .arg(oracle)
+    .env("HF_HUB_OFFLINE", "1")
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::inherit())
+    .spawn()
+    .unwrap();
     python
         .stdin
         .take()

@@ -160,11 +160,14 @@ Redesign refreshes eligible knowledge and architecture evidence, pins the result
 snapshot, compares against the previous design and produces both a declarative
 proposal and a complete quarantined candidate. Generate model design produces
 model-specific formatting/capacity rules; it does not build every profile.
-The design provider and target model are separate pinned identities. Prefix-Maker
-must itself be fresh and compatible with the provider reviewing the proposal.
-To redesign Prefix-Maker use its previous accepted generation, never the successor
-as its own review authority. First installation uses reviewed shipped knowledge
-and model-free compilation, without depending on an existing generated prefix.
+The design provider and target model are separate pinned identities. For new
+construction revisions, follow the one
+[visible context-selection contract](../../docs/reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection).
+A Maker is optional qualified execution context, not a required fresh predecessor
+or review authority. Preserve the exact submitted choice and original review
+route; first construction does not require an existing generated artifact.
+A candidate never qualifies itself. Missing runtime/native support remains open;
+this design reference does not authorize a model call or activate a prefix.
 
 Accept only supported versioned options. Provider-produced Python, shell commands,
 paths, success flags or service patches are not accepted design fields. Unsupported

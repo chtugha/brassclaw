@@ -21,7 +21,7 @@ import {
 const EXECUTION_FIELDS = [
   "utility_worker_memory_bytes", "max_native_artifact_bytes",
   "max_catalogue_recipes", "max_catalogue_components_per_recipe", "max_catalogue_variants_per_recipe", "max_catalogue_bytes", "max_catalogue_actor_bytes",
-  "max_http_client_cache_entries", "max_mcp_inflight_calls", "max_mcp_request_bytes", "max_mcp_response_bytes", "default_http_request_timeout_millis", "default_http_response_body_bytes", "oauth_token_timeout_millis", "oauth_token_response_body_bytes", "oauth_dcr_timeout_millis", "oauth_dcr_response_body_bytes", "auth_backend_timeout_millis", "manual_token_setup_ttl_secs", "extension_manual_token_setup_ttl_secs", "oauth_dcr_metadata_cache_ttl_secs", "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes",
+  "max_http_client_cache_entries", "max_mcp_inflight_calls", "max_mcp_request_bytes", "max_mcp_response_bytes", "default_http_request_timeout_millis", "default_http_response_body_bytes", "oauth_token_timeout_millis", "oauth_token_response_body_bytes", "oauth_dcr_timeout_millis", "oauth_dcr_response_body_bytes", "auth_backend_timeout_millis", "manual_token_setup_ttl_secs", "extension_manual_token_setup_ttl_secs", "turn_gate_oauth_setup_ttl_secs", "oauth_dcr_metadata_cache_ttl_secs", "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes",
   "max_coding_read_bytes",
   "max_coding_write_bytes",
   "max_coding_patch_bytes",
@@ -67,7 +67,7 @@ const U32_EXECUTION_FIELDS = [
   "max_catalogue_recipes", "max_catalogue_components_per_recipe",
   "max_catalogue_variants_per_recipe", "max_catalogue_actor_bytes",
   "max_http_client_cache_entries", "max_mcp_inflight_calls",
-  "max_mcp_request_bytes", "max_mcp_response_bytes", "model_quote_output_tokens", "oauth_token_timeout_millis", "oauth_dcr_timeout_millis", "auth_backend_timeout_millis", "manual_token_setup_ttl_secs", "extension_manual_token_setup_ttl_secs", "oauth_dcr_metadata_cache_ttl_secs",
+  "max_mcp_request_bytes", "max_mcp_response_bytes", "model_quote_output_tokens", "oauth_token_timeout_millis", "oauth_dcr_timeout_millis", "auth_backend_timeout_millis", "manual_token_setup_ttl_secs", "extension_manual_token_setup_ttl_secs", "turn_gate_oauth_setup_ttl_secs", "oauth_dcr_metadata_cache_ttl_secs",
   "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes",
   "max_workers", "max_recipe_contexts", "max_pending_host_calls",
   "max_queued_tasks", "max_pending_settings", "max_retained_attempts",

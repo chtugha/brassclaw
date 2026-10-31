@@ -16,6 +16,37 @@ spec.loader.exec_module(c)
 
 
 class BaseCompilerTests(unittest.TestCase):
+    def test_special_token_unicode_escapes_preserve_supplementary_characters(self):
+        from prefix_render import (prefix_escape_controls, render_prefix_reference,
+                                   render_contextual_prefix_reference)
+        for token in ('ä', '\U00010000', '🧭', '<\U0010ffff>'):
+            with self.subTest(token=token):
+                escaped = prefix_escape_controls(token, [token])
+                self.assertNotIn(token, escaped)
+                self.assertEqual(json.loads('"' + escaped + '"'), token)
+        # Existing spellings stay byte-identical; this fixes invalid wide \u
+        # spellings without changing the established ASCII/BMP display rules.
+        self.assertEqual(prefix_escape_controls('ä', ['ä']), r'\u00e4')
+        self.assertEqual(prefix_escape_controls('<|im_start|>', ['<|im_start|>']), r'\u003c|im_start|\u003e')
+        ordinary = 'value: ä\r\ncommand: "keep \\n literal"\r\n'
+        self.assertEqual(prefix_escape_controls(ordinary, []), ordinary)
+        text = '{"glyph": "🧭", "word": "ä"}\r\n'
+        identity = c.sha(text.encode('utf-8'))
+        source = {'path': 'fixture/unicode.json', 'kind': 'document',
+                  'disposition': 'included', 'reason': 'Literal Unicode source fixture',
+                  'text': text, 'sha256': identity, 'evidence_id': identity,
+                  'units': [{'id': identity, 'line_start': 1, 'line_end': 1, 'text': text}]}
+        before = json.dumps(source, ensure_ascii=False, sort_keys=True)
+        escaped = prefix_escape_controls(text, ['🧭'])
+        self.assertEqual(json.loads(escaped), json.loads(text))
+        plain = {key: source[key] for key in ('path', 'disposition', 'reason', 'text', 'evidence_id')}
+        self.assertIn(escaped, render_prefix_reference('Trusted fixture frame\n', [plain], ['🧭']))
+        unescaped = render_contextual_prefix_reference('Trusted fixture frame\n', [source], [])
+        rendered = render_contextual_prefix_reference('Trusted fixture frame\n', [source], ['🧭'])
+        self.assertIn(escaped, rendered['context'])
+        self.assertEqual(rendered['render_map'], unescaped['render_map'])
+        self.assertEqual(json.dumps(source, ensure_ascii=False, sort_keys=True), before)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

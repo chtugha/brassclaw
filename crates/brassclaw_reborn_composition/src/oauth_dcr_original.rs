@@ -19,7 +19,7 @@ pub(super) struct DcrOriginalStart {
     pub(super) provider_scopes: Vec<ProviderScope>,
     pub(super) continuation: AuthContinuationRef,
     pub(super) update_binding: Option<CredentialAccountUpdateBinding>,
-    pub(super) expires_at: brassclaw_auth::Timestamp,
+    pub(super) deadline: OAuthSetupDeadline,
 }
 
 impl DcrOriginalStart {
@@ -36,7 +36,7 @@ impl DcrOriginalStart {
             || original.requested_scopes != self.provider_scopes
             || original.continuation != self.continuation
             || original.update_binding != self.update_binding
-            || original.expires_at != self.expires_at
+            || !self.deadline.matches_expiry(original.expires_at)
             || original.requirement_setup != self.requirement_setup
         {
             return Err(AuthProductError::BackendConflict);
@@ -111,6 +111,9 @@ impl OAuthDcrProvider {
         manager: &Arc<dyn AuthFlowManager>,
         request: DcrOriginalStart,
     ) -> Result<brassclaw_auth::AuthFlowRecord, AuthProductError> {
+        request
+            .deadline
+            .validate_continuation(&request.continuation)?;
         if let Some(setup) = &request.requirement_setup {
             setup.verify_oauth(
                 &request.scope,
@@ -131,7 +134,7 @@ impl OAuthDcrProvider {
                 if request.requirement_setup.is_some()
                     || original.account_label != request.account_label
                     || original.requested_scopes != request.provider_scopes
-                    || original.expires_at != request.expires_at
+                    || !request.deadline.matches_expiry(original.expires_at)
                     || original.continuation != request.continuation
                     || original.update_binding != request.update_binding
                 {
@@ -144,9 +147,6 @@ impl OAuthDcrProvider {
                 None => {
                     if request.provider_scopes != self.scopes {
                         return Err(AuthProductError::BackendUnavailable);
-                    }
-                    if request.expires_at <= Utc::now() {
-                        return Err(AuthProductError::UnknownOrExpiredFlow);
                     }
                     match self.prepare_registration_original(&request).await {
                         Ok(original) => original,
@@ -233,7 +233,11 @@ impl OAuthDcrProvider {
         &self,
         request: &DcrOriginalStart,
     ) -> Result<DcrRegistrationOriginal, AuthProductError> {
-        if request.expires_at <= chrono::Utc::now() {
+        let expires_at = request
+            .deadline
+            .resolve_new(self.primitive_settings.as_ref())
+            .await?;
+        if expires_at <= Utc::now() {
             return Err(AuthProductError::UnknownOrExpiredFlow);
         }
 
@@ -266,7 +270,7 @@ impl OAuthDcrProvider {
             update_binding: request.update_binding.clone(),
             opaque_state_hash: opaque_state_hash(state.as_str())?,
             pkce_verifier_hash: pkce_verifier_hash(&verifier)?,
-            expires_at: request.expires_at,
+            expires_at,
             preparation: DcrMaterialReference {
                 handle: handle.clone(),
                 reference: "not-yet-written".into(),

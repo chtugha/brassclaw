@@ -15,7 +15,9 @@ use brassclaw_host_api::{
 use brassclaw_product_adapters::AuthPromptChallengeKind;
 use brassclaw_secrets::SecretStore;
 use brassclaw_turns::{TurnRunId, TurnScope};
-use chrono::{Duration as ChronoDuration, Utc};
+#[cfg(test)]
+use chrono::Duration as ChronoDuration;
+use chrono::Utc;
 use secrecy::SecretString;
 
 use crate::auth_prompt::AuthChallengeView;
@@ -25,17 +27,16 @@ use crate::input::OAuthClientConfig;
 mod client_material;
 #[path = "oauth_gate_original.rs"]
 mod original;
+use crate::oauth_provider_client::OAuthSetupDeadline;
+pub(crate) use original::GoogleSetupRequest;
 #[cfg(all(test, feature = "postgres"))]
 pub(crate) use original::tests::verify_native_private_runtime;
-pub(crate) use original::{GoogleSetupDeadline, GoogleSetupRequest};
 
 pub(crate) fn owned_google_refresh_material_handles(
     refresh: &SecretHandle,
 ) -> Result<Vec<SecretHandle>, AuthProductError> {
     client_material::owned_refresh_material_handles(refresh)
 }
-
-const GATE_FLOW_TTL_SECONDS: i64 = 600;
 
 #[derive(Clone)]
 pub(crate) struct GoogleOAuthGateProviderRegistry {
@@ -115,6 +116,7 @@ pub(crate) struct OAuthGateChallengeRequest<'a> {
 pub(crate) struct GoogleOAuthGateProvider {
     client: OAuthClientConfig,
     secret_store: Arc<dyn SecretStore>,
+    primitive_settings: Option<Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
 }
 
 impl GoogleOAuthGateProvider {
@@ -122,7 +124,16 @@ impl GoogleOAuthGateProvider {
         Self {
             client,
             secret_store,
+            primitive_settings: None,
         }
+    }
+
+    pub(crate) fn with_primitive_settings_source(
+        mut self,
+        source: Option<Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
+    ) -> Self {
+        self.primitive_settings = source;
+        self
     }
 
     pub(crate) fn verify_route_configuration(
@@ -212,7 +223,7 @@ impl GoogleOAuthGateProvider {
                 requirement_setup: None,
                 update_binding: None,
                 update_account_snapshot: None,
-                deadline: GoogleSetupDeadline::GateDefault,
+                deadline: OAuthSetupDeadline::GateDefault,
             })
             .await?;
         let prepared = self

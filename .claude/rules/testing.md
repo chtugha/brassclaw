@@ -10,16 +10,38 @@ Choose the smallest check that establishes the claim, reuse passing evidence and
 stop when required checks pass. Source reasoning precedes compilation; runtime
 Tier-0 rules do not constrain development reasoning.
 
+## Cargo ownership and evidence
+
+Follow the policy's [central build ownership](../../docs/development-policy.md#shared-source-and-central-build-ownership-2026-10-30).
+Only the designated leading chat runs Cargo, including fmt, metadata and clean.
+Other chats submit bounded validation requests to that owner. Preserve its source
+freeze, configured canonical target, serial execution and disk-space rules.
+
+Choose checks from the [evidence table](../../docs/development-policy.md#choose-evidence-by-the-claim)
+and applicable subsystem acceptance. Review the connected diff first; reuse
+evidence only for unchanged applicable source/artifact/configuration inputs.
+Ordinary prose needs link/consistency review and `git diff --check`, not Cargo.
+Embedded seed/runtime content still needs its actual packaging/integrity checks.
+Do not routinely stack check/build/test/all-feature lint for the same targets.
+Fix causes before repeating failed or invalidated checks; stop when required
+checks pass. Keep broad CI/release and component-approval gates intact.
+
 ## Test Tiers
 
 | Tier | Command | External deps |
 |------|---------|---------------|
 | Focused behavior/caller | `cargo test -p <crate_name> <test_filter>` | Determined by the test |
-| Database semantics | `cargo test -p <crate_name> --features integration <test_filter>` | Real PostgreSQL |
+| Database semantics | Owning crate's actual integration/caller target and feature configuration | Real selected backend; PostgreSQL for SQL claims |
 
 Add relevant feature flags. `cargo test` selects Cargo's default packages, not
 necessarily the entire workspace. Full workspace acceptance is
 `cargo test --workspace ...`; it is not an iteration default.
+Read the selected crate's `Cargo.toml` and test gates before choosing features;
+there is no universal `integration` feature. Rust behavior needs caller-level
+regression evidence and relevant affected-package linting. Database, migration,
+security and lifecycle claims require their real production/backend paths and
+applicable failure cases. Read `LOCAL_TEST_ENV.md` when present before remote
+tests or provider setup.
 
 ## Key Patterns
 
@@ -30,7 +52,11 @@ necessarily the entire workspace. Full workspace acceptance is
 - Use `tempfile` crate for test directories, never hardcode `/tmp/`
 - Meaningful regression coverage for behavioral fixes; reuse an existing test
   when it catches the bug and explain the evidence instead of duplicating it
-- Integration tests (`--features integration`) require PostgreSQL; skipped if DB is unreachable
+- Report unavailable dependencies, skipped/ignored cases and zero selected tests
+  as unverified, never passed. Missing PostgreSQL does not waive required SQL
+  acceptance; record the blocker and route the required check to its owner.
+- Fix introduced warnings, including affected consumers; report unrelated baseline
+  warnings separately without suppression or unrelated cleanup.
 
 ## Test Through the Caller, Not Just the Helper
 
@@ -40,16 +66,17 @@ A whole class of bugs in this repo has the same shape: a wrapper function silent
 
 ### When the rule applies
 
-You must add a caller-level test (not just a helper-level unit test) when **all** of the following are true:
+You need caller-level regression evidence when **all** of the following are true:
 
 1. The helper is a **predicate, classifier, or transform** whose return value gates a side effect (HTTP call, DB write, tool execution, sandbox launch, approval gate, etc.).
 2. There is **at least one wrapper or call site** between the helper and the side effect.
 3. The helper has **more than one input** *or* its caller computes any of the inputs from the surrounding context.
 
-If all three are true, a unit test on the helper alone is **not sufficient regression coverage**. You must additionally either:
-
-- Add a test that drives the call site (the handler, factory, or manager function), **or**
-- Inline the helper into its single caller so there is no wrapper to silently drop an input.
+If all three are true, a helper-only test is **not sufficient regression coverage**.
+Reuse an existing applicable test that drives the handler/factory/manager and
+catches the regression; otherwise add focused coverage through that caller.
+Do not duplicate adequate coverage or refactor production code solely to avoid
+the required verification.
 
 ### Where the test belongs
 

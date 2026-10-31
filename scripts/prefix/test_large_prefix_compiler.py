@@ -20,6 +20,61 @@ SNAPSHOT=os.getenv('ORNITH_TEST_TOKENIZER','')
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_fence_language_content_keeps_complete_command_and_real_heading(self):
+        from prefix_evidence import source_units as shared_source_units
+        document = "# Procedure\n```sh\ncat <<'EOF'\n```yaml\n# literal firewall policy\npolicy: deny\nEOF\n```\n## Verify\nInspect rules.\n"
+        lines = document.splitlines(keepends=True)
+        for segment in (c.source_units, shared_source_units):
+            with self.subTest(segment=segment.__module__):
+                units = segment(document, '.md')
+                self.assertEqual([(u[0], u[1]) for u in units], [(1, 8), (9, 10)])
+                self.assertEqual(''.join(u[2] for u in units), document)
+                self.assertEqual(units[1][3], ''.join(lines[:8]))
+        metadata = {'url': 'https://example.test/manual', 'snapshot': c.digest(document)}
+        current = c.card_for_unit('pfsense-docs', 'manual.md', document, units[1], metadata)
+        c.validate_card(current, document)
+        # Exact range/context previously emitted by the faulty parser; retain
+        # its bytes, but do not call it a complete unit under the fixed parser.
+        previous = c.card_for_unit('pfsense-docs', 'manual.md', document,
+                                   (5, 10, ''.join(lines[4:]), ''), metadata)
+        before = json.dumps(previous, ensure_ascii=False, sort_keys=True)
+        with self.assertRaisesRegex(ValueError, 'complete source unit'):
+            c.validate_card(previous, document)
+        self.assertEqual(json.dumps(previous, ensure_ascii=False, sort_keys=True), before)
+        self.assertNotEqual(previous['id'], current['id'])
+
+    def test_fence_closer_requires_same_run_and_only_spaces_or_tabs(self):
+        from prefix_evidence import source_units as shared_source_units
+        for opening, invalid, closing in (
+            ('```sh', '```yaml', '```'),
+            ('~~~sh', '~~~yaml', '~~~'),
+            ('````sh', '```', '````'),
+            ('```sh', '~~~', '```'),
+            ('```sh', '    ```', '```'),
+            ('```sh', '\t```', '```'),
+            ('```sh', '```\u00a0', '```'),
+            ('   ```sh', '```yaml', '  ```` \t'),
+        ):
+            for newline in ('\n', '\r\n'):
+                document = newline.join(('# Procedure', opening, invalid,
+                    '# literal command', closing, '## Verify', 'Keep rollback.', ''))
+                for segment in (c.source_units, shared_source_units):
+                    with self.subTest(opening=opening, invalid=invalid, newline=repr(newline), segment=segment.__module__):
+                        units = segment(document, '.md')
+                        self.assertEqual([(u[0], u[1]) for u in units], [(1, 5), (6, 7)])
+                        self.assertEqual(''.join(u[2] for u in units), document)
+                        self.assertIn('# literal command' + newline, units[0][2])
+
+    def test_invalid_fence_opening_does_not_hide_document_heading(self):
+        from prefix_evidence import source_units as shared_source_units
+        for opening in ('```lang`invalid', '    ```sh', '\t```sh', '\u00a0```sh'):
+            document = '# Procedure\n' + opening + '\n## Visible\nKeep rollback.\n'
+            for segment in (c.source_units, shared_source_units):
+                with self.subTest(opening=opening, segment=segment.__module__):
+                    units = segment(document, '.md')
+                    self.assertEqual([(u[0], u[1]) for u in units], [(1, 2), (3, 4)])
+                    self.assertEqual(''.join(u[2] for u in units), document)
+
     def test_html_article_warnings_and_embedded_fences_survive(self):
         ticks=chr(96)*3
         parser=c.DocumentationHTML()

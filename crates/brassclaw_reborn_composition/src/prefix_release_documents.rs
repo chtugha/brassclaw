@@ -4,11 +4,17 @@ const INVENTORY: &str = include_str!("../../../scripts/prefix/release-reference-
 const DOCUMENTS: &[(&str, &str)] = &[
     ("CHANGELOG.md", include_str!("../../../CHANGELOG.md")),
     ("CONTRIBUTING.md", include_str!("../../../CONTRIBUTING.md")),
+    (
+        "Prefixless_redefine_at_K3.md",
+        include_str!("../../../Prefixless_redefine_at_K3.md"),
+    ),
     ("README.ja.md", include_str!("../../../README.ja.md")),
     ("README.ko.md", include_str!("../../../README.ko.md")),
     ("README.md", include_str!("../../../README.md")),
     ("README.ru.md", include_str!("../../../README.ru.md")),
     ("README.zh-CN.md", include_str!("../../../README.zh-CN.md")),
+    ("SECURITY.md", include_str!("../../../SECURITY.md")),
+    ("mythbuster.md", include_str!("../../../mythbuster.md")),
     (
         "crates/AGENTS.md",
         include_str!("../../../crates/AGENTS.md"),
@@ -690,6 +696,30 @@ const DOCUMENTS: &[(&str, &str)] = &[
     (
         "docs/reborn/harness/replay.md",
         include_str!("../../../docs/reborn/harness/replay.md"),
+    ),
+    (
+        "docs/reborn/model-token-limits.md",
+        include_str!("../../../docs/reborn/model-token-limits.md"),
+    ),
+    (
+        "docs/reborn/prefix-budget-design.md",
+        include_str!("../../../docs/reborn/prefix-budget-design.md"),
+    ),
+    (
+        "docs/reborn/pure-component-review.md",
+        include_str!("../../../docs/reborn/pure-component-review.md"),
+    ),
+    (
+        "docs/reborn/raw-file-snapshot.md",
+        include_str!("../../../docs/reborn/raw-file-snapshot.md"),
+    ),
+    (
+        "docs/reborn/recursive-contract-check.md",
+        include_str!("../../../docs/reborn/recursive-contract-check.md"),
+    ),
+    (
+        "docs/reborn/source-inventory-inspection.md",
+        include_str!("../../../docs/reborn/source-inventory-inspection.md"),
     ),
     (
         "docs/reborn/post-turn-review-reconciliation.md",

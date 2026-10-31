@@ -140,6 +140,21 @@ jobs:
           npm ci --prefix tests/browser
           echo "$GITHUB_WORKSPACE/tests/browser/node_modules/.bin" >> "$GITHUB_PATH"
           tests/browser/node_modules/.bin/agent-browser install --with-deps
+      - name: Prepare the independent oracle and originals for native Prefix tests
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/prefix-oracle-venv"
+          oracle_python="$RUNNER_TEMP/prefix-oracle-venv/bin/python"
+          "$oracle_python" -m pip install --upgrade pip
+          "$oracle_python" -m pip install --only-binary=:all: --index-url https://download.pytorch.org/whl/cpu 'torch==2.15.0'
+          "$oracle_python" -m pip install --only-binary=:all: -r crates/brassclaw_model_encoding/tests/requirements-oracle.txt
+          python3 crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py "$RUNNER_TEMP/prefix-model-originals"
+          echo "$RUNNER_TEMP/prefix-oracle-venv/bin" >> "$GITHUB_PATH"
+          {
+            echo "BRASSCLAW_TEST_PYTHON=$oracle_python"
+            echo "BRASSCLAW_TEST_MODEL_ARTIFACT_ROOT=$RUNNER_TEMP/prefix-model-originals"
+            echo "HF_HUB_OFFLINE=1"
+          } >> "$GITHUB_ENV"
       - name: Build the actual Monty worker
         run: cargo build -p brassclaw_monty_host --bin monty_worker --locked
       - name: Test rendered controls through native PostgreSQL and global Monty
@@ -171,6 +186,17 @@ jobs:
               --features skills-db,test-support,migrate-from-libsql --lib \
               runtime::tests::local_dev_webui_bundle_uses_local_lifecycle_facade_for_setup_extension \
               -- --exact --test-threads=1 --nocapture
+
+      - name: Test retained Prefix history and model originals in native Chromium
+        shell: bash
+        run: |
+          node --check tests/browser/prefix-generation-history.mjs
+          BRASSCLAW_PREFIX_HISTORY_BROWSER_NODE="$(command -v node)" \
+            cargo test -p brassclaw_reborn_composition --locked \
+              --features skills-db,test-support,migrate-from-libsql --lib \
+              runtime::tests::authored_catalogue_tests::component_deployment_tests::native_component_deployment_preserves_recipes_and_pins_review_subjects \
+              -- --exact --test-threads=1 --nocapture | tee "$RUNNER_TEMP/prefix-browser-native.txt"
+          python3 -c 'from pathlib import Path; import sys; output=Path(sys.argv[1]).read_text(); assert "native-prefix-history-browser: passed" in output; assert "native-prefix-design-view-browser: passed" in output; assert "test result: ok. 1 passed; 0 failed; 0 ignored;" in output' "$RUNNER_TEMP/prefix-browser-native.txt"
 
   monty-upgrade-gate:
     name: Monty 1.0 API and allocator isolation
@@ -452,8 +478,36 @@ jobs:
           key: reborn-tests-${{ matrix.package }}
           save-if: ${{ inputs.full_validation && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
 
+      - name: Prepare the independent model-encoding oracle
+        if: matrix.package == 'brassclaw_monty_host' || matrix.package == 'brassclaw_reborn_composition'
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/model-oracle-venv"
+          oracle_python="$RUNNER_TEMP/model-oracle-venv/bin/python"
+          "$oracle_python" -m pip install --upgrade pip
+          "$oracle_python" -m pip install --only-binary=:all: --index-url https://download.pytorch.org/whl/cpu 'torch==2.15.0'
+          "$oracle_python" -m pip install --only-binary=:all: -r crates/brassclaw_model_encoding/tests/requirements-oracle.txt
+          python3 crates/brassclaw_model_encoding/tests/prepare_ornith_originals.py "$RUNNER_TEMP/encoding-model-originals"
+          {
+            echo "BRASSCLAW_TEST_PYTHON=$oracle_python"
+            echo "BRASSCLAW_ENCODING_MODEL_ORIGINALS=$RUNNER_TEMP/encoding-model-originals"
+            echo "BRASSCLAW_TEST_MODEL_ARTIFACT_ROOT=$RUNNER_TEMP/encoding-model-originals"
+            echo "BRASSCLAW_TEST_ENCODING_ORACLE=$GITHUB_WORKSPACE/crates/brassclaw_model_encoding/tests/huggingface_oracle.py"
+            echo "HF_HUB_OFFLINE=1"
+          } >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/model-oracle-venv/bin" >> "$GITHUB_PATH"
+          "$oracle_python" -m pip freeze --all
+
       - name: Build contained Monty worker
         run: cargo build -p brassclaw_monty_host --bin monty_worker --locked
+
+      - name: Retain the actual worker path for the encoding consumer
+        if: matrix.package == 'brassclaw_monty_host'
+        shell: bash
+        run: |
+          worker_target="$(cargo metadata --locked --no-deps --format-version=1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+          test -x "$worker_target/debug/monty_worker"
+          echo "BRASSCLAW_MONTY_WORKER_PATH=$worker_target/debug/monty_worker" >> "$GITHUB_ENV"
 
       - name: Run crate tests
         run: |
@@ -462,6 +516,16 @@ jobs:
           # shellcheck disable=SC2086 # feature_flags intentionally expands to zero or more Cargo args.
           timeout --signal=INT --kill-after=30s 28m \
             cargo test -p "${{ matrix.package }}" ${feature_flags} --all-targets -- --nocapture
+
+
+      - name: Verify all retained Hugging Face oracle cases
+        if: matrix.package == 'brassclaw_monty_host' && inputs.full_validation
+        shell: bash
+        run: |
+          oracle_log="$RUNNER_TEMP/model-oracle-result.txt"
+          cargo test -p brassclaw_model_encoding --test model_oracle --locked retained_ornith \
+            -- --ignored --test-threads=1 --nocapture --color never | tee "$oracle_log"
+          python3 -c 'from pathlib import Path; import sys; assert "test result: ok. 4 passed; 0 failed; 0 ignored;" in Path(sys.argv[1]).read_text()' "$oracle_log"
 
   root-reborn-parity-tests:
     name: Reborn root tests (${{ matrix.partition }})

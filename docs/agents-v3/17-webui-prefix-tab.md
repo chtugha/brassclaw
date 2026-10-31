@@ -28,11 +28,16 @@ qualification. Generation and prefill are separate; cached tokens are not promis
 free, permanently resident or reusable without current backend-specific evidence.
 Runtime cutover/remaining acceptance stays open in the implementation index.
 
-The [generation-dialog contract](../reborn/model-token-limits.md#generation-prompts-missing-selection-and-model-use)
-requires OK/Cancel on missing/incompatible selected prefixes and after every
-successful provider/model Use for base generation/regeneration. Use existing durable
-jobs/readiness and preserve selection on Cancel after Use; no silent fallback,
-provider call before readiness or automatic unreviewed activation.
+For construction calls, use the
+[visible construction-selection successor](../reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection).
+It scopes the preceding ordinary role/Base/reviewer rules and the old
+[generation-dialog section](../reborn/model-token-limits.md#generation-prompts-missing-selection-and-model-use)
+for new workflow revisions. The current UI target must show the editable context
+before model work and retain the actual submitted choice, not silently apply a
+runtime preference. Saved Recipe profile selection is separate and has no Generate
+button. Existing native/UI support remains an open owner task; the historical
+walkthrough below is not proof of this successor's uptake. Preserve original Use/
+job identity, explicit readiness and generation-versus-activation boundaries.
 
 ## Binding Recipe architecture (v3)
 

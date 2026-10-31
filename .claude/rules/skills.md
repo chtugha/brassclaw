@@ -97,6 +97,17 @@ defence in depth; the function is idempotent for content with no raw `<skill` ta
 
 ## Validation
 
-- `cargo test -p brassclaw_skills`
-- `cargo test -p brassclaw_skills --all-features` after touching `db_store`
-- `cargo test -p brassclaw_architecture` after dependency or public-API changes
+Follow [the development policy](../../docs/development-policy.md) and
+[testing rules](testing.md), including central Cargo ownership and evidence reuse.
+Select tests/features from the actual affected consumer and `Cargo.toml`:
+
+- Pure logic: focused behavior/regression coverage; reuse adequate existing tests.
+- `db_store`: real PostgreSQL caller coverage with its actual `db-store` feature
+  and relevant failures, plus affected-package linting. Do not substitute an
+  all-feature unit run for database semantics.
+- Dependencies/public APIs: affected consumers and applicable architecture checks.
+- Component/seed content: actual schema, association, behavior and package/integrity
+  checks; development checks do not establish Q1/Q2 or activation.
+
+Report skipped, zero-case or unavailable checks as unverified. Expand to broad
+CI/release acceptance only where its contract or remaining uncertainty requires it.

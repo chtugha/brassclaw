@@ -79,7 +79,7 @@ export function PrefixModelDesigns({ t }) {
     <label className="block text-sm">${t("prefix.activeModel")}
       <select value=${selected} onChange=${event => setSelected(event.target.value)} disabled=${busy} className="block w-full bg-[var(--v2-surface-soft)] p-2">
         <option value="">${t("prefix.selectModel")}</option>
-        ${uniqueTargets.map(item => html`<option key=${key(item)} value=${key(item)}>${item.provider_id} / ${item.model} (${t("prefix.revision")} ${item.provider_revision})</option>`)}
+        ${uniqueTargets.map(item => html`<option key=${key(item)} value=${key(item)}>${item.provider_id} / ${item.model} (${t("prefix.providerConfigurationRevision")} ${item.provider_revision})</option>`)}
       </select>
     </label>
     ${target && html`<${ModelTokenLimits} key=${JSON.stringify([target.provider_id, target.model])} providerId=${target.provider_id} model=${target.model} t=${t} />`}
@@ -93,9 +93,18 @@ export function PrefixModelDesigns({ t }) {
       const open = event.currentTarget.open;
       setOpenSpecifications(previous => { const next = new Set(previous); if (open) next.add(spec.id); else next.delete(spec.id); return next; });
     }}>
-      <summary>${spec.provider_id} / ${spec.model} · ${t("prefix.revision")} ${spec.provider_revision} · ${t("prefix.unknownModelArtifacts")}</summary>
+      <summary>${spec.provider_id} / ${spec.model} · ${t("prefix.providerConfigurationRevision")} ${spec.provider_revision} · ${t("prefix.unknownModelArtifacts")}</summary>
       ${openSpecifications.has(spec.id) && html`<${PrefixModelSetupDraft} key=${spec.id} specification=${spec} t=${t} />`}
-      <pre className="overflow-auto whitespace-pre-wrap">${spec.specification_bytes}</pre>
+      <dl className="space-y-1 break-all">
+        <dt>${t("llm.providerId")}</dt><dd>${spec.provider_id}</dd>
+        <dt>${t("llm.model")}</dt><dd>${spec.model}</dd>
+        <dt>${t("prefix.providerConfigurationRevision")}</dt><dd>${spec.provider_revision}</dd>
+        <dt>${t("prefix.specificationId")}</dt><dd><code>${spec.id}</code></dd>
+      </dl>
+      <details>
+        <summary>${t("prefix.originalSpecification")}</summary>
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all">${spec.specification_bytes}</pre>
+      </details>
       <p>${t("prefix.modelArtifactNotice")}</p>
       <label className="block">${t("prefix.importModelArtifacts")}
         <input type="file" multiple disabled=${busy} onChange=${event => { const files = Array.from(event.target.files || []); event.target.value = ""; importArtifacts(spec, files); }} />
@@ -106,19 +115,40 @@ export function PrefixModelDesigns({ t }) {
       </label>
       ${(catalogue?.pair_proposals || []).filter(proposal => proposal.specification === spec.id).map(proposal => html`<details key=${proposal.id}>
         <summary>${t("prefix.unacceptedPairProposal")} · ${proposal.id}</summary>
-        <pre className="overflow-auto whitespace-pre-wrap">${proposal.proposal_bytes}</pre>
+        <dl className="space-y-1 break-all">
+          <dt>${t("prefix.proposalId")}</dt><dd><code>${proposal.id}</code></dd>
+          <dt>${t("prefix.specificationId")}</dt><dd><code>${proposal.specification}</code></dd>
+        </dl>
+        <details>
+          <summary>${t("prefix.originalProposal")}</summary>
+          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all">${proposal.proposal_bytes}</pre>
+        </details>
         <${PrefixPairCases} key=${proposal.id} specification=${spec.id} proposal=${proposal.id} t=${t} />
       </details>`)}
       ${(catalogue?.artifact_sets || []).filter(set => set.specification === spec.id).map(set => html`<details key=${set.id}>
         <summary>${t("prefix.retainedModelArtifacts")} · ${t("prefix.unknownModelArtifacts")}</summary>
-        <pre className="overflow-auto whitespace-pre-wrap">${set.binding_bytes}</pre>
+        <dl className="space-y-1 break-all">
+          <dt>${t("prefix.artifactSetId")}</dt><dd><code>${set.id}</code></dd>
+          <dt>${t("prefix.specificationId")}</dt><dd><code>${set.specification}</code></dd>
+        </dl>
+        <details>
+          <summary>${t("prefix.originalArtifactBinding")}</summary>
+          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all">${set.binding_bytes}</pre>
+        </details>
         <ul>${set.files.map(file => html`<li key=${file.name}>${file.name} · ${file.bytes} bytes · ${file.sha256}</li>`)}</ul>
         <${PrefixModelConfiguration} specification=${spec.id} artifactSet=${set} t=${t} />
       </details>`)}
     </details>`)}
     ${(catalogue?.proposals || []).map(proposal => html`<details key=${proposal.id} className="text-xs">
       <summary>${proposal.profile} · ${proposal.id} · ${t("prefix.unacceptedProposal")}</summary>
-      <pre className="overflow-auto whitespace-pre-wrap">${proposal.proposal_bytes}</pre>
+      <dl className="space-y-1 break-all">
+        <dt>${t("prefix.proposalId")}</dt><dd><code>${proposal.id}</code></dd>
+        <dt>${t("prefix.specificationId")}</dt><dd><code>${proposal.specification}</code></dd>
+      </dl>
+      <details>
+        <summary>${t("prefix.originalProposal")}</summary>
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all">${proposal.proposal_bytes}</pre>
+      </details>
     </details>`)}
   </section>`;
 }

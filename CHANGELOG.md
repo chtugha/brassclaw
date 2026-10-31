@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Fence Prefix-history file reads, imports, lists and detail responses to their
+  original profile and view. Preserve uncertain import requests for exact retry
+  and keep profile identity stable when labels change.
+- Show retained model-design identities with optional complete original text.
+  Distinguish provider configuration revisions from design approval and retain
+  the existing capture, comparison and generation controls.
+- Extend the closed bootstrap protocol check with evidence/prefill phase cases;
+  these observations do not approve or activate the draft workflow.
+
+- Preserve literal code blocks and their real following sections in shared
+  Prefix source segmentation. Reuse the common parser in Defensive/tomedo while
+  retaining PDF handling, source bytes and unchanged valid card identities.
+- Encode supplementary Unicode special tokens correctly in the shared Prefix
+  renderer and domain compilers, preserving original source and evidence data.
+- Supply the real retained worker, pinned tokenizer assets and independent model
+  oracle to CI encoding tests. Share request-keyed model fixtures between workers
+  in the direct-chat isolation test and check both original request histories.
+- Reject ambiguous Prefix response JSON and enforce the existing answer schema.
+  Verify local prefix text against its evidence generation before compiler calls;
+  exercise the existing Home Assistant static-schema tests without skipping them.
+- Document the visible editable construction-prefix choice through one shared
+  contract and existing plan owners. Retain nine missing declared-root documents
+  as development references without changing selected model-view content.
+- Add reusable B1/B2 protocol draft assembly over existing model/JSON usages and
+  a closed native inspection subject. Production qualification and admission
+  remain separate implementation work.
+- Update development skills and GitHub procedures, archive obsolete Bob skills
+  with their original contents, and remove the retired architecture-video skill.
+
+- Make the lifetime of new task-gate OAuth challenges configurable through the
+  acknowledged settings and EN/DE WebUI. Google and DCR retain the first accepted
+  expiry across concurrent creation, retries and live edits; standalone explicit
+  setup expiry stays independent.
+
 - Preserve the canonical stored identity of the default run profile at the
   claimed Monty handoff, sharing one projection with persistence and host
   validation. Keep exact selected versions and the remaining custody checks.

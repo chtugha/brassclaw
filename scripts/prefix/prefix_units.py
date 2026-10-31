@@ -22,11 +22,17 @@ def source_units_core(text, suffix):
                 if marker not in rst_levels: rst_levels[marker]=len(rst_levels)+1
                 heading=rst_levels[marker]
         else:
-            marker=re.match(r'^\s{0,3}(`{3,}|~{3,})',line)
+            # CommonMark fenced blocks: indentation is at most three spaces;
+            # closing markers have no info string, only optional spaces/tabs.
+            # Examine line endings without normalizing stored source bytes.
+            marker=re.fullmatch(r' {0,3}(`{3,}|~{3,})([^\r\n]*)(?:\r\n|\r|\n)?',line)
             if marker:
-                value=marker.group(1)
-                if fence is None: fence=value
-                elif value[0]==fence[0] and len(value)>=len(fence): fence=None
+                value, rest=marker.group(1), marker.group(2)
+                if fence is None:
+                    if value[0]!='`' or '`' not in rest:
+                        fence=value
+                elif value[0]==fence[0] and len(value)>=len(fence) and not rest.strip(' \t'):
+                    fence=None
                 continue
             match=re.match(r'^(#{1,6})\s+',line) if fence is None else None
             if suffix=='.adoc': match=re.match(r'^(={1,6})\s+',line) if fence is None else None

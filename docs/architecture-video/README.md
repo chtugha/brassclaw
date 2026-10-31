@@ -5,11 +5,9 @@ internals — the five primitives, execution loop, CodeAct, thread state machine
 skills pipeline, tool dispatcher, channels, extensibility traits, and the LLM
 provider decorator chain.
 
-See the project-level render script and Claude skill for end-to-end use:
+See the project-level render script for end-to-end use:
 
 - `scripts/render-architecture-video.sh` — one-command MP4 render
-- `.claude/skills/architecture-video/SKILL.md` — how to update scenes when
-  architecture changes
 
 ## Commands
 

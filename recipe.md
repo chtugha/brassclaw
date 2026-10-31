@@ -993,3 +993,21 @@ selections without this metadata keep their original byte representation.
 Approval/activation, original provider/Auth custody, live Tool policy and final
 complete-request validation remain separate requirements. See the actual
 `recipe_model_input` parser and the Exact plan's open I2 integration gates.
+
+
+## Construction selection successor and ordinary Recipe Prefixless boundary
+
+The [shared construction-selection successor](docs/reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection)
+owns new job context and its visible UI proposal. Its submit-time exact generation
+check is not a version field in a reusable Recipe. The existing Recipe editor's
+qualified successor exposes profile/explicit Prefixless choices and labelled
+Default as supported, with no Recipe Generate button; normal review and task
+capture remain. General Recipe Prefixless needs actual supported declaration/
+reader/native guard/response handling, not an invented bootstrap purpose, null,
+missing metadata or per-step JSON override. The existing strict /1 example above
+and three bootstrap purposes retain their actual meanings and support limits.
+Required construction children use their own captured route/context; the preceding
+ordinary Sempai role sentence is not an implicit override for these future calls.
+Historical jobs and previous acceptance stay exact. Composition owns missing
+mechanics; the Prefix/UI owner consumes them before exposure. No implementation,
+component approval or activation follows from this target clarification.

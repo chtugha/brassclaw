@@ -90,9 +90,15 @@ In addition to the general lenses below, check BrassClaw conventions (see CLAUDE
 
 ### 4d. Test coverage
 
-- Is every new public function/method tested?
-- Are error paths tested (not just happy paths)?
-- Are edge cases covered (empty input, boundary values, concurrent access)?
+- Apply [the development policy](../../docs/development-policy.md) and
+  [testing rules](../rules/testing.md). Reuse evidence only for unchanged
+  applicable inputs; respect central Cargo ownership before any fresh check.
+- Does existing caller-level coverage establish the changed behavior, including
+  relevant failures and boundaries? Identify concrete missing cases instead of
+  demanding a new test per public function or duplicating adequate regressions.
+- Do required backend/security/lifecycle checks exercise actual implementations?
+  Missing environments, skipped/ignored cases and zero selected tests remain
+  unverified; a unit-only pass does not waive integration acceptance.
 - Do existing tests still make sense with the new changes, or do they assert stale behavior?
 - Are there integration/e2e tests for the full flow?
 - If a test is missing, describe exactly what test should be written.

@@ -1,3 +1,490 @@
+## Current — Prefix packet accepted; checkpoint then continue remaining owners
+
+All R1–R7 original runners terminal. R6 original55382 passed connected/default
+strict; R7 original55998 passes13 actual HA cases/zero skips after finalizer caught
+missing flags in earlier R2 (12pass/1skip, NOT real-schema acceptance). Actual ps
+exit observations and independent common-lock acquisition verified. Sourcefreeze
+released, Root retains sole Cargo permanently. No target2/window transfer.
+
+Receipt docs/validation/2026-10-31-prefix-owner-integration.json SHA
+bb58d98f843e511e823f93930e510f0f4261456663a511920ea89d2f1b21a479;
+Markdown companion.10 native product+28static+32architecture+28Node+23Python/0skip,
+5 actual source consumers and BOTH actual protected HTTP/PG/React/Chromium paths
+pass. Actual R2 warning-free compilation246.9s reused. R4global passed408.1s;
+R5actualarchitecture32 passed but first-empty-summary guard stopped; R6 reuse+strict
+94.6s/41.0s. All failed warning/browser/disk/parser/finalizer attempts retained.
+No approval/Free/Serving/full-platform/full-plan grant.
+
+Current Root423 is
+/private/tmp/brassclaw-prefix-owner-integration-20261031/current-root-inputs-prefix-owner.json
+SHAf71583dfc31e285e8b2bb8c281392187c2410121e85f440bfe06c494011df152;
+current-root pointer updated.51 current packet sources incl post-terminal CI
+successor, plus separate03042 doc/archive paths all exact. Worker remains actual
+b6d1101c3b58c9103368097336116ec0b9c9196a1067fc4cfdf1d77d1af05ae6.
+Never restore older workers. Composition cache and then root-package cache only
+cleaned due actual91% guard, needed images first archived/verified. No full clean.
+
+ActualCI successor now canonical/actionlint+whitespace passed; supplies real model
+oracle/originals also for Composition, explicit two-browser callback with correct
+compiled authored_catalogue_tests selector and positive count assertions. Workflow
+is NOT literal/runtime embedded or declared-release member. Actual GitHub still
+pending next reviewed all-ready main checkpoint. No release/bump/tag yet. Commit/
+push current accepted source/docs/archive then continue; goal is very incomplete.
+
+039 exact private precision patch10paths aa2ece03… is ready under
+/private/tmp/brassclaw-exact-revision-wire-trace-20261031/patch-1.42 Node privately
+pass, independent read-only source review found no defect. Root must read full
+patch, verify preconditions, integrate and implement actual max-CAS HTTP/PG/browser
+plus native unchanged Integer result/export proof before next meaningful compile.
+No global DTO Serialize/retained bytes/old Tooldecoder/Eligibility change. A public
+u64::MAX wire test is not a valid PostgreSQL BIGINT store test; use i64::MAX there.
+
+036 SDK-R3 private8997b5a3… /private/tmp/brassclaw-codex-sdk036-r3-d13rox4k read/reviewed,
+NOT integrated/compiled. Header sensitivity and real safe causes, source-only Host,
+immutable per-call auth/guard and existing final request/observer port; missing
+Host must not read File. Do not integrate its guarded-factory break without actual
+host/PG original/session descriptor/instance bridge/rotation/publication/CAS and
+startup/Kohai/Sempai/task/guard/UI consumers. Existing PG refresh journal reused;
+Root private refresh-transaction.patch only extracts existing publication in caller
+transaction. No new journal/schema/authority or Rootmigration number written.
+Metadata-consumer trace73f5961a… shows no false green connection regression:
+Codex discovery is explicitly UnsupportedAdapter; metadata is not AuthStatus.
+Original login any-Codex-active/expiry/file/CAS problems still need real repair.
+
+Private peer followups (no canonical writes/Cargo): Prefix implementer F traces
+actual existing generation checks/evidence vs acceptance readers, no removal/newQ1;
+original Prefix reviewer B traces exact citations/materialize_quotes after031;
+definition peer040 audits one real existing Validator rule gap before code scope.
+No duplicate019/C1/033/037/precision work, no other chats woken. All complete plans,
+public qualification, recovery, final release and fresh testmachine QA remain open.
+
+## Current ACTIVE — Prefix R3 native diagnosis, original53190
+
+R2 original50375 is terminal failed on native-global-embedded/browser waitHeld
+AbortError; compile246.9s/no warnings,28 static cases and9 product/native cases
+already passed and remain valid at their exact sources/images. All original logs
+retained. Actual ps verified50375/52346/52900 exited. Rust/static/worker sources
+are UNCHANGED; only external tests/browser/prefix-generation-history.mjs gained
+safe actual relay/stage diagnostics and a DOM-existence wait before opening an
+initially collapsed model-design view. No API results/effects are fabricated.
+
+R3 now ACTIVE under Screen brassclaw-prefix-owner-r3-20261031, original53190,
+/private/tmp/brassclaw-prefix-owner-integration-20261031/validate-r3.py;
+V /private/tmp/brassclaw-prefix-owner-integration-validation-20261031/run-3.
+Actual8403 inputs FROZEN at its captured successor. Reuses actual verified R2
+Skills/Composition/Static images and canonical workerb6d1101c…; NO recompile for
+browser diagnostics. Current global native case runs; architecture/connected/
+default strict still pending. Only unembedded journals may change; Root retains
+Cargo. Do not restart a runner while original active, no target2/window transfer.
+
+Root private CI successor (ci-prefix-browser-followup.patch in same package)
+adds existing real oracle/original prerequisites for Composition and explicit
+History/Design Chromium invocation using actual compiled selector including
+runtime::tests::authored_catalogue_tests::component_deployment_tests. NOT applied;
+review/validate after native success/freeze release. Never let a wrong selector
+or absent browser callback become green; proposed CI asserts both actual markers.
+
+036 SDK private R2 a7b151d3… reviewed with further removal of obsolete File+
+HostManaged bool requested. Narrow existing Source/immutable request/Guard/
+Observer transport, explicit SingleSubmission, safe actual transport causes and
+sensitive headers; no canonical/API/DB integration yet. Root private preparation
+/private/tmp/brassclaw-codex-host036-root/refresh-transaction.patch extracts the
+existing PG account/action reconciliation within caller transaction; no new
+journal/schema/authority, not integrated/compiled. Actual typed descriptor,
+instance subject and all host consumers remain necessary before036 cutover.
+
+New preexisting Prefix revision precision gap traced privately by Prefix peer:
+plain outer u64 loses precision in browser >2^53; existing Toolpolicy decimal
+codec is private/string-only and must retain that strict behavior. Do not change
+Summary serde blindly: PgPrefixGenerationBackend directly serializes it and
+pinned prefix-generation result_contract REQUIRES integer profile_revision.
+Peer traces all native/retained consumers before Root chooses wire boundary.
+No numeric raw originals/request hashes/package bytes may be rewritten. No
+precision source/API change authorized yet. Full goal/plan/release remain open.
+
+## Current ACTIVE — combined Prefix successor R2, original50375
+
+Screen brassclaw-prefix-owner-r2-20261031; runner validate-r2.py in existing
+/private/tmp/brassclaw-prefix-owner-integration-20261031; evidence directory
+/private/tmp/brassclaw-prefix-owner-integration-validation-20261031/run-2.
+Actual captured source8403 inputs FROZEN; after50 paths SHA502d3848cf2bc17d3b508393de97152c0515a864dde0516f87ac21fce3ef5370.
+Only unembedded journals may change. Compilation completed without warnings246.9s; native checks now ACTIVE.
+Actual91% disk required Composition package-only cache clean after retained
+images and worker were verified; no full clean/target override/worker replacement.
+Workerb6d1101c… reused outside changed normal/build closure.
+
+029/032/033/034/035 plus037/038 integrated after complete bounded patch review.
+037 seven exact source pre/postconditions and patch2ae6de68… verified; five Python
+production files fix non-BMP special-token escapes, two existing tests extend.
+Root adds actual Monty Unicode case within existing renderer test, no new export.
+038 four exact source pre/postconditions and patchafea5aba… verified; existing
+model-design consumer/ENDE and test show only actual outer identities plus complete
+optional escaped originals, no inner JSON reserialization or new status/actions.
+Root extends same native global fixture with actual protected HTTP/React history
+and model-design keyboard/raw-text cases. Native quarantine/store/action outcomes
+remain actual, no mocked API/storage/approval. Static router checks current exact
+History/Tab/ModelDesign bytes and real304 revalidation. Browser cases PENDING.
+
+Actual R2 preflight already passed28 Node cases,13 real HA schema cases,5 evidence
+cases,5 renderer/domain caller methods and5 source-consumer observations. Changed
+037 input graphs are checked afresh, not attributed to earlier whole-source logs.
+Original R1 warning failure and47822 diagnostic remain preserved. New native,
+architecture and strict acceptance pending; no receipt/public activation yet.
+
+036 Root reviewed corrected PG bridge and identified additional SDK concurrency:
+shared inner mutable token plus outer guard cannot be paired with one mutable
+current_ref getter. Need immutable request token/ref through actual final boundary.
+Definition peer traces existing actual Request/Guard ports privately. No036 new
+source/API/schema/migration authorized/written yet. No extra journal/store/queue.
+Root keeps sole Cargo permanently. Commit/push later is a checkpoint, not goal end.
+
+## Current — app update complete; connected Prefix successor preparing
+
+User confirmed app update complete. Root retains sole serial Cargo/build ownership.
+Actual process check: no Cargo/rustc/native diagnosis/worker active. Original47822
+is terminal diagnosis-complete:3 Skills plus closed bootstrap protocol, real Monty
+source-stages and captured-design source cases passed (6 distinct cases). These
+are diagnosis only; original46855 warning failure remains recorded and is not
+accepted or suppressed. No compile was repeated merely for that diagnosis.
+
+034 revision2 (request6fccc294…/patch1fa8b403…) now reviewed/integrated after terminal
+source release; actual canonical19 Node cases/0skipped pass. 035 phase successor
+patcha21d1118… now integrated/formatted, awaiting new native observation. Root adds
+actual React/native HTTP history regression using the existing deployment fixture,
+its real retained packages and protected router. New caller only delays/cuts real
+responses and gates real File.text; no invented API/storage/approval response.
+Existing static-router revalidation case now checks current exact History/Tab
+bytes and304 behavior. These new native/browser checks are NOT yet accepted.
+
+Next serial runner is /private/tmp/brassclaw-prefix-owner-integration-20261031/validate-r2.py;
+currently PREPARING, not running. Current after-r2 manifest41paths d39dbdc1… may
+change only before its actual snapshot. Connected Skills/Composition/Static tests,
+actual browser, architecture and strict checks follow completed source review.
+Disk is actually91%; required package-only cache cleanup may be necessary after
+all retained images and canonical workerb6d1101c… are verified. Never restore an
+older worker. Original run-1 and native-diagnosis-1 logs remain unchanged.
+
+Private037 renderer review found a concrete non-BMP special-token escaping defect;
+Root authorized the shared helper and four connected standalone implementations,
+no other layout/schema/source changes. Await bounded private patch/tests before
+integration; no peer canonical edits/Cargo. Private038 E1 UI overview approved only
+for outer existing DTO identities and optional unchanged originals, EN/DE labels,
+existing tests; no inner reserialization or new status/approval/Serving inference.
+
+036 Codex proposal read. Existing pg_auth_refresh.rs already provides transactional
+original/action/result/reconciliation support; reuse it rather than inventing a
+second PG journal or assuming FS-only. Remaining trusted Instance/Codex bridge
+and provider/role/credential CAS need concrete review. Original access/refresh
+outputs plus one typed nonsecret descriptor, same SecretStore, captured explicit
+issuer/client defaults; no DB file/ENV fallback or weakened generic system-scope
+rejection. Definition peer prepares the narrow existing-owner bridge privately.
+No036 source/API/schema/migration written. Earlier accepted027/028/031 and Root345
+remain authoritative. All complete plans/release/deployment remain open; continue
+after acceptance and any commit/push checkpoint.
+
+## Current — native diagnosis47822 ACTIVE; original build46855 terminal warning
+
+DO NOT restart46855 or start parallel Cargo. Original combined029/032/033 run-1
+compiled actual Skills/Composition images successfully245.7s but FAILED its strict
+warning guard on sole unused serde_json::Value import (lib+test). No native or
+strict acceptance followed; full original compiler logs/diagnostics preserved.
+Root removed that unused import only. Exact reconstruction proves old/current
+file hashes in /private/tmp/brassclaw-prefix-owner-integration-20261031/import-only-correction.json;
+complete captured source drift at that point was EXACTLY that one line/file.
+No weak earlier read-only check is reused as proof. Original46855/46867 both exited
+(actual ps exit1/empty). R1 after32 SHA dd7074c95430fd92e78d86bb4bb142fa6233a7a3c3ad3e2c7514e0047dacc5dd.
+
+To collect real behavior problems BEFORE another expensive build, current original
+native diagnosis runner47822 holds common lock, NO Cargo. Screen
+brassclaw-prefix-native-diagnosis-20261031; script diagnose-native.py in samepackage;
+V /private/tmp/brassclaw-prefix-owner-integration-validation-20261031/native-diagnosis-1.
+All8400 captured inputs including reviewed import-only successor FROZEN until
+47822 terminal. Already3 actual Skills cases+1 real closed bootstrap PG/IBS/pure
+protocol+1 actual Monty source-stages case PASSED; captured-design native case
+currently active. This diagnosis does NOT accept original compiler warning,
+strict, global package, full native pipeline or upcoming035 phases.
+R1 archived images: Skills8d8c8d953245be03355496d39df1e463a1344f5a971c424450ec752836e59461;
+Compositionaa651475681e0a529cd29ff46a1f727b08fa3cf7fd93334d6e6dc2759edfe311,
+both in run-1 beside exact workerb6d1101c… (never restore historicalworker).
+
+034 revision1 was NOT integrated. Root found real passive-Effect commit gap and
+unstable label||name parent identity. Authorized private revision2 is now Ready
+under /private/tmp/brassclaw-prefix-history-fencing-20261031/revision-2:
+4paths (History+Tab and existing tests), explicit useLayoutEffect with no render
+mutation; actual PKname keys,19Nodecases/0skip privately. Full source/diff review,
+canonical checks and actual served React/HTTP regression remain Root work AFTER
+47822 terminal. Preserve revision1 and actual failing comparisons, no RetryMap/
+new API/global persistence. Genuine unmount loses local UI original; do not claim
+durable browser recovery. 035/A2 two cfg-test paths are Ready and fully read,
+NOT applied: actualRootformatted parent ca223fe1…;20 observations of existing
+pure evidence/prefill phases inside same native candidate case. Apply only after
+sourcefreeze terminal and current preconditions. Combined034/035/importfix next
+build avoids separate app compiles; review connected set first. No worker normal
+source changes expected; verify actual closure.
+
+Definitionpeer036 full trace is /private/tmp/brassclaw-codex-publication-trace036-eintu6kv/review.md
+SHA398ae966…: actual Codex WebUI session file/cache written BEFORE stale/expiry/
+provider-role fence, concurrent start and stale refresh mutable-file races, login
+ENV vs DB-only config discrepancy. Existing authorize_device_code is nonpublishing
+and actual native-tested; swapping one call alone is INSUFFICIENT. Root selected
+existing encrypted instance HostCredential/Secret owner+ProviderMutation CAS for
+installed sessions, no DB-file/ENV fallback, explicit standalone legacyboundary.
+Peer now prepares CONCRETE interface/consumer proposal, no novel API/schema/code
+until Root review. Auth generic RefreshOriginal/Action/Prepared/Admission/Completion
+journal exists, BUT its verify/HostOAuth prepare intentionally reject systemscope;
+LlmKeyStore is systemscope. DO NOT remove those guards or forge task/extension
+scope. Need narrow trusted native operator port in existing owner, preserving
+old formats/semantics and real egress/output/reconciliation; no second journal.
+SDK/TokenRefreshingProvider must consume same original stored lineage incl
+rotation; only process-local locks/fileafter-PG are not atomic. NearAI original
+proofs remain unchanged; no cosmeticTTLsettings until custodycorrect.
+
+Other peer setup-draft D audit found NO actual defect: existing spec.id Reactkeys,
+CAS/epoch/operation ownership/manual0/null correct;8 existingNodecasespassed,
+no sourcepatch/newAPI/extra compilation. C template investigation not started.
+C1 typed direct-edge compatibility likewise no concrete defect; no speculative
+public helper. Queue still needs latest warning/diagnosis/revision2 status refresh.
+All actual accepted027/028/031 and baselineRoot345 unchanged;030 docs/archive
+ready. Git main/local/remote033b235bb verified; original CI41178547481 terminal
+failed two repaired028 causes+rollup, containedmacOS/cancelled packages NOTpass.
+Continue full active goal after checks/checkpoint, no release/tag/deploy yet.
+
+## Current ACTIVE — combined029/032/033 native batch, original46855
+
+Screen brassclaw-prefix-owner-integration-20261031; runner
+/private/tmp/brassclaw-prefix-owner-integration-20261031/validate.py; evidence
+/private/tmp/brassclaw-prefix-owner-integration-validation-20261031/run-1.
+32 changed paths/8400 complete captured inputs FROZEN until original46855 terminal.
+Connected Skills/Composition images compiling; actual91% disk guard required
+ONLY Composition package cache clean after every needed executable/worker was
+independently verified archived. Canonical workerb6d1101c… reused; Skills/Composition/
+script/doc changes are outside its normal/build closure. Never restore old worker.
+Only Root Cargo, direct configured target, no window transfer/parallel build.
+
+029:155-line normativeAppend+ten nonexclusive current Doc/owner corrections and
+private peer's two exclusive Prefix/Exact append successors integrated. Three
+v3.5 plan handoffs appended, old protected criteria and packet/goldenbytes intact.
+Actual release inventory/3 adds9 missing declared-root originals development-only;
+all previous270 rows and13 included unchanged. Actual compiled membership now279;
+this archive is not model selection/approval. Changelog updated for all ready docs/
+source packages. Actual current package/native integrity still PENDING this batch.
+032 six actual Rust draft/closed Inspector paths integrated/formatted after full
+APIreview; three Skills+one native PG/IBS/pure protocol case pending. No productive
+Admission/Free/Serving qualification, model dispatch or test-only production API.
+033 common literal fence bug fixed in sharedcore; Defensive/tomedo wrappers reuse
+it preserving suffix/PDF behavior. Five actual canonical EvidenceTests and current
+three-domain caller pass; five actual compiler/control/bundle observations also
+pass in original batch. Two added native Monty LF/CRLF cases, actual captured-design
+and global package consumers/architecture/strict pending. Old bad spans explicitly
+fail NEW unit validation; originals/old bundle reads/selected code pins not rewritten.
+
+034 UI history fencing and035 A2 native phase observations arrived privately AFTER
+freeze began. Review/apply only after original terminal, combine next meaningful
+batch. Paths/pointers in central queue. No duplicate build or old formatted-file
+restore. Definition peer C1 found no concrete direct-edge compatibility defect;
+no speculative relation/helper created. Its next authorized private trace036 is
+actual Codex WebUI session-file effect before attempt fence/expiry, using EXISTING
+nonpublishing authorize_device_code; original/PG/file/rotation boundaries must be
+resolved before interface changes. No cosmetic new TTL that conceals this gap.
+
+027 accepted9b805da5…;028 accepted04b096b0…;031 accepted86c02191… (real HA13/0skip
+plus actual domain caller). Root345 baseline ff06f10c… pointer remains authoritative
+until current batch acceptance.030 all42 skills/docs incl complete Bob archive ready.
+031 upstream lru-dict/PyRIC installer metadata warnings remain visible in exact
+HA-target logs; no filters/overrides, not declared fixed. No HA server/device/model
+calls. Python3.13.18 installed with CA/sqlite brew dependencies; isolated HA runtime
+/private/tmp/brassclaw-ha-schema-20261031/venv has real2026.2.3/ruamel0.19.1/pymodbus3.11.2.
+
+Git local/main/remote remains033b235bb… verified. GitHub original41178547481 now
+TERMINAL FAILURE: actual Docker and containedUbuntu passed, heavy chat+encoding
+failed (locally repaired028), rollup failed, containedmacOS and several packages
+cancelled, NOT passed. No redispatch before next reviewed checkpoint. Preserve
+original logs and do not invent cross-platform/full-plan success. No version/tag/
+release yet. Commit/push all ready changes after actual applicable acceptance;
+continue implementation afterwards. Existing unlimited goal is ACTIVE and very
+incomplete; do not complete/pause/stop at a checkpoint.
+
+## Current — BUILD027/028 accepted;031 offline Prefix hardening integrated
+
+027 receipt9b805da5… (91 native+32architecture/0ignored, strict),028 receipt
+04b096b0… (4 native/5 fixtureCLI/0ignored, strict/actionlint), original runners
+38025/40798 both exited and common lock independently acquired. Root343 manifest
+/private/tmp/brassclaw-ci-followup-20261031/current-root-inputs-ci-followup.json,
+SHAa7821faa1dfd43ee5991cd8115403ee9eba8ce0a462d8ae9d41f36cf53ea5c86.
+Canonical workerb6d1101c… unchanged; never restore historical workers.028 actual
+new GitHub acceptance pending; sourcefreeze ended, Root keeps sole Cargo.
+
+031 two-file existing Prefix validation patch integrated after exact7-source
+preconditions: strict JSON, existing schema-bound enforcement and actual local
+prefix/evidence coherence before provider callback. Package
+/private/tmp/brassclaw-prefix-response-hardening-20261031. Need canonical13-case
+Python suite/actual compiler caller and real existing HA schema case, not skip.
+Python3.13.18 installed via brew (also CA/sqlite dependencies upgraded); isolated
+/private/tmp/brassclaw-ha-schema-20261031/venv installing exact historical target
+HA2026.2.3 + ruamel.yaml0.19.1 + manifest-pinned pymodbus3.11.2 in detached Screen
+brassclaw-ha-schema-deps-20261031; install.log/report preserve actual outcomes.
+No Cargo active. No HA server/device/provider/config changes. Missing dependency
+or visible deprecation must be repaired before calling this acceptance complete.
+
+029 single normative model-token-limits Append155lines integrated, After3e8113cc…;
+old435lines/criteria unchanged. Definition chat privately prepares ownerverifies/
+conditional doc inventory; Prefix peer privately B1/B2 then exclusive planrefs.
+Original Prefix reviewer delivered031 then read-only HA environment inventory.
+No peer canonical writes/Cargo.030 complete reviewed skills/docs+Bobarchive ready.
+Need Changelog, package-current doc acceptance as applicable and next all-ready
+commit/pushmain, then continue every open owner gate; no release/tag yet.
+
+## Current — BUILD027 accepted; BUILD028 integrated, validation preparing
+
+App update confirmed complete by user. Original027 run4/38025 terminal passed;
+actual ps observation confirms exit, common lock independently acquired. Receipt
+9b805da5a6200aa3972c7d9ead7c50bdc900ba4e9d20990994b048132b4a8c13;
+91 distinct native+32architecture/0ignored, connected/default strict passed.
+Root339 SHA9bb1d84e7d377abc03a62953bd11f5fda9a8f9fbf71bf021e7a84975d8bfc5cc
+at /private/tmp/brassclaw-gate-oauth-lifetimes-20261031/current-root-inputs-gate-oauth-lifetimes.json.
+Current canonical fresh workerb6d1101c… MUST NOT be replaced with historical worker.
+Sourcefreeze released, Root retains sole serial Cargo ownership.
+
+BUILD028 five actual precondition-checked source files integrated from existing
+private package. Required encoding/direct-user native consumer and affected lint,
+workflow and helper CLI checks are next; no acceptance yet. Actual033 Docker
+passed; heavy/encoding failures remain historical. No release/tag/full-plan claim.
+
+Authorized existing chats privately prepare bounded, disjoint work: definition
+chat model-token-limits normative successor/inventory (029); Prefix implementer
+B1/B2 existing Recipe/protocol package; original Prefix reviewer concrete existing
+citation/config validator defect slice. No canonical writes/Cargo/queuewriters.
+Root reviews current preconditions and integrates actual complete contracts;
+protected old002/023 criteria/bytes remain unchanged.030 scoped skills/docs and
+complete Bob archive remain ready for next shared checkpoint. No target2/build
+ownership handoff. Continue remaining implementation after acceptance/checkpoint.
+
+## BUILD027 run4 ACTIVE — original38025; do not recompile unchanged source
+
+Screen brassclaw-gate-oauth-lifetimes-r4-20261031, runner validate-r4.py in the
+existing027 package. Exact R3 test image and R1 fresh workerb6d1101c… now packaged
+together in run4 under actual installed_worker() sibling name. R3 initialization
+failure was missing sibling packaging, not a new source/VM issue; current source
+and actual canonical worker independently verified. No environment or Rust-loop
+fallback added, no Cargo build rerun. R4 corrected new lifetime case PASSED, plus
+all Google-gate/factory/nativePG/nativeFS/nativeHTTP regressions; real resource
+browser currently active. Global embedded/base/Sempai/architecture/strict pending.
+R1 compilation/36settings/36DCR successes reused, all original failures retained.
+Full captured inputs remain frozen until original38025 terminal. Only Root Cargo.
+
+Authorized skills-chat final delivery received (chat01a190c1… archives itself).
+Root reviewed all42 doc paths, actual mirror identity, four safe-parsed metadata
+and all11 archived Bob hashes. Corrected active DB rule to count untracked/reserved
+migration V196, not only git ls-files. BUILD030 scoped documentation accepted;
+/private/tmp/brassclaw-skills-root-integration-20261031/current-inputs.json pins
+actual final files/deletions, review.md records limits. No captured/release input
+changed (full guard checked), no Cargo/site/video acceptance. Complete archive
+must be checkpointed with deletions; older add-tool/trace architectural migration
+is explicitly still K4/current-guide consumer work. Changelog entry waits until
+027freeze closes. No old source/staging projection may overwrite these files.
+
+BUILD028 remains private/proposed: fixed real actionlint SC2129 by grouped env
+writes, not suppression; helper offline check verified exact existing assets.
+Private after hashes need refresh after latest model-ID path hardening. No
+canonical CI/test/fixture-helper writes yet. Source constructor diagnosis and
+actual dual-worker/encoding verification still required after027. GitHub033
+Docker passed; entire41178547481 may still run contained macOS, observe original
+rather than redispatch. No full CI, release/tag or completed-plan claim.
+
+## BUILD027 successor ACTIVE — original37594, run3
+
+Screen brassclaw-gate-oauth-lifetimes-r3-20261031; runner
+/private/tmp/brassclaw-gate-oauth-lifetimes-20261031/validate-r3.py;
+evidence /private/tmp/brassclaw-gate-oauth-lifetimes-validation-20261031/run-3.
+R1 compiled worker5.4s/Composition259.1s,36 settings+36 DCR passed. Its new case
+failed only by wrongly expecting an error instead of genuine Expired metadata.
+Read actual PG preparation/provider cleanup through retirement; corrected only
+that new test function to assert exact Expired/error/first expiry/no URL/credential/
+HTTP and original Auth record. Handle legitimate first-attempt expiry metadata,
+including private preparation already retired. All production inputs unchanged.
+After-r2.json and reused-case-applicability.json pin this exact correction; old
+R1 test source and36 parsed DCR successes retained. R2 stopped before Cargo on
+incorrect null-file hashing; historical missing model_host.rs now compares None
+exactly as standard snapshot, all missing actual inputs remain errors. Original
+R1/R2 runners exited. R3 rebuilds only necessary test image, runs corrected case
+and pending Google/factory/nativePG/FS/HTTP/resource-browser/global/strict. Does
+NOT rebuild unchanged fresh worker or rerun applicable36+36 original successes.
+Captured inputs frozen until original R3 terminal; Root sole Cargo.
+
+CI033/GitHub41178547481 actual Docker build PASSED; other actual failures heavy
+DirectChat and Monty encoding prerequisites remain. Private028 proposal under
+/private/tmp/brassclaw-ci-followup-20261031/proposed has5 files, NOT integrated.
+Read reasoning.md: keep mandatory encoding test, prepare real exact6 immutable
+Ornith files/existing HF oracle/CPUdeps and real worker env. HTTP API/tree verified
+existing30,088,429 bytes against commit3a8b7f60…, no asset redownload. CPUtorch2.15
+cp312 Linux/Windows wheels verified official index. Direct-user test has two live
+unscoped workers but separate one-answer replay queues; private proposal shares
+existing request-keyed replay fixture and strengthens actual request isolation.
+Need focused actual caller verification before claiming cause solved. No new
+production fallback, trusted evidence bypass or test removal. Apply only AFTER027.
+
+BUILD029 adopted plan-only: Prefixless_redefine_at_K3.md599lines/SHA398a0081…,
+original597/65a4363d archived under /private/tmp/brassclaw-prefixless-root-adoption-20261031.
+All19 peer Sourcepreconditions checked; only two future matrix cases added, file
+outside active build inputs. Authorized peers informed. Normative successor and
+actual vertical implementation remain after027/necessary028, no old002/023/I1I2
+criteria rewritten. More details/privatepeerreview pointer below. Not committed.
+
+## BUILD027 ACTIVE — preserve original33686 and complete captured inputs
+
+Screen brassclaw-gate-oauth-lifetimes-20261031; runner
+/private/tmp/brassclaw-gate-oauth-lifetimes-20261031/validate.py;
+evidence /private/tmp/brassclaw-gate-oauth-lifetimes-validation-20261031/run-1.
+22 reviewed paths/afterSHAde4f1d8a1f13fbe732ddf99492ed61b4e9eca195150170807d72605d8dd2452a.
+Format/whitespace/browser syntax passed, fresh actual worker build5.4s passed;
+Composition image currently compiling. Source/dependencies frozen until terminal;
+only Root Cargo. Keep original progress/lock/process observations, no replacement.
+New u32 fieldV196 and explicit private deadline migration were implemented and
+reviewed together before compilation. Actual native/PG/FS/UI/global/strict remain
+pending. Prior root336/be0f is historical; NEVER restore old canonical worker.
+
+Separate GitHub033 run41178547481 still in progress/queued, actual heavy direct
+chat/encoding prerequisite failures retained in logs below; Docker outcome pending.
+No code repair for those failures has been applied yet. Investigate privately
+while source frozen, then repair before another checkpoint/ordinary plan advance.
+New Prefixless review recommended by authorized doc peer, but Root adoption still
+pending actual README/2-line patch/source-precondition review and Prefixownercoord.
+Foreign video-skill deletions/README edits are outside ALL captured/release inputs,
+not Root changes; left untouched. No new release/tag or complete plan claim.
+
+## Current — main033b235bb pushed; BUILD027 source work, compile not started
+
+main/origin/remote033b235bb25de80d7761dd1ef78d301d8efb5c28 verified after accepted
+025/026 checkpoint. Exactly one full GitHub41178547481 dispatched, includesDocker.
+Do not redispatch because run listing is eventually consistent. Original690 run
+remains terminal failed. New033 run has actual failures heavy direct-chat Bob
+custody (driver_protocol_violation) and package Monty encoding test missing its
+required retained-worker environment; read logs /private/tmp/brassclaw-ci-41178547481-{heavy,monty-host}.log.
+Other actual outcomes/remaining Docker still must be observed. No release/tag.
+
+BUILD027 connected source currently WIP, not compiled/accepted:
+/private/tmp/brassclaw-gate-oauth-lifetimes-20261031,22 paths/before.json/reasoning.md.
+New acknowledged positive-u32 turn_gate_oauth_setup_ttl_secs600, V196 (only new
+migration reserved), live projection/UI/ENDE. Shared private OAuthSetupDeadline
+in existing provider owner replaces Google-only enum and DCR timing-only exact
+candidates. GateDefault requires TurnGateResume; existing originals recovered
+before new settings; explicit standalone/native/browser expiry remains exact.
+New native PG concurrency/first expiry/live decrease/unbound/max/expired cases and
+migration/default preservation test added. Initial source review caught invalid
+empty Google scopes before compilation and fixed to supported calendar scope.
+Root sole Cargo, no local batch active; finish source review/actual CI diagnosis
+before one serial Screen validation; fresh worker required because HostApi changed.
+
+Doc peer now received direct HUMAN request to review/adopt Prefixless_redefine_at_K3.md
+through Root. Reviewed stable597lines SHA65a4363d…; recommended after027, no own
+canonical edits. Review pointer /private/tmp/brassclaw-prefixless-source-review-current.txt.
+Read actual README/preconditions and optional2-line hardening patch before Root
+adoption; no old025/026/002/023/I1I2 criteria/bytes rewritten. New model-token-limits
+successor and actual connected Prefix/Composition/UI/Validator implementation stay
+open; coordinate Prefix owner's exclusive plans. Earlier foreign/unready status
+below is superseded by this direct user-backed review request. File stays untouched
+until that bounded adoption review. Root retains permanent integration/Cargo.
+
 ## BUILD026 locally accepted — GitHub Docker acceptance remains pending
 
 Both original serial runners30734 and31683 exited; the common Cargo lock was

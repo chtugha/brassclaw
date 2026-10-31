@@ -7,6 +7,10 @@ argument-hint: "<issue-number or github-issue-url>"
 
 # Fix GitHub Issue
 
+Read root `AGENTS.md`, [the development policy](../../docs/development-policy.md)
+and the affected subsystem guides. Apply [testing rules](../rules/testing.md)
+when selecting evidence and respect the designated central Cargo owner.
+
 ## Step 1: Resolve the issue
 
 Parse `$ARGUMENTS` to extract the issue number:
@@ -51,17 +55,17 @@ Before planning, gather context:
 3. **Check existing tests** - Find tests related to the affected code. Understand what's already covered.
 4. **Check for prior art** - Look for similar patterns in the codebase that solve analogous problems. Prefer consistency with existing patterns.
 
-## Step 5: Enter planning mode
+## Step 5: Plan the bounded fix
 
-Enter planning mode to design the implementation. The plan MUST cover:
+Scale the implementation plan to the change. Cover:
 
 1. **Root cause** (for bugs) or **design approach** (for features)
 2. **Files to modify** with specific descriptions of what changes in each
 3. **New files** (if any) with justification for why they're needed
-4. **Tests to add** - every code path introduced or changed needs a test:
-   - Happy path (expected input produces expected output)
-   - Error paths (invalid input, missing data, permission denied)
-   - Edge cases (empty collections, boundary values, concurrent access)
+4. **Required evidence** - affected behavior, relevant failure/boundary cases,
+   still-applicable existing coverage and checks needed for remaining uncertainty.
+   Add focused caller-level regressions only where existing tests do not establish
+   the claim; do not require a separate test for every changed function/path.
 5. **BrassClaw-specific concerns**:
    - All persistence uses PostgreSQL only — no libSQL/dual-backend; new store methods go into the `Pg*` type in the relevant crate
    - No `.unwrap()` or `.expect()` in production code
@@ -71,21 +75,28 @@ Enter planning mode to design the implementation. The plan MUST cover:
 
 Follow the project's CLAUDE.md guidance for architecture decisions.
 
-Wait for user approval before implementing.
+Proceed within the user's existing authorization. Ask only when an unresolved
+requirement or action needs their input; do not add a mandatory planning-mode or
+approval round to an already authorized fix. Component activation gates remain.
 
 ## Step 6: Implement
 
-After the plan is approved:
+For the authorized bounded fix:
 
 1. Implement each change from the plan.
-2. Write all planned tests.
-3. Run BrassClaw's full quality gate:
-   - `cargo fmt`
-   - `cargo clippy --all --benches --tests --examples --all-features` (zero warnings)
-   - `cargo test --lib` (all tests pass)
-4. If any check fails, fix it before proceeding.
-
-Note: Integration tests (`--features integration`) require PostgreSQL. Only `--lib` test failures are blocking for local work.
+2. Complete necessary regression coverage and review the connected diff before
+   executable checks.
+3. Select the smallest sufficient batch under the development policy. Rust
+   behavior needs caller-level regression evidence and relevant affected-package
+   linting. Database, migration, security and lifecycle claims need their actual
+   backend/production caller and relevant failures. Ordinary prose needs links/
+   consistency review and `git diff --check`, not Cargo. Preserve component/seed
+   packaging, integrity, behavior and approval requirements when affected.
+4. Reuse valid evidence; route Cargo requests to the designated owner without
+   starting an independent build or changing its source freeze/target. Diagnose
+   and fix causes before repeating failed/invalidated checks. Stop after required
+   checks pass; record skipped/zero-case/unavailable checks as unverified. Required
+   PostgreSQL acceptance is not waived when the database is unavailable.
 
 ## Step 7: Commit and summarize
 

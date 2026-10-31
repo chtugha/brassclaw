@@ -53,15 +53,27 @@ Open `crates/brassclaw_host_runtime/src/first_party.rs` and add the new handler 
 
 ### A3: Add tests
 
-Add a `#[cfg(test)] mod tests {}` block at the bottom of the handler file. Use `InvocationServices::for_testing()` or equivalent to construct a test context.
+Inspect existing production callers and test constructors before choosing a test
+context; do not assume a `for_testing()` API exists. Reuse adequate existing
+caller regressions; otherwise add focused coverage through actual dispatch for
+the declared operation, applicable invalid inputs, denials and effect/failure
+handling. Helper-only success does not establish registration or kernel policy.
 
 ### A4: Quality gate
 
-```bash
-cargo fmt -p brassclaw_host_runtime
-cargo clippy -p brassclaw_host_runtime --all-targets -- -D warnings
-cargo test -p brassclaw_host_runtime
-```
+Follow [the development policy](../../docs/development-policy.md) and
+[testing rules](../rules/testing.md). Review the connected handler/registration/
+binding/caller diff, then choose actual targets/features and affected-package
+linting for the changed behavior. Real backend/security/lifecycle claims need
+the actual production path and relevant failures. Component/seed changes retain
+their behavior, package/integrity, qualification and activation requirements;
+a successful compile or metadata row is insufficient.
+
+Respect central Cargo ownership, source freezes and the configured canonical
+target. Reuse still-applicable evidence rather than stacking equivalent builds.
+Report skipped/zero-case/unavailable checks as unverified; fix causes before
+repeating failed/invalidated checks and stop when required checks pass. Ordinary
+prose needs links/consistency review and `git diff --check`, not Cargo.
 
 ---
 
@@ -87,7 +99,11 @@ MCP servers are registered via the user-facing MCP configuration in the Reborn s
 
 ### B4: Test
 
-Run the MCP server locally and verify tool discovery and invocation via the MCP inspector or by wiring it into a local dev instance.
+Verify discovery and invocation through the actual supported BrassClaw consumer,
+including relevant transport/error/cleanup cases; an inspector-only test does not
+prove product attachment. Reuse applicable evidence and choose the smallest
+sufficient real check under the same policy. Read `LOCAL_TEST_ENV.md` when present
+before remote tests/provider setup. Report an unavailable path as unverified.
 
 ---
 
@@ -97,7 +113,7 @@ Before finishing, verify:
 - [ ] Tool type chosen (first-party or MCP) and confirmed with user
 - [ ] For first-party: handler file created with request/response structs
 - [ ] For first-party: registered in `first_party.rs` dispatch + schema list
-- [ ] For first-party: unit tests added
+- [ ] For first-party: meaningful dispatch/caller regression evidence established
 - [ ] For MCP: server implements `tools/list` and `tools/call` correctly
-- [ ] `cargo fmt` clean
-- [ ] `cargo clippy -p brassclaw_host_runtime -- -D warnings` clean (for first-party)
+- [ ] Required behavior, affected-package linting and applicable backend/security/lifecycle checks completed
+- [ ] Reused evidence and any unverified checks reported with their actual scope

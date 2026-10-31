@@ -417,3 +417,22 @@ This artifact records source-grounded design and coverage, not performed runtime
 Planning-session checks on 2026-10-17: all thirty stable work IDs are present in this artifact; all cited existing file paths resolve and use the required prefix; no implementation checkboxes or competing checklist file were created; direct whitespace validation, `git diff --check` and the new-file diff whitespace check passed. Zenflow contains thirty added Pending milestones after delivery review; auto-start was explicitly set false and default executor selection was left untouched. Only this roadmap and structured plan were changed by this planning session; the earlier requirements-stage ignore-file update and all pre-existing runtime edits remain separate. No Cargo, database, provider, remote or runtime acceptance was run.
 
 Delivery review on 2026-10-17 verified audit/proposal coverage, all thirty Pending structured milestones and the eight unchanged source drift keys. It clarified empty-literal semantics, component-slice versus full-flow acceptance, qualification versus future-only delivery cutover, and the latest closed compiler installation receipt. See `./.zenflow/tasks/strictly-follow-the-following-wo-6326/report.md` for checks, exact review changes and limitations. No future implementation was started; both absorbed source plans remain not-yet-obsolete.
+
+
+## Open construction-choice handoff
+
+For new qualified construction workflows, consume the single
+[visible construction-selection contract](docs/reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection).
+The earlier K3-2 clauses requiring prefix-free construction children/reviews or
+placing every Maker connection exclusively in v3.5 retain their original old-job
+scope. The new consumer binds its actual submitted context before effects, with
+its own executing route and retained lineage. Ordinary independent Sempai and
+provider-connection contracts stay unchanged.
+
+Composition owns the actual declaration/capture/request/response/guard delta;
+Prefix owns qualified options, forms and original job identity. These plans reuse
+those implementations and their connected acceptance. They add no resolver,
+provider catalogue, queue, approval or invocation mode. Reader and workflow
+qualification must precede exposure; current missing native/Free/UI support stays
+explicitly open. Protected packets, old criteria and retained selections remain
+unchanged. This handoff is a target reference, not implementation or deployment.

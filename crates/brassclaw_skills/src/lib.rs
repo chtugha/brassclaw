@@ -56,6 +56,7 @@ pub mod completed_turn_review_components;
 /// Pure validator rule aggregation; full class review and approval are separate.
 pub mod validator_components;
 
+pub mod bootstrap_answer_workflow;
 /// Packaged typed reply/history drafts and exact source-integrity comparison.
 /// Existing Tool artifacts, behavioral review, approval and activation are separate.
 pub mod global_bootstrap_components;

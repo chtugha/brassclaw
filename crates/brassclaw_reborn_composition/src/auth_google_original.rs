@@ -68,7 +68,7 @@ impl RebornProductAuthServices {
     ) -> Result<AuthFlowRecord, AuthProductError> {
         if !matches!(
             request.deadline,
-            crate::oauth_gate::GoogleSetupDeadline::Exact(_)
+            crate::oauth_provider_client::OAuthSetupDeadline::Exact(_)
         ) || request.continuation != AuthContinuationRef::SetupOnly
         {
             return Err(AuthProductError::BackendConflict);

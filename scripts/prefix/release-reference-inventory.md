@@ -13,8 +13,11 @@ includes the packaged Prefix-Maker/Sempai authoring references, the core design
 record and this inventory/procedure. Inventory revision 2 adds 69 archived Sempai
 source candidates: the complete 61-file upstream Monty v1.0.0 package and its
 manifest, compatibility/teaching source and receipt files, and observed legacy
-reviewer/validation/transport references. There are now 270 originals; the 13
-selected reference rows are unchanged. All additions are `development-only` until
+reviewer/validation/transport references, bringing that revision to 270 originals.
+Revision 3 retains nine subsequently added or omitted documents from the declared
+roots, including the current model-limit/construction contract and Prefixless
+plan. There are now 279 originals; the 13 selected reference rows are unchanged.
+All additions are `development-only` until
 profile-specific source/compatibility review. Their presence does not enable
 Sempai generation or approve the existing worked-example receipt. Each path is a logical release path. Original
 bytes and calculated hashes belong to the package produced from a frozen source
@@ -44,6 +47,12 @@ frozen source tree with the catalogue export from that same tested release. A
 successful package build proves integrity and coverage of the declared inventory,
 not content quality, target capacity, cache reuse or serving readiness. Preserve
 the source package and failed builds when complete mandatory content cannot fit.
+
+Links do not add package members. Revision 3 explicitly embeds the new originals
+and retains their exact bytes and dispositions through the existing source owner.
+Historical inventories, retained packages and active task selections are not
+rewritten. Archiving a new target document does not select it into a model view
+or qualify the described construction workflow.
 
 The installation source owner verifies every declared upstream package file's
 original hash, canonical relative path, pinned commit URL and complete membership

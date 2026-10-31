@@ -5595,3 +5595,74 @@ implementation. Original sections are read references; no code activation is cla
 - Qualify new pure exports independently as required, and seed approved installation
   successors noncircularly. Old bodies, symbolic examples and exact historical
   receipts are unchanged; source-only component retention does not activate them.
+
+
+## Open Prefixless construction successor — existing owner contribution
+
+**Open future work, not implemented.** Consume the one
+[construction-selection contract](../reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection)
+from the adopted [Prefixless plan](../../Prefixless_redefine_at_K3.md).
+This contribution begins after the actually current bounded owner packet and
+Root027/necessary028 repair integration, not after completion of all older plans.
+Earlier accepted/running steps and protected002/023/I1I2 criteria are unchanged.
+Contradictory earlier construction-only requirements are scoped below for the
+new qualified workflow revision; original jobs/records keep their old contract.
+The shared contract remains normative; this section only assigns implementation.
+
+### Sole native selection/capture/request implementation delta
+
+Input from Prefix owner: the actual submitted construction choice and displayed
+revision, its qualified namespace/pair/purpose context and original job. Do not
+invent its transport fields here; inspect all existing producers/readers first.
+The Composition master owns the consuming Recipes; Simplified supplies only a
+missing shared lifecycle primitive when required. The steps below are one
+connected change of the existing model-usage path, not parallel services.
+
+1. Trace `RecipeModelInput::{Default,Selected,PrefixFreeWorkflow}`,
+   `retained_binding`, `TaskPrefixSource::resolve`, `TaskSelection::capture`,
+   `PgPrefixAcceptances::bindings/resolve` and actual job admission. Preserve
+   profile-level Recipe choice and /1 strict meanings. Only explicitly needed
+   compatible successor contracts may add submitted-revision/ordinary-Prefixless
+   support; never assume currently unsupported tags are accepted.
+2. Make original provider/prefix capture coherent through existing transactions
+   or checked revisions. Validate the displayed selected generation before the
+   first effect; retain actual qualification/namespace/route/instructions/job
+   identity. Do not reuse a Free-only capture record as prefixed context. Use
+   actual family/occurrence lineage for child capture, with foreign-child denial.
+3. Connect `original_prefix`, `preflight_compatibility`, final request preparation,
+   existing `WorkflowFinalEncodingSelection` and `pg_monty_model_response` so
+   all qualified branches share the real native guard/effect/response custody.
+   The historical response writer is present-prefix only: keep its /1 meaning;
+   new evidence needs the existing owner's deliberate supported successor.
+   A parser, capture record or measured string supplies no dispatch authority.
+4. Inspect `Prepared.roles`: reuse route-only clients safely, while request/
+   purpose/candidate-sensitive guard state must bind the actual invocation. Do
+   not create a second provider client merely to avoid tracing existing custody.
+   Selected artifacts are inserted once, fixed instruction roles remain exact,
+   actual full request and original output setting are checked before SDK handoff.
+5. Carry pins through actual restore/private review/child/response readers and
+   existing job retry/retention consumers. UI/facade stays Prefix owner's vertical;
+   this owner exposes only its agreed mechanical result/readiness through the
+   existing service boundaries. No unconditional fallback or approval widening.
+
+Output to Composition family and Prefix activation gates: qualified connected
+native readers/writers and real provider-bound requests for the three supported
+branches. Reader support precedes new writer/seed/variant exposure. Existing
+native PG/SDK tests must observe exact prefix-or-absence, raw fixed sources and
+instructions, stale/conflicting capture, changed targets between reads, foreign
+child, same-role different purposes/guards, hard-limit rejection with budgets
+disabled, original output settings, correlated response and no replay. Unsupported
+branch remains an explicit readiness error; removing a rejection alone is no pass.
+
+Scope of preceding construction instructions: “Open K3-2” future-consumer clauses
+requiring inherited prefix-free construction/review, no accepted-prefix lookup
+throughout the whole workflow or a Maker connection only in v3.5 remain original
+historical/old-profile references. They do not govern the new revision's submitted
+context. Ordinary independent role/Recipe defaults and reviewer contracts remain.
+No old completed step, test, B1/B2 packet, Golden or acceptance result is edited.
+
+Local supersession reference: the preceding **Open K3-2 follow-up from K4 — Configuration discovery and design bootstrap implementations**,
+characteristic sentence “Required child/review usage inherits the workflow's prefix-free selection”, describes the earlier
+construction contract. For the new qualified revision, use the shared successor's
+captured submitted context and own-route child/review rules; no automatic runtime
+preference and no edits to that earlier section's original criteria.

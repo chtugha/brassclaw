@@ -1,0 +1,158 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-031",
+  "status": "passed-local-static-only",
+  "sources": {
+    "scripts/prefix/prefix_response_validation.py": "ca9e7fe8de3dc39093152bd426b229431756cc00f62a98b09c697da4566b703d",
+    "scripts/prefix/test_prefix_response_validation.py": "4cd6836659c1c249048eeb72081e276c45e2b31a1a5365fa115cadbb2d0eff52"
+  },
+  "unchanged_dependencies": {
+    "scripts/prefix/check_homeassistant_configuration.py": "66a38b45543bae12c09701d07412bbbfd2d6c558e0269b6edd9d475d3c6b3145",
+    "scripts/prefix/Homeassistant-compiler.py": "40fa1af988a835801acb604991f1d22b6daf62766bb2e0ac5c04a5f6d474a667",
+    "scripts/prefix/Defensive-compiler.py": "7c6436c043c50f5f05b49b2827ff978a9144502552d433113dc3868d673ffc23",
+    "scripts/prefix/tomedo-compiler.py": "f916f44f357dd4fc7181fe2161a8e6086c97e6698691c00aa1d3a80b28798c22",
+    "scripts/prefix/sempai-compiler.py": "6275230517d01ffd76a6cc3cf4c9fd4982479b9c0857ab453bfa1b4315985f7f"
+  },
+  "supplemental_unchanged_imports": {
+    "scripts/prefix/prefix_units.py": "3b55f0109b0f3155970ca026f019aff76d389d50f5d7c75b95551e6754b914d8",
+    "scripts/prefix/prefix_template.py": "b2e60d6f34076ac6d972382eaadbe6181e9a39f1970dee432ea358510f6ae46f"
+  },
+  "supplemental_scope": "Two unchanged nested imports additionally checked against Git index and pre-run timestamps at terminal, not falsely attributed to original source guard.",
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-prefix-response-validation-20261031/run-1",
+      "progress_sha256": "eb9676a50394cc90b4cb71a65d03b821bf73f3dd892ef2aa53b3138c5646c9d1",
+      "source_sha256": "679d825f96315228567414a8b760a9a9e90cc4e60a30f37c3e6b12b39d9816df",
+      "runner_sha256": "ab6485fe037d5c8333e561465cbb2f6168339a7e80acce3930d8203c2ac118a4",
+      "results": [
+        {
+          "stage": "dependency-integrity",
+          "exit_code": 0,
+          "seconds": 0.13853074982762337,
+          "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+        },
+        {
+          "stage": "canonical-response-validation",
+          "exit_code": 0,
+          "seconds": 7.6540630829986185,
+          "log_sha256": "2c4d9d0ca92f3aa8ca1c994d5615acc2b5e0ef6c3571c943a48e334bd85e79e3",
+          "passed": 13
+        },
+        {
+          "stage": "actual-compiler-citation-callers",
+          "exit_code": 1,
+          "seconds": 0.20687524997629225,
+          "log_sha256": "1644582541e3ad3b12930da11fff65c3eeb7f0c907bbfd3bff3ad44f535b4da8"
+        }
+      ],
+      "status": "failed",
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-prefix-response-hardening-20261031/validate-canonical.py\", line 42, in <module>\n    output=run('actual-compiler-citation-callers',[python,'-B','scripts/prefix/test_prefix_compiler_citations.py','-v'])\n  File \"/private/tmp/brassclaw-prefix-response-hardening-20261031/validate-canonical.py\", line 26, in run\n    assert code==0,(stage,code)\n           ^^^^^^^\nAssertionError: ('actual-compiler-citation-callers', 1)\n"
+    },
+    "run-2": {
+      "path": "/private/tmp/brassclaw-prefix-response-validation-20261031/run-2",
+      "progress_sha256": "06d410c5cf5107eea57578457b4c354fb3f1f570741e4450d8fd1f220441b5f5",
+      "source_sha256": "ea31a32b05dda3bfefe6db0a813d62c292408e146836ddcf7a3d54067ab02bae",
+      "runner_sha256": "844bea17f9373c833cc04db0077b897295fb6c301655afb9808ce4d54efc551a",
+      "results": [
+        {
+          "stage": "dependency-integrity",
+          "exit_code": 0,
+          "seconds": 0.1403974168933928,
+          "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+        },
+        {
+          "stage": "actual-compiler-citation-callers",
+          "exit_code": 0,
+          "seconds": 2.8959460000041872,
+          "log_sha256": "4155b815626f9b39ba426a7395a26405d876b3a55e262b3b97dd8ef8453d0f26",
+          "passed": 1
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.024503666907548904,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "status": "passed",
+      "diagnostic": null
+    }
+  },
+  "reused_response_validation": {
+    "path": "/private/tmp/brassclaw-prefix-response-validation-20261031/run-1",
+    "result": {
+      "stage": "canonical-response-validation",
+      "exit_code": 0,
+      "seconds": 7.6540630829986185,
+      "log_sha256": "2c4d9d0ca92f3aa8ca1c994d5615acc2b5e0ef6c3571c943a48e334bd85e79e3",
+      "passed": 13
+    },
+    "source_sha256": "679d825f96315228567414a8b760a9a9e90cc4e60a30f37c3e6b12b39d9816df",
+    "runtime_lock_sha256": "eb897411e847fefa083651c9bd6388d7c75ca0fdb387c9d51b6f7f635b7ff292",
+    "reason": "Exact unchanged13-case canonical source and isolated HA runtime; only compiler importer interpreter changes."
+  },
+  "runtime": {
+    "python": "/private/tmp/brassclaw-ha-schema-20261031/venv/bin/python",
+    "python_version": "Python 3.13.18",
+    "install_report": "/private/tmp/brassclaw-ha-schema-20261031/install-report.json",
+    "install_log": "/private/tmp/brassclaw-ha-schema-20261031/install.log",
+    "install_report_sha256": "498f0094f7c51b07ef15cf41cceba17cb31343294bf2f1e83de92a89be6149dc",
+    "install_log_sha256": "7b48659c6cad50e8f21725814c8cb083ae451d534822004b095b1e5d470de0bb",
+    "lock": "/private/tmp/brassclaw-prefix-response-validation-20261031/run-2/runtime.lock.txt",
+    "lock_sha256": "eb897411e847fefa083651c9bd6388d7c75ca0fdb387c9d51b6f7f635b7ff292"
+  },
+  "compiler_runtime": {
+    "executable": "/opt/homebrew/opt/python@3.14/bin/python3.14",
+    "version": "Python 3.14.6",
+    "package_metadata": {
+      "openai": "2.33.0",
+      "transformers": "5.1.0",
+      "httpx": "0.28.1"
+    },
+    "scope": "Imports actual standalone compilers and literal helper; no provider request, model tokenization or model configuration load"
+  },
+  "counts": {
+    "canonical_response_and_real_ha_schema_cases": 13,
+    "actual_compiler_caller_cases": 1,
+    "compiler_subcases": 3,
+    "skipped": 0
+  },
+  "reviewed_root": {
+    "path": "/private/tmp/brassclaw-prefix-response-hardening-20261031/current-root-inputs-prefix-response.json",
+    "sha256": "ff06f10c4a66910f24634cb843378bebd24d5bf7510f5c714e155abafcccb2fe",
+    "paths": 345
+  },
+  "termination": {
+    "original_runner_pid": 45495,
+    "original_runner_exited": true,
+    "process_observation": "Actual Root ps -p45495 returned1 with empty output after terminal status",
+    "common_lock_independently_acquired": true
+  },
+  "installer_warnings": {
+    "count": 14,
+    "observations": [
+      "2026-10-31T08:42:12,518   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-mg6owtvz/overlay/lib/python3.13/site-packages/setuptools/config/_apply_pyprojecttoml.py:82: SetuptoolsDeprecationWarning: `project.license` as a TOML table is deprecated",
+      "2026-10-31T08:42:12,564   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-mg6owtvz/overlay/lib/python3.13/site-packages/setuptools/config/_apply_pyprojecttoml.py:61: SetuptoolsDeprecationWarning: License classifiers are deprecated.",
+      "2026-10-31T08:42:12,564   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-mg6owtvz/overlay/lib/python3.13/site-packages/setuptools/dist.py:765: SetuptoolsDeprecationWarning: License classifiers are deprecated.",
+      "2026-10-31T08:42:12,656   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-mg6owtvz/overlay/lib/python3.13/site-packages/setuptools/config/_apply_pyprojecttoml.py:82: SetuptoolsDeprecationWarning: `project.license` as a TOML table is deprecated",
+      "2026-10-31T08:42:12,664   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-mg6owtvz/overlay/lib/python3.13/site-packages/setuptools/config/_apply_pyprojecttoml.py:61: SetuptoolsDeprecationWarning: License classifiers are deprecated.",
+      "2026-10-31T08:42:12,665   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-mg6owtvz/overlay/lib/python3.13/site-packages/setuptools/dist.py:765: SetuptoolsDeprecationWarning: License classifiers are deprecated.",
+      "2026-10-31T08:42:19,673   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-unbbeqlx/overlay/lib/python3.13/site-packages/setuptools/dist.py:765: SetuptoolsDeprecationWarning: License classifiers are deprecated.",
+      "2026-10-31T08:42:19,780   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-unbbeqlx/overlay/lib/python3.13/site-packages/setuptools/dist.py:765: SetuptoolsDeprecationWarning: License classifiers are deprecated.",
+      "2026-10-31T08:42:19,795   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-unbbeqlx/overlay/lib/python3.13/site-packages/setuptools/_distutils/cmd.py:119: SetuptoolsDeprecationWarning: bdist_wheel.universal is deprecated",
+      "2026-10-31T08:42:57,071   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-mg6owtvz/overlay/lib/python3.13/site-packages/setuptools/config/_apply_pyprojecttoml.py:82: SetuptoolsDeprecationWarning: `project.license` as a TOML table is deprecated",
+      "2026-10-31T08:42:57,079   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-mg6owtvz/overlay/lib/python3.13/site-packages/setuptools/config/_apply_pyprojecttoml.py:61: SetuptoolsDeprecationWarning: License classifiers are deprecated.",
+      "2026-10-31T08:42:57,079   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-mg6owtvz/overlay/lib/python3.13/site-packages/setuptools/dist.py:765: SetuptoolsDeprecationWarning: License classifiers are deprecated.",
+      "2026-10-31T08:42:58,992   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-unbbeqlx/overlay/lib/python3.13/site-packages/setuptools/dist.py:765: SetuptoolsDeprecationWarning: License classifiers are deprecated.",
+      "2026-10-31T08:42:58,997   /private/var/folders/x5/7_xq13_x5y5cdj1b_plpjt9c0000gn/T/pip-build-env-unbbeqlx/overlay/lib/python3.13/site-packages/setuptools/_distutils/cmd.py:119: SetuptoolsDeprecationWarning: bdist_wheel.universal is deprecated"
+    ],
+    "scope": "Visible upstream lru-dict1.3.0/PyRIC0.1.6.3 source-build license/universal-wheel metadata deprecations retained in full install log. No warning filters or dependency overrides; exact historical HA target/requirements preserved. This is not a claim of warning-free third-party packaging."
+  },
+  "scope": [
+    "Strict duplicate/non-JSON rejection, existing answer-format bounds and literal local-prefix/evidence generation coherence; no new token/resource budget or format",
+    "Actual canonical13 tests include real HA2026.2.3 static schemas, safe YAML/invalid config/version negatives; runtime/device behavior explicitly not_checked",
+    "Existing actual Defensive/tomedo/HA compiler imports and literal citation checks pass with their existing compiler interpreter; no provider calls, model configuration/tokenization, remote template or native Serving claim",
+    "Original failed R1 caller import retained; exact unchanged HA results reused. No Cargo required for offline script source; whole v3/Prefix/Pure/S/activation/release remain open"
+  ]
+}

@@ -1649,3 +1649,55 @@ legacy exact authored profiles in their original scope. Focused negatives:
 changed/foreign partner/base, per-root CAS conflict, partial approval/settlement,
 uncertain commit, provenance relabel, incompatible additive output, stale consumer
 requirement, missing S prerequisite and class50 through a legacy import route.
+
+
+## Open Prefixless construction successor — existing owner contribution
+
+**Open future work, not implemented.** Consume the one
+[construction-selection contract](docs/reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection)
+from the adopted [Prefixless plan](Prefixless_redefine_at_K3.md).
+This contribution begins after the actually current bounded owner packet and
+Root027/necessary028 repair integration, not after completion of all older plans.
+Earlier accepted/running steps and protected002/023/I1I2 criteria are unchanged.
+Contradictory earlier construction-only requirements are scoped below for the
+new qualified workflow revision; original jobs/records keep their old contract.
+The shared contract remains normative; this section only assigns implementation.
+
+### Review contribution; no new component or per-call approval
+
+Input: the Prefix/Composition owner's already captured construction workflow and
+the executing review route/context. Their options, declaration, capture and final
+request guard remain with those owners; this plan does not choose a prefix.
+
+1. In the next open affected review-consumer successor, carry the actual executing
+   pair and captured context through existing private review admission/subject/
+   run/attempt/interpreter/settlement. The candidate under behavior test is a
+   subject, not its own context qualifier or independent approval authority.
+2. Keep required construction review separate from ordinary independent Sempai
+   review. A different review pair needs its own supported choice before effect;
+   do not borrow the parent prefix or re-run any preference at dispatch. Consume
+   Composition's exact native response/effect linkage, not another review writer.
+3. Qualify the changed review/Recipe workflow's real supported paths with its
+   existing complete rules. Reusing unchanged approved prefixes/components causes
+   no new individual Q1/Q2. A-own/joint versus controlled S qualification, Prefix-
+   Q1/Q2 and existing independent reviewer guarantees keep their scopes.
+
+Output to the actual next open review/Prefix production gate: observed correct
+route/context/subject and full workflow coverage, not a new approval class,
+queue or general Prefixless permission. Required negatives include candidate as
+own authority, foreign review route, unqualified context, ordinary reviewer
+misrouted as construction, missing actual settlement and duplicated effect after
+response loss. Runtime-support and provenance failures stay explicit gaps.
+
+Scope of preceding construction instructions: “Open K3-2” future-consumer clauses
+requiring inherited prefix-free construction/review, no accepted-prefix lookup
+throughout the whole workflow or a Maker connection only in v3.5 remain original
+historical/old-profile references. They do not govern the new revision's submitted
+context. Ordinary independent role/Recipe defaults and reviewer contracts remain.
+No old completed step, test, B1/B2 packet, Golden or acceptance result is edited.
+
+Local supersession reference: the preceding **Open K3-2 follow-up from K4 — Design acceptance and prefix artifact Q1/Q2 boundaries**,
+characteristic sentence “Required workflow review children use inherited PrefixFreeWorkflow.”, describes the earlier
+construction contract. For the new qualified revision, use the shared successor's
+captured submitted context and own-route child/review rules; no automatic runtime
+preference and no edits to that earlier section's original criteria.

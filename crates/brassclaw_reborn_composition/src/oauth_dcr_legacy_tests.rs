@@ -282,7 +282,7 @@ async fn verify_legacy(manager: Arc<dyn AuthFlowManager>, store: Arc<dyn SecretS
                 provider_scopes: selected.requested_scopes,
                 continuation: old.continuation.clone(),
                 update_binding: old.update_binding.clone(),
-                expires_at: old.expires_at,
+                deadline: OAuthSetupDeadline::Exact(old.expires_at),
             },
         )
         .await

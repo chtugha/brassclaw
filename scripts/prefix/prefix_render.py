@@ -57,8 +57,18 @@ def prefix_escape_controls(text, special_tokens):
     escaped = ''.join(result)
     for token in sorted(special_tokens, key=len, reverse=True):
         if token:
-            replacement = ''.join('\\u%04x' % ord(character) for character in token)
-            escaped = escaped.replace(token, replacement)
+            characters = []
+            for character in token:
+                codepoint = ord(character)
+                if codepoint <= 0xffff:
+                    characters.append('\\u%04x' % codepoint)
+                else:
+                    # A \u escape is one UTF-16 code unit, not an arbitrary
+                    # number of hex digits. Keep supplementary scalars intact.
+                    scalar = codepoint - 0x10000
+                    characters.append('\\u%04x' % (0xd800 + scalar // 0x400)
+                                      + '\\u%04x' % (0xdc00 + scalar % 0x400))
+            escaped = escaped.replace(token, ''.join(characters))
     return escaped
 
 

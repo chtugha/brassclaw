@@ -1,3 +1,82 @@
+## 2026-10-31 — connected Prefix owner packet accepted locally
+
+[BUILD029/032/033/034/035/037/038](validation/2026-10-31-prefix-owner-integration.md)
+passes warning-free compilation,10 distinct native product cases,28 embedded
+asset tests,32 architecture cases,28 Node cases and23 Python methods, zero
+ignored/skipped in accepted results. Actual global PostgreSQL/HTTP/Monty and
+both Chromium paths are included. Existing source/code/immutable originals and
+retained native Integer contracts remain distinct from HTTP presentation.
+
+The shared literal-fence correction and non-BMP escapes preserve original data,
+card identities/context maps and unaffected layouts. Existing History session/
+profile fencing and exact uncertain-request retry are exercised natively. The
+ModelDesign view shows actual outer identities and complete optional originals,
+without deriving approval/Serving facts. Native base/Sempai source jobs now cover
+328 declared originals, five calls each, without replay/activation. Nine added
+reference documents remain development-only; previous selected model-view rows
+are unchanged. The Prefixless choice and general bootstrap qualification remain
+future requirements, rather than activated model paths.
+
+Original warning, browser, disk and runner-parser failures remain recorded.
+Unchanged compiled images/worker and successful checks are reused; R7 explicitly
+runs the real HA schema case omitted by an earlier missing environment flag.
+CI now supplies actual prerequisites and demands both native browser markers;
+actionlint passes, actual GitHub acceptance is pending the checkpoint.
+
+Root423 source manifest f71583df… and receipt bb58d98f… establish only this local
+scope. Root retains permanent serial Cargo ownership; all original runners ended
+and the common lock was independently acquired. The source freeze is released.
+
+036 Codex SDK work remains private until the same encrypted host/PG owner,
+instance-subject original/rotation custody, per-request guard, live projection and
+all startup/Kohai/Sempai/retained-task consumers are connected. The existing PG
+refresh journal is reused. Prefix revision precision has a reviewed private
+HTTP-only successor; current native Integer contracts/retained bytes must stay
+unchanged. Full K3–K7, general approval/Pure/Prefix, recovery/platform/release/
+installed acceptance and complete plans remain open.
+
+## 2026-10-31 — actual CI encoding and shared-chat fixture repaired locally
+
+[BUILD028](validation/2026-10-31-ci-encoding-chat-fixture.md) supplies the actual
+retained worker, independent Python oracle and six pinned public tokenizer/config
+files to the mandatory CI encoding consumer. Four existing explicit HF oracle
+cases are wired into full validation. Five helper CLI cases include a real pinned
+1125-byte download and strict retained-file failure checks. Actual encoding,
+two-worker shared-PG direct chat and both strict negative-evidence cases pass;
+affected Clippy and actionlint pass, zero ignored. The existing request-keyed
+replay source is shared because either unscoped worker may claim either task;
+all original isolation assertions remain. New GitHub acceptance remains pending.
+
+The [Prefixless successor](reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection)
+is now the single future construction-choice contract. Maker/Base/Prefixless is
+an initial visible editable suggestion, with the actual submitted selection pinned
+before effects. This prose does not activate a Free branch or replace protected
+old workflow/packet criteria. Owner plan connections and actual runtime/UI/guard/
+response/retention support remain open. [BUILD031](validation/2026-10-31-prefix-response-hardening.md) separately passed
+13 actual offline/HA-schema cases and its real compiler caller, zero skipped.
+Later033/037 source successors require their own applicable package/caller checks;
+the original exact-source receipt is not rewritten.
+
+## 2026-10-31 — acknowledged task-gate OAuth lifetime accepted
+
+[BUILD027](validation/2026-10-31-gate-oauth-lifetimes.md) adds one acknowledged
+positive u32 default for new Google/DCR task-gate setup. Concurrent creation,
+retries and live edits retain the first original expiry; expired originals stay
+expired. V196 preserves explicit settings and unrelated defaults. EN/DE controls
+and help, Rust/Monty effective revisions and restoration are covered.
+
+91 distinct native cases (72 unchanged results reused),32 architecture cases,
+zero ignored and connected/default strict Clippy pass. Actual PG/FS/HTTP/global
+Monty, embedded/base/Sempai and Chromium consumers are included. Original failed
+test expectations and sibling packaging attempts remain recorded. This is local
+macOS/task-gate scope; standalone OAuth default/max/client producers, remaining
+polling/transport/ingress caps, full K3 and all later approval/Prefix/recovery/
+platform/release/full-plan gates remain open.
+
+The actual033 GitHub Docker job has since passed. Heavy direct-chat fixture and
+encoding prerequisites failed independently; BUILD028 now integrates their
+connected repair for focused acceptance. The whole GitHub run is not a pass.
+
 ## 2026-10-31 — claimed handoff identity repaired; Docker source pending CI
 
 [BUILD026](validation/2026-10-31-ci-handoff-repair.md) shares the existing

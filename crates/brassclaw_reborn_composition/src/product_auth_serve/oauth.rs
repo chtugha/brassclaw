@@ -522,7 +522,9 @@ async fn start_google_oauth_flow(
                 requirement_setup,
                 update_binding,
                 update_account_snapshot: None,
-                deadline: crate::oauth_gate::GoogleSetupDeadline::Exact(request.expires_at),
+                deadline: crate::oauth_provider_client::OAuthSetupDeadline::Exact(
+                    request.expires_at,
+                ),
             },
             config,
         ),

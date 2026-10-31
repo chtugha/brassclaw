@@ -5987,3 +5987,134 @@ uses the existing Validator Steps3/8–10 owner and real run/attempt/interpreter
 settlement, without another queue/subject/store or generation exception. Full
 Use/ModelSetup/design/prefix lifecycle remains open. B1/B2/Packet/Golden and all
 historical plan bytes remain unchanged. Batch freeze ended; Root retains Cargo.
+
+
+## Open Prefixless follow-up — visible construction choice
+
+**Open successor, 2026-10-31; no implementation or activation by this text.**
+The single normative owner is [visible construction selection](../reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection).
+[Exact §18](Exact_V3_definition_update_at_K3-2.md#18-open-prefixless-successor--visible-construction-choice)
+provides the concrete supersession map and cross-owner handoffs; the adopted
+[Prefixless plan](../../Prefixless_redefine_at_K3.md) owns the inventory. This
+section defines only the Prefix owner's bounded future work, not another runtime,
+selector, approval engine or tracking system.
+
+### Connection and scope
+
+Connect after the then-current integrated BUILD002/I1/I2/B1-B2 and BUILD023/I3
+package boundaries. Preserve their existing steps, pending proposals, accepted
+scopes, original packets/goldens and all historical receipts. Do not redefine a
+currently submitted package or wait for every older entire plan to finish. Root
+coordinates the next coherent consumer revision; no new condition is imposed on
+current K3 Auth/CI/review work.
+
+For NEW qualified construction revisions, this successor changes these exact
+older requirements in this file, while leaving their protected text intact:
+
+| Earlier heading and characteristic text | Future scoped replacement |
+| --- | --- |
+| §5.2 “Prefix-Maker reference and versioned design workflow”, “A design task pins an approved fresh Prefix-Maker”; Phase C3, “usable Prefix-Maker” and “exact Prefix-Maker injection”; Final one-click matrix, “Previous approved fresh generation reviews a quarantined successor” | A usable Maker is the initial visible suggestion, not a mandatory artifact. Submit the actual editable choice under the common contract; first construction can remain explicitly Prefixless. A candidate never supplies its own independent approval. |
+| “Open K3-2 follow-up from K4”, “optional prefix-free B1/B2”, and matrix “B1/B2 needed … prefix-free native dispatch” | New optional calls require their original visible/stored explicit choice before admission; fixed source/answer checks stay mandatory. Previously admitted jobs keep their original contract. |
+| Same matrix, “Qualified PrefixFreeWorkflow … no accepted-prefix lookup” | Initial options/suggestion may read qualified active Maker/Base; actual admission validates the submitted choice. Captured explicit Prefixless dispatch does not search again and requires no proof that Maker/Base is absent. |
+| Same follow-up, “recursive child/review execution”, “Actual prefix-free SDK body” | New required routes keep their own captured pair/purpose/instruction choice and full SDK/guard/evidence, without rerunning suggestion or borrowing another pair's bytes. Old prefix-free bodies remain valid evidence for their own old scope. |
+| Earlier generator/Prefix-Maker future-only descriptions as mapped in Exact §18 | Current authorized follow-up includes actual qualified Maker connection; it does not invent a compulsory seed, activate an unreviewed profile or redefine unrelated v3.5 work. |
+
+Ordinary independent chat/reviewer selection and fixed single-insertion design
+remain unchanged. Current class21 /1/Selected/Free parser support does not prove
+new UI choice, general Recipe Prefixless, or productive model/child admission.
+
+### Reuse and actual Prefix delta
+
+Reuse `PgPrefixAcceptances::{bindings, record, resolve}` with the actual immutable
+pair/profile/generation and active `reborn_prefix_target_bindings` owner. Use
+existing `prefix_generations`, `prefix_generation_binding` and model/design stores.
+No latest-draft search, archived-generation fallback, duplicate profile registry
+or copied model limits. Existing checked approval and source/evaluation references
+remain; a Pair ID cannot become a generation qualification/activation receipt.
+
+Prefix supplies eligible active options and qualified instruction-composition
+contracts to the EXISTING UI/facade and captured selection owner. Composition/
+Simplified own versioned declaration/readers, coherent admission/capture, actual
+model/child/review/request/effect guards and continuation. Validator owns changed
+consumer qualification and actual observed rules/evidence. Reuse their linked
+new owner sections, not a second implementation here. Source reinspection decides
+actual signatures; this plan invents no enum tags, endpoint or SQL version.
+
+### Inputs and retained results
+
+Input is the original work/executor pair, namespace, workflow/instruction purpose,
+current qualified active choices and explicit operator choice with displayed
+revision. Design target and executor remain distinct. Retain suggestion/reason
+separately from actual submitted selection; result is the exact selected artifact
+or explicit absence with original design/adapter/qualification/instruction and
+job/effect identities through existing owners. A persisted profile choice in an
+ordinary Recipe instead resolves its exact generation coherently at task start;
+no construction-form generation is baked into reusable Recipe metadata.
+
+### Bounded Prefix implementation sequence
+
+1. Inventory the actual current checked acceptance/active binding/payload readers
+   and their consumers. Coordinate new representation with existing native
+   selection owners; reader compatibility precedes new writer/seed activation.
+2. Supply eligible approved active options, and deterministic INITIAL Maker/Base/
+   Prefixless suggestion only, to the existing construction forms. Permit other
+   compatible approved profiles and explicit Prefixless. Preserve manual edits
+   on refresh/notifications/reconnect; expose stale/pair-change errors without
+   replacing the choice. Do not insert a prefix or invoke a model on form opening.
+3. Existing original Use/Generate/Create/Redesign/Regenerate admission validates
+   and pins the actual submitted choice and original revision before effects.
+   New model-assisted Use/B1/B2 must wait for this choice to be available; no
+   silent background adoption of a suggestion. Headless callers submit their
+   own supported explicit choice, with original-ID/lost-ACK reconciliation.
+4. Qualify actual selected prefix/instruction composition: fixed source/response
+   rules survive every context; Maker may replace only explicitly qualified
+   instruction sections, Base/other selected profiles retain complete fixed work
+   instructions. Never stack another Base implicitly or format/insert twice.
+   Prefix knowledge never becomes a provider source. Explicit Prefixless uses the
+   same mandatory technical encoding/protocol/guard with no fabricated artifact.
+   Refer actual request/child/review/guard implementation to Composition; do not
+   create another client, fallback or direct HTTP path here.
+5. Join existing result/status/evidence and retention consumers. Exact old
+   selections survive wait/resume and compatible successors; new construction
+   references protect required payload/design/artifacts beyond the ordinary
+   two-predecessor archive until actual release. Preserve real evaluation/source
+   parents, without pinning all terminal audit payloads forever or adding a GC
+   worker. Ordinary Recipe-editor choice goes through its own normal save/review/
+   taskcapture; no Recipe Generate button or global Maker default.
+
+### Failure and compatibility
+
+Technical DB/identity/integrity/reader errors do not prove missing/ineligible
+artifacts. Unsupported native composition is readiness work, not permission to
+fall through to Prefixless. A known incompatible draft differs from a resolver
+failure. Exact selected artifacts stay selected or fail; post-admission fit,
+policy, transport and measurement failures do not choose again, retry with another
+prefix or replay effects. Actual allowed retries keep original choice/attempt.
+
+Explicit Prefixless remains possible when Maker/Base exists, under its qualified
+native boundary, without an invented bootstrap purpose for ordinary Recipes.
+Old /1 records/anchors and admitted jobs remain their exact old scope; no heuristic
+mode migration from names/absence or rewriting original evidence. A/S own/joint/
+bootstrap and Prefix-Q1/Q2 remain separate and unchanged. Disabled token budgets
+do not disable technical limits or introduce a new reserve/cap.
+
+### Required connected acceptance and completion
+
+Consume the complete [shared future matrix](../../Prefixless_redefine_at_K3.md#82-fallmatrix)
+through the existing owners. The following groups state Prefix obligations and
+actual observation points; no future case is claimed executed by this appendix:
+
+| Existing caller/owner | Required observation |
+| --- | --- |
+| Active bindings/acceptance reader + existing settings API/browser | Correct initial suggestion and all compatible options, manual Prefixless/other override, no new effect on refresh; errors/stale revisions visible, exact choice at submission. Namespace/current approved generation respected. |
+| Original Use/job and B1/B2/design consumers | Technical steps remain deterministic; optional model calls wait for actual choice. Fixed packets/strict answer/evidence remain identical in effect; prefix knowledge does not fill Unknown. First construction needs no generated artifact. |
+| Existing SDK/encoding/response and native child/review consumers | Each supported context appears exactly once or absent in real request bytes; original executor/instruction/guard/policy/output correlation, legitimate child lineage and same-pair different-purpose isolation. No substitution from current global role. |
+| Existing publication/admission/continuation/retention callers | Activation/notifications/form edits after admission leave job/attempt/payload pins unchanged. Duplicate/uncertain Generate retains original request; new explicit choice is new work. Real live references protect older artifacts; no selection retry after failure. |
+| Existing retained parser/Recipe editor/deployment owner | New reader supports actual choice before new writer/seed activation, old records remain exact, Recipe stores normal profile-level choice and resolves at taskstart. No fake global Prefixless permission or Generate button. |
+
+Native SDK, PG/HTTP, browser and retention observations must qualify the actual
+joined new consumer; separate positive fixtures cannot be added up to new Serving
+or Free authority. Finish source/doc, integration, installed uptake and activation
+as distinct scopes. Do not claim full I1/I2, independent S/Pure/behavior, release or
+whole-plan acceptance from these text changes. Earlier acceptance matrices remain
+unaltered and apply to their original packages.

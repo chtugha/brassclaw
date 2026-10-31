@@ -10,7 +10,7 @@ use reborn_support::harness::{
     RebornBinaryE2EHarness, RebornHarnessSharedStorage, RecordingTestCapabilityPort,
     test_product_scope,
 };
-use reborn_support::model_replay::RebornTraceReplayModelGateway;
+use reborn_support::model_replay::{RebornModelReplayStep, RebornTraceReplayModelGateway};
 
 #[tokio::test]
 async fn reborn_direct_chat_user_scope_isolation_parity() {
@@ -26,12 +26,26 @@ async fn reborn_direct_chat_user_scope_isolation_parity() {
         Some("project-e2e"),
     );
 
+    // Both unscoped workers can claim either task. Share their model source,
+    // while matching each controlled response to its own question; separate
+    // one-answer queues make the other worker's valid claim fail spuriously.
+    let model = RebornTraceReplayModelGateway::with_scripted_steps([
+        RebornModelReplayStep::ResponseForRequest {
+            request_contains: "alice direct turn".into(),
+            response: HostManagedModelResponse::assistant_reply("alice direct isolated reply"),
+            expected_tool_results: vec![],
+        },
+        RebornModelReplayStep::ResponseForRequest {
+            request_contains: "bob direct turn".into(),
+            response: HostManagedModelResponse::assistant_reply("bob direct isolated reply"),
+            expected_tool_results: vec![],
+        },
+    ]);
+
     let mut alice_harness = RebornBinaryE2EHarness::with_model_gateway_scope_initial_actor_installation_shared_storage_unscoped_worker(
         DIRECT_ROOM,
         "alice",
-        RebornTraceReplayModelGateway::with_responses([HostManagedModelResponse::assistant_reply(
-            "alice direct isolated reply",
-        )]),
+        model.clone(),
         RecordingTestCapabilityPort::echo(),
         scope.clone(),
         "reborn-test",
@@ -43,9 +57,7 @@ async fn reborn_direct_chat_user_scope_isolation_parity() {
     let mut bob_harness = RebornBinaryE2EHarness::with_model_gateway_scope_initial_actor_installation_shared_storage_unscoped_worker(
         DIRECT_ROOM,
         "bob",
-        RebornTraceReplayModelGateway::with_responses([HostManagedModelResponse::assistant_reply(
-            "bob direct isolated reply",
-        )]),
+        model.clone(),
         RecordingTestCapabilityPort::echo(),
         scope,
         "reborn-test",
@@ -108,6 +120,27 @@ async fn reborn_direct_chat_user_scope_isolation_parity() {
     assert_history_contains_assistant(&bob_history, "bob direct isolated reply");
     assert_history_excludes(&bob_history, "alice direct turn");
     assert_history_excludes(&bob_history, "alice direct isolated reply");
+
+    let requests = model.requests();
+    assert_eq!(
+        requests.len(),
+        2,
+        "each original task calls the shared model once"
+    );
+    assert!(
+        !requests[0]
+            .messages
+            .iter()
+            .any(|message| message.content.contains("bob direct turn")
+                || message.content.contains("bob direct isolated reply"))
+    );
+    assert!(
+        !requests[1]
+            .messages
+            .iter()
+            .any(|message| message.content.contains("alice direct turn")
+                || message.content.contains("alice direct isolated reply"))
+    );
 
     alice_harness.assert_model_exhausted();
     bob_harness.assert_model_exhausted();

@@ -219,7 +219,7 @@ pub(crate) async fn verify_native_private_runtime(
         requirement_setup: Some(Box::new(setup)),
         update_binding: binding,
         update_account_snapshot: None,
-        deadline: GoogleSetupDeadline::Exact(expiry),
+        deadline: OAuthSetupDeadline::Exact(expiry),
     };
     let rejection = match backend {
         crate::auth_oauth_setup_custody::tests::Backend::NativePostgres => {

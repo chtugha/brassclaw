@@ -310,47 +310,63 @@ mod tests {
         // not `etag_matches`, so a future change that stops wiring
         // the request header into the comparison is caught.
         let app = static_router();
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method(Method::GET)
-                    .uri("/styles/app.css")
-                    .body(Body::empty())
-                    .expect("request"),
-            )
-            .await
-            .expect("oneshot");
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            response
+        for path in [
+            "styles/app.css",
+            "js/pages/settings/components/prefix-generation-history.js",
+            "js/pages/settings/components/prefix-tab.js",
+            "js/pages/settings/components/prefix-model-designs.js",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::GET)
+                        .uri(format!("/{path}"))
+                        .body(Body::empty())
+                        .expect("request"),
+                )
+                .await
+                .expect("oneshot");
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response
+                    .headers()
+                    .get(header::CACHE_CONTROL)
+                    .and_then(|v| v.to_str().ok()),
+                Some("no-cache")
+            );
+            let etag = response
                 .headers()
-                .get(header::CACHE_CONTROL)
-                .and_then(|v| v.to_str().ok()),
-            Some("no-cache")
-        );
-        let etag = response
-            .headers()
-            .get(header::ETAG)
-            .expect("etag on asset response")
-            .to_str()
-            .expect("etag ascii")
-            .to_string();
-        assert!(etag.starts_with('"') && etag.ends_with('"'), "got `{etag}`");
+                .get(header::ETAG)
+                .expect("etag on asset response")
+                .to_str()
+                .expect("etag ascii")
+                .to_string();
+            assert!(etag.starts_with('"') && etag.ends_with('"'), "got `{etag}`");
 
-        let revalidated = app
-            .oneshot(
-                Request::builder()
-                    .method(Method::GET)
-                    .uri("/styles/app.css")
-                    .header(header::IF_NONE_MATCH, &etag)
-                    .body(Body::empty())
-                    .expect("request"),
+            let current = std::fs::read(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("static")
+                    .join(path),
             )
-            .await
-            .expect("oneshot");
-        assert_eq!(revalidated.status(), StatusCode::NOT_MODIFIED);
-        assert!(body_string(revalidated).await.is_empty());
+            .unwrap();
+            assert_eq!(body_string(response).await.as_bytes(), current, "{path}");
+
+            let revalidated = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::GET)
+                        .uri(format!("/{path}"))
+                        .header(header::IF_NONE_MATCH, &etag)
+                        .body(Body::empty())
+                        .expect("request"),
+                )
+                .await
+                .expect("oneshot");
+            assert_eq!(revalidated.status(), StatusCode::NOT_MODIFIED);
+            assert!(body_string(revalidated).await.is_empty());
+        }
     }
 
     #[test]

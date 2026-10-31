@@ -783,3 +783,6 @@ async fn native_global_recipe_output_setting_survives_original_arguments_without
     stop.cancel();
     server.await.unwrap();
 }
+
+#[path = "bootstrap_answer_protocol_tests.rs"]
+mod bootstrap_answer_protocol_tests;
