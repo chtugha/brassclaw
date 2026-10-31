@@ -839,6 +839,13 @@ where
     M: CompletionModel + Send + Sync + 'static,
     M::Response: Send + Sync + Serialize + DeserializeOwned,
 {
+    fn supports_final_request_guard(&self) -> bool {
+        matches!(
+            self.request_format,
+            RigRequestFormat::OpenAiChat | RigRequestFormat::ChatMaxTokens
+        )
+    }
+
     fn model_name(&self) -> std::borrow::Cow<'_, str> {
         std::borrow::Cow::Borrowed(&self.model_name)
     }
@@ -887,7 +894,14 @@ where
 
         merge_additional_params(&mut rig_req, self.default_additional_params.as_ref());
         self.apply_request_parameters(&mut rig_req, request.stop_sequences.as_deref())?;
-        inject_model_override(&mut rig_req, model_override.as_deref());
+        // The selected immutable client already supplies this model. Adding the
+        // same name via flattened parameters emits a duplicate JSON model key.
+        inject_model_override(
+            &mut rig_req,
+            model_override
+                .as_deref()
+                .filter(|name| *name != self.model_name.as_str()),
+        );
 
         let response = self
             .model
@@ -952,7 +966,14 @@ where
 
         merge_additional_params(&mut rig_req, self.default_additional_params.as_ref());
         self.apply_request_parameters(&mut rig_req, request.stop_sequences.as_deref())?;
-        inject_model_override(&mut rig_req, model_override.as_deref());
+        // The selected immutable client already supplies this model. Adding the
+        // same name via flattened parameters emits a duplicate JSON model key.
+        inject_model_override(
+            &mut rig_req,
+            model_override
+                .as_deref()
+                .filter(|name| *name != self.model_name.as_str()),
+        );
 
         let response = self
             .model
@@ -1030,6 +1051,12 @@ where
 /// instead of retrying the same oversized payload.
 fn map_completion_error(model_name: &str, error: rig::completion::CompletionError) -> LlmError {
     use rig::{completion::CompletionError, http_client::Error};
+    if let CompletionError::HttpError(Error::Instance(source)) = &error
+        && let Some(reason) = source.downcast_ref::<crate::final_request_guard::FinalRequestError>()
+    {
+        return LlmError::FinalRequestRejected { reason: *reason };
+    }
+
     if let CompletionError::HttpError(Error::Instance(source)) = &error
         && let Some(crate::response_body::ResponseBodyError::Capacity { limit }) =
             source.downcast_ref::<crate::response_body::ResponseBodyError>()

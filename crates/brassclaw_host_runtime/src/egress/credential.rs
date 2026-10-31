@@ -8,7 +8,7 @@ use brassclaw_secrets::{SecretMaterial, SecretStore, SecretStoreError};
 use secrecy::ExposeSecret;
 use std::sync::LazyLock;
 
-use crate::obligations::RuntimeSecretInjectionStore;
+use crate::obligations::{RuntimeSecretInjectionStore, StagedSecretMaterial};
 
 #[derive(Clone, PartialEq, Eq)]
 enum CredentialCacheKey {
@@ -28,7 +28,7 @@ struct CredentialCacheEntry {
     /// end of the egress call. Holding plaintext as `String` here instead
     /// would leave the credential on the heap for the duration of the request,
     /// defeating `SecretMaterial::ZeroizeOnDrop`.
-    value: Option<SecretMaterial>,
+    value: Option<StagedSecretMaterial>,
 }
 
 enum CredentialSourceStrategy<'a> {
@@ -88,7 +88,7 @@ impl<'a> CredentialSourceStrategy<'a> {
         secret_injections: Option<&RuntimeSecretInjectionStore>,
         request: &RuntimeHttpEgressRequest,
         injection: &RuntimeCredentialInjection,
-    ) -> Result<Option<SecretMaterial>, RuntimeHttpEgressError>
+    ) -> Result<Option<StagedSecretMaterial>, RuntimeHttpEgressError>
     where
         S: SecretStore,
     {
@@ -158,6 +158,16 @@ where
         }
         redaction_values.extend(redaction_values_for_secret(plaintext));
     }
+    if credential_materials
+        .iter()
+        .any(|entry: &CredentialCacheEntry| {
+            entry.value.as_ref().is_some_and(|value| !value.is_live())
+        })
+    {
+        restore_staged_secrets(secret_injections, request, &mut credential_materials);
+        request.credential_injections = credential_injections;
+        return Err(expired_runtime_credential());
+    }
     if let Some(url) = parsed_url {
         request.url = url.to_string();
     }
@@ -184,7 +194,7 @@ fn restore_staged_secrets(
             continue;
         };
         if let Err(error) =
-            secret_injections.insert(&request.scope, &capability_id, &handle, material)
+            secret_injections.restore(&request.scope, &capability_id, &handle, material)
         {
             tracing::debug!(
                 error = ?error,
@@ -208,6 +218,13 @@ where
     let strategy = CredentialSourceStrategy::for_injection(injection);
     let key = strategy.cache_key(injection);
     if let Some(idx) = cache.iter().position(|entry| entry.key == key) {
+        if cache[idx]
+            .value
+            .as_ref()
+            .is_some_and(|value| !value.is_live())
+        {
+            return Err(expired_runtime_credential());
+        }
         // Negative cache hit (missing optional credential on a prior pass)
         // must still error out if *this* injection marks the same handle as
         // required. `required` is per-injection, not per-cache-entry.
@@ -216,13 +233,29 @@ where
                 reason: "required credential is unavailable".to_string(),
             });
         }
-        return Ok(cache[idx].value.as_ref());
+        return Ok(cache[idx].value.as_ref().map(|value| &value.material));
     }
 
     let value = strategy.resolve(secrets, secret_injections, request, injection)?;
     let pushed_index = cache.len();
     cache.push(CredentialCacheEntry { key, value });
-    Ok(cache[pushed_index].value.as_ref())
+    if cache[pushed_index]
+        .value
+        .as_ref()
+        .is_some_and(|value| !value.is_live())
+    {
+        return Err(expired_runtime_credential());
+    }
+    Ok(cache[pushed_index]
+        .value
+        .as_ref()
+        .map(|value| &value.material))
+}
+
+fn expired_runtime_credential() -> RuntimeHttpEgressError {
+    RuntimeHttpEgressError::Credential {
+        reason: "credential expired".into(),
+    }
 }
 
 fn staged_secret_for_injection(
@@ -230,7 +263,7 @@ fn staged_secret_for_injection(
     request: &RuntimeHttpEgressRequest,
     capability_id: &CapabilityId,
     injection: &RuntimeCredentialInjection,
-) -> Result<Option<SecretMaterial>, RuntimeHttpEgressError> {
+) -> Result<Option<StagedSecretMaterial>, RuntimeHttpEgressError> {
     let Some(secret_injections) = secret_injections else {
         return missing_runtime_credential(injection.required);
     };
@@ -245,7 +278,7 @@ fn staged_secret_for_injection(
 
 fn missing_runtime_credential(
     required: bool,
-) -> Result<Option<SecretMaterial>, RuntimeHttpEgressError> {
+) -> Result<Option<StagedSecretMaterial>, RuntimeHttpEgressError> {
     if required {
         Err(RuntimeHttpEgressError::Credential {
             reason: "required credential is unavailable".to_string(),
@@ -259,7 +292,7 @@ fn lease_secret_for_injection<S>(
     secrets: &S,
     request: &RuntimeHttpEgressRequest,
     injection: &RuntimeCredentialInjection,
-) -> Result<Option<SecretMaterial>, RuntimeHttpEgressError>
+) -> Result<Option<StagedSecretMaterial>, RuntimeHttpEgressError>
 where
     S: SecretStore,
 {
@@ -271,9 +304,14 @@ where
         let lease = secrets
             .lease_once(&request.scope, &injection.handle)
             .await?;
-        secrets.consume(&request.scope, lease.id).await.map(Some)
+        let material = secrets.consume(&request.scope, lease.id).await?;
+        Ok(Some(StagedSecretMaterial::from_lease(
+            material,
+            lease.secret_expires_at,
+        )))
     }) {
-        Ok(Some(material)) => Ok(Some(material)),
+        Ok(Some(material)) if material.is_live() => Ok(Some(material)),
+        Ok(Some(_)) => Err(expired_runtime_credential()),
         Ok(None) => missing_runtime_credential(injection.required),
         Err(SecretStoreError::UnknownSecret { .. }) => {
             missing_runtime_credential(injection.required)
@@ -447,7 +485,7 @@ fn parsed_request_url<'a>(
 const _: fn(&CredentialCacheEntry) = |entry| {
     fn require_zeroize_on_drop<T: ?Sized + secrecy::zeroize::ZeroizeOnDrop>(_: &T) {}
     if let Some(value) = entry.value.as_ref() {
-        require_zeroize_on_drop(value);
+        require_zeroize_on_drop(&value.material);
     }
 };
 
@@ -503,6 +541,63 @@ mod tests {
             },
             required: true,
         }
+    }
+
+    #[test]
+    fn cached_credential_and_failed_injection_restore_keep_the_actual_issuer_deadline() {
+        let scope = sample_scope();
+        let request = sample_request(scope.clone());
+        let handle = SecretHandle::new("finite-cached-access").unwrap();
+        let staged = RuntimeSecretInjectionStore::new();
+        let deadline = chrono::Utc::now() + chrono::Duration::milliseconds(200);
+        staged
+            .insert_with_expiry(
+                &scope,
+                &request.capability_id,
+                &handle,
+                "finite cached material".into(),
+                Some(deadline),
+            )
+            .unwrap();
+        let secrets = InMemorySecretStore::new();
+        let mut injection = sample_injection(handle.clone());
+        injection.source = RuntimeCredentialSource::StagedObligation {
+            capability_id: request.capability_id.clone(),
+        };
+        let mut cache = Vec::new();
+        assert_eq!(
+            credential_value_for_injection(
+                &mut cache,
+                &secrets,
+                Some(&staged),
+                &request,
+                &injection
+            )
+            .unwrap()
+            .unwrap()
+            .expose_secret(),
+            "finite cached material"
+        );
+        let wait = (deadline - chrono::Utc::now()).to_std().unwrap_or_default();
+        std::thread::sleep(wait + std::time::Duration::from_millis(20));
+        injection.required = false;
+        let error = credential_value_for_injection(
+            &mut cache,
+            &secrets,
+            Some(&staged),
+            &request,
+            &injection,
+        )
+        .unwrap_err();
+        assert_eq!(credential_reason(&error), "credential expired");
+        restore_staged_secrets(Some(&staged), &request, &mut cache);
+        assert!(
+            staged
+                .take(&scope, &request.capability_id, &handle)
+                .unwrap()
+                .is_none(),
+            "restoring an injection error must not restart either deadline"
+        );
     }
 
     #[test]
@@ -583,7 +678,7 @@ mod tests {
                 .expect("tokio-backed secret store should resolve through the sync bridge")
                 .expect("required credential should be present");
 
-        assert_eq!(material.expose_secret(), "sk-test-secret");
+        assert_eq!(material.material.expose_secret(), "sk-test-secret");
     }
 
     fn credential_reason(error: &RuntimeHttpEgressError) -> &str {
@@ -601,13 +696,86 @@ mod tests {
 
     #[async_trait::async_trait]
     impl SecretStore for FailingLeaseSecretStore {
+        async fn close_identity(
+            &self,
+            _scope: ResourceScope,
+            _handle: SecretHandle,
+            _expected: brassclaw_secrets::SecretIdentityClosure,
+        ) -> Result<
+            Option<brassclaw_secrets::SecretCustodyMetadata>,
+            brassclaw_secrets::SecretStoreError,
+        > {
+            Err(self.error.clone())
+        }
+
         async fn put(
             &self,
-            scope: ResourceScope,
-            handle: SecretHandle,
+            _scope: ResourceScope,
+            _handle: SecretHandle,
             _material: SecretMaterial,
         ) -> Result<SecretMetadata, SecretStoreError> {
-            Ok(SecretMetadata { scope, handle })
+            Err(self.error.clone())
+        }
+
+        async fn record_reference(
+            &self,
+            _scope: &ResourceScope,
+            _handle: &SecretHandle,
+        ) -> Result<Option<String>, SecretStoreError> {
+            Err(self.error.clone())
+        }
+        async fn put_if_record_reference(
+            &self,
+            _scope: ResourceScope,
+            _handle: SecretHandle,
+            _material: SecretMaterial,
+            _expected: Option<&str>,
+        ) -> Result<Option<SecretMetadata>, SecretStoreError> {
+            Err(self.error.clone())
+        }
+        async fn matches(
+            &self,
+            _scope: &ResourceScope,
+            _handle: &SecretHandle,
+            _candidate: &SecretMaterial,
+        ) -> Result<bool, SecretStoreError> {
+            Err(self.error.clone())
+        }
+
+        async fn put_original(
+            &self,
+            _scope: ResourceScope,
+            _handle: SecretHandle,
+            _material: SecretMaterial,
+            _context: serde_json::Value,
+        ) -> Result<
+            Option<brassclaw_secrets::SecretCustodyMetadata>,
+            brassclaw_secrets::SecretStoreError,
+        > {
+            Err(self.error.clone())
+        }
+
+        async fn custody(
+            &self,
+            _scope: &ResourceScope,
+            _handle: &SecretHandle,
+        ) -> Result<
+            Option<brassclaw_secrets::SecretCustodyMetadata>,
+            brassclaw_secrets::SecretStoreError,
+        > {
+            Err(self.error.clone())
+        }
+
+        async fn put_retained_from_original(
+            &self,
+            _scope: ResourceScope,
+            _handle: SecretHandle,
+            _source: brassclaw_secrets::SecretCustodySource,
+        ) -> Result<
+            Option<brassclaw_secrets::SecretCustodyMetadata>,
+            brassclaw_secrets::SecretStoreError,
+        > {
+            Err(self.error.clone())
         }
 
         async fn metadata(
@@ -634,6 +802,16 @@ mod tests {
             _scope: &ResourceScope,
             _handle: &SecretHandle,
         ) -> Result<SecretLease, SecretStoreError> {
+            Err(self.error.clone())
+        }
+
+        async fn lease_once_if_record_reference(
+            &self,
+            _scope: &ResourceScope,
+            _handle: &SecretHandle,
+            _expected: &str,
+        ) -> Result<Option<brassclaw_secrets::SecretLease>, brassclaw_secrets::SecretStoreError>
+        {
             Err(self.error.clone())
         }
 
@@ -679,14 +857,115 @@ mod tests {
 
     #[async_trait::async_trait]
     impl SecretStore for TokioBackedSecretStore {
+        async fn close_identity(
+            &self,
+            scope: ResourceScope,
+            handle: SecretHandle,
+            expected: brassclaw_secrets::SecretIdentityClosure,
+        ) -> Result<
+            Option<brassclaw_secrets::SecretCustodyMetadata>,
+            brassclaw_secrets::SecretStoreError,
+        > {
+            Self::yield_to_tokio().await;
+            self.inner.close_identity(scope, handle, expected).await
+        }
+
         async fn put(
             &self,
             scope: ResourceScope,
             handle: SecretHandle,
             material: SecretMaterial,
         ) -> Result<SecretMetadata, SecretStoreError> {
+            self.put_with_expiry(scope, handle, material, None).await
+        }
+
+        async fn put_with_expiry(
+            &self,
+            scope: ResourceScope,
+            handle: SecretHandle,
+            material: SecretMaterial,
+            expires_at: Option<brassclaw_host_api::Timestamp>,
+        ) -> Result<SecretMetadata, SecretStoreError> {
             Self::yield_to_tokio().await;
-            self.inner.put(scope, handle, material).await
+            self.inner
+                .put_with_expiry(scope, handle, material, expires_at)
+                .await
+        }
+
+        async fn record_reference(
+            &self,
+            scope: &ResourceScope,
+            handle: &SecretHandle,
+        ) -> Result<Option<String>, brassclaw_secrets::SecretStoreError> {
+            Self::yield_to_tokio().await;
+            self.inner.record_reference(scope, handle).await
+        }
+
+        async fn put_if_record_reference(
+            &self,
+            scope: ResourceScope,
+            handle: SecretHandle,
+            material: SecretMaterial,
+            expected: Option<&str>,
+        ) -> Result<Option<brassclaw_secrets::SecretMetadata>, brassclaw_secrets::SecretStoreError>
+        {
+            Self::yield_to_tokio().await;
+            self.inner
+                .put_if_record_reference(scope, handle, material, expected)
+                .await
+        }
+
+        async fn matches(
+            &self,
+            scope: &ResourceScope,
+            handle: &SecretHandle,
+            candidate: &SecretMaterial,
+        ) -> Result<bool, brassclaw_secrets::SecretStoreError> {
+            Self::yield_to_tokio().await;
+            self.inner.matches(scope, handle, candidate).await
+        }
+
+        async fn put_original(
+            &self,
+            scope: ResourceScope,
+            handle: SecretHandle,
+            material: SecretMaterial,
+            context: serde_json::Value,
+        ) -> Result<
+            Option<brassclaw_secrets::SecretCustodyMetadata>,
+            brassclaw_secrets::SecretStoreError,
+        > {
+            Self::yield_to_tokio().await;
+            self.inner
+                .put_original(scope, handle, material, context)
+                .await
+        }
+
+        async fn custody(
+            &self,
+            scope: &ResourceScope,
+            handle: &SecretHandle,
+        ) -> Result<
+            Option<brassclaw_secrets::SecretCustodyMetadata>,
+            brassclaw_secrets::SecretStoreError,
+        > {
+            Self::yield_to_tokio().await;
+            self.inner.custody(scope, handle).await
+        }
+
+        async fn put_retained_from_original(
+            &self,
+            scope: ResourceScope,
+            handle: SecretHandle,
+            source: brassclaw_secrets::SecretCustodySource,
+        ) -> Result<
+            Option<brassclaw_secrets::SecretCustodyMetadata>,
+            brassclaw_secrets::SecretStoreError,
+        > {
+            Self::yield_to_tokio().await;
+            self.inner
+                .put_retained_from_original(scope, handle, source)
+                .await
         }
 
         async fn metadata(
@@ -714,6 +993,19 @@ mod tests {
         ) -> Result<SecretLease, SecretStoreError> {
             Self::yield_to_tokio().await;
             self.inner.lease_once(scope, handle).await
+        }
+
+        async fn lease_once_if_record_reference(
+            &self,
+            scope: &ResourceScope,
+            handle: &SecretHandle,
+            expected: &str,
+        ) -> Result<Option<brassclaw_secrets::SecretLease>, brassclaw_secrets::SecretStoreError>
+        {
+            Self::yield_to_tokio().await;
+            self.inner
+                .lease_once_if_record_reference(scope, handle, expected)
+                .await
         }
 
         async fn consume(

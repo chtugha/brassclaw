@@ -89,6 +89,21 @@ arbitrary dependency exemption or hidden filter/formatter inside file-read.
 
 **Dynamic occurrence support (`V35-13, V35-14`).** The owning flow schema/IBS/qualifier must represent checksummed legal branches, item bindings/results and repeated selected usages. Monty chooses the next branch/item. Rust verifies selected membership, typed edges, freshness and unique occurrence identity, separate from task attempt and service generation. Journal intent/count precedes every actual effect; retain original arguments/key/checksum, exact answer and confirmed/unresolved state. V129's `(attempt_id, operation)` cannot represent repeated submissions. A successor migration/compatibility reader must preserve V122/V127/V129/V133 bytes and old flat tasks. Merely removing `started.contains(step_id)`, trusting a model loop index or adding unrecognized Recipe fields is unsafe. Initial conversion stays stop-only, not general crash replay/resume. Reference reuse and pure extraction can progress independently.
 
+### Exact definition follow-up ownership
+
+The [Exact definition update](docs/plans/Exact_V3_definition_update_at_K3.md)
+clarifies existing work IDs, without closing or renumbering them. V35-02 consumes
+current role/authoring corrections; V35-04/06/07 retain independent-pure evidence,
+real writer/record preparation and complete-Recipe deployment separately. The
+[shared reference source](docs/plans/monty.composition.implementation.md#open-definition-and-example-successors-from-k4)
+distinguishes a real prepared parser draft from the future pure preview graph.
+V35-16 shares Sempai usages only for matching contracts: pre-call correction and
+eligible No-Match post-turn analysis have separate inputs/results/completion.
+V35-17–20 consume the validator/prefix successor instructions and their actual
+approval/Serving gates. V35-25 distinguishes advertised commands from ordinary
+captured tasks. V35-03/04 and 13/14 keep their missing-support gates; this prose
+adds no runtime activation, additional service or compulsory second consumer.
+
 ## Qualified reference Recipe contract
 
 ### Semantics and exact graph shape
@@ -112,7 +127,7 @@ Persisted JSON uses `knowledge`, `stepnumber`, one UUID per `include` and explic
 
 A second genuine read-only log-inspection Recipe consumes exactly the same filter and formatter UUID/revisions and pure dependency, with independent inputs/results. It does not mutate the log and is distinct from the read-only completed-turn audit below. Reuse acceptance records both selections and checksums, not copied code or matching names.
 
-Public variants need at least ten genuine intent examples, exact command grammar, separator/escaping rules and malformed/reordered/missing-input negatives. Values containing separators either use qualified escaping or reject before effects. Captures remain strings unless an approved explicit conversion exists. Deterministic eligibility requires observed **zero model calls**; no author flag suffices. Shell/subagent workflows are always Tier 1; neither is needed here.
+Publicly matched Recipes need recipe.md's at-least-ten genuine intent examples, with positive/negative coverage for every public variant, exact command grammar, separator/escaping rules and malformed/reordered/missing-input negatives. Values containing separators either use qualified escaping or reject before effects. Captures remain strings unless an approved explicit conversion exists. Deterministic eligibility requires observed **zero model calls**; no author flag suffices. Shell/subagent workflows are always Tier 1; neither is needed here.
 
 ### Qualification, publication and successor behavior
 
@@ -132,6 +147,17 @@ Reference acceptance is part of publication, not a detached future test phase:
 | New activation versus old selection | New tasks select successor; suspended/captured tasks retain old exports/artifacts/approvals, including withdrawal/restart. `V35-04, V35-06, V35-27`. |
 | Truthful Tier 0 | Actual ordinary executions show zero model calls and no fallback. `V35-06`. |
 | Documentation is executable guidance | Generated/extracted record examples match accepted fixtures; constructor/schema/links checked. `V35-06, V35-07, V35-30`. |
+
+**Cross-plan clarification (2026-10-28):** V35-02 corrects the general Skill/Recipe
+wording and teaching sources; V35-04/06/07 keep exact usage review separate from
+current complete-Recipe deployment and optional MCP discovery. These IDs do not
+claim independent activation of unused library components. V35-16 keeps actual
+Sempai/audit/other-consumer reuse and successor seed qualification. V35-17–19
+consume validator's subject/evidence/class/UI corrections; V35-20 consumes the
+Prefix owner's selected-closure export/knowledge checks; V35-25 covers optional
+MCP declarations and stale-before-capture rejection. Existing acceptance remains
+scoped: no blanket reapproval of unchanged combinations or deletion of qualified
+reference workflows; new packaged prose/artifacts need their own exact evidence.
 
 ## Concrete submission, deployment and discovery
 
@@ -170,7 +196,7 @@ The successor private Tier-1 Sempai Recipe uses explicit readers → evidence po
 | One candidate retention | Independent usage/occurrence per subject | Existing exact-subject transaction/receipt; human/other authoring consumer. No list/response batch Tool. |
 | Actual receipt aggregation and result record | Pure business classification and explicit result choice | Native append validates provenance/immutability; other review/authoring workflows can aggregate receipts. |
 
-Every family has coherent recursive contracts, missing/null/default behavior, exports/private symbols and exact dependencies. A real Tool-usage Skill has its matching association/binding and canonical execution Recipe/variant; pure PythonCode is not a zero-Tool Skill. Reuse may be across Recipes, as a qualified pure dependency, or as repeated selected occurrences. Only the third needs dynamic-effect support. Small useful components replace neither seven Rust wrappers with one giant Python method nor the global executor with a specialized workflow engine.
+Every family has coherent recursive contracts, missing/null/default behavior, exports/private symbols and exact dependencies. A real Tool-usage Skill has its matching association/binding and needs no dedicated Recipe/variant; pure PythonCode is not a zero-Tool Skill. Reuse may be across Recipes, as a qualified pure dependency, or as repeated selected occurrences. Only the third needs dynamic-effect support. Small useful components replace neither seven Rust wrappers with one giant Python method nor the global executor with a specialized workflow engine.
 
 ### Evidence, response and effects contract
 
@@ -188,7 +214,7 @@ Zero proposals mean no-candidates, not an export. Each nonempty item invokes one
 
 `./docs/reborn/post-turn-review-reconciliation.md` and `./crates/brassclaw_reborn_composition/src/completed_turn_review/reconciliation.rs` own the existing native follow-up. Real TaskControl root/child/host-future settlement, accounted exact native answers, confirmed provider outcome/usage, exact immutable candidate-ID readback and persisted/read-back proof with a retained owner are required before credit release. Unknown spend, lost owner, unsupported accountant, withheld answer or conflicting records remain unresolved. Operator observations and Python completion do not establish quiescence, zero spend or release. A recorded proof may exist without this call releasing retention. Failed/incomplete business outcomes remain unchanged.
 
-`V35-16` qualifies and retains the successor exact graph without switching current review delivery selection with noncircular system-seed integrity/Q1/behavior, preserves overrides/old artifacts, and exercises all three consumers through real PG/kernel/global Monty. Installed edits retain authored review. Private review/validator usages stay out of public matching/MCP; public shared usages need real commands and qualified discovery. Native reconciliation and the already existing component-deployment bridge **do not complete conversion**.
+`V35-16` qualifies and retains the successor exact graph without switching current review delivery selection with noncircular system-seed integrity/Q1/behavior, preserves overrides/old artifacts, and exercises all three consumers through real PG/kernel/global Monty. Installed edits retain authored review. Private review/validator usages stay out of public matching/MCP; only usages intended for MCP publication need real command Recipes and qualified discovery; shared function exports alone do not imply exposure. Native reconciliation and the already existing component-deployment bridge **do not complete conversion**.
 
 Safety acceptance includes complete/missing/redacted/later-turn/failure-after-publication/multi-exchange/unknown-effect evidence; malformed/duplicate/source-like data; zero/one/many and invalid-later proposals before writes; base/dependency conflict; later write failure/unknown commit; duplicate/stale/cancelled occurrences; live block after prior item/wait; replacements during admitted work. Interruptions at intent, provider entry, response retention, candidate commit, acknowledgement and root settlement must never reset counts or replay original turn/model/writes. Inspect old and new evidence with the actual operator facade. Provider fixtures do not certify real-model quality.
 
@@ -248,6 +274,31 @@ by those owner steps. V35-16/20/28 consume their canonical provider/model policy
 trusted geometry, rendered measurements, immutable design ranges and unconditional
 final request guards; they do not create another mutable settings store, compiler
 or transport guard.
+
+Use the [pair-owned design/selection contract](docs/reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26):
+format/limit design is shared per provider/model pair, role content rules and finished
+prefix artifacts are distinct. Recipe/Orchestrator/role selects a specific prefix;
+otherwise base is the default, including ordinary No-Match. An unavailable explicit
+prefix is not permission to substitute base. Kohai first formats the dynamic
+Orchestrator prompt with the saved accepted target-pair design. A connected/enabled
+Sempai optimizes/corrects that already formatted prompt and returns the final
+dynamic prompt. Kohai then adds the intended fixed prefix unchanged exactly once
+before it, without formatting the return again, before the shared guard/send.
+Sempai's own call uses its separately generated prefix and its target-pair design;
+generator/Kohai/Sempai share the accepted revision when targeting the same pair. All manual limit editors share the
+existing provider endpoint and policy revision. No provider server changes or
+role-specific duplicate design/limit stores. This roadmap consumes that owner;
+its existing source-only/transport evidence does not qualify final serving.
+Consume the Prefix owner's
+[explicit handoff acceptance](docs/reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests)
+for the returned final dynamic prompt, same-pair accepted design revision and
+exactly-once unchanged prefix insertion; do not introduce another formatting pass.
+
+The Prefix owner also supplies the [generation dialogs](docs/reborn/model-token-limits.md#generation-prompts-missing-selection-and-model-use):
+OK/Cancel for a missing/incompatible selected prefix, and a base generation question
+after successful Use. Reuse durable jobs and pre-dispatch wait/readiness without
+replaying original input/calls or creating a second runner. Cancel does not silently
+undo a committed provider selection. This roadmap consumes the existing owner.
 
 Retain the cross-plan acceptance handoff: both Sempai and answer targets must fit
 with discretionary budgeting on/off, final recomposition includes actual provider

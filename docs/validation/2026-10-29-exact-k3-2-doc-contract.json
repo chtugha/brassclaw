@@ -1,0 +1,14 @@
+{
+  "docs/reborn/model-token-limits.md": {
+    "before_sha256": "e7d8e5e11a1cfc77be12da10a2b120dea21eef214b15603e74f0767cb7b608fa",
+    "after_sha256": "3d803cfff7052e208fe80009c54fddab43500f3f774e766b3a2cf4ef90dfc1fa",
+    "protected_prefix_sha256": "42edc90faa926270eda84bab0b68e23339a8a10208c1db6e1e23a4472500de77",
+    "owned_heading": "## Open K3-2 successor \u2014 retained prefix selection and prefix-free construction workflows"
+  },
+  "docs/plans/prefix_v3_upgrade.md": {
+    "before_sha256": "0adf2f17ed46fc916912b5fba549c3d2b372299b429a3b12a28a9dce7679bcb9",
+    "after_sha256": "31f0828654c68338ec88260cfd3f420c4ded4f4c587fdd5c69f600f5356f5bb4",
+    "protected_prefix_sha256": "1f1eb5ad59db9aa5bcdd8a7cf1cd6afc836d15bc1e3b019e2d1ded96557f262e",
+    "owned_heading": "## Open K3-2 follow-up from K4 \u2014 Use, model design, prefix Q1/Q2 and retention"
+  }
+}

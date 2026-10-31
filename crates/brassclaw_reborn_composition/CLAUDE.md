@@ -23,7 +23,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -56,7 +58,10 @@ and task state across steps and waits. Replacement versions do not alter active
 tasks; current global Tool policy still applies at every dispatch. Older scoped,
 source-substitution or fresh-step descriptions below are implementation/legacy
 notes, not permission to extend those paths as the v3 target. These requirements
-remain subject to the documented runtime implementation gaps.
+remain subject to the documented runtime implementation gaps. For new conversions,
+use the [open contract successor](../../docs/plans/monty.composition.md#open-contract-and-reference-successors-from-k4)
+and [complete retained parser reference](../../docs/reborn/source-inspection.md#complete-retained-draft-reference),
+not historical blanket result-assignment or illustrative empty-binding examples.
 
 - Own only top-level Reborn composition for production/app startup.
 - Expose facade-shaped handles only: `HostRuntime`, `TurnCoordinator`, product-auth `RebornProductAuthServices`, WebUI `RebornServicesApi`, readiness.
@@ -79,20 +84,31 @@ remain subject to the documented runtime implementation gaps.
   handler must claim the scoped flow/state/provider through `AuthFlowManager`
   before exchanging provider material through `AuthProviderClient`, then
   complete the flow and emit typed continuations.
-- The first WebUI-mounted OAuth route keeps raw PKCE verifiers in a bounded,
-  expiring process-local cache because `brassclaw_auth` durable records may
-  store hashes only. Do not treat that route as multi-replica/restart-safe
-  until a host-owned encrypted verifier store or equivalent sticky callback
-  mechanism is wired.
-- Manual-token setup routes should call
-  `RebornProductAuthServices::request_manual_token_setup` for the typed
-  challenge and `RebornProductAuthServices::submit_manual_token` with a
-  one-shot `RebornManualTokenSubmitRequest` for the dedicated secret-submit
-  body. Build setup request scope from authenticated caller/session context,
-  not a browser body; attach `CredentialAccountUpdateBinding` only after
-  pre-authorizing the existing scoped account. Do not route raw token values
-  through chat commands, model-visible messages, serializable DTOs,
-  projections, or route-local pending maps.
+- New Google OAuth setup uses the existing host-owned encrypted original for
+  the complete first client configuration plus PKCE, with original flow/invocation
+  IDs, immutable account/usage metadata, native absent-flow recovery and exact
+  callback/refresh client lineage. The dedicated Google callback does not use the
+  route's process-local verifier cache. The generic raw non-Google compatibility
+  route still has that bounded expiring cache; it is not restart qualification.
+  Older Google records without original private client bytes cannot borrow current
+  configuration. Keep their metadata and require explicit fresh authorization.
+  Use the implementation index for scoped acceptance and remaining caller,
+  raw-generation, recovery/upgrade and platform gates; do not generalize owner
+  recreation tests into complete deployed support.
+- Manual-token routes call the original setup/raw/reference operations on
+  `RebornProductAuthServices`, preserving the caller-retained independent
+  interaction/flow pair and invocation before the first request. Every supplied
+  raw value goes through `submit_original_manual_token`; explicit
+  `continue_original_manual_token` accepts no token and requires confirmed whole
+  publication. Keep the dedicated raw body and non-serializable
+  `RebornManualTokenSubmitRequest`. Build authority from authenticated host caller
+  context, and attach `CredentialAccountUpdateBinding` only after pre-authorizing
+  the exact existing scoped account before setup. Retain first expiry and actual
+  terminal/unknown disposition; never compensate unknown success or create new
+  setup IDs for retry. No raw tokens in chat, model inputs, generic serializable
+  DTOs, projections, browser storage or route-local pending maps. Extension setup
+  still needs its connected original per-requirement migration; the legacy lower
+  operation does not establish this contract automatically.
 - `RebornProductAuthServices::flow_record_source` is an optional WebUI/local-dev
   read-projection port, not a required product-auth capability. Filesystem-backed
   local-dev composition wires the durable product-auth service itself as this
@@ -458,3 +474,16 @@ axum::serve(listener, app).with_graceful_shutdown(shutdown).await?;
   `build_body_limit_state` accepts every v2 descriptor and preserves
   the per-route caps (regression guard against silently widening the
   `send_message` cap or relaxing a `NoBody` policy).
+
+### Extension manual setup ownership
+
+The Extension manual adapter uses the existing high original-input owner and
+typed Product facade prepare/raw/reference/cancel methods. Protected transport
+passes through `RebornServicesApi`; generic lifecycle payloads reject secrets.
+Keep the projected canonical Web invocation, per-requirement label, independent
+original pair, exact first expiry and explicitly selected target. Metadata
+recovery never chooses a current account or creates a replacement original;
+filesystem projection repair requires the retained original interaction. Expired
+metadata is not raw acceptance. Preserve native/FS publication and scope/CAS
+checks, raw proof and reference-only continuation. This implementation's focused
+checks do not establish full Extension/browser/K3 completion; use the status index.

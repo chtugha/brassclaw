@@ -1,0 +1,27 @@
+# Whole pair-case Recipe and native journal — 2026-10-26
+
+Scoped development acceptance: [terminal receipt](../../target/accepted-evidence/prefix-pair-journal-20261026/run-2/accepted.json), SHA-256 `5ca78feb76a07009a2f3993a12d6a56d854f20c8f8d33fd88448a792778ceab0`. Six exact source changes, whole-tree identities, commands/logs and preserved worker/test images accompany the receipt. The failed [run-1](../../target/accepted-evidence/prefix-pair-journal-20261026/run-1/failed.json) remains intact. The Root27 accepted baseline and all 27 author hashes were independently verified before applying the additive successor; its Auth/runtime-coordinator fix is preserved.
+
+## Implemented prerequisite
+
+The complete existing candidate `compare-prefix-pair-default-template-cases` now has a closed native execution regression. It uses retained component revisions/preloads, the real global Python Recipe flow, existing native UTF-8 digest and original-template encoding usages, current kernel dispatch and actual PostgreSQL invocation records. Its source-owned capture reads the full case packet from the same immutable proposal/artifact owner. It cannot be constructed from an offered caller-edited packet.
+
+A test-only receipt verifier checks the original run, exact retained native selection/checksum, arguments and returned answers, answered phase and single attempt, complete step order, all pure/native input-result fingerprints with each step's captured data bounds, and the real contained worker/acknowledged preparation revision. It reconstructs only declared physical inputs for integrity matching; PythonCode still prepares probes and decides case match/stability. It rejects a manufactured wire-qualified receipt, unrelated run, foreign namespace and incorrect preparation revision. No new workflow decision, Tool primitive, settings owner, queue or approval record was introduced.
+
+This verifier and its dispatcher wrapper are compiled only for development tests. They are a reusable implementation prerequisite for the qualified installed caller, not a production/public job or bootstrap-approval writer. Installed wiring must retain their integrity contract and add its exact qualification/admission/settlement gates.
+
+## Observed execution
+
+One focused Rust integration test passed, zero failed/ignored (36.51 seconds including process overhead). It runs three complete candidate scenarios against a real small WordLevel tokenizer retained through the existing artifact store: two original-context cases match, an intentionally wrong expected suffix completes with `all_cases_match=false`, and a missing leading prefix fails in the native encoding step without entering comparison. The independent fixed expectations include Unicode/CRLF, prefix token count and total token count. Successful completions pass the actual journal/step verifier; forged receipt, unrelated run and wrong preparation revision checks fail as required.
+
+Each scenario records exactly two native invocations with attempt count one. No model exchange or assistant reply occurs, no review evidence is added, and contained workers are shut down/reaped before closed admissions and the runtime are settled. The preceding [four-context original Ornith/Hugging Face comparison](2026-10-26-prefix-pair-cases.md) remains separate evidence; this small fixture does not substitute for model-specific template/tokenizer research or qualify Ornith serving.
+
+Strict affected composition-tests lint with the relevant PostgreSQL/skills-db/native feature configuration and warnings denied passed in 46.44 seconds. The actual test binary compiled from the common root in 131.17 seconds; format and changed-file whitespace passed. Source hashes and preserved worker/test images matched at completion. Canonical serial Cargo target and disk floor were maintained without routine cleanup. No JavaScript, embedded reference, production behavior, database migration, server/default/utility resource setting or remote deployment changed.
+
+Run-1 stopped before Recipe execution because the new test used a single-thread Tokio runtime while PostgreSQL accounting requires multithread execution. Only the test declaration was corrected; its strict lint, actual compilation and complete native execution were rerun. No failure was hidden or reclassified as model/design success.
+
+## Remaining work
+
+Exact noncircular installation-owned workflow/pure-export qualification and persistent acceptance evidence are still absent for this new graph. The ordinary ResultOnly job owner also still requires a role profile/revision: extend that same immutable definition/admission/status owner for explicit role-independent pair checks, rather than inventing a Base profile or a separate queue. Bind the complete source-owned capture and original retained selection, preserve same-ID readback/conflicts and cancellation/current policy, and consume the checked native journal before reporting a result.
+
+Then connect the already planned broader provider/documentation evidence, registered deterministic construction instructions, trusted design acceptance/bindings and actual compiler/Kohai readers. A completed comparison is not an accepted formatter, final provider-wire identity, full-prefix/current-context fit, cache/recurrent-state proof or answer-quality evidence. No prefix was activated or shortened and no testmachine configuration was changed.

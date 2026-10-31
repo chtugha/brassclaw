@@ -26,6 +26,10 @@ pub(super) struct CompilerFixture {
     render_map: Option<Value>,
 }
 impl CompilerFixture {
+    #[cfg(test)]
+    pub(super) fn compile_for_test(&self) -> String {
+        tests::compile(self.snapshot())
+    }
     pub(super) fn new(profile: &str, view: &str) -> Result<Self, RebornBuildError> {
         if !matches!(profile, "base-prompt" | "prefix-maker" | "sempai")
             || !matches!(
@@ -287,7 +291,7 @@ mod tests {
         io::Write,
         process::{Command, Stdio},
     };
-    fn compile(snapshot: &Value) -> String {
+    pub(super) fn compile(snapshot: &Value) -> String {
         let checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let mut child = Command::new("python3").args(["-c","import json,sys; from test_prefix_compile_logic import run_stages; print(run_stages(json.load(sys.stdin))[0])"])
             .env("PYTHONPATH",checkout.join("scripts/prefix")).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();

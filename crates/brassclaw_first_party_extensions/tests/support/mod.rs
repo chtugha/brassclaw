@@ -232,6 +232,7 @@ pub(crate) async fn add_google_account(
             granted_extensions: Vec::new(),
             access_secret: include_access_secret
                 .then(|| SecretHandle::new("google-access-token").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes,
         },

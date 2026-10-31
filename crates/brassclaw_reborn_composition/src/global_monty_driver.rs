@@ -163,6 +163,89 @@ impl GlobalMontyDriver {
             .find(|(attempt, _)| attempt.run_id == run)
             .map(|(_, entry)| entry.host.clone()))
     }
+    /// Read-only fixture observation of retained service and durable-ack state.
+    /// Never consumes a receipt, polls its acknowledgement future, reconciles
+    /// effects or releases an attempt. No raw task input/results are exposed.
+    #[cfg(test)]
+    pub(crate) fn test_settlement_observations(
+        &self,
+        run: brassclaw_turns::TurnRunId,
+    ) -> Result<Vec<serde_json::Value>, AgentLoopDriverError> {
+        let entries = {
+            let attempts = self
+                .attempts
+                .lock()
+                .map_err(|_| failed("monty_attempt_registry_failed"))?;
+            attempts
+                .iter()
+                .filter(|(attempt, _)| attempt.run_id == run)
+                .map(|(attempt, entry)| (*attempt, entry.clone()))
+                .collect::<Vec<_>>()
+        };
+        let mut observations = Vec::with_capacity(entries.len());
+        for (attempt, entry) in entries {
+            let (phase, receipt) = {
+                let state = entry
+                    .state
+                    .lock()
+                    .map_err(|_| failed("monty_attempt_state_failed"))?;
+                match &state.phase {
+                    Phase::Preparing => ("preparing", None),
+                    Phase::AwaitingAdmission => ("awaiting_admission", None),
+                    Phase::PreparationStopped => ("preparation_stopped", None),
+                    Phase::Unsubmitted(_) => ("unsubmitted", None),
+                    Phase::Submitted(control) => (
+                        "submitted",
+                        control.receipt().map(|result| {
+                            result
+                                .map(|receipt| {
+                                    let outcome = match &receipt.outcome {
+                                        TaskOutcome::InternalCompleted { .. } => {
+                                            "internal_completed"
+                                        }
+                                        TaskOutcome::Completed { .. } => "completed",
+                                        TaskOutcome::Failed { reason_kind } => reason_kind.as_str(),
+                                    };
+                                    serde_json::json!({
+                                        "outcome": outcome,
+                                        "withheld_count": receipt.withheld.len(),
+                                    })
+                                })
+                                .map_err(|error| format!("{error:?}"))
+                        }),
+                    ),
+                }
+            };
+            let (settlement_started, acknowledgement) = {
+                let retained = entry
+                    .settlement
+                    .lock()
+                    .map_err(|_| failed("monty_attempt_state_failed"))?;
+                match retained.as_ref() {
+                    Some(settlement) => (
+                        true,
+                        settlement
+                            .acknowledgement
+                            .peek()
+                            .map(|result| result.clone().map_err(|error| format!("{error:?}"))),
+                    ),
+                    None => (false, None),
+                }
+            };
+            observations.push(serde_json::json!({
+                "attempt": format!("{attempt:?}"),
+                "phase": phase,
+                "service_receipt": receipt,
+                "settlement_started": settlement_started,
+                "acknowledgement": acknowledgement,
+                "trusted_internal_turn": entry.host.run_context().trusted_internal_turn,
+                "finalized_reply_present": entry.host.finalized_reply_ref().is_some(),
+                "host_has_withheld_results": entry.host.has_withheld_results(),
+            }));
+        }
+        Ok(observations)
+    }
+
     pub(crate) fn new(
         service: ServiceClient,
         threads: Arc<dyn SessionThreadService>,
@@ -544,6 +627,15 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
         {
             Ok(prepared) => prepared,
             Err(error) => {
+                if let AgentLoopDriverError::Failed { reason_kind } = &error {
+                    tracing::warn!(run_id = %host.attempt().run_id, %reason_kind,
+                        "global task preparation stopped before submission");
+                    #[cfg(test)]
+                    eprintln!(
+                        "global task preparation stopped: run={} reason={reason_kind}",
+                        host.attempt().run_id
+                    );
+                }
                 drop(guard);
                 self.remove(host.attempt())?;
                 return Err(error);
@@ -627,7 +719,7 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
         match &receipt.outcome {
             TaskOutcome::InternalCompleted { receipt_ref } => {
                 if !internal_entry
-                    || !host.run_context().trusted_internal_turn
+                    || !host.is_result_only_completion()
                     || host.finalized_reply_ref().is_some()
                     || !receipt.withheld.is_empty()
                     || host.has_withheld_results()

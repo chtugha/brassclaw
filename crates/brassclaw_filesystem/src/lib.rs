@@ -44,8 +44,8 @@ pub use local::LocalFilesystem;
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresRootFilesystem;
 pub use record::{
-    CasExpectation, ContentType, Entry, EntryIndexMetadata, EntryMetadata, RecordKind,
-    RecordVersion, SeqNo, VersionedEntry,
+    CasExpectation, ContentType, Entry, EntryBodyChecksum, EntryIndexMetadata, EntryMetadata,
+    RecordKind, RecordVersion, SeqNo, VersionedEntry,
 };
 pub use root::RootFilesystem;
 pub use scoped::{MountViewResolver, ScopedFilesystem};

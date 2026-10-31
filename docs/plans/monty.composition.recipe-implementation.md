@@ -2,28 +2,38 @@
 
 ## Reply/history migration review gate
 
-The existing packaged `host-post-reply` and `host-save-history` Recipes, their
-associated Skills and PythonCode are migration inputs, **not qualified current-v3
-implementations to reuse unchanged**. Updating these exact workflows is the parent
-task; implementing the qualified preload/export adapter is its prerequisite.
+The qualified retained reply/history successors and shared preload/export adapter
+are the current baseline, as recorded in the [main plan](monty.composition.md#replyhistory-migration-review-gate)
+and [implementation status](../implementation-status.md). Reuse their exact
+accepted scope; do not rebuild the adapter or remigrate qualified successors
+because an older draft called them unqualified. Broader library/public-command
+population and general pure/recovery acceptance remain open.
 
-Before selecting a successor, independently review the actual retained definitions,
-interfaces, bindings, dependency graph, typed input/result handoffs and global-runtime
-callers against `recipe.md`, `skills.md` and section 24 of `monty.composition.md`.
-Upgrade the usages and Recipes for effect-free dependency-first loading, explicit
-pinned export invocation, isolated mutable state and current kernel enforcement.
-Complete the applicable exact-combination bootstrap/approval and behavioral evidence
-before activation. Names, existing package status, old acceptance receipts and the
-word “canonical” do not qualify the unchanged implementation.
+For a changed successor, inspect its actual interfaces, bindings, full graph,
+typed edges and consuming callers; preserve exact old selections, stable IDs,
+overrides and completed effects. Qualify only the changed closure through the
+supported authored or installation-owned path. Internal reply/history remains
+private unless a separate qualified public contract permits exposure. Public
+formatting/MCP delivery must never add a second reply or history effect.
 
-Preserve compatible stable UUIDs and old task selections when that reviewed migration
-supports them; do not copy deprecated source substitution, ambient step state,
-module-level Tool execution or unsafe retry guidance into the new adapter. Review
-reply/history ownership, both routing branches, history framing, finalization and
-no-replay behavior together after the adapter is qualified. Keep these internal
-usages out of public MCP discovery unless a separately qualified public contract
-explicitly permits exposure. The commented instructions below are historical only.
+The [concurrent ownership allocation](monty.composition.md#concurrent-implementation-with-simplified-v3)
+and [simplified library integration contract](../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration)
+apply to every entry below. Composition owns the component/variant/command and
+MCP protocol wiring. Shared loading, typed transport, child/chat lifecycle,
+provider identity, boot, settlement and upgrade support are implemented once
+in simplified's existing owners; validator retains approval/evidence semantics.
+Missing shared support stays there rather than becoming an appendix-local
+adapter, queue, resource controller, store or executor. Reuse unchanged qualified
+shared evidence and add only actual consumer/command cases still missing.
 
+Every model-call example consumes the Prefix owner's
+[four binding assembly rules](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26).
+Kohai formats the dynamic prompt before optional Sempai correction; after the
+final dynamic prompt returns, it joins the intended immutable finished prefix
+unchanged exactly once. Sempai's own call uses its own generated prefix/design.
+Shared provider/model pairs use the same saved accepted design revision as the
+generator. Qualify this handoff with the Prefix owner rather than implementing
+another formatter or changing the order in an individual Recipe.
 
 **MCP discovery/provider lifecycle:** derive tools/list from available approved mcp-call-skill-recipes and their exact command variants. The server remains running; Kohai connects/advertises only after final prefix addition immediately before prompt send and disconnects on the complete model answer. Refresh the server list at startup/restart and qualified Skill/Recipe catalogue changes. Preserve request-local advertised contracts and ordinary-chat result recovery; see [the authoritative lifecycle](monty.composition.md#recipe-derived-discovery-and-kohai-owned-provider-connections).
 
@@ -19797,7 +19807,7 @@ result = usage_l004(inputs)
 
 **Purpose:** Keep the MCP server alive, derive its listing from approved mcp-call-skill-recipes, and let Kohai own request-local provider advertisement/connection; list the Skill execution Recipe's command, accept its completed form, open a fresh normal chat, submit one user message, forward the correlated terminal response and close the chat.
 
-**Implementation and overlap disposition:** This is MCP chat-client wiring through existing supported product interfaces, not a new executable Recipe, Python source-admission Tool or direct global child bridge. Reuse chat creation, message admission, response observation and closure; the existing global orchestrator owns intent matching/IBS/Recipe execution. See [each Skill's canonical execution Recipe](monty.composition.skill-recipes.md).
+**Implementation and overlap disposition:** This is MCP chat-client wiring through existing supported product interfaces, not a new executable Recipe, Python source-admission Tool or direct global child bridge. Reuse chat creation, message admission, response observation and closure; the existing global orchestrator owns intent matching/IBS/Recipe execution. See [the optional MCP-call/reference Recipe inventory](monty.composition.skill-recipes.md).
 
 **Concrete instructions:** Correlate the MCP request with its new chat/message/run. Check only its listed command/input contract before sending. Observe completion rather than progress/latest unrelated text. The selected Recipe's normal public formatting/reply/history ownership is unchanged. Forward that chat response and supported terminal outcome, then close using the ordinary lifecycle API. Recover delivery/closure from the same retained chat/result; uncertain send is not permission to send twice. Pending/waiting/unknown work is not silently discarded. Closing never deletes artifacts/evidence needed by recovery.
 

@@ -14,6 +14,10 @@ def _validator_preload_identifier(name):
     ]
 
 
+def _validator_preload_export_shape(value):
+    return type(value) is dict and set(value) == {"symbol", "parameters", "mapping"} and type(value["symbol"]) is str and type(value["mapping"]) is bool and type(value["parameters"]) is list and all(type(parameter) is str for parameter in value["parameters"])
+
+
 def check_preload_definition(inputs):
     declaration = inputs["declaration"]
     observations = inputs["observations"]

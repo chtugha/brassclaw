@@ -230,7 +230,17 @@ fn gsuite_credential_requirements(
         .map_err(|_| FirstPartyCapabilityError::new(RuntimeDispatchErrorKind::Backend))?;
     let requester_extension = ExtensionId::new(package.extension_id)
         .map_err(|_| FirstPartyCapabilityError::new(RuntimeDispatchErrorKind::Backend))?;
+    let [declaration]: [RuntimeCredentialRequirement; 1] = runtime_credentials(capability, package)
+        .map_err(|_| FirstPartyCapabilityError::new(RuntimeDispatchErrorKind::Backend))?
+        .try_into()
+        .map_err(|_| FirstPartyCapabilityError::new(RuntimeDispatchErrorKind::Backend))?;
+    let requirement = brassclaw_host_api::RuntimeCredentialAccountRequirement::new(
+        requester_extension.clone(),
+        declaration,
+    )
+    .map_err(|_| FirstPartyCapabilityError::new(RuntimeDispatchErrorKind::Backend))?;
     Ok(vec![RuntimeCredentialAuthRequirement {
+        requirement: Some(requirement),
         provider,
         requester_extension,
         provider_scopes: required_provider_scopes(capability),

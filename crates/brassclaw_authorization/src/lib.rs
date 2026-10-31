@@ -583,7 +583,10 @@ where
             // CasExpectation::Any because that would lose the cross-process
             // ordering guarantee required by update_lease_cas. Fail closed.
             Err(FilesystemError::Unsupported { .. })
-                if matches!(expectation, CasExpectation::Version(_)) =>
+                if matches!(
+                    expectation,
+                    CasExpectation::Version(_) | CasExpectation::VersionAndBody { .. }
+                ) =>
             {
                 Err(CapabilityLeaseError::Persistence {
                     reason: format!(
@@ -1189,6 +1192,13 @@ fn obligations_for_rules(
                             provider: provider.clone(),
                             provider_scopes: credential.provider_scopes.clone(),
                             requester_extension: descriptor.provider.clone(),
+                            requirement: Some(Box::new(
+                                brassclaw_host_api::RuntimeCredentialAccountRequirement::new(
+                                    descriptor.provider.clone(),
+                                    credential.clone(),
+                                )
+                                .ok()?,
+                            )),
                         });
                     }
                 }

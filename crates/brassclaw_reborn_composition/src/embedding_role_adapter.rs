@@ -74,8 +74,11 @@ impl EmbeddingRoleAdapter {
         provider: Arc<dyn brassclaw_embeddings::EmbeddingProvider>,
         cache_config: EmbeddingCacheConfig,
         space: brassclaw_memory::EmbeddingSpaceId,
+        guard: Arc<dyn brassclaw_embeddings::EmbeddingDispatchGuard>,
     ) -> PreparedMemoryEmbeddingProvider {
-        let cache = Arc::new(CachedEmbeddingProvider::new(provider, cache_config));
+        let cache = Arc::new(
+            CachedEmbeddingProvider::new(provider, cache_config).with_dispatch_guard(guard),
+        );
         PreparedMemoryEmbeddingProvider {
             provider: Arc::new(Self {
                 inner: cache.clone(),

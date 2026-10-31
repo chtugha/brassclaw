@@ -71,14 +71,97 @@ implemented by this plan's Steps 3/8–10 and consumed by composition/v3.5.
    silent catalogue omission or Tier-2 replay. Qualify each class through its real
    save/resubmit/operator path and the §5 matrix, including eligible MCP commands.
 
-Shared infrastructure is implemented by its owner, not again here: global
-lifecycle, live limits, cancellation/fatal recovery and authority cutover are
-[simplified Phase 3a and remaining work](simplified_v3.md#remaining-implementation--consolidated-2026-10-22);
-component authoring/commands are [composition](docs/plans/monty.composition.md#remaining-implementation--consolidated-2026-10-22);
-prefix generation/serving is [the prefix plan](docs/plans/prefix_v3_upgrade.md#remaining-implementation-sequence--full-completion).
-Qualified dynamic flow/occurrences and Recipe-owned Sempai conversion retain
-V35-13/14 and V35-09–16/28 ownership in [path_to_v3.5.md](path_to_v3.5.md).
-These dependencies are not reasons to rebuild completed preload/IBS infrastructure.
+### Open definition and example successors from K4
+
+This is new follow-up guidance for still-open Steps 1–3/5a/6/7/10–12 and §7
+consumers (Exact D01–D03/D05–D07/D09–D11). Existing implemented source/definition/
+graph/subject/preload prerequisites, Q2 evidence and the symbolic examples in
+§§7.2/7.10 remain unchanged. For new implementations use the
+[actual complete source-inspection reference](docs/plans/monty.composition.implementation.md#open-definition-and-example-successors-from-k4),
+including native identity, descriptor/association, `python-preload/2`, typed layout,
+fixed invocation and existing factory/runtime test. This succeeds the abstract
+`host.inspect_source`/empty-binding illustration as coding guidance; it does not
+claim that an eight-class validator already exists.
+
+- Use the registered `host.source_inspection` primitive through the exact binding;
+  its returned parser report is JSON text. Parse via a separately qualified usage
+  before field access. No candidate-source execution or second parser Tool.
+- Definitions declare exports and return contracts without invocation during load.
+  Retained invocation captures the return later. A standalone test body's module
+  `result` rule does not apply to preload-only definitions. Pure exports need
+  their own exact independent coverage, not an artificial zero-Tool Skill.
+- Persist actual `knowledge`/`stepnumber`, one UUID/include and supported typed
+  result references; inputref `step_id` is not an invented persisted step field.
+  Bind raw candidate source as string data; reject lossy raw-value conversions,
+  not legitimate marker strings. Apply the real command grammar separately.
+- Public Recipe intents and private trusted validator admission have different
+  coverage obligations under recipe.md. Private work still qualifies provenance,
+  explicit variant/input selection, result custody and forbidden public entry.
+- Authored Q1/behavior/human Q2 and installation-owned noncircular bootstrap stay
+  distinct. A label/insert or parsed report supplies neither approval nor activation.
+  Changed shipped subjects need exact successor evidence; old evidence/overrides
+  and running selections remain intact. Missing upgrade support stays explicit.
+- Completed-turn analysis accepts only eligible original No-Match evidence;
+  pre-call prompt correction has a different input/result/completion contract.
+  Neither is a trusted validator verdict writer merely because Sempai produced it.
+
+Schema/graph/zero-effect preparation reuses existing factories and callers.
+Actual new active-consumer defects require their own owner regression; future
+pure routes/writers/behavior/Q2/UI remain in Steps 3/8–12. A documentation/reference
+check closes none of those runtime gates and introduces no new review service.
+
+### Concurrent implementation with simplified-v3
+
+Implement this plan alongside `simplified_v3.md`. The following allocation governs
+all steps and interpreter notes below, including older imperative descriptions of
+shared work. Shared implementation changes belong to the existing simplified
+owner; this plan supplies review-specific requirements, payloads and integration
+checks. Missing support is a dependency, not permission to create a local substitute.
+
+| Boundary | Implementing owner | Validator contribution / retained responsibility |
+| --- | --- | --- |
+| Global boot/readiness, private task admission, transport and ResultOnly completion | [simplified Phase 3a](simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben), [shared admission/recovery contract](simplified_v3.md#gemeinsamer-admission--und-recoveryvertrag-für-produktaufträge) and [shared review-runtime contract](simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung) | Supply the exact internal review route, subject/validator selection and typed result contract. No second VM, Inbox, turn queue, claim authority or validation scheduler. |
+| Subject/work/run linkage, cancellation, native observations, durable settlement and projection repair | [shared review-runtime contract](simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung) under [simplified Phase 3a](simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) | Own immutable submissions, required-rule coverage and trusted evidence writers; link them to the original shared run/occurrences. Runtime settlement is not a Q1 pass. |
+| Typed runner/bindings, artifact identity, live resource accounts and fatal recovery | [simplified Phase 0a](simplified_v3.md#phase-0a--ground-truth-komponentenverträge-implementieren) / [simplified Phase 3a](simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) | Supply qualified inspection/draft-testing profiles and exercise actual interpreter/host paths. Source facts and editable validation rules remain Steps 3/5–8; no new loader, allocator, resource controller or dump/restore service. |
+| Provider lifecycle, revision delivery and technical model-request admission | [simplified §10.1](simplified_v3.md#101-umsetzung-und-entfernung); prefix owns final request-size measurement/guard | Use existing model usages for explicit semantic checks, with exact target/context evidence. Missing provider/prefix readiness is incomplete work, not a defect or pass; no validator provider registry or model transport. |
+| Operator authentication, CSRF/origin and current Tool policy | [simplified Phase 1](simplified_v3.md#phase-1--einzige-instanz--und-betreiberidentität) / [simplified Phase 3](simplified_v3.md#phase-3--eine-feste-runtime--und-sicherheitsrichtlinie) | Step 9 owns exact-view human Q2 and trusted approval semantics through that existing ingress. No reviewer login/role, invocation approval lease or caller-supplied human marker. |
+| Boot seeding, physical migrations, backup/restore and binary/runtime cutover | [simplified Phase 3a](simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben), [simplified Phase 6](simplified_v3.md#phase-6--datenbank--dateisystem--und-secret-migration) and [simplified Phase 8](simplified_v3.md#phase-8--cutover-und-entfernung-des-legacy-modells) | Step 11 supplies noncircular seed provenance, mappings, review/evidence artifacts and restore assertions. No second migration/backup/supervisor process. |
+| Catalogue publication and downstream invalidation | [simplified §8.2](simplified_v3.md#82-vorgeschlagene-webui-funktionen) and existing catalogue transaction owner | Step 10 supplies class-route/approval/support predicates and reader changes. Do not create another activation registry or wait for a Prefix built from an unpublished generation. |
+
+This plan retains the exact subject and validator-selection contracts, reusable
+inspection/checking components, all eight class Recipes, required semantic/behavior
+coverage, trusted Q1/Q2/association/pure evidence and noncircular validator seed
+qualification. The execution manifest is not the reviewed subject, and a successful
+shared run cannot approve a component. Simplified consumes these results under its
+Phase 0a; do not delegate evidence semantics back and create a circular prerequisite.
+
+Reconcile through the existing status/validation record: name the owning boundary,
+required extension and affected consumers before concurrent source changes. Reuse
+current receipts and qualified mechanisms. Block only affected ordinary exposure
+when a shared requirement is missing; constrained draft work can proceed under its
+explicit supported contract. Mandatory runtime/root trust remains a boot gate;
+missing optional model-assisted review must not block unrelated safe work.
+
+[Composition](docs/plans/monty.composition.md#remaining-implementation--consolidated-2026-10-22)
+owns canonical component migration; [prefix](docs/plans/prefix_v3_upgrade.md#remaining-implementation-sequence--full-completion)
+owns generation/serving. Dynamic control/occurrences remain V35-13/14 in
+[path_to_v3.5.md](path_to_v3.5.md); Sempai business conversion remains with its
+existing v3.5 owners. Consume those results; this plan neither rebuilds their
+infrastructure nor declares it implemented by adding a reference.
+
+Model-assisted checks reuse the [Prefix-owned assembly contract](docs/reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26).
+Kohai first formats only the dynamic Orchestrator prompt for its target pair;
+optional connected Sempai corrects that already formatted prompt using its own
+generated reviewer prefix/target design and returns the final dynamic prompt.
+Kohai then inserts the intended finished prefix unchanged exactly once before it,
+without formatting the return again, and checks the complete request. Generator,
+Kohai and Sempai share the saved accepted design revision for the same pair.
+Validator consumes these qualified stages; it does not implement another formatter,
+prefix owner or transport. Consume the
+[explicit handoff acceptance](docs/reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests):
+the final join uses Sempai's returned dynamic prompt, or Kohai's initially formatted
+prompt with review disabled. Sempai's reviewer prefix stays in its own call.
+This ordering does not establish Q1/Q2 approval.
 
 ## Binding preloadable Skill interface (v3)
 
@@ -95,7 +178,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -306,8 +391,8 @@ required evidence are verified; the legacy `validated` label is insufficient.
 
 1. Re-read the five guides, development policy and applicable subsystem rules.
    Record the commit and relevant working-tree changes; preserve operator edits.
-   Reconcile composition sections 20 and 23–26 and the canonical Skill Recipe
-   inventory. Record reuse/partial overlap/blocked dispositions for each usage;
+   Reconcile composition sections 20 and 23–26 and the optional MCP-call/reference
+   Recipe inventory. Record reuse/partial overlap/blocked dispositions for each usage;
    a preparation dictionary or pure helper must not become an artificial Skill.
 2. Enumerate the eight actual Recipe/PythonCode UUIDs in the supported store,
    their bodies/checksums, variants, scope keys and current users. A read-only
@@ -325,8 +410,9 @@ required evidence are verified; the legacy `validated` label is insufficient.
    check. Use strict parsers at the raw-byte boundary so duplicate JSON keys are
    rejected before conversion to a generic JSON value loses that information.
 7. Fix review scope, required class checks, evidence sufficiency and activation
-   ownership in a decision record. Define a private, typed review admission path
-   using the existing global service transport, without fabricated chat input.
+   ownership in the existing review/status record. Specify the review payload and
+   private route for [shared review-runtime contract](simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung); simplified implements the shared admission
+   extension. Do not invent a user prompt, second queue or separate executor.
 
 Gate: a source-backed mapping of requirements to consumers and reusable primitives
 exists; missing APIs are labelled implementation work. No symbolic JSON is inserted.
@@ -351,7 +437,10 @@ exists; missing APIs are labelled implementation work. No symbolic JSON is inser
    migration work, not fabricated associations or silently reclassified approvals.
 6. Define how a review chooses proposed draft dependencies versus already-approved
    dependencies. Never substitute latest or downgrade during the review. A new
-   dependency combination needs combination evidence even if schemas are compatible.
+   S usage combination needs its exact qualification even when schemas agree.
+   In the supported A successor, changed own functions need their review and
+   required compatibility evidence; unchanged partners/consumers are not reviewed
+   again and compatible dependency replacements need no new combination approval.
 7. Define and implement a strict retained Skill-interface declaration within the
    checksummed Skill revision document: exported names/signatures, associated code
    UUID/implementation symbols, private helpers/constants, typed contracts,
@@ -362,29 +451,66 @@ exists; missing APIs are labelled implementation work. No symbolic JSON is inser
    Add supported storage/reader/authoring contracts before accepting these records;
    existing generic document storage alone does not implement their semantics.
 
+**Implemented subject successor (BUILD-018, 2026-10-31):** the existing operator
+path retains strict `component-review-submission/3` with a changed Skill/code pair
+or exact unchanged partner context. V193/per-root base/head CAS, atomic staging,
+one V149 intent, complete typed `/2` input and the advanced WebUI are accepted;
+see [the actual evidence](docs/validation/2026-10-31-joint-function-subject.md).
+Legacy `/1` and `/2` keep their original meaning. Current single-class preparation
+explicitly rejects function subjects until complete joint coverage is connected.
+This completes that submission extension, not all authoring/Sempai migration or
+joint checking/verdict/Q2/publication.
+
+**Checking-component successor in source:** one shared private subject-reader
+PythonCode library decodes both complete subject formats for extraction, contracts,
+definitions and graph rules. A separate `skill_interface` rule checks the declared
+usage interface/association and selected code exports using existing recursive
+and export-shape checks. Pure-call checking remains the distinct pure-only route,
+not a rejection of Tool-using Skills. These installed drafts and mechanical checks
+are not the complete Skill/code validator: actual source/call/binding agreement,
+variance, behavior/meaning, trusted run/attempt/settlement, Q1 and atomic human Q2
+remain in Steps3/7/8–10. Keep partial-preparation rejection until that full support.
+See [the checking boundary](docs/reborn/source-inspection.md#shared-review-subject-reader-and-skill-interface-check).
+
 Gate: edits/resubmissions/concurrent proposals cannot alter an existing review
 subject; legacy live components remain available during staged migration. Raw
 candidate data can contain quotes, braces, Unicode and Python-looking text safely.
 
+**Skill/consumer/MCP separation (2026-10-28):** a complete Skill owns no mandatory
+invocation Recipe. Steps 1–3 retain the exact Skill/code/binding/Tool subject and
+its qualification route separately from any consuming or test Recipe. Step 7
+checks the Skill function contract; command/capture/chat completion belongs to the
+actual Recipe, and MCP qualification only to declared exposure. Steps 8–10 must
+keep usage, whole-workflow and MCP observations distinct, including negative cases
+with no MCP publication and reuse by different Recipes. Steps 11–12 preserve old
+artifacts and display optional consumers/publications without making an empty
+Recipe backlink a Skill failure. Current deployment still publishes complete
+Recipe graphs; this correction creates no standalone library-activation API.
+
 ### Step 3 — Retain validator selection and trusted evidence contracts
 
-1. Replace exact-scope mutable lookup with one instance catalogue owner selecting
-   an approved active validator route for the requested class. Keep class routing
-   distinct from ordinary user intents; retain the `05:validator` internal route.
+1. Replace exact-scope mutable lookup with selection through the existing coherent
+   active catalogue owner from simplified Phase 0a. This plan supplies approved
+   validator route bindings for each requested class, not another catalogue. Keep
+   class routing distinct from ordinary user intents; retain the `05:validator`
+   internal route.
 2. Select the Recipe revision, embedded variant, `step_link`, layout and full
    transitive graph in one repeatable-read/serializable catalogue view. Reuse the
    revision/evidence transaction interfaces; do not stitch separate latest reads.
    Include the checksummed interface, selected export/implementation symbol,
-   qualified helper imports, dependency order and canonical execution Recipe
-   identity in selection and evidence. Multiple exports require a supported retained
-   invocation selector; never infer one from prose/order/name or invent persisted
+   qualified helper imports and dependency order in selection and evidence.
+   Retain the actual validator/consumer/test Recipe identity where that workflow
+   is the reviewed subject or evidence producer; require MCP-call identity only
+   for a declared MCP publication, never as a mandatory Skill backlink. Multiple
+   exports require a supported retained invocation selector; never infer one from prose/order/name or invent persisted
    Recipe fields. Trace snapshot, transport and continuation readers together.
-3. Retain actual Tool artifacts/adapter identities for the validator's usages.
-   `RetainedToolBinding` deliberately does not contain the executable artifact;
-   implement and verify that missing resolver/retention boundary before dispatch.
-   Verify old artifacts are actually reloadable through the supported ABI/registration
-   path after upgrade/recovery. A captured image/checksum is insufficient. Block
-   an upgrade that would strand retained work; never substitute a latest handler.
+3. Consume actual Tool/interpreter artifacts and adapter identities from
+   [simplified Phase 0a](simplified_v3.md#phase-0a--ground-truth-komponentenverträge-implementieren) item 5 and [simplified Phase 3a](simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben). Their owner implements
+   missing shared retention/loading support. `RetainedToolBinding` alone has no
+   executable artifact; a checksum is insufficient. Supply the review's exact
+   artifact/ABI references and verify dispatch/restore uses them. If support is
+   missing, block the affected review/upgrade rather than implement a validator
+   loader or substitute a latest handler.
 4. Define durable review records linking the subject graph to the exact validator
    manifest, rule coverage, actual observations, verdict and attempt identity.
    Reuse V102 storage where its evidence contract fits; add linked records or new
@@ -427,6 +553,14 @@ it is not complete class-22 Q1 or production admission. Reuse these components
 and the existing parser. Graph/call/binding/behavior coverage and trusted durable
 evidence remain in this step and Steps 3/8–10, under the shared cutover contract.
 
+**Graph prerequisite successor — 2026-10-24:** the same private Recipe now pins
+actual native preflight profile facts and adds graph/dependency/namespace/reference
+checking after real definition/contract results. [Fifty tests and strict relevant
+lint pass](docs/validation/2026-10-24-python-graph-review.md), including 17 closed
+Recipe cases. This remains structural partial coverage: complete pure/call/binding/
+behavior checks, production private admission, settled trusted evidence and
+activation remain required. The profile is not candidate data or Tool permission.
+
 1. Reuse `value_contract.rs`, `association_contract.rs`, retained graph readers
    and source-inspection observations. Fix any spec discrepancies there with
    focused consumer tests rather than introducing another schema framework.
@@ -457,9 +591,12 @@ evidence remain in this step and Steps 3/8–10, under the shared cutover contra
    treat unsupported compatibility paths as approval. Verify actual declarations,
    symbol resolution and selected exports through the retained caller before
    approving each complete validator workflow.
-7. Likewise, implement permitted dependent-chain binding layouts explicitly.
-   Until supported, those drafts cannot activate; do not redefine permitted v3
-   chains as authoring defects or silently exclude an already-active workflow.
+7. Consume permitted dependent-chain binding support from [simplified Phase 0a](simplified_v3.md#phase-0a--ground-truth-komponentenverträge-implementieren)
+   and the occurrence/control owner. Supply its validator cases, not another
+   binding runner. The current ordinary retained path permits one bound Tool call
+   per execution step; separate pairs remain required there. Unsupported chains
+   cannot activate. Report an active unsupported workflow as a repairable error,
+   never silently omit it or certify a prose exception as runtime support.
 8. Apply section 7.3's bounded data conversion and 7.4's source/profile rules.
    Reuse the existing strict Monty-to-JSON adapter rather than adding a lossy
    converter. Optional static typing cannot replace runtime contracts or Q1.
@@ -490,10 +627,11 @@ without executing prose, effectful initializers or an unreviewed helper graph.
    selection, real `step_link` compilation, ordered IBS and typed composition.
    Use the named internal selection path; do not invent a user intent to validate
    components or require ordinary chat examples for this private entry point.
-2. Extend/reuse `GlobalRecipePorts`, retained execution and task ports so the
-   global Monty orchestrator sequences each check. Rust executes only requested
-   primitive operations/steps and transports observations; it never chooses the
-   next validation step or runs a second Recipe loop.
+2. Supply the required private review contract to [shared review-runtime contract](simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung); its owner
+   extends existing `GlobalRecipePorts`, retained execution and task ports where
+   needed. Here, wire the approved validator Recipe and typed evidence edges to
+   those ports. Monty sequences checks; Rust admits/transports/enforces and never
+   runs a second validation or Recipe loop.
 3. Supply candidate/context/fact values as declared local inputs. Retain outputs
    by stable step identity and explicitly bind downstream consumers. Enforce
    recursive producer/consumer compatibility and concrete output validation.
@@ -504,20 +642,22 @@ without executing prose, effectful initializers or an unreviewed helper graph.
 5. Add explicit model steps through supported model usages where a validation
    Recipe requires reasoning. A failed model call is an incomplete review, not
    a pass or No-Match. Deterministic validators make zero LLM calls.
-6. Retain review task identity/cancellation and runtime compute/memory accounts.
-   External waits yield so other tasks/control events proceed. The global service
-   stays alive after validation completes or fails; no per-review orchestrator VM.
+6. Consume review task identity, cancellation and compute/memory accounts from
+   [simplified Phase 3a](simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) / [shared review-runtime contract](simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung). Bind review/subject identities and test
+   yield/resume through that owner; do not implement counters or a per-review VM.
+   Other tasks/control events must progress while review work waits.
 7. Preserve classification between candidate failures, incomplete evidence and
    infrastructure errors. No malformed `{pass, errors}` result may advance Q1.
    Host denial/cancellation/stale attempts, exhausted budgets and recorded unknown
    effects remain authoritative even if candidate Python catches an exception
    and returns a success-shaped value.
-8. Define a supported retained control/occurrence contract for stop-on-failure,
-   qualified conditional semantic/model checks, repeated checks and waits. Inspect
-   the current compiler/root/task ports first; extend their owning contracts where
-   missing. Do not flatten conditional effects into a straight step list or add
-   invented branch fields to persisted Recipe JSON. Pin selected layouts and track
-   executed occurrences/continuation positions in trusted review state.
+8. Declare required conditional/repeated check coverage, stop-on-failure and
+   waits, then consume qualified control/occurrences from V35-13/14 and shared
+   continuation support from [simplified Phase 3a](simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben). Their owners implement missing
+   control/transport contracts; this plan writes the actual validator workflows
+   and coverage proof. Do not flatten conditional effects, invent Recipe fields
+   or implement a validator occurrence scheduler. Unsupported graphs stay draft;
+   retain the exact qualified layouts and observed occurrence references.
 9. Test each branch's required coverage and terminal verdict. Deterministic routes
    never invoke the model; explicit reasoning routes retain their tier and exact
    context. An interrupted, missing or skipped required check remains incomplete.
@@ -539,11 +679,11 @@ they are not new Tool names or new constructor fields.
 | Route | Required ordered checks and verification |
 | --- | --- |
 | `validator-class-0` / Tool | Identity and primitive grain; explicit operation/effect contract; registered schema versus Rust/host adapter; recursive inputs/results and transport limits; capability/callable/Tool UUID/alias mapping; retained artifact/checksum/ABI availability; actual errors/waits/cancellation; read-only/deduplication claims and constraints. Verification loads draft artifacts only in the constrained environment, measures declared behavior, and checks live policy across aliases/old versions. Compilation alone never passes the required review. |
-| `validator-class-1` / Skill | Prose sections and one-usage meaning; strict checksummed interface with public names/signatures, associated UUID/implementation symbols, private dependencies and compatible entry forms; effect-free preload including defaults/initializers; dependency-first symbol resolution, immutable constants and isolated mutable state; pinned old/new export/host coexistence; exact `skill-association/1`; class-correct UUID relationships; direct/computed/fixed arguments and actual callable compatibility; recursive return/error contract and exact failure metadata; transitive code/call graph. Verify the canonical execution Recipe/variant's stable identity, unambiguous command, captures, typed inputs, selected export, binding adjacency and completion/result contract. Reuse equivalent existing variants. Automated semantic and behavior checks compare purpose/defaults/computation/effects to prose; apply authored human Q2 or controlled shipped-seed qualification as appropriate. Private/protected usages remain unadvertised. |
+| `validator-class-1` / Skill | Prose sections and one-usage meaning; strict checksummed interface with public names/signatures, associated UUID/implementation symbols, private dependencies and compatible entry forms; effect-free preload including defaults/initializers; dependency-first symbol resolution, immutable constants and isolated mutable state; pinned old/new export/host coexistence; exact `skill-association/1`; class-correct UUID relationships; direct/computed/fixed arguments and actual callable compatibility; recursive return/error contract and exact failure metadata; transitive code/call graph. A dedicated Recipe or command is not a Skill-completeness requirement. Verify exact invocation behavior through a supported contained review or consuming/test workflow. Check command/captures/completion on the actual Recipe subject and MCP publication only when declared; reuse equivalent existing workflows. Automated semantic and behavior checks compare purpose/defaults/computation/effects to prose; apply authored human Q2 or controlled shipped-seed qualification as appropriate. Private/protected usages remain unadvertised. |
 | `validator-class-2` / Skill | The same complete usage checks as class 1. Correct the seed's obsolete domain-Skill label. Find multi-Tool domain overviews and migrate them with explicit reference updates into ExtensionCatalogue/Recipe structure; do not reinterpret class 2 as a hierarchy or mass-relabel existing rows. |
 | `validator-class-3` / Skill | The same complete usage checks as class 1, plus verified explicit model-usage contracts where relevant. Class 3 alone neither executes an LLM nor makes a usage deterministic. Check actual model invocation, result/errors and consuming tier, without executing prose. |
 | `validator-class-13` / ToolSkill | One non-executing/non-authorizing binding; Tool UUID/capability/callable/adapter/artifact agreement; registered parameter schema versus binding/usage contracts; fixed selectors and computed arguments; missing/default/null rules; recursive result/error expectations and numeric bounds; metadata include references/cycles/conflicts. Reject workflow/permission/retry execution in metadata. Test actual paired binding/export invocation availability; preloading a function must not dispatch or grant permission. |
-| `validator-class-21` / Recipe | Parse actual persisted steps, variants and selected links; ordinals/classes/one UUID cardinality; matching binding/export invocation pairs; typed capture/local-input mappings; complete interface/dependency/code graph; supported export selection and effect-free assembly; result edges including optional/null/list guards; qualified branches/occurrences/waits; internal composition/call grain; tier restrictions; explicit retry/reconciliation/cancellation/final reply. Test each variant's routing, effects/history/completion and required negative paths. Canonical Skill execution variants must preserve exact command/capture/signature/fixed-argument/result agreement. Eligible mcp-call-skill-recipes declare exact command sentences, variable positions/types, escaping and valid examples; discovery projects approved available Recipes, never raw Skills. Internal validator routes have a typed private entry point and remain excluded from public matching/MCP. |
+| `validator-class-21` / Recipe | Parse actual persisted steps, variants and selected links; ordinals/classes/one UUID cardinality; matching binding/export invocation pairs; typed capture/local-input mappings; complete interface/dependency/code graph; supported export selection and effect-free assembly; result edges including optional/null/list guards; qualified branches/occurrences/waits; internal composition/call grain; tier restrictions; explicit retry/reconciliation/cancellation/final reply. Test each variant's routing, effects/history/completion and required negative paths. Any declared Skill command variant must preserve exact command/capture/signature/fixed-argument/result agreement; Skills need no dedicated variant. Eligible mcp-call-skill-recipes declare exact command sentences, variable positions/types, escaping and valid examples; discovery projects approved available Recipes, never raw Skills. Internal validator routes have a typed private entry point and remain excluded from public matching/MCP. |
 | `validator-class-22` / PythonCode | Parse exact source under the selected Monty profile; distinguish preloadable definitions from invocation boundaries and pure steps. Functions use explicit signatures/local parameters and return values; the boundary captures and validates the result. Inspect default/initializer/decorator expressions for load effects and resolve every reachable helper/call against the declared pinned graph. Reject undeclared/dynamic targets under unsupported profiles, shared mutable defaults/globals and captured foreign task/host context. Count transitive Tool calls against associations/bindings, including calls hidden in helpers; zero calls for pure logic, independent calls in separate occurrences and only supported covered dependent chains. Check recursive imports/includes/order/symbol contracts and actual returned/failure behavior. No data-to-source substitution or forbidden intrinsics. A pure helper needs no artificial Skill/ToolSkill; Tool usages require actual associations. |
 | `validator-class-23` / ExtensionCatalogue | Domain overview plus actual task-group/Recipe inventory; correct target classes and reference resolution; child IDs, dependency closure and intent/index consistency; no hidden executable workflow or replacement for usage contracts. Validate schema supported by current store/consumers and real retrieval/navigation, not invented catalogue fields. |
 
@@ -556,13 +696,13 @@ than pretend arbitrary Python correctness follows from parsing.
 Gate: every route has distinct class-relevant negative fixtures; nonempty invalid
 components no longer pass merely because their descriptions are present.
 
-Resolve the canonical execution variants for validator-owned Tool usages against
+Resolve actual private consuming/test variants for validator-owned Tool usages against
 the composition Skill Recipe inventory before allocating new identities. A Skill
-and its execution Recipe may need coordinated draft qualification; neither draft
+and an actual consuming/test Recipe may need coordinated draft qualification; neither draft
 is admitted to ordinary matching to break that authoring dependency. Keep private
 review execution separate from MCP's completed-command ordinary-chat transport.
-Keep canonical-Recipe review links distinct from executable dependency edges;
-linking a Skill to its Recipe must not create a recursive code-loading cycle.
+Keep optional reference/test-Recipe review links distinct from execution edges;
+linking a Skill to a consumer must not create a recursive code-loading cycle.
 Do not require full MCP serving to activate an internal validator; advertise an
 eligible public usage only after its own Recipe/discovery/chat gates pass. Routine
 Skill invocations never create components or rerun Q1/behavior/Q2.
@@ -579,8 +719,10 @@ Skill invocations never create components or rerun Q1/behavior/Q2.
    at the appropriate level, without ordinary matching exposure of drafts.
    Include separate preload observations (zero effects), invocation observations
    (returned values/transitive dispatches) and branch coverage. A successful load
-   cannot count as a successful usage; a valid canonical command must exercise its
-   actual selected export/binding/result in constrained draft execution. Repeat
+   cannot count as a successful usage. When a command Recipe is being qualified,
+   its valid command must exercise the actual selected export/binding/result in
+   constrained draft execution. A contained usage review needs no dedicated
+   command Recipe and grants no ordinary matching or MCP exposure. Repeat
    ordinary-chat matching acceptance after qualified publication; never expose
    drafts to normal routing to obtain that evidence.
 3. Let Recipes define representative expectations/cases through approved contracts.
@@ -640,14 +782,16 @@ the hosting/inspection identity gap. Durable interpreter references, actual
 review run/attempt/settlement and trusted evidence persistence are still required.
 See [the scoped hosting record](docs/validation/2026-10-23-retained-global-worker.md).
 
-1. Reuse existing immutable submission records and make their review work discoverable
-   via the existing admission/coordination services. Atomically retain submission
-   and required work/outbox reference, or specify its idempotent reconciliation
-   transaction before coding.
-   Do not create a second durable turn scheduler or polling LLM loop.
-2. Connect submission/resubmission and recovery to global Monty admission. Keep
-   review claims/freshness distinct from Tool permission. Record the exact review
-   manifest before the first effect; retain counts and confirmed/unresolved effects.
+1. Own immutable submissions and their logical review-work definitions. Bind
+   them through [shared review-runtime contract](simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung) using the existing transaction/admission
+   participants: simplified implements request/run idempotency, wake/reconciliation
+   and execution ownership. Supply exact submission/subject/validator/check-set
+   references; do not create another outbox/queue framework or polling LLM loop.
+2. Integrate submission/resubmission with that shared runtime contract. A duplicate
+   request retains the original review/run; a deliberate changed submission gets
+   a distinct reviewed identity. Simplified owns durable attempts/counts and
+   effect settlement; this plan owns check coverage and evidence identity. A
+   restarted UI or stale result cannot re-review latest or authorize activation.
 3. Persist a Q1 pass only after required check completion and exact subject/
    manifest validation. Database failure preserves pending/incomplete state.
    Rejections retain diagnostics; retryable infrastructure conditions do not
@@ -687,21 +831,28 @@ remain unfinished. Previously accepted dependency-only membership is not a
 grandfathered independent approval; invalid historical catalogues fail explicitly
 without changing their stored active pointer or becoming No-Match.
 
-1. Define the active catalogue-generation transaction linking approved immutable
-   revisions, class-validator routes, required approval records, implementation
-   availability and compatible intents/variants. Enforce concurrency revisions.
+1. Supply review/support predicates, exact approval records and class-route
+   updates to [simplified §8.2](simplified_v3.md#82-vorgeschlagene-webui-funktionen) and the existing catalogue transaction owner.
+   Simplified owns the common coherent publication/invalidations; this plan
+   validates the subject/validator/trust closure and wires its class readers.
+   Do not introduce a parallel activation store or transaction coordinator.
 2. Prevalidate every consuming affected combination before publication. A changed
    shared validator/helper/binding can affect many routes/usages. Keep incompatible
    combinations in draft; do not silently switch dependencies of approved roots.
-3. Prepare required prefix/cache artifacts, then atomically publish the generation
-   or use a documented pending/effective publication protocol if artifact work
-   cannot share the SQL transaction. Until publication succeeds, the old generation
-   remains active. Never claim atomic DB-plus-external-service execution.
-   First production publication is blocked on steps 11–12 prerequisites and the
-   applicable acceptance cases; preparing this transaction is not authorization
-   to graduate incompletely reviewed validators.
+3. Follow [simplified §8.2](simplified_v3.md#82-vorgeschlagene-webui-funktionen) exactly: publish a fully approved executable
+   catalogue together with durable affected-prefix invalidation, then let the
+   prefix owner build from that active snapshot. Do not require a Prefix produced
+   from an unpublished candidate or claim atomic DB-plus-external-service work.
+   A failed catalogue transaction leaves the previous catalogue active; a failed
+   later Prefix build blocks affected model consumers without rolling back the
+   approved catalogue or using stale context. Independent deterministic reviews
+   and model-free builds remain eligible under their own complete contracts.
+   First validator publication still requires Steps 11–12 and actual review/
+   runtime acceptance; prefix separation never bypasses approval or native support.
 4. Update matching, named lookup, retrieval, IBS, prefix compilation and UI readers
-   to use active-generation references consistently. Preserve internal validator
+   through their existing subsystem owners to use active-generation references
+   consistently. Validator supplies review/class-route predicates and integration
+   cases; prefix compilation remains with the Prefix owner. Preserve internal validator
    routing tags while excluding those routes from ordinary user matching.
    Include interface/export caches, canonical command indices and qualified MCP
    discovery refresh at startup/restart and relevant Skill/Recipe activation.
@@ -746,10 +897,12 @@ Historical receipts remain immutable legacy records.
 2. Reuse immutable evidence storage and implement the system-seed reader/writer
    provenance adapter. The current authored reader explicitly rejects that mode;
    a mode flag alone cannot change this. Only this controlled path permits null Q2.
-3. Preserve the completed removal of fabricated builtin passes and required error
-   propagation. Add actual controlled seed evidence and trace recovery/queue behavior
-   and both builtin/zencoder seeders before changing boot. Admin diagnostics must remain
-   available where the startup contract permits; unverified ordinary work stays closed.
+3. Preserve the removal of fabricated builtin passes. Supply controlled validator
+   seed evidence, dependencies and integrity checks as participants to
+   [simplified Phase 3a](simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) boot; its owner integrates builtin/zencoder registration
+   and ordering before producers. Trace existing recovery paths with that owner,
+   not another validator startup/queue pass. Diagnosis remains available under the
+   shared failure contract; unqualified review routes stay closed.
 4. Extend component integrity to cover validator Recipe layout/bindings and complete
    executable dependencies/artifacts, not only selected prose checksums.
 5. Provide idempotent upgrade mapping from legacy validator UUIDs and pending review
@@ -758,13 +911,17 @@ Historical receipts remain immutable legacy records.
 6. Preserve operator overrides/deactivated routes across boot and repair. A seed
    upgrade stages a reviewed successor; it cannot overwrite an override or silently
    reactivate a disabled entry. Root-code changes require supervisor reconciliation.
-7. Recovery fences cancelled/stale service generations and retains dispatch intent,
-   counts, keys/arguments and confirmed/unresolved effects. VM memory is not a
-   checkpoint. Unknown outcomes need explicit reconciliation; no whole-review or
-   whole-Recipe replay and no parallel replacement global VM.
-8. Backup/restore includes revision/evidence/activation references and required
-   implementation artifacts. Test a real upgrade and restore before cutover; never
-   alter previously applied migrations. Allocate new migration numbers at implementation.
+7. Consume [simplified Phase 3a](simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) / [shared review-runtime contract](simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung) recovery. Supply review-owned
+   evidence/status lookup and trusted settlement predicates; shared owners fence
+   attempts and preserve native custody/counts/effects. A recovered run or dump
+   is not Q1/Q2. Never replay a whole review or add another supervisor.
+8. Supply immutable subject/base/dependency/validator selections, rule/occurrence
+   coverage, raw observations, Q1/behavior/human-Q2/seed records and active-route/
+   override references to [simplified Phase 6](simplified_v3.md#phase-6--datenbank--dateisystem--und-secret-migration) item 10 and [simplified Phase 8](simplified_v3.md#phase-8--cutover-und-entfernung-des-legacy-modells).
+   Those owners implement the one upgrade/backup/restore procedure. Here add
+   idempotent review-data mappings and trust/closure assertions, including pending
+   and uncertain work. Run the joint upgrade/restore cases once; no applied
+   migration edits or separate validator backup command.
 
 Gate: fresh/existing boot, repeated boot, upgrade with overrides, interrupted
 review/commit and restore preserve trust and task retention without invented passes.
@@ -776,21 +933,22 @@ review/commit and restore preserve trust and task retention without invented pas
    Show draft revision, active revision, exact validator selection, check failures,
    missing support/evidence, behavior results and human Q2 separately. Show the
    reviewed combination, not a display recomputed from latest component rows.
-   Display retained interface/export/canonical execution Recipe identities and
+   Display retained interface/export identities, optional consumer/test/MCP references and
    distinguish installed authored human review from bundled seed qualification.
 2. Preserve meaningful pending/failed/incomplete/rejected states and resubmission.
    Disable approval when backend gates are incomplete; the UI is not the gate.
 3. Support operator editing of validator Recipes, associated code and review
    prompts through immutable versions and the same Q1/behavior/Q2 contract. Do
    not expose arbitrary success-evidence writes or mutable approved-body editing.
-4. Coordinate the global factory/startup, resources, continuation and artifact
-   identity gates with simplified_v3 Phase 3a. Reuse the existing ordinary shared
-   startup/owner; implement remaining review admission and interface loading there.
-   Do not recreate the removed per-chat driver, add a parallel validator runtime or
-   certify full catalogue/resource support from packaged reply/history evidence.
-   Verify the actual selected Monty/control artifact and effective limits, including
-   the current 512 MiB heap floor; do not introduce periodic pressure monitoring or
-   artificial token caps while token budgets are disabled.
+4. Consume [shared review-runtime contract](simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung) and [simplified Phase 3a](simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) boot, admission,
+   resource, continuation and artifact gates. Simplified implements missing shared
+   support in the existing owners; this plan wires review predicates and tests
+   real class routes. Reuse current interface loading, not another implementation.
+   Verify the selected engine/control image and effective limits through that
+   runtime contract; no validator resource controller, periodic pressure monitor
+   or artificial token cap. Use [simplified Phase 1](simplified_v3.md#phase-1--einzige-instanz--und-betreiberidentität) ingress for exact-view Q2,
+   whose evidence semantics remain Step 9. Reply/history evidence alone does not
+   qualify review admission or the complete catalogue.
 5. Perform the production acceptance matrix below. Only then replace the legacy
    Q1 entry path, retire its marker preparation/copied test bodies and obsolete
    comments, and remove the unused Rust audit workflow after caller verification.
@@ -810,10 +968,15 @@ acceptance; no direct MCP execution bridge or new normal-chat runner is introduc
 Tests must exercise the relevant real PostgreSQL/packaged Monty/host/kernel callers;
 helper-only fixtures do not prove production wiring. Expected source-derived results
 are distinct from observed behavior. Run focused evidence under development policy.
+Reuse applicable shared-owner admission/resource/recovery/restore receipts; add the
+actual review-subject, coverage and approval cases missing from those receipts.
+The two plans do not require duplicate runs of the same unchanged shared contract.
 
 | Case | Required observed outcome |
 | --- | --- |
 | Exact seed body | Regression catches the comment-marker failure; replacement consumes data without source modification. |
+| Shared admission/evidence handoff | Actual review ingress binds one immutable subject and separate approved validator graph to its original run; duplicate/lost replies reuse it, deliberate resubmission gets a new identity, and settlement/evidence/projection repair never redispatches a completed effect. |
+| Shared ownership and readiness | Review uses the single global runtime, existing task accounts/provider/activation/restore owners and no local substitutes. Catalogue publication records prefix invalidation before the Prefix owner builds from that active snapshot; unavailable model context leaves only dependent checks incomplete, while eligible deterministic reviews progress. |
 | All eight routes | Valid candidate reaches required gates; distinct nonempty invalid candidate is rejected for its class defect. |
 | Metadata/source separation | Hostile strings, inert markers and candidate code remain data during inspection; source checksum is unchanged. |
 | Full Recipe inspection | Empty steps, bad links/ordinals/classes, multiple UUIDs, unpaired bindings and invalid result edges fail. |
@@ -824,7 +987,10 @@ are distinct from observed behavior. Run focused evidence under development poli
 | Function inspection/result capture | Reachable helpers and hidden host calls are checked against the owning usage. Explicit return values are captured/validated at invocation; a definition needs no fabricated top-level result assignment. Unsupported dynamic targets cannot bypass inspection. |
 | Mutable invocation isolation | Repeated/concurrent invocations get fresh mutable defaults/arguments/arrays/results. Shared mutable globals/caches and closures over foreign inputs/host context fail; children/retries/waits cannot inherit unintended mutable state. |
 | Export/host generation coexistence | Activate a successor during an old task's wait: both use their own interface/code/host implementation. Old aliases do not resolve through the newest feed; unsupported old-artifact recovery blocks the upgrade rather than replacing the handler. |
-| Canonical Skill Recipe | Exact command/captures/types/fixed arguments select the intended pinned export with adjacent binding and real completion/result. Missing or mismatched canonical variants fail qualification; equivalent existing variants are reused. |
+| Declared command Recipe | When a command/MCP publication is intended, exact command/captures/types/fixed arguments select the pinned export with adjacent binding and real completion/result. Missing or mismatched declared command contracts fail their qualification; no command variant is required for a complete Skill. |
+| Skill without MCP publication | Complete exact usage passes its supported review and is reusable by qualified consumers without a companion command; missing MCP is not a rejection. |
+| Reused Skill | Two consuming workflows pin the same approved usage; their own workflow evidence remains required and no reverse Recipe dependency is introduced. |
+| Optional MCP declaration | Absent is valid; an explicitly malformed declaration still fails its owning Recipe/publication checks. |
 | Eligible MCP projection | Only available approved mcp-call-skill-recipes are advertised; exact command positions/types/escaping/examples agree with matching. Private validators/raw Skill rows are excluded. List refresh preserves existing advertised contracts; no per-call Q1/Q2 or direct execution is introduced. Public serving acceptance follows the composition plan. |
 | Tool/ToolSkill compatibility | Missing callable/artifact, wrong adapter/selector/schema and conflicting aliases fail before effects. |
 | Recursive schemas | Nested errors, missing versus null, invalid/default output fabrication, extra fields, booleans and numeric overflow fail precisely. |
@@ -868,7 +1034,7 @@ are distinct from observed behavior. Run focused evidence under development poli
   Section 7's examples are design instructions, not observed execution evidence.
 
 Final completion requires the applicable gates above, supported approval/provenance
-for every activated validator/interface/dependency/canonical execution variant,
+for every activated validator/interface/dependency and actual execution variant,
 and both authored and bundled production cases. Public MCP serving is a coordinated
 exposure gate, not a prerequisite for internal validators. Until then keep
 drafts/pending migration visible and report support honestly.
@@ -911,8 +1077,12 @@ decisions. Upstream performance figures are not BrassClaw measurements.
 
 ### 7.2 — Load definitions, then invoke through the suspendable task path
 
-Implement in the existing retained source/compiler/interface and global Recipe
-owners. Keep three operations distinct:
+Consume the retained source/compiler/interface and global Recipe support owned by
+[simplified Phase 0a](simplified_v3.md#phase-0a--ground-truth-komponentenverträge-implementieren)
+and the [shared review-runtime contract](simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung).
+The validator owns source-check rules, review manifests and bounded fixture profiles;
+missing loader/invocation mechanics belong to those shared owners. Keep three
+operations distinct:
 
 1. Inspect and qualify the exact source and dependency graph as data.
 2. Load qualified definitions into the retained task's symbol environment.
@@ -948,9 +1118,10 @@ Never execute candidate source to obtain its own structural facts.
 
 The pinned `MontyRepl::call_function(name, args, print)` cannot drive this usage:
 its implementation rejects kwargs and converts external/OS suspension into an
-unsupported-context error. Extend the existing suspendable retained invocation
-within `GlobalVm`/global Recipe transport. Do not add a parallel REPL or run a
-function to completion on a second VM. A pure helper test may use a compatible
+unsupported-context error. Use the qualified suspendable retained invocation
+within `GlobalVm`/global Recipe transport. Any missing support is implemented by
+the simplified runtime owner under the contract above. Do not add a parallel REPL
+or run a function to completion on a second VM. A pure helper test may use a compatible
 contained utility, but that is not production Tool invocation acceptance.
 
 Do not introspect `fn.__name__`, `fn.__annotations__`, `inspect.signature` or
@@ -995,8 +1166,10 @@ raw Monty node
 Recipe data is finite JSON-compatible data under recipe.md. The fact that Monty
 supports bytes, tuples, sets, paths, datetimes, exceptions or proxies does not
 extend that contract. Introduce a new transport profile only through explicit
-schema/adapter/consumer qualification; do not silently encode bytes as strings
-or tuples as lists. Numeric bounds must agree across DB, Rust, Monty and WebUI;
+schema/adapter/consumer qualification in simplified Phase 0a/3a, with the validator
+supplying review-specific schemas and rejection cases. Do not create a validator
+transport profile or silently encode bytes as strings or tuples as lists. Numeric
+bounds must agree across DB, Rust, Monty and WebUI;
 large JSON integers must not lose precision in a JavaScript Number round trip.
 
 Parse raw structured documents with the existing strict Rust parser before
@@ -1007,8 +1180,9 @@ checksums. Trusted owners hash the exact retained content/artifact bytes under
 the established canonicalization contract; no `hashlib`/`hmac` exists in Monty.
 
 Upstream conversion preserves repeated mutable references within one message.
-It does not supply application isolation or immutable step results. Define typed
-ownership in `retained_inputs` and the global invocation adapter: preserve required
+It does not supply application isolation or immutable step results. Consume the
+shared simplified runtime contract for typed ownership in `retained_inputs` and
+the global invocation adapter; its owner implements missing isolation. Preserve required
 within-invocation semantics, but copy consumer-owned mutable data rather than
 letting a child or retry mutate another invocation or a retained producer result.
 Check recursive immutability: `([1],)` is not immutable just because it is a tuple.
@@ -1108,13 +1282,16 @@ execution steps. A pure sorting key is fine.
 results = list(map(inspect_source_usage, inputs["sources"]))
 ```
 
-Implement repeated usages as the supported Recipe occurrence/control contract
-from step 6.8, with one matching binding/invocation and durable effect identity
-per occurrence. Do not invent iteration fields in Recipe JSON or a Rust loop that
-decides the workflow. Pure bounded iteration over already supplied facts belongs
+Author repeated checks using the qualified V35-13/14 Recipe occurrence/control
+contract consumed by step 6.8, with shared continuation support from simplified
+Phase 3a. Require one matching binding/invocation and durable effect identity
+per occurrence; do not implement local occurrence/control infrastructure. Do not
+invent iteration fields in Recipe JSON or a Rust loop that decides the workflow. Pure bounded iteration over already supplied facts belongs
 in reusable PythonCode.
 
-For each suspension the existing host owner must:
+For each suspension the existing host owner, implemented under the shared
+simplified review-runtime contract, must satisfy the following acceptance conditions.
+The validator consumes these observations; it does not add a host dispatcher:
 
 1. Resolve the exact task, run, attempt, occurrence and retained binding from
    trusted admission state. Candidate data and trace baggage cannot select them.
@@ -1145,6 +1322,10 @@ No task completion, cancellation or review error may shut down the global owner.
 Reuse `SharedMontyTaskBudget`, the global execution/preparation observations and
 the protected task interruption handshake in `brassclaw_monty_host`. Do not enforce
 one review's quota with an engine-terminal control error that destroys every task.
+The implementing owner for every shared mechanism in the table is
+[simplified Phase 3a](simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) / [shared review-runtime contract](simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung). Submit missing host accounting/containment
+requirements to that owner; this section defines validator acceptance and bounded
+check/fixture profiles, not a second resource/settings implementation.
 
 | Limit or failure | Required design |
 | --- | --- |
@@ -1152,7 +1333,7 @@ one review's quota with an engine-terminal control error that destroys every tas
 | Compilation/value adaptation | Upstream feed limits omit compilation; the local control extension observes preparation separately. Preserve executing versus preparation clocks and their qualified ownership/accounting; do not silently change the 600-second executing-time target. |
 | Shared VM heap | Use the actual tagged allocator domain and effective live ceiling. Preserve the 512 MiB instance floor and finite physical worker backstop. This is live allocation accounting, not RSS or reserved memory. |
 | Host-side data | Bound parser facts, inputs/outputs, transport decoding, print capture, host callbacks and retained source/cache growth separately. A VM heap ceiling does not cover all these allocations. |
-| Suspension count | Direct interpreter ResourceTracker does not implement the upstream pool's suspension-count enforcement. Trace existing host accounting, add missing per-task/review counters where needed, and retain them through reclaim. Do not apply a checkout's default 1000 to the entire lifetime of the global service. |
+| Suspension count | Direct interpreter ResourceTracker does not implement the upstream pool's suspension-count enforcement. Trace existing host accounting; the simplified runtime owner extends missing task/review accounting and retains it through reclaim. No validator-local counter authority. Do not apply a checkout's default 1000 to the entire lifetime of the global service. |
 | Native operation/compiler hang | Keep the existing finite worker containment/watchdog. Checkpoints do not preempt every native callback; host deadlines are separate and cannot prove that an effect did not happen. |
 | Genuine engine memory/time/control corruption | Fence the generation, stop new admission/dispatch and use supervised reconciliation before replacing the single global VM. A later successful feed is not proof its heap is safe. |
 | Ordinary Python/domain exception or bounded output rejection | Fail the affected occurrence/review honestly; use the qualified task-local interruption path where needed. Do not classify every exception named MemoryError/TimeoutError as engine corruption. |
@@ -1172,8 +1353,10 @@ instance recovery must remain distinct in tests and UI state.
 
 ### 7.8 — Make recovery trust and compatibility explicit
 
-Coordinate continuation owners, retained task manifests, dispatch/effect records
-and the global supervisor before implementing any dump/restore path:
+Consume [simplified Phase 3a](simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) / [shared review-runtime contract](simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung) for any continuation/dump/restore
+implementation. The shared owner must meet the following trust/compatibility
+conditions; this plan tests the review's retained subject/evidence against them,
+not another serializer, recovery loop or supervisor:
 
 1. Authenticate the producer/storage before deserialization. A caller-provided
    checksum next to caller-provided bytes is not trusted provenance. Do not accept
@@ -1198,7 +1381,9 @@ and the global supervisor before implementing any dump/restore path:
 
 These orders describe the required recovery gate; they do not claim that dumping
 the current GlobalVm implements it. If its actual continuation cannot retain the
-required state, implement that owner before advertising durable resume support.
+required state, the simplified runtime owner implements the missing support before
+this plan can advertise durable review resume. Review evidence still needs its
+separate trusted coverage/writer checks after recovery.
 
 ### 7.9 — Keep the validator's host surface narrow
 
@@ -1277,8 +1462,9 @@ fragment illustrates a Tool binding followed by invocation:
 This fragment is not a complete insertable Recipe. Put it in the actual
 StepDescriptionEntry, add supported variants/step_link/input mappings and resolve
 the placeholder UUIDs. It does not configure a binding through `content` or
-automatically choose an export. Step 5a/6 must implement the selected interface
-and typed layout in the actual owning contracts. Do not add `export`, `channel`,
+automatically choose an export. Steps 5a/6 supply exact interface declarations
+and typed mappings and consume their qualified implementation in simplified
+Phase 0a/3a. Missing runtime support stays with that owner. Do not add `export`, `channel`,
 `step_id`, revision or branch fields to persisted JSON to conceal missing support.
 
 For input metadata `{{vars.source}}` is a whole-value reference; Python uses
@@ -1359,10 +1545,11 @@ caller; the exact missing contract; the affected readers/transport/recovery/UI;
 and the focused acceptance case. Reuse existing strict adapters, global lifecycle,
 task accounts and submission storage wherever they already satisfy the contract.
 
-Implement storage/reader/schema changes together, then source qualification and
-loader/invocation support, then draft component composition, then observations and
-trusted review wiring. Qualify bootstrap before publication. Never activate a
-Recipe against an illustrative host name, missing export selector, unsupported
+Implement validator-owned storage/readers/schema and source-check components as
+coherent slices. Consume qualified shared loader/invocation, observation and
+continuation support from simplified Phase 0a/3a before composing and wiring the
+review workflows; implement missing shared mechanics only in those named owners.
+Qualify bootstrap before publication. Never activate a Recipe against an illustrative host name, missing export selector, unsupported
 branch or future loader. A small model following this plan should stop that
 slice's activation and implement the named missing owner, not improvise an API.
 
@@ -1370,3 +1557,95 @@ For each slice deliver the actual diff, contract examples, observed focused
 tests and limitations. No Cargo run is needed for this documentation update.
 Final deployment claims still require section 5 and simplified-v3 production
 acceptance; this interpreter audit does not complete the architecture cutover.
+
+## Open K3-2 follow-up from K4 — Design acceptance and prefix artifact Q1/Q2 boundaries
+
+**New open follow-up; not implemented by this document patch.** Existing completed
+sections and original acceptance criteria remain unchanged. This section carries
+only the relevant future-consumer delta from [Exact K3-2](docs/plans/Exact_V3_definition_update_at_K3-2.md) and the
+[shared selection/lifecycle contract](docs/reborn/model-token-limits.md#open-k3-2-successor--retained-prefix-selection-and-prefix-free-construction-workflows).
+It does not reopen K0–K3, replace a current owner's work or create a parallel
+implementation. Original sections are read references; no code activation is claimed.
+
+- Existing per-profile generation checks are Prefix-Q1. Integrate missing checks
+  into that same generation Recipe; no additional Q1 queue, component class or
+  per-model-call human approval. Reuse exact original checks and their evidence.
+- Existing `PgPrefixAcceptances` owns Pair/Profile/Generation evidence. Separate
+  early design approval/evaluation from later production qualification without
+  making normal Generate or Q2 a prerequisite for its own tests.
+- Native result/subject correlation establishes check completion; model statements
+  and schema-valid output alone do not. Prefix-Q2 activates an exact qualified
+  generation; it does not approve executable components incidentally.
+- Required workflow review children use inherited PrefixFreeWorkflow. Preserve
+  actual contained candidate tests and independent ordinary review contracts.
+
+
+## Open Exact-validation successor — own A functions, S qualification and workflow scope
+
+**Open text handoff, not implemented.** The sequencing prerequisite is terminal
+acceptance of Root's actually running bounded BUILD-014 review/model-selection
+repair, not completion of all earlier open steps or the obsolete general authored
+exact-closure approval design. Immediately afterward, these target rules replace
+contradictory still-open implementation instructions in the same existing owner
+steps. Retain accepted packages, original evidence and valid old /1 profiles;
+do not reopen K0–K3 or alter BUILD-014's frozen inputs/contracts. New-profile
+publication still requires the connected successor readers/writers, not prior
+implementation of the superseded design. No second plan owner, queue or VM.
+
+Consume the binding target in [skills.md](skills.md#own-functional-approval-and-successor-compatibility): authored installed changes (A) have
+own Q1/behavior/human Q2; Skill and implementation code share one functional
+subject with distinct immutable IDs. S retains exact Skill-usage qualification
+after independently qualified Tool then ToolSkill, outside normal authored queue,
+with no additional installed Q2. Provenance belongs to each revision/usage; mixed
+graphs are allowed but do not transfer S exact evidence to changed partner bytes.
+Existing Single-root/exact-combination/Recipe-deployment APIs remain current
+support boundaries until the following connected successor is implemented.
+For new implementation immediately after BUILD-014, earlier blanket authored
+combination-review and class-10/50 protection instructions no longer govern the
+contradictory open work: only S exact usages retain the extra combination record,
+and only class10 retains root protection. Existing exact-profile readers keep
+their current checks until a qualified successor replaces them; preserving that
+support does not require completing an obsolete general A reapproval engine.
+
+### Existing Validator owner: subject, checks, evidence and Q2
+
+1. Immediately after bounded BUILD-014 acceptance, implement the remaining
+   Steps2/3/8–10 work under this target: extend the existing strict submission/review
+   format for the actual changed Skill/code roots and unchanged partner context.
+   Reuse per-root staging/base CAS, original IDs, durable work/outbox and frozen
+   validator selection. Do not require candidate partners to be preapproved.
+2. Execute all applicable Skill and class22 rules once as one function review:
+   real valid/invalid/boundary export behavior, prose meaning, parameters/results,
+   effects/errors, preload isolation and declared dependency use. Reuse common
+   facts and checks; standalone pure code retains its route. Valid dependencies
+   are verified prerequisites, not new candidate reviews. No general A combination
+   matrix/associationapproval stage. Distinct promised exports remain covered.
+3. Bind actual subject, selected validator, rule coverage, run/attempt/interpreter,
+   native artifact, input/limits and settlement to trusted own verdicts. Human Q2
+   sees exact changed roots once; record their own approvals atomically. Foreign
+   or partial results cannot approve one root. Unknown commit reconciles original
+   IDs/bytes. Do not turn cache hits, declarations or source-only checks into Q2.
+4. Review still-needed direct/transitive/relational consumer contracts on each
+   successor, including semantic/effect guarantees and strict input/result shapes.
+   Test old fixtures as successor evidence without reapproval of old consumers.
+   A compatible dependency replacement creates no new review of an unchanged root.
+5. Recipe-class Q1 validates the new/changed workflow's offered variants/profiles,
+   actual handoffs/exports/effects/failure/wait/child/retry/completion. Use complete
+   rule/path coverage and meaningful finite cases, not every possible value or
+   historical version product. Calling an approved export in a test is not
+   revalidating that component. S workflow evidence stays with bootstrap.
+6. Step11 successor qualifies S prerequisites in dependency order, keeping exact
+   `/1` usage formats and existing qualification chains. Add only missing scoped
+   prerequisite proofs through the installation/review owner. No fake Skill,
+   normal authored queue, self-qualifying validator or installed human Q2.
+7. Remove future class50-specific validation/protection/new acceptance; retain
+   historical decoding and valid old pins. Class10/root protection remains.
+   Composition owns actual migration to normal Recipes, not a second validator.
+
+**Outgoing gate:** next open Steps9–12 approval/publication/production successor
+must consume these subject/writer/reader contracts with Composition/Simplified;
+new profiles are not publishable until all actual readers support them. Preserve
+legacy exact authored profiles in their original scope. Focused negatives:
+changed/foreign partner/base, per-root CAS conflict, partial approval/settlement,
+uncertain commit, provenance relabel, incompatible additive output, stale consumer
+requirement, missing S prerequisite and class50 through a legacy import route.

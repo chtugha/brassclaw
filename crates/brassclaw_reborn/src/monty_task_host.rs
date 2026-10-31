@@ -34,6 +34,8 @@ pub struct MontyTaskHost {
     claimed_run: Option<Arc<brassclaw_turns::runner::ClaimedTurnRun>>,
     host: Arc<dyn AgentLoopDriverHost + Send + Sync>,
     fence: MontyTaskFence,
+    memory_embeddings:
+        std::sync::OnceLock<Arc<dyn brassclaw_host_runtime::RuntimeMemoryEmbeddingPort>>,
     published_reply: Mutex<Option<PublishedReply>>,
     withheld: Mutex<Vec<WithheldTaskPortResult>>,
     model_exchange_count: std::sync::atomic::AtomicU64,
@@ -79,11 +81,97 @@ impl MontyTaskHost {
             claimed_run,
             host,
             fence: MontyTaskFence::new(attempt),
+            memory_embeddings: std::sync::OnceLock::new(),
             published_reply: Mutex::new(None),
             withheld: Mutex::new(Vec::new()),
             model_exchange_count: std::sync::atomic::AtomicU64::new(0),
             capability_dispatch_count: std::sync::atomic::AtomicU64::new(0),
         }
+    }
+
+    /// Capture before task effects; a parent is supplied only after the native
+    /// child owner has established exact original-parent provenance.
+    /// This retains metadata, without model preparation or dispatch. It must
+    /// finish even after cancellation so the existing pre-submission path can
+    /// durably acknowledge that the task never entered the VM. Dispatch and
+    /// model preflight retain their separate cancellation/fence checks.
+    pub async fn capture_task_model_selection(
+        &self,
+        parent: Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<
+        Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        AgentLoopHostError,
+    > {
+        self.host
+            .capture_task_model_selection(parent, capture.clone())
+            .await
+    }
+
+    /// Install once from trusted composition, before task execution. This port
+    /// retains the original dependency, not a Tool grant or current-role lookup.
+    pub fn bind_memory_embeddings(
+        &self,
+        embeddings: Arc<dyn brassclaw_host_runtime::RuntimeMemoryEmbeddingPort>,
+    ) -> Result<(), AgentLoopHostError> {
+        self.memory_embeddings.set(embeddings).map_err(|_| {
+            AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "task memory dependency is already bound",
+            )
+        })
+    }
+
+    async fn with_memory_embeddings<T>(
+        &self,
+        invocation: impl std::future::Future<Output = T>,
+    ) -> T {
+        brassclaw_host_runtime::with_task_memory_embeddings(
+            self.memory_embeddings.get().cloned(),
+            invocation,
+        )
+        .await
+    }
+
+    pub async fn preflight_task_model_usage(
+        &self,
+        input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
+    ) -> Result<(), AgentLoopHostError> {
+        self.check_dispatch_open()?;
+        self.host.preflight_task_model_usage(input).await?;
+        self.check_dispatch_open()
+    }
+
+    pub fn task_model_selection(
+        &self,
+    ) -> Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>> {
+        self.host.task_model_selection()
+    }
+
+    pub fn selected_model_route(
+        &self,
+    ) -> Result<brassclaw_turns::run_profile::LoopModelRouteSnapshot, AgentLoopHostError> {
+        if let Some(selected) = self.task_model_selection() {
+            return selected.model_route();
+        }
+        // Historical/contained hosts retain their explicit route contract.
+        let route = self
+            .run_context()
+            .resolved_model_route
+            .clone()
+            .ok_or_else(|| {
+                AgentLoopHostError::new(
+                    AgentLoopHostErrorKind::Unavailable,
+                    "task model selection is unavailable",
+                )
+            })?;
+        route.validate().map_err(|_| {
+            AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unavailable,
+                "task model selection is invalid",
+            )
+        })?;
+        Ok(route)
     }
 
     pub fn run_context(&self) -> &LoopRunContext {
@@ -119,6 +207,17 @@ impl MontyTaskHost {
         self.claimed_run.as_ref()
     }
 
+    /// Completion follows the original host-owned ingress, independently of
+    /// whether this workflow may use a model. Durable admission still verifies
+    /// the actual source/claim; this observation grants no Tool permission.
+    pub fn is_result_only_completion(&self) -> bool {
+        self.run_context().trusted_internal_turn
+            || self.claimed_run.as_ref().is_some_and(|claimed| {
+                claimed.state.source_binding_ref.as_str()
+                    == brassclaw_turns::run_profile::INTERNAL_MODEL_SOURCE_BINDING
+            })
+    }
+
     pub fn request(&self) -> &AgentLoopDriverRunRequest {
         &self.request
     }
@@ -150,12 +249,15 @@ impl MontyTaskHost {
         request: brassclaw_host_runtime::RuntimeCapabilityRequest,
     ) -> Result<brassclaw_host_runtime::RuntimeCapabilityOutcome, AgentLoopHostError> {
         let call = self.begin_call()?;
-        let result = capability.invoke(request).await.map_err(|_| {
-            AgentLoopHostError::new(
-                AgentLoopHostErrorKind::Unavailable,
-                "retained kernel invocation failed",
-            )
-        });
+        let result = self
+            .with_memory_embeddings(capability.invoke(request))
+            .await
+            .map_err(|_| {
+                AgentLoopHostError::new(
+                    AgentLoopHostErrorKind::Unavailable,
+                    "retained kernel invocation failed",
+                )
+            });
         self.finish_call(call, result, WithheldTaskPortValue::RetainedToolOutcome)
     }
 
@@ -333,7 +435,9 @@ impl MontyTaskHost {
         let call = self.begin_call()?;
         self.capability_dispatch_count
             .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-        let result = self.host.invoke_capability(request).await;
+        let result = self
+            .with_memory_embeddings(self.host.invoke_capability(request))
+            .await;
         self.finish_call(call, result, WithheldTaskPortValue::CapabilityOutcome)
     }
 
@@ -354,6 +458,12 @@ impl MontyTaskHost {
         &self,
         request: FinalizeAssistantMessage,
     ) -> Result<LoopMessageRef, AgentLoopHostError> {
+        if self.is_result_only_completion() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::PolicyDenied,
+                "internal result-only work cannot publish an assistant reply",
+            ));
+        }
         let call = self.begin_call()?;
         let content = request.reply.content.clone();
         let result = self.host.finalize_assistant_message(request).await;
@@ -421,6 +531,33 @@ struct SelectedModelResponseCustodian {
 
 #[async_trait::async_trait]
 impl brassclaw_turns::run_profile::LoopModelResponseCustodian for SelectedModelResponseCustodian {
+    async fn prepare_related_model_work(
+        &self,
+        work: &brassclaw_turns::run_profile::ModelWorkRequest,
+        request_bytes: &str,
+    ) -> Result<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>, AgentLoopHostError>
+    {
+        let record = self
+            .record
+            .prepare_related_model_work(work, request_bytes)
+            .await?;
+        Ok(Arc::new(Self {
+            record,
+            bytes: Mutex::new(None),
+        }))
+    }
+
+    fn requested_output_tokens(&self) -> Option<std::num::NonZeroU32> {
+        self.record.requested_output_tokens()
+    }
+    fn retained_model_input_reference(
+        &self,
+    ) -> Option<&brassclaw_turns::run_profile::LoopModelInputReference> {
+        Some(self.record.retained_model_input_reference())
+    }
+    async fn before_provider_submission(&self) -> Result<(), AgentLoopHostError> {
+        self.record.before_provider_submission().await
+    }
     fn requires_provider_observation(&self) -> bool {
         true
     }

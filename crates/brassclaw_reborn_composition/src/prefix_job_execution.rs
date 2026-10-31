@@ -10,16 +10,30 @@ use brassclaw_monty_host::{process::PortAnswer, service::PortFailure};
 use brassclaw_pg::PgPool;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::global_recipe_ports::{InternalRecipeSource, SelectedMontyRecipe};
 use crate::prefix_job_definitions::Definition;
 
+pub(crate) enum ReceiptContract {
+    Generation,
+    Measurement,
+    PairCases {
+        source: Arc<crate::prefix_pair_case_capture::CapturedPairCases>,
+        worker_checksum: String,
+    },
+}
+
+pub(crate) type NativeRuntimeBinder =
+    Box<dyn Fn() -> Result<Arc<dyn RetainedToolPort>, crate::RebornBuildError> + Send + Sync>;
+
 pub(crate) struct Invocation {
+    pub(crate) receipt_contract: ReceiptContract,
     pub(crate) definition: Definition,
     pub(crate) reference: String,
     pub(crate) inspected: Arc<InspectedRetainedProgram>,
-    pub(crate) tools: Arc<dyn RetainedToolPort>,
+    pub(crate) tools: OnceLock<Result<Arc<dyn RetainedToolPort>, ()>>,
+    pub(crate) bind_tools: NativeRuntimeBinder,
     pub(crate) pool: Arc<PgPool>,
 }
 fn invalid() -> PortFailure {
@@ -50,22 +64,41 @@ pub(crate) fn validate_snapshot(profile: &str, bytes: &str) -> Result<(), PortFa
 
 #[async_trait]
 impl InternalRecipeSource for Invocation {
+    fn captured_program(&self) -> Option<Arc<InspectedRetainedProgram>> {
+        Some(self.inspected.clone())
+    }
+    fn bind_native_runtimes(&self) -> Result<(), PortFailure> {
+        self.tools
+            .get_or_init(|| (self.bind_tools)().map_err(|_| ()))
+            .as_ref()
+            .map(|_| ())
+            .map_err(|_| invalid())
+    }
     fn name(&self) -> &str {
-        if self.definition.operation == "measure" {
-            "prefix-measurement"
-        } else {
-            "prefix-generation"
+        match &self.receipt_contract {
+            ReceiptContract::Generation => "prefix-generation",
+            ReceiptContract::Measurement => "prefix-measurement",
+            ReceiptContract::PairCases { .. } => "prefix-pair-cases",
         }
     }
     fn reference(&self) -> &str {
         &self.reference
+    }
+    fn requires_step_observations(&self) -> bool {
+        matches!(&self.receipt_contract, ReceiptContract::PairCases { .. })
     }
     async fn select(&self) -> Result<SelectedMontyRecipe, PortFailure> {
         Ok(SelectedMontyRecipe {
             normal_match: None,
             inspected: self.inspected.clone(),
             inputs: Some(self.definition.input.clone().into()),
-            tools: Some(self.tools.clone()),
+            tools: Some(
+                self.tools
+                    .get()
+                    .and_then(|result| result.as_ref().ok())
+                    .ok_or_else(invalid)?
+                    .clone(),
+            ),
         })
     }
     async fn verify_receipt(
@@ -74,8 +107,31 @@ impl InternalRecipeSource for Invocation {
         selected: &InspectedRetainedProgram,
         execution: &RetainedRecipeExecution,
     ) -> Result<(), PortFailure> {
-        if self.definition.operation == "measure" {
-            if !std::ptr::eq(selected, self.inspected.as_ref()) {
+        if !std::ptr::eq(selected, self.inspected.as_ref()) {
+            return Err(invalid());
+        }
+        if let ReceiptContract::PairCases {
+            source,
+            worker_checksum,
+        } = &self.receipt_contract
+        {
+            if self.definition.operation != "check_cases" {
+                return Err(invalid());
+            }
+            return source
+                .verify_job_receipt(
+                    &self.pool,
+                    self.definition.id,
+                    selected,
+                    execution,
+                    receipt,
+                    worker_checksum,
+                )
+                .await
+                .map_err(|_| invalid());
+        }
+        if matches!(&self.receipt_contract, ReceiptContract::Measurement) {
+            if self.definition.operation != "measure" {
                 return Err(invalid());
             }
             return crate::prefix_measurement_capture::verify_receipt(
@@ -87,7 +143,7 @@ impl InternalRecipeSource for Invocation {
             )
             .await;
         }
-        if !std::ptr::eq(selected, self.inspected.as_ref())
+        if self.definition.operation != "generate"
             || !execution.is_complete()
             || execution.transport_failure().is_some()
             || execution.host_answers().len() != 5
@@ -98,18 +154,18 @@ impl InternalRecipeSource for Invocation {
             return Err(invalid());
         };
         let generation = value["generation"].as_str().ok_or_else(invalid)?;
-        let profile = &self.definition.profile;
-        if value["profile"] != *profile
+        let (profile, revision) = self.definition.target.profile().ok_or_else(invalid)?;
+        if value["profile"] != profile
             || value["qualification"] != "quarantined"
             || receipt != format!("prefix-generation:{profile}:{generation}")
         {
             return Err(invalid());
         }
         let client = self.pool.get().await.map_err(|_| invalid())?;
-        let row = client.query_opt("SELECT generation_bytes,profile_revision FROM reborn_prefix_generations WHERE profile_name=$1 AND generation_id=$2", &[profile, &generation]).await.map_err(|_| invalid())?.ok_or_else(invalid)?;
+        let row = client.query_opt("SELECT generation_bytes,profile_revision FROM reborn_prefix_generations WHERE profile_name=$1 AND generation_id=$2", &[&profile, &generation]).await.map_err(|_| invalid())?.ok_or_else(invalid)?;
         let bytes: String = row.get(0);
         if hex::encode(Sha256::digest(bytes.as_bytes())) != generation
-            || u64::try_from(row.get::<_, i64>(1)).ok() != Some(self.definition.revision)
+            || u64::try_from(row.get::<_, i64>(1)).ok() != Some(revision)
         {
             return Err(invalid());
         }

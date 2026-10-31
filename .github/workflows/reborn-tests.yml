@@ -143,6 +143,24 @@ jobs:
                 runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match \
                 -- --exact --test-threads=1 --nocapture
           done
+      - name: Test original manual setup through protected native HTTP and Chromium
+        shell: bash
+        run: |
+          node --check tests/browser/manual-token-original.mjs
+          BRASSCLAW_MANUAL_TOKEN_BROWSER_ACCEPTANCE="$GITHUB_WORKSPACE/tests/browser/manual-token-original.mjs" \
+            cargo test -p brassclaw_reborn_composition --locked \
+              --features skills-db,test-support,migrate-from-libsql --lib \
+              runtime::auth_interaction_tests::local_dev_runtime_auth_interactions_use_flow_record_source \
+              -- --exact --test-threads=1 --nocapture
+      - name: Test original Extension setup through protected native HTTP and Chromium
+        shell: bash
+        run: |
+          node --check tests/browser/extension-manual-original.mjs
+          BRASSCLAW_EXTENSION_MANUAL_BROWSER_ACCEPTANCE="$GITHUB_WORKSPACE/tests/browser/extension-manual-original.mjs" \
+            cargo test -p brassclaw_reborn_composition --locked \
+              --features skills-db,test-support,migrate-from-libsql --lib \
+              runtime::tests::local_dev_webui_bundle_uses_local_lifecycle_facade_for_setup_extension \
+              -- --exact --test-threads=1 --nocapture
 
   monty-upgrade-gate:
     name: Monty 1.0 API and allocator isolation
@@ -205,7 +223,7 @@ jobs:
             --test allocator --test control --test scheduler_accounting \
             --test child_host --test global_host --test process_host \
             --test actor_host --test flow_host --test service_host \
-            --test model_host --test utility_host --test component_revisions --test association_reviews --test retained_execution -- --test-threads=1 --nocapture
+            --test utility_host --test component_revisions --test association_reviews --test retained_execution -- --test-threads=1 --nocapture
       - name: Check all control-harness consumers
         run: cargo clippy --manifest-path tests/monty_control/Cargo.toml --locked --all-targets -- -D warnings
       - name: Test retained PostgreSQL IBS and typed input preparation
@@ -214,6 +232,9 @@ jobs:
           cargo test -p brassclaw_engine --locked --features skills-db --test retained_instruction --test retained_inputs --test retained_tools -- --test-threads=1 --nocapture
       - name: Test actual native PostgreSQL intent selection and choice
         run: cargo test -p brassclaw_reborn_composition --locked --features skills-db --test intent_step_link -- --test-threads=1 --nocapture
+      - name: Test model-host compatibility through the actual Composition owners
+        run: |
+          cargo test -p brassclaw_reborn_composition --locked --features skills-db,test-support --lib model_host_compatibility:: -- --test-threads=1 --nocapture
       - name: Test stable Tool identities through the real kernel
         run: |
           cargo test -p brassclaw_authorization --locked --lib stable_tool_policy::tests::

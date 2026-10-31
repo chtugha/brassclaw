@@ -191,6 +191,11 @@ async fn native_sealed_subject_extracts_every_python_source_into_one_actual_inve
     let mut references = vec![
         recipe_ref,
         retained.reference(),
+        store
+            .read_revision(packaged_component_id("validator:review-subject-reader"), 1)
+            .await
+            .unwrap()
+            .reference(),
         store.read_revision(tool, 1).await.unwrap().reference(),
     ];
     references.extend(
@@ -294,6 +299,7 @@ async fn native_sealed_subject_extracts_every_python_source_into_one_actual_inve
             rig.pool.clone(),
             "subject-inventory",
             &reference,
+            None,
         ))
         .await
         .unwrap();

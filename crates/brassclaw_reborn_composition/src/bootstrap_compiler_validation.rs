@@ -204,6 +204,7 @@ pub(super) async fn execute(
             pool.clone(),
             "bootstrap-source-compiler",
             &reference,
+            None,
         ))
         .await?;
         let tools = crate::installed_monty_catalogue::bootstrap_compiler_tools(

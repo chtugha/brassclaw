@@ -1,0 +1,283 @@
+{
+  "format": "brassclaw-oauth-token-transport-validation/1",
+  "status": "passed-scoped",
+  "changed_sources": {
+    "crates/brassclaw_host_api/src/monty_resources.rs": {
+      "before": "fa40556b5976547bc56a878fa30f06806e357935af1187eb071ae887eae84a65",
+      "after": "d1bd18ce975547292e8318cb62d8e7bca43ddb949f418f1d9c6924b4a115e7df"
+    },
+    "crates/brassclaw_reborn_composition/src/live_monty_settings.rs": {
+      "before": "9366d7cf22e2a479e5deafbc5b616216b27d9fa762ee86712aec536b29e12bd9",
+      "after": "ff4e19aeea13c06e80774f8b5502edfbda902b732434fbf2d209a4bf4d0efe01"
+    },
+    "crates/brassclaw_reborn_composition/src/oauth_provider_client.rs": {
+      "before": "4a011dfac23f65ad919ad9e3db18c297b39730228f8d5c5c9b94302aa2827782",
+      "after": "c6f76d59bac734df9c147bfd07a1ef569524cd30f2f318ba44e6754b3c8ba85f"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_providers.rs": {
+      "before": "22e79c0a1d8b51c502b67209ba4ef1503628c928147b7d0a865e2affc0f5e1c6",
+      "after": "8d443c78a5a95eded408348c38f9b8cd1e923dd52163f80ee52c9f7088644fe3"
+    },
+    "crates/brassclaw_reborn_composition/src/factory.rs": {
+      "before": "49586a46dc49d05190e13ce42e15edd4368cee530e3f5f205826a2cd213c8c88",
+      "after": "838dfeffc328e1e971585ad665bb0611e67007c0c2f9bd3df7c0d16f2a4e876d"
+    },
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/monty-vm-tab.js": {
+      "before": "751cca8c7d9c27ab4f97191418bee4d401caf1098656c249283877c6cf8f7f81",
+      "after": "779d95ba6f976dba47206e638723813e4efa85666080d9a895dc15a10645b68f"
+    },
+    "crates/brassclaw_webui_v2_static/static/js/i18n/en.js": {
+      "before": "988995f8d162948fbf069a43e15cfbb28f10ab546b3435f7c06941c003b53ca5",
+      "after": "a0d07b8d0f67ee6100d5666af9eb7a54f9b3a3809a1985bf19b2acc06b75e55a"
+    },
+    "crates/brassclaw_webui_v2_static/static/js/i18n/de.js": {
+      "before": "fbd592edcaa2b367a1e55d672ba9aba87f993561d5acf967eb9f0b1ab7b62ccc",
+      "after": "7959900caf08997afa3436e25fce877041f10dd9ed455b94dd346765834e6e32"
+    },
+    "crates/brassclaw_pg/migrations/V187__oauth_token_transport_limits.sql": {
+      "before": null,
+      "after": "e6e68507f7b94bb280fa324bcb19fcce017a4b5a07f7796ed3648ced9114095d"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs": {
+      "before": "cdb58e0b7ced175dfb9445f1103128287207c3e5c392c1371a433a2561104fac",
+      "after": "fe4656869e65c8329d5ae62c9abbb725936358ec00c564d6db9650c34552c5e8"
+    },
+    "crates/brassclaw_reborn_composition/src/oauth_provider_client/tests.rs": {
+      "before": "9b01b095402add43f5b8d0badae0803b66f85ca0d3a4e40fce6990f02945546a",
+      "after": "05f1a785e27eddf79c6033b247e7d1d1fcd582e7dabf0e80c6df1485db2714d5"
+    },
+    "tests/browser/monty-vm-resource-limits.mjs": {
+      "before": "f65e2dc5ffe280d453544b4f21d070dde58484ca819c6e2231e024cee54560b4",
+      "after": "61517efae6adab49fd6b47a557cdc5c093edf38173e6f515983368bc0f110b61"
+    }
+  },
+  "current_validation": {
+    "progress": "/private/tmp/brassclaw-oauth-transport-validation-20261029/run-3/progress.json",
+    "progress_sha256": "96d2e673a8a8b73b9587a1f41137faef1a13b6f2664749c2e286c8c19325a38b",
+    "source": "/private/tmp/brassclaw-oauth-transport-validation-20261029/run-3/source.json",
+    "source_sha256": "bbe227cd746642b5a122efddb6553cd32f5f9f6c38b689518a9120978ff7db14",
+    "image": {
+      "path": "/private/tmp/brassclaw-oauth-transport-validation-20261029/run-3/composition-tests",
+      "sha256": "8491e5a59d130088f5f8235587aea9046a93e0685214c205088cb2286dc4c3d1",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-f3f60267b1e4e468",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    },
+    "worker": {
+      "path": "/private/tmp/brassclaw-oauth-transport-validation-20261029/run-3/monty_worker",
+      "sha256": "601b976da41c65bb48d237b32db0bc6975e2b30056dae28c86f84ac2f9e5f205",
+      "original": "/Users/ollama/brassclaw-target/debug/monty_worker"
+    },
+    "results": [
+      {
+        "stage": "format-affected",
+        "exit_code": 0,
+        "seconds": 0.3894344170112163,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "javascript-syntax",
+        "exit_code": 0,
+        "seconds": 0.346162750152871,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "javascript-module-0",
+        "exit_code": 0,
+        "seconds": 0.34247212507762015,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "javascript-module-1",
+        "exit_code": 0,
+        "seconds": 0.34649949986487627,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "javascript-module-2",
+        "exit_code": 0,
+        "seconds": 0.3453677089419216,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "composition-image",
+        "exit_code": 0,
+        "seconds": 224.13752775010653,
+        "log_sha256": "a04abd605b3597a4244af330829fcb5d7136cfff120c030c16c8f204acf2ecbc"
+      },
+      {
+        "stage": "case-1",
+        "exit_code": 0,
+        "seconds": 3.266286041820422,
+        "log_sha256": "97d59507275fdf8a601f7bfb7163a332d9ee516c960035b04845b84e32b6d958",
+        "case": "pg_monty_vm_settings::oauth_transport_upgrade_tests::native_oauth_transport_upgrade_preserves_explicit_and_partial_values",
+        "passed": 1
+      },
+      {
+        "stage": "case-2",
+        "exit_code": 0,
+        "seconds": 37.89431970799342,
+        "log_sha256": "322d09fab3aa78c39d18f4da414d435adfb64efe85c4d91633d43177f343d462",
+        "case": "oauth_provider_client::tests::acknowledged_transport::native_oauth_callback_refresh_use_acknowledged_bounds_and_retain_inflight_pair",
+        "passed": 1
+      },
+      {
+        "stage": "case-3",
+        "exit_code": 0,
+        "seconds": 82.9067915410269,
+        "log_sha256": "5fe7e6fe9d6adc2444c385f2b017ee45edcde4a71dcd02ea0baa44d5b939ef02",
+        "case": "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match",
+        "passed": 1
+      },
+      {
+        "stage": "settings-migrations",
+        "exit_code": 0,
+        "seconds": 59.791199082974344,
+        "log_sha256": "c658fd475edbe8cabd1c37d8a53cec21514ac77536674c79954044c43b7b1473",
+        "passed": 31
+      },
+      {
+        "stage": "settings-publication",
+        "exit_code": 0,
+        "seconds": 36.78312750020996,
+        "log_sha256": "a12fbd43afa1079658c81ce518eb2a6a2925f8222afd9d29ad8657a6d791a0d1",
+        "passed": 2
+      },
+      {
+        "stage": "composition-strict",
+        "exit_code": 0,
+        "seconds": 101.043435000116,
+        "log_sha256": "8b48e28217213e26303920d7701044525099fc8b61ceb3080f2ef775344a01cf"
+      },
+      {
+        "stage": "composition-default-strict",
+        "exit_code": 0,
+        "seconds": 22.1499644999858,
+        "log_sha256": "5216f6876496b1c927572491312892363c9eea983c5f2fa37b491a87dbc6d549"
+      }
+    ],
+    "distinct_fresh_cases": 35
+  },
+  "reused_neutral": {
+    "source": "/private/tmp/brassclaw-oauth-transport-validation-20261029/run-1/source.json",
+    "source_sha256": "d3afe12d79f4cfa3c2f1a678d6a7ee7bc4dc1420c1422e0a143322c5e1b29733",
+    "distinct_cases": 480,
+    "scope": {
+      "source": "/private/tmp/brassclaw-oauth-transport-validation-20261029/run-1/source.json",
+      "source_sha256": "d3afe12d79f4cfa3c2f1a678d6a7ee7bc4dc1420c1422e0a143322c5e1b29733",
+      "unchanged_owner_inputs": 337,
+      "results": {
+        "native-worker": {
+          "stage": "native-worker",
+          "exit_code": 0,
+          "seconds": 5.201683291932568,
+          "log_sha256": "ca924f758bf4b3cdc0c21801f7f0197e4101a89f73c0bc84929ca33f99ade68a"
+        },
+        "neutral-contracts": {
+          "stage": "neutral-contracts",
+          "exit_code": 0,
+          "seconds": 61.61979529215023,
+          "log_sha256": "be6a63c727e806a9b8e7527518be6fa327891f7274a7f8bd7c0036ba63d67f5f"
+        },
+        "neutral-strict": {
+          "stage": "neutral-strict",
+          "exit_code": 0,
+          "seconds": 33.464223250048235,
+          "log_sha256": "3aba1bb43b6cc2f3f38d220e41f28a61a6c6ce2596aa679a18beb2833d7cf34f"
+        }
+      }
+    }
+  },
+  "reused_other_oauth": {
+    "source": "/private/tmp/brassclaw-oauth-transport-validation-20261029/run-2/source.json",
+    "source_sha256": "399c78e3d920e4af8a7a8816f692404cda9992638ee25db8de820c0b1f0e6682",
+    "distinct_additional_cases": 25,
+    "results": {
+      "oauth-remaining": {
+        "stage": "oauth-remaining",
+        "exit_code": 0,
+        "seconds": 52.39236787497066,
+        "log_sha256": "94e417885c0d31bd00516fbdad97e209c4d8f4ca51c8071e31ff84776c90da57",
+        "passed": 19
+      },
+      "provider-composition": {
+        "stage": "provider-composition",
+        "exit_code": 0,
+        "seconds": 0.3388157088775188,
+        "log_sha256": "d79720958a7f8369552ce04315924c161834a7895229639ff680f22e78d2df35",
+        "passed": 7
+      }
+    },
+    "scope": {
+      "source": "/private/tmp/brassclaw-oauth-transport-validation-20261029/run-2/source.json",
+      "source_sha256": "399c78e3d920e4af8a7a8816f692404cda9992638ee25db8de820c0b1f0e6682",
+      "only_delta": [
+        "crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs"
+      ],
+      "production_prefix_unchanged": true,
+      "passed": [
+        {
+          "stage": "case-3",
+          "exit_code": 0,
+          "seconds": 101.39626245805994,
+          "log_sha256": "83cc8e30541ab3f815216802d58d9606954dc0cb7602411d53eb13dabb212040",
+          "case": "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match",
+          "passed": 1
+        },
+        {
+          "stage": "oauth-remaining",
+          "exit_code": 0,
+          "seconds": 52.39236787497066,
+          "log_sha256": "94e417885c0d31bd00516fbdad97e209c4d8f4ca51c8071e31ff84776c90da57",
+          "passed": 19
+        },
+        {
+          "stage": "provider-composition",
+          "exit_code": 0,
+          "seconds": 0.3388157088775188,
+          "log_sha256": "d79720958a7f8369552ce04315924c161834a7895229639ff680f22e78d2df35",
+          "passed": 7
+        }
+      ],
+      "browser": "R2 actual native router with exact unchanged frontend; not rerun in R3"
+    }
+  },
+  "browser": {
+    "run": "run-2",
+    "log": "/private/tmp/brassclaw-oauth-transport-validation-20261029/run-2/case-3.log",
+    "log_sha256": "83cc8e30541ab3f815216802d58d9606954dc0cb7602411d53eb13dabb212040",
+    "result": "Real native facade/PG/global Monty and Chromium EN/DE rendered controls, persistence, effective revision and restoration passed; unchanged frontend, R2 image/source retained honestly."
+  },
+  "actual_distinct_cases_across_scopes": 540,
+  "duplicates_not_counted": "New native OAuth and V187 tests ran in multiple selections; global test reran without duplicating the R2 browser session.",
+  "root_inventory": {
+    "path": "/private/tmp/brassclaw-oauth-transport-20261029-qmyspx8x/current-root-inputs-oauth-transport.json",
+    "sha256": "2d67863a8e3fccb7d88c39fa8a4d93283d14b6f769a629641e87a7dafc614770",
+    "paths": 169
+  },
+  "preserved_exact_prefill": {
+    "receipt_sha256": "e3592f64dd4ebe053913b7f3542797e029325fa3c5cdc197ddf8b56975482197",
+    "all_four_afterhashes_unchanged": true
+  },
+  "failure_history": [
+    {
+      "run": "run-1",
+      "cause": "Five private Runtime field accesses in the new test; corrected using existing services()/webui_monty_settings_store(), removed redundant identity assertion (covered by actual global case), no widened production API."
+    },
+    {
+      "run": "run-2",
+      "cause": "Historical settings migrations emitted older defaults on copies with later mandatory CHECKs; 15 historical INSERT fixture failures. Corrected only cfg(test) to execute real historical default and exact target CHECK in a PostgreSQL temporary projection. All current-table production constraints, override/negative/atomicity assertions and original migrations remain unchanged."
+    }
+  ],
+  "write_method": "Preconditioned fsynced same-directory temporary files and atomic replacement; no prior shared checkout restore.",
+  "limits": [
+    "No live OAuth issuer success or cross-platform/release/deployed acceptance. Actual integration deliberately retains private-IP denial and never invents a response.",
+    "DCR registration/cleanup transport, ProductAuth route/browser waits and setup/ingress guards remain in K3 step6; native own-flow/refresh progression, Auth-wait producer and full K3 remain open.",
+    "No component activation, active Free/bootstrap import/design/UI qualification, release/tag/commit/push or reinstall."
+  ]
+}

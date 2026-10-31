@@ -46,7 +46,7 @@ pub fn compiler_library_draft(
     renderer: Uuid,
 ) -> Result<ComponentRevisionDraft, RevisionError> {
     let declarations = json!({"prefix_json":["value"],"prefix_decode":["text"],"prefix_fields":["value","names"],"prefix_path":["name"],"prefix_digest_list":["values","count"],
-        "prefix_prepare":["inputs"],"prefix_reference":["inputs"],"prefix_render":["inputs"],"prefix_identity":["inputs"],"prefix_finalize":["inputs"]});
+        "prefix_prepare":["inputs"],"prefix_design_inputs":["inputs"],"prefix_reference":["inputs"],"prefix_render":["inputs"],"prefix_identity":["inputs"],"prefix_finalize":["inputs"]});
     draft(
         id,
         json!({"name":"prefix-source-compiler-library","description":"Effect-free source-only compiler stages. Hashing, source reads, retention, target tokenization and job decisions remain explicit external Recipe steps.",
@@ -63,7 +63,17 @@ pub fn compiler_stage_draft(
     library: Uuid,
     stage: &str,
 ) -> Result<ComponentRevisionDraft, RevisionError> {
+    // These are serialized complete JSON documents and the validated original
+    // snapshot, not arbitrary text. Downstream coverage must be able to rely
+    // on the stage's nonempty-output guarantee before execution.
+    let design_text =
+        || json!({"type":"string","required":true,"checks":[{"kind":"min_length","value":1}]});
     let (export, inputs, result) = match stage {
+        "design-inputs" => (
+            "prepare_prefix_design_inputs",
+            json!({"snapshot_bytes":string(),"digests":strings()}),
+            json!({"type":"object","allow_extra_fields":false,"fields":{"floor_bytes":design_text(),"sources_bytes":design_text(),"snapshot_bytes":design_text(),"qualification":design_text()}}),
+        ),
         "prepare" => (
             "prepare_prefix_sources",
             json!({"snapshot_bytes":string()}),
@@ -91,7 +101,7 @@ pub fn compiler_stage_draft(
         ),
         _ => return Err(RevisionError::Invalid("unsupported compiler stage")),
     };
-    let function = format!("prefix_{stage}");
+    let function = format!("prefix_{}", stage.replace('-', "_"));
     let body = format!("def {export}(inputs):\n    return {function}(inputs)\n");
     draft(
         id,
@@ -371,6 +381,7 @@ pub fn capacity_draft(id: uuid::Uuid) -> Result<ComponentRevisionDraft, Revision
 pub fn model_budget_draft(id: uuid::Uuid) -> Result<ComponentRevisionDraft, RevisionError> {
     let integer = |minimum| json!({"type":"integer","required":true,"checks":[{"kind":"min","value":minimum},{"kind":"max","value":9007199254740991i64}]});
     let mut fields = json!({"policy_ref":string()});
+    fields["policy_ref"]["checks"] = json!([{"kind":"min_length","value":1}]);
     for (name, minimum) in [
         ("max_prefix_tokens", 0),
         ("max_prompt_tokens", 1),

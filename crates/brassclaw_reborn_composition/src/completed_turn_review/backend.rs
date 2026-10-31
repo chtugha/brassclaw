@@ -48,9 +48,11 @@ pub(super) fn parse(bytes: &str) -> Result<Value, FirstPartyCapabilityError> {
     strict_json(bytes, REVISION_LIMITS).map_err(|_| error())
 }
 pub(super) struct PinnedModel {
+    pub provider_id: String,
     pub name: String,
     pub gateway: Arc<dyn HostManagedModelGateway>,
     pub prefix: String,
+    pub prefix_at_final_boundary: bool,
     pub accountant: Arc<dyn LoopModelBudgetAccountant>,
 }
 #[derive(Default)]
@@ -59,6 +61,8 @@ pub(super) struct RetainedModelWork {
     pub request: Option<ModelWorkRequest>,
     pub response: Option<LoopModelResponse>,
     pub settled: bool,
+    // Set only by the native wire barrier with no preceding send marker.
+    pub confirmed_unsubmitted: bool,
 }
 
 pub(super) struct Backend {
@@ -67,8 +71,9 @@ pub(super) struct Backend {
     pub attempt: Uuid,
     pub owner: Uuid,
     pub ownership: GlobalOwnerCheck,
-    pub closed: AtomicBool,
+    pub closed: Arc<AtomicBool>,
     pub observed_model: tokio::sync::Mutex<Option<String>>,
+    pub wire_original: Arc<std::sync::Mutex<Option<String>>>,
     pub model_work: tokio::sync::Mutex<RetainedModelWork>,
     pub threads: Arc<dyn SessionThreadService>,
     pub scope: ThreadScope,
@@ -463,6 +468,22 @@ impl Backend {
         if state.request.is_none() || state.settled {
             return true;
         }
+        if state.confirmed_unsubmitted {
+            let Some(request) = &state.request else {
+                return false;
+            };
+            if matches!(
+                self.model
+                    .accountant
+                    .reconcile_unsubmitted_model_work(&self.context, request)
+                    .await,
+                Some(Ok(()))
+            ) {
+                state.settled = true;
+                return true;
+            }
+            return false;
+        }
         let (Some(request), Some(response)) = (&state.request, &state.response) else {
             return false;
         };
@@ -478,6 +499,18 @@ impl Backend {
         } else {
             false
         }
+    }
+    pub(super) async fn persist_retained_wire(&self) -> bool {
+        use brassclaw_llm::provider_observation::ProviderWireObserver;
+        let pending = match self.wire_original.lock() {
+            Ok(held) => held.is_some(),
+            Err(_) => return false,
+        };
+        !pending
+            || super::wire::ReviewWire::new(self)
+                .persist_response()
+                .await
+                .is_ok()
     }
 
     async fn ask(&self, bytes: &str) -> Result<String, FirstPartyCapabilityError> {
@@ -508,6 +541,7 @@ impl Backend {
             .messages
             .into_iter()
             .enumerate()
+            .filter(|(i, _)| !self.model.prefix_at_final_boundary || *i != 0)
             .map(|(i, m)| {
                 Ok(HostManagedModelMessage {
                     role: if m.role == "system" {
@@ -566,31 +600,50 @@ impl Backend {
         // Disarm before entering the gateway: dropping the provider future
         // after entry must never release an unknown-spend reservation.
         reservation.armed = false;
-        let response = self
+        let observer = self
             .model
-            .gateway
-            .stream_model(HostManagedModelRequest {
-                dispatch_policy:
-                    brassclaw_turns::run_profile::LoopModelDispatchPolicy::SingleSubmission,
-                model_profile_id: profile.clone(),
-                messages,
-                surface_version: None,
-                resolved_model_route: None,
-                run_id: self.context.run_id,
-                turn_id: self.context.turn_id,
-            })
-            .await;
+            .prefix_at_final_boundary
+            .then(|| Arc::new(super::wire::ReviewWire::new(self)));
+        let operation = self.model.gateway.stream_model(HostManagedModelRequest {
+            dispatch_policy:
+                brassclaw_turns::run_profile::LoopModelDispatchPolicy::SingleSubmission,
+            model_profile_id: profile.clone(),
+            messages,
+            surface_version: None,
+            resolved_model_route: None,
+            run_id: self.context.run_id,
+            turn_id: self.context.turn_id,
+        });
+        let response = match &observer {
+            Some(observer) => {
+                brassclaw_llm::provider_observation::observe_chat_completion(
+                    observer.clone(),
+                    operation,
+                )
+                .await
+            }
+            None => operation.await,
+        };
         // Once the gateway has been entered, unknown spend requires reconciliation.
         reservation.armed = false;
         let response = match response {
             Ok(response) => response,
             Err(failure) => {
+                let unsubmitted = observer
+                    .as_ref()
+                    .is_some_and(|observer| observer.confirmed_unsubmitted());
                 let observed=json!({"format":"completed-turn-provider-failure/1","kind":format!("{:?}",failure.kind),
-                    "provider_outcome":"unresolved"}).to_string();
+                    "safe_summary":failure.safe_summary,"reason_kind":failure.reason_kind,
+                    "provider_outcome":if unsubmitted {"confirmed_unsubmitted"} else {"unresolved"}}).to_string();
                 *self.observed_model.lock().await = Some(observed.clone());
+                if unsubmitted {
+                    self.model_work.lock().await.confirmed_unsubmitted = true;
+                    self.reconcile_accounting().await;
+                }
+                let phase = if unsubmitted { "failed" } else { "uncertain" };
                 let changed = self.pool.get().await.map_err(|_|error())?.execute(
-                    "UPDATE brassclaw_monty_review_work SET phase='uncertain',response_bytes=$2 WHERE attempt_id=$1 AND owner_id=$3 AND phase='model_dispatching'",
-                    &[&self.attempt,&observed,&self.owner]).await.map_err(|_|error())?;
+                    "UPDATE brassclaw_monty_review_work SET phase=$4,response_bytes=$2 WHERE attempt_id=$1 AND owner_id=$3 AND phase='model_dispatching'",
+                    &[&self.attempt,&observed,&self.owner,&phase]).await.map_err(|_|error())?;
                 if changed != 1 {
                     return Err(error());
                 }

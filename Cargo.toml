@@ -283,7 +283,7 @@ brassclaw_secrets = { path = "crates/brassclaw_secrets", version = "0.1.0" }
 brassclaw_product_adapters = { path = "crates/brassclaw_product_adapters", version = "0.1.0", features = ["test-support"] }
 brassclaw_product_workflow = { path = "crates/brassclaw_product_workflow", version = "0.1.0", features = ["test-support"] }
 brassclaw_reborn = { path = "crates/brassclaw_reborn", version = "0.1.0", features = ["root-llm-provider"] }
-brassclaw_reborn_composition = { path = "crates/brassclaw_reborn_composition", version = "0.1.0" }
+brassclaw_reborn_composition = { path = "crates/brassclaw_reborn_composition", version = "0.1.0", features = ["test-support"] }
 brassclaw_threads = { path = "crates/brassclaw_threads", version = "0.1.0" }
 brassclaw_triggers = { path = "crates/brassclaw_triggers", version = "0.1.0" }
 brassclaw_trust = { path = "crates/brassclaw_trust", version = "0.1.0" }
@@ -293,6 +293,9 @@ brassclaw_embeddings = { path = "crates/brassclaw_embeddings", version = "0.1.0"
 # exercise the DB-backed skill-provenance path (e.g. the skills-db-gated
 # skill_codeact_persists_active_skill_provenance rig). `deadpool-postgres`
 # itself is already a root dep via the `postgres` (default) feature.
+# Native record fixtures also compile when the root postgres feature is off.
+tokio-postgres = "0.7"
+brassclaw_embedded_postgres = { path = "crates/brassclaw_embedded_postgres", version = "0.1.0" }
 brassclaw_pg = { path = "crates/brassclaw_pg", version = "0.1.0" }
 
 [features]

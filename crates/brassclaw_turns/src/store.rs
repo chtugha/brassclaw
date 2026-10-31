@@ -349,6 +349,13 @@ impl crate::runner::TurnRunTransitionPort for TurnStateDriverBox {
         self.0.block_run(request).await
     }
 
+    async fn block_native_auth(
+        &self,
+        request: crate::runner::native_auth::BlockNativeAuthRequest,
+    ) -> Result<crate::TurnRunState, crate::TurnError> {
+        self.0.block_native_auth(request).await
+    }
+
     async fn complete_run(
         &self,
         request: crate::runner::CompleteRunRequest,
@@ -479,6 +486,10 @@ pub struct TurnRunRecord {
     /// records and never implies that a reservation may be released.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claimed_child_reservation_released: Option<bool>,
+    /// Distinguishes a live native wait from a queue/checkpoint suspension.
+    /// None preserves legacy unknown provenance and cannot mint a native wait.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_auth_wait: Option<crate::runner::native_auth::NativeAuthWait>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -598,6 +609,14 @@ pub enum TurnIdempotencyReplay {
     SubmitThreadBusy(ThreadBusy),
     SubmitAdmissionRejected(AdmissionRejection),
     ResumeSucceeded(ResumeTurnResponse),
+    NativeAuthResumeSucceeded {
+        request: ResumeTurnRequest,
+        response: ResumeTurnResponse,
+    },
+    NativeAuthResumeRejected {
+        request: ResumeTurnRequest,
+        error: TurnIdempotencyErrorReplay,
+    },
     CancelRecorded(CancelRunResponse),
     Error(TurnIdempotencyErrorReplay),
 }
@@ -690,12 +709,48 @@ impl TurnIdempotencyRecord {
         }
     }
 
+    pub(crate) fn native_resume_request(&self) -> Option<&ResumeTurnRequest> {
+        match &self.replay {
+            TurnIdempotencyReplay::NativeAuthResumeSucceeded { request, .. }
+            | TurnIdempotencyReplay::NativeAuthResumeRejected { request, .. } => Some(request),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn native_resume_record_is_valid(&self) -> bool {
+        let Some(request) = self.native_resume_request() else {
+            return true;
+        };
+        self.operation == TurnIdempotencyOperationKind::Resume
+            && self.scope == request.scope
+            && self.run_id == Some(request.run_id)
+            && self.key == request.idempotency_key
+            && match &self.replay {
+                TurnIdempotencyReplay::NativeAuthResumeSucceeded { response, .. } => {
+                    response.run_id == request.run_id
+                        && response.status == TurnStatus::Running
+                        && request.precondition == crate::ResumeTurnPrecondition::BlockedAuthGate
+                        && self.outcome == TurnIdempotencyOutcomeKind::Resumed
+                }
+                TurnIdempotencyReplay::NativeAuthResumeRejected { error, .. } => {
+                    self.outcome == TurnIdempotencyOutcomeKind::from_error(&error.to_error())
+                }
+                _ => false,
+            }
+    }
+
     pub fn replay_resume(&self) -> Option<Result<ResumeTurnResponse, TurnError>> {
         if self.operation != TurnIdempotencyOperationKind::Resume {
             return None;
         }
         match &self.replay {
-            TurnIdempotencyReplay::ResumeSucceeded(response) => Some(Ok(response.clone())),
+            TurnIdempotencyReplay::ResumeSucceeded(response)
+            | TurnIdempotencyReplay::NativeAuthResumeSucceeded { response, .. } => {
+                Some(Ok(response.clone()))
+            }
+            TurnIdempotencyReplay::NativeAuthResumeRejected { error, .. } => {
+                Some(Err(error.to_error()))
+            }
             TurnIdempotencyReplay::Error(error)
                 if self.operation == TurnIdempotencyOperationKind::Resume =>
             {

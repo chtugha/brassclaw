@@ -20,6 +20,18 @@ pub enum LlmConfigError {
 /// LLM provider errors.
 #[derive(Debug, thiserror::Error)]
 pub enum LlmError {
+    /// Local final-input rejection before the current HTTP attempt. A prior
+    /// submitted attempt remains unresolved; this is never a retryable HTTP 400.
+    #[error("Final model input rejected: {reason}")]
+    FinalRequestRejected {
+        reason: crate::final_request_guard::FinalRequestError,
+    },
+
+    /// A local configuration/publication check failed before dispatch. This is
+    /// neither an upstream HTTP rejection nor a transient request failure.
+    #[error("Provider {provider} configuration changed or could not be verified")]
+    ConfigurationChanged { provider: String },
+
     #[error("Provider {provider} request failed: {reason}")]
     RequestFailed { provider: String, reason: String },
 

@@ -43,11 +43,17 @@ pub fn state_hash(value: &str) -> OpaqueStateHash {
 }
 
 pub fn pkce_hash(value: &str) -> PkceVerifierHash {
-    PkceVerifierHash::new(fake_digest(value)).expect("valid pkce hash")
+    brassclaw_auth::pkce_verifier_hash(
+        &PkceVerifierSecret::new(secret(value)).expect("valid fixture input"),
+    )
+    .expect("valid pkce hash")
 }
 
 pub fn code_hash(value: &str) -> AuthorizationCodeHash {
-    AuthorizationCodeHash::new(fake_digest(value)).expect("valid code hash")
+    brassclaw_auth::authorization_code_hash(
+        &OAuthAuthorizationCode::new(secret(value)).expect("valid fixture input"),
+    )
+    .expect("valid code hash")
 }
 
 pub fn fake_digest(value: &str) -> String {
@@ -89,6 +95,7 @@ pub fn account_request(
         owner_extension: None,
         granted_extensions: Vec::new(),
         access_secret: None,
+        access_expires_at: None,
         refresh_secret: None,
         scopes: Vec::new(),
     }
@@ -118,6 +125,7 @@ pub async fn oauth_flow(
 ) -> brassclaw_auth::AuthFlowRecord {
     services
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: owner,
             kind: AuthFlowKind::IntegrationCredential,
@@ -131,7 +139,7 @@ pub async fn oauth_flow(
             },
             update_binding: None,
             opaque_state_hash: Some(state_hash("state-hash")),
-            pkce_verifier_hash: Some(pkce_hash("pkce-hash")),
+            pkce_verifier_hash: Some(pkce_hash("raw-pkce-verifier")),
             expires_at: Utc::now() + Duration::minutes(5),
         })
         .await
@@ -155,6 +163,7 @@ pub async fn try_oauth_update_flow(
 ) -> Result<brassclaw_auth::AuthFlowRecord, AuthProductError> {
     services
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: owner,
             kind: AuthFlowKind::IntegrationCredential,
@@ -168,8 +177,55 @@ pub async fn try_oauth_update_flow(
             },
             update_binding: Some(update_binding(account)),
             opaque_state_hash: Some(state_hash("state-hash")),
-            pkce_verifier_hash: Some(pkce_hash("pkce-hash")),
+            pkce_verifier_hash: Some(pkce_hash("raw-pkce-verifier")),
             expires_at: Utc::now() + Duration::minutes(5),
         })
         .await
+}
+
+/// Prepare and claim before the test provider can return any artifact. This is
+/// the real Auth port sequence; no completion fixture bypasses original custody.
+pub async fn admitted_oauth_exchange(
+    services: &InMemoryAuthProductServices,
+    flow: &brassclaw_auth::AuthFlowRecord,
+    account_label: CredentialAccountLabel,
+    scopes: Vec<ProviderScope>,
+) -> (brassclaw_auth::OAuthCallbackAction, OAuthProviderExchange) {
+    let request = OAuthProviderCallbackRequest {
+        provider: flow.provider.clone(),
+        account_label,
+        authorization_code: OAuthAuthorizationCode::new(secret("raw-auth-code")).unwrap(),
+        authorization_code_hash: code_hash("raw-auth-code"),
+        pkce_verifier: PkceVerifierSecret::new(secret("raw-pkce-verifier")).unwrap(),
+        pkce_verifier_hash: pkce_hash("raw-pkce-verifier"),
+        scopes,
+    };
+    let context = OAuthProviderExchangeContext {
+        scope: flow.scope.clone(),
+        flow_id: flow.id,
+    };
+    let destinations = services.prepare_callback(&context, &request).await.unwrap();
+    let original = brassclaw_auth::OAuthCallbackOriginal::from_request(
+        flow.scope.clone(),
+        flow.id,
+        flow.opaque_state_hash.clone().unwrap(),
+        &request,
+    )
+    .unwrap();
+    let dispatched = match services
+        .claim_oauth_callback(
+            &flow.scope,
+            brassclaw_auth::OAuthCallbackPrepared {
+                original,
+                destinations,
+            },
+        )
+        .await
+        .unwrap()
+    {
+        brassclaw_auth::OAuthCallbackAdmission::Dispatch(action) => action.action,
+        other => panic!("fixture must acquire the single original dispatch: {other:?}"),
+    };
+    let exchange = services.exchange_callback(context, request).await.unwrap();
+    (dispatched, exchange)
 }

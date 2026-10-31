@@ -1,0 +1,357 @@
+{
+  "format": "brassclaw-original-tool-source-and-use/1",
+  "status": "scoped-infrastructure-accepted-full-k3-incomplete",
+  "changed_sources": {
+    "crates/brassclaw_host_runtime/src/obligations.rs": "6b874a330a971c83565f10a7b9ac52dccf6a244c86db65135909fc4776319705",
+    "crates/brassclaw_host_runtime/src/services/retained_capability.rs": "580048a5f9d464ccf2a432ddcb74711f43eecbbedf48d133eaa2bfe316aed6c8",
+    "crates/brassclaw_host_runtime/src/services/retained_credentials.rs": "4a18de1ea00c480fe2873646603e41df379d6651da52ada6fc93464f36631934",
+    "crates/brassclaw_host_runtime/src/services.rs": "6693bacb892deb966d64f0ede04bc9e270c7d02b53da737c64fe4dfa7dfbfbc9",
+    "crates/brassclaw_host_runtime/tests/first_party_builtin_tools.rs": "632cd425a045317789dcc1a50ff4088148455492000029cd1d41d96b07bb803b",
+    "crates/brassclaw_reborn_composition/src/factory.rs": "49586a46dc49d05190e13ce42e15edd4368cee530e3f5f205826a2cd213c8c88",
+    "crates/brassclaw_reborn_composition/src/inspection_candidate_tools.rs": "434aea1697c190f9c081201306f058b356d00722fa9b4c5586c4a495d4a9dc6d",
+    "crates/brassclaw_reborn_composition/src/installed_monty_catalogue.rs": "75ed50db23052da95e0ac48326e0880e6c85fed0c0044d81c1da455e64367278",
+    "crates/brassclaw_reborn_composition/src/lib.rs": "c9a1995044bb88ea4e9ecefbe94a6dd779358a1b17225167a0ec068178d129ff",
+    "crates/brassclaw_reborn_composition/src/monty_child_tasks.rs": "ce4df2c68cac4e2975b469c7d16faee93ea68c4168eecfe67033daf8ee554fbe",
+    "crates/brassclaw_reborn_composition/src/monty_kernel.rs": "74fdbe8bd5729a4ac2d68be80a592977ea5b04acf066ae3a026667f24d4a3bd7",
+    "crates/brassclaw_reborn_composition/src/product_auth_runtime_credentials.rs": "222f4661b8f2b5315b60d9ff7d9128efc3b3b598e84b494ef1411a2ea31b1d9d",
+    "crates/brassclaw_reborn_composition/src/product_auth_runtime_credentials/captured.rs": "41b2aba1f40b224a045f80b764428dbc1b75181e39cac3bed98cc04e09b3b563",
+    "crates/brassclaw_reborn_composition/src/product_auth_runtime_credentials/captured_tests.rs": "111a6400ec7a4b26858b1c2417285702d2c1466fe6d2b116ebcd3c9b25b0ab38",
+    "crates/brassclaw_reborn_composition/src/runtime.rs": "e91c86c40edb504047072536f8513a4ad8202868135b0bd9ee761826d764015e",
+    "crates/brassclaw_reborn_composition/src/task_catalogue_binding.rs": "c642086bed067edb55fea4b03b97a0375d963725f55c91e56cf57c74e446af55",
+    "crates/brassclaw_reborn_composition/src/task_tool_credentials.rs": "94d577aee8826d58d4880552d1f1794cfc513f0049b73469b59c8589c8623e73",
+    "crates/brassclaw_reborn_composition/src/task_tool_credentials_tests.rs": "f2a20d1ca73c8e8897acddb450acdccf723c769941c93fb2de2e217c94563b1a",
+    "crates/brassclaw_host_runtime/src/lib.rs": "897d14b1611845aa617ba8b25c0f120bd3ed8761aa529d9ae01253ed2eb59a42"
+  },
+  "host": {
+    "receipt": "/private/tmp/brassclaw-source-use-fence-validation-20261029/host-1/partial.json",
+    "receipt_sha256": "b850e6f14aa9c479e20c1a1de2b0be5c41d97e4432f9a0d7aaabcff8da62c067",
+    "source_sha256": "d03b01269c0a1cfd81bdbb74155fe0809be53176d2a40d7956992dc2246fd4a5",
+    "results": [
+      {
+        "label": "format-host",
+        "command": [
+          "cargo",
+          "+1.96.0",
+          "fmt",
+          "-p",
+          "brassclaw_host_runtime",
+          "--",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.259,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "host-test-images",
+        "command": [
+          "cargo",
+          "+1.96.0",
+          "test",
+          "-p",
+          "brassclaw_host_runtime",
+          "--lib",
+          "--test",
+          "builtin_obligation_handler_contract",
+          "--test",
+          "runtime_http_egress_contract",
+          "--test",
+          "first_party_builtin_tools",
+          "--features",
+          "test-support",
+          "--no-run",
+          "--locked",
+          "--message-format=json"
+        ],
+        "exit_code": 0,
+        "seconds": 5.605,
+        "log_sha256": "d11c48e4f540c41c49ff09dc55701636f11388495d55a400f980bef12b65e21a"
+      },
+      {
+        "label": "strict-host-tests",
+        "command": [
+          "cargo",
+          "+1.96.0",
+          "clippy",
+          "-p",
+          "brassclaw_host_runtime",
+          "--lib",
+          "--tests",
+          "--features",
+          "test-support",
+          "--locked",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 3.628,
+        "log_sha256": "830e66ff1cc5fc669d536499dcfa054ccff66b8a03ca717ced21488ba65b6d7d"
+      },
+      {
+        "label": "staging-unit",
+        "command": [
+          "/private/tmp/brassclaw-source-use-fence-validation-20261029/host-1/brassclaw_host_runtime-2eed0a36981b1a8c15772686b1b01ed2a5255ed3437733402f43aa7c37ef5326",
+          "obligations::tests::",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.645,
+        "log_sha256": "1f1e187b239606b8d46e6ce970d1402c3a272637c150cc1234719e7d45aebcb5",
+        "passed": 14,
+        "image_sha256": "2eed0a36981b1a8c15772686b1b01ed2a5255ed3437733402f43aa7c37ef5326"
+      },
+      {
+        "label": "retained-services-unit",
+        "command": [
+          "/private/tmp/brassclaw-source-use-fence-validation-20261029/host-1/brassclaw_host_runtime-2eed0a36981b1a8c15772686b1b01ed2a5255ed3437733402f43aa7c37ef5326",
+          "services::retained_credentials::tests::",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.005,
+        "log_sha256": "b011676f44d1b6bb145617a044e534e43b06309ad3fbdba8b118771ee3471c7f",
+        "passed": 3,
+        "image_sha256": "2eed0a36981b1a8c15772686b1b01ed2a5255ed3437733402f43aa7c37ef5326"
+      },
+      {
+        "label": "obligation-contract",
+        "command": [
+          "/private/tmp/brassclaw-source-use-fence-validation-20261029/host-1/builtin_obligation_handler_contract-3e7a31c9413c7f40d9213d6543662b020ab503aa064847348232c46cb6c42baf",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.738,
+        "log_sha256": "63d313af6997673ebf9e25e8c0b0d69bd58c727514b23e47fc7a7212f84cdeb8",
+        "passed": 37,
+        "image_sha256": "3e7a31c9413c7f40d9213d6543662b020ab503aa064847348232c46cb6c42baf"
+      },
+      {
+        "label": "actual-egress-contract",
+        "command": [
+          "/private/tmp/brassclaw-source-use-fence-validation-20261029/host-1/runtime_http_egress_contract-d68a768953807e01c624354ae1fdfac88fc1f5106f492e39f80a899dc973ca49",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 1.482,
+        "log_sha256": "6123469f9420c1ae051c9bcc7e013dee8ee8500bb6a8f5693dc12f93db09c46f",
+        "passed": 43,
+        "image_sha256": "d68a768953807e01c624354ae1fdfac88fc1f5106f492e39f80a899dc973ca49"
+      },
+      {
+        "label": "retained-native-policy",
+        "command": [
+          "/private/tmp/brassclaw-source-use-fence-validation-20261029/host-1/first_party_builtin_tools-9d6bf4e6560b50bf98d1f53045758d89c11bceca1739a5f6afc588047dadce85",
+          "retained_child_service_preserves_native_identity_and_kernel_block",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.678,
+        "log_sha256": "366e98903babeff8bf1e8aa0b84d0ac8ae6ae9ac8e9639fe00c034a464616ff8",
+        "passed": 1,
+        "image_sha256": "9d6bf4e6560b50bf98d1f53045758d89c11bceca1739a5f6afc588047dadce85"
+      }
+    ],
+    "artifacts": {
+      "builtin_obligation_handler_contract": {
+        "path": "/private/tmp/brassclaw-source-use-fence-validation-20261029/host-1/builtin_obligation_handler_contract-3e7a31c9413c7f40d9213d6543662b020ab503aa064847348232c46cb6c42baf",
+        "sha256": "3e7a31c9413c7f40d9213d6543662b020ab503aa064847348232c46cb6c42baf",
+        "original_executable": "/Users/ollama/brassclaw-target/debug/deps/builtin_obligation_handler_contract-d5c3a5294fae0bf7",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 0,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "test-support"
+        ],
+        "manifest_path": "/Volumes/SSDE/brassclaw/crates/brassclaw_host_runtime/Cargo.toml"
+      },
+      "runtime_http_egress_contract": {
+        "path": "/private/tmp/brassclaw-source-use-fence-validation-20261029/host-1/runtime_http_egress_contract-d68a768953807e01c624354ae1fdfac88fc1f5106f492e39f80a899dc973ca49",
+        "sha256": "d68a768953807e01c624354ae1fdfac88fc1f5106f492e39f80a899dc973ca49",
+        "original_executable": "/Users/ollama/brassclaw-target/debug/deps/runtime_http_egress_contract-fe312f121156021b",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 0,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "test-support"
+        ],
+        "manifest_path": "/Volumes/SSDE/brassclaw/crates/brassclaw_host_runtime/Cargo.toml"
+      },
+      "brassclaw_host_runtime": {
+        "path": "/private/tmp/brassclaw-source-use-fence-validation-20261029/host-1/brassclaw_host_runtime-2eed0a36981b1a8c15772686b1b01ed2a5255ed3437733402f43aa7c37ef5326",
+        "sha256": "2eed0a36981b1a8c15772686b1b01ed2a5255ed3437733402f43aa7c37ef5326",
+        "original_executable": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_host_runtime-71eb97b4083bdd90",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 0,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "test-support"
+        ],
+        "manifest_path": "/Volumes/SSDE/brassclaw/crates/brassclaw_host_runtime/Cargo.toml"
+      },
+      "first_party_builtin_tools": {
+        "path": "/private/tmp/brassclaw-source-use-fence-validation-20261029/host-1/first_party_builtin_tools-9d6bf4e6560b50bf98d1f53045758d89c11bceca1739a5f6afc588047dadce85",
+        "sha256": "9d6bf4e6560b50bf98d1f53045758d89c11bceca1739a5f6afc588047dadce85",
+        "original_executable": "/Users/ollama/brassclaw-target/debug/deps/first_party_builtin_tools-d5881ade9f1b5b03",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 0,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "test-support"
+        ],
+        "manifest_path": "/Volumes/SSDE/brassclaw/crates/brassclaw_host_runtime/Cargo.toml"
+      }
+    },
+    "passed": 98
+  },
+  "composition": {
+    "receipt": "/private/tmp/brassclaw-source-use-fence-validation-20261029/comp-1/progress.json",
+    "receipt_sha256": "3b751f8785062b21c9e6184849da22ba009b4b7149fc556826f9112b30a83df5",
+    "source_sha256": "26ed423f216ba71b561ab309e30984d6366bb080d93b0e046826077fd814d404",
+    "results": [
+      {
+        "stage": "format-affected",
+        "exit_code": 0,
+        "seconds": 0.4359448328614235,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "format-source-use-fence",
+        "exit_code": 0,
+        "seconds": 0.37451787502504885,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "composition-image",
+        "exit_code": 0,
+        "seconds": 227.25264645786956,
+        "log_sha256": "cdbb7a67f1b968c562889c7b67e85112df3aaa8eb262402893df6d9610bb6196"
+      },
+      {
+        "stage": "case-1",
+        "exit_code": 0,
+        "seconds": 0.34803045890294015,
+        "log_sha256": "9ae3b87dc63ac63956a579cf83bbca4e4042546806dcfa38bad4a560b62b3bab",
+        "case": "product_auth_runtime_credentials::captured::tests::original_source_survives_head_change_but_never_ciphertext_replacement",
+        "passed": 1
+      },
+      {
+        "stage": "case-2",
+        "exit_code": 0,
+        "seconds": 0.3413817919790745,
+        "log_sha256": "881f779e977042dcb2b23f24e121142409ffd5c595f2ed27631dc001e6f1dc75",
+        "case": "product_auth_runtime_credentials::captured::tests::captured_absence_cannot_adopt_later_global_selection_or_material",
+        "passed": 1
+      },
+      {
+        "stage": "case-3",
+        "exit_code": 0,
+        "seconds": 0.34134450019337237,
+        "log_sha256": "e800187336e55c7cdbfd890479974cfa8bb58009ffd762012fc49a10ded437c9",
+        "case": "product_auth_runtime_credentials::captured::tests::original_selection_is_retained_when_live_account_is_revoked",
+        "passed": 1
+      },
+      {
+        "stage": "case-4",
+        "exit_code": 0,
+        "seconds": 3.2449881250504404,
+        "log_sha256": "f2f4a3d03579894b0a1cc0a8cab7ecb2d5f4e9a2bdcf8328ee5cfe7eeeec6910",
+        "case": "task_tool_credentials::tests::bound_account_view_fences_original_claim_scope_late_read_and_weak_lifetime",
+        "passed": 1
+      },
+      {
+        "stage": "case-5",
+        "exit_code": 0,
+        "seconds": 83.49995437497273,
+        "log_sha256": "e24286ce237223752779e73fd3af31e702911dd13744b4d9acac41a489a4c844",
+        "case": "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match",
+        "passed": 1
+      },
+      {
+        "stage": "composition-strict",
+        "exit_code": 0,
+        "seconds": 88.70905470801517,
+        "log_sha256": "86b99623124c4463a077b61cfc68489013df55a06b791af35dea37bcb4c9934c"
+      },
+      {
+        "stage": "composition-default-strict",
+        "exit_code": 0,
+        "seconds": 20.397757458966225,
+        "log_sha256": "dcb841796595faaadaf8880d0da4db83bfeb2c8255ec14a4c5480057b5f4adc9"
+      }
+    ],
+    "image": {
+      "path": "/private/tmp/brassclaw-source-use-fence-validation-20261029/comp-1/composition-tests",
+      "sha256": "43a254b86267852a3208da4859d9d735b3685301daa1d1e1865732e18fe592ac",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-f3f60267b1e4e468",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    },
+    "worker": {
+      "path": "/private/tmp/brassclaw-source-use-fence-validation-20261029/comp-1/monty_worker",
+      "sha256": "91a2165fa396dfd9513d15e886eaba2ed692f1a5b9ac472ef3fb734391e47343",
+      "original": "/Users/ollama/brassclaw-target/debug/monty_worker"
+    },
+    "passed": 5
+  },
+  "fresh_actual_distinct_cases": 103,
+  "prior_separate_scope": {
+    "receipt": "/private/tmp/brassclaw-tool-source-capture-validation-20261029/run-3/progress.json",
+    "actual_cases": 11,
+    "strict": "failed-type-complexity-now-corrected",
+    "not_added_to_fresh_total": true
+  },
+  "failure_history": [
+    {
+      "run": "/private/tmp/brassclaw-tool-source-capture-validation-20261029/run-1",
+      "cause": "missed closed inspection SelectedTools constructor",
+      "repair": "all six constructors inspected; closed review remains explicitly uncaptured"
+    },
+    {
+      "run": "/private/tmp/brassclaw-tool-source-capture-validation-20261029/run-2",
+      "cause": "fixture project=None was identical to actual original project=None",
+      "repair": "use a genuinely different project, no scope validation weakened"
+    },
+    {
+      "run": "/private/tmp/brassclaw-tool-source-capture-validation-20261029/run-3",
+      "cause": "complex tuple return type; eleven actual cases passed before strict rejection",
+      "repair": "named BoundAccountServices, no lint suppression"
+    }
+  ],
+  "limits": [
+    "Native built-in declarations currently have empty runtime_credentials; no activated native credential workflow or GSuite registration is manufactured.",
+    "No raw-handle source migration, own-flow/refresh source progression, native-auth-wait producer or full final-use/UI acceptance.",
+    "Source metadata is ephemeral original task/child custody, not durable recovery, a dispatch grant or permission to replay.",
+    "No full K3/Prefix/platform/release/deployment completion."
+  ]
+}

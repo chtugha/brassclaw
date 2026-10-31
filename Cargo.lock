@@ -1303,6 +1303,7 @@ dependencies = [
  "brassclaw_authorization",
  "brassclaw_capabilities",
  "brassclaw_common",
+ "brassclaw_embedded_postgres",
  "brassclaw_embeddings",
  "brassclaw_engine",
  "brassclaw_extensions",
@@ -2067,6 +2068,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "brassclaw_host_api",
+ "h2 0.4.19",
+ "http 1.5.0",
  "lru 0.18.4",
  "percent-encoding",
  "reqwest 0.12.28",

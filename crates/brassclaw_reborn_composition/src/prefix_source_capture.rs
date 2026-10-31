@@ -51,6 +51,10 @@ impl InstalledMontyCatalogue {
                 .core_snapshot()
                 .map_err(|_| invalid())?
         };
+        {
+            let _serial = self.activation.lock().await;
+            self.reconcile_committed_runtime_locked().await?;
+        }
         let generation = self.active.read().await.generation.to_string();
         // The catalogue owner checks one coherent active view and exact sources.
         // Immutable packaged documents are pinned independently of editable Docs.

@@ -217,6 +217,9 @@ pub struct RebornServices {
     pub(crate) http_client_cache_control: Option<brassclaw_network::HttpClientCacheControl>,
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     pub(crate) monty_kernel: Option<Arc<dyn crate::monty_kernel::MontyKernelSnapshot>>,
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    pub(crate) tool_credential_sources:
+        Option<Arc<crate::task_tool_credentials::ToolCredentialSourceOwner>>,
     pub host_runtime: Option<Arc<dyn brassclaw_host_runtime::HostRuntime>>,
     pub turn_coordinator: Option<Arc<dyn brassclaw_turns::TurnCoordinator>>,
     pub product_auth: Option<Arc<RebornProductAuthServices>>,
@@ -523,6 +526,8 @@ impl RebornServices {
             http_client_cache_control: None,
             #[cfg(all(feature = "postgres", feature = "skills-db"))]
             monty_kernel: None,
+            #[cfg(all(feature = "postgres", feature = "skills-db"))]
+            tool_credential_sources: None,
             host_runtime: None,
             turn_coordinator: None,
             product_auth: None,
@@ -864,7 +869,7 @@ async fn build_local_dev(
     //   `build_local_dev(input, None).await`  // "used in unit tests only"
     // Production serve paths always pass a pool. This filesystem fallback is
     // intentional for test isolation and is NOT a production postgres-less path.
-    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    #[cfg(feature = "postgres")]
     let mut pg_secret_store = None;
     #[cfg(feature = "postgres")]
     let secret_store: Arc<dyn SecretStore> = if let Some(pool) = pg_pool.as_ref() {
@@ -875,10 +880,7 @@ async fn build_local_dev(
             master_key,
             effective_tenant_id,
         )?);
-        #[cfg(feature = "root-llm-provider")]
-        {
-            pg_secret_store = Some(store.clone());
-        }
+        pg_secret_store = Some(store.clone());
         store
     } else {
         let local_dev_secret_store =
@@ -925,12 +927,28 @@ async fn build_local_dev(
     services = apply_runtime_process_binding(services, runtime_process_binding);
     // Legacy outbound MCP client attachment is intentionally suspended.
     // HTTP egress does not enable external MCP servers or provider advertisement.
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let primitive_settings = pg_pool
+        .as_ref()
+        .map(|_| Arc::new(crate::host_primitive_settings::AcknowledgedPrimitiveSettings::new()));
     let product_auth_runtime_ports = require_product_auth_runtime_ports(&services)?;
     let provider_composition = compose_provider_client(
         oauth_provider_configs,
         oauth_dcr_provider_configs,
         Arc::clone(&secret_store),
         product_auth_runtime_ports.clone(),
+        {
+            #[cfg(all(feature = "postgres", feature = "skills-db"))]
+            {
+                primitive_settings.as_ref().map(|source| {
+                    source.clone() as Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>
+                })
+            }
+            #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
+            {
+                None
+            }
+        },
     )?;
     let product_auth = match product_auth_ports {
         Some(ports) => {
@@ -942,26 +960,33 @@ async fn build_local_dev(
             // process restart. Falls back to FilesystemAuthProductServices for
             // pure local-dev (tests, no pool, or no tenant_id).
             #[cfg(feature = "postgres")]
-            let pg_auth_services =
-                if let (Some(pool), Some(_)) = (pg_pool.as_ref(), tenant_id.as_ref()) {
-                    // Run product-auth DDL (CREATE TABLE IF NOT EXISTS, idempotent).
-                    crate::pg_auth_product_services::run_auth_migrations(pool)
-                        .await
-                        .map_err(|_| RebornBuildError::InvalidConfig {
-                            reason: "product-auth DDL migrations failed".to_string(),
-                        })?;
-                    let pg_auth = Arc::new(PgAuthProductServices::new(
-                        Arc::clone(pool),
-                        Arc::clone(&secret_store),
-                    ));
-                    Some(compose_durable_product_auth_services(
-                        pg_auth,
-                        turn_coordinator.clone(),
-                        &provider_composition,
-                    ))
-                } else {
-                    None
-                };
+            let pg_auth_services = if let (Some(pool), Some(_)) =
+                (pg_pool.as_ref(), tenant_id.as_ref())
+            {
+                // Run product-auth DDL (CREATE TABLE IF NOT EXISTS, idempotent).
+                crate::pg_auth_product_services::run_auth_migrations(pool)
+                    .await
+                    .map_err(|_| RebornBuildError::InvalidConfig {
+                        reason: "product-auth DDL migrations failed".to_string(),
+                    })?;
+                let pg_auth = Arc::new(PgAuthProductServices::new(
+                    Arc::clone(pool),
+                    pg_secret_store
+                        .clone()
+                        .ok_or_else(|| RebornBuildError::InvalidConfig {
+                            reason:
+                                "native product-auth requires its composed PostgreSQL secret owner"
+                                    .to_string(),
+                        })?,
+                ));
+                Some(compose_durable_product_auth_services(
+                    pg_auth,
+                    turn_coordinator.clone(),
+                    &provider_composition,
+                ))
+            } else {
+                None
+            };
             #[cfg(not(feature = "postgres"))]
             let pg_auth_services = None;
             if let Some(pg_auth) = pg_auth_services {
@@ -982,6 +1007,7 @@ async fn build_local_dev(
     services = services.with_runtime_credential_account_resolver(Arc::new(
         ProductAuthRuntimeCredentialResolver::new(
             product_auth.runtime_credential_account_selection_service(),
+            secret_store.clone(),
         ),
     ));
     let mut available_extensions = AvailableExtensionCatalog::from_filesystem_root(
@@ -1179,9 +1205,6 @@ async fn build_local_dev(
     };
     #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
     let native_registration_limits = brassclaw_host_api::MontyExecutionLimits::default();
-    #[cfg(all(feature = "postgres", feature = "skills-db"))]
-    let primitive_settings =
-        Arc::new(crate::host_primitive_settings::AcknowledgedPrimitiveSettings::new());
     let mut first_party_registry = builtin_first_party_registry_with_trigger_create_hook(
         BuiltinFirstPartyRegistrationInputs {
             trigger_repository: Arc::clone(&store_graph.trigger_repository),
@@ -1195,8 +1218,14 @@ async fn build_local_dev(
             primitive_settings: {
                 #[cfg(all(feature = "postgres", feature = "skills-db"))]
                 {
-                    Some(primitive_settings.clone()
-                        as Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>)
+                    // PostgreSQL runtime composition keeps the fail-closed
+                    // source until global startup acknowledges its settings.
+                    // Standalone local-dev services have no VM/settings owner;
+                    // their host-only consumers use canonical primitive defaults.
+                    primitive_settings.as_ref().map(|source| {
+                        source.clone()
+                            as Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>
+                    })
                 }
                 #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
                 {
@@ -1257,11 +1286,18 @@ async fn build_local_dev(
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         source_inspection: Some(source_inspection),
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
-        primitive_settings: Some(primitive_settings),
+        primitive_settings,
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         http_client_cache_control: services.http_client_cache_control(),
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         monty_kernel: Some(monty_kernel),
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        tool_credential_sources: Some(Arc::new(
+            crate::task_tool_credentials::ToolCredentialSourceOwner::new(
+                product_auth.credential_account_record_source(),
+                secret_store.clone(),
+            ),
+        )),
         host_runtime: Some(host_runtime),
         turn_coordinator: Some(turn_coordinator),
         // Local-dev always composes a safe in-memory product-auth boundary when
@@ -1640,7 +1676,7 @@ fn mount_local_dev_project_roots(
             StorageClass::FileContent,
             ContentKind::ProjectFile,
             IndexPolicy::NotIndexed,
-            BackendCapabilities::bytes_only(),
+            local.capabilities(),
         )?,
         Arc::clone(&local),
     )?;
@@ -1652,7 +1688,7 @@ fn mount_local_dev_project_roots(
             StorageClass::FileContent,
             ContentKind::ExtensionPackage,
             IndexPolicy::NotIndexed,
-            BackendCapabilities::bytes_only(),
+            local.capabilities(),
         )?,
         local,
     )?;
@@ -2411,7 +2447,13 @@ pub(crate) async fn resolve_pg_embedding_provider_pub(
         return Ok(None);
     };
     let session = Arc::new(SessionManager::new(SessionConfig::default()));
-    build_captured_embedding_provider(tenant_id, captured, session)
+    let guard = crate::provider_dispatch::PgProviderDispatchGuard::from_capture(
+        pool.clone(),
+        tenant_id,
+        keys,
+        &captured,
+    )?;
+    build_captured_embedding_provider(tenant_id, captured, session, guard)
         .await
         .map(|prepared| Some(prepared.provider))
 }
@@ -2421,6 +2463,7 @@ pub(crate) async fn build_captured_embedding_provider(
     tenant_id: &str,
     captured: crate::provider_admin::CapturedProviderSelection,
     session: Arc<brassclaw_llm::SessionManager>,
+    guard: Arc<dyn brassclaw_embeddings::EmbeddingDispatchGuard>,
 ) -> Result<
     crate::embedding_role_adapter::PreparedMemoryEmbeddingProvider,
     Box<dyn std::error::Error + Send + Sync>,
@@ -2486,11 +2529,12 @@ pub(crate) async fn build_captured_embedding_provider(
             max_entries: config.cache_size,
         },
         space,
+        guard,
     ))
 }
 
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-fn build_embeddings_config_from_provider(
+pub(crate) fn build_embeddings_config_from_provider(
     definition: &brassclaw_llm::ProviderDefinition,
     model_override: Option<String>,
     stored_key: Option<secrecy::SecretString>,
@@ -2523,15 +2567,9 @@ fn build_embeddings_config_from_provider(
                 .into(),
         )
     })?;
-    // A named external credential source is still a secret-broker input. It
-    // never overrides the selected catalogue model, protocol or endpoint.
-    let key = stored_key.or_else(|| {
-        definition
-            .api_key_env
-            .as_deref()
-            .and_then(|name| std::env::var(name).ok())
-            .map(secrecy::SecretString::from)
-    });
+    // Match text-provider resolution: compatibility env names do not bypass
+    // the authenticated host store or the captured credential revision.
+    let key = stored_key;
     if key
         .as_ref()
         .is_some_and(|value| value.expose_secret().trim().is_empty())
@@ -2825,6 +2863,8 @@ mod tests {
         )
         .await
         .expect("local-dev services build");
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        assert!(services.primitive_settings.is_none());
         let runtime = services.host_runtime.expect("host runtime composed");
 
         invoke_json(
@@ -3067,6 +3107,7 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(SecretHandle::new("missing-google-access-token").unwrap()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![
                     ProviderScope::new(GOOGLE_GMAIL_SEND_SCOPE).unwrap(),

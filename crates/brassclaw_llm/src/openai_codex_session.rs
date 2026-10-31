@@ -107,17 +107,17 @@ where
 
 impl UserCodeResponse {
     /// Get the expiry duration in seconds, from either `expires_in` or `expires_at`.
-    fn expires_in_secs(&self) -> u64 {
+    fn expires_in_secs(&self) -> Result<u64, LlmError> {
         if let Some(secs) = self.expires_in {
-            return secs;
+            return Ok(secs);
         }
-        if let Some(ref ts) = self.expires_at
-            && let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts)
-        {
+        if let Some(ref ts) = self.expires_at {
+            let dt =
+                chrono::DateTime::parse_from_rfc3339(ts).map_err(|_| invalid_oauth_response())?;
             let remaining = dt.signed_duration_since(Utc::now()).num_seconds();
-            return remaining.max(0) as u64;
+            return Ok(remaining.max(0) as u64);
         }
-        SECS_15_MINUTES // default 15 minutes
+        Ok(SECS_15_MINUTES) // default only when the issuer supplies no expiry
     }
 }
 
@@ -133,7 +133,6 @@ struct DeviceTokenPollRequest {
 #[derive(Debug, Deserialize)]
 struct DeviceAuthCodeResponse {
     authorization_code: String,
-    #[allow(dead_code)]
     code_challenge: String,
     code_verifier: String,
 }
@@ -147,8 +146,54 @@ struct TokenResponse {
     #[serde(default)]
     expires_in: u64,
     #[serde(default)]
-    #[allow(dead_code)]
     token_type: String,
+}
+
+fn invalid_oauth_response() -> LlmError {
+    LlmError::SessionRenewalFailed {
+        provider: "openai_codex".into(),
+        reason: "OAuth response has invalid credentials or expiry".into(),
+    }
+}
+
+impl TokenResponse {
+    fn into_session(
+        self,
+        previous: Option<(&str, DateTime<Utc>)>,
+    ) -> Result<OpenAiCodexSession, LlmError> {
+        if self.access_token.is_empty()
+            || HeaderValue::from_str(&format!("Bearer {}", self.access_token)).is_err()
+            || (!self.token_type.is_empty() && !self.token_type.eq_ignore_ascii_case("bearer"))
+        {
+            return Err(invalid_oauth_response());
+        }
+        let seconds = if self.expires_in == 0 {
+            tracing::debug!("Token response has expires_in=0, defaulting to 3600s");
+            SECS_PER_HOUR
+        } else {
+            self.expires_in
+        };
+        let duration = chrono::Duration::try_seconds(
+            i64::try_from(seconds).map_err(|_| invalid_oauth_response())?,
+        )
+        .ok_or_else(invalid_oauth_response)?;
+        let now = Utc::now();
+        let expires_at = now
+            .checked_add_signed(duration)
+            .ok_or_else(invalid_oauth_response)?;
+        let created_at = previous.map_or(now, |(_, created_at)| created_at);
+        let refresh_token = if self.refresh_token.is_empty() {
+            previous.map_or_else(String::new, |(token, _)| token.to_owned())
+        } else {
+            self.refresh_token
+        };
+        Ok(OpenAiCodexSession {
+            access_token: self.access_token,
+            refresh_token,
+            expires_at,
+            created_at,
+        })
+    }
 }
 
 /// A started device-code flow. Returned by
@@ -180,7 +225,8 @@ impl OpenAiCodexSessionManager {
     ///
     /// # Errors
     ///
-    /// Returns `LlmError` if the HTTP client cannot be constructed.
+    /// Returns `LlmError` if the HTTP client cannot be constructed or existing
+    /// credentials cannot be read or decoded. A missing file is permitted.
     pub fn new(config: OpenAiCodexConfig) -> Result<Self, LlmError> {
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -189,6 +235,8 @@ impl OpenAiCodexSessionManager {
         );
         let client = Client::builder()
             .default_headers(headers)
+            .redirect(reqwest::redirect::Policy::none())
+            .retry(reqwest::retry::never())
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| LlmError::RequestFailed {
@@ -196,26 +244,25 @@ impl OpenAiCodexSessionManager {
                 reason: format!("HTTP client build failed: {e}"),
             })?;
 
-        let mgr = Self {
+        // Only a missing file means that authentication has not been configured.
+        // Corrupt or unreadable credentials must not start a new login implicitly.
+        let session =
+            match std::fs::read_to_string(&config.session_path) {
+                Ok(data) => Some(serde_json::from_str::<OpenAiCodexSession>(&data).map_err(
+                    |_| LlmError::SessionRenewalFailed {
+                        provider: "openai_codex".into(),
+                        reason: "Failed to parse saved OAuth session".into(),
+                    },
+                )?),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                Err(error) => return Err(LlmError::Io(error)),
+            };
+        Ok(Self {
             config,
             client,
-            session: RwLock::new(None),
+            session: RwLock::new(session),
             renewal_lock: Mutex::new(()),
-        };
-
-        // Try synchronous load from disk during construction
-        if let Ok(data) = std::fs::read_to_string(&mgr.config.session_path)
-            && let Ok(session) = serde_json::from_str::<OpenAiCodexSession>(&data)
-            && let Ok(mut guard) = mgr.session.try_write()
-        {
-            *guard = Some(session);
-            tracing::debug!(
-                "Loaded OpenAI Codex session from {}",
-                mgr.config.session_path.display()
-            );
-        }
-
-        Ok(mgr)
+        })
     }
 
     /// Check if we have a session (may be expired).
@@ -228,11 +275,13 @@ impl OpenAiCodexSessionManager {
         let guard = self.session.read().await;
         match guard.as_ref() {
             None => true,
-            Some(s) => {
-                let margin =
-                    chrono::Duration::seconds(self.config.token_refresh_margin_secs as i64);
-                Utc::now() + margin >= s.expires_at
-            }
+            Some(s) => match s.expires_at.signed_duration_since(Utc::now()).to_std() {
+                Ok(remaining) => {
+                    remaining
+                        <= std::time::Duration::from_secs(self.config.token_refresh_margin_secs)
+                }
+                Err(_) => true,
+            },
         }
     }
 
@@ -252,6 +301,13 @@ impl OpenAiCodexSessionManager {
             if has_refresh {
                 self.refresh_tokens().await?;
             } else {
+                let guard = self.session.read().await;
+                if let Some(session) = guard
+                    .as_ref()
+                    .filter(|session| session.expires_at > Utc::now())
+                {
+                    return Ok(SecretString::from(session.access_token.clone()));
+                }
                 return Err(LlmError::AuthFailed {
                     provider: "openai_codex".to_string(),
                 });
@@ -271,7 +327,11 @@ impl OpenAiCodexSessionManager {
     pub async fn ensure_authenticated(&self) -> Result<(), LlmError> {
         // Try loading from disk if we don't have a session
         if !self.has_session().await {
-            let _ = self.load_session().await;
+            match self.load_session().await {
+                Ok(()) => {}
+                Err(LlmError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
         }
 
         if !self.has_session().await {
@@ -279,17 +339,14 @@ impl OpenAiCodexSessionManager {
             return self.device_code_login().await;
         }
 
-        if self.needs_refresh().await {
-            // Try refresh; if it fails, re-authenticate
-            match self.refresh_tokens().await {
-                Ok(()) => Ok(()),
-                Err(e) => {
-                    tracing::debug!("Token refresh failed ({}), re-authenticating...", e);
-                    self.device_code_login().await
-                }
+        // An access-only token inside the prefetch margin is still valid;
+        // get_access_token distinguishes it from a genuinely expired session.
+        match self.get_access_token().await {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                tracing::debug!(%error, "Stored authentication unavailable; explicit legacy login required");
+                self.device_code_login().await
             }
-        } else {
-            Ok(())
         }
     }
 
@@ -318,10 +375,9 @@ impl OpenAiCodexSessionManager {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
             return Err(LlmError::SessionRenewalFailed {
                 provider: "openai_codex".to_string(),
-                reason: format!("Device code request failed: HTTP {} -- {}", status, body),
+                reason: format!("Device code request failed: HTTP {status}"),
             });
         }
 
@@ -334,17 +390,16 @@ impl OpenAiCodexSessionManager {
             })?;
         tracing::debug!("Device code response received ({} bytes)", body_text.len());
         let device: UserCodeResponse =
-            serde_json::from_str(&body_text).map_err(|e| LlmError::SessionRenewalFailed {
+            serde_json::from_str(&body_text).map_err(|_| LlmError::SessionRenewalFailed {
                 provider: "openai_codex".to_string(),
                 reason: format!(
-                    "Failed to parse device code response: {} ({} bytes)",
-                    e,
+                    "Failed to parse device code response ({} bytes)",
                     body_text.len()
                 ),
             })?;
 
         let interval_secs = device.interval.max(5);
-        let expires_secs = device.expires_in_secs();
+        let expires_secs = device.expires_in_secs()?;
         Ok(DeviceCodeStart {
             device_auth_id: device.device_auth_id,
             user_code: device.user_code,
@@ -360,17 +415,44 @@ impl OpenAiCodexSessionManager {
     /// [`Self::initiate_device_code`].
     pub async fn complete_device_code(&self, start: &DeviceCodeStart) -> Result<(), LlmError> {
         let _guard = self.renewal_lock.lock().await;
+        let session = self.exchange_device_code(start).await?;
+        self.save_session(&session).await?;
+        self.set_session(session).await;
+        Ok(())
+    }
 
+    /// Obtain credentials for an explicit host login without publishing them.
+    /// The host must retain the original provider/role request and commit its
+    /// credential and selection together. No session file or live token changes.
+    pub async fn authorize_device_code(
+        &self,
+        start: &DeviceCodeStart,
+    ) -> Result<OpenAiCodexSession, LlmError> {
+        let _guard = self.renewal_lock.lock().await;
+        self.exchange_device_code(start).await
+    }
+
+    async fn exchange_device_code(
+        &self,
+        start: &DeviceCodeStart,
+    ) -> Result<OpenAiCodexSession, LlmError> {
         let auth_base = format!("{}/api/accounts", self.config.auth_endpoint);
 
         // Step 3: Poll for authorization code
         let poll_url = format!("{}/deviceauth/token", auth_base);
         let mut interval = std::time::Duration::from_secs(start.interval_secs.max(5));
-        let deadline =
-            tokio::time::Instant::now() + std::time::Duration::from_secs(start.expires_secs);
+        let deadline = tokio::time::Instant::now()
+            .checked_add(std::time::Duration::from_secs(start.expires_secs))
+            .ok_or_else(invalid_oauth_response)?;
 
         let auth_code = loop {
-            tokio::time::sleep(interval).await;
+            let now = tokio::time::Instant::now();
+            if now < deadline {
+                tokio::time::sleep_until(
+                    now.checked_add(interval).unwrap_or(deadline).min(deadline),
+                )
+                .await;
+            }
 
             if tokio::time::Instant::now() >= deadline {
                 return Err(LlmError::SessionRenewalFailed {
@@ -398,10 +480,16 @@ impl OpenAiCodexSessionManager {
                 let code_resp: DeviceAuthCodeResponse =
                     resp.json()
                         .await
-                        .map_err(|e| LlmError::SessionRenewalFailed {
+                        .map_err(|_| LlmError::SessionRenewalFailed {
                             provider: "openai_codex".to_string(),
-                            reason: format!("Failed to parse auth code response: {}", e),
+                            reason: "Failed to parse auth code response".into(),
                         })?;
+                if code_resp.authorization_code.is_empty()
+                    || code_resp.code_challenge.is_empty()
+                    || code_resp.code_verifier.is_empty()
+                {
+                    return Err(invalid_oauth_response());
+                }
                 break code_resp;
             }
 
@@ -420,15 +508,15 @@ impl OpenAiCodexSessionManager {
 
             // Slow down on 429, cap at 60s to avoid unbounded growth
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                interval = (interval + std::time::Duration::from_secs(5))
+                interval = interval
+                    .saturating_add(std::time::Duration::from_secs(5))
                     .min(std::time::Duration::from_secs(60));
                 continue;
             }
 
-            let body = resp.text().await.unwrap_or_default();
             return Err(LlmError::SessionRenewalFailed {
                 provider: "openai_codex".to_string(),
-                reason: format!("Device auth poll failed: HTTP {} -- {}", status, body),
+                reason: format!("Device auth poll failed: HTTP {status}"),
             });
         };
 
@@ -456,38 +544,21 @@ impl OpenAiCodexSessionManager {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
             return Err(LlmError::SessionRenewalFailed {
                 provider: "openai_codex".to_string(),
-                reason: format!("Token exchange failed: HTTP {} -- {}", status, body),
+                reason: format!("Token exchange failed: HTTP {status}"),
             });
         }
 
         let token_resp: TokenResponse =
             resp.json()
                 .await
-                .map_err(|e| LlmError::SessionRenewalFailed {
+                .map_err(|_| LlmError::SessionRenewalFailed {
                     provider: "openai_codex".to_string(),
-                    reason: format!("Failed to parse token response: {}", e),
+                    reason: "Failed to parse token response".into(),
                 })?;
 
-        let session = OpenAiCodexSession {
-            access_token: token_resp.access_token,
-            refresh_token: token_resp.refresh_token,
-            expires_at: Utc::now()
-                + chrono::Duration::seconds(if token_resp.expires_in > 0 {
-                    token_resp.expires_in
-                } else {
-                    tracing::debug!("Token response has expires_in=0, defaulting to 3600s");
-                    SECS_PER_HOUR
-                } as i64),
-            created_at: Utc::now(),
-        };
-
-        self.save_session(&session).await?;
-        self.set_session(session).await;
-
-        Ok(())
+        token_resp.into_session(None)
     }
 
     /// Run OpenAI's device code auth flow interactively (CLI).
@@ -535,13 +606,14 @@ impl OpenAiCodexSessionManager {
             return Ok(());
         }
 
-        let refresh_token = {
+        let (refresh_token, created_at) = {
             let guard = self.session.read().await;
             guard
                 .as_ref()
-                .map(|s| s.refresh_token.clone())
+                .map(|s| (s.refresh_token.clone(), s.created_at))
+                .filter(|(token, _)| !token.is_empty())
                 .ok_or_else(|| LlmError::AuthFailed {
-                    provider: "openai_codex".to_string(),
+                    provider: "openai_codex".into(),
                 })?
         };
 
@@ -563,33 +635,21 @@ impl OpenAiCodexSessionManager {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
             return Err(LlmError::SessionRenewalFailed {
                 provider: "openai_codex".to_string(),
-                reason: format!("Token refresh failed: HTTP {} -- {}", status, body),
+                reason: format!("Token refresh failed: HTTP {status}"),
             });
         }
 
         let token_resp: TokenResponse =
             resp.json()
                 .await
-                .map_err(|e| LlmError::SessionRenewalFailed {
+                .map_err(|_| LlmError::SessionRenewalFailed {
                     provider: "openai_codex".to_string(),
-                    reason: format!("Failed to parse refresh response: {}", e),
+                    reason: "Failed to parse refresh response".into(),
                 })?;
 
-        let session = OpenAiCodexSession {
-            access_token: token_resp.access_token,
-            refresh_token: token_resp.refresh_token,
-            expires_at: Utc::now()
-                + chrono::Duration::seconds(if token_resp.expires_in > 0 {
-                    token_resp.expires_in
-                } else {
-                    tracing::debug!("Token response has expires_in=0, defaulting to 3600s");
-                    3600 // 1-hour session token TTL
-                } as i64),
-            created_at: Utc::now(),
-        };
+        let session = token_resp.into_session(Some((&refresh_token, created_at)))?;
 
         self.save_session(&session).await?;
         self.set_session(session).await;
@@ -653,9 +713,9 @@ impl OpenAiCodexSessionManager {
             })?;
 
         let session: OpenAiCodexSession =
-            serde_json::from_str(&data).map_err(|e| LlmError::SessionRenewalFailed {
+            serde_json::from_str(&data).map_err(|_| LlmError::SessionRenewalFailed {
                 provider: "openai_codex".to_string(),
-                reason: format!("Failed to parse session file: {}", e),
+                reason: "Failed to parse saved OAuth session".into(),
             })?;
 
         let mut guard = self.session.write().await;
@@ -736,29 +796,6 @@ mod tests {
         assert!(mgr.needs_refresh().await);
     }
 
-    #[test]
-    fn device_code_parse_error_redacts_body() {
-        // Regression: the parse error used to include raw body_text which could
-        // contain sensitive auth data. Now it only shows byte count.
-        let body_text = r#"{"secret_token":"sk-12345","error":"unexpected"}"#;
-        let err: Result<UserCodeResponse, _> = serde_json::from_str(body_text);
-        assert!(err.is_err());
-        let e = err.unwrap_err();
-        let error_msg = format!(
-            "Failed to parse device code response: {} ({} bytes)",
-            e,
-            body_text.len()
-        );
-        assert!(
-            !error_msg.contains("sk-12345"),
-            "error message must not contain raw body: {error_msg}"
-        );
-        assert!(
-            error_msg.contains("bytes"),
-            "error message should show byte count"
-        );
-    }
-
     #[tokio::test]
     async fn test_no_refresh_when_fresh() {
         let dir = tempdir().unwrap();
@@ -777,3 +814,7 @@ mod tests {
         assert!(!mgr.needs_refresh().await);
     }
 }
+
+#[cfg(test)]
+#[path = "openai_codex_session_native_tests.rs"]
+mod native_tests;

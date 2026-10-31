@@ -1,0 +1,166 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-015",
+  "status": "passed",
+  "package": "/private/tmp/brassclaw-validation-target-integration-20261031",
+  "package_after_sha256": "c6e3860cadb7641c3fe64c69d0a071bb4693c8694dd1987cbf29568205123c70",
+  "sources": {
+    "AGENTS.md": "b5599ba429575c17334c6b26f8d1dbaa8c3a2534a6b05594042ac0ba579f695e",
+    "CLAUDE.md": "0a6cfb0ebc97e5dfec7f684a4d4f0d7f5ea85c16ff58f641a47bd5f40a19602a",
+    "skills.md": "0ebdb25d52a7ec74259ff1bc8e065bb998eb8a23ea1d75e5709e38e64baadccc",
+    "recipe.md": "e0d606a9a9545c71b077e8a2c7249f41f053219a3a94135e96e6e20fdfcf65ac",
+    "tools.md": "e6c39e07095124eeb5af4fb5036504ba3c09b0911ed52c4caeaea67db35b89ca",
+    "toolskills.md": "11a262821a733dd6ce4b72ce10af8154ad5593383ceb184aee09cae48d7cd483",
+    "validator_v3.md": "017d31b763de6cadc7d4d22486aa627099a3fbe55082c6fdcbcc7d98623805d7",
+    "simplified_v3.md": "edead8183a59b8f79f051bd7148365dd852489f880fbed7b4874e9d13f149ca0",
+    "docs/plans/monty.composition.md": "ecb1f88a73925fdcce1317206b58b037ed51b8259a7df3897b91ec67dcdae505",
+    "docs/plans/sempai_v3.5.md": "0575215183344fe68c14747dcf67728b5cd299929e05af1c1c07c24650a31a13",
+    "docs/plans/simplify_connections_v3.5.md": "fafbde96564247cf80413d792bb63f22bfb4a344530ffdde09c04197744a86ef",
+    "docs/reborn/pure-component-review.md": "057251e10888b3952c9fc01febc692e67fd584cc772002c9a782d95e57e3efe7",
+    "docs/authored-catalogue-activation.md": "e6cec7b6b3bb243a2617a4b789951cb964f7c223b93302f75fa0e9f709c19bf5",
+    "docs/reborn/component-deployment.md": "729e78b9be217d21aa8ee35529d26463ef64e0a654d1ad224491a733e8eaa374",
+    "docs/reborn/contracts/retained-component-inputs.md": "aa4d92777bcc876e22e77f8a4acc8f14d0dcec00b333de983c22cd1510491ab7",
+    "docs/reborn/contracts/component-review-submissions.md": "4b2d45275a2294b4149a4f9f90ac18b32d05162d710dc2fc7482579007f302a6",
+    "docs/reborn/contracts/workflow-review-evidence.md": "28b4b53513d0e40d38d70aa543e30e69bdcf4f56201eb3d4caa82db6def975c4",
+    "docs/reborn/contracts/validator-coverage.md": "e50b24c8423f531d32118afb81cfd3f815b7b0110ac022f92b843b0fd8a0f6a0",
+    "docs/reborn/contracts/structural-presence-check.md": "84d993fa956173c822e66f282fdc7f695b86c1e9411e3ddcd95c872e4968e54c",
+    "docs/reborn/recursive-contract-check.md": "8f822ef6f56ea664f8f3e816ad13aafd3d285e85d83f56475fa80d139522a173",
+    "docs/development-policy.md": "a04cbbe319fed4aedc8d4c52cfa0845f55769a4aa4d38b7c940c847c45812cdf"
+  },
+  "integration": {
+    "status": "source-integrated-validation-pending",
+    "request": "BUILD-015",
+    "peer_package": "/private/tmp/brassclaw-exact-validation-core-text-r2-20261031-5j_ykeji",
+    "peer_patch_sha256": "801096e8e23e1352019f88942481b52c5f179a00864c55010e992b329ddf3036",
+    "peer_manifest_sha256": "8ddc52178676e83a2ac47c07b21e39c7f4be2cb61567f67c1f634ff013073558",
+    "contract_package": "/private/tmp/brassclaw-exact-validation-contract-text-20261031-n94xe7dz",
+    "contract_patch_sha256": "a610fe64bcf710811c85c883eaaba16e8500401ff6ea44e94b7e5a28b8bbfd01",
+    "contract_manifest_sha256": "681da9f6754b1364143c38c0cfd8cdcf8718610cbcb53a042bf8b07c52ae2c24",
+    "preceding_build014_receipt_sha256": "347be24f5ae84c02360a84769d44d50ff6cbaf45a7b951fe6153248dd299ec6e",
+    "before_sha256": "3219be82789f4e069cd0a15622585b2aabfbaf47b60d728408c2177aaf19e3b3",
+    "after_sha256": "c6e3860cadb7641c3fe64c69d0a071bb4693c8694dd1987cbf29568205123c70",
+    "files": 21,
+    "scope": "Binding successor target and existing-owner steps only; current APIs and original evidence unchanged. Embedded inputs await current native packaging checks; no new approval or activation."
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-validation-target-validation-20261031/run-2/source.json",
+    "sha256": "8a7059e42c0bac0b0b8925adabaa68ee5d5e63a25afc394e6ada2faa15361991",
+    "entries": 8176,
+    "literal_embedded_files": 484,
+    "embedded_input_map": "/private/tmp/brassclaw-validation-target-validation-20261031/run-2/embedded-inputs.json",
+    "embedded_input_map_sha256": "b19e5d73093ec18b83bd944f83a74253acbc003499a6b4decc865185c8403206",
+    "reviewed_root": "/private/tmp/brassclaw-validation-target-integration-20261031/current-root-inputs-validation-target.json",
+    "reviewed_root_sha256": "65a2128c2f198bdf4cb87eb2d0ea2b009d87f8ebff8123b535d1ce29b5b2116f",
+    "reviewed_root_paths": 271
+  },
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-validation-target-validation-20261031/run-1",
+      "status": "failed",
+      "progress_sha256": "20d6e8ca372c0f52dc772f3149a7659206a4f0354bf6c75da29e8dd4ded41683",
+      "results": [],
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-validation-target-validation-20261031/runner.py\", line 124, in <module>\n    assert fences(before)==fences(current),('executable examples changed',name)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('executable examples changed', 'toolskills.md')\n"
+    },
+    "run-2": {
+      "path": "/private/tmp/brassclaw-validation-target-validation-20261031/run-2",
+      "status": "passed",
+      "progress_sha256": "929aacb5d27b794d1176bb22e501138c1fa3ff814461bd10f2fa39a9fe66b185",
+      "results": [
+        {
+          "stage": "text-whitespace",
+          "exit_code": 0,
+          "seconds": 0.23029650002717972,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "embedded-consumer-image",
+          "exit_code": 0,
+          "seconds": 261.1022837499622,
+          "log_sha256": "c5b67b033df10eadcf156e735b772fdd927f514828fd97965dd0ef4c1c1da8a8"
+        },
+        {
+          "stage": "actual-installation-baseline",
+          "exit_code": 0,
+          "seconds": 8.147120666923001,
+          "log_sha256": "1a5c4cb246b90b416eb35e784581ec65510d7ccb151353535b67db0ae40b1030",
+          "passed": 1
+        },
+        {
+          "stage": "release-reference-integrity",
+          "exit_code": 0,
+          "seconds": 0.24098041700199246,
+          "log_sha256": "e22cf8e00869ab4631c7329e31cf837135940b6be2af44540b0bab78f581bbc8",
+          "passed": 1
+        },
+        {
+          "stage": "actual-reference-deployment-owner",
+          "exit_code": 0,
+          "seconds": 394.1852848751005,
+          "log_sha256": "3c33a8b59ef1eaa16e5078dd06089a015b1febf5b8a9f86d1d1f51546a3c658f",
+          "passed": 1
+        },
+        {
+          "stage": "embedded-consumer-strict",
+          "exit_code": 0,
+          "seconds": 93.35254300013185,
+          "log_sha256": "84b46a65d20aafc1ed9cb942942aac7758da85f72606e88c7e480b4e3a1be8cb"
+        }
+      ],
+      "diagnostic": null
+    }
+  },
+  "images": {
+    "brassclaw_reborn_composition": {
+      "path": "/private/tmp/brassclaw-validation-target-validation-20261031/run-2/brassclaw_reborn_composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-7a32f5faf18eef18",
+      "sha256": "414c98dae1b47dac82a7c22215821c3eae2f48049a94858b8e5a62721c0f4983",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-validation-target-validation-20261031/run-2/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+    "build_evidence": "/private/tmp/brassclaw-review-model-selection-validation-20261031/run-1/progress.json",
+    "build_evidence_sha256": "011859ce8c93fbdaa10f932b8ba156ef3b9271f5405f5ebe1aff99449d651153",
+    "reason": "Only reviewed documentation inputs changed; worker/lower dependencies and native bytes unchanged."
+  },
+  "tests": {
+    "fresh_distinct": 3,
+    "ignored": 0,
+    "names": [
+      "prefix_installation_baseline::tests::prefix_installation_baseline_preserves_actual_guides_and_truthful_provenance",
+      "prefix_reference_seeds::release::tests::upstream_reference_package_preserves_complete_bytes_and_rejects_forged_provenance",
+      "runtime::tests::authored_catalogue_tests::component_deployment_tests::native_component_deployment_preserves_recipes_and_pins_review_subjects"
+    ]
+  },
+  "observed_dependency_warning": {
+    "transformers_version": "5.1.0",
+    "package": "/opt/homebrew/lib/python3.14/site-packages/transformers",
+    "message": "You are using a model of type qwen3_5 to instantiate a model of type . This is not supported for all configurations of models and can yield errors.",
+    "log": "/private/tmp/brassclaw-validation-target-validation-20261031/run-2/actual-reference-deployment-owner.log",
+    "disposition": "Visible and unsuppressed. Root is resolving the outdated offline oracle dependency next, preserving original model/config/template bytes and prior results."
+  },
+  "scope": [
+    "Twenty reviewed peer text paths plus Root development policy implement the new binding A/S target in primary guides and existing owner successors.",
+    "Authored own-function/joint Skill-code review, compatible successors without unchanged-consumer reapproval, S exact-usage/prerequisite order and class50 retirement are targets; old supported profiles remain explicit.",
+    "Actual current embedded guide bytes pass native installation-baseline rendering and immutable reference/deployment owner checks, including existing operator override/retained source integrity behavior.",
+    "Payload/executable fences and actual class/table mapping stay unchanged; the sole approved prose-template label is compared exactly. Five owner-plan additions are append-only.",
+    "Fresh Composition compilation, three actual tests/zero ignored and connected strict Clippy pass; source inventory now includes discovered literal local embedded files."
+  ],
+  "limits": [
+    "New authored joint-subject, own-approval, directed compatibility/publication readers and independent S prerequisites still require implementation; no new runtime profile or activation follows from prose.",
+    "Existing current-profile deployment tests do not prove full eight-class Q1, general Pure approval, original Use/ModelSetup, Free/Serving or full I1/I2.",
+    "This bounded package does not complete all107/81 documentation dispositions; Prefix-owned plans, B1/B2, Packet/Golden and historical receipts remain untouched.",
+    "Literal macro-file discovery is a named frozen inventory, not enumeration of compiler-generated OUT_DIR files, every dynamic read or a full reproducible-build claim. Earlier inventories are not broadened retroactively.",
+    "No Linux/Windows deployment, durable recovery, complete-plan or release acceptance. R1 stopped before Cargo due an overly broad prose-fence preflight, repaired without product source changes.",
+    "The passing native test emitted the recorded Transformers5.1.0 configuration warning; this receipt does not claim a warning-free Python environment."
+  ]
+}

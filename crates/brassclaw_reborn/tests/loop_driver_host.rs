@@ -5121,6 +5121,7 @@ async fn text_only_host_maps_runtime_suspension_and_process_outcomes() {
         },
     ));
     runtime.push_outcome(RuntimeCapabilityOutcome::AuthRequired(RuntimeAuthGate {
+        boundary: brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
         gate_id: RuntimeGateId::new(),
         capability_id: auth_id.clone(),
         reason: RuntimeBlockedReason::AuthRequired,

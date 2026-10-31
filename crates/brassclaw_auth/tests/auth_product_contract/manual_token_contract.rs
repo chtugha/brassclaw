@@ -6,6 +6,7 @@ async fn manual_token_submit_is_secure_scoped_and_rejects_invalid_inputs() {
     let owner = scope("alice");
     let challenge = services
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: owner.clone(),
             provider: provider(),
             label: label("manual github"),
@@ -74,7 +75,7 @@ async fn manual_token_submit_is_secure_scoped_and_rejects_invalid_inputs() {
         )
         .await
         .expect_err("manual-token interaction is consumed once");
-    assert_eq!(replay, AuthProductError::UnknownOrExpiredFlow);
+    assert_eq!(replay, AuthProductError::BackendConflict);
 }
 
 #[tokio::test]
@@ -83,6 +84,7 @@ async fn manual_token_submit_consumes_interaction_once() {
     let owner = scope("alice");
     let challenge = services
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: owner.clone(),
             provider: provider(),
             label: label("manual github"),
@@ -117,7 +119,7 @@ async fn manual_token_submit_consumes_interaction_once() {
         )
         .await
         .expect_err("interaction is consumed after success");
-    assert_eq!(second_submit, AuthProductError::UnknownOrExpiredFlow);
+    assert_eq!(second_submit, AuthProductError::BackendConflict);
 
     let accounts = services
         .list_accounts(CredentialAccountListRequest::new(owner, provider()).with_limit(10))
@@ -132,6 +134,7 @@ async fn manual_token_submit_rejects_control_characters_without_consuming_intera
     let owner = scope("alice");
     let challenge = services
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: owner.clone(),
             provider: provider(),
             label: label("manual github"),
@@ -178,6 +181,7 @@ async fn manual_token_interaction_can_be_abandoned_after_route_submit_failure() 
     let other = scope("bob");
     let challenge = services
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: owner.clone(),
             provider: provider(),
             label: label("manual github"),
@@ -230,6 +234,7 @@ async fn expired_manual_token_interaction_fails_closed() {
     let owner = scope("alice");
     let challenge = services
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: owner.clone(),
             provider: provider(),
             label: label("manual github"),
@@ -270,6 +275,7 @@ async fn manual_token_submit_can_update_bound_account() {
         .expect("existing account");
     let challenge = services
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: owner.clone(),
             provider: provider(),
             label: label("updated manual github"),
@@ -335,6 +341,7 @@ async fn manual_token_update_binding_is_scope_checked_before_challenge() {
 
     let error = services
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope("bob"),
             provider: provider(),
             label: label("attacker manual github"),
@@ -361,6 +368,7 @@ async fn manual_token_update_binding_rejects_missing_account_before_challenge() 
 
     let error = services
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: owner.clone(),
             provider: provider(),
             label: label("manual github"),
@@ -399,6 +407,7 @@ async fn manual_token_update_binding_rejects_provider_mismatch_before_challenge(
 
     let error = services
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: owner,
             provider: AuthProviderId::new("gitlab").expect("valid provider"),
             label: label("manual gitlab"),
@@ -410,4 +419,179 @@ async fn manual_token_update_binding_rejects_provider_mismatch_before_challenge(
         .expect_err("provider mismatch is rejected before challenge");
 
     assert_eq!(error.code(), AuthErrorCode::InvalidRequest);
+}
+
+#[tokio::test]
+async fn manual_original_replay_preserves_result_after_revocation_and_rejects_changed_input() {
+    let services = InMemoryAuthProductServices::new();
+    let owner = scope("alice");
+    let challenge = services
+        .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
+            scope: owner.clone(),
+            provider: provider(),
+            label: label("original"),
+            continuation: AuthContinuationRef::SetupOnly,
+            update_binding: None,
+            expires_at: Utc::now() + Duration::minutes(5),
+        })
+        .await
+        .unwrap();
+    let AuthChallenge::ManualTokenRequired { interaction_id, .. } = challenge else {
+        panic!("manual challenge")
+    };
+    let result = services
+        .submit_manual_token(
+            &owner,
+            SecretSubmitRequest {
+                interaction_id,
+                secret: secret("original sentinel"),
+            },
+        )
+        .await
+        .unwrap();
+    services
+        .update_status(&owner, result.account_id, CredentialAccountStatus::Revoked)
+        .await
+        .unwrap();
+    let reopened = services.clone();
+    assert_eq!(
+        reopened
+            .submit_manual_token(
+                &owner,
+                SecretSubmitRequest {
+                    interaction_id,
+                    secret: secret("different sentinel")
+                }
+            )
+            .await
+            .unwrap_err(),
+        AuthProductError::BackendConflict
+    );
+    assert_eq!(
+        reopened
+            .submit_manual_token(
+                &owner,
+                SecretSubmitRequest {
+                    interaction_id,
+                    secret: secret("original sentinel")
+                }
+            )
+            .await
+            .unwrap(),
+        result
+    );
+    assert_eq!(
+        reopened
+            .get_account(CredentialAccountLookupRequest::new(
+                owner,
+                result.account_id
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        CredentialAccountStatus::Revoked
+    );
+}
+
+#[tokio::test]
+async fn manual_unbound_challenges_never_reselect_a_matching_account() {
+    let services = InMemoryAuthProductServices::new();
+    let owner = scope("alice");
+    let mut ids = Vec::new();
+    for _ in 0..2 {
+        let challenge = services
+            .request_secret_input(ManualTokenSetupRequest {
+                requirement_setup: None,
+                scope: owner.clone(),
+                provider: provider(),
+                label: label("identical label"),
+                continuation: AuthContinuationRef::SetupOnly,
+                update_binding: None,
+                expires_at: Utc::now() + Duration::minutes(5),
+            })
+            .await
+            .unwrap();
+        let AuthChallenge::ManualTokenRequired { interaction_id, .. } = challenge else {
+            panic!("manual challenge")
+        };
+        ids.push(
+            services
+                .submit_manual_token(
+                    &owner,
+                    SecretSubmitRequest {
+                        interaction_id,
+                        secret: secret("unbound sentinel"),
+                    },
+                )
+                .await
+                .unwrap()
+                .account_id,
+        );
+    }
+    assert_ne!(ids[0], ids[1]);
+    assert_eq!(
+        services
+            .list_accounts(CredentialAccountListRequest::new(owner, provider()))
+            .await
+            .unwrap()
+            .accounts
+            .len(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn manual_bound_challenge_rejects_a_changed_prechallenge_account() {
+    let services = InMemoryAuthProductServices::new();
+    let owner = scope("alice");
+    let account = services
+        .create_account(account_request(
+            owner.clone(),
+            "bound",
+            CredentialAccountStatus::Expired,
+        ))
+        .await
+        .unwrap();
+    let challenge = services
+        .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
+            scope: owner.clone(),
+            provider: provider(),
+            label: label("replacement"),
+            continuation: AuthContinuationRef::SetupOnly,
+            update_binding: Some(update_binding(&account)),
+            expires_at: Utc::now() + Duration::minutes(5),
+        })
+        .await
+        .unwrap();
+    let AuthChallenge::ManualTokenRequired { interaction_id, .. } = challenge else {
+        panic!("manual challenge")
+    };
+    let revoked = services
+        .update_status(&owner, account.id, CredentialAccountStatus::Revoked)
+        .await
+        .unwrap();
+    assert_eq!(
+        services
+            .submit_manual_token(
+                &owner,
+                SecretSubmitRequest {
+                    interaction_id,
+                    secret: secret("stale sentinel")
+                }
+            )
+            .await
+            .unwrap_err(),
+        AuthProductError::BackendConflict
+    );
+    assert_eq!(
+        services
+            .get_account(CredentialAccountLookupRequest::new(owner, account.id))
+            .await
+            .unwrap()
+            .unwrap(),
+        revoked
+    );
 }

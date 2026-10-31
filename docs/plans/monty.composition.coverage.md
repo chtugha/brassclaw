@@ -10,6 +10,14 @@ The [Tool/ToolSkill and cross-plan audit corrections](monty.composition.md#23-to
 
 # monty.composition — component coverage findings
 
+Current model-consumer requirements follow the [Prefix-owned assembly contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26):
+Kohai formats the dynamic Orchestrator prompt first; optional connected Sempai
+corrects that formatted prompt using its own generated reviewer prefix/design and
+returns the final dynamic prompt; Kohai then inserts the intended finished prefix
+unchanged exactly once, without reformatting the return. Same-pair generator/
+Kohai/Sempai share the saved accepted design revision. Historical purpose cells
+below are neither an alternative order nor runtime acceptance of this contract.
+
 Source audit: **2026-10-09**. This checks every one of the **118 PythonCode entries and 94 Skill companions** originally listed in monty.composition. It examines checked-in seeds and concrete planned usages; it does not query an installed database, run programs or establish activation. Names/reference matches were checked against source bodies and contract differences.
 
 **Result:** 43 partial overlap, 48 no successor found, 8 existing code reuse, 9 planned replacement, 10 same original design. Nine planned replacements belong to validator_v3. Eight additional redundant bodies can reuse already-seeded general executors; those executors precede the specialized bodies, so this is existing-code consolidation, not evidence of later seeding. No listed body has a fully qualified later packaged drop-in replacement.

@@ -455,12 +455,11 @@ impl LoopModelRouteSnapshot {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        validate_model_route_component_value("provider_id", &self.provider_id, 128, |character| {
-            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
-        })?;
-        validate_model_route_component_value("model_id", &self.model_id, 256, |character| {
-            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.' | ':' | '/')
-        })?;
+        // A selection snapshot carries exact database/provider names as data.
+        // Legacy permission-bearing route keys validate their own stricter
+        // grammar separately; it must not restrict ordinary provider models.
+        validate_model_selection_identity_value("provider_id", &self.provider_id)?;
+        validate_model_selection_identity_value("model_id", &self.model_id)?;
         validate_model_route_component_value(
             "config_version",
             &self.config_version,
@@ -479,6 +478,17 @@ impl LoopModelRouteSnapshot {
         )?;
         Ok(())
     }
+}
+
+fn validate_model_selection_identity_value(label: &'static str, value: &str) -> Result<(), String> {
+    if value.is_empty() || value.trim() != value || value.chars().any(char::is_control) {
+        return Err(format!(
+            "{label} must contain normalized nonempty text without control characters"
+        ));
+    }
+    // Preserve the existing credential-marker rejection. Resource/transport
+    // limits belong to their actual owners, not a new name-length quota here.
+    reject_sensitive_model_route_markers(label, value)
 }
 
 /// Validate a persisted provider/model route component with the same redaction
@@ -610,6 +620,11 @@ impl LoopRunContext {
 
 /// Reserved source binding used only by the runtime's trusted internal-turn API.
 pub const TRUSTED_INTERNAL_SOURCE_BINDING: &str = "codex-internal-prefix-regeneration";
+
+/// Reserved host admission for a selected model-using internal workflow. Its
+/// original durable claim selects ResultOnly completion, not deterministic
+/// execution or a Tool/component approval. Public input cannot select it.
+pub const INTERNAL_MODEL_SOURCE_BINDING: &str = "brassclaw-internal-model-work";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1397,9 +1412,75 @@ pub struct ProviderToolCallReplay {
     pub signature: Option<String>,
 }
 
+/// Semantic selection, independent of inline/final-boundary insertion.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecipePrefixSelection {
+    Default,
+    Selected,
+    PrefixFreeWorkflow,
+}
+
+/// Immutable observation of the original native input selection. Its presence
+/// grants nothing; the consuming native owner still verifies exact provenance.
+/// Deliberate absence and present-prefix references cannot compare equal merely
+/// because an accidental caller supplied the same textual reference.
+#[derive(Clone, PartialEq, Eq)]
+pub struct LoopModelInputReference {
+    pub selection: RecipePrefixSelection,
+    pub reference: String,
+}
+
+/// Opaque declaration from the retained workflow owner before model capture.
+/// Controls capture inputs only; it grants no dispatch or prefix bypass. Native
+/// sources validate their concrete type and original namespace.
+pub trait LoopModelCaptureContext: std::any::Any + Send + Sync {
+    fn as_any(&self) -> &dyn std::any::Any;
+}
+
 /// Host-owned custody of one observed model response before settlement.
 #[async_trait]
 pub trait LoopModelResponseCustodian: Send + Sync {
+    /// Retain a distinct native related operation under this original model
+    /// occurrence. The request bytes come from the host request owner, not a
+    /// Recipe argument. Estimates are not prompt/output facts. Unsupported
+    /// owners reject before the related provider is contacted; this never
+    /// borrows the primary response key or authorizes replay.
+    async fn prepare_related_model_work(
+        &self,
+        _work: &super::model_work::ModelWorkRequest,
+        _request_bytes: &str,
+    ) -> Result<std::sync::Arc<dyn LoopModelResponseCustodian>, AgentLoopHostError> {
+        Err(AgentLoopHostError::new(
+            AgentLoopHostErrorKind::Unimplemented,
+            "related native model response custody is unavailable",
+        ))
+    }
+
+    /// Explicit positive output setting retained from the original native call.
+    /// Absence preserves legacy request/fallback behavior; this is not usage,
+    /// a global budget or evidence that the workflow is qualified.
+    fn requested_output_tokens(&self) -> Option<std::num::NonZeroU32> {
+        None
+    }
+
+    /// Original selected input identity retained by the native occurrence owner.
+    /// This is an observation, never a caller-selected prefix or a dispatch grant.
+    /// Legacy response-only observers supply no such binding.
+    fn retained_model_input_reference(&self) -> Option<&LoopModelInputReference> {
+        None
+    }
+    /// Recheck the original native attempt immediately before actual model
+    /// submission, after preparation awaits. Legacy response-only observers do
+    /// not supply native claim authority.
+    async fn before_provider_submission(&self) -> Result<(), AgentLoopHostError> {
+        if self.requires_provider_observation() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unimplemented,
+                "native model submission fence is unavailable",
+            ));
+        }
+        Ok(())
+    }
     /// Native selected usages require the provider adapter's actual response
     /// before recovery, cleaning or loop classification. Legacy response-only
     /// observers retain their existing narrower contract.
@@ -1453,8 +1534,99 @@ pub trait LoopModelResponseCustodian: Send + Sync {
     async fn persist_response(&self) -> Result<(), AgentLoopHostError>;
 }
 
+/// Host-owned immutable task selection. Metadata contains references only; it
+/// grants no authority and never contains credential values or provider clients.
+/// Child inheritance requires the existing admission owner's parent proof.
+pub trait LoopTaskModelSelection: std::any::Any + Send + Sync {
+    fn as_any(&self) -> &dyn std::any::Any;
+    fn retained_metadata(&self) -> Result<serde_json::Value, AgentLoopHostError>;
+    fn matches_capture_context(&self, _capture: &dyn LoopModelCaptureContext) -> bool {
+        false
+    }
+    fn model_route(&self) -> Result<LoopModelRouteSnapshot, AgentLoopHostError>;
+    fn role_configured(&self, role: &str) -> bool;
+    fn role_model_route(&self, role: &str) -> Result<LoopModelRouteSnapshot, AgentLoopHostError> {
+        if role == "kohai" {
+            return self.model_route();
+        }
+        Err(AgentLoopHostError::new(
+            AgentLoopHostErrorKind::Unavailable,
+            "selected model role is unavailable",
+        ))
+    }
+}
+
+/// An explicitly inherited absence of model support. The verified native child
+/// owner supplies this when its original parent has no model selection. It
+/// carries no role/configuration references and cannot authorize or select a
+/// provider. Descendants retain this absence instead of reading current roles.
+pub struct InheritedUnavailableModelSelection;
+
+impl LoopTaskModelSelection for InheritedUnavailableModelSelection {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn retained_metadata(&self) -> Result<serde_json::Value, AgentLoopHostError> {
+        use sha2::Digest as _;
+        let mut selection = serde_json::json!({
+            "format":"brassclaw-task-providers-unavailable/1", "reason":"inherited_absence"
+        });
+        selection.sort_all_objects();
+        let bytes = serde_json::to_vec(&selection).map_err(|_| {
+            AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unavailable,
+                "inherited model metadata is unavailable",
+            )
+        })?;
+        Ok(
+            serde_json::json!({"format":"brassclaw-task-provider-binding/1",
+            "selection":selection,"checksum":format!("{:x}",sha2::Sha256::digest(bytes))}),
+        )
+    }
+    fn model_route(&self) -> Result<LoopModelRouteSnapshot, AgentLoopHostError> {
+        Err(AgentLoopHostError::new(
+            AgentLoopHostErrorKind::Unavailable,
+            "original parent has no model selection",
+        ))
+    }
+    fn role_configured(&self, _role: &str) -> bool {
+        false
+    }
+}
+
 #[async_trait]
 pub trait LoopModelPort: Send + Sync {
+    async fn preflight_task_model_usage(
+        &self,
+        input: Option<&LoopModelInputReference>,
+    ) -> Result<(), AgentLoopHostError> {
+        if input.is_some() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unimplemented,
+                "selected model input preflight is unavailable",
+            ));
+        }
+        Ok(())
+    }
+
+    async fn capture_task_model_selection(
+        &self,
+        parent: Option<Arc<dyn LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn crate::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<Option<Arc<dyn LoopTaskModelSelection>>, AgentLoopHostError> {
+        if parent.is_some() || capture.is_some() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unimplemented,
+                "task model inheritance is unavailable",
+            ));
+        }
+        Ok(None)
+    }
+
+    fn task_model_selection(&self) -> Option<Arc<dyn LoopTaskModelSelection>> {
+        None
+    }
+
     async fn stream_model(
         &self,
         request: LoopModelRequest,
@@ -1771,6 +1943,8 @@ pub enum CapabilityFailureKind {
     Backend,
     Cancelled,
     Dispatcher,
+    /// Dispatch began, or its boundary is unknown. Reconciliation must precede any retry.
+    EffectOutcomeUnresolved,
     InvalidInput,
     InvalidOutput,
     MissingRuntime,
@@ -1811,6 +1985,7 @@ impl CapabilityFailureKind {
             Self::Backend => "backend",
             Self::Cancelled => "cancelled",
             Self::Dispatcher => "dispatcher",
+            Self::EffectOutcomeUnresolved => "effect_outcome_unresolved",
             Self::InvalidInput => "invalid_input",
             Self::InvalidOutput => "invalid_output",
             Self::MissingRuntime => "missing_runtime",
@@ -1855,6 +2030,7 @@ impl<'de> Deserialize<'de> for CapabilityFailureKind {
             "backend" => Ok(Self::Backend),
             "cancelled" => Ok(Self::Cancelled),
             "dispatcher" => Ok(Self::Dispatcher),
+            "effect_outcome_unresolved" => Ok(Self::EffectOutcomeUnresolved),
             "invalid_input" => Ok(Self::InvalidInput),
             "invalid_output" => Ok(Self::InvalidOutput),
             "missing_runtime" => Ok(Self::MissingRuntime),

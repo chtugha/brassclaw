@@ -36,8 +36,10 @@ use uuid::Uuid;
 
 use super::{InstalledMontyCatalogue, TaskCatalogue, copy_selection, failed};
 use crate::{
-    RebornBuildError, global_recipe_ports::SelectedMontyRecipe,
-    global_task_factory::CapturedChildRecipe, pg_monty_admission::PgMontyAdmission,
+    RebornBuildError,
+    global_recipe_ports::SelectedMontyRecipe,
+    global_task_factory::{BoundChildRecipe, CapturedChildBindings, CapturedChildRecipe},
+    pg_monty_admission::PgMontyAdmission,
 };
 
 #[path = "monty_child_admission.rs"]
@@ -76,6 +78,7 @@ struct ChildGate {
 
 // No Debug/serde: claims, catalogue custody and complete inputs stay private.
 struct ChildOperation {
+    credentials: crate::task_tool_credentials::CapturedToolCredentials,
     parent: Arc<MontyTaskHost>,
     parent_admission: Arc<PgMontyAdmission>,
     view: Arc<crate::authored_monty_catalogue::CatalogueGeneration>,
@@ -342,6 +345,10 @@ impl InstalledMontyCatalogue {
             .check_dispatch_open()
             .map_err(|_| failed())?;
         operation.parent_admission.check_live_dependency().await?;
+        let catalogue_reference = crate::pg_monty_admission::CatalogueReference {
+            id: operation.view.generation,
+            checksum: Sha256::digest(operation.view.bytes.as_bytes()).into(),
+        };
         let recorded_at = operation
             .parent_admission
             .verify_child_invocation(
@@ -349,10 +356,7 @@ impl InstalledMontyCatalogue {
                 operation.workflow,
                 &operation.variant,
                 operation.inputs.as_value(),
-                crate::pg_monty_admission::CatalogueReference {
-                    id: operation.view.generation,
-                    checksum: Sha256::digest(operation.view.bytes.as_bytes()).into(),
-                },
+                catalogue_reference,
             )
             .await?;
         if recorded_at != operation.received_at {
@@ -377,36 +381,110 @@ impl InstalledMontyCatalogue {
         self.verify_retained_selection(&tx, &operation.view).await?;
         tx.commit().await.map_err(|_| failed())?;
         drop(client);
-        let catalogue = self.bind_captured_view(
-            host,
-            admission.clone(),
-            operation.view.clone(),
-            None,
-            input.user_input.clone(),
-        )?;
-        let selected = catalogue.select_explicit(
-            operation.workflow,
-            &operation.variant,
-            operation.inputs.as_value(),
-            self.child_data_limits().await.map_err(|_| failed())?,
-        )?;
-        operation
+        let parent_model_selection = operation.parent.task_model_selection();
+        let limits = self.child_data_limits().await.map_err(|_| failed())?;
+        Ok(Some(CapturedChildRecipe {
+            parent_model_selection,
+            bindings: Arc::new(CapturedNativeChild {
+                owner: self.clone(),
+                host,
+                admission,
+                operation,
+                dependency_parent,
+                catalogue_reference,
+                limits,
+                bound: AtomicBool::new(false),
+            }),
+        }))
+    }
+}
+
+// Private prepared native lineage. The factory retains this carrier across the
+// one model/source capture; no child/consumer runtime is built in preparation.
+struct CapturedNativeChild {
+    owner: Arc<InstalledMontyCatalogue>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    operation: Arc<ChildOperation>,
+    dependency_parent: Arc<dyn TaskPorts>,
+    catalogue_reference: crate::pg_monty_admission::CatalogueReference,
+    limits: ContractLimits,
+    bound: AtomicBool,
+}
+#[async_trait]
+impl CapturedChildBindings for CapturedNativeChild {
+    fn captured_programs(
+        &self,
+    ) -> Vec<Arc<brassclaw_engine::executor::retained_source::InspectedRetainedProgram>> {
+        std::iter::once(self.owner.reply.clone())
+            .chain(std::iter::once(self.owner.history.clone()))
+            .chain(self.operation.view.programs.iter().cloned())
+            .collect()
+    }
+    async fn bind(&self) -> Result<BoundChildRecipe, AgentLoopDriverError> {
+        if !self.admission.task_models_captured() {
+            return Err(failed());
+        }
+        if self.bound.swap(true, Ordering::AcqRel) {
+            return Err(failed());
+        }
+        // Do not reject the child's cancellation here: constructing passive
+        // ports lets the existing global service acknowledge it without effects.
+        self.operation
             .parent
             .check_dispatch_open()
             .map_err(|_| failed())?;
-        operation.parent_admission.check_live_dependency().await?;
-        // Retain before the caller starts this child. A second captured claim
-        // is recovery work, never another attempt of the whole Recipe.
-        let mut bound = operation.child_admission.lock().map_err(|_| failed())?;
+        self.operation
+            .parent_admission
+            .check_live_dependency()
+            .await?;
+        if self
+            .operation
+            .child_admission
+            .lock()
+            .map_err(|_| failed())?
+            .is_some()
+        {
+            return Err(failed());
+        }
+        let catalogue = self.owner.bind_captured_view(
+            self.host.clone(),
+            self.admission.clone(),
+            self.operation.view.clone(),
+            self.catalogue_reference,
+            (None, self.operation.reference.clone()),
+            self.operation.credentials.clone(),
+        )?;
+        let selected = catalogue.select_explicit(
+            self.operation.workflow,
+            &self.operation.variant,
+            self.operation.inputs.as_value(),
+            self.limits,
+        )?;
+        self.operation
+            .parent
+            .check_dispatch_open()
+            .map_err(|_| failed())?;
+        self.operation
+            .parent_admission
+            .check_live_dependency()
+            .await?;
+        // Retain exactly this admission; never replace an already captured child
+        // or reconstruct it from current catalogue/model settings after a wait.
+        let mut bound = self
+            .operation
+            .child_admission
+            .lock()
+            .map_err(|_| failed())?;
         if bound.is_some() {
             return Err(failed());
         }
-        *bound = Some(admission);
-        Ok(Some(CapturedChildRecipe {
+        *bound = Some(self.admission.clone());
+        Ok(BoundChildRecipe {
             catalogue,
             selected,
-            dependency_parent,
-        }))
+            dependency_parent: self.dependency_parent.clone(),
+        })
     }
 }
 
@@ -529,6 +607,9 @@ impl RuntimeChildTaskPort for ChildPort {
             .get(&context.run_id.to_string())
             .and_then(Weak::upgrade)
             .ok_or(Error::Fenced)?;
+        // Capture the actual parent's family before the first await/admission.
+        // Children never refill missing sources from today's global selection.
+        let credentials = captured.credentials.clone();
         // Validate the exact workflow and recursive inputs before any child
         // thread/admission effect. Parent ports are never reused by the child.
         captured
@@ -583,6 +664,7 @@ impl RuntimeChildTaskPort for ChildPort {
             ThreadId::new(format!("monty-child-v1-{}", run)).map_err(|_| Error::InvalidRequest)?;
         let (workflow, inputs) = request.into_parts();
         let operation = Arc::new(ChildOperation {
+            credentials,
             parent: self.host.clone(),
             parent_admission: self.admission.clone(),
             view: captured.view.clone(),

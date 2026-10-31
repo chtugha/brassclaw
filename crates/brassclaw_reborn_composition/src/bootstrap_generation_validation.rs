@@ -201,6 +201,7 @@ pub(super) async fn execute(
             pool.clone(),
             "bootstrap-prefix-generation",
             "Contained packaged generation qualification",
+            None,
         ))
         .await?;
         admitted

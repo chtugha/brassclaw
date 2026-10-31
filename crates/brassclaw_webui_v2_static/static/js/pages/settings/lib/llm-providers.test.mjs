@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   API_KEY_UNCHANGED,
+  providerPublicationRows,
   groupProvidersByStatus,
   providerAcceptsApiKey,
   providerStatus,
@@ -235,4 +236,40 @@ test("response capacity remains optional, validates finite byte values and rejec
   }
   assert.throws(() => providerRequestPolicy({ ...form, adapter: "bedrock", responseBytes: "1" }), RangeError);
   assert.equal(providerRequestPolicy({ ...form, adapter: "bedrock", responseBytes: "0" }).max_response_bytes, null);
+});
+
+test("runtime status requires exact desired publication including key-only changes", () => {
+  const configured = (patch = {}) => ({ state: "configured", selection: { provider_id: "local", definition_revision: 3, model: "model-x", configuration_ref: "authenticated-original", ...patch } });
+  const snapshot = { desired_publications: { kohai: configured(), sempai: {state: "unconfigured"}, embedding: configured() },
+    runtime_publications: { kohai: configured(), sempai: {state: "unconfigured"}, embedding: {state: "untracked"} } };
+  assert.deepEqual(providerPublicationRows(snapshot).map(row => row.state), ["effective", "disabled", "untracked"]);
+  for (const patch of [{configuration_ref: "rotated-key"}, {provider_id: "other"}, {model: "other"}, {definition_revision: 4}]) {
+    const changed = structuredClone(snapshot);
+    changed.desired_publications.kohai = configured(patch);
+    assert.equal(providerPublicationRows(changed)[0].state, "pending");
+    assert.deepEqual(changed.runtime_publications.kohai, snapshot.runtime_publications.kohai);
+  }
+  snapshot.desired_publications.kohai = {state: "unconfigured"};
+  assert.equal(providerPublicationRows(snapshot)[0].state, "pending", "stored clear is not an unloaded client acknowledgement");
+  snapshot.desired_publications.kohai = {state: "untracked"};
+  snapshot.kohai_active = {provider_id: "invalid-external-provider"};
+  assert.equal(providerPublicationRows(snapshot)[0].state, "invalid");
+  assert.equal(providerPublicationRows(snapshot)[0].unresolved.provider_id, "invalid-external-provider");
+  assert.ok(providerPublicationRows({}).every(row => row.state === "untracked"), "legacy snapshots cannot invent effective uptake");
+});
+
+test("a failed capture cannot classify a later edit as failed", () => {
+  const selected = (ref, model = "model-x") => ({state: "configured", selection: {provider_id: "local", definition_revision: 1, model, configuration_ref: ref}});
+  const old = selected("old-key-target");
+  const failed = selected("failed-key-target");
+  const snapshot = {desired_publications: {kohai: failed}, runtime_publications: {kohai: old}, runtime_publication_failures: {kohai: failed}};
+  assert.equal(providerPublicationRows(snapshot)[0].state, "failed");
+  snapshot.desired_publications.kohai = selected("new-key-target");
+  assert.equal(providerPublicationRows(snapshot)[0].state, "pending");
+  snapshot.runtime_publications.kohai = {state: "untracked"};
+  assert.equal(providerPublicationRows(snapshot)[0].state, "untracked", "no actual client is invented");
+  snapshot.desired_publications.kohai = failed;
+  assert.equal(providerPublicationRows(snapshot)[0].state, "failed", "embedding retirement can retain the exact failed target");
+  snapshot.runtime_publications.kohai = failed;
+  assert.equal(providerPublicationRows(snapshot)[0].state, "effective", "actual success takes precedence over an older failure snapshot");
 });

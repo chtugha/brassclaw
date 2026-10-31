@@ -1,6 +1,6 @@
 // Model files are data. No path, program, source-origin or qualification fields
 // are accepted from the browser. The server derives canonical hashes/provenance.
-const names = new Set(["config.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "added_tokens.json", "vocab.json", "merges.txt", "chat_template.jinja"]);
+const names = new Set(["config.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "added_tokens.json", "vocab.json", "merges.txt", "chat_template.jinja", "README.md"]);
 export async function prepareModelArtifactImport(selected) {
   const files = Array.from(selected || []);
   if (!files.length || files.some(file => !names.has(file.name)) || new Set(files.map(file => file.name)).size !== files.length || !["config.json", "tokenizer.json", "tokenizer_config.json"].every(name => files.some(file => file.name === name))) throw new Error("prefix.modelArtifactFilesInvalid");

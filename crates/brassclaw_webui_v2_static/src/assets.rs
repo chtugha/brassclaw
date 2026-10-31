@@ -49,37 +49,39 @@ mod tests {
     }
 
     #[test]
-    fn chat_auth_gate_assets_submit_manual_token_then_resolve_gate() {
-        let auth_card = asset_text("js/pages/chat/components/auth-token-card.js");
-        assert!(auth_card.contains("await onSubmit(value);"));
-        assert!(auth_card.contains("setToken(\"\");"));
-        assert!(auth_card.contains("t(\"authGate.submitFailed\")"));
-        assert!(auth_card.contains("authGate.resolveFailedAfterTokenSaved"));
-        assert!(!auth_card.contains("err?.message"));
+    fn chat_manual_auth_assets_expose_original_raw_and_reference_paths() {
+        // Packaging coverage: actual controller/card behavior is exercised by
+        // the Node caller tests and protected native Chromium acceptance.
+        let card = asset_text("js/pages/chat/components/auth-token-card.js");
+        assert!(card.contains("await onSubmit(value);"));
+        assert!(card.contains("await onContinue();"));
+        assert!(card.contains("authGate.operationUnconfirmed"));
+        assert!(card.contains("authGate.continueSaved"));
+        assert!(!card.contains("err?.message"));
 
         let api = asset_text("js/lib/api.js");
-        assert!(api.contains("/api/reborn/product-auth/manual-token/submit"));
-        assert!(api.contains("signal,"));
-        assert!(api.contains("account_label: accountLabel"));
-        assert!(api.contains("gate_ref: gateRef"));
-
-        let use_chat = asset_text("js/pages/chat/hooks/useChat.js");
-        assert!(use_chat.contains("AUTH_TOKEN_FLOW_TIMEOUT_MS"));
-        assert!(use_chat.contains("authTokenSubmitRef"));
-        assert!(use_chat.contains("submitResponseResumedTurnGate"));
-        assert!(use_chat.contains("submitManualToken({"));
-        assert!(use_chat.contains("authTokenSubmitRef.current.credentialRef"));
-        assert!(use_chat.contains("authTokenSubmitRef.current.inFlight"));
-        assert!(use_chat.contains("throw new Error(\"auth gate is no longer pending\")"));
+        for path in ["/setup", "/secret-submit", "/continue"] {
+            assert!(api.contains(format!("/api/reborn/product-auth/manual-token{path}").as_str()));
+        }
+        let controller = asset_text("js/pages/chat/hooks/useChat.js");
+        assert!(controller.contains("requestManualTokenSetup"));
+        assert!(controller.contains("submitManualTokenSecret"));
+        assert!(controller.contains("continueManualToken"));
         assert!(
-            use_chat
-                .contains("throw new Error(\"auth gate is missing required credential metadata\")")
+            controller.contains("./manual-token-operation.js")
+                || controller.contains("../lib/manual-token-operation.js")
         );
-        assert!(use_chat.contains("resolveGateRequest({"));
-        assert!(use_chat.contains("resolution: \"credential_provided\""));
-        assert!(use_chat.contains("continuation?.type === \"turn_gate_resume\""));
-        assert!(use_chat.contains("credentialRef"));
-        assert!(use_chat.contains("safeAuthGateCode"));
+        assert!(!controller.contains("authTokenSubmitRef.current.credentialRef"));
+        assert!(!controller.contains("submitManualToken({"));
+
+        let operation = asset_text("js/pages/chat/lib/manual-token-operation.js");
+        assert!(operation.contains("export function retainManualTokenOperation"));
+        assert!(operation.contains("export function validateManualTokenCompletion"));
+        for language in ["en", "de"] {
+            let pack = asset_text(&format!("js/i18n/{language}.js"));
+            assert!(pack.contains("authGate.continueSavedHelp"));
+            assert!(pack.contains("authGate.setupExpired"));
+        }
     }
 
     #[test]

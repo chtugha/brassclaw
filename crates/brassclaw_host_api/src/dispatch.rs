@@ -15,6 +15,23 @@ use crate::{
     ResourceScope, ResourceUsage, RuntimeCredentialAuthRequirement, RuntimeKind, SecretHandle,
 };
 
+/// Native evidence about where authentication stopped this invocation.
+/// This is neither a Tool grant nor proof about preceding Recipe effects.
+/// Only the invocation host assigns the boundary; runtime metadata cannot
+/// self-assert that a dispatcher-entered call had no effect.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthDispatchBoundary {
+    /// Historical or unsupported provenance is never a resumable preflight.
+    #[default]
+    Unproven,
+    /// Authentication failed before the dispatcher was entered for this call.
+    BeforeDispatch,
+    /// The dispatcher was entered. No absence-of-effect claim follows, even
+    /// when the eventual response reports an authentication error.
+    DispatchAttempted,
+}
+
 /// Request for one already-authorized declared capability dispatch.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CapabilityDispatchRequest {
@@ -228,7 +245,9 @@ pub enum DispatchError {
         capability: CapabilityId,
         runtime: RuntimeKind,
     },
-    /// Authentication is required to dispatch this capability.
+    /// The runtime reported an authentication requirement. This does not prove
+    /// that the dispatcher performed no effect; the invocation host retains
+    /// dispatcher-entry evidence separately.
     ///
     /// `required_secrets` names the credentials the caller must stage.  The
     /// field is intentionally absent from the `Debug` output to avoid leaking

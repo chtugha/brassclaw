@@ -120,10 +120,22 @@ impl RebornWebuiAutomationFacade {
                 409,
                 false,
             )),
+            Ok(Ok(RuntimeCapabilityOutcome::AuthRequired(gate)))
+                if gate.boundary == brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch =>
+            {
+                Err(services_error(
+                    RebornServicesErrorCode::Forbidden,
+                    RebornServicesErrorKind::BlockedAuthentication,
+                    403,
+                    false,
+                ))
+            }
+            // Do not offer account recovery as authorization to repeat a possibly
+            // dispatched effect. The original outcome needs reconciliation.
             Ok(Ok(RuntimeCapabilityOutcome::AuthRequired(_))) => Err(services_error(
-                RebornServicesErrorCode::Forbidden,
-                RebornServicesErrorKind::BlockedAuthentication,
-                403,
+                RebornServicesErrorCode::Internal,
+                RebornServicesErrorKind::Internal,
+                500,
                 false,
             )),
             Ok(Ok(RuntimeCapabilityOutcome::ResourceBlocked(_))) => Err(services_error(
@@ -1066,6 +1078,7 @@ mod tests {
             ),
             (
                 RuntimeCapabilityOutcome::AuthRequired(RuntimeAuthGate {
+                    boundary: brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
                     gate_id: RuntimeGateId::new(),
                     capability_id: capability_id.clone(),
                     reason: RuntimeBlockedReason::AuthRequired,
@@ -1125,6 +1138,31 @@ mod tests {
             assert_eq!(error.kind, kind);
             assert_eq!(error.status_code, status_code);
             assert_eq!(error.retryable, retryable);
+        }
+    }
+
+    #[tokio::test]
+    async fn automation_facade_does_not_offer_auth_recovery_for_unresolved_effect() {
+        for boundary in [
+            brassclaw_host_api::AuthDispatchBoundary::DispatchAttempted,
+            brassclaw_host_api::AuthDispatchBoundary::Unproven,
+        ] {
+            let outcome = RuntimeCapabilityOutcome::AuthRequired(RuntimeAuthGate {
+                boundary,
+                gate_id: RuntimeGateId::new(),
+                capability_id: brassclaw_host_api::CapabilityId::new(TRIGGER_LIST_CAPABILITY_ID)
+                    .unwrap(),
+                reason: RuntimeBlockedReason::AuthRequired,
+                required_secrets: Vec::new(),
+                credential_requirements: Vec::new(),
+            });
+            let facade =
+                RebornWebuiAutomationFacade::new(Arc::new(OutcomeHostRuntime::new(outcome)));
+            let error = facade.list_automations(caller(), 50).await.unwrap_err();
+            assert_eq!(error.code, RebornServicesErrorCode::Internal);
+            assert_eq!(error.kind, RebornServicesErrorKind::Internal);
+            assert_eq!(error.status_code, 500);
+            assert!(!error.retryable);
         }
     }
 

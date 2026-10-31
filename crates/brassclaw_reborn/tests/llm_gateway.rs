@@ -1404,20 +1404,22 @@ async fn gateway_uses_active_provider_model_for_unpinned_model_profile() {
 
 #[tokio::test]
 async fn gateway_rejects_unpinned_model_profile_when_active_model_is_default() {
-    let provider = Arc::new(IgnoresModelOverrideProvider::new("default", "unused"));
-    let gateway = LlmProviderModelGateway::with_provider_identity(
-        STATIC_PROVIDER_ID,
-        provider.clone(),
-        LlmModelProfilePolicy::new().allow_model_profile(interactive_model(), None),
-    );
+    for model in ["default", "DEFAULT"] {
+        let provider = Arc::new(IgnoresModelOverrideProvider::new(model, "unused"));
+        let gateway = LlmProviderModelGateway::with_provider_identity(
+            STATIC_PROVIDER_ID,
+            provider.clone(),
+            LlmModelProfilePolicy::new().allow_model_profile(interactive_model(), None),
+        );
 
-    let error = gateway
-        .stream_model(model_request(interactive_model()))
-        .await
-        .unwrap_err();
+        let error = gateway
+            .stream_model(model_request(interactive_model()))
+            .await
+            .unwrap_err();
 
-    assert_eq!(error.kind, HostManagedModelErrorKind::PolicyDenied);
-    assert!(provider.requests.lock().unwrap().is_empty());
+        assert_eq!(error.kind, HostManagedModelErrorKind::PolicyDenied);
+        assert!(provider.requests.lock().unwrap().is_empty());
+    }
 }
 
 #[tokio::test]
@@ -1598,7 +1600,7 @@ async fn production_loop_model_gateway_keeps_instruction_stores_isolated_across_
         STATIC_PROVIDER_ID,
         provider.clone(),
         LlmModelProfilePolicy::new()
-            .allow_model_profile(interactive_model(), Some("host-selected-model".to_string())),
+            .allow_model_profile(interactive_model(), Some("recording-model".to_string())),
     ));
     let model_gateway = Arc::new(ThreadBackedLoopModelGateway::new(
         Arc::clone(&fixture.thread_service),
@@ -1631,10 +1633,11 @@ async fn production_loop_model_gateway_keeps_instruction_stores_isolated_across_
     let requests = provider.requests.lock().unwrap();
     assert_eq!(requests.len(), 2);
     assert!(requests.iter().all(|request| {
-        request
-            .messages
-            .iter()
-            .any(|message| message.content == "hello production gateway")
+        request.model.as_deref() == Some("recording-model")
+            && request
+                .messages
+                .iter()
+                .any(|message| message.content == "hello production gateway")
     }));
     let first_messages = requests[0]
         .messages

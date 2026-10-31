@@ -8,11 +8,16 @@
 #![warn(unreachable_pub)]
 
 mod crypto;
+mod custody;
+mod identity_closure;
+pub use identity_closure::SecretIdentityClosure;
 mod filesystem_store;
 pub mod keychain;
 mod legacy_store;
 pub mod pg_store;
+mod stored_scope;
 
+pub use custody::{SecretCustodyMetadata, SecretCustodySource, SecretCustodyState};
 pub use filesystem_store::{FilesystemCredentialBroker, FilesystemSecretStore};
 pub use pg_store::{PgCredentialBroker, PgSecretStore};
 
@@ -88,6 +93,9 @@ pub struct SecretLease {
     pub scope: ResourceScope,
     pub handle: SecretHandle,
     pub status: SecretLeaseStatus,
+    /// Actual selected secret lifetime, independent of the one-shot lease TTL.
+    /// None means unknown/unlimited by this owner, never an invented lifetime.
+    pub secret_expires_at: Option<Timestamp>,
 }
 
 /// Secret service failures. Variants intentionally avoid secret material.
@@ -983,6 +991,19 @@ fn validate_credential_id(kind: &'static str, value: &str) -> Result<(), Credent
 /// Scoped secret store contract.
 #[async_trait]
 pub trait SecretStore: Send + Sync {
+    /// Atomically retire the captured authenticated ordinary, original or retained
+    /// generation into a nonmaterial tombstone, or reserve an actually absent
+    /// identity against late writers. Never substitutes or removes a different
+    /// generation. Same closure reads back; mismatch returns None. Errors can
+    /// follow a committed closure and need authenticated readback. This trusted
+    /// setup/lifecycle primitive grants no runtime access or product authority.
+    async fn close_identity(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        expected: SecretIdentityClosure,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError>;
+
     /// Stores or replaces a secret under the caller's tenant/user/project scope and returns redacted metadata.
     ///
     /// Intended for trusted setup, composition, migration, or storage-code paths that are already
@@ -995,6 +1016,95 @@ pub trait SecretStore: Send + Sync {
         material: SecretMaterial,
     ) -> Result<SecretMetadata, SecretStoreError>;
 
+    /// Trusted setup write preserving the issuer's exact access deadline with
+    /// this encrypted generation. None explicitly clears a prior deadline.
+    /// Unsupported owners must reject a finite deadline before writing, rather
+    /// than silently storing a nonexpiring replacement.
+    async fn put_with_expiry(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expires_at: Option<Timestamp>,
+    ) -> Result<SecretMetadata, SecretStoreError> {
+        if expires_at.is_some() {
+            return Err(SecretStoreError::BackendMisconfigured {
+                reason: "authenticated secret expiry is unsupported".into(),
+            });
+        }
+        self.put(scope, handle, material).await
+    }
+
+    /// Identify the authenticated encrypted generation without exposing material.
+    /// This trusted setup projection neither grants runtime access nor consumes
+    /// a lease. References are owner/backend-bound opaque values, not plaintext
+    /// fingerprints. A read never repairs or migrates the selected generation.
+    async fn record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<String>, SecretStoreError>;
+
+    /// Atomically write only the captured encrypted generation. None protects
+    /// absence (including competing inserts); a mismatched generation returns
+    /// None without a secret write. An error never proves the write had no effect.
+    /// This does not make a mutable handle an immutable original or a grant.
+    async fn put_if_record_reference(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expected: Option<&str>,
+    ) -> Result<Option<SecretMetadata>, SecretStoreError>;
+
+    /// Compare authenticated stored material inside its owner. No plaintext or
+    /// low-entropy digest crosses this trusted setup port or is persisted as a
+    /// comparison result. This is not runtime injection, eligibility or authority.
+    async fn matches(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        candidate: &SecretMaterial,
+    ) -> Result<bool, SecretStoreError>;
+
+    /// Atomically retain one immutable encrypted original and its typed setup
+    /// context. An existing same full scope/context/material returns its exact
+    /// metadata; a different value/context, ordinary record or retired identity
+    /// returns None without replacement. Errors can still mean a committed write.
+    /// Normal writes/deletes cannot repurpose this identity. No lease is granted.
+    async fn put_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        context: Value,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError>;
+
+    /// Authenticate actual original/retained/retired state without returning raw
+    /// material. An ordinary record has no custody projection. Metadata, source
+    /// references and status labels never establish authority or approval.
+    async fn custody(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError>;
+
+    /// Create an immutable output from the exact live original inside its owner.
+    /// Caller supplies no replacement material. Same source/target reads back;
+    /// incompatible/retired source or occupied/retired target returns no write.
+    /// Source and target must share their stable storage owner. CAS-only stores
+    /// capture authenticated source data at its read, not an atomic multi-key
+    /// grant; later input retirement does not revoke an already issued output.
+    /// The auth owner must separately fence publication/cancellation and account
+    /// for unresolved artifacts. Every runtime use still needs its current
+    /// kernel/expiry/attempt checks.
+    async fn put_retained_from_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        source: SecretCustodySource,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError>;
+
     /// Returns redacted metadata for a secret without exposing material.
     async fn metadata(
         &self,
@@ -1002,7 +1112,12 @@ pub trait SecretStore: Send + Sync {
         handle: &SecretHandle,
     ) -> Result<Option<SecretMetadata>, SecretStoreError>;
 
-    /// Deletes a scoped secret if it exists. Returns whether a stored secret was removed.
+    /// Remove an ordinary selected value or retire an immutable custody value.
+    /// Retirement erases material but keeps the identity/context/source occupied;
+    /// it cannot be repurposed by a normal writer. False means no mutation was
+    /// applied (missing/retired/stale snapshot), not proof another value is absent.
+    /// Errors may mean an unknown committed effect; callers must reconcile their
+    /// original disposition instead of blind compensation or resurrection.
     async fn delete(
         &self,
         scope: &ResourceScope,
@@ -1015,6 +1130,18 @@ pub trait SecretStore: Send + Sync {
         scope: &ResourceScope,
         handle: &SecretHandle,
     ) -> Result<SecretLease, SecretStoreError>;
+
+    /// Issue only for this caller-selected authenticated generation, checking
+    /// the precondition inside the actual storage owner. A missing/mismatched
+    /// generation returns None without creating a lease. No copied reference
+    /// grants access; runtime eligibility, scope and expiry still apply.
+    /// Consumption retains its existing selected-generation/revocation checks.
+    async fn lease_once_if_record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: &str,
+    ) -> Result<Option<SecretLease>, SecretStoreError>;
 
     /// Consumes an active one-shot lease and returns secret material exactly once.
     async fn consume(
@@ -1114,6 +1241,37 @@ where
             })
     }
 
+    fn lease_from_selected_secret(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        secret: legacy_store::Secret,
+    ) -> Result<SecretLease, SecretStoreError> {
+        let lease = SecretLease {
+            id: SecretLeaseId::new(),
+            scope: scope.clone(),
+            handle: handle.clone(),
+            status: SecretLeaseStatus::Active,
+            secret_expires_at: secret.expires_at,
+        };
+        self.lock_leases()?.insert(
+            SecretLeaseKey::new(scope, lease.id),
+            LeaseRecord {
+                lease: lease.clone(),
+                secret_id: secret.id,
+                lease_expires_at: Utc::now() + self.lease_ttl,
+                secret_expires_at: secret.expires_at,
+            },
+        );
+        if lease
+            .secret_expires_at
+            .is_some_and(|expiry| expiry <= Utc::now())
+        {
+            return Err(SecretStoreError::SecretExpired);
+        }
+        Ok(lease)
+    }
+
     fn mark_consumed_lease(
         &self,
         scope: &ResourceScope,
@@ -1150,6 +1308,17 @@ impl<S> SecretStore for ScopedSecretsStoreAdapter<S>
 where
     S: SecretsStore + 'static,
 {
+    async fn close_identity(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        expected: SecretIdentityClosure,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        self.inner
+            .close_custody_identity(&scoped_legacy_user_id(&scope), scope, handle, expected)
+            .await
+            .map_err(map_legacy_secret_error)
+    }
     async fn put(
         &self,
         scope: ResourceScope,
@@ -1164,6 +1333,114 @@ where
             .await
             .map_err(map_legacy_secret_error)?;
         Ok(SecretMetadata { scope, handle })
+    }
+
+    async fn put_with_expiry(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expires_at: Option<Timestamp>,
+    ) -> Result<SecretMetadata, SecretStoreError> {
+        let mut params = CreateSecretParams::from_secret(handle.to_string(), material);
+        params.expires_at = expires_at;
+        self.inner
+            .create(&scoped_legacy_user_id(&scope), params)
+            .await
+            .map_err(map_legacy_secret_error)?;
+        Ok(SecretMetadata { scope, handle })
+    }
+
+    async fn record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<String>, SecretStoreError> {
+        self.inner
+            .record_reference(&scoped_legacy_user_id(scope), handle.as_str())
+            .await
+            .map_err(map_legacy_secret_error)
+    }
+
+    async fn put_if_record_reference(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expected: Option<&str>,
+    ) -> Result<Option<SecretMetadata>, SecretStoreError> {
+        let written = self
+            .inner
+            .create_if_record_reference(
+                &scoped_legacy_user_id(&scope),
+                CreateSecretParams::from_secret(handle.to_string(), material),
+                expected,
+            )
+            .await
+            .map_err(map_legacy_secret_error)?;
+        Ok(written.map(|_| SecretMetadata { scope, handle }))
+    }
+
+    async fn matches(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        candidate: &SecretMaterial,
+    ) -> Result<bool, SecretStoreError> {
+        match self
+            .inner
+            .matches_material(&scoped_legacy_user_id(scope), handle.as_str(), candidate)
+            .await
+        {
+            Ok(matches) => Ok(matches),
+            Err(SecretError::NotFound(_)) => Err(SecretStoreError::UnknownSecret {
+                scope: Box::new(scope.clone()),
+                handle: handle.clone(),
+            }),
+            Err(error) => Err(map_legacy_secret_error(error)),
+        }
+    }
+
+    async fn put_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        context: serde_json::Value,
+    ) -> Result<Option<crate::SecretCustodyMetadata>, crate::SecretStoreError> {
+        self.inner
+            .create_original(
+                &scoped_legacy_user_id(&scope),
+                scope,
+                handle,
+                material,
+                context,
+            )
+            .await
+            .map_err(map_legacy_secret_error)
+    }
+
+    async fn custody(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<crate::SecretCustodyMetadata>, crate::SecretStoreError> {
+        self.inner
+            .custody(&scoped_legacy_user_id(scope), handle)
+            .await
+            .map_err(map_legacy_secret_error)
+    }
+
+    async fn put_retained_from_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        source: crate::SecretCustodySource,
+    ) -> Result<Option<crate::SecretCustodyMetadata>, crate::SecretStoreError> {
+        self.inner
+            .create_retained_from_original(&scoped_legacy_user_id(&scope), scope, handle, source)
+            .await
+            .map_err(map_legacy_secret_error)
     }
 
     async fn metadata(
@@ -1221,22 +1498,21 @@ where
                 },
                 other => map_legacy_secret_error(other),
             })?;
-        let lease = SecretLease {
-            id: SecretLeaseId::new(),
-            scope: scope.clone(),
-            handle: handle.clone(),
-            status: SecretLeaseStatus::Active,
-        };
-        self.lock_leases()?.insert(
-            SecretLeaseKey::new(scope, lease.id),
-            LeaseRecord {
-                lease: lease.clone(),
-                secret_id: secret.id,
-                lease_expires_at: Utc::now() + self.lease_ttl,
-                secret_expires_at: secret.expires_at,
-            },
-        );
-        Ok(lease)
+        self.lease_from_selected_secret(scope, handle, secret)
+    }
+
+    async fn lease_once_if_record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: &str,
+    ) -> Result<Option<SecretLease>, SecretStoreError> {
+        self.inner
+            .get_if_record_reference(&scoped_legacy_user_id(scope), handle.as_str(), expected)
+            .await
+            .map_err(map_legacy_secret_error)?
+            .map(|secret| self.lease_from_selected_secret(scope, handle, secret))
+            .transpose()
     }
 
     async fn consume(
@@ -1244,7 +1520,7 @@ where
         scope: &ResourceScope,
         lease_id: SecretLeaseId,
     ) -> Result<SecretMaterial, SecretStoreError> {
-        let (handle, secret_id) = {
+        let (handle, secret_id, secret_expires_at) = {
             let mut leases = self.lock_leases()?;
             expire_stale_active_leases(&mut leases, Utc::now());
             let key = SecretLeaseKey::new(scope, lease_id);
@@ -1257,7 +1533,11 @@ where
             match record.lease.status {
                 SecretLeaseStatus::Active => {
                     record.lease.status = SecretLeaseStatus::Consumed;
-                    (record.lease.handle.clone(), record.secret_id)
+                    (
+                        record.lease.handle.clone(),
+                        record.secret_id,
+                        record.secret_expires_at,
+                    )
                 }
                 SecretLeaseStatus::Consumed => {
                     return Err(SecretStoreError::LeaseConsumed { lease_id });
@@ -1288,6 +1568,10 @@ where
         if let Err(error) = self.inner.record_usage(secret_id).await {
             self.mark_consumed_lease(scope, lease_id, SecretLeaseStatus::Active)?;
             return Err(map_legacy_secret_error(error));
+        }
+        if secret_expires_at.is_some_and(|expiry| expiry <= Utc::now()) {
+            self.mark_consumed_lease(scope, lease_id, SecretLeaseStatus::Expired)?;
+            return Err(SecretStoreError::LeaseExpired { lease_id });
         }
         Ok(SecretMaterial::from(material.expose().to_string()))
     }
@@ -1394,6 +1678,15 @@ impl Default for InMemorySecretStore {
 
 #[async_trait]
 impl SecretStore for InMemorySecretStore {
+    async fn close_identity(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        expected: SecretIdentityClosure,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        self.inner.close_identity(scope, handle, expected).await
+    }
+
     async fn put(
         &self,
         scope: ResourceScope,
@@ -1401,6 +1694,78 @@ impl SecretStore for InMemorySecretStore {
         material: SecretMaterial,
     ) -> Result<SecretMetadata, SecretStoreError> {
         self.inner.put(scope, handle, material).await
+    }
+
+    async fn put_with_expiry(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expires_at: Option<Timestamp>,
+    ) -> Result<SecretMetadata, SecretStoreError> {
+        self.inner
+            .put_with_expiry(scope, handle, material, expires_at)
+            .await
+    }
+
+    async fn record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<String>, SecretStoreError> {
+        self.inner.record_reference(scope, handle).await
+    }
+
+    async fn put_if_record_reference(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expected: Option<&str>,
+    ) -> Result<Option<SecretMetadata>, SecretStoreError> {
+        self.inner
+            .put_if_record_reference(scope, handle, material, expected)
+            .await
+    }
+
+    async fn matches(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        candidate: &SecretMaterial,
+    ) -> Result<bool, SecretStoreError> {
+        self.inner.matches(scope, handle, candidate).await
+    }
+
+    async fn put_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        context: serde_json::Value,
+    ) -> Result<Option<crate::SecretCustodyMetadata>, crate::SecretStoreError> {
+        self.inner
+            .put_original(scope, handle, material, context)
+            .await
+    }
+
+    async fn custody(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<crate::SecretCustodyMetadata>, crate::SecretStoreError> {
+        self.inner.custody(scope, handle).await
+    }
+
+    async fn put_retained_from_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        source: crate::SecretCustodySource,
+    ) -> Result<Option<crate::SecretCustodyMetadata>, crate::SecretStoreError> {
+        self.inner
+            .put_retained_from_original(scope, handle, source)
+            .await
     }
 
     async fn metadata(
@@ -1425,6 +1790,17 @@ impl SecretStore for InMemorySecretStore {
         handle: &SecretHandle,
     ) -> Result<SecretLease, SecretStoreError> {
         self.inner.lease_once(scope, handle).await
+    }
+
+    async fn lease_once_if_record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: &str,
+    ) -> Result<Option<SecretLease>, SecretStoreError> {
+        self.inner
+            .lease_once_if_record_reference(scope, handle, expected)
+            .await
     }
 
     async fn consume(
@@ -2108,3 +2484,11 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "secret_reference_tests.rs"]
+mod secret_reference_tests;
+
+#[cfg(test)]
+#[path = "secret_custody_tests.rs"]
+mod secret_custody_tests;

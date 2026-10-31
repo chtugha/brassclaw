@@ -179,7 +179,7 @@ async fn runtime_secret_material_stager_stages_secret_material_into_target_scope
         .take(&scope, &capability_id, &handle)
         .expect("staged secret should be readable for target scope")
         .expect("provided material should be staged");
-    assert_eq!(staged.expose_secret(), "config-secret-material");
+    assert_eq!(staged.material.expose_secret(), "config-secret-material");
 }
 
 #[tokio::test]
@@ -526,6 +526,53 @@ async fn host_http_egress_treats_expired_staged_secret_as_missing() {
             if reason == "required credential is unavailable"
     ));
     assert!(recorded_requests.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn host_http_egress_preserves_actual_issuer_expiry_after_lease_consumption_and_wait() {
+    let scope = sample_scope();
+    let capability_id = sample_capability_id();
+    let handle = SecretHandle::new("finite-provider-access").unwrap();
+    let store = Arc::new(InMemorySecretStore::new());
+    let deadline = chrono::Utc::now() + chrono::Duration::seconds(2);
+    store
+        .put_with_expiry(
+            scope.clone(),
+            handle.clone(),
+            "finite-provider-material".into(),
+            Some(deadline),
+        )
+        .await
+        .unwrap();
+    let network = RecordingNetwork::ok();
+    let requests = Arc::clone(&network.requests);
+    let services = test_services()
+        .with_secret_store(store)
+        .try_with_host_http_egress(network)
+        .unwrap();
+    services
+        .product_auth_provider_runtime_ports()
+        .unwrap()
+        .stage_secret_once(&scope, &capability_id, &handle)
+        .await
+        .unwrap();
+    services
+        .network_policy_store
+        .insert(&scope, &capability_id, staged_policy());
+    let wait = (deadline - chrono::Utc::now()).to_std().unwrap_or_default();
+    tokio::time::sleep(wait + Duration::from_millis(20)).await;
+    let error = configured_egress(&services)
+        .execute(request_with_staged_credential(scope, capability_id, handle))
+        .await
+        .expect_err("issuer expiry must survive the real lease/staging handoff");
+    assert!(matches!(
+        error,
+        brassclaw_host_api::RuntimeHttpEgressError::Credential { .. }
+    ));
+    assert!(
+        requests.lock().unwrap().is_empty(),
+        "expired credentials must make zero network calls"
+    );
 }
 
 #[tokio::test]

@@ -1,5 +1,16 @@
 export const API_KEY_UNCHANGED = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
 
+// Use the displayed snapshot; never fetch a new precondition while saving.
+export function modelSelectionRef(references, role) {
+  const reference = references?.[role];
+  if (typeof reference !== "string" || !/^[a-f0-9]{64}$/.test(reference)) {
+    const error = new Error("selection_ref");
+    error.status = 409;
+    throw error;
+  }
+  return reference;
+}
+
 export const ADAPTER_OPTIONS = [
   { value: "open_ai_completions", label: "OpenAI Compatible" },
   { value: "anthropic", label: "Anthropic" },
@@ -201,4 +212,31 @@ export function providerIdFromName(name) {
 
 export function isValidProviderId(id) {
   return /^[a-z0-9_-]+$/.test(id);
+}
+
+// Compare only identities emitted by the canonical snapshot and the actual
+// publication owner. Definition equality alone misses key/model/target edits.
+function samePublication(left, right) {
+  if (left?.state === "unconfigured") return right?.state === "unconfigured";
+  return left?.state === "configured" && right?.state === "configured" &&
+    Boolean(left.selection?.configuration_ref) &&
+    left.selection.configuration_ref === right.selection?.configuration_ref &&
+    left.selection.provider_id === right.selection.provider_id &&
+    left.selection.definition_revision === right.selection.definition_revision &&
+    left.selection.model === right.selection.model;
+}
+
+export function providerPublicationRows(snapshot) {
+  return ["kohai", "sempai", "embedding"].map(role => {
+    const desired = snapshot.desired_publications?.[role];
+    const effective = snapshot.runtime_publications?.[role];
+    const failed = snapshot.runtime_publication_failures?.[role];
+    let state = "untracked";
+    if (desired?.state === "untracked") state = "invalid";
+    else if (samePublication(desired, effective)) state = desired.state === "unconfigured" ? "disabled" : "effective";
+    else if (samePublication(desired, failed)) state = "failed";
+    else if (desired && effective && effective.state !== "untracked") state = "pending";
+    const unresolved = snapshot[role === "kohai" ? "kohai_active" : `${role}_active`];
+    return { role, state, desired, effective, failed, unresolved };
+  });
 }

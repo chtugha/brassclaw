@@ -3,12 +3,13 @@ use std::sync::Arc;
 use brassclaw_host_api::{
     HostApiError, MountPermissions, MountView, ResourceScope, ScopedPath, VirtualPath,
 };
+use brassclaw_safety::sensitive_paths::is_sensitive_path_str;
 
 use crate::backend::{EventRecord, StorageTxn};
 use crate::{
-    CasExpectation, DirEntry, Entry, EntryIndexMetadata, EntryMetadata, FileStat, FilesystemError,
-    FilesystemOperation, Filter, IndexKey, IndexSpec, Page, RecordVersion, RootFilesystem, SeqNo,
-    VersionedEntry, path_prefix_matches,
+    CasExpectation, DirEntry, Entry, EntryBodyChecksum, EntryIndexMetadata, EntryMetadata,
+    FileStat, FileType, FilesystemError, FilesystemOperation, Filter, IndexKey, IndexSpec, Page,
+    RecordVersion, RootFilesystem, SeqNo, VersionedEntry, path_prefix_matches,
 };
 
 /// Resolver from a per-invocation [`ResourceScope`] to the [`MountView`] that
@@ -282,25 +283,40 @@ where
         self.root.write_file(&virtual_path, bytes).await
     }
 
+    /// Check an untrusted byte-write target against the exact invocation view.
+    ///
+    /// In addition to write permission, deny sensitive scoped/resolved names and
+    /// sensitive existing backend targets/parents. Backend metadata is inspected
+    /// only to authorize this write; no metadata or read permission is returned
+    /// to the caller. Trusted record/Secret owners use their own `put` APIs.
+    /// This is a preflight, not a reservation: the byte writer repeats it before
+    /// the atomic opaque write. Local checks assume trusted host filesystem
+    /// mutation, as Coding's checks do; they are not descriptor-based race protection.
+    pub async fn check_byte_write_with_mount_view(
+        &self,
+        view: &MountView,
+        path: &ScopedPath,
+    ) -> Result<(), FilesystemError> {
+        self.checked_byte_write_path(view, path).await.map(|_| ())
+    }
+
     /// Write bytes using an already-authorized mount view instead of the
     /// filesystem's configured resolver.
     ///
     /// This is for host adapters that parse a scoped path against the exact
     /// invocation-visible mounts and need the write to use that same authority.
+    /// The byte writer atomically refuses structured targets; trusted record
+    /// owners use `put` when intentionally replacing a record. Sensitive targets
+    /// are rechecked immediately before writing, even after a successful preflight.
     pub async fn write_bytes_with_mount_view(
         &self,
         view: &MountView,
         path: &ScopedPath,
         bytes: &[u8],
     ) -> Result<(), FilesystemError> {
-        let virtual_path =
-            resolve_with_permission_view(view, path, FilesystemOperation::WriteFile)?;
+        let virtual_path = self.checked_byte_write_path(view, path).await?;
         self.root
-            .put(
-                &virtual_path,
-                Entry::bytes(bytes.to_vec()),
-                CasExpectation::Any,
-            )
+            .put_opaque(&virtual_path, bytes.to_vec(), CasExpectation::Any)
             .await
             .map(|_| ())
     }
@@ -347,6 +363,22 @@ where
     ) -> Result<FileStat, FilesystemError> {
         let virtual_path = self.resolve_with_permission(scope, path, FilesystemOperation::Stat)?;
         self.root.stat(&virtual_path).await
+    }
+
+    /// Delete a selected leaf through the ordinary mount Delete permission.
+    /// A stale snapshot returns false; no unconditional compatibility retry.
+    pub async fn delete_if_snapshot(
+        &self,
+        scope: &ResourceScope,
+        path: &ScopedPath,
+        version: RecordVersion,
+        body_checksum: EntryBodyChecksum,
+    ) -> Result<bool, FilesystemError> {
+        let virtual_path =
+            self.resolve_with_permission(scope, path, FilesystemOperation::Delete)?;
+        self.root
+            .delete_if_snapshot(&virtual_path, version, body_checksum)
+            .await
     }
 
     pub async fn delete(
@@ -420,6 +452,46 @@ where
     }
 
     // ─── Internals ────────────────────────────────────────────────────────
+
+    async fn checked_byte_write_path(
+        &self,
+        view: &MountView,
+        path: &ScopedPath,
+    ) -> Result<VirtualPath, FilesystemError> {
+        let virtual_path =
+            resolve_with_permission_view(view, path, FilesystemOperation::WriteFile)?;
+        let denied = || FilesystemError::PermissionDenied {
+            path: path.clone(),
+            operation: FilesystemOperation::WriteFile,
+        };
+        if is_sensitive_path_str(path.as_str()) || is_sensitive_path_str(virtual_path.as_str()) {
+            return Err(denied());
+        }
+
+        // Only addressable virtual prefixes, nearest first. Keep borrowed slices
+        // rather than owning every ancestor; stop at the first existing target.
+        // Local stat resolves aliases and reports actual host-path sensitivity.
+        let prefixes: Vec<_> = virtual_path.prefixes().collect();
+        for candidate in prefixes.into_iter().rev() {
+            let candidate = VirtualPath::new(candidate)?;
+            match self.root.stat(&candidate).await {
+                Ok(stat) => {
+                    let expected = if candidate == virtual_path {
+                        FileType::File
+                    } else {
+                        FileType::Directory
+                    };
+                    if stat.sensitive || stat.file_type != expected {
+                        return Err(denied());
+                    }
+                    break;
+                }
+                Err(FilesystemError::NotFound { .. }) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(virtual_path)
+    }
 
     fn resolve_with_permission(
         &self,

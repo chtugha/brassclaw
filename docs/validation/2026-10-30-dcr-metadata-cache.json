@@ -1,0 +1,199 @@
+{
+  "format": "brassclaw-dcr-metadata-cache/1",
+  "status": "passed-scoped-full-k3-open",
+  "changed_sources": {
+    "crates/brassclaw_host_api/src/monty_resources.rs": {
+      "before": "e204f469c2fca721328c50346bee2fff18b9c741d0456e0f237de8e6f5b54d2c",
+      "after": "63585260b950963d52da02b5842df1d25bff0190f282da769bbb4f20a950f005"
+    },
+    "crates/brassclaw_reborn_composition/src/live_monty_settings.rs": {
+      "before": "5d8fdc11b18b3750159dc06685430fe860b04f1baf52ca6c899211e211120ace",
+      "after": "7678c052df6285ece854dfb00d823fec8afdb1757f4963d99a13ac3a33488c73"
+    },
+    "crates/brassclaw_reborn_composition/src/oauth_dcr.rs": {
+      "before": "ae45bb7aa8b19e3df9e252d3430124f77c7a2825c66f01d90071a5bf5ab3785b",
+      "after": "4ad94d5bc83bfa4d88d9960ab2f01e69155dfa64bb28815dab48fc78aa88398b"
+    },
+    "crates/brassclaw_reborn_composition/src/oauth_dcr_limits_tests.rs": {
+      "before": "1ffbd3545c5c0ce4da05805eb3bbdfc2c77ee0bfac63792e3f0ea1fbde1fb05e",
+      "after": "9fa6d70a861f18a46d6111494e638af2c19ab173345024eae691c1dc32d3c3d7"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs": {
+      "before": "4981a38d8dce7e4ad2c51bc7c0d4025fd642c8816b285fe583680d2a2ffe05d7",
+      "after": "4f7f1df40ec370282ada9ded68b431b313f86b26fe03eb29d0f1f474b2b3713c"
+    },
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/monty-vm-tab.js": {
+      "before": "9c843c773f8343e6883de2b83eb9d82495522ca03127b7e7e1872fd9a3dd53be",
+      "after": "822ac2eb499aacb1324e5fee53db130efbf7c437a8ce4b32770546bc0bab3118"
+    },
+    "crates/brassclaw_webui_v2_static/static/js/i18n/en.js": {
+      "before": "b5b91cd57fbe4fd39b11f44a52003dbfb92da0cb0d9682310010b1df2fccd62e",
+      "after": "c1acdd6e7c53e361dbac359308d021bb8f4b9a8994b5d19e374849d419f40768"
+    },
+    "crates/brassclaw_webui_v2_static/static/js/i18n/de.js": {
+      "before": "2f8e078458e4bf4cb303dac965aa47712ed16884c68f684a3d8610a3d249a655",
+      "after": "06cd7174c47c10492a94f68395f9fd2dbd246a6889ce36202cdccb3d13674656"
+    },
+    "tests/browser/monty-vm-resource-limits.mjs": {
+      "before": "46cd63c67e68f942b568b2e4dffe39e47989f5cbb6c54dfedd03dda595a1a83e",
+      "after": "2379dbb2a2ced51102039e57978d93b466c05228c81d0212420e3f46c7f8fd22"
+    },
+    "crates/brassclaw_pg/migrations/V190__oauth_dcr_metadata_cache.sql": {
+      "before": null,
+      "after": "7295a431e9a75d8bcf2392d01a498ab4c6d56a7ebc47159a262abef5894bef1c"
+    }
+  },
+  "validation": {
+    "path": "/private/tmp/brassclaw-dcr-cache-validation-20261030/run-1",
+    "source_sha256": "bad156586504223b91b814102e9af9942fe2a120324150fde3de27b04790ae80",
+    "progress_sha256": "052a1abdcb1948a562f2fc92a79ea7f70e8b6e6836e22f18c6a2d4fbadde299e",
+    "inputs": 7963,
+    "image": {
+      "path": "/private/tmp/brassclaw-dcr-cache-validation-20261030/run-1/composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-7a32f5faf18eef18",
+      "sha256": "ddc543bdaf4db10dd90cce2645748855515d95f2fdc3b9411ed05ce3c28db431",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    },
+    "worker": {
+      "path": "/private/tmp/brassclaw-dcr-cache-validation-20261030/run-1/monty_worker",
+      "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+      "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624"
+    },
+    "results": [
+      {
+        "stage": "format",
+        "exit_code": 0,
+        "seconds": 0.2367412920575589,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "syntax-0",
+        "exit_code": 0,
+        "seconds": 0.21469724993221462,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "syntax-1",
+        "exit_code": 0,
+        "seconds": 0.21350870886817575,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "syntax-2",
+        "exit_code": 0,
+        "seconds": 0.21105262520723045,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "syntax-3",
+        "exit_code": 0,
+        "seconds": 0.21290687518194318,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "native-worker",
+        "exit_code": 0,
+        "seconds": 5.7162086251191795,
+        "log_sha256": "b0fa8cce15c1ad8e7a223b8c4eba4f3c4ca92649d96cc32d58740cf8f5048243"
+      },
+      {
+        "stage": "neutral-contracts",
+        "exit_code": 0,
+        "seconds": 62.83787633408792,
+        "log_sha256": "bc3984fc9784f8eb94152a4809c447bcd61bdf6bac8cea4d863aef72599c039c",
+        "passed": 480
+      },
+      {
+        "stage": "neutral-strict",
+        "exit_code": 0,
+        "seconds": 33.876661208923906,
+        "log_sha256": "8d06c9c472b55e4f438d5732ff87edc2a52e2b10782a287484929026bd9744f2"
+      },
+      {
+        "stage": "composition-image",
+        "exit_code": 0,
+        "seconds": 244.67136412509717,
+        "log_sha256": "966d5a13f57e29c7345bd33ccca4852f8a03a3c3fff527fadcc704b280da08ba"
+      },
+      {
+        "stage": "dcr-consumers",
+        "exit_code": 0,
+        "seconds": 90.66700725001283,
+        "log_sha256": "0b347ad43266909c5ba07ef41aab20aad47d9f3cb0dd26b678595abbf6f83e45",
+        "passed": 34
+      },
+      {
+        "stage": "settings-upgrades",
+        "exit_code": 0,
+        "seconds": 63.8501760000363,
+        "log_sha256": "9ade15f214effe8e346b028f6c5faf0b7e7102fb74340b1b9312c38ce31ba4af",
+        "passed": 33
+      },
+      {
+        "stage": "native-global-browser",
+        "exit_code": 0,
+        "seconds": 105.33795470907353,
+        "log_sha256": "7804c3baea208b5b9819a02aed645920a36f606b548349c7b2d7cde36f26cd8b",
+        "passed": 1,
+        "case": "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match"
+      },
+      {
+        "stage": "connected-strict",
+        "exit_code": 0,
+        "seconds": 99.52020000014454,
+        "log_sha256": "525ecf54c6ea0c90bd45619a5ecc2db11d6dab299f8392de2b38c2a78cbe1332"
+      },
+      {
+        "stage": "default-strict",
+        "exit_code": 0,
+        "seconds": 21.693586541805416,
+        "log_sha256": "6643aa226185c424ee98df6388e193d371094433556becbc36da6d2560e8423d"
+      }
+    ],
+    "distinct_passed": 548,
+    "ignored_counted": 0,
+    "model_assets": {
+      "source": "/Volumes/SSDE/brassclaw/target/validation/prefix-model-source-cacik5n7",
+      "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6",
+      "retained": "/private/tmp/brassclaw-dcr-cache-validation-20261030/run-1/model-artifacts",
+      "files": {
+        "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+        "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+        "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+        "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+        "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+        "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+      }
+    }
+  },
+  "incoming_exact": {
+    "receipt": "docs/validation/2026-10-30-exact-model-setup-ui.json",
+    "unchanged_sources": 14,
+    "locale_extensions": {
+      "crates/brassclaw_webui_v2_static/static/js/i18n/en.js": {
+        "original_after": "b5b91cd57fbe4fd39b11f44a52003dbfb92da0cb0d9682310010b1df2fccd62e",
+        "current_after": "c1acdd6e7c53e361dbac359308d021bb8f4b9a8994b5d19e374849d419f40768",
+        "added_keys_only": true
+      },
+      "crates/brassclaw_webui_v2_static/static/js/i18n/de.js": {
+        "original_after": "2f8e078458e4bf4cb303dac965aa47712ed16884c68f684a3d8610a3d249a655",
+        "current_after": "06cd7174c47c10492a94f68395f9fd2dbd246a6889ce36202cdccb3d13674656",
+        "added_keys_only": true
+      }
+    }
+  },
+  "coverage": "Existing acknowledged owner and real neutral worker, PG Auth/global runtime, per-lookup cache disable/increase/captured expiry and no original registration change, SQL defaults/overrides/invalid values, actual EN/DE rendered save/ack/restore. Metadata fixture is data; actual new HTTP work is native host/network denial, not fabricated issuer success.",
+  "remaining": [
+    "Auth setup/manual/extension lifetimes and real browser producers",
+    "ProductAuth backend/browser waits and ingress/rate guards",
+    "own-flow/native Auth-wait/Codex and policy/recovery",
+    "complete K3-K7/Exact/Prefix/platform/release/deployment"
+  ],
+  "coordination": "Root retains sole Cargo/build ownership; no build-window transfer."
+}

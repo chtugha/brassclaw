@@ -3,6 +3,7 @@ pub(crate) mod backend;
 mod delivery;
 mod ports;
 mod reconciliation;
+mod wire;
 use crate::RebornBuildError;
 use brassclaw_engine::{
     executor::{retained_recipe::RetainedProgram, retained_source::InspectedRetainedProgram},

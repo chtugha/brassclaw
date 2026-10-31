@@ -67,7 +67,7 @@ impl ResponseCachePolicy {
 }
 
 /// Configuration for the response cache.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResponseCacheConfig {
     /// Time-to-live for cache entries.
     pub ttl: Duration,
@@ -91,16 +91,23 @@ struct CacheEntry {
     hit_count: u64,
 }
 
+struct CacheState {
+    entries: HashMap<String, CacheEntry>,
+    config: ResponseCacheConfig,
+    generation: Arc<()>,
+    definition_revision: Option<u64>,
+}
+
 /// LLM provider wrapper that caches `complete()` responses.
 ///
 /// Tool completion requests are always forwarded without caching since
 /// tool calls can have side effects that should not be replayed.
 pub struct CachedProvider {
     inner: Arc<dyn LlmProvider>,
+    live_guard: Option<Arc<dyn crate::ProviderDispatchGuard>>,
     /// `std::sync::Mutex` (not tokio) — never held across an `.await` point,
     /// so blocking acquisition is safe and keeps `set_model()` synchronous.
-    cache: Mutex<HashMap<String, CacheEntry>>,
-    config: ResponseCacheConfig,
+    cache: Mutex<CacheState>,
     /// Total `complete()` calls (hits + misses) for periodic stats logging.
     request_count: AtomicU64,
     /// Running total of cache hits, independent of entry lifecycle.
@@ -114,16 +121,30 @@ impl CachedProvider {
     pub fn new(inner: Arc<dyn LlmProvider>, config: ResponseCacheConfig) -> Self {
         Self {
             inner,
-            cache: Mutex::new(HashMap::new()),
-            config,
+            live_guard: None,
+            cache: Mutex::new(CacheState {
+                entries: HashMap::new(),
+                config,
+                generation: Arc::new(()),
+                definition_revision: None,
+            }),
             request_count: AtomicU64::new(0),
             total_hit_count: AtomicU64::new(0),
         }
     }
 
+    pub(crate) fn with_live_guard(mut self, guard: Arc<dyn crate::ProviderDispatchGuard>) -> Self {
+        self.live_guard = Some(guard);
+        self
+    }
+
     /// Number of entries currently in the cache.
     pub fn len(&self) -> usize {
-        self.cache.lock().unwrap_or_else(|e| e.into_inner()).len()
+        self.cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entries
+            .len()
     }
 
     /// Whether the cache is empty.
@@ -131,6 +152,7 @@ impl CachedProvider {
         self.cache
             .lock()
             .unwrap_or_else(|e| e.into_inner())
+            .entries
             .is_empty()
     }
 
@@ -144,7 +166,87 @@ impl CachedProvider {
 
     /// Clear all cached entries.
     pub fn clear(&self) {
-        self.cache.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        let mut state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        state.entries = HashMap::new();
+        state.generation = Arc::new(());
+    }
+
+    /// Apply current resource policy at the real cache boundary. Noop changes
+    /// preserve entries; changed policy fences fills already in flight.
+    pub fn update_policy(&self, policy: ResponseCachePolicy) -> Result<(), LlmError> {
+        self.update_policy_revision(policy, None)
+    }
+
+    pub(crate) fn apply_dispatch_state(
+        &self,
+        state: crate::ProviderDispatchState,
+    ) -> Result<(), LlmError> {
+        self.update_policy_revision(state.response_cache, Some(state.definition_revision))
+    }
+
+    fn update_policy_revision(
+        &self,
+        policy: ResponseCachePolicy,
+        revision: Option<u64>,
+    ) -> Result<(), LlmError> {
+        policy
+            .validate()
+            .map_err(|_| LlmError::ConfigurationChanged {
+                provider: "response cache".into(),
+            })?;
+        let config = ResponseCacheConfig {
+            ttl: Duration::from_secs(policy.ttl_secs),
+            max_entries: if policy.enabled {
+                usize::try_from(policy.max_entries).map_err(|_| LlmError::ConfigurationChanged {
+                    provider: "response cache".into(),
+                })?
+            } else {
+                0
+            },
+        };
+        let mut state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(revision) = revision {
+            if state
+                .definition_revision
+                .is_some_and(|current| revision < current)
+            {
+                return Err(LlmError::ConfigurationChanged {
+                    provider: "response cache".into(),
+                });
+            }
+            if state.definition_revision != Some(revision) {
+                state.entries = HashMap::new();
+                state.generation = Arc::new(());
+                state.definition_revision = Some(revision);
+            }
+        }
+        if state.config == config {
+            return Ok(());
+        }
+        state.config = config;
+        state.generation = Arc::new(());
+        if state.config.max_entries == 0 || state.config.ttl.is_zero() {
+            state.entries = HashMap::new();
+        } else {
+            let ttl = state.config.ttl;
+            let now = Instant::now();
+            state
+                .entries
+                .retain(|_, entry| now.duration_since(entry.created_at) < ttl);
+            while state.entries.len() > state.config.max_entries {
+                let oldest = state
+                    .entries
+                    .iter()
+                    .min_by_key(|(_, entry)| entry.last_accessed)
+                    .map(|(key, _)| key.clone());
+                if let Some(key) = oldest {
+                    state.entries.remove(&key);
+                } else {
+                    break;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Emit a cache statistics log line if `req_no` is a multiple of
@@ -193,6 +295,10 @@ fn cache_key(model: &str, request: &CompletionRequest) -> Result<String, LlmErro
 
 #[async_trait]
 impl LlmProvider for CachedProvider {
+    fn supports_final_request_guard(&self) -> bool {
+        self.inner.supports_final_request_guard()
+    }
+
     fn model_name(&self) -> std::borrow::Cow<'_, str> {
         self.inner.model_name()
     }
@@ -210,86 +316,111 @@ impl LlmProvider for CachedProvider {
     }
 
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
-        if self.config.max_entries == 0 || self.config.ttl.is_zero() {
-            // A disabled cache must never retain even one response.
+        let disabled = {
+            let state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+            state.config.max_entries == 0 || state.config.ttl.is_zero()
+        };
+        // A call requiring original wire custody cannot manufacture a fresh
+        // HTTP observation from an in-memory DTO. Such requests explicitly
+        // bypass response reuse, just like tool-calling requests.
+        if disabled
+            || crate::provider_observation::current().is_some()
+            || crate::final_request_guard::current().is_some()
+        {
             return self.inner.complete(request).await;
         }
         let effective_model = self.inner.effective_model_name(request.model.as_deref());
         let key = cache_key(&effective_model, &request)?;
         let now = Instant::now();
         let req_no = self.request_count.fetch_add(1, Ordering::Relaxed) + 1;
-
-        // Check cache — lock not held across the .await below.
-        {
-            let mut guard = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(entry) = guard.get_mut(&key) {
-                if now.duration_since(entry.created_at) < self.config.ttl {
-                    entry.last_accessed = now;
-                    entry.hit_count += 1;
-                    let hit_count = entry.hit_count;
-                    // Clone now so we can release the mutable borrow before stats.
-                    let mut cached_response = entry.response.clone();
-                    // No provider dispatch occurred for this hit. Reusing the
-                    // preceding call's billed usage would charge/count it twice.
-                    // Keep the stored original intact; only this exchange has
-                    // zero upstream usage. Content/reasoning remain observable.
-                    cached_response.usage = Some(crate::TokenUsage::default());
-                    tracing::trace!(hits = hit_count, "response cache hit");
-                    // Drop the mutable borrow of `entry` before reading `guard` immutably.
-                    let _ = entry;
-                    let total_hits = self.total_hit_count.fetch_add(1, Ordering::Relaxed) + 1;
-                    Self::maybe_log_stats(&guard, req_no, total_hits);
-                    return Ok(cached_response);
+        let generation = {
+            let mut state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+            if state.config.max_entries == 0 || state.config.ttl.is_zero() {
+                None
+            } else {
+                let ttl = state.config.ttl;
+                if let Some(entry) = state.entries.get_mut(&key) {
+                    if now.duration_since(entry.created_at) < ttl {
+                        entry.last_accessed = now;
+                        entry.hit_count += 1;
+                        tracing::trace!(hits = entry.hit_count, "response cache hit");
+                        let mut response = entry.response.clone();
+                        response.usage = Some(crate::TokenUsage::default());
+                        let total_hits = self.total_hit_count.fetch_add(1, Ordering::Relaxed) + 1;
+                        Self::maybe_log_stats(&state.entries, req_no, total_hits);
+                        return Ok(response);
+                    }
+                    state.entries.remove(&key);
                 }
-                // Expired, remove it
-                guard.remove(&key);
+                Some(state.generation.clone())
+            }
+        };
+        // Never hold the cache lock during provider/network work.
+        let max_output_tokens = request.max_tokens;
+        let result = self.inner.complete(request).await;
+        if result.is_ok()
+            && let Some(guard) = &self.live_guard
+        {
+            // This only decides whether the completed response may be
+            // retained. A changed policy never discards/replays its outcome.
+            match guard
+                .check(crate::ProviderRequestFacts {
+                    model: &effective_model,
+                    max_output_tokens,
+                })
+                .await
+            {
+                Ok(current) => {
+                    if self.apply_dispatch_state(current).is_err() {
+                        tracing::debug!(
+                            "completed provider response not cached after a concurrent publication"
+                        );
+                        self.clear();
+                    }
+                }
+                Err(_) => {
+                    tracing::debug!(
+                        "completed provider response not cached after a configuration change or unavailable readback"
+                    );
+                    self.clear();
+                }
             }
         }
-
-        // Cache miss — call the real provider.
-        let result = self.inner.complete(request).await;
         let now = Instant::now();
-
-        // TTL begins when the answer is available, not before external waiting.
-        // Store result and maybe log stats, all within one lock acquisition.
-        // Stats are logged even on provider error so milestone intervals are
-        // not silently skipped.
+        let mut state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        let total_hits = self.total_hit_count.load(Ordering::Relaxed);
+        let response = match result {
+            Err(error) => {
+                Self::maybe_log_stats(&state.entries, req_no, total_hits);
+                return Err(error);
+            }
+            Ok(response) => response,
+        };
+        let same_generation = generation
+            .as_ref()
+            .is_some_and(|generation| Arc::ptr_eq(generation, &state.generation));
+        if response.finish_reason == crate::FinishReason::Stop
+            && same_generation
+            && state.config.max_entries > 0
+            && !state.config.ttl.is_zero()
         {
-            let mut guard = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-            let total_hits = self.total_hit_count.load(Ordering::Relaxed);
-
-            let response = match result {
-                Err(e) => {
-                    Self::maybe_log_stats(&guard, req_no, total_hits);
-                    return Err(e);
-                }
-                Ok(r) if r.finish_reason != crate::FinishReason::Stop => {
-                    // An HTTP-successful but incomplete/filtered/unknown reply
-                    // is not a completed reusable answer. Keep its real usage.
-                    Self::maybe_log_stats(&guard, req_no, total_hits);
-                    return Ok(r);
-                }
-                Ok(r) => r,
-            };
-
-            // Evict expired entries
-            guard.retain(|_, entry| now.duration_since(entry.created_at) < self.config.ttl);
-
-            // LRU eviction if over capacity
-            while guard.len() >= self.config.max_entries {
-                let oldest_key = guard
+            let ttl = state.config.ttl;
+            state
+                .entries
+                .retain(|_, entry| now.duration_since(entry.created_at) < ttl);
+            while state.entries.len() >= state.config.max_entries {
+                let oldest = state
+                    .entries
                     .iter()
                     .min_by_key(|(_, entry)| entry.last_accessed)
-                    .map(|(k, _)| k.clone());
-
-                if let Some(k) = oldest_key {
-                    guard.remove(&k);
+                    .map(|(key, _)| key.clone());
+                if let Some(key) = oldest {
+                    state.entries.remove(&key);
                 } else {
                     break;
                 }
             }
-
-            guard.insert(
+            state.entries.insert(
                 key,
                 CacheEntry {
                     response: response.clone(),
@@ -298,10 +429,9 @@ impl LlmProvider for CachedProvider {
                     hit_count: 0,
                 },
             );
-
-            Self::maybe_log_stats(&guard, req_no, total_hits);
-            Ok(response)
         }
+        Self::maybe_log_stats(&state.entries, req_no, total_hits);
+        Ok(response)
     }
 
     async fn complete_with_tools(
@@ -565,7 +695,10 @@ mod tests {
         assert!(r1.usage.unwrap().input_tokens > 0);
         assert_eq!(r2.usage, Some(crate::TokenUsage::default()));
         let stored = cached.cache.lock().unwrap();
-        assert_eq!(stored.values().next().unwrap().response.usage, r1.usage);
+        assert_eq!(
+            stored.entries.values().next().unwrap().response.usage,
+            r1.usage
+        );
         drop(stored);
 
         assert_eq!(cached.total_hits(), 1);

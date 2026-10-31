@@ -15,7 +15,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -48,7 +50,10 @@ and task state across steps and waits. Replacement versions do not alter active
 tasks; current global Tool policy still applies at every dispatch. Older scoped,
 source-substitution or fresh-step descriptions below are implementation/legacy
 notes, not permission to extend those paths as the v3 target. These requirements
-remain subject to the documented runtime implementation gaps.
+remain subject to the documented runtime implementation gaps. For new conversions,
+use the [open contract successor](../../docs/plans/monty.composition.md#open-contract-and-reference-successors-from-k4)
+and [complete retained parser reference](../../docs/reborn/source-inspection.md#complete-retained-draft-reference),
+not historical blanket result-assignment or illustrative empty-binding examples.
 
 ## Start Here
 

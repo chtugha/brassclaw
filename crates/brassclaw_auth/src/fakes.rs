@@ -1,36 +1,42 @@
+#[path = "fakes_dcr.rs"]
+mod dcr;
+#[path = "fakes_oauth_setup.rs"]
+mod oauth_setup;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
-use brassclaw_host_api::{ExtensionId, SecretHandle};
+use brassclaw_host_api::SecretHandle;
 use chrono::Utc;
+use secrecy::{ExposeSecret, SecretString};
+use subtle::ConstantTimeEq;
 
 use crate::{
     AuthChallenge, AuthContinuationEvent, AuthFlowId, AuthFlowManager, AuthFlowRecord,
     AuthFlowRecordSource, AuthFlowStatus, AuthInteractionId, AuthInteractionService,
-    AuthProductError, AuthProviderClient, CredentialAccount, CredentialAccountChoiceRequest,
-    CredentialAccountId, CredentialAccountListPage, CredentialAccountListRequest,
-    CredentialAccountLookupRequest, CredentialAccountMutation, CredentialAccountOwnerScope,
-    CredentialAccountProjection, CredentialAccountRecordSource, CredentialAccountSelectionRequest,
-    CredentialAccountService, CredentialAccountStatus, CredentialOwnership,
-    CredentialRecoveryProjection, CredentialRecoveryReason, CredentialRecoveryRequest,
-    CredentialRefreshReport, CredentialRefreshRequest, CredentialSelectionInput,
-    CredentialSetupService, ManualTokenCompletionInput, ManualTokenSetupRequest, NewAuthFlow,
-    NewCredentialAccount, OAuthCallbackClaimRequest, OAuthCallbackFailureInput, OAuthCallbackInput,
-    OAuthProviderCallbackRequest, OAuthProviderExchange, OAuthProviderExchangeContext,
-    OAuthProviderRefresh, OAuthProviderRefreshRequest, ProviderCallbackOutcome,
-    SecretCleanupAction, SecretCleanupQuarantine, SecretCleanupQuarantineReason,
-    SecretCleanupReport, SecretCleanupRequest, SecretCleanupService, SecretSubmitRequest,
-    SecretSubmitResult, Timestamp, TurnGateAuthFlowQuery,
+    AuthProductError, AuthProductScope, AuthProviderClient, CredentialAccount,
+    CredentialAccountChoiceRequest, CredentialAccountId, CredentialAccountListPage,
+    CredentialAccountListRequest, CredentialAccountLookupRequest, CredentialAccountMutation,
+    CredentialAccountOwnerScope, CredentialAccountProjection, CredentialAccountRecordSource,
+    CredentialAccountSelectionRequest, CredentialAccountService, CredentialAccountStatus,
+    CredentialOwnership, CredentialRecoveryProjection, CredentialRecoveryReason,
+    CredentialRecoveryRequest, CredentialRefreshReport, CredentialRefreshRequest,
+    CredentialSelectionInput, CredentialSetupService, ManualTokenCompletionInput,
+    ManualTokenSetupRequest, NewAuthFlow, NewCredentialAccount, OAuthCallbackClaimRequest,
+    OAuthCallbackFailureInput, OAuthCallbackInput, OAuthProviderCallbackRequest,
+    OAuthProviderExchange, OAuthProviderExchangeContext, OAuthProviderRefresh,
+    OAuthProviderRefreshRequest, ProviderCallbackOutcome, SecretCleanupAction,
+    SecretCleanupQuarantine, SecretCleanupQuarantineReason, SecretCleanupReport,
+    SecretCleanupRequest, SecretCleanupService, SecretSubmitRequest, SecretSubmitResult, Timestamp,
+    TurnGateAuthFlowQuery,
     cleanup::SecretCleanupAction::Deactivate,
     domain::{
-        PreparedCallbackFlow, account_is_authorized_for_requester, prepare_callback_flow,
+        account_is_authorized_for_requester, prepare_callback_flow,
         recovery_projection_for_single_account, recovery_projection_for_unconfigured_accounts,
-        update_account_from_exchange, update_account_from_request, validate_account_update_target,
-        validate_bound_update_authority, validate_callback_claim,
+        update_account_from_request, validate_account_update_target,
         validate_credential_status_transition, validate_flow_update_binding,
         validate_manual_token_flow, validate_manual_token_update_binding,
-        validate_new_credential_account, validate_refresh_target, validate_selection_flow,
+        validate_new_credential_account, validate_selection_flow,
     },
     flow::credential_status_for_completed_flow,
     flow_matches_turn_gate_query,
@@ -42,12 +48,170 @@ use crate::{
 #[derive(Default)]
 struct AuthState {
     flows: HashMap<AuthFlowId, AuthFlowRecord>,
+    flow_custody: HashMap<AuthFlowId, crate::AuthFlowCustody>,
     interactions: HashMap<AuthInteractionId, PendingSecretInteraction>,
     accounts: HashMap<CredentialAccountId, CredentialAccount>,
+    requirement_selections:
+        HashMap<crate::CredentialRequirementKey, crate::CredentialRequirementSelection>,
+    manual_originals: HashMap<AuthInteractionId, ManualOriginal>,
+    manual_update_snapshots: HashMap<AuthInteractionId, CredentialAccount>,
     continuations: Vec<AuthContinuationEvent>,
     refresh_fails: HashSet<CredentialAccountId>,
+    refresh_actions: HashMap<(String, crate::CredentialRefreshId), crate::CredentialRefreshAction>,
     refresh_races: HashMap<CredentialAccountId, (SecretHandle, SecretHandle)>,
     quarantines: HashMap<CredentialAccountId, SecretCleanupQuarantineReason>,
+}
+
+// Test-only protected memory models the real owners' authenticated original.
+// Never serialize, debug, hash or project this one-shot secret material.
+struct ManualOriginal {
+    scope: crate::AuthProductScope,
+    secret: SecretString,
+    provider: crate::AuthProviderId,
+    result: SecretSubmitResult,
+    interaction: PendingSecretInteraction,
+    flow: Option<AuthFlowRecord>,
+    expected_account: Option<CredentialAccount>,
+    complete_flow: bool,
+    account: CredentialAccount,
+    flow_custody: Option<crate::AuthFlowCustody>,
+}
+
+// Pure preparation against actual protected originals. Callers commit the
+// resulting account/flow/custody/head together under the existing state mutex.
+fn prepare_requirement_publication(
+    state: &AuthState,
+    flow: &AuthFlowRecord,
+    custody: &crate::AuthFlowCustody,
+    account: &CredentialAccount,
+) -> Result<
+    Option<(
+        crate::CredentialRequirementKey,
+        crate::CredentialRequirementSelection,
+    )>,
+    AuthProductError,
+> {
+    let Some(setup) = custody.requirement_setup.as_deref() else {
+        if custody.requirement_selection.is_some() {
+            return Err(AuthProductError::BackendConflict);
+        }
+        return Ok(None);
+    };
+    if custody.requirement_selection.is_some() {
+        return Err(AuthProductError::BackendConflict);
+    }
+    setup.verify_flow(flow)?;
+    let selected = crate::CredentialRequirementSelection::from_completed_flow(
+        &flow.scope,
+        setup,
+        flow,
+        account.clone(),
+    )?;
+    let key = selected.key()?;
+    let current = state.requirement_selections.get(&key);
+    if let Some(current) = current {
+        current.verify_requested(&flow.scope, setup.requirement())?;
+        let original = state
+            .flows
+            .get(&current.original_flow())
+            .ok_or(AuthProductError::BackendConflict)?;
+        let original_custody = state
+            .flow_custody
+            .get(&current.original_flow())
+            .ok_or(AuthProductError::BackendConflict)?;
+        if original_custody.requirement_selection.as_deref() != Some(current) {
+            return Err(AuthProductError::BackendConflict);
+        }
+        current.verify_receipt(
+            original,
+            original_custody
+                .requirement_setup
+                .as_deref()
+                .ok_or(AuthProductError::BackendConflict)?,
+        )?;
+    }
+    if setup.publication(current, &selected)? != crate::CredentialRequirementPublication::Publish {
+        return Err(AuthProductError::BackendConflict);
+    }
+    Ok(Some((key, selected)))
+}
+
+fn retained_manual_setup_original(
+    state: &AuthState,
+    scope: &crate::AuthProductScope,
+    identity: crate::ManualTokenSetupIdentity,
+    requested: Option<&ManualTokenSetupRequest>,
+) -> Result<Option<AuthFlowRecord>, AuthProductError> {
+    let retained = state
+        .interactions
+        .get(&identity.interaction_id)
+        .cloned()
+        .or_else(|| {
+            state
+                .manual_originals
+                .get(&identity.interaction_id)
+                .map(|o| o.interaction.clone())
+        });
+    if let Some(pending) = retained {
+        if !scope_matches(scope, &pending.scope) {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        if pending.setup_identity != Some(identity) {
+            return Err(AuthProductError::BackendConflict);
+        }
+        let flow = state
+            .flows
+            .get(&identity.flow_id)
+            .ok_or(AuthProductError::BackendConflict)?;
+        let original = pending_setup_request(&pending);
+        crate::domain::validate_original_manual_setup_flow(
+            identity,
+            &original,
+            requested.unwrap_or(&original),
+            flow,
+        )?;
+        if pending.setup_created_at != Some(flow.created_at) {
+            return Err(AuthProductError::BackendConflict);
+        }
+        let expected = state
+            .manual_originals
+            .get(&identity.interaction_id)
+            .map(|o| o.expected_account.as_ref())
+            .unwrap_or_else(|| state.manual_update_snapshots.get(&identity.interaction_id));
+        let custody = state
+            .flow_custody
+            .get(&identity.flow_id)
+            .ok_or(AuthProductError::BackendConflict)?;
+        if custody.update_account_snapshot.as_ref() != expected
+            || custody.requirement_setup != pending.requirement_setup
+        {
+            return Err(AuthProductError::BackendConflict);
+        }
+        if pending.canceled_at.is_some() && flow.status != AuthFlowStatus::Canceled {
+            return Err(AuthProductError::Canceled);
+        }
+        if requested.is_some()
+            && flow.status == AuthFlowStatus::AwaitingUser
+            && flow.expires_at <= Utc::now()
+        {
+            return Err(AuthProductError::UnknownOrExpiredFlow);
+        }
+        if flow.status == AuthFlowStatus::AwaitingUser
+            && state
+                .manual_originals
+                .contains_key(&identity.interaction_id)
+        {
+            return Err(AuthProductError::BackendConflict);
+        }
+        if flow.status == AuthFlowStatus::Completed {
+            confirmed_manual_original(state, scope, identity)?;
+        }
+        return Ok(Some(flow.clone()));
+    }
+    if state.flows.contains_key(&identity.flow_id) {
+        return Err(AuthProductError::BackendConflict);
+    }
+    Ok(None)
 }
 
 /// In-memory fake implementation of all product-auth service ports.
@@ -55,12 +219,190 @@ struct AuthState {
 /// This is test support, not production persistence. It intentionally models
 /// important fail-closed transitions so downstream code cannot depend on unsafe
 /// shortcuts while production stores are still being composed.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct InMemoryAuthProductServices {
-    state: Mutex<AuthState>,
+    state: Arc<Mutex<AuthState>>,
 }
 
 impl InMemoryAuthProductServices {
+    /// Deterministic fake metadata only; this helper performs no provider/storage call.
+    pub fn refresh_preparation_for_tests(
+        request: &OAuthProviderRefreshRequest,
+    ) -> Result<crate::OAuthProviderRefreshPreparation, AuthProductError> {
+        let make = |kind: &str| {
+            SecretHandle::new(format!(
+                "fake-oauth-{kind}-{}-{}",
+                request.account_id, request.refresh_id
+            ))
+            .map_err(|_| AuthProductError::BackendUnavailable)
+        };
+        // Synthetic test-service metadata, never a native-store generation proof.
+        Ok(crate::OAuthProviderRefreshPreparation {
+            destinations: crate::OAuthTokenDestinations {
+                access_secret: make("access")?,
+                refresh_secret: make("refresh")?,
+            },
+            source: crate::OAuthRefreshSource {
+                scope: request.scope.resource.clone(),
+                handle: request.refresh_secret.clone(),
+                record_reference: brassclaw_common::hashing::sha256_hex(
+                    request.refresh_secret.as_str().as_bytes(),
+                ),
+            },
+        })
+    }
+
+    pub fn callback_destinations_for_tests(
+        context: &OAuthProviderExchangeContext,
+    ) -> Result<crate::OAuthTokenDestinations, AuthProductError> {
+        let make = |kind: &str| {
+            SecretHandle::new(format!(
+                "fake-oauth-{kind}-{}-{}",
+                context.flow_id, context.scope.resource.invocation_id
+            ))
+            .map_err(|_| AuthProductError::BackendUnavailable)
+        };
+        Ok(crate::OAuthTokenDestinations {
+            access_secret: make("access")?,
+            refresh_secret: make("refresh")?,
+        })
+    }
+
+    /// Test adapter for the same atomic metadata pair used by the native owner.
+    /// It never calls an issuer or stores a serializable raw-token record.
+    pub fn request_manual_setup_original_for_tests(
+        &self,
+        identity: crate::ManualTokenSetupIdentity,
+        request: ManualTokenSetupRequest,
+    ) -> Result<AuthFlowRecord, AuthProductError> {
+        let mut state = self.lock_state();
+        if let Some(original) =
+            retained_manual_setup_original(&state, &request.scope, identity, Some(&request))?
+        {
+            return Ok(original);
+        }
+        let now = Utc::now();
+        let flow = crate::domain::build_original_manual_setup_flow(identity, &request, now)?;
+        let snapshot = if let Some(binding) = &request.update_binding {
+            let account = state
+                .accounts
+                .get(&binding.account_id)
+                .ok_or(AuthProductError::CredentialMissing)?;
+            validate_manual_token_update_binding(account, &request, binding)?;
+            Some(account.clone())
+        } else {
+            None
+        };
+        let pending = PendingSecretInteraction {
+            requirement_setup: request.requirement_setup.clone(),
+            scope: request.scope,
+            provider: request.provider,
+            label: request.label,
+            continuation: request.continuation,
+            update_binding: request.update_binding,
+            expires_at: request.expires_at,
+            setup_identity: Some(identity),
+            setup_created_at: Some(now),
+            canceled_at: None,
+        };
+        if let Some(account) = &snapshot {
+            state
+                .manual_update_snapshots
+                .insert(identity.interaction_id, account.clone());
+        }
+        state.flow_custody.insert(
+            identity.flow_id,
+            crate::AuthFlowCustody {
+                update_account_snapshot: snapshot,
+                oauth_callback: None,
+                oauth_setup: None,
+                dcr_registration: None,
+                dcr_legacy: None,
+                requirement_setup: request.requirement_setup,
+                requirement_selection: None,
+                requirement_source: None,
+            },
+        );
+        state.interactions.insert(identity.interaction_id, pending);
+        state.flows.insert(identity.flow_id, flow.clone());
+        Ok(flow)
+    }
+
+    /// Read only an existing original setup under the same protected test state.
+    /// Never mint/recreate setup or select today's account during recovery.
+    pub fn recover_manual_setup_original_for_tests(
+        &self,
+        scope: &crate::AuthProductScope,
+        identity: crate::ManualTokenSetupIdentity,
+    ) -> Result<Option<AuthFlowRecord>, AuthProductError> {
+        retained_manual_setup_original(&self.lock_state(), scope, identity, None)
+    }
+
+    /// Read a confirmed original result without accepting a raw token again.
+    pub fn continue_manual_setup_original_for_tests(
+        &self,
+        scope: &crate::AuthProductScope,
+        identity: crate::ManualTokenSetupIdentity,
+    ) -> Result<(SecretSubmitResult, AuthFlowRecord), AuthProductError> {
+        let state = self.lock_state();
+        confirmed_manual_original(&state, scope, identity)
+    }
+
+    /// Whole-flow fake publication shares its owning state lock with the lower
+    /// primitive; the lower operation itself still does not complete a flow.
+    pub fn submit_manual_token_flow_for_tests(
+        &self,
+        scope: &crate::AuthProductScope,
+        request: SecretSubmitRequest,
+    ) -> Result<(SecretSubmitResult, AuthFlowRecord), AuthProductError> {
+        self.submit_manual_token_flow_with_expected(scope, request, None)
+    }
+    /// Original pair mismatches fail under the same lock, before account writes.
+    pub fn submit_original_manual_token_flow_for_tests(
+        &self,
+        scope: &crate::AuthProductScope,
+        identity: crate::ManualTokenSetupIdentity,
+        secret: SecretString,
+    ) -> Result<(SecretSubmitResult, AuthFlowRecord), AuthProductError> {
+        self.submit_manual_token_flow_with_expected(
+            scope,
+            SecretSubmitRequest {
+                interaction_id: identity.interaction_id,
+                secret,
+            },
+            Some(identity.flow_id),
+        )
+    }
+    fn submit_manual_token_flow_with_expected(
+        &self,
+        scope: &crate::AuthProductScope,
+        request: SecretSubmitRequest,
+        expected_flow: Option<AuthFlowId>,
+    ) -> Result<(SecretSubmitResult, AuthFlowRecord), AuthProductError> {
+        request.validate_secret()?;
+        let id = request.interaction_id;
+        let mut state = self.lock_state();
+        let result = submit_manual_token_in_state(
+            &mut state,
+            scope,
+            request,
+            true,
+            expected_flow,
+            Utc::now(),
+        )?;
+        let selected = state
+            .manual_originals
+            .get(&id)
+            .and_then(|o| o.flow.as_ref())
+            .ok_or(AuthProductError::BackendConflict)?;
+        let flow = state
+            .flows
+            .get(&selected.id)
+            .cloned()
+            .ok_or(AuthProductError::BackendConflict)?;
+        Ok((result, flow))
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -142,15 +484,139 @@ impl AuthFlowRecordSource for InMemoryAuthProductServices {
 
 #[async_trait]
 impl AuthFlowManager for InMemoryAuthProductServices {
+    async fn requirement_setup(
+        &self,
+        scope: &AuthProductScope,
+        flow: AuthFlowId,
+    ) -> Result<Option<crate::CredentialRequirementSetup>, AuthProductError> {
+        let state = self.lock_state();
+        let original = state
+            .flows
+            .get(&flow)
+            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+        if !scope_matches(scope, &original.scope) {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        let setup = state
+            .flow_custody
+            .get(&flow)
+            .and_then(|custody| custody.requirement_setup.as_deref())
+            .cloned();
+        if let Some(setup) = &setup {
+            setup
+                .verify_flow(original)
+                .map_err(|_| AuthProductError::BackendUnavailable)?;
+        }
+        Ok(setup)
+    }
+
+    async fn claim_dcr_cleanup(
+        &self,
+        prepared: crate::DcrCleanupPrepared,
+    ) -> Result<crate::DcrCleanupAdmission, AuthProductError> {
+        self.claim_dcr_cleanup_owned(prepared).await
+    }
+    async fn record_dcr_cleanup(
+        &self,
+        scope: &crate::AuthProductScope,
+        completion: crate::DcrCleanupCompletion,
+    ) -> Result<crate::DcrRegistrationState, AuthProductError> {
+        self.record_dcr_cleanup_owned(scope, completion).await
+    }
+    async fn update_dcr_retirement(
+        &self,
+        original: &crate::DcrRegistrationOriginal,
+        update: crate::DcrRetirementUpdate,
+    ) -> Result<crate::DcrRegistrationState, crate::AuthProductError> {
+        self.update_dcr_retirement_owned(original, update).await
+    }
+
+    async fn retain_legacy_dcr(
+        &self,
+        selection: crate::DcrLegacySelection,
+    ) -> Result<crate::DcrLegacyState, crate::AuthProductError> {
+        self.retain_legacy_dcr_owned(selection).await
+    }
+
+    async fn mark_dcr_cleanup_unavailable(
+        &self,
+        original: &crate::DcrRegistrationOriginal,
+        issue: crate::DcrCleanupUnavailable,
+    ) -> Result<crate::DcrRegistrationState, AuthProductError> {
+        self.mark_dcr_cleanup_unavailable_owned(original, issue)
+            .await
+    }
+
+    async fn prepare_oauth_setup(
+        &self,
+        original: crate::OAuthSetupOriginal,
+        retirement: Option<crate::OAuthSetupRetirement>,
+    ) -> Result<crate::OAuthSetupState, crate::AuthProductError> {
+        self.prepare_oauth_setup_owned(original, retirement).await
+    }
+
+    async fn read_oauth_setup(
+        &self,
+        scope: &crate::AuthProductScope,
+        flow_id: crate::AuthFlowId,
+    ) -> Result<Option<crate::OAuthSetupState>, crate::AuthProductError> {
+        self.read_oauth_setup_owned(scope, flow_id).await
+    }
+
+    async fn prepare_dcr_registration(
+        &self,
+        original: crate::DcrRegistrationOriginal,
+    ) -> Result<crate::DcrRegistrationState, AuthProductError> {
+        self.prepare_dcr_original(original).await
+    }
+
+    async fn retire_dcr_preparation(
+        &self,
+        original: crate::DcrRegistrationOriginal,
+        reason: crate::DcrCleanupReason,
+    ) -> Result<crate::DcrRegistrationState, crate::AuthProductError> {
+        self.retire_dcr_preparation_owned(original, reason).await
+    }
+    async fn read_dcr_registration(
+        &self,
+        scope: &crate::AuthProductScope,
+        id: AuthFlowId,
+    ) -> Result<Option<crate::DcrRegistrationState>, AuthProductError> {
+        self.read_dcr_original(scope, id).await
+    }
+    async fn claim_dcr_registration(
+        &self,
+        original: &crate::DcrRegistrationOriginal,
+    ) -> Result<crate::DcrRegistrationAdmission, AuthProductError> {
+        self.claim_dcr_original(original).await
+    }
+    async fn record_dcr_registration(
+        &self,
+        scope: &crate::AuthProductScope,
+        completion: crate::DcrRegistrationCompletion,
+    ) -> Result<crate::DcrRegistrationState, AuthProductError> {
+        self.record_dcr_original(scope, completion).await
+    }
+    async fn publish_dcr_challenge(
+        &self,
+        original: &crate::DcrRegistrationOriginal,
+        challenge: crate::DcrRegistrationChallenge,
+    ) -> Result<crate::DcrRegistrationState, AuthProductError> {
+        self.publish_dcr_original(original, challenge).await
+    }
+
     async fn create_flow(&self, request: NewAuthFlow) -> Result<AuthFlowRecord, AuthProductError> {
         let mut state = self.lock_state();
-        if let Some(binding) = &request.update_binding {
+        let snapshot = if let Some(binding) = &request.update_binding {
             let account = state
                 .accounts
                 .get(&binding.account_id)
                 .ok_or(AuthProductError::CredentialMissing)?;
             validate_flow_update_binding(account, &request)?;
-        }
+            Some(account.clone())
+        } else {
+            None
+        };
         let id = request.id.unwrap_or_default();
         if state.flows.contains_key(&id) {
             return Err(AuthProductError::BackendUnavailable);
@@ -175,6 +641,22 @@ impl AuthFlowManager for InMemoryAuthProductServices {
             updated_at: now,
             expires_at: request.expires_at,
         };
+        if let Some(setup) = &request.requirement_setup {
+            setup.verify_flow(&record)?;
+        }
+        state.flow_custody.insert(
+            record.id,
+            crate::AuthFlowCustody {
+                update_account_snapshot: snapshot,
+                oauth_callback: None,
+                oauth_setup: None,
+                dcr_registration: None,
+                dcr_legacy: None,
+                requirement_setup: request.requirement_setup,
+                requirement_selection: None,
+                requirement_source: None,
+            },
+        );
         state.flows.insert(record.id, record.clone());
         Ok(record)
     }
@@ -194,24 +676,118 @@ impl AuthFlowManager for InMemoryAuthProductServices {
         Ok(Some(record.clone()))
     }
 
+    async fn read_oauth_callback_original(
+        &self,
+        scope: &crate::AuthProductScope,
+        reference: &crate::OAuthCallbackReference,
+    ) -> Result<Option<crate::OAuthCallbackState>, AuthProductError> {
+        if !scope_matches(scope, &reference.scope) {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        let state = self.lock_state();
+        let Some(flow) = state.flows.get(&reference.flow_id) else {
+            return Ok(None);
+        };
+        state
+            .flow_custody
+            .get(&reference.flow_id)
+            .cloned()
+            .unwrap_or_default()
+            .original_state(flow, reference)
+    }
     async fn claim_oauth_callback(
         &self,
         scope: &crate::AuthProductScope,
         request: OAuthCallbackClaimRequest,
-    ) -> Result<AuthFlowRecord, AuthProductError> {
-        let now = Utc::now();
-        let mut state = self.lock_state();
-        let record = state
-            .flows
-            .get_mut(&request.flow_id)
-            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-        validate_callback_claim(record, scope, &request, now)?;
-        if record.status == AuthFlowStatus::Completed {
-            return Ok(record.clone());
+    ) -> Result<crate::OAuthCallbackAdmission, AuthProductError> {
+        if !scope_matches(scope, &request.original.scope) {
+            return Err(AuthProductError::CrossScopeDenied);
         }
-        record.status = AuthFlowStatus::CallbackReceived;
-        record.updated_at = now;
-        Ok(record.clone())
+        let mut state = self.lock_state();
+        let AuthState {
+            flows,
+            flow_custody,
+            accounts,
+            ..
+        } = &mut *state;
+        let flow = flows
+            .get_mut(&request.original.flow_id)
+            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+        let target = flow
+            .update_binding
+            .as_ref()
+            .map(|binding| binding.account_id)
+            .unwrap_or_else(|| CredentialAccountId::from_uuid(flow.id.as_uuid()));
+        let current = accounts.get(&target);
+        flow_custody
+            .entry(flow.id)
+            .or_default()
+            .admit(flow, current, request, Utc::now())
+    }
+    async fn reconcile_oauth_callback(
+        &self,
+        scope: &crate::AuthProductScope,
+        reference: &crate::OAuthCallbackReference,
+    ) -> Result<crate::OAuthCallbackState, AuthProductError> {
+        if !scope_matches(scope, &reference.scope) {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        let mut state = self.lock_state();
+        let mut flow = state
+            .flows
+            .get(&reference.flow_id)
+            .cloned()
+            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+        let mut custody = state
+            .flow_custody
+            .get(&flow.id)
+            .cloned()
+            .ok_or(AuthProductError::BackendUnavailable)?;
+        let original = custody
+            .original_state(&flow, reference)?
+            .ok_or(AuthProductError::BackendUnavailable)?;
+        if !original.action.needs_publication() {
+            return Ok(original);
+        }
+        let action = custody
+            .oauth_callback
+            .as_mut()
+            .ok_or(AuthProductError::BackendUnavailable)?;
+        let now = Utc::now();
+        let account = action.publish(
+            &mut flow,
+            state.accounts.get(&action.target_account_id()),
+            now,
+        )?;
+        let result = crate::OAuthCallbackState {
+            flow: flow.clone(),
+            action: action.clone(),
+        };
+        let publication = match &account {
+            Some(account) => prepare_requirement_publication(&state, &flow, &custody, account)?,
+            None => None,
+        };
+        // No fallible lookup/check remains after the first mutation. A losing
+        // head cannot leak a completed flow, account or successful continuation.
+        if let Some((key, selected)) = publication {
+            custody.requirement_selection = Some(Box::new(selected.clone()));
+            state.requirement_selections.insert(key, selected);
+        }
+        if let Some(account) = account {
+            state.accounts.insert(account.id, account);
+        }
+        state.flows.insert(flow.id, flow.clone());
+        state.flow_custody.insert(flow.id, custody);
+        if flow.status == AuthFlowStatus::Completed {
+            state.continuations.push(AuthContinuationEvent {
+                flow_id: flow.id,
+                scope: flow.scope.clone(),
+                continuation: flow.continuation.clone(),
+                credential_account_id: flow.credential_account_id,
+                emitted_at: now,
+            });
+        }
+        Ok(result)
     }
 
     async fn complete_oauth_callback(
@@ -219,57 +795,85 @@ impl AuthFlowManager for InMemoryAuthProductServices {
         scope: &crate::AuthProductScope,
         input: OAuthCallbackInput,
     ) -> Result<AuthFlowRecord, AuthProductError> {
-        let now = Utc::now();
-        let mut state = self.lock_state();
-        let record = state
-            .flows
-            .get_mut(&input.flow_id)
-            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-        let callback = prepare_callback_flow(record, scope, &input.opaque_state_hash, now)?;
-
-        let exchange = match input.outcome {
-            ProviderCallbackOutcome::Denied => {
-                record.status = AuthFlowStatus::Failed;
-                record.error = Some(crate::AuthErrorCode::ProviderDenied);
-                record.updated_at = now;
-                return Err(AuthProductError::ProviderDenied);
-            }
-            ProviderCallbackOutcome::Authorized { exchange } => {
-                if exchange.provider != record.provider {
-                    return Err(AuthProductError::TokenExchangeFailed);
-                }
-                if !callback
-                    .expected_pkce_verifier_hash
+        let reference = {
+            let mut state = self.lock_state();
+            let AuthState {
+                flows,
+                flow_custody,
+                ..
+            } = &mut *state;
+            let flow = flows
+                .get_mut(&input.flow_id)
+                .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+            if !scope_matches(scope, &flow.scope)
+                || !flow
+                    .opaque_state_hash
                     .as_ref()
-                    .is_some_and(|expected| expected.constant_time_eq(&exchange.pkce_verifier_hash))
-                {
-                    return Err(AuthProductError::CrossScopeDenied);
+                    .is_some_and(|hash| hash.constant_time_eq(&input.opaque_state_hash))
+            {
+                return Err(AuthProductError::CrossScopeDenied);
+            }
+            match input.outcome {
+                ProviderCallbackOutcome::Denied => {
+                    if input.dispatched.is_some() {
+                        return Err(AuthProductError::MalformedCallback);
+                    }
+                    prepare_callback_flow(flow, scope, &input.opaque_state_hash, Utc::now())?;
+                    if flow_custody
+                        .get(&flow.id)
+                        .is_some_and(|custody| custody.oauth_callback.is_some())
+                    {
+                        return Err(AuthProductError::BackendConflict);
+                    }
+                    if !matches!(flow.challenge, Some(AuthChallenge::OAuthUrl { .. })) {
+                        return Err(AuthProductError::MalformedCallback);
+                    }
+                    flow.status = AuthFlowStatus::Failed;
+                    flow.error = Some(crate::AuthErrorCode::ProviderDenied);
+                    flow.updated_at = Utc::now();
+                    return Err(AuthProductError::ProviderDenied);
                 }
-                exchange
+                ProviderCallbackOutcome::Authorized { exchange } => {
+                    let dispatched = input
+                        .dispatched
+                        .ok_or(AuthProductError::BackendUnavailable)?;
+                    if dispatched.original.flow_id != input.flow_id
+                        || !scope_matches(scope, &dispatched.original.scope)
+                        || !dispatched
+                            .original
+                            .opaque_state_hash
+                            .constant_time_eq(&input.opaque_state_hash)
+                    {
+                        return Err(AuthProductError::CrossScopeDenied);
+                    }
+                    let custody = flow_custody
+                        .get_mut(&flow.id)
+                        .ok_or(AuthProductError::BackendUnavailable)?;
+                    custody
+                        .original_state(flow, &dispatched.original.reference())?
+                        .ok_or(AuthProductError::BackendUnavailable)?;
+                    let action = custody
+                        .oauth_callback
+                        .as_mut()
+                        .ok_or(AuthProductError::BackendUnavailable)?;
+                    action.record_result(
+                        crate::OAuthCallbackCompletion {
+                            dispatched,
+                            outcome: crate::OAuthCallbackOutcome::Returned(exchange),
+                        },
+                        Utc::now(),
+                    )?;
+                    if flow.status == AuthFlowStatus::CallbackReceived {
+                        flow.status = AuthFlowStatus::Completing;
+                        flow.updated_at = Utc::now();
+                    }
+                    action.original.reference()
+                }
             }
         };
-
-        let account_id = resolve_callback_account(&mut state, callback, &exchange, now)?;
-
-        let record = state
-            .flows
-            .get_mut(&input.flow_id)
-            .ok_or(AuthProductError::BackendUnavailable)?;
-        record.status = AuthFlowStatus::Completed;
-        record.error = None;
-        record.authorization_code_hash = Some(exchange.authorization_code_hash);
-        record.pkce_verifier_hash = Some(exchange.pkce_verifier_hash);
-        record.credential_account_id = Some(account_id);
-        record.updated_at = now;
-        let completed = record.clone();
-        state.continuations.push(AuthContinuationEvent {
-            flow_id: completed.id,
-            scope: completed.scope.clone(),
-            continuation: completed.continuation.clone(),
-            credential_account_id: completed.credential_account_id,
-            emitted_at: now,
-        });
-        Ok(completed)
+        self.reconcile_oauth_callback(scope, &reference)
+            .await?
+            .completed_flow()
     }
 
     async fn complete_credential_selection(
@@ -279,44 +883,68 @@ impl AuthFlowManager for InMemoryAuthProductServices {
     ) -> Result<AuthFlowRecord, AuthProductError> {
         let now = Utc::now();
         let mut state = self.lock_state();
-        let (flow_scope, flow_provider) = {
-            let record = state
-                .flows
-                .get_mut(&input.flow_id)
-                .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-            validate_selection_flow(record, scope, &input, now)?;
-            if record.status == AuthFlowStatus::Completed {
-                return Ok(record.clone());
+        let mut record = state
+            .flows
+            .get(&input.flow_id)
+            .cloned()
+            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+        match validate_selection_flow(&mut record, scope, &input, now) {
+            Ok(()) => {}
+            Err(AuthProductError::UnknownOrExpiredFlow) => {
+                state.flows.insert(record.id, record);
+                return Err(AuthProductError::UnknownOrExpiredFlow);
             }
-            (record.scope.clone(), record.provider.clone())
-        };
+            Err(error) => return Err(error),
+        }
+        let mut custody = state
+            .flow_custody
+            .get(&record.id)
+            .cloned()
+            .ok_or(AuthProductError::BackendUnavailable)?;
+        if record.status == AuthFlowStatus::Completed {
+            if let Some(selected) = &custody.requirement_selection {
+                selected.verify_receipt(
+                    &record,
+                    custody
+                        .requirement_setup
+                        .as_deref()
+                        .ok_or(AuthProductError::BackendConflict)?,
+                )?;
+            }
+            return Ok(record);
+        }
+        if custody.oauth_callback.is_some() {
+            return Err(AuthProductError::BackendConflict);
+        }
         let account = state
             .accounts
             .get(&input.credential_account_id)
             .ok_or(AuthProductError::CredentialMissing)?;
-        if !scope_matches(&flow_scope, &account.scope) || account.provider != flow_provider {
+        if !scope_matches(&record.scope, &account.scope) || account.provider != record.provider {
             return Err(AuthProductError::CrossScopeDenied);
         }
-        if account.status != CredentialAccountStatus::Configured {
+        if account.effective_status_at(now) != CredentialAccountStatus::Configured {
             return Err(AuthProductError::CredentialMissing);
         }
-        let record = state
-            .flows
-            .get_mut(&input.flow_id)
-            .ok_or(AuthProductError::BackendUnavailable)?;
         record.status = AuthFlowStatus::Completed;
         record.error = None;
         record.credential_account_id = Some(input.credential_account_id);
         record.updated_at = now;
-        let completed = record.clone();
+        let publication = prepare_requirement_publication(&state, &record, &custody, account)?;
+        if let Some((key, selected)) = publication {
+            custody.requirement_selection = Some(Box::new(selected.clone()));
+            state.requirement_selections.insert(key, selected);
+        }
+        state.flows.insert(record.id, record.clone());
+        state.flow_custody.insert(record.id, custody);
         state.continuations.push(AuthContinuationEvent {
-            flow_id: completed.id,
-            scope: completed.scope.clone(),
-            continuation: completed.continuation.clone(),
-            credential_account_id: completed.credential_account_id,
+            flow_id: record.id,
+            scope: record.scope.clone(),
+            continuation: record.continuation.clone(),
+            credential_account_id: record.credential_account_id,
             emitted_at: now,
         });
-        Ok(completed)
+        Ok(record)
     }
 
     async fn complete_manual_token(
@@ -345,19 +973,28 @@ impl AuthFlowManager for InMemoryAuthProductServices {
                 .ok_or(AuthProductError::BackendUnavailable)?;
             validate_manual_token_flow(record, scope, &input, now)?;
             if record.status == AuthFlowStatus::Completed {
-                return Ok(record.clone());
+                return confirmed_manual_original(
+                    &state,
+                    scope,
+                    crate::ManualTokenSetupIdentity {
+                        interaction_id: input.interaction_id,
+                        flow_id,
+                    },
+                )
+                .map(|(_, flow)| flow);
             }
             (record.scope.clone(), record.provider.clone())
         };
-        let account = state
-            .accounts
-            .get(&input.credential_account_id)
-            .ok_or(AuthProductError::CredentialMissing)?;
-        if !scope_matches(&flow_scope, &account.scope) || account.provider != flow_provider {
-            return Err(AuthProductError::CrossScopeDenied);
-        }
-        if account.status != CredentialAccountStatus::Configured {
-            return Err(AuthProductError::CredentialMissing);
+        let original = state
+            .manual_originals
+            .get(&input.interaction_id)
+            .ok_or(AuthProductError::BackendConflict)?;
+        if !scope_matches(&flow_scope, &original.scope)
+            || original.provider != flow_provider
+            || original.result.account_id != input.credential_account_id
+            || original.flow.as_ref().map(|flow| flow.id) != Some(flow_id)
+        {
+            return Err(AuthProductError::BackendConflict);
         }
         let record = state
             .flows
@@ -415,17 +1052,73 @@ impl AuthFlowManager for InMemoryAuthProductServices {
         scope: &crate::AuthProductScope,
         input: OAuthCallbackFailureInput,
     ) -> Result<AuthFlowRecord, AuthProductError> {
-        let now = Utc::now();
+        if let Some(dispatched) = input.dispatched {
+            let reference = dispatched.original.reference();
+            if reference.flow_id != input.flow_id
+                || !scope_matches(scope, &reference.scope)
+                || !reference
+                    .opaque_state_hash
+                    .constant_time_eq(&input.opaque_state_hash)
+            {
+                return Err(AuthProductError::CrossScopeDenied);
+            }
+            {
+                let mut state = self.lock_state();
+                let AuthState {
+                    flows,
+                    flow_custody,
+                    ..
+                } = &mut *state;
+                let flow = flows
+                    .get_mut(&input.flow_id)
+                    .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+                let custody = flow_custody
+                    .get_mut(&flow.id)
+                    .ok_or(AuthProductError::BackendUnavailable)?;
+                custody
+                    .original_state(flow, &reference)?
+                    .ok_or(AuthProductError::BackendUnavailable)?;
+                let action = custody
+                    .oauth_callback
+                    .as_mut()
+                    .ok_or(AuthProductError::BackendUnavailable)?;
+                action.record_result(
+                    crate::OAuthCallbackCompletion {
+                        dispatched,
+                        outcome: crate::OAuthCallbackOutcome::Unknown(input.error),
+                    },
+                    Utc::now(),
+                )?;
+                if flow.status == AuthFlowStatus::CallbackReceived {
+                    flow.status = AuthFlowStatus::Completing;
+                    flow.updated_at = Utc::now();
+                }
+            }
+            return Ok(self.reconcile_oauth_callback(scope, &reference).await?.flow);
+        }
         let mut state = self.lock_state();
-        let record = state
-            .flows
+        let AuthState {
+            flows,
+            flow_custody,
+            ..
+        } = &mut *state;
+        let flow = flows
             .get_mut(&input.flow_id)
             .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-        let _callback = prepare_callback_flow(record, scope, &input.opaque_state_hash, now)?;
-        record.status = AuthFlowStatus::Failed;
-        record.error = Some(input.error);
-        record.updated_at = now;
-        Ok(record.clone())
+        prepare_callback_flow(flow, scope, &input.opaque_state_hash, Utc::now())?;
+        if flow_custody
+            .get(&flow.id)
+            .is_some_and(|custody| custody.oauth_callback.is_some())
+        {
+            return Err(AuthProductError::BackendConflict);
+        }
+        if !matches!(flow.challenge, Some(AuthChallenge::OAuthUrl { .. })) {
+            return Err(AuthProductError::MalformedCallback);
+        }
+        flow.status = AuthFlowStatus::Failed;
+        flow.error = Some(input.error);
+        flow.updated_at = Utc::now();
+        Ok(flow.clone())
     }
 
     async fn cancel_flow(
@@ -435,23 +1128,30 @@ impl AuthFlowManager for InMemoryAuthProductServices {
     ) -> Result<AuthFlowRecord, AuthProductError> {
         let now = Utc::now();
         let mut state = self.lock_state();
-        let record = state
+        let mut record = state
             .flows
-            .get_mut(&flow_id)
+            .get(&flow_id)
+            .cloned()
             .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
         if !scope_matches(scope, &record.scope) {
             return Err(AuthProductError::CrossScopeDenied);
         }
         if crate::is_terminal_status(record.status) {
-            return Err(match record.status {
-                AuthFlowStatus::Canceled => AuthProductError::Canceled,
-                _ => AuthProductError::FlowAlreadyTerminal,
+            return Err(if record.status == AuthFlowStatus::Canceled {
+                AuthProductError::Canceled
+            } else {
+                AuthProductError::FlowAlreadyTerminal
             });
         }
         record.status = AuthFlowStatus::Canceled;
         record.error = Some(crate::AuthErrorCode::Canceled);
         record.updated_at = now;
-        Ok(record.clone())
+        if let Some(mut custody) = state.flow_custody.get(&flow_id).cloned() {
+            custody.require_dcr_cleanup(&mut record, now)?;
+            state.flow_custody.insert(flow_id, custody);
+        }
+        state.flows.insert(flow_id, record.clone());
+        Ok(record)
     }
 
     async fn mark_continuation_dispatched(
@@ -572,7 +1272,7 @@ impl CredentialAccountService for InMemoryAuthProductServices {
             .filter(|account| {
                 scope_matches(&request.scope, &account.scope)
                     && account.provider == request.provider
-                    && account.status == CredentialAccountStatus::Configured
+                    && account.effective_status() == CredentialAccountStatus::Configured
             })
             .collect::<Vec<_>>();
         if configured.is_empty() {
@@ -633,7 +1333,7 @@ impl CredentialAccountService for InMemoryAuthProductServices {
         let configured = authorized
             .iter()
             .copied()
-            .filter(|account| account.status == CredentialAccountStatus::Configured)
+            .filter(|account| account.effective_status() == CredentialAccountStatus::Configured)
             .collect::<Vec<_>>();
         match configured.as_slice() {
             [account] => {
@@ -682,7 +1382,7 @@ impl CredentialAccountService for InMemoryAuthProductServices {
         if account.provider != request.provider {
             return Err(AuthProductError::CredentialMissing);
         }
-        if account.status != CredentialAccountStatus::Configured {
+        if account.effective_status() != CredentialAccountStatus::Configured {
             return Err(AuthProductError::CredentialMissing);
         }
         if !account_is_authorized_for_requester(account, request.requester_extension.as_ref()) {
@@ -695,92 +1395,82 @@ impl CredentialAccountService for InMemoryAuthProductServices {
         &self,
         request: CredentialRefreshRequest,
     ) -> Result<CredentialRefreshReport, AuthProductError> {
-        let provider_request = {
-            let mut state = self.lock_state();
-            let account = state
-                .accounts
-                .get_mut(&request.account_id)
-                .ok_or(AuthProductError::CredentialMissing)?;
-            validate_refresh_target(account, &request)?;
-            let Some(refresh_secret) = account.refresh_secret.clone() else {
-                account.status = CredentialAccountStatus::RefreshFailed;
-                account.updated_at = Utc::now();
-                return Ok(CredentialRefreshReport {
-                    account: account.projection(),
-                    recovery: recovery_projection_for_single_account(
-                        account.provider.clone(),
-                        account,
-                    ),
-                    refreshed: false,
-                });
-            };
-            OAuthProviderRefreshRequest {
-                provider: account.provider.clone(),
-                scope: account.scope.clone(),
-                account_id: account.id,
-                refresh_secret,
-                scopes: account.scopes.clone(),
-            }
-        };
-        let refresh_secret_used = provider_request.refresh_secret.clone();
-
-        match self.refresh_token(provider_request).await {
-            Ok(refresh) => {
-                let mut state = self.lock_state();
-                let account = state
-                    .accounts
-                    .get_mut(&request.account_id)
-                    .ok_or(AuthProductError::CredentialMissing)?;
-                validate_refresh_target(account, &request)?;
-                if account.refresh_secret.as_ref() != Some(&refresh_secret_used) {
-                    return Err(AuthProductError::RefreshFailed);
-                }
-                if refresh.provider != account.provider {
-                    return Err(AuthProductError::CrossScopeDenied);
-                }
-                account.access_secret = Some(refresh.access_secret);
-                if let Some(refresh_secret) = refresh.refresh_secret {
-                    account.refresh_secret = Some(refresh_secret);
-                }
-                account.scopes = refresh.scopes;
-                account.status = CredentialAccountStatus::Configured;
-                account.updated_at = Utc::now();
-                Ok(CredentialRefreshReport {
-                    account: account.projection(),
-                    recovery: recovery_projection_for_single_account(
-                        account.provider.clone(),
-                        account,
-                    ),
-                    refreshed: true,
-                })
-            }
-            Err(AuthProductError::RefreshFailed | AuthProductError::TokenExchangeFailed) => {
-                let mut state = self.lock_state();
-                let account = state
-                    .accounts
-                    .get_mut(&request.account_id)
-                    .ok_or(AuthProductError::CredentialMissing)?;
-                validate_refresh_target(account, &request)?;
-                if account.refresh_secret.as_ref() == Some(&refresh_secret_used) {
-                    account.status = CredentialAccountStatus::RefreshFailed;
-                    account.updated_at = Utc::now();
-                }
-                Ok(CredentialRefreshReport {
-                    account: account.projection(),
-                    recovery: recovery_projection_for_single_account(
-                        account.provider.clone(),
-                        account,
-                    ),
-                    refreshed: false,
-                })
-            }
-            Err(error) => Err(error),
-        }
+        let shared = Arc::new(self.clone());
+        crate::ProviderBackedCredentialAccountService::new(shared.clone(), shared.clone(), shared)
+            .refresh_account(request)
+            .await
     }
 }
 
 #[async_trait]
 impl CredentialAccountRecordSource for InMemoryAuthProductServices {
+    async fn account_record(
+        &self,
+        scope: &AuthProductScope,
+        account: CredentialAccountId,
+    ) -> Result<Option<CredentialAccount>, AuthProductError> {
+        let record = self.lock_state().accounts.get(&account).cloned();
+        if record
+            .as_ref()
+            .is_some_and(|record| !scope_matches(scope, &record.scope))
+        {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        Ok(record)
+    }
+
+    async fn requirement_selection(
+        &self,
+        scope: &AuthProductScope,
+        requirement: &brassclaw_host_api::RuntimeCredentialAccountRequirement,
+    ) -> Result<Option<crate::CredentialRequirementSelection>, AuthProductError> {
+        let key =
+            crate::CredentialRequirementOwner::from_scope(&scope.resource).key(requirement)?;
+        let state = self.lock_state();
+        let selected = state.requirement_selections.get(&key).cloned();
+        if let Some(selected) = &selected {
+            selected
+                .verify_requested(scope, requirement)
+                .map_err(|_| AuthProductError::BackendUnavailable)?;
+            let flow = state
+                .flows
+                .get(&selected.original_flow())
+                .ok_or(AuthProductError::BackendUnavailable)?;
+            let custody = state
+                .flow_custody
+                .get(&selected.original_flow())
+                .ok_or(AuthProductError::BackendUnavailable)?;
+            let setup = custody
+                .requirement_setup
+                .as_deref()
+                .ok_or(AuthProductError::BackendUnavailable)?;
+            if custody.requirement_selection.as_deref() != Some(selected) {
+                return Err(AuthProductError::BackendUnavailable);
+            }
+            selected
+                .verify_receipt(flow, setup)
+                .map_err(|_| AuthProductError::BackendUnavailable)?;
+        }
+        Ok(selected)
+    }
+
+    async fn requirement_selection_for_flow(
+        &self,
+        scope: &AuthProductScope,
+        flow_id: AuthFlowId,
+        requirement: &brassclaw_host_api::RuntimeCredentialAccountRequirement,
+    ) -> Result<Option<crate::CredentialRequirementSelection>, AuthProductError> {
+        let state = self.lock_state();
+        let Some(flow) = state.flows.get(&flow_id) else {
+            return Ok(None);
+        };
+        let custody = state
+            .flow_custody
+            .get(&flow_id)
+            .ok_or(AuthProductError::BackendUnavailable)?;
+        custody.original_requirement_selection(scope, flow_id, flow, requirement)
+    }
+
     async fn accounts_for_owner(
         &self,
         scope: &crate::AuthProductScope,
@@ -800,6 +1490,110 @@ impl CredentialAccountRecordSource for InMemoryAuthProductServices {
 
 #[async_trait]
 impl CredentialSetupService for InMemoryAuthProductServices {
+    async fn refresh_action(
+        &self,
+        request: &CredentialRefreshRequest,
+    ) -> Result<Option<crate::CredentialRefreshAction>, AuthProductError> {
+        let original = crate::CredentialRefreshOriginal::from(request);
+        let key = (original.scope_ref()?, original.id);
+        let action = self.lock_state().refresh_actions.get(&key).cloned();
+        if let Some(action) = &action {
+            action.original.verify(request)?;
+        }
+        Ok(action)
+    }
+    async fn begin_refresh(
+        &self,
+        prepared: crate::CredentialRefreshPrepared,
+    ) -> Result<crate::CredentialRefreshAdmission, AuthProductError> {
+        let key = (prepared.original.scope_ref()?, prepared.original.id);
+        let mut state = self.lock_state();
+        if let Some(action) = state.refresh_actions.get(&key) {
+            if action.original != prepared.original {
+                return Err(AuthProductError::BackendConflict);
+            }
+            return Ok(crate::CredentialRefreshAdmission::Original(action.clone()));
+        }
+        let existing = state
+            .refresh_actions
+            .values()
+            .filter(|a| a.original.account_id == prepared.original.account_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        let account = state
+            .accounts
+            .get_mut(&prepared.original.account_id)
+            .ok_or(AuthProductError::CredentialMissing)?;
+        let admission =
+            crate::CredentialRefreshAction::begin(account, &existing, prepared, Utc::now())?;
+        let action = match &admission {
+            crate::CredentialRefreshAdmission::Original(action)
+            | crate::CredentialRefreshAdmission::Dispatch(action) => action,
+        };
+        state.refresh_actions.insert(key, action.clone());
+        Ok(admission)
+    }
+    async fn reconcile_refresh(
+        &self,
+        request: &CredentialRefreshRequest,
+    ) -> Result<Option<crate::CredentialRefreshAction>, AuthProductError> {
+        let original = crate::CredentialRefreshOriginal::from(request);
+        let key = (original.scope_ref()?, original.id);
+        let mut state = self.lock_state();
+        let AuthState {
+            accounts,
+            refresh_actions,
+            ..
+        } = &mut *state;
+        let Some(action) = refresh_actions.get_mut(&key) else {
+            return Ok(None);
+        };
+        action.original.verify(request)?;
+        let account = accounts
+            .get_mut(&request.account_id)
+            .ok_or(AuthProductError::CredentialMissing)?;
+        action.publish(account, Utc::now())?;
+        Ok(Some(action.clone()))
+    }
+
+    async fn complete_refresh(
+        &self,
+        completion: crate::CredentialRefreshCompletion,
+    ) -> Result<crate::CredentialRefreshAction, AuthProductError> {
+        let original = &completion.dispatched.original;
+        let key = (original.scope_ref()?, original.id);
+        let mut state = self.lock_state();
+        let AuthState {
+            accounts,
+            refresh_actions,
+            ..
+        } = &mut *state;
+        let account = accounts
+            .get_mut(&original.account_id)
+            .ok_or(AuthProductError::CredentialMissing)?;
+        let action = refresh_actions
+            .get_mut(&key)
+            .ok_or(AuthProductError::BackendConflict)?;
+        action.complete(account, completion, Utc::now())?;
+        Ok(action.clone())
+    }
+
+    async fn compare_and_update_account(
+        &self,
+        expected: &CredentialAccount,
+        request: NewCredentialAccount,
+    ) -> Result<CredentialAccount, AuthProductError> {
+        let mut state = self.lock_state();
+        let current = state
+            .accounts
+            .get_mut(&expected.id)
+            .ok_or(AuthProductError::CredentialMissing)?;
+        if &*current != expected {
+            return Err(AuthProductError::BackendConflict);
+        }
+        update_account_from_request(current, request, Utc::now())
+    }
+
     async fn create_or_update_account(
         &self,
         request: CredentialAccountMutation,
@@ -828,6 +1622,9 @@ impl AuthInteractionService for InMemoryAuthProductServices {
         &self,
         request: ManualTokenSetupRequest,
     ) -> Result<AuthChallenge, AuthProductError> {
+        if let Some(setup) = &request.requirement_setup {
+            setup.verify_manual(&request.scope, &request.provider)?;
+        }
         let interaction_id = AuthInteractionId::new();
         let mut state = self.lock_state();
         if let Some(binding) = &request.update_binding {
@@ -836,16 +1633,24 @@ impl AuthInteractionService for InMemoryAuthProductServices {
                 .get(&binding.account_id)
                 .ok_or(AuthProductError::CredentialMissing)?;
             validate_manual_token_update_binding(account, &request, binding)?;
+            let snapshot = account.clone();
+            state
+                .manual_update_snapshots
+                .insert(interaction_id, snapshot);
         }
         state.interactions.insert(
             interaction_id,
             PendingSecretInteraction {
+                requirement_setup: request.requirement_setup,
                 scope: request.scope,
                 provider: request.provider.clone(),
                 label: request.label.clone(),
                 continuation: request.continuation,
                 update_binding: request.update_binding,
                 expires_at: request.expires_at,
+                setup_identity: None,
+                setup_created_at: None,
+                canceled_at: None,
             },
         );
         Ok(AuthChallenge::ManualTokenRequired {
@@ -862,30 +1667,8 @@ impl AuthInteractionService for InMemoryAuthProductServices {
         request: SecretSubmitRequest,
     ) -> Result<SecretSubmitResult, AuthProductError> {
         request.validate_secret()?;
-        let now = Utc::now();
         let mut state = self.lock_state();
-        let pending = state
-            .interactions
-            .get(&request.interaction_id)
-            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-        if !scope_matches(scope, &pending.scope) {
-            return Err(AuthProductError::CrossScopeDenied);
-        }
-        if now > pending.expires_at {
-            state.interactions.remove(&request.interaction_id);
-            return Err(AuthProductError::UnknownOrExpiredFlow);
-        }
-        let pending = state
-            .interactions
-            .remove(&request.interaction_id)
-            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-        let continuation = pending.continuation.clone();
-        let account = create_or_update_manual_token_account(&mut state, pending)?;
-        Ok(SecretSubmitResult {
-            account_id: account.id,
-            status: account.status,
-            continuation,
-        })
+        submit_manual_token_in_state(&mut state, scope, request, false, None, Utc::now())
     }
 
     async fn abandon_manual_token(
@@ -894,31 +1677,75 @@ impl AuthInteractionService for InMemoryAuthProductServices {
         interaction_id: crate::AuthInteractionId,
     ) -> Result<bool, AuthProductError> {
         let mut state = self.lock_state();
-        let Some(pending) = state.interactions.get(&interaction_id) else {
+        let Some(mut pending) = state.interactions.get(&interaction_id).cloned() else {
             return Ok(false);
         };
         if !scope_matches(scope, &pending.scope) {
             return Err(AuthProductError::CrossScopeDenied);
         }
+        if pending.canceled_at.is_some() {
+            return Ok(false);
+        }
+        if let Some(identity) = pending.setup_identity {
+            let mut flow = state
+                .flows
+                .get(&identity.flow_id)
+                .cloned()
+                .ok_or(AuthProductError::BackendConflict)?;
+            let original = pending_setup_request(&pending);
+            crate::domain::validate_original_manual_setup_flow(
+                identity, &original, &original, &flow,
+            )?;
+            if crate::is_terminal_status(flow.status) && flow.status != AuthFlowStatus::Canceled {
+                return Ok(false);
+            }
+            if flow.status != AuthFlowStatus::Canceled {
+                flow.status = AuthFlowStatus::Canceled;
+                flow.error = Some(crate::AuthErrorCode::Canceled);
+                flow.updated_at = Utc::now();
+            }
+            pending.canceled_at = Some(flow.updated_at);
+            state.flows.insert(identity.flow_id, flow);
+            state.interactions.insert(interaction_id, pending);
+            return Ok(true);
+        }
+        state.manual_update_snapshots.remove(&interaction_id);
         Ok(state.interactions.remove(&interaction_id).is_some())
     }
 }
 
 #[async_trait]
 impl AuthProviderClient for InMemoryAuthProductServices {
+    async fn prepare_callback(
+        &self,
+        context: &crate::OAuthProviderExchangeContext,
+        _request: &crate::OAuthProviderCallbackRequest,
+    ) -> Result<crate::OAuthTokenDestinations, AuthProductError> {
+        Self::callback_destinations_for_tests(context)
+    }
+
+    async fn prepare_refresh(
+        &self,
+        request: &OAuthProviderRefreshRequest,
+    ) -> Result<crate::OAuthProviderRefreshPreparation, AuthProductError> {
+        Self::refresh_preparation_for_tests(request)
+    }
+
     async fn exchange_callback(
         &self,
-        _context: OAuthProviderExchangeContext,
+        context: OAuthProviderExchangeContext,
         request: OAuthProviderCallbackRequest,
     ) -> Result<OAuthProviderExchange, AuthProductError> {
         validate_provider_callback_request(&request)?;
+        let destinations = Self::callback_destinations_for_tests(&context)?;
         Ok(OAuthProviderExchange {
             provider: request.provider,
             account_label: request.account_label,
             authorization_code_hash: request.authorization_code_hash,
             pkce_verifier_hash: request.pkce_verifier_hash,
-            access_secret: generated_secret_handle("oauth-access")?,
-            refresh_secret: Some(generated_secret_handle("oauth-refresh")?),
+            access_secret: destinations.access_secret,
+            access_expires_at: None,
+            refresh_secret: Some(destinations.refresh_secret),
             scopes: request.scopes,
             account_id: None,
         })
@@ -927,7 +1754,10 @@ impl AuthProviderClient for InMemoryAuthProductServices {
     async fn refresh_token(
         &self,
         request: OAuthProviderRefreshRequest,
+        preparation: crate::OAuthProviderRefreshPreparation,
     ) -> Result<OAuthProviderRefresh, AuthProductError> {
+        preparation.source.verify(&request)?;
+        let destinations = preparation.destinations;
         let should_fail = {
             let mut state = self.lock_state();
             let should_fail = state.refresh_fails.remove(&request.account_id);
@@ -936,6 +1766,7 @@ impl AuthProviderClient for InMemoryAuthProductServices {
                 && let Some(account) = state.accounts.get_mut(&request.account_id)
             {
                 account.access_secret = Some(access_secret);
+                account.access_expires_at = None;
                 account.refresh_secret = Some(refresh_secret);
                 account.status = CredentialAccountStatus::Configured;
                 account.updated_at = Utc::now();
@@ -947,8 +1778,9 @@ impl AuthProviderClient for InMemoryAuthProductServices {
         }
         Ok(OAuthProviderRefresh {
             provider: request.provider,
-            access_secret: generated_secret_handle("oauth-refreshed-access")?,
-            refresh_secret: Some(generated_secret_handle("oauth-refreshed-refresh")?),
+            access_secret: destinations.access_secret,
+            access_expires_at: None,
+            refresh_secret: Some(destinations.refresh_secret),
             scopes: request.scopes,
         })
     }
@@ -963,8 +1795,9 @@ impl SecretCleanupService for InMemoryAuthProductServices {
         let mut state = self.lock_state();
         let quarantines = state.quarantines.clone();
         let mut report = SecretCleanupReport::default();
+        let owner = CredentialAccountOwnerScope::from_scope(&request.scope);
         for account in state.accounts.values_mut() {
-            if !scope_matches(&request.scope, &account.scope) {
+            if !owner.matches(account) {
                 continue;
             }
             let owns_extension_account = account.owner_extension.as_ref()
@@ -991,23 +1824,30 @@ impl SecretCleanupService for InMemoryAuthProductServices {
                 report.removed_grants.push(account.id);
             }
 
+            let prior_status = account.status;
             if owns_extension_account {
                 match request.action {
                     Deactivate => {
-                        account.status = CredentialAccountStatus::Inactive;
-                        account.updated_at = Utc::now();
+                        if !matches!(
+                            account.status,
+                            CredentialAccountStatus::Revoked | CredentialAccountStatus::Inactive
+                        ) {
+                            account.status = CredentialAccountStatus::Inactive;
+                        }
                         report.retained_accounts.push(account.id);
                     }
                     SecretCleanupAction::Uninstall => {
                         if account.status != CredentialAccountStatus::Revoked {
                             account.status = CredentialAccountStatus::Revoked;
-                            account.updated_at = Utc::now();
                             report.revoked_accounts.push(account.id);
                         }
                     }
                 }
             } else if had_grant {
                 report.retained_accounts.push(account.id);
+            }
+            if had_grant || account.status != prior_status {
+                account.updated_at = Utc::now();
             }
         }
         Ok(report)
@@ -1019,8 +1859,13 @@ fn create_account_in_state(
     request: NewCredentialAccount,
 ) -> Result<CredentialAccount, AuthProductError> {
     validate_new_credential_account(&request)?;
-    let now = Utc::now();
-    let account = CredentialAccount {
+    let account = account_from_request(request, Utc::now());
+    state.accounts.insert(account.id, account.clone());
+    Ok(account)
+}
+
+fn account_from_request(request: NewCredentialAccount, now: Timestamp) -> CredentialAccount {
+    CredentialAccount {
         id: CredentialAccountId::new(),
         scope: request.scope,
         provider: request.provider,
@@ -1030,168 +1875,350 @@ fn create_account_in_state(
         owner_extension: request.owner_extension,
         granted_extensions: request.granted_extensions,
         access_secret: request.access_secret,
+        access_expires_at: request.access_expires_at,
         refresh_secret: request.refresh_secret,
         scopes: request.scopes,
         created_at: now,
         updated_at: now,
-    };
-    state.accounts.insert(account.id, account.clone());
-    Ok(account)
-}
-
-fn resolve_callback_account(
-    state: &mut AuthState,
-    callback: PreparedCallbackFlow,
-    exchange: &OAuthProviderExchange,
-    now: crate::Timestamp,
-) -> Result<CredentialAccountId, AuthProductError> {
-    match exchange.account_id {
-        Some(account_id) => {
-            update_bound_callback_account(state, callback, exchange, account_id, now)
-        }
-        None => create_callback_account(state, callback, exchange),
     }
 }
 
-fn update_bound_callback_account(
-    state: &mut AuthState,
-    callback: PreparedCallbackFlow,
-    exchange: &OAuthProviderExchange,
-    account_id: CredentialAccountId,
-    now: crate::Timestamp,
-) -> Result<CredentialAccountId, AuthProductError> {
-    let Some(binding) = callback.update_binding.as_ref() else {
-        return Err(AuthProductError::CrossScopeDenied);
-    };
-    if binding.account_id != account_id {
-        return Err(AuthProductError::CrossScopeDenied);
-    }
-    let account = state
-        .accounts
-        .get_mut(&account_id)
-        .ok_or(AuthProductError::CredentialMissing)?;
-    if !scope_matches(&callback.scope, &account.scope) {
-        return Err(AuthProductError::CrossScopeDenied);
-    }
-    if account.provider != exchange.provider {
-        return Err(AuthProductError::TokenExchangeFailed);
-    }
-    validate_bound_update_authority(account, binding)?;
-    update_account_from_exchange(account, exchange, now);
-    Ok(account_id)
-}
-
-fn create_callback_account(
-    state: &mut AuthState,
-    callback: PreparedCallbackFlow,
-    exchange: &OAuthProviderExchange,
-) -> Result<CredentialAccountId, AuthProductError> {
-    if callback.update_binding.is_some() {
-        return Err(AuthProductError::CrossScopeDenied);
-    }
-    Ok(create_account_in_state(
-        state,
-        NewCredentialAccount {
-            scope: callback.scope,
-            provider: exchange.provider.clone(),
-            label: exchange.account_label.clone(),
-            status: credential_status_for_completed_flow(),
-            ownership: CredentialOwnership::UserReusable,
-            owner_extension: None,
-            granted_extensions: Vec::new(),
-            access_secret: Some(exchange.access_secret.clone()),
-            refresh_secret: exchange.refresh_secret.clone(),
-            scopes: exchange.scopes.clone(),
-        },
-    )?
-    .id)
-}
-
-fn create_or_update_manual_token_account(
-    state: &mut AuthState,
-    pending: PendingSecretInteraction,
-) -> Result<CredentialAccount, AuthProductError> {
-    match pending.update_binding.as_ref() {
-        Some(binding) => {
-            let account_request = manual_token_account_request(
-                &pending,
-                binding.ownership,
-                binding.owner_extension.clone(),
-                binding.granted_extensions.clone(),
-            )?;
-            let now = Utc::now();
-            let account = state
-                .accounts
-                .get_mut(&binding.account_id)
-                .ok_or(AuthProductError::CredentialMissing)?;
-            validate_account_update_target(account, &account_request)?;
-            update_account_from_request(account, account_request, now)
-        }
-        None => {
-            let mut account_request = manual_token_account_request(
-                &pending,
-                CredentialOwnership::UserReusable,
-                None,
-                Vec::new(),
-            )?;
-            if let Some(account_id) = latest_reusable_manual_token_account_id(state, &pending) {
-                let now = Utc::now();
-                let account = state
-                    .accounts
-                    .get_mut(&account_id)
-                    .ok_or(AuthProductError::CredentialMissing)?;
-                account_request.scope = account.scope.clone();
-                validate_account_update_target(account, &account_request)?;
-                update_account_from_request(account, account_request, now)
-            } else {
-                create_account_in_state(state, account_request)
-            }
-        }
-    }
-}
-
-fn latest_reusable_manual_token_account_id(
+// Prepare a candidate without changing AuthState. All flow/head checks must
+// succeed before the existing owner mutex commits any account or continuation.
+fn prepare_manual_token_account(
     state: &AuthState,
     pending: &PendingSecretInteraction,
-) -> Option<CredentialAccountId> {
-    state
-        .accounts
-        .values()
-        .filter(|account| {
-            CredentialAccountOwnerScope::from_scope(&pending.scope).matches(account)
-                && account.provider == pending.provider
-                && account.label == pending.label
-                && account.ownership == CredentialOwnership::UserReusable
-                && account.owner_extension.is_none()
-                && account.granted_extensions.is_empty()
-                && account.access_secret.is_some()
-                && account.status != CredentialAccountStatus::Revoked
+    now: Timestamp,
+) -> Result<CredentialAccount, AuthProductError> {
+    let expected = pending
+        .update_binding
+        .as_ref()
+        .map(|binding| {
+            state
+                .accounts
+                .get(&binding.account_id)
+                .ok_or(AuthProductError::CredentialMissing)
         })
-        .max_by_key(|account| (account.updated_at, account.created_at, account.id))
-        .map(|account| account.id)
-}
-
-fn manual_token_account_request(
-    pending: &PendingSecretInteraction,
-    ownership: CredentialOwnership,
-    owner_extension: Option<ExtensionId>,
-    granted_extensions: Vec<ExtensionId>,
-) -> Result<NewCredentialAccount, AuthProductError> {
-    Ok(NewCredentialAccount {
-        scope: pending.scope.clone(),
+        .transpose()?;
+    let binding = pending.update_binding.as_ref();
+    let scopes = if let Some(account) = expected {
+        account.scopes.clone()
+    } else {
+        pending
+            .requirement_setup
+            .as_ref()
+            .map(|setup| {
+                setup.verify_manual(&pending.scope, &pending.provider)?;
+                setup
+                    .requirement()
+                    .requirement()
+                    .provider_scopes
+                    .iter()
+                    .cloned()
+                    .map(crate::ProviderScope::new)
+                    .collect::<Result<Vec<_>, AuthProductError>>()
+            })
+            .transpose()?
+            .unwrap_or_default()
+    };
+    let request = NewCredentialAccount {
+        scope: expected.map_or_else(|| pending.scope.clone(), |account| account.scope.clone()),
         provider: pending.provider.clone(),
         label: pending.label.clone(),
         status: credential_status_for_completed_flow(),
-        ownership,
-        owner_extension,
-        granted_extensions,
+        ownership: binding.map_or(CredentialOwnership::UserReusable, |binding| {
+            binding.ownership
+        }),
+        owner_extension: binding.and_then(|binding| binding.owner_extension.clone()),
+        granted_extensions: binding
+            .map(|binding| binding.granted_extensions.clone())
+            .unwrap_or_default(),
         access_secret: Some(generated_secret_handle("manual-access")?),
+        access_expires_at: None,
         refresh_secret: None,
-        scopes: Vec::new(),
-    })
+        scopes,
+    };
+    validate_new_credential_account(&request)?;
+    if let Some(account) = expected {
+        validate_account_update_target(account, &request)?;
+        let mut prepared = account.clone();
+        update_account_from_request(&mut prepared, request, now)
+    } else {
+        Ok(account_from_request(request, now))
+    }
 }
 
 fn generated_secret_handle(prefix: &str) -> Result<SecretHandle, AuthProductError> {
     SecretHandle::new(format!("{prefix}-{}", CredentialAccountId::new()))
         .map_err(|_| AuthProductError::BackendUnavailable)
+}
+
+fn pending_setup_request(pending: &PendingSecretInteraction) -> ManualTokenSetupRequest {
+    ManualTokenSetupRequest {
+        requirement_setup: pending.requirement_setup.clone(),
+        scope: pending.scope.clone(),
+        provider: pending.provider.clone(),
+        label: pending.label.clone(),
+        continuation: pending.continuation.clone(),
+        update_binding: pending.update_binding.clone(),
+        expires_at: pending.expires_at,
+    }
+}
+
+fn submit_manual_token_in_state(
+    state: &mut AuthState,
+    scope: &crate::AuthProductScope,
+    request: SecretSubmitRequest,
+    complete_flow: bool,
+    expected_flow: Option<AuthFlowId>,
+    now: Timestamp,
+) -> Result<SecretSubmitResult, AuthProductError> {
+    if let Some(original) = state.manual_originals.get(&request.interaction_id) {
+        if !scope_matches(scope, &original.scope) {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        if !bool::from(
+            original
+                .secret
+                .expose_secret()
+                .as_bytes()
+                .ct_eq(request.secret.expose_secret().as_bytes()),
+        ) {
+            return Err(AuthProductError::BackendConflict);
+        }
+        if expected_flow.is_some() && expected_flow != original.flow.as_ref().map(|flow| flow.id) {
+            return Err(AuthProductError::BackendConflict);
+        }
+        if complete_flow {
+            if !original.complete_flow {
+                return Err(AuthProductError::BackendConflict);
+            }
+            let selected = original
+                .flow
+                .as_ref()
+                .ok_or(AuthProductError::BackendConflict)?;
+            return confirmed_manual_original(
+                state,
+                scope,
+                crate::ManualTokenSetupIdentity {
+                    interaction_id: request.interaction_id,
+                    flow_id: selected.id,
+                },
+            )
+            .map(|(result, _)| result);
+        }
+        return Ok(original.result.clone());
+    }
+    let pending = state
+        .interactions
+        .get(&request.interaction_id)
+        .ok_or(AuthProductError::UnknownOrExpiredFlow)?
+        .clone();
+    if !scope_matches(scope, &pending.scope) {
+        return Err(AuthProductError::CrossScopeDenied);
+    }
+    if pending.canceled_at.is_some() {
+        return Err(AuthProductError::Canceled);
+    }
+    if now > pending.expires_at {
+        return Err(AuthProductError::UnknownOrExpiredFlow);
+    }
+    if pending.requirement_setup.is_some() && !complete_flow {
+        return Err(AuthProductError::BackendConflict);
+    }
+    let expected_account = state
+        .manual_update_snapshots
+        .get(&request.interaction_id)
+        .cloned();
+    let mut selected_flow = None;
+    for flow in state.flows.values() {
+        if matches!(&flow.challenge, Some(AuthChallenge::ManualTokenRequired{interaction_id,..})
+                if *interaction_id == request.interaction_id)
+        {
+            if !scope_matches(scope, &flow.scope) {
+                return Err(AuthProductError::CrossScopeDenied);
+            }
+            if selected_flow.is_some() {
+                return Err(AuthProductError::BackendConflict);
+            }
+            let original = pending_setup_request(&pending);
+            crate::domain::validate_original_manual_setup_flow(
+                crate::ManualTokenSetupIdentity {
+                    interaction_id: request.interaction_id,
+                    flow_id: flow.id,
+                },
+                &original,
+                &original,
+                flow,
+            )?;
+            let custody = state
+                .flow_custody
+                .get(&flow.id)
+                .ok_or(AuthProductError::BackendConflict)?;
+            if custody.update_account_snapshot.as_ref() != expected_account.as_ref()
+                || custody.requirement_setup != pending.requirement_setup
+                || custody.requirement_selection.is_some()
+            {
+                return Err(AuthProductError::BackendConflict);
+            }
+            if let Some(id) = pending.setup_identity
+                && (id.flow_id != flow.id || pending.setup_created_at != Some(flow.created_at))
+            {
+                return Err(AuthProductError::BackendConflict);
+            }
+            selected_flow = Some(flow.clone());
+            match flow.status {
+                AuthFlowStatus::Canceled => return Err(AuthProductError::Canceled),
+                AuthFlowStatus::Expired => return Err(AuthProductError::UnknownOrExpiredFlow),
+                AuthFlowStatus::Failed => return Err(AuthProductError::FlowAlreadyTerminal),
+                AuthFlowStatus::Completed => return Err(AuthProductError::BackendConflict),
+                _ => {}
+            }
+        }
+    }
+    if expected_flow.is_some() && expected_flow != selected_flow.as_ref().map(|flow| flow.id) {
+        return Err(AuthProductError::BackendConflict);
+    }
+    if complete_flow && selected_flow.is_none() {
+        return Err(AuthProductError::UnknownOrExpiredFlow);
+    }
+    if pending.setup_identity.is_some() && selected_flow.is_none() {
+        return Err(AuthProductError::BackendConflict);
+    }
+    if let Some(binding) = &pending.update_binding {
+        let expected = state
+            .manual_update_snapshots
+            .get(&request.interaction_id)
+            .ok_or(AuthProductError::BackendConflict)?;
+        if state.accounts.get(&binding.account_id) != Some(expected) {
+            return Err(AuthProductError::BackendConflict);
+        }
+    }
+    let continuation = pending.continuation.clone();
+    let account = prepare_manual_token_account(state, &pending, now)?;
+    let result = SecretSubmitResult {
+        account_id: account.id,
+        status: account.status,
+        continuation,
+    };
+    let mut selected_custody = selected_flow
+        .as_ref()
+        .map(|flow| {
+            state
+                .flow_custody
+                .get(&flow.id)
+                .cloned()
+                .ok_or(AuthProductError::BackendConflict)
+        })
+        .transpose()?;
+    if complete_flow && let Some(flow) = &mut selected_flow {
+        flow.status = AuthFlowStatus::Completed;
+        flow.credential_account_id = Some(result.account_id);
+        flow.error = None;
+        flow.updated_at = account.updated_at;
+    }
+    let publication = match (&selected_flow, &selected_custody) {
+        (Some(flow), Some(custody)) => {
+            prepare_requirement_publication(state, flow, custody, &account)?
+        }
+        (None, None) if pending.requirement_setup.is_none() => None,
+        _ => return Err(AuthProductError::BackendConflict),
+    };
+    if let Some((_, selected)) = &publication {
+        selected_custody
+            .as_mut()
+            .ok_or(AuthProductError::BackendConflict)?
+            .requirement_selection = Some(Box::new(selected.clone()));
+    }
+    // Every fallible check precedes these infallible in-memory mutations. The
+    // original, head, account and completed flow become visible under one lock.
+    state.accounts.insert(account.id, account.clone());
+    if complete_flow && let Some(flow) = &selected_flow {
+        state.flows.insert(flow.id, flow.clone());
+        if let Some(custody) = &selected_custody {
+            state.flow_custody.insert(flow.id, custody.clone());
+        }
+        state.continuations.push(AuthContinuationEvent {
+            flow_id: flow.id,
+            scope: flow.scope.clone(),
+            continuation: flow.continuation.clone(),
+            credential_account_id: flow.credential_account_id,
+            emitted_at: flow.updated_at,
+        });
+    }
+    if let Some((key, selected)) = publication {
+        state.requirement_selections.insert(key, selected);
+    }
+    state.manual_originals.insert(
+        request.interaction_id,
+        ManualOriginal {
+            scope: scope.clone(),
+            secret: request.secret,
+            provider: account.provider.clone(),
+            result: result.clone(),
+            interaction: pending,
+            flow: selected_flow,
+            expected_account,
+            complete_flow,
+            account,
+            flow_custody: selected_custody,
+        },
+    );
+    state.interactions.remove(&request.interaction_id);
+    state
+        .manual_update_snapshots
+        .remove(&request.interaction_id);
+    Ok(result)
+}
+
+fn confirmed_manual_original(
+    state: &AuthState,
+    scope: &crate::AuthProductScope,
+    identity: crate::ManualTokenSetupIdentity,
+) -> Result<(SecretSubmitResult, AuthFlowRecord), AuthProductError> {
+    let original = state
+        .manual_originals
+        .get(&identity.interaction_id)
+        .ok_or(AuthProductError::BackendConflict)?;
+    if !scope_matches(scope, &original.scope) {
+        return Err(AuthProductError::CrossScopeDenied);
+    }
+    let mut expected = original
+        .flow
+        .clone()
+        .ok_or(AuthProductError::BackendConflict)?;
+    if expected.id != identity.flow_id {
+        return Err(AuthProductError::BackendConflict);
+    }
+    expected.status = AuthFlowStatus::Completed;
+    expected.credential_account_id = Some(original.result.account_id);
+    expected.error = None;
+    let flow = state
+        .flows
+        .get(&identity.flow_id)
+        .ok_or(AuthProductError::BackendConflict)?;
+    let mut comparable = flow.clone();
+    comparable.updated_at = expected.updated_at;
+    comparable.continuation_emitted_at = expected.continuation_emitted_at;
+    if comparable != expected {
+        return Err(AuthProductError::BackendConflict);
+    }
+    if let Some(expected_custody) = &original.flow_custody {
+        if state.flow_custody.get(&identity.flow_id) != Some(expected_custody) {
+            return Err(AuthProductError::BackendConflict);
+        }
+        if let Some(selected) = &expected_custody.requirement_selection {
+            if selected.account() != &original.account {
+                return Err(AuthProductError::BackendConflict);
+            }
+            selected.verify_receipt(
+                flow,
+                expected_custody
+                    .requirement_setup
+                    .as_deref()
+                    .ok_or(AuthProductError::BackendConflict)?,
+            )?;
+        }
+    }
+    Ok((original.result.clone(), flow.clone()))
 }

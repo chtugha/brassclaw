@@ -1,0 +1,207 @@
+{
+  "format": "brassclaw-exact-prefix-input-contract/1",
+  "status": "scoped-runtime-contract-accepted-qualified-workflow-incomplete",
+  "root_basis": {
+    "path": "/Volumes/SSDE/brassclaw/docs/validation/2026-10-29-tool-source-capture-and-use.json",
+    "sha256": "401efb247b13f800d2903367fac3c0879d5b3e1300c4fd53c611ad196cecef79"
+  },
+  "changed_sources": {
+    "crates/brassclaw_turns/src/run_profile/host.rs": {
+      "before": "e047cbc8c229f248a0d1f8a77e1f4a09e34c416e151227d3cb1ab2b70810a009",
+      "after": "2e4679f69c0960fb401fcbb8e03f3e7190f0bc0c7eb684d6e9a0f362b650b3cd"
+    },
+    "crates/brassclaw_reborn/src/monty_model_capability.rs": {
+      "before": "fc5a1083c12ebc70aa73b6c7526cb53014f86d50438c199a6ed3e632ce2d3f8b",
+      "after": "47e4425e71f8ed7cf358f4c3c17247ed65ae784fb25c0daed136ff02bd3f0c4a"
+    },
+    "crates/brassclaw_reborn/src/monty_task_host.rs": {
+      "before": "aabfd1e234f5b182cd360579e5384b97ef34e1cff58a9856140dbadcb9644bf1",
+      "after": "9a9421410d01e6ee65d8ea59ed10a02c9e2e436d104bc02100674025d275497e"
+    },
+    "crates/brassclaw_reborn/src/model_gateway.rs": {
+      "before": "617141a1c25d1f857da01e75507e2d30cedf23d89a77257fa82e537f020fd2f0",
+      "after": "64a0514cf46d088535d703016ef78384c51564e8190b1a2d795e61f9d8164e19"
+    },
+    "crates/brassclaw_reborn/src/model_gateway_final_request_tests.rs": {
+      "before": "46c75f7963e9d762bfd89ea71d5eb591f2623ccff9926949e434808ecb593653",
+      "after": "17f2c4a59c75fb9d02d3eaa8586464d3c2d6ab946d68382357a57037091d4a71"
+    },
+    "crates/brassclaw_reborn_composition/src/task_model_provider.rs": {
+      "before": "885fa848ee23c8170b8863b9cbd7b9788b8b4af1976b8efd61fbbc98031e4141",
+      "after": "a91d00804dab1f974238deb82623f9cd3b4a610a6e662696b5a9c28e9bfa452a"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_monty_model_response.rs": {
+      "before": "2c7f4d085f48daf0975cbe94270a12272407985f0a6c217b1338f16a652ae6f5",
+      "after": "10b17b4f6b16200a87517c6c95a41c42450332a9bb005f7a9348c3ac828bee01"
+    },
+    "crates/brassclaw_reborn_composition/src/completed_turn_review/delivery.rs": {
+      "before": "87806ce0e7da459dc7c4e067f6e5307c83e80c2a9ef3e3062a6aeec4e83b3952",
+      "after": "e250f187d740c47f55864fd6930a5bb1548912c98c5b88f8ec0cc8e5c8a977cf"
+    },
+    "crates/brassclaw_reborn_composition/src/installed_monty_catalogue.rs": {
+      "before": "75ed50db23052da95e0ac48326e0880e6c85fed0c0044d81c1da455e64367278",
+      "after": "ddab83602a1ec993380225476792cfeef5d34adad3c93ae6b9d2105bf5074b08"
+    },
+    "crates/brassclaw_turns/src/run_profile/mod.rs": {
+      "before": "f6651608b4ce7c2739b70f992d652f83074bbea4d7dc92650477026776e52dc5",
+      "after": "4d0f14518c89ba0b9850838825ac2ce1dfd21fe6ce392775f3fd2e2867bd2bf4"
+    }
+  },
+  "source_manifest": {
+    "path": "/private/tmp/brassclaw-exact-prefix-input-validation-20261029/run-5/source.json",
+    "sha256": "135bd20a8cc6d5214251cde7cbeac1ea0d55309ecaf2c7a83f33f6e7b8179a66"
+  },
+  "validation": {
+    "status": "passed",
+    "runner_pid": 15219,
+    "process_pid": null,
+    "results": [
+      {
+        "stage": "reborn-image",
+        "exit_code": 0,
+        "seconds": 23.984213790856302,
+        "log_sha256": "08188d829d8ded6e5e3401224288c8ba464d2ae90a1ae0e01a180bcca981df98",
+        "reused_from": "/private/tmp/brassclaw-exact-prefix-input-validation-20261029/run-1/reborn-image.log"
+      },
+      {
+        "stage": "gateway-binding",
+        "exit_code": 0,
+        "seconds": 0.6602061251178384,
+        "log_sha256": "ccbabc80a8d54da715df67df6b6e3dccffde3f7b498e020460756344303e04ac",
+        "passed": 4,
+        "reused_from": "/private/tmp/brassclaw-exact-prefix-input-validation-20261029/run-1/gateway-binding.log"
+      },
+      {
+        "stage": "prefix-type",
+        "exit_code": 0,
+        "seconds": 0.32137274998240173,
+        "log_sha256": "d090c47ef2dd7d03598b70b9675fe31e21ce035d9a274e33a81c4c27ce806af1",
+        "passed": 2,
+        "reused_from": "/private/tmp/brassclaw-exact-prefix-input-validation-20261029/run-1/prefix-type.log"
+      },
+      {
+        "stage": "reborn-strict",
+        "exit_code": 0,
+        "seconds": 18.743481084005907,
+        "log_sha256": "f413005a41881333d3c9bf506a3c129796590edeff4dd3a388a7b822d1639ef8",
+        "reused_from": "/private/tmp/brassclaw-exact-prefix-input-validation-20261029/run-1/reborn-strict.log"
+      },
+      {
+        "stage": "turns-strict",
+        "exit_code": 0,
+        "seconds": 8.18918945803307,
+        "log_sha256": "aaddfbfe5e6da25711e5f97d8451cb91345f9a8b7f8d20121aaecf99d70974ee",
+        "reused_from": "/private/tmp/brassclaw-exact-prefix-input-validation-20261029/run-1/turns-strict.log"
+      },
+      {
+        "stage": "composition-image",
+        "exit_code": 0,
+        "seconds": 152.35097304196097,
+        "log_sha256": "a224d6d5f8c79a797eaff18794a2c880994077391a5e5e924bc9ae3855548dde",
+        "reused_from": "/private/tmp/brassclaw-exact-prefix-input-validation-20261029/run-3/composition-image.log"
+      },
+      {
+        "stage": "native-1",
+        "exit_code": 0,
+        "seconds": 5.776649582898244,
+        "log_sha256": "e97e3ec533272b67351a11715bfa47e337e00dc66c91ac7e44b8fabf3b6f5add",
+        "passed": 1,
+        "reused_from": "/private/tmp/brassclaw-exact-prefix-input-validation-20261029/run-3/native-1.log"
+      },
+      {
+        "stage": "composition-strict",
+        "exit_code": 0,
+        "seconds": 93.4780044159852,
+        "log_sha256": "a42bcf7a6eb50199d5135e69db887e3924515ef063656b1c9ce394063b4a68fa"
+      },
+      {
+        "stage": "reborn-default-strict",
+        "exit_code": 0,
+        "seconds": 11.563665041001514,
+        "log_sha256": "2a670e695c94d9ac02a196fcdcda817c1371d6802fe9550a8510801c0ece6692"
+      },
+      {
+        "stage": "composition-default-strict",
+        "exit_code": 0,
+        "seconds": 25.875275125028566,
+        "log_sha256": "05bbb359770788f8ccfc6f9c7ecfd9c772ffa1598e3600a4896e084a54f60398"
+      }
+    ],
+    "images": {
+      "brassclaw_reborn": {
+        "path": "/private/tmp/brassclaw-exact-prefix-input-validation-20261029/run-1/brassclaw_reborn",
+        "sha256": "da553f29ad4d36a9da6d4b7e8ed511c156e9ab8ac572d0b4f1dbc5c527e3d933",
+        "features": [
+          "default",
+          "root-llm-provider"
+        ]
+      },
+      "brassclaw_reborn_composition": {
+        "path": "/private/tmp/brassclaw-exact-prefix-input-validation-20261029/run-3/brassclaw_reborn_composition",
+        "sha256": "87ed11a1ada83c400f798444526ec068808c27a2ede029f549aea138078073fd",
+        "features": [
+          "default",
+          "postgres",
+          "root-llm-provider",
+          "skills-db",
+          "test-support"
+        ]
+      }
+    },
+    "scope": "Typed retained prefix selection and same original custody/final-gateway binding; mandatory guard with explicit omission. No active qualified PrefixFreeWorkflow producer, /2 evidence writer, child/review propagation or complete Exact.",
+    "worker": {
+      "path": "/private/tmp/brassclaw-exact-prefix-input-validation-20261029/run-3/monty_worker",
+      "sha256": "91a2165fa396dfd9513d15e886eaba2ed692f1a5b9ac472ef3fb734391e47343"
+    },
+    "excluded_scope": [
+      "native_model_usage_retains_real_response_before_output_validation_and_reconciles_without_replay",
+      "native_model_accounting_failure_retains_answer_and_settles_original_hold_without_replay",
+      "native_prepared_model_call_retains_backend_before_accounting_and_keeps_live_limits"
+    ],
+    "excluded_reason": "pre-existing ignored actual operator-selected inference cases; no real endpoint/model selected for typed-binding package; not counted as passed",
+    "stage": "terminal",
+    "command": [
+      "cargo",
+      "+1.96.0",
+      "clippy",
+      "-p",
+      "brassclaw_reborn_composition",
+      "--lib",
+      "--locked",
+      "--",
+      "-D",
+      "warnings"
+    ]
+  },
+  "actual_distinct_cases": 7,
+  "format_check": {
+    "files": [
+      "crates/brassclaw_turns/src/run_profile/host.rs",
+      "crates/brassclaw_reborn/src/monty_model_capability.rs",
+      "crates/brassclaw_reborn/src/monty_task_host.rs",
+      "crates/brassclaw_reborn/src/model_gateway.rs",
+      "crates/brassclaw_reborn/src/model_gateway_final_request_tests.rs",
+      "crates/brassclaw_reborn_composition/src/task_model_provider.rs",
+      "crates/brassclaw_reborn_composition/src/pg_monty_model_response.rs",
+      "crates/brassclaw_reborn_composition/src/completed_turn_review/delivery.rs",
+      "crates/brassclaw_reborn_composition/src/installed_monty_catalogue.rs",
+      "crates/brassclaw_turns/src/run_profile/mod.rs"
+    ],
+    "rustfmt_exit_code": 0,
+    "tracked_diff_whitespace_exit_code": 0
+  },
+  "exact_plan_sha256": "538caec644087cc09c30e737c35d39fbade4508699701eccdc07d218cc046dbb",
+  "failure_history": {
+    "run-1": "One legacy String reader still accessed removed public content field. Updated to typed accessor with explicit error for unsupported absence, preserving native credential edits.",
+    "run-2": "Unnecessary fixture edit confused NativePrefixFixture with TaskFinalModelRequest. All fixture bytes restored to original before successful current Composition build.",
+    "run-3": "Pre-existing ignored live inference test requires an explicitly selected endpoint/model. Not counted, not enabled or disabled by this patch.",
+    "run-4": "Additional existing backend test also requires the explicit endpoint/model. Not counted; selected-case prerequisites corrected in runner.",
+    "run-5": "Unchanged successful Core/SDK artifacts reused with verified input/log/image hashes; all remaining strict checks passed."
+  },
+  "limits": [
+    "No active native workflow qualifier, prefix-free admission/dispatch or versioned persistent /1 successor. /1 writer explicitly rejects Free.",
+    "No prefix-stock-free root capture, explicit Selected generation resolver, noncircular bootstrap preflight or recursive qualified child/review propagation yet.",
+    "No new SDK wire protocol, migration, queue, global prefix flag, effect ID or TaskProviderSelection/2 Tool fields.",
+    "No live operator-model inference, public activation, deployment, full Exact or K3 completion."
+  ]
+}

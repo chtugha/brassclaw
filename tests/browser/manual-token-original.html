@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Native original manual setup</title>
+<script type="importmap" nonce="__FIXTURE_NONCE__">__IMPORT_MAP__</script>
+</head><body><div id="root"></div>
+<script nonce="__FIXTURE_NONCE__">
+// Fixture sentinels only. No real operator/issuer credential enters this page.
+sessionStorage.setItem("brassclaw_token", "__FIXTURE_BEARER__");
+localStorage.setItem("brassclaw_language", "en");
+window.manualOriginalAudit = JSON.parse(sessionStorage.getItem("native-manual-audit") || "[]");
+const saveAudit = () => sessionStorage.setItem("native-manual-audit", JSON.stringify(window.manualOriginalAudit));
+const originalFetch = window.fetch.bind(window);
+window.fetch = async (path, options) => {
+  const pathname = new URL(path, location.origin).pathname;
+  if (!pathname.startsWith("/api/reborn/product-auth/manual-token/")) return originalFetch(path, options);
+  const body = JSON.parse(options.body);
+  const retained = Object.entries(sessionStorage)
+    .filter(([key]) => key.startsWith("brassclaw:manual-token-original:"))
+    .map(([, text]) => JSON.parse(text));
+  // Inspect only booleans and non-secret correlation. Never retain token values,
+  // request bodies, raw input hashes or arbitrary response/error material.
+  const record = {
+    path: pathname,
+    keys: Object.keys(body).sort(),
+    identity: body.identity,
+    invocation_id: body.invocation_id,
+    token_present: Object.hasOwn(body, "token"),
+    token_matches_input: Object.hasOwn(body, "token")
+      ? body.token === document.querySelector('input[aria-label="Access token"]').value : null,
+    retained_before_transport: retained.some(value => !value.closed &&
+      value.identity.interaction_id === body.identity.interaction_id &&
+      value.identity.flow_id === body.identity.flow_id && value.invocationId === body.invocation_id),
+  };
+  window.manualOriginalAudit.push(record); saveAudit();
+  const response = await originalFetch(path, options);
+  record.http_status = response.status;
+  const reply = await response.clone().json();
+  if (response.ok) {
+    record.reply = {
+      identity: reply.identity,
+      invocation_id: reply.invocation_id,
+      status: reply.status,
+      expires_at: reply.expires_at,
+    };
+  }
+  saveAudit(); return response;
+};
+</script>
+<script type="module" nonce="__FIXTURE_NONCE__">
+import { html } from "/js/lib/html.js";
+import { createRoot } from "react-dom/client";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "/js/lib/query-client.js";
+import { I18nProvider } from "/js/lib/i18n.js";
+import "/js/i18n/en.js";
+import "/js/i18n/de.js";
+import { Chat } from "/js/pages/chat/chat.js";
+const thread = "__FIXTURE_THREAD__";
+createRoot(document.getElementById("root")).render(html`
+  <${QueryClientProvider} client=${queryClient}><${I18nProvider}>
+    <${Chat} threads=${[{ id: thread, title: "Native manual fixture" }]}
+      activeThreadId=${thread} onSelectThread=${() => {}} isCreatingThread=${false}/>
+  <//><//>`);
+</script></body></html>

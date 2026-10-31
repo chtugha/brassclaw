@@ -22,6 +22,15 @@ use serde_json::json;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+// Shared with this module's durable-measurement child tests. An explicit
+// interpreter avoids accidentally using unrelated global site packages.
+fn oracle_python() -> std::process::Command {
+    std::process::Command::new(
+        std::env::var_os("BRASSCLAW_TEST_PYTHON")
+            .unwrap_or_else(|| if cfg!(windows) { "python" } else { "python3" }.into()),
+    )
+}
+
 pub(super) async fn assert_registered_encoding(
     runtime: &Arc<RebornRuntime>,
     app: &axum::Router,
@@ -191,10 +200,7 @@ pub(super) async fn assert_registered_encoding(
     let originals =
         std::path::PathBuf::from(std::env::var_os("BRASSCLAW_TEST_MODEL_ARTIFACT_ROOT").unwrap());
     let original_template = std::fs::read_to_string(originals.join("chat_template.jinja")).unwrap();
-    use std::{
-        io::Write,
-        process::{Command, Stdio},
-    };
+    use std::{io::Write, process::Stdio};
     let adapter =
         brassclaw_skills::prefix_reference_components::template_adapter_draft(Uuid::new_v4())
             .unwrap();
@@ -287,7 +293,7 @@ pub(super) async fn assert_registered_encoding(
     let oracle_request = json!({"format":"brassclaw-model-encoding-worker/1","expected_reference":prefix,"assets":{
         "tokenizer_json":std::fs::read_to_string(originals.join("tokenizer.json")).unwrap(),
         "tokenizer_config_json":std::fs::read_to_string(originals.join("tokenizer_config.json")).unwrap(),"chat_template":template},"probes":probes});
-    let mut oracle = Command::new("python3")
+    let mut oracle = oracle_python()
         .arg(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../brassclaw_model_encoding/tests/huggingface_oracle.py"),

@@ -8,6 +8,9 @@ use crate::{
     run_profile::{LoopCheckpointStateRef, LoopModelRouteSnapshot},
 };
 
+#[path = "native_auth_wait.rs"]
+pub mod native_auth;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClaimRunRequest {
     pub runner_id: TurnRunnerId,
@@ -138,6 +141,18 @@ pub trait TurnRunTransitionPort: Send + Sync {
     ) -> Result<TurnRunState, TurnError>;
 
     async fn block_run(&self, request: BlockRunRequest) -> Result<TurnRunState, TurnError>;
+
+    /// Suspend the original native invocation before dispatcher entry without
+    /// discarding its live worker claim or creating a loop checkpoint. Stores
+    /// without the complete contract must reject; no queue-based fallback.
+    async fn block_native_auth(
+        &self,
+        _request: native_auth::BlockNativeAuthRequest,
+    ) -> Result<TurnRunState, TurnError> {
+        Err(TurnError::Unavailable {
+            reason: "native authentication waiting is unavailable".into(),
+        })
+    }
 
     async fn complete_run(&self, request: CompleteRunRequest) -> Result<TurnRunState, TurnError>;
 

@@ -13,6 +13,7 @@ use super::*;
 #[tokio::test]
 async fn mcp_adapter_maps_executor_auth_required_to_dispatch_auth_required() {
     let requirement = RuntimeCredentialAuthRequirement {
+        requirement: None,
         provider: RuntimeCredentialAccountProviderId::new("github").unwrap(),
         requester_extension: ExtensionId::new("mcp").unwrap(),
         provider_scopes: vec!["repo".to_string()],

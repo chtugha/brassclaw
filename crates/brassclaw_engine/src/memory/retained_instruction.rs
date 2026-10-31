@@ -39,6 +39,7 @@ pub struct RetainedRecipeInstruction {
     recipe: ComponentRevisionRef,
     variant: RecipeVariant,
     class: WorkflowClass,
+    model_input: brassclaw_skills::recipe_model_input::RecipeModelInput,
     ordered: OrderedBuildInstruction,
     pub(crate) association_approvals: BTreeMap<String, Value>,
 }
@@ -54,6 +55,9 @@ impl RetainedRecipeInstruction {
     }
     pub fn class(&self) -> WorkflowClass {
         self.class
+    }
+    pub fn model_input(&self) -> &brassclaw_skills::recipe_model_input::RecipeModelInput {
+        &self.model_input
     }
     pub fn ordered(&self) -> &OrderedBuildInstruction {
         &self.ordered
@@ -97,6 +101,14 @@ impl RetainedRecipeInstruction {
         });
         if !self.association_approvals.is_empty() {
             selection["association_approvals"] = json!(self.association_approvals);
+        }
+        if recipe
+            .draft()
+            .document()
+            .get("model_input_bindings")
+            .is_some()
+        {
+            selection["model_input_binding"] = self.model_input.retained_binding();
         }
         validate_data_bounds(&selection, REVISION_LIMITS)
             .map_err(|_| RetainedSelectionError::Capacity)?;
@@ -269,6 +281,12 @@ pub fn compile_retained_recipe(
     }
     let variant =
         selected.ok_or_else(|| invalid("selected variant does not belong to Recipe revision"))?;
+    let model_input = brassclaw_skills::recipe_model_input::RecipeModelInput::for_variant(
+        document,
+        &names,
+        variant_key,
+    )
+    .map_err(|_| invalid("invalid Recipe model-input binding"))?;
     let link = variant
         .step_link
         .as_deref()
@@ -354,6 +372,7 @@ pub fn compile_retained_recipe(
         recipe,
         variant,
         class,
+        model_input,
         ordered,
         association_approvals: BTreeMap::new(),
     })

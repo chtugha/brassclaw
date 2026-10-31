@@ -35,6 +35,7 @@ use brassclaw_skills::{
     revision_store::PgComponentRevisionStore,
     validator_components::{
         aggregate_draft, collect_draft, python_contracts_draft, recursive_contract_draft,
+        review_subject_reader_draft,
     },
     value_contract::strict_json,
 };
@@ -156,7 +157,10 @@ async fn native_python_contract_recipe_binds_complete_sealed_subject_and_rejects
         crate::builtin_bootstrap::VALIDATOR_PYTHON_CONTRACTS_SEED,
     )
     .unwrap();
-    for draft in [&helper, &rule] {
+    let reader =
+        review_subject_reader_draft(packaged_component_id("validator:review-subject-reader"))
+            .unwrap();
+    for draft in [&helper, &reader, &rule] {
         assert_eq!(
             store
                 .read_revision(draft.uuid(), 1)
@@ -199,7 +203,7 @@ async fn native_python_contract_recipe_binds_complete_sealed_subject_and_rejects
             }}}},"dependencies":[rule.uuid(),collector.uuid(),aggregate.uuid(),formatter.uuid()],"association":null
     }).to_string()).unwrap();
     let mut references = Vec::new();
-    for draft in [&helper, &rule] {
+    for draft in [&helper, &reader, &rule] {
         references.push(
             store
                 .read_revision(draft.uuid(), 1)
@@ -223,7 +227,7 @@ async fn native_python_contract_recipe_binds_complete_sealed_subject_and_rejects
             .unwrap(),
     );
     let pure = inspected.pure_component(rule.uuid()).unwrap();
-    assert_eq!(pure.components().len(), 2);
+    assert_eq!(pure.components().len(), 3);
     let coverage =
         Arc::new(RetainedValidatorCoverage::from_inputs(inspected.program().inputs()).unwrap());
     let private=ComponentRevisionDraft::from_json(&json!({
@@ -325,6 +329,7 @@ async fn native_python_contract_recipe_binds_complete_sealed_subject_and_rejects
             rig.pool.clone(),
             "python-contract-review",
             &reference,
+            None,
         ))
         .await
         .unwrap();

@@ -5,15 +5,27 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AuthContinuationRef, AuthProductError, CredentialAccountId, CredentialAccountLabel,
+    AuthContinuationRef, AuthFlowId, AuthProductError, CredentialAccountId, CredentialAccountLabel,
     CredentialAccountStatus, CredentialAccountUpdateBinding, Timestamp,
     ids::{AuthInteractionId, AuthProviderId},
     scope::AuthProductScope,
 };
 
+/// Independent correlation IDs retained before the first setup transport/write.
+/// They are not secret proof or an execution grant. Every owner still validates
+/// the complete authenticated scope and immutable original setup definition.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManualTokenSetupIdentity {
+    pub interaction_id: AuthInteractionId,
+    pub flow_id: AuthFlowId,
+}
+
 /// Request to open a secure manual-token interaction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManualTokenSetupRequest {
+    /// Original usage identity, never reconstructed from current declarations.
+    pub requirement_setup: Option<Box<crate::CredentialRequirementSetup>>,
     pub scope: AuthProductScope,
     pub provider: AuthProviderId,
     pub label: CredentialAccountLabel,
@@ -85,10 +97,14 @@ pub trait AuthInteractionService: Send + Sync {
 
 #[derive(Debug, Clone)]
 pub(crate) struct PendingSecretInteraction {
+    pub requirement_setup: Option<Box<crate::CredentialRequirementSetup>>,
     pub scope: AuthProductScope,
     pub provider: AuthProviderId,
     pub label: CredentialAccountLabel,
     pub continuation: AuthContinuationRef,
     pub update_binding: Option<CredentialAccountUpdateBinding>,
     pub expires_at: Timestamp,
+    pub setup_identity: Option<ManualTokenSetupIdentity>,
+    pub setup_created_at: Option<Timestamp>,
+    pub canceled_at: Option<Timestamp>,
 }

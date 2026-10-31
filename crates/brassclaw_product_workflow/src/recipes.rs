@@ -254,6 +254,33 @@ pub struct SubmitComponentReviewRequest {
     pub expected_previous_version: Option<u64>,
     pub base: Option<ComponentRevisionSelection>,
     pub dependencies: Vec<ComponentRevisionSelection>,
+    /// Optional Skill/implementing-code partner in the same function review.
+    /// Context is retained exactly, never approved again by this submission.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function_partner: Option<ComponentFunctionReviewPartner>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "role", deny_unknown_fields)]
+pub enum ComponentFunctionReviewPartner {
+    #[serde(rename = "changed")]
+    Changed {
+        candidate_bytes: String,
+        base: Option<ComponentRevisionSelection>,
+        expected_previous_version: u64,
+    },
+    #[serde(rename = "context")]
+    Context {
+        reference: ComponentRevisionSelection,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComponentFunctionReviewPartnerReceipt {
+    pub reference: ComponentRevisionSelection,
+    pub changed: bool,
+    pub base: Option<ComponentRevisionSelection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,6 +297,8 @@ pub struct ComponentReviewSubmissionReceipt {
     pub candidate: ComponentRevisionSelection,
     pub base: Option<ComponentRevisionSelection>,
     pub dependencies: Vec<ComponentRevisionSelection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function_partner: Option<ComponentFunctionReviewPartnerReceipt>,
     pub review_status: String,
     pub catalogue_activated: bool,
 }
@@ -381,8 +410,27 @@ pub struct RecordOutcomeResponse {
     pub recorded: bool,
 }
 
+/// Existing catalogue publisher's durable target and process-local uptake.
+/// These are projections, never approval or generated-prefix activation.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CataloguePublicationStatus {
+    pub desired_generation: String,
+    pub effective_generation: String,
+    pub discovery_effective_generation: Option<String>,
+    pub pending: bool,
+    pub prefix_invalidation_id: Option<String>,
+    pub invalidated_profiles: Vec<String>,
+    /// The generated-prefix consumer has not acknowledged these sources.
+    /// A qualified retained inline context can independently remain usable.
+    pub prefix_rebuild_pending: bool,
+    pub inline_prefix_ready: bool,
+    pub inline_prefix_reference: Option<String>,
+    pub model_context_support: String,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CatalogueActivationStatus {
+    pub publication: CataloguePublicationStatus,
     pub generation: String,
     pub recipes: Vec<String>,
     /// Exact complete authored selections, suitable for a generation-CAS edit.
@@ -509,6 +557,17 @@ pub trait RecipeStore: Send + Sync {
     async fn catalogue_status(&self) -> Result<CatalogueActivationStatus, RecipeStoreError> {
         Err(RecipeStoreError::Unavailable(
             "authored catalogue activation unavailable".into(),
+        ))
+    }
+
+    /// Reconcile an already committed activation using its original identity.
+    /// This cannot author, approve or activate a new catalogue.
+    async fn reconcile_catalogue(
+        &self,
+        _activation_id: &str,
+    ) -> Result<CatalogueActivationReceipt, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "catalogue reconciliation unavailable".into(),
         ))
     }
 

@@ -117,6 +117,42 @@ pub(super) async fn execute(
     if admitted.input["user_input"].as_str() != Some(request.source.reference()) {
         return Err(invalid("bootstrap source reference differs from admission"));
     }
+    // This executor is the existing contained pre-readiness/development
+    // observer. Live product work continues through its already-running global
+    // driver. Reuse that driver's capture owner, without starting admission or
+    // accepting request metadata as native workflow qualification.
+    if admitted.host.is_result_only_completion()
+        && !admitted.host.run_context().trusted_internal_turn
+    {
+        admitted
+            .admission
+            .check_model_preparation(&admitted.host)
+            .await
+            .map_err(invalid)?;
+        let program = request
+            .source
+            .captured_program()
+            .ok_or_else(|| invalid("bootstrap model source has no original program"))?;
+        crate::task_model_capture::capture_task_models(
+            &admitted.host,
+            &admitted.admission,
+            Some(program.as_ref()),
+            None,
+        )
+        .await
+        .map_err(invalid)?;
+        request
+            .source
+            .bind_native_runtimes()
+            .map_err(|_| invalid("bootstrap model runtime binding failed"))?;
+        // Capture/native preparation may await settings or storage. Recheck
+        // original claim and unstarted identity before creating the worker.
+        admitted
+            .admission
+            .check_model_preparation(&admitted.host)
+            .await
+            .map_err(invalid)?;
+    }
     let ports = Arc::new(GlobalRecipePorts::for_internal(
         admitted.host.clone(),
         admitted.admission.clone(),

@@ -924,6 +924,24 @@ impl TurnRunTransitionPort for PgTurnStateStore {
         .await
     }
 
+    async fn block_native_auth(
+        &self,
+        request: crate::runner::native_auth::BlockNativeAuthRequest,
+    ) -> Result<TurnRunState, TurnError> {
+        if request.scope.tenant_id.as_str() != self.tenant_id {
+            return Err(TurnError::ScopeNotFound);
+        }
+        let thread_id = request.scope.thread_id.clone();
+        self.apply(&thread_id, |store| {
+            let request = request.clone();
+            async move {
+                let outcome = store.block_native_auth(request).await;
+                (outcome, store)
+            }
+        })
+        .await
+    }
+
     async fn block_run(&self, request: BlockRunRequest) -> Result<TurnRunState, TurnError> {
         let thread_id = self.find_thread_id_for_run(request.run_id).await?;
         self.apply(&thread_id, |store| {

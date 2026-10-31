@@ -399,6 +399,7 @@ async fn native_inventory_recipe_decodes_complete_pairs_and_journals_one_actual_
             rig.pool.clone(),
             "source-inventory",
             &reference,
+            None,
         ))
         .await
         .unwrap();

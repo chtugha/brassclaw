@@ -1423,7 +1423,7 @@ where
             });
         }
 
-        let auth_context = mcp_auth_context(&descriptor.provider, &descriptor.runtime_credentials);
+        let auth_context = mcp_auth_context(&descriptor.provider, &descriptor.runtime_credentials)?;
 
         Ok(PreparedMcpClientRequest {
             request: McpClientRequest {
@@ -1455,7 +1455,7 @@ fn mcp_error_from_client_error(error: McpClientError, auth_context: McpAuthConte
 fn mcp_auth_context(
     requester_extension: &ExtensionId,
     credentials: &[RuntimeCredentialRequirement],
-) -> McpAuthContext {
+) -> Result<McpAuthContext, McpError> {
     let mut required_secrets = Vec::new();
     let mut credential_requirements = Vec::new();
     for credential in credentials.iter().filter(|credential| credential.required) {
@@ -1465,6 +1465,15 @@ fn mcp_auth_context(
             }
             RuntimeCredentialRequirementSource::ProductAuthAccount { provider, .. } => {
                 credential_requirements.push(RuntimeCredentialAuthRequirement {
+                    requirement: Some(
+                        brassclaw_host_api::RuntimeCredentialAccountRequirement::new(
+                            requester_extension.clone(),
+                            credential.clone(),
+                        )
+                        .map_err(|_| McpError::DescriptorMismatch {
+                            reason: "invalid retained credential requirement".into(),
+                        })?,
+                    ),
                     provider: provider.clone(),
                     requester_extension: requester_extension.clone(),
                     provider_scopes: credential.provider_scopes.clone(),
@@ -1472,10 +1481,10 @@ fn mcp_auth_context(
             }
         }
     }
-    McpAuthContext {
+    Ok(McpAuthContext {
         required_secrets,
         credential_requirements,
-    }
+    })
 }
 
 /// Object-safe MCP executor interface used by the kernel composition layer.

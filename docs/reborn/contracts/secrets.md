@@ -38,11 +38,11 @@ SecretLease
 SecretStoreError
 SecretStore
 InMemorySecretStore
-FilesystemSecretStore      // durable when backed by libSQL/Postgres RootFilesystem
+FilesystemSecretStore      // durable when backed by Postgres RootFilesystem
 CredentialAccountStore
 CredentialSessionStore
 InMemoryCredentialBroker
-FilesystemCredentialBroker // durable when backed by libSQL/Postgres RootFilesystem
+FilesystemCredentialBroker // durable when backed by Postgres RootFilesystem
 ```
 
 `SecretMaterial` is backed by `secrecy::SecretString`, so access to raw values is explicit through `ExposeSecret`. Metadata, lease records, and errors never contain raw values.
@@ -92,9 +92,75 @@ let material = secrets.consume(&scope, lease.id).await?;
 
 `SecretStore::put(...)` is for trusted setup, composition, migration, or storage-code paths that are already allowed to manage secret material. It is not a runtime/plugin API, and it intentionally does not perform authorization itself.
 
-Durable libSQL/PostgreSQL storage is provided by `FilesystemSecretStore` and
+Trusted setup also exposes three required owner operations: `record_reference`
+returns an opaque authenticated encrypted generation; `put_if_record_reference`
+atomically replaces exactly that generation (`None` means absent-only insertion);
+`matches` compares authenticated material inside the owner without returning it.
+A stale comparison returns no write. Storage failure can still mean a committed
+write with a lost acknowledgement; callers must read back the original rather
+than assume no effect. Reads neither lock/migrate PostgreSQL legacy records nor
+consume a lease. These operations are not runtime eligibility or authority and
+can compare an expired stored value without permitting its use. References are
+backend-bound and must not be interpreted as plaintext fingerprints.
+
+An ordinary mutable handle still does not retain the original input or pin a
+lease to a generation. Trusted setup additionally uses three required custody
+operations on every selected store/forwarder:
+
+- `put_original` stores the first encrypted raw input with its full original scope
+  and typed nonsecret context. Exact input/context/scope repeats return the actual
+  stored metadata without rewriting. Different inputs, an ordinary occupant or
+  a retired identity return no write. The context must contain setup identities
+  and selections, never raw tokens or plaintext token fingerprints.
+- `custody` authenticates and returns the original, retained or retired metadata.
+  It does not expose material, issue a lease or establish runtime authority.
+- `put_retained_from_original` creates an immutable output using the actual live
+  original's scope/handle/encrypted-generation reference inside the storage owner;
+  callers supply no substitute material. Exact target/source repeats read back
+  unchanged; incompatible, retired or missing selections cannot create outputs.
+
+Original inputs are unavailable to ordinary runtime metadata/lease/consume. A
+retained output follows the existing scoped one-shot runtime boundary. Ordinary
+put and conditional put cannot overwrite custody records. Delete retires such a
+record: it erases raw material while retaining occupied identity, original context
+and exact source references. No writer resurrects that identity. Original
+retirement is input-data disposition and does not revoke an independently issued
+output; live account/kernel/attempt/expiry enforcement remains required. A raw
+submit after original retirement conflicts; a payload-free confirmed-original
+lookup is a separate operation.
+
+All bodies use the existing AES-GCM/HKDF owner with a distinct authenticated
+custody purpose. Ordinary raw JSON remains ordinary secret material. FS omits
+its optional format marker for old ordinary records; native PG uses the
+`custody-v1:` purpose prefix before its existing encoded encrypted envelope.
+Unknown, altered or wrong-owner formats fail before effects. The current/legacy
+ordinary reference algorithms and public reserved-system scope rejection remain
+unchanged. Only internal scoped/authenticated DTOs rehydrate trusted System data.
+
+Memory serializes writes under its actual owner lock. Native PG offers the same
+custody operations within the caller's transaction, including exact source and
+target locking. CAS-only FS captures authenticated source data at the read; it
+does not offer an atomic multi-record publication or grant. All FS normal writes
+use absence or the version plus encrypted-body checksum from one backend read;
+ordinary deletion uses native conditional single-entry removal. An unsupported
+backend never downgrades to unconditional mutation. False deletion means no
+selected mutation, not proof another current value is absent. An error may mean
+a committed effect whose acknowledgement was lost.
+
+These storage primitives alone do not publish an AuthProduct workflow atomically,
+reconcile account/flow/result/browser state or fence leases for ordinary mutable
+values. Those consumers retain their explicit K3 step2/step4 ownership and
+acceptance requirements. Never compensate unknown publication with blind delete
+or recreate an original identity.
+
+Durable PostgreSQL storage is provided by `FilesystemSecretStore` and
 `FilesystemCredentialBroker` over the database-backed `RootFilesystem`
 implementations. Backend selection is now a property of the filesystem layer;
+the current filesystem crate exports PostgreSQL, memory, local and composed/HSM
+backends, with no libSQL runtime backend. Earlier libSQL references describe the
+retired implementation; the separate legacy SQLite/libSQL importer is not a
+current persistence fallback. Qualify native PgSecretStore and actual persistent
+PG-backed FS behavior independently when either path changes.
 `brassclaw_secrets` stores encrypted payloads and per-record salts under scoped
 filesystem paths, with tenant id projected as a defense-in-depth index. Store
 readiness must fail closed when the configured master key is missing or
@@ -211,7 +277,7 @@ This contract is the current status source for the secrets side of
 
 Closed in the current Reborn slice:
 
-- durable encrypted secret storage over libSQL/PostgreSQL-backed RootFilesystem
+- durable encrypted secret storage over PostgreSQL-backed RootFilesystem
 - durable credential account/session storage through `FilesystemCredentialBroker`
 - production wiring guardrails for credential account/session stores
 - staged-obligation production egress as the canonical direct-secret-injection boundary
@@ -225,3 +291,14 @@ Deferred outside this issue's V1 slice:
 - external proxy/sidecar credential enforcement
 - provider-specific OAuth refresh UX
 - redirect-following credential reinjection. Current built-in host HTTP returns redirect responses without following them, so credentials are not forwarded across redirect hops.
+
+### Filesystem generation CAS
+
+`FilesystemSecretStore::put_if_record_reference` captures the encrypted entry body
+checksum and version from the same read. Native memory and PostgreSQL owners
+check both atomically with the write. A recreated path may reuse a version, so a
+version alone cannot prove the selected generation. A checksum mismatch returns
+no replacement; unsupported preconditions remain storage errors without weakening
+them to `Any`. This compares the exact serialized encrypted body, not plaintext
+material, metadata or a physical lifetime restored with identical bytes. Original
+manual-input custody and lease-generation capture remain their separate K3 steps.

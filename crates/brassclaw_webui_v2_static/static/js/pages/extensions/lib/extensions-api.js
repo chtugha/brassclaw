@@ -4,6 +4,7 @@
 //   projection and maps those operations to the extension registry.
 
 import { apiFetch, setupExtension } from "../../../lib/api.js";
+import { oauthOriginalBody } from "./oauth-original.js";
 import { redeemPairingCode } from "./pairing-api.js";
 
 export function fetchExtensions() {
@@ -31,28 +32,44 @@ export function removeExtension(packageRef) {
 export function fetchExtensionSetup(packageRef) {
   return apiFetch(`/api/webchat/v2/extensions/${encodeURIComponent(packageId(packageRef))}/setup`);
 }
-export function submitExtensionSetup(packageRef, secrets, fields) {
+export function submitExtensionSetup(packageRef, fields) {
   return setupExtension(packageId(packageRef), {
     action: "submit",
-    payload: { secrets, fields },
+    payload: { fields },
   });
 }
-export function startExtensionOauth(packageRef, secret) {
-  const setup = secret?.setup || {};
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-  return apiFetch(
-    `/api/webchat/v2/extensions/${encodeURIComponent(packageId(packageRef))}/setup/oauth/start`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        provider: secret.provider,
-        account_label: setup.account_label || `${secret.provider} credential`,
-        scopes: setup.scopes || [],
-        expires_at: expiresAt,
-        invocation_id: setup.invocation_id,
-      }),
-    }
-  );
+function manualBody(operation) {
+  return { requirement: operation.definition.requirement, identity: { ...operation.identity },
+    invocation_id: operation.invocationId };
+}
+function manualPath(packageRef, action) {
+  return `/api/webchat/v2/extensions/${encodeURIComponent(packageId(packageRef))}/setup/manual-token/${action}`;
+}
+export function prepareExtensionManualToken(packageRef, operation) {
+  return apiFetch(manualPath(packageRef, "setup"), { method: "POST",
+    body: JSON.stringify({ ...manualBody(operation), target: { ...operation.definition.target } }) });
+}
+export function submitExtensionManualToken(packageRef, operation, token) {
+  return apiFetch(manualPath(packageRef, "secret-submit"), { method: "POST",
+    body: JSON.stringify({ ...manualBody(operation), token }) });
+}
+export function continueExtensionManualToken(packageRef, operation) {
+  return apiFetch(manualPath(packageRef, "continue"), { method: "POST", body: JSON.stringify(manualBody(operation)) });
+}
+export function cancelExtensionManualToken(packageRef, operation) {
+  return apiFetch(manualPath(packageRef, "cancel"), { method: "POST", body: JSON.stringify(manualBody(operation)) });
+}
+// Keep the existing initial expiry default in one producer. Original retries
+// never call this to replace their saved first expiry.
+export function extensionOauthExpiry() {
+  return new Date(Date.now() + 10 * 60 * 1000).toISOString();
+}
+export function sendExtensionOauthOriginal(packageRef, operation, action) {
+  const id=packageId(packageRef);
+  if (id!==operation.definition.packageId) throw new Error("OAuth original package does not match.");
+  return apiFetch(`/api/webchat/v2/extensions/${encodeURIComponent(id)}/setup/oauth/start`, {
+    method:"POST",body:JSON.stringify(oauthOriginalBody(operation,action)),
+  });
 }
 export function fetchPairingRequests() {
   return Promise.resolve({ requests: [] });

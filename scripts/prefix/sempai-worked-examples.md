@@ -15,7 +15,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -42,7 +44,11 @@ activated component catalogue. All identities below are explicitly allocated OFF
 DOCUMENTATION FIXTURES, not usable/approved deployment identities. Never copy fixture
 UUIDs, sample field names, bounds, intents or provider facts into another task.
 
-Each complete example is scoped to its supplied contract. Python is a target-input
+Each complete example is scoped to its supplied contract. The decoded Python and
+its JSON `content` mirror are standalone invocation/test programs, not preload-only
+exports. Their bodies and expected probe results remain paired. For new reusable
+exports use the [definition/invocation reference](../../docs/plans/monty.composition.implementation.md#open-definition-and-example-successors-from-k4),
+including its independent-pure approval gate. Python is a target-input
 pure-logic program; it still needs the selected runtime to support inputs before
 production execution. Recipe examples are full offline exports, not insertions
 through the current live sink (which drops v3 fields). Source verification and actual
@@ -56,8 +62,11 @@ EXAMPLE HOST REQUIREMENT, not an unconditional production ban on those fields.
   reach the validator; return its requested decision, without accidental exceptions.
 - An ordinary Tool consumer instead requires its declared typed prerequisites.
 - Returning data does not post a reply. Binding a ToolSkill does not call a Tool.
-- A helper's local result is not the module result. Return the object, call the
-  helper, and assign that returned object to module-level result.
+- For the standalone invocation programs below, a helper's local result is not
+  the module result: return the object, call the helper and capture its return.
+  For a reusable preload definition, declare the export and return contract but
+  do not invoke it or assign a module result while loading. The retained caller
+  selects and invokes that export later.
 - A list contract has TWO levels: outer length/type and every item's recursive shape.
 - An offline supported draft needs authoring facts; activation needs distinct Q1/Q2
   and exact-combination evidence. Never use missing activation support to refuse an
@@ -2436,7 +2445,8 @@ Use these paired conditions when examples resemble one another:
    is independent of minimum and item validity. Duplicate items are allowed unless
    the current contract forbids them; distinct Recipe intent examples are a separate rule.
 3. Same local result variable: a helper-local assignment without return is not the
-   returned object. A called helper must return; its caller must assign module result.
+   returned object. These standalone callers assign the returned module result;
+   preload definitions instead expose a returning export without invoking it.
 4. Same nullable field: missing may select a stated default; supplied null may be
    rejected or explicitly classified. An ordinary consumer and a raw validator have
    different outer input contracts. Never paste runtime values into Python source.
@@ -2463,8 +2473,9 @@ Use these paired conditions when examples resemble one another:
     steps is empty, bounds were checked or intents are distinct does not make it so.
 
 Before finishing, inspect the completed artifact in this bounded order:
-- Every required helper returns its exact object on each applicable path; module
-  calls it and assigns result. Direct bodies assign result on every defined outcome.
+- Select artifact kind first: a preload export returns its declared value without
+  a module invocation. In these standalone probes, helpers return and their caller
+  captures result; direct bodies assign result on every defined outcome.
 - Check each nested collection's type, min/max count, object keys and item contracts.
 - Check every raw malformed/missing/null outcome and exact output fields; no coercion.
 - Match declared effects with referenced components and routing intents; count unique

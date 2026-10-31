@@ -23,12 +23,10 @@
 //! record carries the existing [`ConversationStateRepository`] contract
 //! (`save_state(expected_revision, state)`); the underlying filesystem
 //! also returns a `RecordVersion` which we use as the
-//! [`CasExpectation`] for write CAS. Backends that don't implement
-//! versioned `put` reject `CasExpectation::Version` with `Unsupported`;
-//! for those we fall back to `CasExpectation::Any` and rely on the
-//! in-process serialization the caller
-//! (`InMemoryConversationServices::mutation_lock`) already provides —
-//! same shape as the secrets / processes / run-state stores.
+//! [`CasExpectation`] for write CAS. Unsupported indexed projections may
+//! be stored as opaque entries with the exact same CAS precondition. A
+//! backend without conditional writes fails before mutation; local caller
+//! serialization does not replace cross-process atomicity.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
@@ -260,7 +258,7 @@ where
                 }
             };
             let entry = state_entry(body.clone(), state);
-            match put_with_byte_fallback(&self.filesystem, &scope, &path, entry, cas).await {
+            match put_with_projection_fallback(&self.filesystem, &scope, &path, entry, cas).await {
                 Ok(()) => return Ok(new_revision),
                 Err(FilesystemError::VersionMismatch { .. }) => continue,
                 Err(error) => return Err(filesystem_error(error)),
@@ -340,15 +338,9 @@ fn index_key_tenant_ids() -> IndexKey {
         .unwrap_or_else(|_| unreachable!("tenant_ids is a simple ascii identifier"))
 }
 
-/// `put` with a fallback to opaque (byte-only) writes on `Unsupported`.
-///
-/// Mirrors the secrets / processes / run-state stores: record-shaped
-/// entries and non-`Any` CAS are stripped/downgraded when the backend
-/// reports `Unsupported` so byte-only mounts (LocalFilesystem) keep
-/// working. The single-instance `mutation_lock` on
-/// [`InMemoryConversationServices`] is the caller-side ordering guarantee
-/// that CAS would otherwise provide on byte-only backends.
-async fn put_with_byte_fallback<F>(
+/// Adapt unsupported indexed projections, preserving body/content type and
+/// the exact caller condition. Never emulate CAS with a preflight read or Any.
+async fn put_with_projection_fallback<F>(
     filesystem: &ScopedFilesystem<F>,
     scope: &ResourceScope,
     path: &ScopedPath,
@@ -364,10 +356,10 @@ where
         Err(FilesystemError::Unsupported {
             operation: FilesystemOperation::WriteFile,
             ..
-        }) => filesystem
-            .put(scope, path, fallback, CasExpectation::Any)
-            .await
-            .map(|_| ()),
+        }) if fallback.kind.is_some() || !fallback.indexed.is_empty() => {
+            let opaque = Entry::bytes(fallback.body).with_content_type(fallback.content_type);
+            filesystem.put(scope, path, opaque, cas).await.map(|_| ())
+        }
         Err(error) => Err(error),
     }
 }

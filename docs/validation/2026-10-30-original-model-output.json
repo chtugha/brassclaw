@@ -1,0 +1,592 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-30",
+  "request": "BUILD-005",
+  "status": "scoped-accepted",
+  "sources": {
+    "crates/brassclaw_reborn/src/model_gateway.rs": "d42a28edb3821fc6dbecefdad7f9f1aba338cdd6fe1d4f1345a33c903cc27e73",
+    "crates/brassclaw_reborn_composition/src/task_model_provider.rs": "0c7210857152d357a89a489732f574c71c956493b8185304cb18c5f0211168df",
+    "crates/brassclaw_reborn/src/model_gateway_final_request_tests.rs": "47e6f9e99360843ee522595c7390136d26ae71dd4371b66e4345ac4306ff4bf3",
+    "crates/brassclaw_turns/src/run_profile/host.rs": "23b8a0e1752dcfa9715c2117f9a9a95eeb2d85b097383d0b7467472cfc3a8381",
+    "crates/brassclaw_reborn/src/monty_model_capability.rs": "0c9105ca6bb880c7e29800ca870b4e47d549866c098cf1d357fc3b8c617d5865",
+    "crates/brassclaw_reborn/src/monty_task_host.rs": "fcc4bca4460db9f86b2791fc9a829e7bf5bfc724305bb2ce4f4800141b3fe081",
+    "crates/brassclaw_reborn_composition/src/pg_monty_model_response.rs": "7fa9a41fefa43ebd5126d5a431f865cbda70c4347673d4f6ca19cc284298d77f",
+    "crates/brassclaw_loop_support/src/lib.rs": "4c107182ce0ef0c4a7f4c0ca053cf71e9d44aa8d507a176b0401f23985292cb0",
+    "crates/brassclaw_skills/src/model_completion_components.rs": "9d9b1654dd6382737057213bac889a8912ca6d8c53ee454c663aac3e68eada51",
+    "crates/brassclaw_skills/src/prefix_bootstrap_components.rs": "7d50d52c0bfbbe4203caa18e7be9040c278728dabc7bed5ee2bb1979e642c73e",
+    "crates/brassclaw_reborn_composition/src/monty_kernel.rs": "409885238669b49e4639f0f17792e67c2143dd0b067d66e807a7d2846dfb1934",
+    "crates/brassclaw_reborn_composition/src/native_model_usage_tests.rs": "7967e5b83fbeecc838513d7eaa21573604be1c80e9b448a7b7a4f2121476a59a",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/canonical_model_usage_tests.rs": "33a15f50e23de61885a0eb177348dfd9f5554a87d212156aa0ad4a3719e0dd65",
+    "crates/brassclaw_engine/tests/retained_tools.rs": "0b3b8a0ab70798da338b7b1f01e22825633691afea96dc361cb8834bbb2b59d6",
+    "crates/brassclaw_reborn/tests/llm_gateway.rs": "3a24243399a43f844bd15f07b43f04bc927a3bc98c1d2a89497fe88d1fb7b1f5"
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-3/source.json",
+    "count": 7963,
+    "sha256": "66f2431842f37fe9102f83ee76d5d70d898b4b24546448eeaf54287b636afd01"
+  },
+  "proposal": {
+    "status": "private-bounded-output-producer-prerequisite-ready-for-root-review-not-applied-not-compiled-not-run",
+    "patch": "/private/tmp/brassclaw-exact-build-002-patches-20261030/006-output-producer-prerequisite.patch",
+    "patch_sha256": "1dedb17d6e3605ef0e85d980b70ab96b67539c6c5b52e8ae079ac93bd379ef77",
+    "sources": {
+      "crates/brassclaw_reborn/src/model_gateway.rs": {
+        "before": "8b199ce559393d5c5269703056e3358e936d5b853d31736ee2c3dde118c50dc4",
+        "after": "69280366d39ce1ecc523cca9e5d29bc9cabfacc8cee36e66a1bc314c5e46aa29"
+      },
+      "crates/brassclaw_reborn_composition/src/task_model_provider.rs": {
+        "before": "5ec11068df374668a1bda10b485762f0141a841e80ad076b594183efb6d1f62f",
+        "after": "0c7210857152d357a89a489732f574c71c956493b8185304cb18c5f0211168df"
+      },
+      "crates/brassclaw_reborn/src/model_gateway_final_request_tests.rs": {
+        "before": "17f2c4a59c75fb9d02d3eaa8586464d3c2d6ab946d68382357a57037091d4a71",
+        "after": "0f1e232353f8df6e85a55c0fb03fcbdb038ba7472c5c11e913b1abba56c7ab94"
+      },
+      "crates/brassclaw_turns/src/run_profile/host.rs": {
+        "before": "0cf35e5bc4bb7e232e40924d809386353ef4ad840e1ea52388f3db47054506d5",
+        "after": "23b8a0e1752dcfa9715c2117f9a9a95eeb2d85b097383d0b7467472cfc3a8381"
+      },
+      "crates/brassclaw_reborn/src/monty_model_capability.rs": {
+        "before": "47e4425e71f8ed7cf358f4c3c17247ed65ae784fb25c0daed136ff02bd3f0c4a",
+        "after": "c559ecac1319db69ae8850198772f737f7ce350b724e7f326aa9f26acc0f1d8b"
+      },
+      "crates/brassclaw_reborn/src/monty_task_host.rs": {
+        "before": "487a35ab4e0974e6b3ed4ab429f497620a66243bff50b1839723621897dbcd2a",
+        "after": "fcc4bca4460db9f86b2791fc9a829e7bf5bfc724305bb2ce4f4800141b3fe081"
+      },
+      "crates/brassclaw_reborn_composition/src/pg_monty_model_response.rs": {
+        "before": "10b17b4f6b16200a87517c6c95a41c42450332a9bb005f7a9348c3ac828bee01",
+        "after": "b1babc08ce5870ae8761d3d1b0ebadc8342d7e291cb791a20ed434417dc53d18"
+      },
+      "crates/brassclaw_loop_support/src/lib.rs": {
+        "before": "95ae04c4cf9f8ac1024457f73307594dcfbdf4a31dcea0b1ee2c0768bfc42dab",
+        "after": "4c107182ce0ef0c4a7f4c0ca053cf71e9d44aa8d507a176b0401f23985292cb0"
+      },
+      "crates/brassclaw_skills/src/model_completion_components.rs": {
+        "before": "d870661f5b8508c3ddca4e6cdf9b10bb90835f2e6dab871fe380e3950c92e228",
+        "after": "9d9b1654dd6382737057213bac889a8912ca6d8c53ee454c663aac3e68eada51"
+      },
+      "crates/brassclaw_skills/src/prefix_bootstrap_components.rs": {
+        "before": "9da66805bb8b65b9693c983e655904aab0a09a0a7a317bafb1e6df367c436494",
+        "after": "9bfdd78cb8d7344e770ddd4b24e71988df3962ddba38900424a9789987cb846e"
+      },
+      "crates/brassclaw_reborn_composition/src/monty_kernel.rs": {
+        "before": "7391b74d14a8223eeed0b9cdbbbce5d0b212cd240e94978787ef64410f959a66",
+        "after": "409885238669b49e4639f0f17792e67c2143dd0b067d66e807a7d2846dfb1934"
+      },
+      "crates/brassclaw_reborn_composition/src/native_model_usage_tests.rs": {
+        "before": "6e7a65782768be2ef4635abffef38f0b4cb2fea771c83b8818aaa806e85b13cb",
+        "after": "4b3dd3cac412ade208b3e2901ee26f7d2157c23ab1db73645ad90b3c69f76e9a"
+      },
+      "crates/brassclaw_reborn_composition/src/runtime/tests/canonical_model_usage_tests.rs": {
+        "before": "94168ae7ef4ba1b26c561958c29f95b5041f6b8dc9db102e449bbb601319d642",
+        "after": "1284ff091d106e35c3f45490521707280c60facf39f7fb42a929772f61aa086d"
+      },
+      "crates/brassclaw_engine/tests/retained_tools.rs": {
+        "before": "c3754880d224fba71413222b664f34c353d3026c1a9c75b89d82727232d34974",
+        "after": "c8114cc174895501a848e137a39cbf879d1e0d45bf5c7bce48567403dae87b60"
+      }
+    },
+    "supersedes_proposal": "005; same production edits, stronger native final-guard negative-case oracle",
+    "scope": "Original explicit positive request output setting to existing SDK/final guard; no Free workflow activation or full I2 acceptance",
+    "remaining_I2": [
+      "actual qualified free workflow root and child/review closure",
+      "raw-byte-preserving evidence storage/readers",
+      "without-prefix native final counter acceptance",
+      "I1 admitted bootstrap input binding"
+    ]
+  },
+  "package": "/private/tmp/brassclaw-output-producer-20261030-llz4qpwl",
+  "fresh_passed": 70,
+  "reused_unchanged_passed": 4,
+  "distinct_passed": 74,
+  "ignored": 0,
+  "attempts": {
+    "1": {
+      "directory": "/private/tmp/brassclaw-output-producer-validation-20261030/run-1",
+      "state": {
+        "status": "failed",
+        "runner_pid": 67593,
+        "process_pid": null,
+        "results": [
+          {
+            "stage": "format",
+            "exit_code": 0,
+            "seconds": 0.2567160418257117,
+            "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "stage": "connected-images",
+            "exit_code": 0,
+            "seconds": 238.1268697080668,
+            "log_sha256": "23c23aa5ae832c9ad536fe7375d9161902b209383ddf447d1f82cd7ce8ff8368"
+          },
+          {
+            "stage": "native-output-parser",
+            "exit_code": 0,
+            "seconds": 0.18758395896293223,
+            "log_sha256": "2dac67ff22543ed2db3c216c266330ea3e926d03c0474fc41e56f09592b62c62",
+            "passed": 1
+          }
+        ],
+        "images": {
+          "brassclaw_skills": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-1/brassclaw_skills-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_skills-deb9cb2f89f72f52",
+            "sha256": "d9722e8b3b50ba519de5409ff7c5f48536bf485544a4e398c6774b9cfa0750cf",
+            "features": [
+              "db-store",
+              "default",
+              "v1-types",
+              "v2-compat"
+            ]
+          },
+          "brassclaw_reborn": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-1/brassclaw_reborn-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn-b0f928d5bf511523",
+            "sha256": "8e741efb460a3c14d67bca21d4fd1a87744775bac5e75679a6eb3bf45fef55e9",
+            "features": [
+              "default",
+              "root-llm-provider"
+            ]
+          },
+          "brassclaw_reborn_composition": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-1/brassclaw_reborn_composition-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-65f4de733b34bd3a",
+            "sha256": "32875abee4bc7ede3a3e0537c696a2976f2652d501b1235b00f51b0e6690c176",
+            "features": [
+              "default",
+              "postgres",
+              "root-llm-provider",
+              "skills-db",
+              "test-support"
+            ]
+          }
+        },
+        "scope": "Original explicit output reservation through typed retained usage, PG custody, existing SDK/final guard; no Free qualification or activation, no full I2 claim.",
+        "worker": {
+          "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-1/monty_worker",
+          "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+          "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+          "evidence": "Unchanged BUILD-003 worker and dependency inputs; producer modifies no worker dependency."
+        },
+        "stage": "native-output-parser",
+        "command": [
+          "/private/tmp/brassclaw-output-producer-validation-20261030/run-1/brassclaw_reborn-tests",
+          "output_reservation_tests::",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "model_assets": {
+          "source": "/Volumes/SSDE/brassclaw/target/validation/prefix-model-source-cacik5n7",
+          "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6",
+          "retained": "/private/tmp/brassclaw-output-producer-validation-20261030/run-1/model-artifacts",
+          "files": {
+            "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+            "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+            "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+            "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+            "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+            "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+          }
+        },
+        "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-output-producer-validation.py\", line 120, in <module>\n    tests('final-request-barriers','brassclaw_reborn','model_gateway_final_request_tests::')\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-output-producer-validation.py\", line 86, in tests\n    assert any(selector in name for name in candidates), selector\n           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: model_gateway_final_request_tests::\n"
+      },
+      "source_sha256": "04f2cb000beca22f8a35952c0ab78d5ceaa88c3e6039500f520c52be12ab85ef"
+    },
+    "2": {
+      "directory": "/private/tmp/brassclaw-output-producer-validation-20261030/run-2",
+      "state": {
+        "status": "failed",
+        "runner_pid": 67904,
+        "process_pid": null,
+        "results": [
+          {
+            "stage": "final-request-barriers",
+            "exit_code": 0,
+            "seconds": 0.18124508298933506,
+            "log_sha256": "d6671569212eeaa530d7732574d5e122ee71d7001b244bcbba5963f3e752cf49",
+            "passed": 5
+          },
+          {
+            "stage": "bootstrap-draft-contracts",
+            "exit_code": 0,
+            "seconds": 0.192103291163221,
+            "log_sha256": "d7cdb01d23e07ad01808a0b3ad65ea414166c2f33cd0ac67ed4b8aa4e9e61db6",
+            "passed": 2
+          },
+          {
+            "stage": "native-global-output",
+            "exit_code": 0,
+            "seconds": 38.65135604189709,
+            "log_sha256": "cf9769f508eb811e84689a6dc97c13ef4d779f5c0e448b1f990b07d99a81759c",
+            "passed": 1
+          },
+          {
+            "stage": "native-sdk-output",
+            "exit_code": 0,
+            "seconds": 9.718468667007983,
+            "log_sha256": "589a88cea1e38bda84f0852cff1f2cf6eb96d17353745e9c626d51d93ffe847b",
+            "passed": 1
+          },
+          {
+            "stage": "native-default-legacy",
+            "exit_code": 0,
+            "seconds": 4.420943041797727,
+            "log_sha256": "4528c261341d67fd3c58229a63ce792737452239a85879ee9bfb7f185f40f88c",
+            "passed": 1
+          },
+          {
+            "stage": "native-selected-legacy",
+            "exit_code": 0,
+            "seconds": 4.456238124985248,
+            "log_sha256": "b58376abc7187a07bcdb69e2570d25b9f1aeac87eea8b35b51f90fe152a87cec",
+            "passed": 1
+          },
+          {
+            "stage": "retained-tools-image",
+            "exit_code": 0,
+            "seconds": 9.825205417117104,
+            "log_sha256": "2b7d6d1e3618d297fd02d01c9a315fbed5ce7eddb3dc65ffe17b9055547050fb"
+          },
+          {
+            "stage": "retained-typed-bindings",
+            "exit_code": 0,
+            "seconds": 4.817173958057538,
+            "log_sha256": "1793183ae845dd912207c2db1e61627b1dfc2b4138185b21e2094bb79c35736f",
+            "passed": 2
+          },
+          {
+            "stage": "gateway-image",
+            "exit_code": 0,
+            "seconds": 15.530530540971085,
+            "log_sha256": "6430e5e43c67c54184f6ac80b8e767011cf5d8b70a4d4e73a362afad386d0775"
+          },
+          {
+            "stage": "existing-model-gateway",
+            "exit_code": 101,
+            "seconds": 0.4808452089782804,
+            "log_sha256": "8c4558c670ead3a15dcd92f778f99e3bd238d62545ccb2c717e5210032bc52f2"
+          }
+        ],
+        "images": {
+          "brassclaw_skills": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-1/brassclaw_skills-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_skills-deb9cb2f89f72f52",
+            "sha256": "d9722e8b3b50ba519de5409ff7c5f48536bf485544a4e398c6774b9cfa0750cf",
+            "features": [
+              "db-store",
+              "default",
+              "v1-types",
+              "v2-compat"
+            ]
+          },
+          "brassclaw_reborn": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-1/brassclaw_reborn-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn-b0f928d5bf511523",
+            "sha256": "8e741efb460a3c14d67bca21d4fd1a87744775bac5e75679a6eb3bf45fef55e9",
+            "features": [
+              "default",
+              "root-llm-provider"
+            ]
+          },
+          "brassclaw_reborn_composition": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-1/brassclaw_reborn_composition-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-65f4de733b34bd3a",
+            "sha256": "32875abee4bc7ede3a3e0537c696a2976f2652d501b1235b00f51b0e6690c176",
+            "features": [
+              "default",
+              "postgres",
+              "root-llm-provider",
+              "skills-db",
+              "test-support"
+            ]
+          },
+          "retained_tools": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-2/retained_tools-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/retained_tools-bbe2e7e34c684a2f",
+            "sha256": "5d5cf736492b0037a2c0b05c19143610619320c6673c3cbd5c12849b4a0781e0",
+            "features": [
+              "skills-db"
+            ]
+          },
+          "llm_gateway": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-2/llm_gateway-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/llm_gateway-17d6db576c2a9be9",
+            "sha256": "d19d239cfd4a04a70905788e30edf4a1d46a1930716b1e39e9bf26d3895474f2",
+            "features": [
+              "default",
+              "root-llm-provider"
+            ]
+          }
+        },
+        "scope": "Original explicit output reservation through typed retained usage, PG custody, existing SDK/final guard; no Free qualification or activation, no full I2 claim.",
+        "worker": {
+          "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-2/monty_worker",
+          "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+          "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+          "evidence": "Unchanged BUILD-003 worker and dependency inputs; producer modifies no worker dependency."
+        },
+        "reused": {
+          "run": "/private/tmp/brassclaw-output-producer-validation-20261030/run-1",
+          "source_sha256": "04f2cb000beca22f8a35952c0ab78d5ceaa88c3e6039500f520c52be12ab85ef",
+          "results": [
+            {
+              "stage": "format",
+              "exit_code": 0,
+              "seconds": 0.2567160418257117,
+              "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            {
+              "stage": "connected-images",
+              "exit_code": 0,
+              "seconds": 238.1268697080668,
+              "log_sha256": "23c23aa5ae832c9ad536fe7375d9161902b209383ddf447d1f82cd7ce8ff8368"
+            },
+            {
+              "stage": "native-output-parser",
+              "exit_code": 0,
+              "seconds": 0.18758395896293223,
+              "log_sha256": "2dac67ff22543ed2db3c216c266330ea3e926d03c0474fc41e56f09592b62c62",
+              "passed": 1
+            }
+          ],
+          "reason": "Only an invalid runner selector failed; source, compiler exit and immutable images are unchanged."
+        },
+        "model_assets": {
+          "source": "/Volumes/SSDE/brassclaw/target/validation/prefix-model-source-cacik5n7",
+          "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6",
+          "retained": "/private/tmp/brassclaw-output-producer-validation-20261030/run-2/model-artifacts",
+          "files": {
+            "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+            "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+            "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+            "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+            "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+            "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+          }
+        },
+        "stage": "existing-model-gateway",
+        "command": [
+          "/private/tmp/brassclaw-output-producer-validation-20261030/run-2/llm_gateway-tests",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-output-producer-validation.py\", line 149, in <module>\n    tests('existing-model-gateway','llm_gateway')\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-output-producer-validation.py\", line 89, in tests\n    output = run(label, args + ['--nocapture','--test-threads=1'])\n  File \"/private/tmp/brassclaw-output-producer-validation.py\", line 73, in run\n    assert code == 0, (label,code)\n           ^^^^^^^^^\nAssertionError: ('existing-model-gateway', 101)\n"
+      },
+      "source_sha256": "04f2cb000beca22f8a35952c0ab78d5ceaa88c3e6039500f520c52be12ab85ef"
+    },
+    "3": {
+      "directory": "/private/tmp/brassclaw-output-producer-validation-20261030/run-3",
+      "state": {
+        "status": "passed",
+        "runner_pid": 68701,
+        "process_pid": null,
+        "results": [
+          {
+            "stage": "format",
+            "exit_code": 0,
+            "seconds": 0.2694901670329273,
+            "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "stage": "connected-images",
+            "exit_code": 0,
+            "seconds": 226.97759087500162,
+            "log_sha256": "6ba06f3a9a305d2a5e6674df801a71638f487ad464acf484923b4227491283bd"
+          },
+          {
+            "stage": "native-output-parser",
+            "exit_code": 0,
+            "seconds": 0.18833683291450143,
+            "log_sha256": "2dac67ff22543ed2db3c216c266330ea3e926d03c0474fc41e56f09592b62c62",
+            "passed": 1
+          },
+          {
+            "stage": "final-request-barriers",
+            "exit_code": 0,
+            "seconds": 0.18886170908808708,
+            "log_sha256": "d6671569212eeaa530d7732574d5e122ee71d7001b244bcbba5963f3e752cf49",
+            "passed": 5
+          },
+          {
+            "stage": "native-global-output",
+            "exit_code": 0,
+            "seconds": 39.63701137481257,
+            "log_sha256": "e910faadadbfc8d0516357e10e6ced5e03d1a6c74ef70e789a3243983b812699",
+            "passed": 1
+          },
+          {
+            "stage": "native-sdk-output",
+            "exit_code": 0,
+            "seconds": 9.90541979111731,
+            "log_sha256": "63a1c19704dbc1cf8bd21953827f6ea759098e521813b3056a64e6f80f104fb8",
+            "passed": 1
+          },
+          {
+            "stage": "native-default-legacy",
+            "exit_code": 0,
+            "seconds": 4.4988797921687365,
+            "log_sha256": "4e376af59b4be56742d449f9d4c6b8c87a542c21237349b0b929881bb38cf19f",
+            "passed": 1
+          },
+          {
+            "stage": "native-selected-legacy",
+            "exit_code": 0,
+            "seconds": 4.513478292152286,
+            "log_sha256": "f959f9f542b17a2a6e40c36913f5ec0dff290421ffccfce543bd16f750b49dc4",
+            "passed": 1
+          },
+          {
+            "stage": "gateway-image",
+            "exit_code": 0,
+            "seconds": 5.204629875021055,
+            "log_sha256": "24d0e7de98801446ef7ec2157938c1e9272b41dba005c18af19bca52a3fc3067"
+          },
+          {
+            "stage": "existing-model-gateway",
+            "exit_code": 0,
+            "seconds": 0.48343858285807073,
+            "log_sha256": "365efd5a30b5962c41978dafc37032855cfbdc9bf30b1b9a6412d42ade08e706",
+            "passed": 60
+          },
+          {
+            "stage": "connected-strict",
+            "exit_code": 0,
+            "seconds": 95.46756008290686,
+            "log_sha256": "20d2bbd58975b746bfe93286eeb409a4ac6762417690333a7e7ae5f396cd5b86"
+          },
+          {
+            "stage": "retained-tools-strict",
+            "exit_code": 0,
+            "seconds": 7.290756833041087,
+            "log_sha256": "497f4d0eaba99e858971ae431473d9ba723415ce55f1a4c70c895ae62109c011"
+          },
+          {
+            "stage": "default-strict",
+            "exit_code": 0,
+            "seconds": 25.771196332992986,
+            "log_sha256": "ddf8740e8e9b55d700e23eefa14020926ce7c8fbd453962fd1f5dbd42c6bc5c8"
+          }
+        ],
+        "images": {
+          "retained_tools": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-2/retained_tools-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/retained_tools-bbe2e7e34c684a2f",
+            "sha256": "5d5cf736492b0037a2c0b05c19143610619320c6673c3cbd5c12849b4a0781e0",
+            "features": [
+              "skills-db"
+            ]
+          },
+          "brassclaw_skills": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-3/brassclaw_skills-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_skills-deb9cb2f89f72f52",
+            "sha256": "d9722e8b3b50ba519de5409ff7c5f48536bf485544a4e398c6774b9cfa0750cf",
+            "features": [
+              "db-store",
+              "default",
+              "v1-types",
+              "v2-compat"
+            ]
+          },
+          "brassclaw_reborn": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-3/brassclaw_reborn-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn-b0f928d5bf511523",
+            "sha256": "f1669e6a9fbb34d27626b81c0e76486b24d187a4d47e0f5c8a59b3bf390beb20",
+            "features": [
+              "default",
+              "root-llm-provider"
+            ]
+          },
+          "brassclaw_reborn_composition": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-3/brassclaw_reborn_composition-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-65f4de733b34bd3a",
+            "sha256": "07a913bdc6adb1fa584607db86a0c0a598ecf14d6e1f6f9046c83f7736afab6b",
+            "features": [
+              "default",
+              "postgres",
+              "root-llm-provider",
+              "skills-db",
+              "test-support"
+            ]
+          },
+          "llm_gateway": {
+            "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-3/llm_gateway-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/llm_gateway-17d6db576c2a9be9",
+            "sha256": "debad934355785a9163183ba7f81bea22f540c9f0f88d21bd701223090847ea0",
+            "features": [
+              "default",
+              "root-llm-provider"
+            ]
+          }
+        },
+        "scope": "Original explicit output reservation through typed retained usage, PG custody, existing SDK/final guard; no Free qualification or activation, no full I2 claim.",
+        "worker": {
+          "path": "/private/tmp/brassclaw-output-producer-validation-20261030/run-3/monty_worker",
+          "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+          "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+          "evidence": "Unchanged BUILD-003 worker and dependency inputs; producer modifies no worker dependency."
+        },
+        "reused_unaffected": {
+          "run": "/private/tmp/brassclaw-output-producer-validation-20261030/run-2",
+          "source_sha256": "04f2cb000beca22f8a35952c0ab78d5ceaa88c3e6039500f520c52be12ab85ef",
+          "results": [
+            {
+              "stage": "bootstrap-draft-contracts",
+              "exit_code": 0,
+              "seconds": 0.192103291163221,
+              "log_sha256": "d7cdb01d23e07ad01808a0b3ad65ea414166c2f33cd0ac67ed4b8aa4e9e61db6",
+              "passed": 2
+            },
+            {
+              "stage": "retained-typed-bindings",
+              "exit_code": 0,
+              "seconds": 4.817173958057538,
+              "log_sha256": "1793183ae845dd912207c2db1e61627b1dfc2b4138185b21e2094bb79c35736f",
+              "passed": 2
+            }
+          ],
+          "reason": "Only Reborn model-route sentinel check and gateway test fixture changed; Skills draft and Engine binding dependency graphs do not depend on Reborn."
+        },
+        "stage": "terminal",
+        "command": [
+          "cargo",
+          "+1.96.0",
+          "clippy",
+          "-p",
+          "brassclaw_reborn_composition",
+          "-p",
+          "brassclaw_reborn",
+          "--lib",
+          "--locked",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "model_assets": {
+          "source": "/Volumes/SSDE/brassclaw/target/validation/prefix-model-source-cacik5n7",
+          "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6",
+          "retained": "/private/tmp/brassclaw-output-producer-validation-20261030/run-3/model-artifacts",
+          "files": {
+            "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+            "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+            "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+            "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+            "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+            "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+          }
+        }
+      },
+      "source_sha256": "66f2431842f37fe9102f83ee76d5d70d898b4b24546448eeaf54287b636afd01"
+    }
+  },
+  "scope": "Positive original Recipe output setting through the existing native PG/custody/SDK/final guard; root-owned gateway regression repairs. No activated Free workflow, inference-quality, full I2 or platform/release claim.",
+  "limitations": [
+    "The actual global VM uses the existing static-route candidate fixture and no production final counter.",
+    "The separate captured-provider fixture exercises native retained invocation, original PG custody, actual SDK and production final counter; it is not full VM/workflow qualification.",
+    "Required existing Sempai interception may occur before primary final-token or live-cap rejection; primary no-send evidence does not mean no independent review effect.",
+    "All provider responses are explicit controlled SDK peers; no actual external model inference or Serving parity is claimed.",
+    "Full qualified Free root/required child/review closure, original observation-preserving evidence successor and I1 admitted bootstrap binding remain open.",
+    "Changed native input contract and candidate drafts require exact immutable seed/association qualification; old approved revisions and observations are not mutated."
+  ]
+}

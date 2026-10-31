@@ -40,6 +40,13 @@ pub(super) fn cases(effective: bool) -> Vec<&'static str> {
         "invalid-hash",
         "invalid-probes",
         "bad-tokenizer",
+        "partition",
+        "partition-boundary",
+        "partition-utf8",
+        "leading-chat",
+        "leading-chat-mismatch",
+        "leading-chat-boundary",
+        "leading-chat-unicode",
     ];
     if effective {
         cases.push("bad-template");
@@ -49,7 +56,7 @@ pub(super) fn cases(effective: bool) -> Vec<&'static str> {
 }
 fn rejection(case: &str) -> Option<&'static str> {
     match case {
-        "original" | "duplicate" => None,
+        "original" | "duplicate" | "partition" | "leading-chat" | "leading-chat-unicode" => None,
         "denied" => Some("retained_tool_authorization"),
         "missing-assets" => Some("retained_tool_operation_failed"),
         "render-fuel" => Some("retained_tool_resource"),
@@ -63,6 +70,7 @@ struct Invocation {
     tools: Arc<dyn RetainedToolPort>,
     fixture: Arc<Fixture>,
     effective: bool,
+    case: String,
 }
 #[async_trait]
 impl InternalRecipeSource for Invocation {
@@ -100,7 +108,7 @@ impl InternalRecipeSource for Invocation {
             return Err(bad());
         }
         self.fixture
-            .verify(receipt, self.effective)
+            .verify(receipt, self.effective, &self.case)
             .map_err(|_| bad())?;
         Ok(())
     }
@@ -132,6 +140,7 @@ pub(super) async fn execute(
             pool.clone(),
             "bootstrap-model-encoding",
             &reference,
+            None,
         ))
         .await?;
         let tools = crate::installed_monty_catalogue::bootstrap_encoding_tools(
@@ -155,6 +164,7 @@ pub(super) async fn execute(
                     tools,
                     fixture: fixture.clone(),
                     effective,
+                    case: case.into(),
                 }),
             )?,
         )
@@ -348,7 +358,7 @@ pub(super) async fn verify(
             let bytes = value
                 .as_str()
                 .ok_or_else(|| invalid("encoding result is not JSON bytes"))?;
-            let result = fixture.verify(bytes, effective)?;
+            let result = fixture.verify(bytes, effective, case)?;
             check(
                 result["worker_checksum"] == worker_checksum
                     && record["result_checksum"]
@@ -359,7 +369,7 @@ pub(super) async fn verify(
             )?;
             if case == "original" {
                 original = Some(bytes.to_owned());
-            } else {
+            } else if case == "duplicate" {
                 check(
                     original.as_deref() == Some(bytes),
                     "encoding duplicate is nondeterministic",

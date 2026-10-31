@@ -31,12 +31,13 @@ pub(crate) fn compose_provider_client(
     dcr_configs: Vec<OAuthDcrProviderBackendConfig>,
     secret_store: Arc<dyn SecretStore>,
     runtime_ports: ProductAuthProviderRuntimePorts,
+    primitive_settings: Option<Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
 ) -> Result<OAuthProviderComposition, RebornBuildError> {
     compose_provider_client_with_runtime(
         configs,
         dcr_configs,
         secret_store,
-        OAuthProviderRuntimePorts::from_product_auth_ports(runtime_ports),
+        OAuthProviderRuntimePorts::from_product_auth_ports(runtime_ports, primitive_settings),
     )
 }
 
@@ -50,29 +51,50 @@ fn compose_provider_client_with_runtime(
     let mut gate_providers = Vec::new();
     for config in configs {
         let provider_id = config.spec.provider_id;
-        if provider_id == GOOGLE_PROVIDER_ID {
-            gate_providers.push(Arc::new(GoogleOAuthGateProvider::new(
-                config.client.clone(),
+        let client = if provider_id == GOOGLE_PROVIDER_ID {
+            let provider = Arc::new(GoogleOAuthGateProvider::new(
+                config.client,
                 Arc::clone(&secret_store),
-            )));
+            ));
+            let client = HostOAuthProviderClient::new_with_client_material(
+                config.spec,
+                runtime_ports.runtime_http_egress(),
+                Arc::clone(&secret_store),
+                runtime_ports.obligation_handler(),
+                provider.clone(),
+            );
+            gate_providers.push(provider);
+            client
+        } else {
+            let mut client = HostOAuthProviderClient::new(
+                config.spec,
+                runtime_ports.runtime_http_egress(),
+                Arc::clone(&secret_store),
+                runtime_ports.obligation_handler(),
+                config.client.client_id,
+                config.client.redirect_uri,
+            )
+            .map_err(|error| RebornBuildError::InvalidConfig {
+                reason: format!(
+                    "{provider_id} OAuth provider backend could not be configured: {error}"
+                ),
+            })?;
+            if let Some(client_secret) = config.client.client_secret {
+                client = client.with_client_secret(client_secret);
+            }
+            Ok(client)
         }
-        let mut client = HostOAuthProviderClient::new(
-            config.spec,
-            runtime_ports.runtime_http_egress(),
-            Arc::clone(&secret_store),
-            runtime_ports.obligation_handler(),
-            config.client.client_id,
-            config.client.redirect_uri,
-        )
         .map_err(|error| RebornBuildError::InvalidConfig {
             reason: format!(
                 "{provider_id} OAuth provider backend could not be configured: {error}"
             ),
         })?;
-        if let Some(client_secret) = config.client.client_secret {
-            client = client.with_client_secret(client_secret);
-        }
-        clients.push((provider_id, Arc::new(client) as Arc<dyn AuthProviderClient>));
+        clients.push((
+            provider_id,
+            Arc::new(
+                client.with_primitive_settings_source(runtime_ports.primitive_settings.clone()),
+            ) as Arc<dyn AuthProviderClient>,
+        ));
     }
     let mut dcr_providers = Vec::new();
     for config in dcr_configs {
@@ -88,7 +110,8 @@ fn compose_provider_client_with_runtime(
                 reason: format!(
                     "{provider_id} DCR OAuth provider backend could not be configured: {error}"
                 ),
-            })?,
+            })?
+            .with_primitive_settings_source(runtime_ports.primitive_settings.clone()),
         );
         let client = HostOAuthProviderClient::new_with_client_material(
             provider.spec().clone(),
@@ -102,7 +125,12 @@ fn compose_provider_client_with_runtime(
                 "{provider_id} DCR OAuth provider backend could not be configured: {error}"
             ),
         })?;
-        clients.push((provider_id, Arc::new(client) as Arc<dyn AuthProviderClient>));
+        clients.push((
+            provider_id,
+            Arc::new(
+                client.with_primitive_settings_source(runtime_ports.primitive_settings.clone()),
+            ) as Arc<dyn AuthProviderClient>,
+        ));
         dcr_providers.push(provider);
     }
     let dcr_registry =
@@ -120,13 +148,18 @@ fn compose_provider_client_with_runtime(
 struct OAuthProviderRuntimePorts {
     runtime_http_egress: Arc<dyn RuntimeHttpEgress>,
     obligation_handler: Arc<dyn CapabilityObligationHandler>,
+    primitive_settings: Option<Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
 }
 
 impl OAuthProviderRuntimePorts {
-    fn from_product_auth_ports(ports: ProductAuthProviderRuntimePorts) -> Self {
+    fn from_product_auth_ports(
+        ports: ProductAuthProviderRuntimePorts,
+        primitive_settings: Option<Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
+    ) -> Self {
         Self {
             runtime_http_egress: ports.runtime_http_egress(),
             obligation_handler: ports.obligation_handler(),
+            primitive_settings,
         }
     }
 
@@ -138,6 +171,7 @@ impl OAuthProviderRuntimePorts {
         Self {
             runtime_http_egress,
             obligation_handler,
+            primitive_settings: None,
         }
     }
 
@@ -193,6 +227,25 @@ impl fmt::Debug for MultiplexAuthProviderClient {
 
 #[async_trait]
 impl AuthProviderClient for MultiplexAuthProviderClient {
+    async fn prepare_callback(
+        &self,
+        context: &brassclaw_auth::OAuthProviderExchangeContext,
+        request: &brassclaw_auth::OAuthProviderCallbackRequest,
+    ) -> Result<brassclaw_auth::OAuthTokenDestinations, AuthProductError> {
+        self.client_for(request.provider.as_str())?
+            .prepare_callback(context, request)
+            .await
+    }
+
+    async fn prepare_refresh(
+        &self,
+        request: &OAuthProviderRefreshRequest,
+    ) -> Result<brassclaw_auth::OAuthProviderRefreshPreparation, AuthProductError> {
+        self.client_for(request.provider.as_str())?
+            .prepare_refresh(request)
+            .await
+    }
+
     async fn exchange_callback(
         &self,
         context: OAuthProviderExchangeContext,
@@ -206,9 +259,10 @@ impl AuthProviderClient for MultiplexAuthProviderClient {
     async fn refresh_token(
         &self,
         request: OAuthProviderRefreshRequest,
+        preparation: brassclaw_auth::OAuthProviderRefreshPreparation,
     ) -> Result<OAuthProviderRefresh, AuthProductError> {
         self.client_for(request.provider.as_str())?
-            .refresh_token(request)
+            .refresh_token(request, preparation)
             .await
     }
 
@@ -352,6 +406,7 @@ mod tests {
         let run_id = TurnRunId::new();
         let gate_ref = AuthGateRef::new("gate:google-auth").unwrap();
         let requirements = vec![RuntimeCredentialAuthRequirement {
+            requirement: None,
             provider: RuntimeCredentialAccountProviderId::new("google").unwrap(),
             requester_extension: ExtensionId::new("google-calendar").unwrap(),
             provider_scopes: vec![GOOGLE_CALENDAR_READONLY_SCOPE.to_string()],
@@ -410,12 +465,13 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(old_access.clone()),
+                access_expires_at: None,
                 refresh_secret: Some(old_refresh.clone()),
                 scopes: vec![ProviderScope::new(GOOGLE_CALENDAR_READONLY_SCOPE).unwrap()],
             })
             .await
             .expect("expired google account");
-        let provider = compose_provider_client_with_runtime(
+        let composition = compose_provider_client_with_runtime(
             vec![OAuthProviderBackendConfig {
                 spec: google_provider_spec(),
                 client: oauth_client("google-client", "https://app.example/oauth/google"),
@@ -424,9 +480,9 @@ mod tests {
             secret_store,
             OAuthProviderRuntimePorts::new(egress.clone(), Arc::new(NoopObligationHandler)),
         )
-        .expect("provider composition")
-        .client
-        .expect("google provider client");
+        .expect("provider composition");
+        seed_google_refresh_client(&composition, &auth_scope, &old_refresh).await;
+        let provider = composition.client.expect("google provider client");
         let auth =
             ProviderBackedCredentialAccountService::new(shared.clone(), shared.clone(), provider);
 
@@ -513,12 +569,13 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(old_access.clone()),
+                access_expires_at: None,
                 refresh_secret: Some(old_refresh.clone()),
                 scopes: vec![ProviderScope::new(GOOGLE_CALENDAR_READONLY_SCOPE).unwrap()],
             })
             .await
             .expect("expired google account");
-        let provider = compose_provider_client_with_runtime(
+        let composition = compose_provider_client_with_runtime(
             vec![OAuthProviderBackendConfig {
                 spec: google_provider_spec(),
                 client: oauth_client("google-client", "https://app.example/oauth/google"),
@@ -527,9 +584,9 @@ mod tests {
             secret_store,
             OAuthProviderRuntimePorts::new(egress.clone(), Arc::new(NoopObligationHandler)),
         )
-        .expect("provider composition")
-        .client
-        .expect("google provider client");
+        .expect("provider composition");
+        seed_google_refresh_client(&composition, &auth_scope, &old_refresh).await;
+        let provider = composition.client.expect("google provider client");
         let auth =
             ProviderBackedCredentialAccountService::new(shared.clone(), shared.clone(), provider);
 
@@ -576,6 +633,118 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn google_refresh_without_original_client_requires_reauthorization_without_http() {
+        let egress = Arc::new(RecordingEgress::ok(Vec::new()));
+        let secrets = Arc::new(InMemorySecretStore::new());
+        let scope = AuthProductScope::new(sample_scope(), AuthSurface::Callback);
+        let refresh = SecretHandle::new("legacy-google-refresh-without-client").unwrap();
+        secrets
+            .put(
+                scope.resource.clone(),
+                refresh.clone(),
+                SecretString::from("controlled-legacy-refresh"),
+            )
+            .await
+            .unwrap();
+        let shared = Arc::new(InMemoryAuthProductServices::new());
+        let account = shared
+            .create_account(NewCredentialAccount {
+                scope: scope.clone(),
+                provider: AuthProviderId::new(GOOGLE_PROVIDER_ID).unwrap(),
+                label: CredentialAccountLabel::new("legacy Google account").unwrap(),
+                status: CredentialAccountStatus::Expired,
+                ownership: CredentialOwnership::UserReusable,
+                owner_extension: None,
+                granted_extensions: vec![],
+                access_secret: Some(SecretHandle::new("legacy-google-access").unwrap()),
+                access_expires_at: None,
+                refresh_secret: Some(refresh.clone()),
+                scopes: vec![ProviderScope::new(GOOGLE_CALENDAR_READONLY_SCOPE).unwrap()],
+            })
+            .await
+            .unwrap();
+        let composition = compose_provider_client_with_runtime(
+            vec![OAuthProviderBackendConfig {
+                spec: google_provider_spec(),
+                client: oauth_client(
+                    "current-unrelated-client",
+                    "https://app.example/current-callback",
+                ),
+            }],
+            vec![],
+            secrets,
+            OAuthProviderRuntimePorts::new(egress.clone(), Arc::new(NoopObligationHandler)),
+        )
+        .unwrap();
+        let service = ProviderBackedCredentialAccountService::new(
+            shared.clone(),
+            shared.clone(),
+            composition.client.unwrap(),
+        );
+        let report = service
+            .refresh_account(CredentialRefreshRequest::new(
+                scope.clone(),
+                AuthProviderId::new(GOOGLE_PROVIDER_ID).unwrap(),
+                account.id,
+            ))
+            .await
+            .unwrap();
+        assert!(!report.refreshed);
+        assert_eq!(
+            report.account.status,
+            CredentialAccountStatus::RefreshFailed
+        );
+        let retained = shared
+            .get_account(CredentialAccountLookupRequest::new(scope, account.id))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(retained.refresh_secret, Some(refresh));
+        assert_eq!(retained.access_secret, account.access_secret);
+        assert!(
+            egress.requests.lock().unwrap().is_empty(),
+            "current client is never substituted for missing history"
+        );
+    }
+
+    /// These refresh-transport fixtures represent a previously captured client.
+    /// An old token without this custody must never borrow today's config.
+    async fn seed_google_refresh_client(
+        composition: &OAuthProviderComposition,
+        scope: &AuthProductScope,
+        refresh: &SecretHandle,
+    ) {
+        use crate::oauth_gate::{GoogleSetupDeadline, GoogleSetupRequest};
+        use crate::oauth_provider_client::OAuthClientMaterialSource;
+        let provider = composition
+            .gate_registry
+            .as_ref()
+            .unwrap()
+            .google_provider()
+            .unwrap();
+        let original = provider
+            .prepare_setup_original(GoogleSetupRequest {
+                scope: scope.clone(),
+                flow_id: brassclaw_auth::AuthFlowId::new(),
+                account_label: CredentialAccountLabel::new("prior transport fixture").unwrap(),
+                requested_scopes: vec![ProviderScope::new(GOOGLE_CALENDAR_READONLY_SCOPE).unwrap()],
+                continuation: brassclaw_auth::AuthContinuationRef::SetupOnly,
+                requirement_setup: None,
+                update_binding: None,
+                update_account_snapshot: None,
+                deadline: GoogleSetupDeadline::Exact(
+                    chrono::Utc::now() + chrono::Duration::minutes(5),
+                ),
+            })
+            .await
+            .unwrap();
+        provider
+            .bind_refresh_material(&scope.resource, original.definition.flow_id, refresh)
+            .await
+            .unwrap();
+    }
+
     fn oauth_client(client_id: &str, redirect_uri: &str) -> OAuthClientConfig {
         OAuthClientConfig {
             client_id: OAuthClientId::new(client_id).unwrap(),
@@ -600,12 +769,18 @@ mod tests {
                 "raw-auth-code".to_string(),
             ))
             .unwrap(),
-            authorization_code_hash: AuthorizationCodeHash::new(fake_digest("code")).unwrap(),
+            authorization_code_hash: AuthorizationCodeHash::new(
+                brassclaw_common::hashing::sha256_hex(b"raw-auth-code"),
+            )
+            .unwrap(),
             pkce_verifier: PkceVerifierSecret::new(SecretString::from(
                 "raw-pkce-verifier".to_string(),
             ))
             .unwrap(),
-            pkce_verifier_hash: PkceVerifierHash::new(fake_digest("pkce")).unwrap(),
+            pkce_verifier_hash: PkceVerifierHash::new(brassclaw_common::hashing::sha256_hex(
+                b"raw-pkce-verifier",
+            ))
+            .unwrap(),
             scopes: vec![ProviderScope::new("workspace").unwrap()],
         }
     }
@@ -625,20 +800,26 @@ mod tests {
         url::form_urlencoded::parse(body).into_owned().collect()
     }
 
-    fn fake_digest(value: &str) -> String {
-        format!(
-            "{:064x}",
-            value.bytes().fold(0_u64, |hash, byte| {
-                hash.wrapping_mul(31).wrapping_add(u64::from(byte))
-            })
-        )
-    }
-
     #[derive(Debug)]
     struct PanicProviderClient;
 
     #[async_trait]
     impl AuthProviderClient for PanicProviderClient {
+        async fn prepare_callback(
+            &self,
+            _context: &brassclaw_auth::OAuthProviderExchangeContext,
+            _request: &brassclaw_auth::OAuthProviderCallbackRequest,
+        ) -> Result<brassclaw_auth::OAuthTokenDestinations, AuthProductError> {
+            panic!("mux must reject unknown provider before preparation")
+        }
+
+        async fn prepare_refresh(
+            &self,
+            _request: &OAuthProviderRefreshRequest,
+        ) -> Result<brassclaw_auth::OAuthProviderRefreshPreparation, AuthProductError> {
+            panic!("mux should reject unknown provider before invoking configured client")
+        }
+
         async fn exchange_callback(
             &self,
             _context: OAuthProviderExchangeContext,
@@ -650,6 +831,7 @@ mod tests {
         async fn refresh_token(
             &self,
             _request: OAuthProviderRefreshRequest,
+            _preparation: brassclaw_auth::OAuthProviderRefreshPreparation,
         ) -> Result<OAuthProviderRefresh, AuthProductError> {
             panic!("not used");
         }

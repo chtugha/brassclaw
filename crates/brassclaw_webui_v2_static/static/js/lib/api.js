@@ -317,6 +317,8 @@ export function resolveGate({
 // --- Product auth ---
 
 export function submitManualToken({
+  identity,
+  invocationId,
   provider,
   accountLabel,
   token,
@@ -329,13 +331,50 @@ export function submitManualToken({
     method: "POST",
     signal,
     body: JSON.stringify({
+      ...manualTokenOriginalBody({ identity, invocationId, threadId }),
       provider,
       account_label: accountLabel,
       token,
-      thread_id: threadId,
       run_id: runId,
       gate_ref: gateRef,
     }),
+  });
+}
+
+
+// Metadata, raw proof and reference continuation are distinct transports. The
+// caller must retain this identity before any network operation, including setup.
+function manualTokenOriginalBody({ identity, invocationId, threadId }) {
+  if (!identity?.interaction_id || !identity?.flow_id || !invocationId) {
+    throw new Error("Manual credential operation identity is required.");
+  }
+  return {
+    identity: { interaction_id: identity.interaction_id, flow_id: identity.flow_id },
+    invocation_id: invocationId,
+    ...(threadId !== undefined ? { thread_id: threadId } : {}),
+  };
+}
+export function requestManualTokenSetup({
+  identity, invocationId, threadId, provider, accountLabel, runId, gateRef, signal,
+} = {}) {
+  return apiFetch("/api/reborn/product-auth/manual-token/setup", {
+    method: "POST", signal,
+    body: JSON.stringify({
+      ...manualTokenOriginalBody({ identity, invocationId, threadId }),
+      provider, account_label: accountLabel, run_id: runId, gate_ref: gateRef,
+    }),
+  });
+}
+export function submitManualTokenSecret({ identity, invocationId, threadId, token, signal } = {}) {
+  return apiFetch("/api/reborn/product-auth/manual-token/secret-submit", {
+    method: "POST", signal,
+    body: JSON.stringify({ ...manualTokenOriginalBody({ identity, invocationId, threadId }), token }),
+  });
+}
+export function continueManualToken({ identity, invocationId, threadId, signal } = {}) {
+  return apiFetch("/api/reborn/product-auth/manual-token/continue", {
+    method: "POST", signal,
+    body: JSON.stringify(manualTokenOriginalBody({ identity, invocationId, threadId })),
   });
 }
 

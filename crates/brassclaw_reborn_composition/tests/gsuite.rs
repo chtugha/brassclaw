@@ -164,6 +164,7 @@ async fn auth_with_google_account(scope: &ResourceScope) -> Arc<InMemoryAuthProd
         owner_extension: None,
         granted_extensions: Vec::new(),
         access_secret: Some(SecretHandle::new("google-access-token").unwrap()),
+        access_expires_at: None,
         refresh_secret: None,
         scopes: vec![ProviderScope::new(GOOGLE_GMAIL_SEND_SCOPE).unwrap()],
     })
@@ -407,6 +408,7 @@ async fn bundled_gsuite_handlers_stage_oauth_account_secret_from_account_scope()
         owner_extension: None,
         granted_extensions: Vec::new(),
         access_secret: Some(SecretHandle::new("google-oauth-access-token").unwrap()),
+        access_expires_at: None,
         refresh_secret: None,
         scopes: vec![ProviderScope::new(GOOGLE_GMAIL_SEND_SCOPE).unwrap()],
     })

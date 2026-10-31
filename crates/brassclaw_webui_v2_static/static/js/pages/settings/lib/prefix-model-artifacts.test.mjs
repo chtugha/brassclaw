@@ -19,3 +19,13 @@ test("missing, duplicate, unsupported and oversized model files fail before read
   for (const files of [base.slice(1),[...base,base[0]],[...base,{name:"../script.py",size:1}],base.map(file=>({...file,size:64*1024*1024}))]) await assert.rejects(context.prepare(files));
   assert.equal(reads,0);
 });
+
+test("optional model documentation remains complete literal bytes without claimed authority",async()=>{
+  const card=file("README.md","\ufeff# Model ü\r\n{{ never_execute() }}\r\n<script>literal</script>\r\n".repeat(1000));
+  const files=[file("config.json","{}"),file("tokenizer.json","{}"),file("tokenizer_config.json","{}"),card];
+  const encoded=JSON.parse(await context.prepare(files));
+  assert.deepEqual(Buffer.from(encoded.artifacts["README.md"].data,"base64"),Buffer.from(await card.arrayBuffer()));
+  assert.deepEqual(Object.keys(encoded).sort(),["artifacts","format"]);
+  assert.deepEqual(Object.keys(encoded.artifacts["README.md"]).sort(),["data","encoding"]);
+  await assert.rejects(context.prepare([...files,file("../README.md","unretained")]));
+});

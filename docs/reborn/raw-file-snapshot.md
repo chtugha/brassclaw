@@ -48,7 +48,7 @@ or failed reads and kernel output limits are whole-operation failures, never
 partial snapshots marked complete. No new fixed read quota or setting is added.
 
 The separate reusable Skill export/ToolSkill association, R10 pure checker,
-canonical execution Recipe, package qualification and doc-sync/doc-convert
+actual consuming/test Recipe qualification (MCP only if exposed), package qualification and doc-sync/doc-convert
 consumer migration still require implementation and acceptance. Exposing the
 primitive's registered parameter does not activate a component or bypass those
 gates. See [the composition owner](../plans/monty.composition.implementation.md#r10-proposed-complete-document-text).

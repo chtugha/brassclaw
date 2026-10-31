@@ -1,0 +1,364 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-019",
+  "status": "passed",
+  "package": "/private/tmp/brassclaw-joint-validator-checks-20261031-ulwla77s",
+  "package_after_sha256": "51fb1adc59cf9bfada1d53f9489d4bb054085672d7711f873e8876467582021f",
+  "sources": {
+    "crates/brassclaw_skills/src/validator_components.rs": "490ab4077a8730b66781fdc854ab01c869028b7c564dd4a3d74f5fcb0da72f46",
+    "crates/brassclaw_skills/src/validator_subject_sources.py": "337dec428936253cbde2c1739890b61c38ba042009e8095a1cf4b53936b9d219",
+    "crates/brassclaw_skills/src/validator_python_contracts.py": "ded4c99956bb15defce8da3a8b6d4e26fc2d3228eb0d9f462fee4bef42675b39",
+    "crates/brassclaw_skills/src/validator_python_definitions.py": "0939b7c05c3d5ea2086d91017af0b8cb38973664d95bce82acc156101a301b67",
+    "crates/brassclaw_skills/src/validator_python_graph.py": "7324aa4b37ba50ee75b306432762406e6edc40cc5cdb532e7ac28c97093b237c",
+    "crates/brassclaw_skills/src/validator_python_pure_calls.py": "df45ceafe864c2e7b2acff89e673c29849f2cda923373fe71327d7ace46ac422",
+    "crates/brassclaw_skills/src/validator_python_structure.rs": "913f029b35d79b7b855da6113f117bd6d4a0b0317e47b11b9ea3f138a221d7e4",
+    "crates/brassclaw_skills/src/validator_python_pure.rs": "6d1d1dbf5fda267743d782959810c2a25a9ea4f6e90bd91986eaddce4dd52ccc",
+    "crates/brassclaw_skills/src/validator_skill_interface.py": "fbe002c4c223076515fc704417da93ad3a81f890011e108819f059a5a7617068",
+    "crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs": "228d04ad5159584b4ed6767da2808ef387d4c919c02c0915651ff7b412cb7425",
+    "crates/brassclaw_reborn_composition/src/validator_python_contract_tests.rs": "c69cf47976cc5f446c450328be4991e7b6d739c88c98efde592ed3d036f12fc1",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/source_subject_inventory_tests.rs": "d050c4216f45fbcf7b96a2cda17cc19ffec06d401b1d6047b7f1e9220bafdf6a",
+    "crates/brassclaw_reborn_composition/src/validator_skill_interface_tests.rs": "e0576b6ddc543377daaf1ea73bcc425975c7ca6cce68b9af21f6836ff626ada6",
+    "crates/brassclaw_reborn_composition/src/lib.rs": "15b782aa07644e2ec3dd0973a0527b22138ee47b2bf4de6c06c4099a79e8b463",
+    "crates/brassclaw_skills/src/validator_review_subject.py": "1902a11d39b01f44335c74e742cc550b9f95e03dff805506ddece9c79b4e2249",
+    "crates/brassclaw_skills/src/validator_preload_definition.py": "c52e5ae7091150f4e17bb8b8292674383dc0b842a832180c4613039cfba3d971",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/python_structure_review_tests.rs": "5b18c916c19544b4de8ca73f544ea56589e1b58dd91dde4644e534b1eb81a1fc",
+    "validator_v3.md": "657ef9df764978a32287df2ed31ff96aec422826e760e276ddf39877d251167b",
+    "docs/reborn/source-inspection.md": "3975aa4ca3f32824fd67325b6804be5c08e4c034bd2c0ec673ac1aac4d9063c8"
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2/source.json",
+    "sha256": "97b0a123432fd1d03e6d17392376ae5ac4dda0b71eae5f59b15582d642fd498b",
+    "entries": 8183,
+    "embedded_input_map": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2/embedded-inputs.json",
+    "embedded_input_map_sha256": "0b75d68d622000bbfe9bac9caa3e5da8d32a4afb153e85caac1e7c7eec4fee38",
+    "reviewed_root": "/private/tmp/brassclaw-joint-validator-checks-20261031-ulwla77s/current-root-inputs-joint-validator-checks.json",
+    "reviewed_root_sha256": "065010a4f3a3f5438750b0d7f3e2b35049c79ba7983cb18d40ff5a3d8ca3af3c",
+    "reviewed_root_paths": 301
+  },
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-1",
+      "status": "failed",
+      "progress_sha256": "4622aefd5e9b64f0f5a5a88892abe4c79a134388291d2ee32d61e8c77f5b3b36",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.2893020841293037,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.214619749924168,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "python-dependency-check",
+          "exit_code": 0,
+          "seconds": 0.3326842919923365,
+          "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+        },
+        {
+          "stage": "composition-image",
+          "exit_code": 0,
+          "seconds": 241.39767825021408,
+          "log_sha256": "9b36c1c6751766a469f65b18b2557aa6a3771e63987cb7db01d6d259eb8b6852"
+        },
+        {
+          "stage": "new-skill-function-checks",
+          "exit_code": 0,
+          "seconds": 8.137301416834816,
+          "log_sha256": "0169bfec3ab6ce75f01fd6bf32b3403b03c44438943f43904e79e9ad37f15c1a",
+          "passed": 3
+        },
+        {
+          "stage": "existing-preload-checks",
+          "exit_code": 0,
+          "seconds": 2.421836042078212,
+          "log_sha256": "b248a0693b2b493d2c14f8be2e2a69dd41be0598c3c34208e9185e9674f8ac0b",
+          "passed": 2
+        },
+        {
+          "stage": "existing-contract-flow",
+          "exit_code": 0,
+          "seconds": 2.5208435831591487,
+          "log_sha256": "ba7375c49de60f11607930ac24ae1ceb92636faddfdd49844c9c637e40def28f",
+          "passed": 1
+        }
+      ],
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-joint-validator-checks-validation-20261031/runner.py\", line 166, in <module>\n    tests('existing-subject-inventory','brassclaw_reborn_composition','runtime::tests::source_subject_inventory_tests::native_sealed_subject_extracts_every_python_source_into_one_actual_inventory_call',True)\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-joint-validator-checks-validation-20261031/runner.py\", line 112, in tests\n    assert selector in candidates,selector\n           ^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: runtime::tests::source_subject_inventory_tests::native_sealed_subject_extracts_every_python_source_into_one_actual_inventory_call\n"
+    },
+    "run-2": {
+      "path": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2",
+      "status": "passed",
+      "progress_sha256": "174302fe91574e4bdaf723196c431cc5e3d1ba5994a1c14906c50c117acf2b59",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.32545691705308855,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.2566974579822272,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "python-dependency-check",
+          "exit_code": 0,
+          "seconds": 0.33999441587366164,
+          "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+        },
+        {
+          "stage": "existing-subject-inventory",
+          "exit_code": 0,
+          "seconds": 37.13870129198767,
+          "log_sha256": "c42f7cf9449648d1fa3f6c7f18b650eb46caf63b735d99e2a5e03f89ca8dd093",
+          "passed": 1
+        },
+        {
+          "stage": "existing-structure-flow",
+          "exit_code": 0,
+          "seconds": 38.43765687500127,
+          "log_sha256": "50a6013370072d7a23c1bce77ea39553608d4d4077fd3d7aec54aab0d8adf527",
+          "passed": 1
+        },
+        {
+          "stage": "existing-pure-structure-flow",
+          "exit_code": 0,
+          "seconds": 40.269215082982555,
+          "log_sha256": "382b42048934ce9861394bd6a1d0671f065084bf124dc321c10f5a4e8a355343",
+          "passed": 1
+        },
+        {
+          "stage": "actual-native-global-oracle-callers",
+          "exit_code": 0,
+          "seconds": 380.7324396248441,
+          "log_sha256": "851fd72ca011a595d04071629d22100d665bd8e8c4957d7d7f78bafaa364355c",
+          "passed": 1
+        },
+        {
+          "stage": "connected-strict",
+          "exit_code": 0,
+          "seconds": 102.93939949991181,
+          "log_sha256": "43b126332f9434cc5625b5a88d2777a239ac6f60f3f51cc5a27b14c196c08505"
+        }
+      ],
+      "diagnostic": null
+    }
+  },
+  "images": {
+    "brassclaw_reborn_composition": {
+      "path": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-7a32f5faf18eef18",
+      "sha256": "158ca5ec7f2014de2d02268e2a8ded66f9874a9d72e78816b1aceb41fdadd70b",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+    "build_evidence": "/private/tmp/brassclaw-joint-function-subject-validation-20261031/run-3/progress.json",
+    "build_evidence_sha256": "c049d76f6e84d201942800d8d967f72cb58772331d50c7bc56ff3cf50671775f",
+    "reason": "Only Skills checking code, Composition seeding/test callers and documentation changed. Actual isolated worker lower inputs unchanged; no worker rebuild.",
+    "actual_reused_test_companion": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-1/monty_worker"
+  },
+  "python_runtime": {
+    "executable": "/Users/ollama/brassclaw-target/model-oracle-venv/bin/python",
+    "executable_sha256": "b502cb4c5b46b8d4192ec6bcb600ce8922f1afc396fcf646e8765c6eba74a0bf",
+    "lock": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/oracle-runtime.lock.txt",
+    "lock_sha256": "7536189a2d395534a3b9fcede8592fa28e4cc7c148c95fdbe062cde57388b331",
+    "typed_smoke": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/typed-config-smoke.json",
+    "typed_smoke_sha256": "6cad79b6d6f3478b67b5a2e13ab3d0131be5dc1b1d71e2ca5730cd9b15436870",
+    "pip_reports": {
+      "pip-tool-report.json": "da03a6240915d00ce6b133ccb40fe83c3ab1f00f4c96ba9cb0a28f01d1cc7e08",
+      "pip-oracle-report.json": "d9d988bc1ef49841862076995cdcc462b41bd58951f1d7ad8351122cc4b81a01",
+      "pip-torch-report.json": "ea8df324bfb5531a28cc055b2dffd2574191a7a7bcc1b5bb30a005639e2da5b9"
+    }
+  },
+  "model_assets": {
+    "source": "/private/tmp/brassclaw-joint-function-subject-validation-20261031/run-3/model-artifacts",
+    "retained": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2/model-artifacts",
+    "files": {
+      "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+      "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+      "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+      "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+      "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+      "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+    },
+    "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6"
+  },
+  "reused_results": {
+    "path": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-1",
+    "source_sha256": "97b0a123432fd1d03e6d17392376ae5ac4dda0b71eae5f59b15582d642fd498b",
+    "progress_sha256": "4622aefd5e9b64f0f5a5a88892abe4c79a134388291d2ee32d61e8c77f5b3b36",
+    "results": [
+      {
+        "stage": "composition-image",
+        "exit_code": 0,
+        "seconds": 241.39767825021408,
+        "log_sha256": "9b36c1c6751766a469f65b18b2557aa6a3771e63987cb7db01d6d259eb8b6852"
+      },
+      {
+        "stage": "new-skill-function-checks",
+        "exit_code": 0,
+        "seconds": 8.137301416834816,
+        "log_sha256": "0169bfec3ab6ce75f01fd6bf32b3403b03c44438943f43904e79e9ad37f15c1a",
+        "passed": 3
+      },
+      {
+        "stage": "existing-preload-checks",
+        "exit_code": 0,
+        "seconds": 2.421836042078212,
+        "log_sha256": "b248a0693b2b493d2c14f8be2e2a69dd41be0598c3c34208e9185e9674f8ac0b",
+        "passed": 2
+      },
+      {
+        "stage": "existing-contract-flow",
+        "exit_code": 0,
+        "seconds": 2.5208435831591487,
+        "log_sha256": "ba7375c49de60f11607930ac24ae1ceb92636faddfdd49844c9c637e40def28f",
+        "passed": 1
+      }
+    ],
+    "reason": "Only private runner exact test selectors changed; every captured source and actual compiled image/runtime/model input is unchanged."
+  },
+  "results": [
+    {
+      "stage": "composition-image",
+      "exit_code": 0,
+      "seconds": 241.39767825021408,
+      "log_sha256": "9b36c1c6751766a469f65b18b2557aa6a3771e63987cb7db01d6d259eb8b6852",
+      "origin": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-1"
+    },
+    {
+      "stage": "new-skill-function-checks",
+      "exit_code": 0,
+      "seconds": 8.137301416834816,
+      "log_sha256": "0169bfec3ab6ce75f01fd6bf32b3403b03c44438943f43904e79e9ad37f15c1a",
+      "passed": 3,
+      "origin": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-1"
+    },
+    {
+      "stage": "existing-preload-checks",
+      "exit_code": 0,
+      "seconds": 2.421836042078212,
+      "log_sha256": "b248a0693b2b493d2c14f8be2e2a69dd41be0598c3c34208e9185e9674f8ac0b",
+      "passed": 2,
+      "origin": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-1"
+    },
+    {
+      "stage": "existing-contract-flow",
+      "exit_code": 0,
+      "seconds": 2.5208435831591487,
+      "log_sha256": "ba7375c49de60f11607930ac24ae1ceb92636faddfdd49844c9c637e40def28f",
+      "passed": 1,
+      "origin": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-1"
+    },
+    {
+      "stage": "format",
+      "exit_code": 0,
+      "seconds": 0.32545691705308855,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2"
+    },
+    {
+      "stage": "whitespace",
+      "exit_code": 0,
+      "seconds": 0.2566974579822272,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2"
+    },
+    {
+      "stage": "python-dependency-check",
+      "exit_code": 0,
+      "seconds": 0.33999441587366164,
+      "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09",
+      "origin": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2"
+    },
+    {
+      "stage": "existing-subject-inventory",
+      "exit_code": 0,
+      "seconds": 37.13870129198767,
+      "log_sha256": "c42f7cf9449648d1fa3f6c7f18b650eb46caf63b735d99e2a5e03f89ca8dd093",
+      "passed": 1,
+      "origin": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2"
+    },
+    {
+      "stage": "existing-structure-flow",
+      "exit_code": 0,
+      "seconds": 38.43765687500127,
+      "log_sha256": "50a6013370072d7a23c1bce77ea39553608d4d4077fd3d7aec54aab0d8adf527",
+      "passed": 1,
+      "origin": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2"
+    },
+    {
+      "stage": "existing-pure-structure-flow",
+      "exit_code": 0,
+      "seconds": 40.269215082982555,
+      "log_sha256": "382b42048934ce9861394bd6a1d0671f065084bf124dc321c10f5a4e8a355343",
+      "passed": 1,
+      "origin": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2"
+    },
+    {
+      "stage": "actual-native-global-oracle-callers",
+      "exit_code": 0,
+      "seconds": 380.7324396248441,
+      "log_sha256": "851fd72ca011a595d04071629d22100d665bd8e8c4957d7d7f78bafaa364355c",
+      "passed": 1,
+      "origin": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2"
+    },
+    {
+      "stage": "connected-strict",
+      "exit_code": 0,
+      "seconds": 102.93939949991181,
+      "log_sha256": "43b126332f9434cc5625b5a88d2777a239ac6f60f3f51cc5a27b14c196c08505",
+      "origin": "/private/tmp/brassclaw-joint-validator-checks-validation-20261031/run-2"
+    }
+  ],
+  "tests": {
+    "distinct_native": 10,
+    "fresh_r1": 6,
+    "fresh_r2": 4,
+    "ignored": 0,
+    "names": [
+      "runtime::tests::authored_catalogue_tests::component_deployment_tests::native_component_deployment_preserves_recipes_and_pins_review_subjects",
+      "runtime::tests::source_inventory_usage_tests::python_structure_review_tests::native_private_pure_structure_recipe_checks_all_exports_and_hidden_host_calls",
+      "runtime::tests::source_inventory_usage_tests::python_structure_review_tests::native_private_structure_recipe_joins_original_inventory_definitions_contracts_and_sealed_observer",
+      "runtime::tests::source_inventory_usage_tests::source_subject_inventory_tests::native_sealed_subject_extracts_every_python_source_into_one_actual_inventory_call",
+      "validator_preload_tests::packaged_definition_check_retains_exact_draft_and_preserves_operator_successor",
+      "validator_preload_tests::preload_definition_rule_uses_actual_facts_and_rejects_nonempty_invalid_interfaces",
+      "validator_python_contract_tests::native_python_contract_recipe_binds_complete_sealed_subject_and_rejects_same_output_substitution",
+      "validator_skill_interface_tests::native_skill_interface_and_shared_reader_use_actual_pinned_function_pairs",
+      "validator_skill_interface_tests::native_skill_interface_rejects_disagreement_and_shared_reader_rejects_forged_context",
+      "validator_skill_interface_tests::packaged_function_check_drafts_retain_private_dependency_and_preserve_operator_successors"
+    ]
+  },
+  "cache_reclamations": [],
+  "scope": [
+    "One private preloaded subject-reader library, no new public data envelope, serializing copies or candidate execution. Existing source/contract/definition/graph consumers support complete single-root and Skill/code subjects; pure-call keeps its distinct pure-only scope.",
+    "New Skill-interface declaration check uses shared recursive/export-shape checks; preserves boolean/number distinctions, exact association agreement and typed export declarations without blanket equality of implementation exports/schemas.",
+    "Actual PG sealed pairs in both primary orders and changed/context forms, raw source extraction, no candidate execution, compatible extra declarations, invalid metadata/roles/duplicates/version/context, re-entry and draft/operator preservation exercised in Monty.",
+    "Existing actual contract/preload/source inventory/structure/pure flows and global embedded/base/Sempai consumer pass; new dependency closure pins are real, prior assertions retained.",
+    "R1 compilation and six actual successful tests reused with exact unchanged source/runtime/image; only private test selectors repaired from actual compiled listing. R2 runs remaining four and connected strict; no needless Rust recompilation."
+  ],
+  "limits": [
+    "Declaration and structural observations are not full joint source/call/binding/schema-variance/behavior/prose-semantic review or Q1/Q2.",
+    "Existing single-class Engine/storage refusal for function subjects remains; actual joint coverage, admitted run/attempt/interpreter/settlement, trusted own verdicts, atomic Q2 and compatible publication remain open.",
+    "No general Pure/S qualification, Free/design/prefix activation, real inference, platform deployment or full-plan acceptance.",
+    "The private reader does not authenticate caller JSON, checksums or prior partner approval; trusted native original-subject custody remains required.",
+    "Named inputs/literal macro discovery do not claim exhaustive generated/dynamic-input reproducibility; old receipts keep their original scopes."
+  ]
+}

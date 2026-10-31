@@ -10,7 +10,6 @@ import {
   removeExtension,
   fetchExtensionSetup,
   submitExtensionSetup,
-  startExtensionOauth,
   fetchPairingRequests,
   approvePairingCode,
 } from "../lib/extensions-api.js";
@@ -170,7 +169,7 @@ export function useSetupSubmit(packageRef, onSuccess) {
   const packageKey = packageRef?.id || packageRef;
 
   return useMutation({
-    mutationFn: ({ secrets, fields }) => submitExtensionSetup(packageRef, secrets, fields),
+    mutationFn: ({ fields }) => submitExtensionSetup(packageRef, fields),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["extensions"] });
       queryClient.invalidateQueries({ queryKey: ["extension-setup", packageKey] });
@@ -179,7 +178,7 @@ export function useSetupSubmit(packageRef, onSuccess) {
   });
 }
 
-export function useOauthSetup(packageRef) {
+export function useOauthSetupProgress(packageRef) {
   const queryClient = useQueryClient();
   const packageKey = packageRef?.id || packageRef;
   const watcherRef = React.useRef(null);
@@ -232,27 +231,7 @@ export function useOauthSetup(packageRef) {
 
   React.useEffect(() => clearWatcher, [clearWatcher]);
 
-  return useMutation({
-    mutationFn: ({ secret, popup }) =>
-      startExtensionOauth(packageRef, secret).then((res) => ({ res, popup })),
-    onSuccess: ({ res, popup }) => {
-      let authPopup = popup;
-      if (res.authorization_url && popup && !popup.closed) {
-        popup.location.href = res.authorization_url;
-      } else if (res.authorization_url) {
-        authPopup = window.open(res.authorization_url, "_blank", "noopener,noreferrer");
-      } else if (popup && !popup.closed) {
-        popup.close();
-      }
-      refreshSetupState();
-      if (authPopup) watchOauthProgress(authPopup);
-    },
-    onError: (_err, variables) => {
-      clearWatcher();
-      const popup = variables?.popup;
-      if (popup && !popup.closed) popup.close();
-    },
-  });
+  return {refreshSetupState,watchOauthProgress,clearWatcher};
 }
 
 export function usePairing(channel, options = {}) {

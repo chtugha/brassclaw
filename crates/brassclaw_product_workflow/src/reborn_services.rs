@@ -10,10 +10,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use brassclaw_auth::{
-    AuthProductScope, AuthProviderId, CredentialAccountId, CredentialAccountProjection,
-    CredentialAccountUpdateBinding, ProviderScope,
-};
+use brassclaw_auth::{AuthProductScope, CredentialAccountId, CredentialAccountProjection};
 use brassclaw_host_api::{
     AgentId, ExtensionId, PermissionMode, ProjectId, TenantId, ThreadId, UserId,
 };
@@ -53,6 +50,15 @@ use crate::{
         bounded_source_binding_ref,
     },
     is_approval_gate_ref, is_auth_gate_ref,
+};
+
+mod extension_manual_tokens;
+pub use extension_manual_tokens::{
+    ExtensionCredentialPrepareRequest, ExtensionCredentialReferenceRequest,
+    ExtensionCredentialTarget, ExtensionManualTokenCompletion, ExtensionManualTokenOriginal,
+    ExtensionManualTokenSetupReceipt, WebUiExtensionManualTokenReferenceRequest,
+    WebUiExtensionManualTokenSetupRequest, WebUiExtensionManualTokenSubmitRequest,
+    manual_label as extension_manual_token_label,
 };
 
 mod error;
@@ -103,21 +109,27 @@ pub trait CapabilityPermissionStore: Send + Sync {
 
 pub use error::{RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind};
 pub use interceptor_config::{
-    CapturePrefixModelRequest, ImportPrefixGenerationRequest, InterceptorConfigService,
-    InterceptorConfigServiceError, InterceptorConfigSnapshot, MeasurePrefixRequest,
-    PrefixDesignProposal, PrefixEntry, PrefixGenerationDetail, PrefixGenerationSummary,
-    PrefixJobDetail, PrefixListResponse, PrefixModelArtifactDetail, PrefixModelArtifactFile,
-    PrefixModelArtifactSet, PrefixModelDesignCatalogue, PrefixModelSpecification,
-    PrefixModelTarget, PrefixRegenerateResponse, PrefixSourceInventory, PrefixSourceRegistration,
-    PrefixUsedSource, RegisterPrefixSourceRequest, RetainPrefixDesignProposalRequest,
+    ActivatePrefixAcceptanceRequest, CapturePrefixModelRequest, ImportPrefixGenerationRequest,
+    InterceptorConfigService, InterceptorConfigServiceError, InterceptorConfigSnapshot,
+    MeasurePrefixRequest, PREFIX_SETUP_MAX_EXACT_INTEGER, PrefixAcceptanceDecision,
+    PrefixAcceptanceReceipt, PrefixAcceptanceSelection, PrefixAcceptanceView, PrefixDesignProposal,
+    PrefixEntry, PrefixGenerationDetail, PrefixGenerationSummary, PrefixJobDetail, PrefixJobTarget,
+    PrefixListResponse, PrefixModelArtifactDetail, PrefixModelArtifactFile, PrefixModelArtifactSet,
+    PrefixModelDesignCatalogue, PrefixModelSetupDraft, PrefixModelSetupEdit, PrefixModelSetupField,
+    PrefixModelSetupOrigin, PrefixModelSetupValue, PrefixModelSpecification, PrefixModelTarget,
+    PrefixPairCasePacket, PrefixPairConstructionProposal, PrefixRegenerateResponse,
+    PrefixSourceInventory, PrefixSourceRegistration, PrefixTargetBindingReceipt, PrefixUsedSource,
+    RegisterPrefixSourceRequest, RetainPrefixDesignProposalRequest,
     RetainPrefixModelArtifactsRequest, UpdateInterceptorConfigRequest,
-    interceptor_config_unavailable, map_interceptor_config_error,
+    UpdatePrefixModelSetupDraftRequest, interceptor_config_unavailable,
+    map_interceptor_config_error,
 };
 pub use llm_config::{
     CodexLoginStart, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
     LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, LlmProviderView,
     NearAiAuthProvider, NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest,
-    NearAiWalletLoginResult, ProviderTokenBudgetView, SetActiveLlmRequest,
+    NearAiWalletLoginResult, NearAiWalletLoginStart, NearAiWalletLoginStartRequest,
+    ProviderMutationReceipt, ProviderTokenBudgetView, SetActiveLlmRequest,
     UpsertLlmProviderRequest,
 };
 pub use types::{
@@ -308,18 +320,15 @@ impl OutboundPreferencesProductFacade for UnsupportedOutboundPreferencesProductF
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtensionCredentialStatusRequest {
     pub scope: AuthProductScope,
-    pub provider: AuthProviderId,
-    pub provider_scopes: Vec<ProviderScope>,
-    pub requester_extension: ExtensionId,
+    pub requirement: brassclaw_host_api::RuntimeCredentialAccountRequirement,
 }
 
 #[derive(Debug)]
 pub struct ExtensionCredentialSubmitRequest {
     pub scope: AuthProductScope,
-    pub provider: AuthProviderId,
-    pub label: String,
     pub requester_extension: ExtensionId,
-    pub existing_account: Option<CredentialAccountUpdateBinding>,
+    pub requirement_name: String,
+    pub identity: brassclaw_auth::ManualTokenSetupIdentity,
     pub secret: SecretString,
 }
 
@@ -333,7 +342,35 @@ pub trait ExtensionCredentialSetupService: Send + Sync {
     async fn submit_manual_token(
         &self,
         request: ExtensionCredentialSubmitRequest,
-    ) -> Result<CredentialAccountId, RebornServicesError>;
+    ) -> Result<ExtensionManualTokenCompletion, RebornServicesError>;
+
+    async fn recover_manual_token(
+        &self,
+        _request: ExtensionCredentialReferenceRequest,
+    ) -> Result<Option<ExtensionManualTokenOriginal>, RebornServicesError> {
+        Err(RebornServicesError::service_unavailable(true))
+    }
+
+    async fn prepare_manual_token(
+        &self,
+        _request: ExtensionCredentialPrepareRequest,
+    ) -> Result<ExtensionManualTokenSetupReceipt, RebornServicesError> {
+        Err(RebornServicesError::service_unavailable(true))
+    }
+
+    async fn continue_manual_token(
+        &self,
+        _request: ExtensionCredentialReferenceRequest,
+    ) -> Result<ExtensionManualTokenCompletion, RebornServicesError> {
+        Err(RebornServicesError::service_unavailable(true))
+    }
+
+    async fn cancel_manual_token(
+        &self,
+        _request: ExtensionCredentialReferenceRequest,
+    ) -> Result<ExtensionManualTokenSetupReceipt, RebornServicesError> {
+        Err(RebornServicesError::service_unavailable(true))
+    }
 }
 
 /// Product caller scope for actions that must run against a concrete agent.
@@ -798,6 +835,55 @@ pub trait RebornServicesApi: Send + Sync {
         request: WebUiSetupExtensionRequest,
     ) -> Result<RebornSetupExtensionResponse, RebornServicesError>;
 
+    /// Resolve one complete server-owned declaration for a new OAuth setup.
+    /// This reads metadata only, grants nothing and never reconstructs an old
+    /// original from a newer manifest. Follow-up operations use Auth custody.
+    async fn resolve_extension_oauth_requirement(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _package_ref: LifecyclePackageRef,
+        _requirement_name: String,
+        _invocation_id: brassclaw_host_api::InvocationId,
+    ) -> Result<brassclaw_host_api::RuntimeCredentialAccountRequirement, RebornServicesError> {
+        Err(RebornServicesError::service_unavailable(true))
+    }
+
+    async fn prepare_extension_manual_token(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _package_ref: LifecyclePackageRef,
+        _request: WebUiExtensionManualTokenSetupRequest,
+    ) -> Result<ExtensionManualTokenSetupReceipt, RebornServicesError> {
+        Err(RebornServicesError::service_unavailable(true))
+    }
+
+    async fn submit_extension_manual_token(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _package_ref: LifecyclePackageRef,
+        _request: WebUiExtensionManualTokenSubmitRequest,
+    ) -> Result<ExtensionManualTokenCompletion, RebornServicesError> {
+        Err(RebornServicesError::service_unavailable(true))
+    }
+
+    async fn continue_extension_manual_token(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _package_ref: LifecyclePackageRef,
+        _request: WebUiExtensionManualTokenReferenceRequest,
+    ) -> Result<ExtensionManualTokenCompletion, RebornServicesError> {
+        Err(RebornServicesError::service_unavailable(true))
+    }
+
+    async fn cancel_extension_manual_token(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _package_ref: LifecyclePackageRef,
+        _request: WebUiExtensionManualTokenReferenceRequest,
+    ) -> Result<ExtensionManualTokenSetupReceipt, RebornServicesError> {
+        Err(RebornServicesError::service_unavailable(true))
+    }
+
     /// LLM provider configuration: merged catalog + active selection.
     ///
     /// The six LLM-config methods default to "service unavailable" so facade
@@ -827,8 +913,27 @@ pub trait RebornServicesApi: Send + Sync {
         caller: WebUiAuthenticatedCaller,
         provider_id: String,
         expected_revision: u64,
+        mutation_id: uuid::Uuid,
     ) -> Result<LlmConfigSnapshot, RebornServicesError> {
-        let _ = (caller, provider_id, expected_revision);
+        let _ = (caller, provider_id, expected_revision, mutation_id);
+        Err(llm_config::llm_config_unavailable())
+    }
+
+    async fn provider_mutation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        mutation_id: uuid::Uuid,
+    ) -> Result<ProviderMutationReceipt, RebornServicesError> {
+        let _ = (caller, mutation_id);
+        Err(llm_config::llm_config_unavailable())
+    }
+
+    async fn reconcile_provider_mutation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        mutation_id: uuid::Uuid,
+    ) -> Result<LlmConfigSnapshot, RebornServicesError> {
+        let _ = (caller, mutation_id);
         Err(llm_config::llm_config_unavailable())
     }
 
@@ -868,6 +973,15 @@ pub trait RebornServicesApi: Send + Sync {
         caller: WebUiAuthenticatedCaller,
         request: NearAiLoginRequest,
     ) -> Result<NearAiLoginStart, RebornServicesError> {
+        let _ = (caller, request);
+        Err(llm_config::llm_config_unavailable())
+    }
+
+    async fn start_nearai_wallet_login(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: NearAiWalletLoginStartRequest,
+    ) -> Result<NearAiWalletLoginStart, RebornServicesError> {
         let _ = (caller, request);
         Err(llm_config::llm_config_unavailable())
     }
@@ -1236,6 +1350,13 @@ pub trait RebornServicesApi: Send + Sync {
     ) -> Result<crate::recipes::CatalogueActivationStatus, RebornServicesError> {
         Err(recipe_store_unavailable())
     }
+    async fn reconcile_catalogue(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _activation_id: &str,
+    ) -> Result<crate::recipes::CatalogueActivationReceipt, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
     async fn activate_catalogue(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -1454,6 +1575,27 @@ pub trait RebornServicesApi: Send + Sync {
         Err(interceptor_config::interceptor_config_unavailable())
     }
 
+    async fn prepare_prefix_acceptance(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _selection: PrefixAcceptanceSelection,
+    ) -> Result<PrefixAcceptanceView, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn activate_prefix_acceptance(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: ActivatePrefixAcceptanceRequest,
+    ) -> Result<PrefixTargetBindingReceipt, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn approve_prefix_acceptance(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _decision: PrefixAcceptanceDecision,
+    ) -> Result<PrefixAcceptanceReceipt, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
     /// List registered sources for a prefix profile and optional generation.
     async fn prefix_model_design_catalogue(
         &self,
@@ -1466,6 +1608,22 @@ pub trait RebornServicesApi: Send + Sync {
         _caller: WebUiAuthenticatedCaller,
         _request: CapturePrefixModelRequest,
     ) -> Result<PrefixModelSpecification, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn prefix_model_setup_draft(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _specification: &str,
+        _revision: Option<u64>,
+    ) -> Result<PrefixModelSetupDraft, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn update_prefix_model_setup_draft(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _specification: &str,
+        _request: UpdatePrefixModelSetupDraftRequest,
+    ) -> Result<PrefixModelSetupDraft, RebornServicesError> {
         Err(interceptor_config::interceptor_config_unavailable())
     }
     async fn get_prefix_model_artifacts(
@@ -1481,6 +1639,21 @@ pub trait RebornServicesApi: Send + Sync {
         _caller: WebUiAuthenticatedCaller,
         _request: RetainPrefixModelArtifactsRequest,
     ) -> Result<PrefixModelArtifactSet, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn get_prefix_pair_case_packet(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _specification: &str,
+        _proposal: &str,
+    ) -> Result<PrefixPairCasePacket, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn retain_prefix_pair_construction_proposal(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: RetainPrefixDesignProposalRequest,
+    ) -> Result<PrefixPairConstructionProposal, RebornServicesError> {
         Err(interceptor_config::interceptor_config_unavailable())
     }
     async fn retain_prefix_design_proposal(
@@ -1512,6 +1685,24 @@ pub trait RebornServicesApi: Send + Sync {
         _caller: WebUiAuthenticatedCaller,
         _profile: &str,
     ) -> Result<Vec<PrefixGenerationSummary>, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn check_prefix_pair_cases(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _specification: &str,
+        _proposal: &str,
+        _job: &str,
+    ) -> Result<PrefixJobDetail, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn get_prefix_pair_job(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _specification: &str,
+        _proposal: &str,
+        _job: &str,
+    ) -> Result<PrefixJobDetail, RebornServicesError> {
         Err(interceptor_config::interceptor_config_unavailable())
     }
     async fn get_prefix_job(
@@ -3164,6 +3355,84 @@ impl RebornServicesApi for RebornServices {
         .await
     }
 
+    async fn resolve_extension_oauth_requirement(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        package_ref: LifecyclePackageRef,
+        requirement_name: String,
+        invocation_id: brassclaw_host_api::InvocationId,
+    ) -> Result<brassclaw_host_api::RuntimeCredentialAccountRequirement, RebornServicesError> {
+        extension_manual_tokens::resolve_oauth_requirement(
+            self.lifecycle_facade.as_ref(),
+            caller,
+            package_ref,
+            &requirement_name,
+            invocation_id,
+        )
+        .await
+    }
+
+    async fn prepare_extension_manual_token(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        package_ref: LifecyclePackageRef,
+        request: WebUiExtensionManualTokenSetupRequest,
+    ) -> Result<ExtensionManualTokenSetupReceipt, RebornServicesError> {
+        extension_manual_tokens::prepare(
+            self.lifecycle_facade.as_ref(),
+            self.extension_credentials.as_deref(),
+            caller,
+            package_ref,
+            request,
+        )
+        .await
+    }
+
+    async fn submit_extension_manual_token(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        package_ref: LifecyclePackageRef,
+        request: WebUiExtensionManualTokenSubmitRequest,
+    ) -> Result<ExtensionManualTokenCompletion, RebornServicesError> {
+        extension_manual_tokens::submit(
+            self.extension_credentials.as_deref(),
+            caller,
+            package_ref,
+            request,
+        )
+        .await
+    }
+
+    async fn continue_extension_manual_token(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        package_ref: LifecyclePackageRef,
+        request: WebUiExtensionManualTokenReferenceRequest,
+    ) -> Result<ExtensionManualTokenCompletion, RebornServicesError> {
+        extension_manual_tokens::continue_saved(
+            self.extension_credentials.as_deref(),
+            caller,
+            package_ref,
+            request,
+        )
+        .await
+    }
+
+    async fn cancel_extension_manual_token(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        package_ref: LifecyclePackageRef,
+        request: WebUiExtensionManualTokenReferenceRequest,
+    ) -> Result<ExtensionManualTokenSetupReceipt, RebornServicesError> {
+        extension_manual_tokens::cancel(
+            self.extension_credentials.as_deref(),
+            caller,
+            package_ref,
+            request,
+        )
+        .await
+    }
+
     async fn get_llm_config(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -3198,13 +3467,40 @@ impl RebornServicesApi for RebornServices {
         caller: WebUiAuthenticatedCaller,
         provider_id: String,
         expected_revision: u64,
+        mutation_id: uuid::Uuid,
     ) -> Result<LlmConfigSnapshot, RebornServicesError> {
         let service = self
             .llm_config
             .as_ref()
             .ok_or_else(llm_config::llm_config_unavailable)?;
         service
-            .delete_provider(caller, provider_id, expected_revision)
+            .delete_provider(caller, provider_id, expected_revision, mutation_id)
+            .await
+            .map_err(llm_config::map_llm_config_error)
+    }
+
+    async fn provider_mutation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        mutation_id: uuid::Uuid,
+    ) -> Result<ProviderMutationReceipt, RebornServicesError> {
+        self.llm_config
+            .as_ref()
+            .ok_or_else(llm_config::llm_config_unavailable)?
+            .provider_mutation(caller, mutation_id)
+            .await
+            .map_err(llm_config::map_llm_config_error)
+    }
+
+    async fn reconcile_provider_mutation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        mutation_id: uuid::Uuid,
+    ) -> Result<LlmConfigSnapshot, RebornServicesError> {
+        self.llm_config
+            .as_ref()
+            .ok_or_else(llm_config::llm_config_unavailable)?
+            .reconcile_provider_mutation(caller, mutation_id)
             .await
             .map_err(llm_config::map_llm_config_error)
     }
@@ -3279,6 +3575,19 @@ impl RebornServicesApi for RebornServices {
             .ok_or_else(llm_config::llm_config_unavailable)?;
         service
             .start_codex_login(caller)
+            .await
+            .map_err(llm_config::map_llm_config_error)
+    }
+
+    async fn start_nearai_wallet_login(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: NearAiWalletLoginStartRequest,
+    ) -> Result<NearAiWalletLoginStart, RebornServicesError> {
+        self.llm_config
+            .as_ref()
+            .ok_or_else(llm_config::llm_config_unavailable)?
+            .start_nearai_wallet_login(caller, request)
             .await
             .map_err(llm_config::map_llm_config_error)
     }
@@ -4322,6 +4631,18 @@ impl RebornServicesApi for RebornServices {
             .await
             .map_err(map_recipe_store_error)
     }
+    async fn reconcile_catalogue(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        activation_id: &str,
+    ) -> Result<crate::recipes::CatalogueActivationReceipt, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .reconcile_catalogue(activation_id)
+            .await
+            .map_err(map_recipe_store_error)
+    }
     async fn activate_catalogue(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -4645,6 +4966,42 @@ impl RebornServicesApi for RebornServices {
             .map_err(interceptor_config::map_interceptor_config_error)
     }
 
+    async fn prepare_prefix_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        selection: PrefixAcceptanceSelection,
+    ) -> Result<PrefixAcceptanceView, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .prepare_acceptance(caller, selection)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn activate_prefix_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: ActivatePrefixAcceptanceRequest,
+    ) -> Result<PrefixTargetBindingReceipt, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .activate_acceptance(caller, request)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn approve_prefix_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        decision: PrefixAcceptanceDecision,
+    ) -> Result<PrefixAcceptanceReceipt, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .approve_acceptance(caller, decision)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
     async fn prefix_model_design_catalogue(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -4670,6 +5027,32 @@ impl RebornServicesApi for RebornServices {
             .await
             .map_err(interceptor_config::map_interceptor_config_error)
     }
+    async fn prefix_model_setup_draft(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        revision: Option<u64>,
+    ) -> Result<PrefixModelSetupDraft, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .model_setup_draft(caller, specification, revision)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn update_prefix_model_setup_draft(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        request: UpdatePrefixModelSetupDraftRequest,
+    ) -> Result<PrefixModelSetupDraft, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .update_model_setup_draft(caller, specification, request)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
     async fn get_prefix_model_artifacts(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -4692,6 +5075,31 @@ impl RebornServicesApi for RebornServices {
             .as_ref()
             .ok_or_else(interceptor_config::interceptor_config_unavailable)?
             .retain_model_artifacts(caller, request)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn get_prefix_pair_case_packet(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        proposal: &str,
+    ) -> Result<PrefixPairCasePacket, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .get_pair_case_packet(caller, specification, proposal)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn retain_prefix_pair_construction_proposal(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: RetainPrefixDesignProposalRequest,
+    ) -> Result<PrefixPairConstructionProposal, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .retain_pair_construction_proposal(caller, request)
             .await
             .map_err(interceptor_config::map_interceptor_config_error)
     }
@@ -4743,6 +5151,34 @@ impl RebornServicesApi for RebornServices {
             .as_ref()
             .ok_or_else(interceptor_config::interceptor_config_unavailable)?
             .list_generations(caller, profile)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn check_prefix_pair_cases(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        proposal: &str,
+        job: &str,
+    ) -> Result<PrefixJobDetail, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .check_pair_cases(caller, specification, proposal, job)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn get_prefix_pair_job(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        proposal: &str,
+        job: &str,
+    ) -> Result<PrefixJobDetail, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .get_pair_job(caller, specification, proposal, job)
             .await
             .map_err(interceptor_config::map_interceptor_config_error)
     }
@@ -6721,10 +7157,10 @@ fn map_config_store_error(error: crate::settings::ConfigStoreError) -> RebornSer
     }
 }
 
-// Project registered role selections; display names never supply architecture,
-// tokenizer identity or a context window for another overridden model.
+// Project both role-selected and configured provider/model pairs without changing
+// role selections. Provider-default context never qualifies another model.
 fn prefix_model_targets(snapshot: &LlmConfigSnapshot) -> Vec<PrefixModelTarget> {
-    [
+    let mut targets: Vec<_> = [
         ("kohai", snapshot.kohai_active.as_ref()),
         ("sempai", snapshot.sempai_active.as_ref()),
     ]
@@ -6753,7 +7189,30 @@ fn prefix_model_targets(snapshot: &LlmConfigSnapshot) -> Vec<PrefixModelTarget> 
                 .flatten(),
         })
     })
-    .collect()
+    .collect();
+    for provider in &snapshot.providers {
+        for model in
+            std::iter::once(&provider.default_model).chain(provider.model_token_limits.0.keys())
+        {
+            if model.trim().is_empty()
+                || targets
+                    .iter()
+                    .any(|target| target.provider_id == provider.id && target.model == *model)
+            {
+                continue;
+            }
+            targets.push(PrefixModelTarget {
+                provider_id: provider.id.clone(),
+                provider_revision: provider.revision,
+                model: model.clone(),
+                consumer: "configured".into(),
+                configured_context_window: (model == &provider.default_model)
+                    .then_some(provider.context_window_tokens)
+                    .flatten(),
+            });
+        }
+    }
+    targets
 }
 
 fn instance_tool_settings_error(

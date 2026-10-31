@@ -1,0 +1,274 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-018",
+  "status": "passed",
+  "package": "/private/tmp/brassclaw-joint-function-subject-20261031-8ndydij8",
+  "package_after_sha256": "16b87c3fdb433199483405f79a1b60ffbc094be371ef91152f3240c71ea920e1",
+  "sources": {
+    "crates/brassclaw_skills/src/review_submission_store.rs": "363ed01cb506213d236c5af8a61a891997723bb817cccab1917b0558f2fa3af3",
+    "crates/brassclaw_skills/src/review_function_subject.rs": "62a701a9d8e0f9a4158d1fc24a96188b4e30e384e45d985ec8868d81397023e9",
+    "crates/brassclaw_skills/src/review_selection_store.rs": "5e5e810bb0229796936a69250f4b438336b110826c00575479d0dab9da400a9c",
+    "crates/brassclaw_engine/src/memory/retained_validator.rs": "e1907f06e3c5b9d63bb0e93ceb9fb1f7c5280c9dc29960951548705aded8baeb",
+    "crates/brassclaw_product_workflow/src/recipes.rs": "3a760be8ab2bce2d737269480dfe817c1dec15e564ed51b1b2a01430e1ac6cd1",
+    "crates/brassclaw_reborn_composition/src/pg_review_submission.rs": "a81488817a0594d37d09068816abaf34b5cac721a60c7d439804bd09681282fe",
+    "crates/brassclaw_reborn_composition/src/pg_review_submission_tests.rs": "d30f36f9b72f47c9426bfcfd560179a56c2523f1de5fc3a03014c12b17d9216e",
+    "crates/brassclaw_reborn_composition/src/pg_function_review_submission_tests.rs": "de45332cb64fb40ab445a1d09926203105ea890c8d2a9da94422f5ca45d6204c",
+    "crates/brassclaw_pg/migrations/V193__joint_function_review_subjects.sql": "b7f3772a614ee9c8fdfbc359eb60041416fe0605a5ff393b9397f76697e9d3e3",
+    "crates/brassclaw_product_workflow/src/lib.rs": "967ccf54923283caa9bf5644172cafeffe2eb81a687da999c532d072f96863aa",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/component-submission-panel.js": "1e672caa822a205df5355df17d2f73f132b4effd884d46bf01343573c9601b86",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/component-submission-panel.test.mjs": "10b726bc5668e498f97755e99c8b8bcd2f64aef058fe3bfb6c83eb5e11a85e90",
+    "crates/brassclaw_webui_v2_static/static/js/i18n/en.js": "8c42a5f55438bf279449fae02713f142dd41a5866d4999cdc1be82de5e552ed5",
+    "crates/brassclaw_webui_v2_static/static/js/i18n/de.js": "1863587c4a8740c527acc7dca5bf0cba20b3cb7247044bb20938d4545c292938",
+    "crates/brassclaw_reborn_composition/src/pg_review_model_selection_tests.rs": "24ffc1962a5a3980a11c8db92ab906ef1d088397cf82b24866c4ca3dcdcc85d8",
+    "docs/reborn/contracts/component-review-submissions.md": "0f891a0eb3e6711606c5969ce481225c3d111bc17cfe3d651562296376c5e88d"
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-joint-function-subject-validation-20261031/run-3/source.json",
+    "sha256": "106c71087dccbf91351ce686edcbd404dd2e44bc0c21edbb00c7e78a0f39c4e4",
+    "entries": 8180,
+    "embedded_input_map": "/private/tmp/brassclaw-joint-function-subject-validation-20261031/run-3/embedded-inputs.json",
+    "embedded_input_map_sha256": "3ac706744253b187355fde9b7049d1a2995ab96ce432d8b02d77d5e7dcdc7f7a",
+    "reviewed_root": "/private/tmp/brassclaw-joint-function-subject-20261031-8ndydij8/current-root-inputs-joint-function-subject.json",
+    "reviewed_root_sha256": "c13a7726e67e42b7f0150c8f079316e7a7f3be6ba84be547bbf76ec765351193",
+    "reviewed_root_paths": 287
+  },
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-joint-function-subject-validation-20261031/run-1",
+      "status": "failed",
+      "progress_sha256": "c2b09439125bd2a459fbc85dc22553ffa04bb98ba660fe86f8e34ec00bfc63c3",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.2408374159131199,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.2104794168844819,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "python-dependency-check",
+          "exit_code": 0,
+          "seconds": 0.3325730408541858,
+          "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+        },
+        {
+          "stage": "webui-submission",
+          "exit_code": 0,
+          "seconds": 0.3240122920833528,
+          "log_sha256": "920f794a5e73d88518bc94398125c239056646f9354d54e421b2a95df84fa704"
+        },
+        {
+          "stage": "composition-image",
+          "exit_code": 0,
+          "seconds": 247.940256500151,
+          "log_sha256": "b14839237bf268bc2389a73c571e783364b04c4dfdd97f4e15f614751336b110"
+        },
+        {
+          "stage": "actual-review-subject-consumers",
+          "exit_code": 101,
+          "seconds": 29.76682100002654,
+          "log_sha256": "dae4100d47ef17633559327e35ef55e2ca761ec00f44fbfcdaedef62eb086f6b"
+        }
+      ],
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-joint-function-subject-validation-20261031/runner.py\", line 152, in <module>\n    tests('actual-review-subject-consumers','brassclaw_reborn_composition','pg_review_submission::')\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-joint-function-subject-validation-20261031/runner.py\", line 110, in tests\n    output=run(label,args)\n  File \"/private/tmp/brassclaw-joint-function-subject-validation-20261031/runner.py\", line 98, in run\n    assert code==0,(label,code)\n           ^^^^^^^\nAssertionError: ('actual-review-subject-consumers', 101)\n"
+    },
+    "run-2": {
+      "path": "/private/tmp/brassclaw-joint-function-subject-validation-20261031/run-2",
+      "status": "failed",
+      "progress_sha256": "2e14e11215dc53db2eee663033c966fc347fe83f6c33dd4118babcdab94b2770",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.35409279097802937,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.21184887480922043,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "python-dependency-check",
+          "exit_code": 0,
+          "seconds": 0.3398725420702249,
+          "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+        },
+        {
+          "stage": "webui-submission",
+          "exit_code": 0,
+          "seconds": 0.415719416923821,
+          "log_sha256": "91212ecf780d090162c6585fb329c52ade664c6aa686293b2747e3e3fab60e8d"
+        },
+        {
+          "stage": "required-composition-cache-clean-1",
+          "exit_code": 0,
+          "seconds": 0.6793332500383258,
+          "log_sha256": "0a3ffd8aa27263b2dca4e9aa24189e741d8787c2947debb4ca7a6317632ca908"
+        }
+      ],
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-joint-function-subject-validation-20261031/runner-repair.py\", line 161, in <module>\n    run('composition-image',['cargo','+1.96.0','test','-p','brassclaw_reborn_composition','--lib','--features','skills-db,test-support','--no-run','--locked','--message-format=json'],True)\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-joint-function-subject-validation-20261031/runner-repair.py\", line 74, in run\n    assert int(disk.splitlines()[-1].split()[4].rstrip('%')) <= 90\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n"
+    },
+    "run-3": {
+      "path": "/private/tmp/brassclaw-joint-function-subject-validation-20261031/run-3",
+      "status": "passed",
+      "progress_sha256": "c049d76f6e84d201942800d8d967f72cb58772331d50c7bc56ff3cf50671775f",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.24917166703380644,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.21061095804907382,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "python-dependency-check",
+          "exit_code": 0,
+          "seconds": 0.3274627081118524,
+          "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+        },
+        {
+          "stage": "webui-submission",
+          "exit_code": 0,
+          "seconds": 0.33108387514948845,
+          "log_sha256": "249299b6520c3a6e437980225caaa9b5a58ee7b05d6e4e9efb3820420994058e"
+        },
+        {
+          "stage": "composition-image",
+          "exit_code": 0,
+          "seconds": 241.00545187480748,
+          "log_sha256": "bb3f1aa02b1aadd1e20332fd57ab09b03fc69af43f78131a25fd0e770c07ab91"
+        },
+        {
+          "stage": "actual-review-subject-consumers",
+          "exit_code": 0,
+          "seconds": 28.86656887503341,
+          "log_sha256": "e11a76b65dc3b8ad7b1f93b5840cd8cee0d54e811e00a33d16bc799f74ed7259",
+          "passed": 14
+        },
+        {
+          "stage": "actual-native-global-oracle-callers",
+          "exit_code": 0,
+          "seconds": 378.71884674998,
+          "log_sha256": "2496d10680e7395d5805a8e3811dd92e819bc3c89adfaea12af7aa667f3d4eb8",
+          "passed": 1
+        },
+        {
+          "stage": "connected-strict",
+          "exit_code": 0,
+          "seconds": 100.81291445810348,
+          "log_sha256": "bd9a7b595f93b0e2cb23d56bd8b0eac3bf9d96507a1f97d138b299910e55c497"
+        }
+      ],
+      "diagnostic": null
+    }
+  },
+  "images": {
+    "brassclaw_reborn_composition": {
+      "path": "/private/tmp/brassclaw-joint-function-subject-validation-20261031/run-3/brassclaw_reborn_composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-7a32f5faf18eef18",
+      "sha256": "0476eec3427c8e7aa706da48294e09b472e11f0e8835da0635cc21034fe38563",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-joint-function-subject-validation-20261031/run-3/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+    "build_evidence": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-4/progress.json",
+    "build_evidence_sha256": "e2857e15b44d229817843f83c63962cc7f08de94408b789fe5cdcf2a89812019",
+    "reason": "Review/store/Engine/API/migration/UI inputs changed; existing isolated Monty worker has no Engine/Skills/Pg dependency or changed lower inputs. No worker rebuild needed."
+  },
+  "python_runtime": {
+    "executable": "/Users/ollama/brassclaw-target/model-oracle-venv/bin/python",
+    "executable_sha256": "b502cb4c5b46b8d4192ec6bcb600ce8922f1afc396fcf646e8765c6eba74a0bf",
+    "lock": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/oracle-runtime.lock.txt",
+    "lock_sha256": "7536189a2d395534a3b9fcede8592fa28e4cc7c148c95fdbe062cde57388b331",
+    "typed_smoke": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/typed-config-smoke.json",
+    "typed_smoke_sha256": "6cad79b6d6f3478b67b5a2e13ab3d0131be5dc1b1d71e2ca5730cd9b15436870",
+    "pip_reports": {
+      "pip-tool-report.json": "da03a6240915d00ce6b133ccb40fe83c3ab1f00f4c96ba9cb0a28f01d1cc7e08",
+      "pip-oracle-report.json": "d9d988bc1ef49841862076995cdcc462b41bd58951f1d7ad8351122cc4b81a01",
+      "pip-torch-report.json": "ea8df324bfb5531a28cc055b2dffd2574191a7a7bcc1b5bb30a005639e2da5b9"
+    }
+  },
+  "model_assets": {
+    "source": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-4/model-artifacts",
+    "retained": "/private/tmp/brassclaw-joint-function-subject-validation-20261031/run-3/model-artifacts",
+    "files": {
+      "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+      "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+      "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+      "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+      "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+      "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+    },
+    "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6"
+  },
+  "tests": {
+    "fresh_native_distinct": 15,
+    "ignored": 0,
+    "names": [
+      "pg_review_submission::function_tests::native_function_subject_atomically_retains_both_edits_and_exact_unknown_commit_retry",
+      "pg_review_submission::function_tests::native_function_subject_forward_migration_preserves_old_subjects_and_intents",
+      "pg_review_submission::function_tests::native_function_subject_keeps_unchanged_skill_as_context_without_allocating_it",
+      "pg_review_submission::function_tests::native_function_subject_rejects_partial_single_class_preparation_at_both_owners",
+      "pg_review_submission::function_tests::native_function_subject_second_root_conflict_rolls_back_first_and_races_coherently",
+      "pg_review_submission::model_selection_tests::native_validator_preparation_pins_model_input_and_rejects_rewritten_bindings",
+      "pg_review_submission::tests::native_http_review_inspection_preserves_quarantine_and_exact_observations",
+      "pg_review_submission::tests::native_http_submission_retains_exact_graph_and_recovers_commit_without_reallocating",
+      "pg_review_submission::tests::native_review_lineage_survives_packaged_drafts_and_exact_retries",
+      "pg_review_submission::tests::native_review_lineage_upgrade_preserves_v1_and_database_rejection_rolls_back",
+      "pg_review_submission::tests::native_review_request_is_atomic_immutable_exact_and_backfilled_on_upgrade",
+      "pg_review_submission::tests::native_sempai_intent_proposal_does_not_slice_inside_unicode",
+      "pg_review_submission::tests::native_submission_rolls_back_incomplete_graph_and_failed_commit_and_fences_concurrent_edits",
+      "pg_review_submission::tests::native_validator_subject_preserves_complete_pinned_graph_and_base_comparison",
+      "runtime::tests::authored_catalogue_tests::component_deployment_tests::native_component_deployment_preserves_recipes_and_pins_review_subjects"
+    ],
+    "webui": {
+      "passed": 7,
+      "skipped": 0
+    }
+  },
+  "cache_reclamation": {
+    "required_incremental_cleanup": "/private/tmp/brassclaw-joint-function-subject-validation-20261031/required-unused-incremental-reclamation.json",
+    "sha256": "0c1826949f26829034a7e3ead91849cebe72d7f781c009166b3a3e975b9a8506",
+    "run2_package_cleanup": "/private/tmp/brassclaw-joint-function-subject-validation-20261031/run-2/required-composition-cache-clean-1.log",
+    "run2_package_cleanup_sha256": "0a3ffd8aa27263b2dca4e9aa24189e741d8787c2947debb4ca7a6317632ca908",
+    "run3_reclamations": []
+  },
+  "scope": [
+    "Strict component-review-submission/3 retains actual associated Skill/code changed roots or exact context in the existing operator/store owner; no candidate mutual preapproval required merely to submit.",
+    "Per-root lineage/head CAS stages atomically in UUID order with one V149 intent; actual failed second-root allocation, opposite-order race and exact original retry after head changes are checked.",
+    "V193 actual forward upgrade preserves original /1-/2 subject bytes and intents; database rejects foreign exact partner and immutable writes.",
+    "Complete component-validator-subject/2 retains both roots/context and comparison bases under full input bounds. Engine and storage reject partial old single-class preparation, including checksum-correct forged metadata.",
+    "Existing real HTTP/PG review consumers and embedded native global base/Sempai deployment consumers pass; no old tests weakened.",
+    "WebUI optional partner field/help preserves original complete pending request and rejects browser-unsafe changed-partner counters; source remains data.",
+    "Fresh compilation and connected strict Clippy pass without added suppression."
+  ],
+  "limits": [
+    "Submission/context retention does not establish prior partner approval, full joint rules, actual functional Q1, human Q2 or coherent new-profile publication.",
+    "General authored own approvals, compatibility publication, standalone Pure/S qualification and all required reader migrations remain open.",
+    "No Free/design/prefix activation, real model inference, Linux/Windows deployment, release or full-plan completion claim.",
+    "R1 wrong-base error classification regression repaired for both changed roots; R1 failed evidence retained. R2 disk guard stopped before compilation; only disposable package and unused incremental caches reclaimed with actual images/worker/evidence preserved.",
+    "Named source inventory plus discovered local literal includes does not claim exhaustive generated/dynamic-input reproducibility."
+  ]
+}

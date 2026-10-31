@@ -86,6 +86,17 @@ pub trait EmbeddingProviderSource: Send + Sync {
     async fn snapshot(
         &self,
     ) -> Result<Option<std::sync::Arc<dyn EmbeddingProvider>>, EmbeddingError>;
+
+    /// Optional reuse of an already prepared exact host configuration. This
+    /// performs no role lookup, credential read, client construction or model
+    /// work. The opaque reference is identity metadata, never authority; callers
+    /// still check live policy and their task/operation scope.
+    async fn retained(
+        &self,
+        _configuration_ref: &str,
+    ) -> Result<Option<std::sync::Arc<dyn EmbeddingProvider>>, EmbeddingError> {
+        Ok(None)
+    }
 }
 
 /// Installation attaches the source once before ingress. The source owns live
@@ -118,6 +129,25 @@ impl EmbeddingProviderSourceSlot {
 
 #[async_trait]
 impl EmbeddingProviderSource for EmbeddingProviderSourceSlot {
+    async fn retained(
+        &self,
+        configuration_ref: &str,
+    ) -> Result<Option<std::sync::Arc<dyn EmbeddingProvider>>, EmbeddingError> {
+        let source = self
+            .source
+            .read()
+            .map_err(|_| EmbeddingError::ProviderUnavailable {
+                reason: "embedding source state unavailable".into(),
+            })?
+            .clone();
+        match source {
+            Some(source) => source.retained(configuration_ref).await,
+            None => Err(EmbeddingError::ProviderUnavailable {
+                reason: "embedding source not attached before dispatch".into(),
+            }),
+        }
+    }
+
     async fn snapshot(
         &self,
     ) -> Result<Option<std::sync::Arc<dyn EmbeddingProvider>>, EmbeddingError> {

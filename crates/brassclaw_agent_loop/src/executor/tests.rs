@@ -2352,6 +2352,69 @@ async fn checkpoint_payload_rehydrates_with_written_marker() {
 }
 
 #[tokio::test]
+async fn unresolved_effect_stops_even_when_custom_recovery_would_retry() {
+    // Exercise both the initial batch outcome and uncertainty discovered by a retry.
+    for after_retry in [false, true] {
+        let unresolved =
+            CapabilityOutcome::Failed(brassclaw_turns::run_profile::CapabilityFailure {
+                error_kind: CapabilityFailureKind::EffectOutcomeUnresolved,
+                safe_summary: "authentication failed after possible dispatch".into(),
+                detail: None,
+            });
+        let initial = if after_retry {
+            CapabilityOutcome::Failed(brassclaw_turns::run_profile::CapabilityFailure {
+                error_kind: CapabilityFailureKind::Transient,
+                safe_summary: "temporary preflight failure".into(),
+                detail: None,
+            })
+        } else {
+            unresolved.clone()
+        };
+        let host = MockHost::new(vec![provider_calls_response()])
+            .with_batch_outcomes(vec![brassclaw_turns::run_profile::CapabilityBatchOutcome {
+                outcomes: vec![initial],
+                stopped_on_suspension: false,
+            }])
+            .with_single_outcomes(vec![unresolved]);
+        let state = LoopExecutionState::initial_for_run(host.run_context());
+        let exit = CanonicalAgentLoopExecutor
+            .execute_family(
+                &family_with_always_retry_capability_recovery(),
+                &host,
+                state,
+            )
+            .await
+            .unwrap();
+        let LoopExit::Failed(failed) = exit else {
+            panic!("unresolved effect must stop execution");
+        };
+        assert_eq!(failed.reason_kind, LoopFailureKind::EffectOutcomeUnresolved);
+        assert!(failed.checkpoint_id.is_some());
+        assert_eq!(host.model_requests().len(), 1);
+        assert_eq!(host.single_invocations().len(), usize::from(after_retry));
+        let appended = host.appended_result_refs();
+        assert_eq!(appended.len(), 1);
+        assert!(
+            appended[0]
+                .safe_summary
+                .contains("effect_outcome_unresolved")
+        );
+        assert!(appended[0].model_observation.is_none());
+        let final_state = final_staged_state(&host);
+        assert_eq!(
+            final_state.result_refs,
+            vec![appended[0].result_ref.clone()]
+        );
+        assert!(
+            final_state
+                .recent_failure_kinds
+                .iter()
+                .any(|kind| *kind == LoopFailureKind::EffectOutcomeUnresolved)
+        );
+    }
+}
+
+#[tokio::test]
 async fn retry_uses_single_call_invocation() {
     for error_kind in [
         CapabilityFailureKind::Transient,

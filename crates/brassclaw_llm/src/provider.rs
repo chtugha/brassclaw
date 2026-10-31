@@ -637,6 +637,15 @@ pub struct RetainedLlmProvider {
     pub provider: std::sync::Arc<dyn LlmProvider>,
     pub provider_id: String,
     pub model: String,
+    pub publication: crate::ProviderPublication,
+}
+
+/// Host-owned configuration preparation before selecting a new work item's
+/// client. This may read configuration/build a client, but submits no inference,
+/// reserves no model work and connects no request-local tools.
+#[async_trait]
+pub trait ProviderSelectionPreparer: Send + Sync {
+    async fn prepare(&self) -> Result<(), LlmError>;
 }
 
 impl std::fmt::Debug for RetainedLlmProvider {
@@ -651,10 +660,32 @@ impl std::fmt::Debug for RetainedLlmProvider {
 /// Trait for LLM providers.
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
+    /// Whether this immutable adapter reaches the qualified final JSON wire
+    /// hook. Unknown/native/routed transports are not silently treated as safe.
+    fn supports_final_request_guard(&self) -> bool {
+        false
+    }
+
     /// Capture one concrete backend/identity/model before an exchange. Mutable
     /// provider wrappers override this; immutable providers need no extra layer.
     fn retained_provider(&self) -> Option<RetainedLlmProvider> {
         None
+    }
+
+    /// Async selection lets database-owned roles reconcile before retaining a
+    /// concrete client. Immutable providers retain their existing behavior.
+    async fn prepare_retained_provider(&self) -> Result<Option<RetainedLlmProvider>, LlmError> {
+        Ok(self.retained_provider())
+    }
+
+    /// Validate this already selected target before the caller enters provider
+    /// custody. This submits no inference and never selects another backend.
+    async fn check_dispatch(
+        &self,
+        _model: Option<&str>,
+        _max_output_tokens: Option<u32>,
+    ) -> Result<(), LlmError> {
+        Ok(())
     }
 
     /// Provider-reported model identity. Immutable providers may borrow; mutable

@@ -29,6 +29,8 @@ use brassclaw_reborn_config::{
     LlmSlotSelection, PolicySection, RebornConfigFile, RunnerSection, SkillsSection, TokensSection,
     TriggerPollerConfigSection, WebuiSection, reject_inline_secret,
 };
+#[cfg(feature = "root-llm-provider")]
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// Error type for config DB operations.
@@ -45,6 +47,12 @@ pub enum ConfigError {
 
     #[error("budget configuration writes require a read-committed transaction")]
     BudgetTransactionIsolation,
+
+    #[error("model selection changes require a read-committed transaction")]
+    ModelSelectionTransactionIsolation,
+
+    #[error("model selection changed; reload its settings before saving")]
+    ModelSelectionConflict,
 
     #[error(
         "config value for `{key}` looks like inline secret material — \
@@ -358,6 +366,211 @@ pub(crate) async fn load_config_snapshot_from_client<C: tokio_postgres::GenericC
 
     validate_budget_values(&kv)?;
     Ok(assemble_config(&kv))
+}
+
+/// Read model-role selections for the provider management transaction.
+#[cfg(feature = "root-llm-provider")]
+pub(crate) async fn provider_role_selections<C: tokio_postgres::GenericClient + Sync>(
+    client: &C,
+    tenant_id: &str,
+) -> Result<BTreeMap<String, String>, ConfigError> {
+    let rows = client
+        .query(
+            "SELECT key, value FROM brassclaw_config WHERE tenant_id=$1 AND \
+         (key LIKE 'llm.%.provider_id' OR key LIKE 'llm.%.model' \
+          OR key LIKE 'llm.%.base_url' OR key LIKE 'llm.%.api_key_env' \
+          OR key IN ('embedding.provider_id','embedding.model')) ORDER BY key",
+            &[&tenant_id],
+        )
+        .await?;
+    rows.into_iter()
+        .map(|row| Ok((row.try_get("key")?, row.try_get("value")?)))
+        .collect()
+}
+
+#[cfg(feature = "root-llm-provider")]
+fn model_role_keys(role: &str) -> Result<&'static [&'static str], ConfigError> {
+    match role {
+        "kohai" => Ok(&[
+            "llm.default.provider_id",
+            "llm.default.model",
+            "llm.default.base_url",
+            "llm.default.api_key_env",
+        ]),
+        "sempai" => Ok(&[
+            "llm.sempai.provider_id",
+            "llm.sempai.model",
+            "llm.sempai.base_url",
+            "llm.sempai.api_key_env",
+        ]),
+        "embedding" => Ok(&["embedding.provider_id", "embedding.model"]),
+        _ => Err(ConfigError::InvalidValue {
+            key: "model_selection".into(),
+            reason: "unknown model role".into(),
+        }),
+    }
+}
+
+/// Exact content references, including absent versus empty values. These are
+/// optimistic edit preconditions, not task pins or monotonic activation epochs.
+/// Only selection fields participate; encrypted credential material is not read.
+#[cfg(feature = "root-llm-provider")]
+pub(crate) async fn model_selection_refs<C: tokio_postgres::GenericClient + Sync>(
+    client: &C,
+    tenant_id: &str,
+) -> Result<BTreeMap<String, String>, ConfigError> {
+    let values = provider_role_selections(client, tenant_id).await?;
+    model_selection_refs_from_values(&values, tenant_id)
+}
+
+/// Derive the same edit references from an already captured role snapshot.
+/// Callers needing both values and references must not issue a second query.
+#[cfg(feature = "root-llm-provider")]
+pub(crate) fn model_selection_refs_from_values(
+    values: &BTreeMap<String, String>,
+    tenant_id: &str,
+) -> Result<BTreeMap<String, String>, ConfigError> {
+    ["kohai", "sempai", "embedding"]
+        .into_iter()
+        .map(|role| {
+            let fields = model_role_keys(role)?
+                .iter()
+                .map(|key| (*key, values.get(*key)))
+                .collect::<BTreeMap<_, _>>();
+            let bytes =
+                serde_json::to_vec(&("brassclaw-model-selection/1", tenant_id, role, fields))
+                    .map_err(|error| ConfigError::Db(error.to_string()))?;
+            Ok((role.into(), format!("{:x}", Sha256::digest(bytes))))
+        })
+        .collect()
+}
+
+/// Compare the displayed selection with the current database before a new
+/// operator edit. The short table write lock also covers absent keys and direct
+/// SQL writers; ordinary configuration reads remain available. Callers acquire
+/// their provider row first and perform no external work while holding this lock.
+#[cfg(feature = "root-llm-provider")]
+async fn check_model_selection_edit(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    role: &str,
+    expected: &str,
+) -> Result<(), ConfigError> {
+    model_role_keys(role)?;
+    if expected.len() != 64
+        || !expected
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(ConfigError::InvalidValue {
+            key: "expected_selection_ref".into(),
+            reason: "use the displayed model selection reference".into(),
+        });
+    }
+    lock_model_selection_config(transaction).await?;
+    if model_selection_refs(transaction, tenant_id)
+        .await?
+        .get(role)
+        .map(String::as_str)
+        != Some(expected)
+    {
+        return Err(ConfigError::ModelSelectionConflict);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "root-llm-provider")]
+async fn lock_model_selection_config(
+    transaction: &tokio_postgres::Transaction<'_>,
+) -> Result<(), ConfigError> {
+    let isolation = transaction
+        .query_one(
+            "SELECT current_setting('transaction_isolation') = 'read committed'",
+            &[],
+        )
+        .await?;
+    if !isolation.try_get::<_, bool>(0)? {
+        return Err(ConfigError::ModelSelectionTransactionIsolation);
+    }
+    transaction
+        .batch_execute("LOCK TABLE brassclaw_config IN SHARE ROW EXCLUSIVE MODE")
+        .await?;
+    Ok(())
+}
+
+/// Provider deactivation uses the same lock before taking any selection row
+/// locks, preserving provider-row -> config-lock order across both writers.
+#[cfg(feature = "root-llm-provider")]
+pub(crate) async fn clear_provider_model_selections_in_transaction(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    identities: &[String],
+) -> Result<(), ConfigError> {
+    lock_model_selection_config(transaction).await?;
+    let selections = transaction
+        .query(
+            "SELECT key FROM brassclaw_config WHERE tenant_id=$1
+         AND (key LIKE 'llm.%.provider_id' OR key='embedding.provider_id')
+         AND lower(value)=ANY($2) FOR UPDATE",
+            &[&tenant_id, &identities],
+        )
+        .await?;
+    let mut keys = Vec::new();
+    for selection in selections {
+        let key: String = selection.try_get("key")?;
+        let prefix = key
+            .strip_suffix("provider_id")
+            .ok_or_else(|| ConfigError::InvalidValue {
+                key: "model_selection".into(),
+                reason: "provider selection key is invalid".into(),
+            })?;
+        for field in ["provider_id", "model", "base_url", "api_key_env"] {
+            keys.push(format!("{prefix}{field}"));
+        }
+    }
+    transaction
+        .execute(
+            "DELETE FROM brassclaw_config WHERE tenant_id=$1 AND key=ANY($2)",
+            &[&tenant_id, &keys],
+        )
+        .await?;
+    Ok(())
+}
+
+/// An explicit canonical provider/model choice replaces legacy role overrides.
+/// Preparation and the published client consequently use the same target.
+#[cfg(feature = "root-llm-provider")]
+pub(crate) async fn save_model_selection_in_transaction(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    role: &str,
+    expected: &str,
+    provider: Option<&str>,
+    model: Option<&str>,
+) -> Result<(), ConfigError> {
+    check_model_selection_edit(transaction, tenant_id, role, expected).await?;
+    let keys = model_role_keys(role)?;
+    let changes = keys
+        .iter()
+        .enumerate()
+        .map(|(index, key)| {
+            (
+                *key,
+                match index {
+                    0 => provider,
+                    1 => model,
+                    _ => None,
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    save_config_changes_in_transaction(
+        transaction,
+        tenant_id,
+        &changes,
+        ConfigWriteContext::Operator,
+    )
+    .await
 }
 
 /// List all config rows for a tenant as (key, value) pairs.

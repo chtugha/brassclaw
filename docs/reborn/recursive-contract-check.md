@@ -55,3 +55,31 @@ through the real closed global Python flow. An invalid dependency is not omitted
 another sealed subject with equal outputs fails receipt validation. All results
 remain observations with Q1/semantic flags false. This integration adds no public
 command, Tool, Skill, evidence writer or active production validator.
+
+## Successor compatibility is distinct from grammar acceptance
+
+The checker validates one current grammar/profile; it does not prove that a
+successor preserves an older consumer contract or semantics. A successor must
+retain all still-needed guarantees: previously valid inputs remain accepted,
+outputs preserve promised shapes/meaning/effects, missing/null/default rules
+remain distinct and extra fields must still satisfy strict consumers. A new
+required argument or newly rejected old input is a break. Same JSON types and
+finite examples alone cannot prove arbitrary semantic equivalence.
+
+The existing Validator owner supplies the required directed contract comparison
+and observed/semantic successor evidence. Its own A function review uses approved
+dependencies without reapproving them. The complete-subject grammar consumer may
+inspect those dependency contracts for actual usage consistency; that inspection
+is not their new individual Q1/Q2. Shared parser facts are reused only for their
+exact qualified scope. A valid unchanged consumer keeps its approval after a
+proven compatible update; historical task selections and test observations retain
+their exact original bytes.
+
+A Skill and implementation code use one joint own function subject with the
+class22 grammar checks reused, not a second full code review. New/changed Recipes
+cover their own supported workflows/variants and real handoffs without reviewing
+all constituent functions again. S retains controlled integrity/behavior and
+exact Skill-usage evidence with qualified prerequisites, outside authored Q1 and
+without installed human Q2. After bounded BUILD-014 acceptance these targets
+replace contradictory remaining open requirements in Validator/Composition;
+no new checker, grammar format, schema API or activation is introduced here.

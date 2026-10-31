@@ -33,7 +33,7 @@ use brassclaw_secrets::{
 use chrono::Utc;
 
 use crate::{
-    ToolCallHttpEgress,
+    RuntimeRawSecretRequest, RuntimeRawSecretSource, ToolCallHttpEgress,
     http_body::{RuntimeHttpBodyStore, UnsupportedRuntimeHttpBodyStore},
 };
 
@@ -42,18 +42,68 @@ mod output;
 /// Default maximum lifetime for one-shot runtime secret material staged in memory.
 pub(crate) const DEFAULT_RUNTIME_SECRET_INJECTION_TTL: Duration = Duration::from_secs(300);
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct RuntimeCredentialAccountRequest<'a> {
+    pub requirement: Option<&'a brassclaw_host_api::RuntimeCredentialAccountRequirement>,
     pub scope: &'a ResourceScope,
     pub provider: &'a RuntimeCredentialAccountProviderId,
     pub provider_scopes: &'a [String],
     pub requester_extension: &'a ExtensionId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Host-only selected material. The opaque reference authenticates one store
+/// generation; neither this metadata nor constructing it grants secret access.
+#[derive(Clone, PartialEq, Eq)]
 pub struct RuntimeCredentialAccessSecret {
     pub scope: ResourceScope,
     pub handle: SecretHandle,
+    pub record_reference: String,
+    pub access_expires_at: Option<brassclaw_host_api::Timestamp>,
+}
+
+impl fmt::Debug for RuntimeCredentialAccessSecret {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RuntimeCredentialAccessSecret")
+            .field("scope", &self.scope)
+            .field("handle", &self.handle)
+            .field("record_reference", &"<redacted>")
+            .field("access_expires_at", &self.access_expires_at)
+            .finish()
+    }
+}
+
+impl RuntimeCredentialAccessSecret {
+    /// Capture authenticated metadata before admission/dispatch. The original
+    /// task owner must retain it: staging never fills a missing source with
+    /// today's generation. Raw credential values stay inside SecretStore.
+    pub async fn capture(
+        store: &dyn SecretStore,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        access_expires_at: Option<brassclaw_host_api::Timestamp>,
+    ) -> Result<Self, CredentialStageError> {
+        if scope.is_system() {
+            return Err(CredentialStageError::Backend);
+        }
+        if access_expires_at.is_some_and(|deadline| deadline <= Utc::now()) {
+            return Err(CredentialStageError::AuthRequired);
+        }
+        let record_reference = store
+            .record_reference(&scope, &handle)
+            .await
+            .map_err(crate::services::stage_secret_error)?
+            .ok_or(CredentialStageError::AuthRequired)?;
+        if record_reference.is_empty() {
+            return Err(CredentialStageError::Backend);
+        }
+        Ok(Self {
+            scope,
+            handle,
+            record_reference,
+            access_expires_at,
+        })
+    }
 }
 
 #[async_trait]
@@ -72,6 +122,18 @@ pub trait RuntimeCredentialAccountResolver: Send + Sync + fmt::Debug {
     ) -> Result<RuntimeCredentialAccessSecret, CredentialStageError>;
 }
 
+/// Additional source-use fencing on an explicitly bound native invocation.
+/// This selects no account, grants no access and performs no backend I/O.
+/// Runtime binding must supply it together with the original account resolver;
+/// existing unbound legacy services do not claim this task-family guarantee.
+pub trait RuntimeCredentialUseGuard: Send + Sync {
+    fn check_source_use(
+        &self,
+        request: &RuntimeCredentialAccountRequest<'_>,
+        source: &RuntimeCredentialAccessSecret,
+    ) -> Result<(), CredentialStageError>;
+}
+
 /// Runtime secret material staged after `InjectSecretOnce` lease consumption.
 ///
 /// The store is keyed by scoped invocation, capability, and handle. Runtime adapters
@@ -85,13 +147,46 @@ pub(crate) struct RuntimeSecretInjectionStore {
 }
 
 struct RuntimeSecretInjectionState {
-    secrets: Mutex<HashMap<RuntimeSecretInjectionKey, RuntimeSecretInjectionEntry>>,
+    secrets: Mutex<HashMap<RuntimeSecretInjectionKey, StagedSecretMaterial>>,
     ttl: Duration,
 }
 
-struct RuntimeSecretInjectionEntry {
-    material: SecretMaterial,
-    expires_at: Instant,
+pub(crate) struct StagedSecretMaterial {
+    pub(crate) material: SecretMaterial,
+    expires_at: Option<Instant>,
+    secret_expires_at: Option<brassclaw_host_api::Timestamp>,
+}
+
+impl fmt::Debug for StagedSecretMaterial {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("StagedSecretMaterial([REDACTED])")
+    }
+}
+
+impl StagedSecretMaterial {
+    // Only the explicitly rejected production direct-lease compatibility path
+    // uses this constructor; real staging always supplies its monotonic TTL.
+    pub(crate) fn from_lease(
+        material: SecretMaterial,
+        secret_expires_at: Option<brassclaw_host_api::Timestamp>,
+    ) -> Self {
+        Self {
+            material,
+            expires_at: None,
+            secret_expires_at,
+        }
+    }
+
+    pub(crate) fn is_live(&self) -> bool {
+        self.is_live_at(Instant::now(), Utc::now())
+    }
+
+    fn is_live_at(&self, now: Instant, wall_now: brassclaw_host_api::Timestamp) -> bool {
+        self.expires_at.is_none_or(|expiry| expiry > now)
+            && self
+                .secret_expires_at
+                .is_none_or(|expiry| expiry > wall_now)
+    }
 }
 
 impl RuntimeSecretInjectionStore {
@@ -115,17 +210,71 @@ impl RuntimeSecretInjectionStore {
         handle: &SecretHandle,
         material: SecretMaterial,
     ) -> Result<(), RuntimeSecretInjectionStoreError> {
+        self.insert_with_expiry(scope, capability_id, handle, material, None)
+    }
+
+    pub(crate) fn insert_with_expiry(
+        &self,
+        scope: &ResourceScope,
+        capability_id: &CapabilityId,
+        handle: &SecretHandle,
+        material: SecretMaterial,
+        secret_expires_at: Option<brassclaw_host_api::Timestamp>,
+    ) -> Result<(), RuntimeSecretInjectionStoreError> {
         let now = Instant::now();
         let expires_at = now.checked_add(self.state.ttl).unwrap_or(now);
-        let mut secrets = self.lock()?;
-        prune_expired_entries(&mut secrets, now);
-        secrets.insert(
-            RuntimeSecretInjectionKey::new(scope, capability_id, handle),
-            RuntimeSecretInjectionEntry {
+        self.insert_selected(
+            scope,
+            capability_id,
+            handle,
+            StagedSecretMaterial {
                 material,
-                expires_at,
+                expires_at: Some(expires_at),
+                secret_expires_at,
             },
-        );
+            true,
+        )
+    }
+
+    /// Restore the exact selected material and both original deadlines. An
+    /// injection error never authorizes extending either lifetime.
+    pub(crate) fn restore(
+        &self,
+        scope: &ResourceScope,
+        capability_id: &CapabilityId,
+        handle: &SecretHandle,
+        selected: StagedSecretMaterial,
+    ) -> Result<(), RuntimeSecretInjectionStoreError> {
+        self.insert_selected(scope, capability_id, handle, selected, false)
+    }
+
+    fn insert_selected(
+        &self,
+        scope: &ResourceScope,
+        capability_id: &CapabilityId,
+        handle: &SecretHandle,
+        selected: StagedSecretMaterial,
+        replace: bool,
+    ) -> Result<(), RuntimeSecretInjectionStoreError> {
+        let mut secrets = self.lock()?;
+        let now = Instant::now();
+        if !selected.is_live_at(now, Utc::now()) {
+            return Err(RuntimeSecretInjectionStoreError::Expired);
+        }
+        prune_expired_entries(&mut secrets, now);
+        let key = RuntimeSecretInjectionKey::new(scope, capability_id, handle);
+        // A failed older injection cannot replace a newly staged selection.
+        match secrets.entry(key) {
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(selected);
+            }
+            std::collections::hash_map::Entry::Occupied(mut entry) if replace => {
+                entry.insert(selected);
+            }
+            std::collections::hash_map::Entry::Occupied(_) => {
+                return Err(RuntimeSecretInjectionStoreError::Unavailable);
+            }
+        }
         Ok(())
     }
 
@@ -134,17 +283,15 @@ impl RuntimeSecretInjectionStore {
         scope: &ResourceScope,
         capability_id: &CapabilityId,
         handle: &SecretHandle,
-    ) -> Result<Option<SecretMaterial>, RuntimeSecretInjectionStoreError> {
-        let now = Instant::now();
+    ) -> Result<Option<StagedSecretMaterial>, RuntimeSecretInjectionStoreError> {
         let mut secrets = self.lock()?;
+        let now = Instant::now();
         prune_expired_entries(&mut secrets, now);
-        Ok(secrets
-            .remove(&RuntimeSecretInjectionKey::new(
-                scope,
-                capability_id,
-                handle,
-            ))
-            .map(|entry| entry.material))
+        Ok(secrets.remove(&RuntimeSecretInjectionKey::new(
+            scope,
+            capability_id,
+            handle,
+        )))
     }
 
     /// Discard all staged secrets for a scoped capability before process ownership exists.
@@ -183,7 +330,7 @@ impl RuntimeSecretInjectionStore {
     fn lock(
         &self,
     ) -> Result<
-        std::sync::MutexGuard<'_, HashMap<RuntimeSecretInjectionKey, RuntimeSecretInjectionEntry>>,
+        std::sync::MutexGuard<'_, HashMap<RuntimeSecretInjectionKey, StagedSecretMaterial>>,
         RuntimeSecretInjectionStoreError,
     > {
         self.state
@@ -210,23 +357,26 @@ impl fmt::Debug for RuntimeSecretInjectionStore {
 }
 
 fn prune_expired_entries(
-    secrets: &mut HashMap<RuntimeSecretInjectionKey, RuntimeSecretInjectionEntry>,
+    secrets: &mut HashMap<RuntimeSecretInjectionKey, StagedSecretMaterial>,
     now: Instant,
 ) -> usize {
     let before = secrets.len();
-    secrets.retain(|_, entry| entry.expires_at > now);
+    let wall_now = Utc::now();
+    secrets.retain(|_, entry| entry.is_live_at(now, wall_now));
     before.saturating_sub(secrets.len())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RuntimeSecretInjectionStoreError {
     Unavailable,
+    Expired,
 }
 
 impl fmt::Display for RuntimeSecretInjectionStoreError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unavailable => formatter.write_str("runtime secret injection store unavailable"),
+            Self::Expired => formatter.write_str("runtime credential expired"),
         }
     }
 }
@@ -565,6 +715,16 @@ pub(crate) struct SharedSecretStore(pub(crate) Arc<dyn SecretStore>);
 
 #[async_trait]
 impl SecretStore for SharedSecretStore {
+    async fn close_identity(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        expected: brassclaw_secrets::SecretIdentityClosure,
+    ) -> Result<Option<brassclaw_secrets::SecretCustodyMetadata>, brassclaw_secrets::SecretStoreError>
+    {
+        self.0.close_identity(scope, handle, expected).await
+    }
+
     async fn put(
         &self,
         scope: ResourceScope,
@@ -572,6 +732,80 @@ impl SecretStore for SharedSecretStore {
         material: SecretMaterial,
     ) -> Result<SecretMetadata, SecretStoreError> {
         self.0.put(scope, handle, material).await
+    }
+
+    async fn put_with_expiry(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expires_at: Option<brassclaw_host_api::Timestamp>,
+    ) -> Result<SecretMetadata, SecretStoreError> {
+        self.0
+            .put_with_expiry(scope, handle, material, expires_at)
+            .await
+    }
+
+    async fn record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<String>, brassclaw_secrets::SecretStoreError> {
+        self.0.record_reference(scope, handle).await
+    }
+
+    async fn put_if_record_reference(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expected: Option<&str>,
+    ) -> Result<Option<brassclaw_secrets::SecretMetadata>, brassclaw_secrets::SecretStoreError>
+    {
+        self.0
+            .put_if_record_reference(scope, handle, material, expected)
+            .await
+    }
+
+    async fn matches(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        candidate: &SecretMaterial,
+    ) -> Result<bool, brassclaw_secrets::SecretStoreError> {
+        self.0.matches(scope, handle, candidate).await
+    }
+
+    async fn put_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        context: serde_json::Value,
+    ) -> Result<Option<brassclaw_secrets::SecretCustodyMetadata>, brassclaw_secrets::SecretStoreError>
+    {
+        self.0.put_original(scope, handle, material, context).await
+    }
+
+    async fn custody(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<brassclaw_secrets::SecretCustodyMetadata>, brassclaw_secrets::SecretStoreError>
+    {
+        self.0.custody(scope, handle).await
+    }
+
+    async fn put_retained_from_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        source: brassclaw_secrets::SecretCustodySource,
+    ) -> Result<Option<brassclaw_secrets::SecretCustodyMetadata>, brassclaw_secrets::SecretStoreError>
+    {
+        self.0
+            .put_retained_from_original(scope, handle, source)
+            .await
     }
 
     async fn metadata(
@@ -596,6 +830,17 @@ impl SecretStore for SharedSecretStore {
         handle: &SecretHandle,
     ) -> Result<SecretLease, SecretStoreError> {
         self.0.lease_once(scope, handle).await
+    }
+
+    async fn lease_once_if_record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: &str,
+    ) -> Result<Option<brassclaw_secrets::SecretLease>, brassclaw_secrets::SecretStoreError> {
+        self.0
+            .lease_once_if_record_reference(scope, handle, expected)
+            .await
     }
 
     async fn consume(
@@ -1059,9 +1304,34 @@ pub struct BuiltinObligationHandler {
     secret_injections: Option<Arc<RuntimeSecretInjectionStore>>,
     resource_governor: Option<Arc<dyn ResourceGovernor>>,
     credential_account_resolver: Option<Arc<dyn RuntimeCredentialAccountResolver>>,
+    credential_use_guard: Option<Arc<dyn RuntimeCredentialUseGuard>>,
+    raw_secret_source: Option<Arc<dyn RuntimeRawSecretSource>>,
 }
 
 impl BuiltinObligationHandler {
+    pub(crate) fn retain_raw_secret_source(&self, source: Arc<dyn RuntimeRawSecretSource>) -> Self {
+        let mut bound = self.clone();
+        // An explicit source view must never supply an originally missing port.
+        bound.raw_secret_source = self.secret_store.as_ref().map(|_| source);
+        bound
+    }
+    /// Rebind available service views without repairing missing original ports.
+    /// This preserves the captured handler's access/placement decisions before
+    /// preparation can reserve resources or consume any secret material.
+    pub(crate) fn retain_credential_views(
+        &self,
+        secrets: Arc<dyn SecretStore>,
+        accounts: Arc<dyn RuntimeCredentialAccountResolver>,
+        guard: Arc<dyn RuntimeCredentialUseGuard>,
+    ) -> Self {
+        let mut bound = self.clone();
+        bound.secret_store = self.secret_store.as_ref().map(|_| secrets);
+        bound.credential_account_resolver =
+            self.credential_account_resolver.as_ref().map(|_| accounts);
+        bound.credential_use_guard = self.credential_account_resolver.as_ref().map(|_| guard);
+        bound
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -1174,9 +1444,9 @@ impl BuiltinObligationHandler {
         &self,
         request: &CapabilityObligationRequest<'_>,
         handles: &[SecretHandle],
-    ) -> Result<(), CapabilityObligationError> {
+    ) -> Result<Vec<RuntimeCredentialAccessSecret>, CapabilityObligationError> {
         if handles.is_empty() {
-            return Ok(());
+            return Ok(Vec::new());
         }
         let Some(secret_store) = &self.secret_store else {
             return Err(secret_obligation_failed());
@@ -1184,27 +1454,52 @@ impl BuiltinObligationHandler {
         if self.secret_injections.is_none() {
             return Err(secret_obligation_failed());
         }
+        let mut selections = Vec::with_capacity(handles.len());
         for handle in handles {
-            let exists = secret_store
-                .metadata(&request.context.resource_scope, handle)
-                .await
-                .map_err(|_| secret_obligation_failed())?
-                .is_some();
-            if !exists {
-                return Err(CapabilityObligationError::AuthRequired {
-                    credential_requirements: Vec::new(),
-                });
+            let selected = match &self.raw_secret_source {
+                Some(owner) => {
+                    let raw = RuntimeRawSecretRequest {
+                        scope: &request.context.resource_scope,
+                        capability_id: request.capability_id,
+                        handle,
+                    };
+                    let selected = owner
+                        .resolve_source(raw)
+                        .await
+                        .map_err(|error| credential_stage_error_to_obligation_error(error, None))?;
+                    owner
+                        .check_source_use(&raw, &selected)
+                        .map_err(|error| credential_stage_error_to_obligation_error(error, None))?;
+                    selected
+                }
+                None => {
+                    // Legacy selection is invocation-local, not a task-family
+                    // guarantee. Still retain these exact authenticated bytes
+                    // across audit/resource awaits, never lease a later value.
+                    RuntimeCredentialAccessSecret::capture(
+                        secret_store.as_ref(),
+                        request.context.resource_scope.clone(),
+                        handle.clone(),
+                        None,
+                    )
+                    .await
+                    .map_err(|error| credential_stage_error_to_obligation_error(error, None))?
+                }
+            };
+            if selected.handle != *handle {
+                return Err(secret_obligation_failed());
             }
+            selections.push(selected);
         }
-        Ok(())
+        Ok(selections)
     }
 
     async fn inject_secrets(
         &self,
         request: &CapabilityObligationRequest<'_>,
-        handles: &[SecretHandle],
+        selections: &[RuntimeCredentialAccessSecret],
     ) -> Result<(), CapabilityObligationError> {
-        if handles.is_empty() {
+        if selections.is_empty() {
             return Ok(());
         }
         let Some(secret_store) = &self.secret_store else {
@@ -1213,29 +1508,27 @@ impl BuiltinObligationHandler {
         let Some(secret_injections) = &self.secret_injections else {
             return Err(secret_obligation_failed());
         };
-
-        let mut material = Vec::with_capacity(handles.len());
-        for handle in handles {
-            let lease = secret_store
-                .lease_once(&request.context.resource_scope, handle)
-                .await
-                .map_err(|_| secret_obligation_failed())?;
-            let secret = secret_store
-                .consume(&request.context.resource_scope, lease.id)
-                .await
-                .map_err(|_| secret_obligation_failed())?;
-            material.push((handle.clone(), secret));
-        }
-
-        for (handle, secret) in material {
-            secret_injections
-                .insert(
-                    &request.context.resource_scope,
-                    request.capability_id,
-                    &handle,
-                    secret,
-                )
-                .map_err(|_| secret_obligation_failed())?;
+        for selected in selections {
+            let raw = RuntimeRawSecretRequest {
+                scope: &request.context.resource_scope,
+                capability_id: request.capability_id,
+                handle: &selected.handle,
+            };
+            let check_use = || match &self.raw_secret_source {
+                Some(owner) => owner.check_source_use(&raw, selected),
+                None => Ok(()), // Separately identified unbound legacy caller.
+            };
+            stage_credential_material(
+                secret_store.as_ref(),
+                secret_injections,
+                selected,
+                &request.context.resource_scope,
+                request.capability_id,
+                &selected.handle,
+                &check_use,
+            )
+            .await
+            .map_err(|error| credential_stage_error_to_obligation_error(error, None))?;
         }
         Ok(())
     }
@@ -1259,13 +1552,25 @@ impl BuiltinObligationHandler {
         };
 
         for obligation in account_obligations {
+            if obligation.requirement.is_some_and(|requirement| {
+                !requirement.matches_dispatch(
+                    obligation.handle,
+                    obligation.provider,
+                    obligation.provider_scopes,
+                    obligation.requester_extension,
+                )
+            }) {
+                return Err(secret_obligation_failed());
+            }
+            let account_request = RuntimeCredentialAccountRequest {
+                requirement: obligation.requirement,
+                scope: &request.context.resource_scope,
+                provider: obligation.provider,
+                provider_scopes: obligation.provider_scopes,
+                requester_extension: obligation.requester_extension,
+            };
             let access_secret = resolver
-                .resolve_access_secret(RuntimeCredentialAccountRequest {
-                    scope: &request.context.resource_scope,
-                    provider: obligation.provider,
-                    provider_scopes: obligation.provider_scopes,
-                    requester_extension: obligation.requester_extension,
-                })
+                .resolve_access_secret(account_request)
                 .await
                 .map_err(|error| {
                     credential_stage_error_to_obligation_error(error, Some(&obligation))
@@ -1273,14 +1578,18 @@ impl BuiltinObligationHandler {
             // Retrieve and stage the resolved credential under the obligation's injection handle.
             // The access_secret names the material in the secret store; obligation.handle is
             // the slot name the WASM guest expects.
+            let check_use = || match &self.credential_use_guard {
+                Some(guard) => guard.check_source_use(&account_request, &access_secret),
+                None => Ok(()),
+            };
             stage_credential_material(
                 secret_store.as_ref(),
                 secret_injections,
-                &access_secret.scope,
+                &access_secret,
                 &request.context.resource_scope,
                 request.capability_id,
-                &access_secret.handle,
                 obligation.handle,
+                &check_use,
             )
             .await
             .map_err(|error| {
@@ -1334,7 +1643,7 @@ impl BuiltinObligationHandler {
     async fn finish_prepare(
         &self,
         request: &CapabilityObligationRequest<'_>,
-        secret_handles: &[SecretHandle],
+        secret_selections: &[RuntimeCredentialAccessSecret],
         network_policy: Option<NetworkPolicy>,
     ) -> Result<(), CapabilityObligationError> {
         if request
@@ -1345,7 +1654,7 @@ impl BuiltinObligationHandler {
             self.emit_audit_before(request).await?;
         }
 
-        self.inject_secrets(request, secret_handles).await?;
+        self.inject_secrets(request, secret_selections).await?;
         self.inject_credential_accounts(request).await?;
 
         if let Some(policy) = network_policy {
@@ -1414,12 +1723,12 @@ impl CapabilityObligationHandler for BuiltinObligationHandler {
         if let Some(reservation) = &outcome.resource_reservation
             && let Err(error) = self.release_resource_reservation(reservation)
         {
-            let _ = self.discard_staged_handoffs(
+            let discarded = self.discard_staged_handoffs(
                 &request.context.resource_scope,
                 request.capability_id,
                 request.obligations,
             );
-            return Err(error);
+            return combine_cleanup_results(Err(error), discarded);
         }
         Ok(())
     }
@@ -1441,7 +1750,8 @@ impl CapabilityObligationHandler for BuiltinObligationHandler {
         }
         let scoped_mounts = scoped_mount_obligation(request.context, request.obligations)?;
         let secret_handles = secret_injection_handles(request.obligations);
-        self.preflight_secret_injection(&request, &secret_handles)
+        let secret_selections = self
+            .preflight_secret_injection(&request, &secret_handles)
             .await?;
         self.preflight_resource_ceiling(&request)?;
         let resource_reservation = self.reserve_resource_obligation(&request)?;
@@ -1451,18 +1761,26 @@ impl CapabilityObligationHandler for BuiltinObligationHandler {
         };
 
         if let Err(error) = self
-            .finish_prepare(&request, &secret_handles, network_policy)
+            .finish_prepare(&request, &secret_selections, network_policy)
             .await
         {
-            self.abort(CapabilityObligationAbortRequest {
-                phase: request.phase,
-                context: request.context,
-                capability_id: request.capability_id,
-                estimate: request.estimate,
-                obligations: request.obligations,
-                outcome: &outcome,
-            })
-            .await?;
+            if let Err(cleanup_error) = self
+                .abort(CapabilityObligationAbortRequest {
+                    phase: request.phase,
+                    context: request.context,
+                    capability_id: request.capability_id,
+                    estimate: request.estimate,
+                    obligations: request.obligations,
+                    outcome: &outcome,
+                })
+                .await
+            {
+                // A failed cleanup cannot become an ordinary auth pause. Preserve
+                // both redacted causes while reporting the unresolved cleanup.
+                tracing::warn!(preparation_error = %error, cleanup_error = %cleanup_error,
+                    "obligation preparation and cleanup both failed");
+                return Err(cleanup_error);
+            }
             return Err(error);
         }
 
@@ -1473,16 +1791,21 @@ impl CapabilityObligationHandler for BuiltinObligationHandler {
         &self,
         request: CapabilityObligationAbortRequest<'_>,
     ) -> Result<(), CapabilityObligationError> {
-        self.discard_staged_handoffs(
+        let discarded = self.discard_staged_handoffs(
             &request.context.resource_scope,
             request.capability_id,
             request.obligations,
-        )?;
-
-        if let Some(reservation) = &request.outcome.resource_reservation {
-            self.release_resource_reservation(reservation)?;
-        }
-        Ok(())
+        );
+        // These cleanups are independent. An unavailable handoff store must
+        // not prevent releasing the reservation and strand admission capacity.
+        let released = request
+            .outcome
+            .resource_reservation
+            .as_ref()
+            .map_or(Ok(()), |reservation| {
+                self.release_resource_reservation(reservation)
+            });
+        combine_cleanup_results(discarded, released)
     }
 
     async fn complete_dispatch(
@@ -1609,6 +1932,23 @@ impl BuiltinObligationHandler {
     }
 }
 
+/// Attempt all independent cleanups before combining their results. Errors
+/// remain failures; a second failure is recorded without logging secret data.
+fn combine_cleanup_results(
+    first: Result<(), CapabilityObligationError>,
+    second: Result<(), CapabilityObligationError>,
+) -> Result<(), CapabilityObligationError> {
+    match (first, second) {
+        (Err(first), Err(second)) => {
+            tracing::warn!(first_error = %first, additional_error = %second,
+                "independent obligation cleanups both failed");
+            Err(first)
+        }
+        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+        (Ok(()), Ok(())) => Ok(()),
+    }
+}
+
 fn post_dispatch_obligations(obligations: &[Obligation]) -> Vec<Obligation> {
     obligations
         .iter()
@@ -1704,6 +2044,7 @@ fn secret_injection_handles(obligations: &[Obligation]) -> Vec<SecretHandle> {
 }
 
 struct CredentialAccountInjectionObligation<'a> {
+    requirement: Option<&'a brassclaw_host_api::RuntimeCredentialAccountRequirement>,
     handle: &'a SecretHandle,
     provider: &'a RuntimeCredentialAccountProviderId,
     provider_scopes: &'a [String],
@@ -1721,7 +2062,9 @@ fn credential_account_injection_obligations(
                 provider,
                 provider_scopes,
                 requester_extension,
+                requirement,
             } => Some(CredentialAccountInjectionObligation {
+                requirement: requirement.as_deref(),
                 handle,
                 provider,
                 provider_scopes,
@@ -1758,6 +2101,7 @@ fn credential_stage_error_to_obligation_error(
             credential_requirements: credential_obligation
                 .map(|obligation| {
                     vec![RuntimeCredentialAuthRequirement {
+                        requirement: obligation.requirement.cloned(),
                         provider: obligation.provider.clone(),
                         requester_extension: obligation.requester_extension.clone(),
                         provider_scopes: obligation.provider_scopes.to_vec(),
@@ -1777,42 +2121,110 @@ fn credential_stage_error_to_obligation_error(
 /// to a concrete handle before being injected under the WASM guest's declared slot name.
 /// Lease → consume → insert the staged credential material.
 ///
-/// Mirrors [`crate::services::ProductAuthProviderRuntimePorts::stage_secret_once`]
-/// so the WASM `InjectCredentialAccountOnce` path and the first-party stager path
-/// (e.g. `ProductAuthRuntimeGsuiteCredentialStager`) share identical lease/consume
-/// semantics and `CredentialStageError` mapping. `SecretStoreError` variants for
+/// Stage the retained source's authenticated generation with its original
+/// issuer deadline when present. Conditional leasing and consume-time checks do not grant
+/// authority or choose current material. Producer-specific first-party staging
+/// must use the same retained family selection through its existing host port. `SecretStoreError` variants for
 /// unknown/expired/revoked/consumed material map to
 /// [`CredentialStageError::AuthRequired`] via [`crate::services::stage_secret_error`];
 /// other failures map to [`CredentialStageError::Backend`].
 async fn stage_credential_material(
     secret_store: &dyn SecretStore,
     secret_injections: &RuntimeSecretInjectionStore,
-    source_scope: &ResourceScope,
+    source: &RuntimeCredentialAccessSecret,
     target_scope: &ResourceScope,
     capability_id: &CapabilityId,
-    source: &SecretHandle,
     target: &SecretHandle,
+    check_use: &(dyn Fn() -> Result<(), CredentialStageError> + Sync),
 ) -> Result<(), CredentialStageError> {
+    if source.scope.is_system() || source.record_reference.is_empty() {
+        return Err(CredentialStageError::Backend);
+    }
+    if source
+        .access_expires_at
+        .is_some_and(|deadline| deadline <= Utc::now())
+    {
+        return Err(CredentialStageError::AuthRequired);
+    }
+    check_use()?;
     let lease = secret_store
-        .lease_once(source_scope, source)
+        .lease_once_if_record_reference(&source.scope, &source.handle, &source.record_reference)
         .await
-        .map_err(|e| {
-            tracing::debug!(err = %e, "stage_credential_material: lease_once failed");
-            crate::services::stage_secret_error(e)
-        })?;
-    let secret = secret_store
-        .consume(source_scope, lease.id)
-        .await
-        .map_err(|e| {
-            tracing::debug!(err = %e, "stage_credential_material: consume failed");
-            crate::services::stage_secret_error(e)
-        })?;
+        .map_err(crate::services::stage_secret_error)?
+        .ok_or(CredentialStageError::AuthRequired)?;
+    if lease.scope != source.scope
+        || lease.handle != source.handle
+        || lease.status != brassclaw_secrets::SecretLeaseStatus::Active
+    {
+        tracing::warn!("credential owner returned an incompatible lease");
+        return Err(CredentialStageError::Backend);
+    }
+    if let Err(error) = check_use() {
+        revoke_unconsumed_credential(secret_store, &source.scope, lease.id).await?;
+        return Err(error);
+    }
+    let secret = match secret_store.consume(&source.scope, lease.id).await {
+        Ok(secret) => secret,
+        Err(error) => {
+            tracing::debug!(
+                reason = error.stable_reason(),
+                "credential consumption failed before staging"
+            );
+            revoke_unconsumed_credential(secret_store, &source.scope, lease.id).await?;
+            return Err(crate::services::stage_secret_error(error));
+        }
+    };
+    // A mutating consume is never dropped on cancellation. Retain its actual
+    // result, then drop/zeroize late material instead of staging it after fencing.
+    check_use()?;
+    let expires_at = match (lease.secret_expires_at, source.access_expires_at) {
+        (Some(stored), Some(selected)) => Some(stored.min(selected)),
+        (stored, selected) => stored.or(selected),
+    };
     secret_injections
-        .insert(target_scope, capability_id, target, secret)
+        .insert_with_expiry(target_scope, capability_id, target, secret, expires_at)
         .map_err(|e| {
             tracing::debug!(err = %e, "stage_credential_material: insert failed");
-            CredentialStageError::Backend
+            match e {
+                RuntimeSecretInjectionStoreError::Expired => CredentialStageError::AuthRequired,
+                RuntimeSecretInjectionStoreError::Unavailable => CredentialStageError::Backend,
+            }
         })
+}
+
+async fn revoke_unconsumed_credential(
+    store: &dyn SecretStore,
+    scope: &ResourceScope,
+    lease: SecretLeaseId,
+) -> Result<(), CredentialStageError> {
+    match store.revoke(scope, lease).await {
+        Ok(lease)
+            if matches!(
+                lease.status,
+                brassclaw_secrets::SecretLeaseStatus::Revoked
+                    | brassclaw_secrets::SecretLeaseStatus::Consumed
+                    | brassclaw_secrets::SecretLeaseStatus::Expired
+            ) =>
+        {
+            Ok(())
+        }
+        Err(
+            SecretStoreError::LeaseConsumed { .. }
+            | SecretStoreError::LeaseRevoked { .. }
+            | SecretStoreError::LeaseExpired { .. },
+        ) => Ok(()),
+        Ok(_) => {
+            tracing::warn!("credential lease cleanup returned a nonterminal state");
+            Err(CredentialStageError::Backend)
+        }
+        Err(error) => {
+            tracing::warn!(
+                reason = error.stable_reason(),
+                "credential lease cleanup remains unresolved"
+            );
+            Err(CredentialStageError::Backend)
+        }
+    }
 }
 
 fn network_policy_obligation(
@@ -2141,7 +2553,7 @@ fn obligation_label(obligation: &Obligation) -> Option<&'static str> {
 /// **Finding H2 — compile-time regression guard.**
 ///
 /// The original H2 claim was that `RuntimeSecretInjectionStore`'s
-/// `HashMap<_, RuntimeSecretInjectionEntry>` would bitwise-copy plaintext out
+/// `HashMap<_, StagedSecretMaterial>` would bitwise-copy plaintext out
 /// of the old bucket array on rehash and free it without zeroization. On
 /// closer inspection that does *not* happen, because `SecretMaterial =
 /// secrecy::SecretBox<str>`: the rehash moves a `Box<str>` pointer plus the
@@ -2155,13 +2567,16 @@ fn obligation_label(obligation: &Obligation) -> Option<&'static str> {
 /// `ZeroizeOnDrop`-bounded helper, so the swap is rejected at compile time
 /// rather than only failing a test run. The function is never called — only
 /// type-checked.
-const _: fn(&RuntimeSecretInjectionEntry) = |entry| {
+const _: fn(&StagedSecretMaterial) = |entry| {
     fn require_zeroize_on_drop<T: ?Sized + secrecy::zeroize::ZeroizeOnDrop>(_: &T) {}
     require_zeroize_on_drop(&entry.material);
 };
 
 #[cfg(test)]
 mod tests {
+    #[path = "raw_source_tests.rs"]
+    mod raw_source_tests;
+
     use std::{sync::Arc, time::Duration};
 
     use brassclaw_events::InMemoryAuditSink;
@@ -2174,6 +2589,234 @@ mod tests {
     use brassclaw_secrets::InMemorySecretStore;
 
     use super::*;
+
+    #[derive(Debug)]
+    struct RetainedViewResolver(RuntimeCredentialAccessSecret);
+
+    impl RuntimeCredentialUseGuard for RetainedViewResolver {
+        fn check_source_use(
+            &self,
+            _: &RuntimeCredentialAccountRequest<'_>,
+            source: &RuntimeCredentialAccessSecret,
+        ) -> Result<(), CredentialStageError> {
+            if source == &self.0 {
+                Ok(())
+            } else {
+                Err(CredentialStageError::Backend)
+            }
+        }
+    }
+
+    #[async_trait]
+    impl RuntimeCredentialAccountResolver for RetainedViewResolver {
+        async fn resolve_access_secret(
+            &self,
+            _: RuntimeCredentialAccountRequest<'_>,
+        ) -> Result<RuntimeCredentialAccessSecret, CredentialStageError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn retained_credential_views_preserve_missing_original_obligation_ports() {
+        let store = Arc::new(InMemorySecretStore::new());
+        let context = execution_context();
+        let handle = SecretHandle::new("captured-account-access").unwrap();
+        store
+            .put(
+                context.resource_scope.clone(),
+                handle.clone(),
+                "captured".into(),
+            )
+            .await
+            .unwrap();
+        let resolver = Arc::new(RetainedViewResolver(
+            RuntimeCredentialAccessSecret::capture(
+                store.as_ref(),
+                context.resource_scope.clone(),
+                handle,
+                None,
+            )
+            .await
+            .unwrap(),
+        ));
+        for original in [
+            BuiltinObligationHandler::new(),
+            BuiltinObligationHandler::new().with_secret_store(store.clone()),
+            BuiltinObligationHandler::new().with_credential_account_resolver_dyn(resolver.clone()),
+        ] {
+            let original =
+                original.with_secret_injection_store(Arc::new(RuntimeSecretInjectionStore::new()));
+            let bound =
+                original.retain_credential_views(store.clone(), resolver.clone(), resolver.clone());
+            assert_eq!(
+                bound.secret_store.is_some(),
+                original.secret_store.is_some()
+            );
+            assert_eq!(
+                bound.credential_account_resolver.is_some(),
+                original.credential_account_resolver.is_some()
+            );
+            let capability = capability_id();
+            let estimate = ResourceEstimate::default();
+            let obligations = [Obligation::InjectCredentialAccountOnce {
+                handle: SecretHandle::new("runtime-slot").unwrap(),
+                provider: RuntimeCredentialAccountProviderId::new("example").unwrap(),
+                provider_scopes: Vec::new(),
+                requester_extension: ExtensionId::new("example").unwrap(),
+                requirement: None,
+            }];
+            assert!(
+                bound
+                    .prepare(CapabilityObligationRequest {
+                        phase: CapabilityObligationPhase::Invoke,
+                        context: &context,
+                        capability_id: &capability,
+                        estimate: &estimate,
+                        obligations: &obligations,
+                    })
+                    .await
+                    .is_err()
+            );
+            assert!(
+                store
+                    .leases_for_scope(&context.resource_scope)
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn retained_credential_views_stage_bound_source_and_abort_original_handoff_and_governor()
+    {
+        use secrecy::ExposeSecret;
+        let context = execution_context();
+        let global = Arc::new(InMemorySecretStore::new());
+        let selected = Arc::new(InMemorySecretStore::new());
+        let source_handle = SecretHandle::new("account-source").unwrap();
+        global
+            .put(
+                context.resource_scope.clone(),
+                source_handle.clone(),
+                "global selection".into(),
+            )
+            .await
+            .unwrap();
+        selected
+            .put(
+                context.resource_scope.clone(),
+                source_handle.clone(),
+                "original selection".into(),
+            )
+            .await
+            .unwrap();
+        let source = RuntimeCredentialAccessSecret::capture(
+            selected.as_ref(),
+            context.resource_scope.clone(),
+            source_handle.clone(),
+            None,
+        )
+        .await
+        .unwrap();
+        let global_source = RuntimeCredentialAccessSecret::capture(
+            global.as_ref(),
+            context.resource_scope.clone(),
+            source_handle,
+            None,
+        )
+        .await
+        .unwrap();
+        let injections = Arc::new(RuntimeSecretInjectionStore::new());
+        let governor = Arc::new(InMemoryResourceGovernor::new());
+        let original = BuiltinObligationServices::with_handoff_stores(
+            Arc::new(InMemoryAuditSink::new()),
+            Arc::new(NetworkObligationPolicyStore::new()),
+            global.clone(),
+            injections.clone(),
+            governor.clone(),
+        )
+        .with_credential_account_resolver(Arc::new(RetainedViewResolver(global_source)))
+        .obligation_handler();
+        let resolver = Arc::new(RetainedViewResolver(source));
+        let bound = original.retain_credential_views(selected.clone(), resolver.clone(), resolver);
+        assert!(Arc::ptr_eq(
+            &bound.output_detector,
+            &original.output_detector
+        ));
+        let slot = SecretHandle::new("runtime-slot").unwrap();
+        let capability = capability_id();
+        let estimate = ResourceEstimate {
+            concurrency_slots: Some(1),
+            ..ResourceEstimate::default()
+        };
+        let obligations = [
+            Obligation::InjectCredentialAccountOnce {
+                handle: slot.clone(),
+                provider: RuntimeCredentialAccountProviderId::new("example").unwrap(),
+                provider_scopes: Vec::new(),
+                requester_extension: ExtensionId::new("example").unwrap(),
+                requirement: None,
+            },
+            Obligation::ReserveResources {
+                reservation_id: ResourceReservationId::new(),
+            },
+        ];
+        let outcome = bound
+            .prepare(CapabilityObligationRequest {
+                phase: CapabilityObligationPhase::Invoke,
+                context: &context,
+                capability_id: &capability,
+                estimate: &estimate,
+                obligations: &obligations,
+            })
+            .await
+            .unwrap();
+        assert!(
+            global
+                .leases_for_scope(&context.resource_scope)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            selected
+                .leases_for_scope(&context.resource_scope)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        let staged = injections
+            .take(&context.resource_scope, &capability, &slot)
+            .unwrap()
+            .unwrap();
+        assert_eq!(staged.material.expose_secret(), "original selection");
+        injections
+            .restore(&context.resource_scope, &capability, &slot, staged)
+            .unwrap();
+        let account = ResourceAccount::tenant(context.resource_scope.tenant_id.clone());
+        assert_eq!(governor.reserved_for(&account).concurrency_slots, 1);
+        bound
+            .abort(CapabilityObligationAbortRequest {
+                phase: CapabilityObligationPhase::Invoke,
+                context: &context,
+                capability_id: &capability,
+                estimate: &estimate,
+                obligations: &obligations,
+                outcome: &outcome,
+            })
+            .await
+            .unwrap();
+        assert!(
+            injections
+                .take(&context.resource_scope, &capability, &slot)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(governor.reserved_for(&account).concurrency_slots, 0);
+    }
 
     #[tokio::test]
     async fn runtime_secret_injection_store_prunes_expired_handoffs() {
@@ -2198,6 +2841,221 @@ mod tests {
                 .take(&scope, &capability_id, &handle)
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn source_fence_prevents_leasing_consuming_and_staging_at_each_boundary() {
+        use brassclaw_secrets::SecretLeaseStatus;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        for fail_at in 0..3 {
+            let store = InMemorySecretStore::new();
+            let scope = execution_context().resource_scope;
+            let handle = SecretHandle::new("source-fence-account").unwrap();
+            store
+                .put(scope.clone(), handle.clone(), "original material".into())
+                .await
+                .unwrap();
+            let source =
+                RuntimeCredentialAccessSecret::capture(&store, scope.clone(), handle, None)
+                    .await
+                    .unwrap();
+            let injections = RuntimeSecretInjectionStore::new();
+            let capability = capability_id();
+            let slot = SecretHandle::new("runtime-slot").unwrap();
+            let checks = AtomicUsize::new(0);
+            // Simulate a fence at the three observable material boundaries.
+            // Each assertion inspects actual owner lease state and handoff data.
+            let guard = || {
+                if checks.fetch_add(1, Ordering::AcqRel) >= fail_at {
+                    Err(CredentialStageError::Backend)
+                } else {
+                    Ok(())
+                }
+            };
+            assert!(
+                stage_credential_material(
+                    &store,
+                    &injections,
+                    &source,
+                    &scope,
+                    &capability,
+                    &slot,
+                    &guard
+                )
+                .await
+                .is_err()
+            );
+            assert!(
+                injections
+                    .take(&scope, &capability, &slot)
+                    .unwrap()
+                    .is_none()
+            );
+            let leases = store.leases_for_scope(&scope).await.unwrap();
+            if fail_at == 0 {
+                assert!(leases.is_empty());
+            } else {
+                assert_eq!(leases.len(), 1);
+                assert_eq!(
+                    leases[0].status,
+                    if fail_at == 1 {
+                        SecretLeaseStatus::Revoked
+                    } else {
+                        SecretLeaseStatus::Consumed
+                    }
+                );
+                assert!(store.consume(&scope, leases[0].id).await.is_err());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn selected_account_and_store_deadlines_survive_actual_material_staging() {
+        use secrecy::ExposeSecret;
+        let early = Utc::now() + chrono::Duration::minutes(5);
+        let late = early + chrono::Duration::minutes(5);
+        for (stored_deadline, selected_deadline, expected) in [
+            (None, None, None),
+            (Some(early), None, Some(early)),
+            (None, Some(early), Some(early)),
+            (Some(late), Some(early), Some(early)),
+            (Some(early), Some(late), Some(early)),
+        ] {
+            let secrets = brassclaw_secrets::InMemorySecretStore::new();
+            let injections = RuntimeSecretInjectionStore::new();
+            let source_scope = resource_scope_with_agent("agent-a");
+            let mut target_scope = source_scope.clone();
+            target_scope.invocation_id = brassclaw_host_api::InvocationId::new();
+            let source_handle = SecretHandle::new("actual-account-material").unwrap();
+            let slot = SecretHandle::new("declared-injection-slot").unwrap();
+            let capability = capability_id();
+            secrets
+                .put_with_expiry(
+                    source_scope.clone(),
+                    source_handle.clone(),
+                    "actual account secret".into(),
+                    stored_deadline,
+                )
+                .await
+                .unwrap();
+            let source = RuntimeCredentialAccessSecret::capture(
+                &secrets,
+                source_scope.clone(),
+                source_handle.clone(),
+                selected_deadline,
+            )
+            .await
+            .unwrap();
+            stage_credential_material(
+                &secrets,
+                &injections,
+                &source,
+                &target_scope,
+                &capability,
+                &slot,
+                &|| Ok(()),
+            )
+            .await
+            .unwrap();
+            assert!(
+                injections
+                    .take(&source_scope, &capability, &slot)
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(
+                injections
+                    .take(&target_scope, &capability, &source_handle)
+                    .unwrap()
+                    .is_none()
+            );
+            let staged = injections
+                .take(&target_scope, &capability, &slot)
+                .unwrap()
+                .unwrap();
+            assert_eq!(staged.material.expose_secret(), "actual account secret");
+            assert_eq!(staged.secret_expires_at, expected);
+            assert!(staged.expires_at.is_some());
+        }
+    }
+
+    #[test]
+    fn restoring_staged_material_keeps_both_original_deadlines_and_redaction() {
+        let store = RuntimeSecretInjectionStore::with_ttl(Duration::from_secs(60));
+        let scope = resource_scope_with_agent("agent-a");
+        let capability_id = capability_id();
+        let handle = SecretHandle::new("finite-access").unwrap();
+        let deadline = Utc::now() + chrono::Duration::seconds(30);
+        store
+            .insert_with_expiry(
+                &scope,
+                &capability_id,
+                &handle,
+                "protected finite material".into(),
+                Some(deadline),
+            )
+            .unwrap();
+        let selected = store
+            .take(&scope, &capability_id, &handle)
+            .unwrap()
+            .unwrap();
+        assert!(!format!("{selected:?}").contains("protected finite material"));
+        let original_ttl = selected.expires_at;
+        assert_eq!(selected.secret_expires_at, Some(deadline));
+        store
+            .restore(&scope, &capability_id, &handle, selected)
+            .unwrap();
+        let restored = store
+            .take(&scope, &capability_id, &handle)
+            .unwrap()
+            .unwrap();
+        assert_eq!(restored.expires_at, original_ttl);
+        assert_eq!(restored.secret_expires_at, Some(deadline));
+        assert!(matches!(
+            store.insert_with_expiry(
+                &scope,
+                &capability_id,
+                &handle,
+                "already expired".into(),
+                Some(Utc::now())
+            ),
+            Err(RuntimeSecretInjectionStoreError::Expired)
+        ));
+        assert!(
+            store
+                .take(&scope, &capability_id, &handle)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn stale_injection_restore_cannot_replace_a_later_staged_selection() {
+        use secrecy::ExposeSecret;
+        let store = RuntimeSecretInjectionStore::new();
+        let scope = resource_scope_with_agent("agent-a");
+        let capability_id = capability_id();
+        let handle = SecretHandle::new("same-slot").unwrap();
+        store
+            .insert(&scope, &capability_id, &handle, "original selection".into())
+            .unwrap();
+        let old = store
+            .take(&scope, &capability_id, &handle)
+            .unwrap()
+            .unwrap();
+        store
+            .insert(&scope, &capability_id, &handle, "later selection".into())
+            .unwrap();
+        assert!(store.restore(&scope, &capability_id, &handle, old).is_err());
+        assert_eq!(
+            store
+                .take(&scope, &capability_id, &handle)
+                .unwrap()
+                .unwrap()
+                .material
+                .expose_secret(),
+            "later selection"
         );
     }
 
@@ -2240,6 +3098,91 @@ mod tests {
                 .take(&agent_a, &capability_id, &handle)
                 .unwrap()
                 .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn abort_releases_reserved_capacity_even_when_secret_handoff_store_is_unavailable() {
+        let network_policies = Arc::new(NetworkObligationPolicyStore::new());
+        let secret_injections = Arc::new(RuntimeSecretInjectionStore::new());
+        let secret_store = Arc::new(InMemorySecretStore::new());
+        let governor = Arc::new(InMemoryResourceGovernor::new());
+        let services = BuiltinObligationServices::with_handoff_stores(
+            Arc::new(InMemoryAuditSink::new()),
+            network_policies.clone(),
+            secret_store.clone(),
+            secret_injections.clone(),
+            governor.clone(),
+        );
+        let handler = services.obligation_handler();
+        let context = execution_context();
+        let account = ResourceAccount::tenant(context.resource_scope.tenant_id.clone());
+        let capability_id = capability_id();
+        let handle = SecretHandle::new("cleanup-test-token").unwrap();
+        let estimate = ResourceEstimate {
+            concurrency_slots: Some(1),
+            ..ResourceEstimate::default()
+        };
+        secret_store
+            .put(
+                context.resource_scope.clone(),
+                handle.clone(),
+                SecretMaterial::from("test secret"),
+            )
+            .await
+            .unwrap();
+        let obligations = vec![
+            Obligation::ApplyNetworkPolicy {
+                policy: allowed_network_policy(),
+            },
+            Obligation::InjectSecretOnce { handle },
+            Obligation::ReserveResources {
+                reservation_id: ResourceReservationId::new(),
+            },
+        ];
+        let outcome = handler
+            .prepare(CapabilityObligationRequest {
+                phase: CapabilityObligationPhase::Invoke,
+                context: &context,
+                capability_id: &capability_id,
+                estimate: &estimate,
+                obligations: &obligations,
+            })
+            .await
+            .unwrap();
+        assert_eq!(governor.reserved_for(&account).concurrency_slots, 1);
+        // Fail the actual handoff store after successful preparation. This is
+        // a private fault injection; production continues reporting the poison.
+        let failed = secret_injections.clone();
+        assert!(
+            std::thread::spawn(move || {
+                let _guard = failed.state.secrets.lock().unwrap();
+                panic!("deliberate handoff-store failure");
+            })
+            .join()
+            .is_err()
+        );
+        let error = handler
+            .abort(CapabilityObligationAbortRequest {
+                phase: CapabilityObligationPhase::Invoke,
+                context: &context,
+                capability_id: &capability_id,
+                estimate: &estimate,
+                obligations: &obligations,
+                outcome: &outcome,
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(error, secret_obligation_failed());
+        assert_eq!(governor.reserved_for(&account).concurrency_slots, 0);
+        assert!(
+            network_policies
+                .take(&context.resource_scope, &capability_id)
+                .is_none()
+        );
+        assert!(
+            secret_injections.state.secrets.is_poisoned(),
+            "failed cleanup remains visible"
         );
     }
 

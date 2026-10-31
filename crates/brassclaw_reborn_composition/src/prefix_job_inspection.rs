@@ -1,13 +1,50 @@
 //! Read-only job projection over existing immutable definitions, turns and
 //! admission/effect records. Reading cannot complete, recover or retry a task.
 use super::*;
-use brassclaw_product_workflow::{InterceptorConfigServiceError as Error, PrefixJobDetail};
+use brassclaw_product_workflow::{
+    InterceptorConfigServiceError as Error, PrefixJobDetail, PrefixJobTarget,
+};
 use serde_json::Value;
+
+enum Lookup<'a> {
+    Profile(&'a str),
+    Pair {
+        specification: &'a str,
+        proposal: &'a str,
+    },
+}
 
 impl RebornRuntime {
     pub async fn inspect_prefix_job(
         &self,
         profile: &str,
+        id: Uuid,
+    ) -> Result<PrefixJobDetail, Error> {
+        self.inspect_prefix_job_target(Lookup::Profile(profile), id)
+            .await
+    }
+
+    pub async fn inspect_prefix_pair_job(
+        &self,
+        specification: &str,
+        proposal: &str,
+        id: Uuid,
+    ) -> Result<PrefixJobDetail, Error> {
+        crate::prefix_model_designs::hash(specification)?;
+        crate::prefix_model_designs::hash(proposal)?;
+        self.inspect_prefix_job_target(
+            Lookup::Pair {
+                specification,
+                proposal,
+            },
+            id,
+        )
+        .await
+    }
+
+    async fn inspect_prefix_job_target(
+        &self,
+        lookup: Lookup<'_>,
         id: Uuid,
     ) -> Result<PrefixJobDetail, Error> {
         let unavailable = || Error::Unavailable;
@@ -16,8 +53,45 @@ impl RebornRuntime {
             .header(id)
             .await
             .map_err(|_| unavailable())?
-            .filter(|header| header.profile == profile)
+            .filter(|header| {
+                header.scope.tenant_id.as_str() == self.webui_tenant_id()
+                    && match (&header.target, &lookup) {
+                        (
+                            crate::prefix_job_definitions::Target::Profile { name, .. },
+                            Lookup::Profile(profile),
+                        ) => name.as_str() == *profile,
+                        (
+                            crate::prefix_job_definitions::Target::Pair {
+                                specification,
+                                proposal,
+                            },
+                            Lookup::Pair {
+                                specification: expected_specification,
+                                proposal: expected_proposal,
+                            },
+                        ) => {
+                            specification.as_str() == *expected_specification
+                                && proposal.as_str() == *expected_proposal
+                        }
+                        _ => false,
+                    }
+            })
             .ok_or(Error::JobNotFound)?;
+        let target = match &header.target {
+            crate::prefix_job_definitions::Target::Profile { name, revision } => {
+                PrefixJobTarget::Profile {
+                    profile: name.clone(),
+                    profile_revision: *revision,
+                }
+            }
+            crate::prefix_job_definitions::Target::Pair {
+                specification,
+                proposal,
+            } => PrefixJobTarget::Pair {
+                specification: specification.clone(),
+                proposal: proposal.clone(),
+            },
+        };
         let state = match self
             .turn_coordinator
             .get_run_state(GetRunStateRequest {
@@ -89,8 +163,7 @@ impl RebornRuntime {
         Ok(PrefixJobDetail {
             job_id: header.id.to_string(),
             thread_id: header.scope.thread_id.to_string(),
-            profile: header.profile,
-            profile_revision: header.revision,
+            target,
             operation: header.operation,
             mode: header.mode,
             created_at: header.created_at,

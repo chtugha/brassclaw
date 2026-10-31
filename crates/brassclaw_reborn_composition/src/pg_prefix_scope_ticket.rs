@@ -26,6 +26,7 @@ impl PgPrefixScopeTicketStore {
         Self { pool }
     }
 
+    #[cfg(any(test, feature = "root-llm-provider"))]
     pub(crate) async fn issue(
         &self,
         raw_ticket: &str,
@@ -77,6 +78,7 @@ impl PgPrefixScopeTicketStore {
         })
     }
 
+    #[cfg(feature = "root-llm-provider")]
     pub(crate) async fn acquire_lease(&self, ticket: &PrefixScopeTicket) -> Result<Uuid, String> {
         let token = Uuid::new_v4();
         let client = self.pool.get().await.map_err(|e| e.to_string())?;
@@ -104,6 +106,7 @@ impl PgPrefixScopeTicketStore {
         Ok(token)
     }
 
+    #[cfg(feature = "root-llm-provider")]
     pub(crate) async fn release_lease(
         &self,
         ticket: &PrefixScopeTicket,

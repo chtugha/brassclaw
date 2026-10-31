@@ -235,6 +235,107 @@ impl FailingManualTokenFlowManager {
 
 #[async_trait]
 impl AuthFlowManager for FailingManualTokenFlowManager {
+    async fn claim_dcr_cleanup(
+        &self,
+        _prepared: brassclaw_auth::DcrCleanupPrepared,
+    ) -> Result<brassclaw_auth::DcrCleanupAdmission, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn record_dcr_cleanup(
+        &self,
+        _scope: &brassclaw_auth::AuthProductScope,
+        _completion: brassclaw_auth::DcrCleanupCompletion,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn update_dcr_retirement(
+        &self,
+        _original: &brassclaw_auth::DcrRegistrationOriginal,
+        _update: brassclaw_auth::DcrRetirementUpdate,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn retain_legacy_dcr(
+        &self,
+        _selection: brassclaw_auth::DcrLegacySelection,
+    ) -> Result<brassclaw_auth::DcrLegacyState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn mark_dcr_cleanup_unavailable(
+        &self,
+        _original: &brassclaw_auth::DcrRegistrationOriginal,
+        _issue: brassclaw_auth::DcrCleanupUnavailable,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn prepare_oauth_setup(
+        &self,
+        _original: brassclaw_auth::OAuthSetupOriginal,
+        _retirement: Option<brassclaw_auth::OAuthSetupRetirement>,
+    ) -> Result<brassclaw_auth::OAuthSetupState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn read_oauth_setup(
+        &self,
+        _scope: &brassclaw_auth::AuthProductScope,
+        _flow_id: brassclaw_auth::AuthFlowId,
+    ) -> Result<Option<brassclaw_auth::OAuthSetupState>, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn prepare_dcr_registration(
+        &self,
+        _original: brassclaw_auth::DcrRegistrationOriginal,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn retire_dcr_preparation(
+        &self,
+        _original: brassclaw_auth::DcrRegistrationOriginal,
+        _reason: brassclaw_auth::DcrCleanupReason,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn read_dcr_registration(
+        &self,
+        _scope: &brassclaw_auth::AuthProductScope,
+        _id: brassclaw_auth::AuthFlowId,
+    ) -> Result<Option<brassclaw_auth::DcrRegistrationState>, brassclaw_auth::AuthProductError>
+    {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn claim_dcr_registration(
+        &self,
+        _original: &brassclaw_auth::DcrRegistrationOriginal,
+    ) -> Result<brassclaw_auth::DcrRegistrationAdmission, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn record_dcr_registration(
+        &self,
+        _scope: &brassclaw_auth::AuthProductScope,
+        _completion: brassclaw_auth::DcrRegistrationCompletion,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn publish_dcr_challenge(
+        &self,
+        _original: &brassclaw_auth::DcrRegistrationOriginal,
+        _challenge: brassclaw_auth::DcrRegistrationChallenge,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
     async fn create_flow(&self, _request: NewAuthFlow) -> Result<AuthFlowRecord, AuthProductError> {
         Err(self
             .create_error
@@ -247,15 +348,31 @@ impl AuthFlowManager for FailingManualTokenFlowManager {
         _scope: &AuthProductScope,
         _flow_id: AuthFlowId,
     ) -> Result<Option<AuthFlowRecord>, AuthProductError> {
-        unreachable!("manual-token cleanup tests do not read flows")
+        Ok(None)
     }
 
     async fn claim_oauth_callback(
         &self,
         _scope: &AuthProductScope,
         _request: OAuthCallbackClaimRequest,
-    ) -> Result<AuthFlowRecord, AuthProductError> {
+    ) -> Result<brassclaw_auth::OAuthCallbackAdmission, AuthProductError> {
         unreachable!("manual-token cleanup tests do not claim OAuth callbacks")
+    }
+
+    async fn read_oauth_callback_original(
+        &self,
+        _scope: &AuthProductScope,
+        _reference: &brassclaw_auth::OAuthCallbackReference,
+    ) -> Result<Option<brassclaw_auth::OAuthCallbackState>, AuthProductError> {
+        unreachable!("manual-token tests do not use callback custody")
+    }
+
+    async fn reconcile_oauth_callback(
+        &self,
+        _scope: &AuthProductScope,
+        _reference: &brassclaw_auth::OAuthCallbackReference,
+    ) -> Result<brassclaw_auth::OAuthCallbackState, AuthProductError> {
+        unreachable!("manual-token tests do not use callback custody")
     }
 
     async fn complete_oauth_callback(
@@ -436,6 +553,7 @@ fn account_request(owner: AuthProductScope) -> NewCredentialAccount {
         owner_extension: None,
         granted_extensions: Vec::new(),
         access_secret: Some(SecretHandle::new("old-manual-access").unwrap()),
+        access_expires_at: None,
         refresh_secret: None,
         scopes: Vec::new(),
     }
@@ -462,6 +580,7 @@ async fn manual_token_facade_updates_bound_account_without_exposing_token() {
         .expect("existing account");
     let challenge = services
         .request_manual_token_setup(RebornManualTokenSetupRequest {
+            requirement_setup: None,
             label: CredentialAccountLabel::new("updated work github").unwrap(),
             ..setup_request(owner.clone()).with_update_binding(update_binding(&existing))
         })
@@ -615,6 +734,24 @@ async fn manual_token_facade_retries_completed_flow_when_continuation_dispatch_f
     assert_eq!(error.code, AuthErrorCode::BackendUnavailable);
     assert!(error.retryable);
 
+    let original_account = shared.flow_records_snapshot()[0]
+        .credential_account_id
+        .unwrap();
+    let changed = services
+        .submit_manual_token(RebornManualTokenSubmitRequest::new(
+            owner.clone(),
+            challenge.interaction_id,
+            secret("changed-token-after-completion"),
+        ))
+        .await
+        .expect_err("a completed flow never proves a different raw token");
+    assert!(changed.conflict);
+    assert!(!changed.retryable);
+    shared
+        .update_status(&owner, original_account, CredentialAccountStatus::Revoked)
+        .await
+        .unwrap();
+
     let response = services
         .submit_manual_token(RebornManualTokenSubmitRequest::new(
             owner,
@@ -664,18 +801,43 @@ async fn manual_token_facade_denies_cross_scope_submit_without_consuming_interac
 }
 
 #[tokio::test]
-async fn manual_token_facade_fails_closed_for_stale_duplicate_and_malformed_submit() {
-    let services = auth_services();
+async fn manual_token_facade_fences_stale_and_changed_input_and_replays_original() {
+    let shared = Arc::new(InMemoryAuthProductServices::new());
+    let dispatcher = Arc::new(RecordingContinuationDispatcher::default());
+    let services = RebornProductAuthServices::from_shared(shared.clone(), dispatcher.clone());
     let owner = scope("alice");
 
-    let expired = services
+    let expired_setup = services
         .request_manual_token_setup(expired_setup_request(owner.clone()))
         .await
-        .expect("expired challenge is still typed");
+        .expect_err("setup must not offer an already expired challenge");
+    assert_eq!(expired_setup.code, AuthErrorCode::UnknownOrExpiredFlow);
+    assert_error_safe(&expired_setup);
+    // Retain coverage of an existing expired interaction through the actual
+    // lower port; rejected setup no longer fabricates that stale UI challenge.
+    let expired = shared
+        .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
+            scope: owner.clone(),
+            provider: provider(),
+            label: label(),
+            continuation: AuthContinuationRef::SetupOnly,
+            update_binding: None,
+            expires_at: Utc::now() - Duration::seconds(1),
+        })
+        .await
+        .unwrap();
+    let AuthChallenge::ManualTokenRequired {
+        interaction_id: expired_interaction,
+        ..
+    } = expired
+    else {
+        panic!("expected original manual interaction");
+    };
     let stale = services
         .submit_manual_token(RebornManualTokenSubmitRequest::new(
             owner.clone(),
-            expired.interaction_id,
+            expired_interaction,
             secret(RAW_TOKEN),
         ))
         .await
@@ -705,7 +867,7 @@ async fn manual_token_facade_fails_closed_for_stale_duplicate_and_malformed_subm
         .expect("malformed submit does not consume the interaction");
 
     let one_shot_interaction = request_challenge(&services, owner.clone()).await;
-    services
+    let first = services
         .submit_manual_token(RebornManualTokenSubmitRequest::new(
             owner.clone(),
             one_shot_interaction,
@@ -713,16 +875,42 @@ async fn manual_token_facade_fails_closed_for_stale_duplicate_and_malformed_subm
         ))
         .await
         .expect("first submit succeeds");
+    let deliveries = dispatcher.events();
     let duplicate = services
         .submit_manual_token(RebornManualTokenSubmitRequest::new(
-            owner,
+            owner.clone(),
             one_shot_interaction,
             secret(RAW_TOKEN),
         ))
         .await
-        .expect_err("duplicate submit is stale");
-    assert_eq!(duplicate.code, AuthErrorCode::UnknownOrExpiredFlow);
-    assert_error_safe(&duplicate);
+        .expect("same input reads the original result");
+    assert_eq!(duplicate, first);
+    assert_eq!(
+        dispatcher.events(),
+        deliveries,
+        "same original never dispatches continuation twice"
+    );
+    let changed = services
+        .submit_manual_token(RebornManualTokenSubmitRequest::new(
+            owner.clone(),
+            one_shot_interaction,
+            secret("changed-token-after-original"),
+        ))
+        .await
+        .expect_err("different input cannot inherit original success");
+    assert!(changed.conflict);
+    assert!(!changed.retryable);
+    assert_error_safe(&changed);
+    assert_eq!(dispatcher.events(), deliveries);
+    assert_eq!(
+        shared
+            .list_accounts(CredentialAccountListRequest::new(owner, provider()))
+            .await
+            .unwrap()
+            .accounts
+            .len(),
+        2
+    );
 }
 
 #[tokio::test]
@@ -755,7 +943,7 @@ async fn manual_token_facade_returns_sanitized_backend_and_canceled_failures() {
 }
 
 #[tokio::test]
-async fn manual_token_facade_abandons_interaction_when_flow_creation_fails() {
+async fn manual_token_facade_retains_interaction_when_flow_creation_is_unconfirmed() {
     let interaction_id = AuthInteractionId::new();
     let interaction = Arc::new(SuccessfulManualTokenInteractionService::new(interaction_id));
     let services = auth_services_with_flow_and_interaction(
@@ -771,11 +959,11 @@ async fn manual_token_facade_abandons_interaction_when_flow_creation_fails() {
         .expect_err("flow creation failure should surface");
 
     assert_eq!(error.code, AuthErrorCode::BackendUnavailable);
-    assert_eq!(interaction.abandoned(), vec![interaction_id]);
+    assert!(interaction.abandoned().is_empty());
 }
 
 #[tokio::test]
-async fn manual_token_facade_cancels_flow_when_completion_fails() {
+async fn manual_token_facade_retains_flow_when_completion_is_unconfirmed() {
     let interaction_id = AuthInteractionId::new();
     let flow_manager = Arc::new(FailingManualTokenFlowManager::complete_fails(
         AuthProductError::BackendUnavailable,
@@ -795,7 +983,7 @@ async fn manual_token_facade_cancels_flow_when_completion_fails() {
         .expect_err("flow completion failure should surface");
 
     assert_eq!(error.code, AuthErrorCode::BackendUnavailable);
-    assert_eq!(flow_manager.canceled(), vec![interaction_id]);
+    assert!(flow_manager.canceled().is_empty());
 }
 
 #[tokio::test]
@@ -810,4 +998,221 @@ async fn request_manual_token_setup_returns_error_on_unexpected_challenge() {
     assert_eq!(error.code, AuthErrorCode::InvalidRequest);
     assert!(!error.retryable);
     assert_error_safe(&error);
+}
+
+struct OriginalProofUnavailable(Arc<InMemoryAuthProductServices>);
+#[async_trait]
+impl AuthInteractionService for OriginalProofUnavailable {
+    async fn request_secret_input(
+        &self,
+        request: ManualTokenSetupRequest,
+    ) -> Result<AuthChallenge, AuthProductError> {
+        self.0.request_secret_input(request).await
+    }
+    async fn submit_manual_token(
+        &self,
+        _scope: &AuthProductScope,
+        _request: SecretSubmitRequest,
+    ) -> Result<SecretSubmitResult, AuthProductError> {
+        Err(AuthProductError::UnknownOrExpiredFlow)
+    }
+    async fn abandon_manual_token(
+        &self,
+        scope: &AuthProductScope,
+        id: AuthInteractionId,
+    ) -> Result<bool, AuthProductError> {
+        self.0.abandon_manual_token(scope, id).await
+    }
+}
+
+#[tokio::test]
+async fn manual_facade_never_substitutes_completed_metadata_for_raw_input_proof() {
+    let shared = Arc::new(InMemoryAuthProductServices::new());
+    let dispatcher = Arc::new(FailsFirstContinuationDispatcher::default());
+    let original = RebornProductAuthServices::from_shared(shared.clone(), dispatcher.clone())
+        .with_flow_record_source(shared.clone());
+    let mut owner = scope("alice");
+    owner.resource.thread_id =
+        Some(brassclaw_host_api::ThreadId::new("original-proof-unavailable").unwrap());
+    let challenge = original
+        .request_manual_token_setup(setup_request(owner.clone()))
+        .await
+        .unwrap();
+    let first = original
+        .submit_manual_token(RebornManualTokenSubmitRequest::new(
+            owner.clone(),
+            challenge.interaction_id,
+            secret(RAW_TOKEN),
+        ))
+        .await
+        .unwrap_err();
+    assert!(first.retryable);
+    let before = shared.flow_records_snapshot();
+    assert_eq!(before[0].status, AuthFlowStatus::Completed);
+    assert!(before[0].continuation_emitted_at.is_none());
+    let without_proof = RebornProductAuthServices::new(
+        shared.clone(),
+        Arc::new(OriginalProofUnavailable(shared.clone())),
+        shared.clone(),
+        shared.clone(),
+        shared.clone(),
+        shared.clone(),
+        dispatcher.clone(),
+    )
+    .with_flow_record_source(shared.clone());
+    let error = without_proof
+        .submit_manual_token(RebornManualTokenSubmitRequest::new(
+            owner,
+            challenge.interaction_id,
+            secret("unproven changed raw token"),
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, AuthErrorCode::UnknownOrExpiredFlow);
+    assert_eq!(shared.flow_records_snapshot(), before);
+    assert!(dispatcher.events().is_empty());
+}
+
+#[tokio::test]
+async fn original_manual_facade_keeps_identity_expiry_raw_proof_and_reference_distinct() {
+    use brassclaw_auth::ManualTokenSetupIdentity;
+    let shared = Arc::new(InMemoryAuthProductServices::new());
+    let dispatcher = Arc::new(FailsFirstContinuationDispatcher::default());
+    let facade = RebornProductAuthServices::from_shared(shared.clone(), dispatcher.clone())
+        .with_flow_record_source(shared.clone());
+    let owner = scope("alice");
+    let identity = ManualTokenSetupIdentity::default();
+    let request = setup_request(owner.clone());
+    let first = facade
+        .request_original_manual_token_setup(identity, request.clone())
+        .await
+        .unwrap();
+    let mut retry = request.clone();
+    retry.expires_at += Duration::hours(2);
+    assert_eq!(
+        facade
+            .request_original_manual_token_setup(identity, retry.clone())
+            .await
+            .unwrap(),
+        first
+    );
+    assert_eq!(shared.flow_records_snapshot().len(), 1);
+    assert!(
+        facade
+            .continue_original_manual_token(&owner, identity)
+            .await
+            .unwrap_err()
+            .conflict
+    );
+    let wrong = ManualTokenSetupIdentity {
+        flow_id: AuthFlowId::new(),
+        ..identity
+    };
+    assert!(
+        facade
+            .submit_original_manual_token(
+                wrong,
+                RebornManualTokenSubmitRequest::new(
+                    owner.clone(),
+                    identity.interaction_id,
+                    secret(RAW_TOKEN)
+                )
+            )
+            .await
+            .unwrap_err()
+            .conflict
+    );
+    assert!(
+        shared
+            .list_accounts(CredentialAccountListRequest::new(owner.clone(), provider()))
+            .await
+            .unwrap()
+            .accounts
+            .is_empty()
+    );
+    assert!(
+        facade
+            .submit_original_manual_token(
+                identity,
+                RebornManualTokenSubmitRequest::new(
+                    owner.clone(),
+                    identity.interaction_id,
+                    secret(RAW_TOKEN)
+                )
+            )
+            .await
+            .unwrap_err()
+            .retryable
+    );
+    assert!(
+        facade
+            .submit_original_manual_token(
+                identity,
+                RebornManualTokenSubmitRequest::new(
+                    owner.clone(),
+                    identity.interaction_id,
+                    secret("changed raw")
+                )
+            )
+            .await
+            .unwrap_err()
+            .conflict
+    );
+    assert!(dispatcher.events().is_empty());
+    let completed = facade
+        .request_original_manual_token_setup(identity, retry)
+        .await
+        .unwrap();
+    assert_eq!(completed.status, AuthFlowStatus::Completed);
+    assert_eq!(completed.challenge, first.challenge);
+    let resumed = facade
+        .continue_original_manual_token(&owner, identity)
+        .await
+        .unwrap();
+    assert_eq!(resumed.status, CredentialAccountStatus::Configured);
+    assert_eq!(dispatcher.events().len(), 1);
+    assert_eq!(
+        facade
+            .continue_original_manual_token(&owner, identity)
+            .await
+            .unwrap(),
+        resumed
+    );
+    assert_eq!(dispatcher.events().len(), 1);
+    assert!(
+        !serde_json::to_string(&completed)
+            .unwrap()
+            .contains(RAW_TOKEN)
+    );
+    let canceled_id = ManualTokenSetupIdentity::default();
+    facade
+        .request_original_manual_token_setup(canceled_id, request.clone())
+        .await
+        .unwrap();
+    assert!(
+        shared
+            .abandon_manual_token(&owner, canceled_id.interaction_id)
+            .await
+            .unwrap()
+    );
+    let canceled = facade
+        .request_original_manual_token_setup(canceled_id, request)
+        .await
+        .unwrap();
+    assert_eq!(canceled.status, AuthFlowStatus::Canceled);
+    assert_eq!(
+        facade
+            .submit_original_manual_token(
+                canceled_id,
+                RebornManualTokenSubmitRequest::new(
+                    owner,
+                    canceled_id.interaction_id,
+                    secret(RAW_TOKEN)
+                )
+            )
+            .await
+            .unwrap_err()
+            .code,
+        AuthErrorCode::Canceled
+    );
 }

@@ -33,11 +33,9 @@ pub(super) struct DcrRegistrationRequest<'a> {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct DcrRegistrationResponse {
+    // Management material is decoded independently from the retained full reply,
+    // including replies with an unusable client identity. Do not copy it here.
     pub(super) client_id: String,
-    #[serde(default)]
-    pub(super) registration_client_uri: Option<String>,
-    #[serde(default)]
-    pub(super) registration_access_token: Option<SecretString>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

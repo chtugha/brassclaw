@@ -8,6 +8,8 @@ import { SettingsSearchEmpty } from "./settings-search-empty.js";
 import { ProviderCard } from "./provider-card.js";
 import { ProviderDialog } from "./provider-dialog.js";
 import { ProviderLoginStatus } from "./provider-login-status.js";
+import { ProviderMutationStatus } from "./provider-mutation-status.js";
+import { ProviderRuntimeStatus } from "./provider-runtime-status.js";
 import { useProviderManagementActions } from "../hooks/useProviderManagementActions.js";
 import { useProviderLogin } from "../hooks/useProviderLogin.js";
 import { groupProvidersByStatus } from "../lib/llm-providers.js";
@@ -53,6 +55,8 @@ export function ProviderManagement({ settings, gatewayStatus, searchQuery = "" }
 
   return html`
     <${Card} className="p-4 sm:p-6">
+      <${ProviderMutationStatus} t=${t} />
+      ${!state.error && !state.isLoading && html`<${ProviderRuntimeStatus} rows=${state.providerPublications} t=${t} />`}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
@@ -154,9 +158,9 @@ export function ProviderManagement({ settings, gatewayStatus, searchQuery = "" }
         provider=${actions.dialogProvider}
         allProviderIds=${actions.allProviderIds}
         builtinOverrides=${state.builtinOverrides}
-        responseCacheDefaults=${state.responseCacheDefaults}
-        modelDiscoveryDefaults=${state.modelDiscoveryDefaults}
-        requestPolicyDefaults=${state.requestPolicyDefaults}
+        responseCacheDefaults=${actions.dialogDefaults?.responseCacheDefaults}
+        modelDiscoveryDefaults=${actions.dialogDefaults?.modelDiscoveryDefaults}
+        requestPolicyDefaults=${actions.dialogDefaults?.requestPolicyDefaults}
         onClose=${actions.closeDialog}
         onSave=${actions.handleSave}
         onTest=${state.testConnection}

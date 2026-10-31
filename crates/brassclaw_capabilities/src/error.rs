@@ -1,7 +1,7 @@
 use brassclaw_authorization::CapabilityLeaseError;
 use brassclaw_host_api::{
-    CapabilityId, DenyReason, DispatchError, DispatchFailureKind, HostApiError, Obligation,
-    RuntimeCredentialAuthRequirement, SecretHandle,
+    AuthDispatchBoundary, CapabilityId, DenyReason, DispatchError, DispatchFailureKind,
+    HostApiError, Obligation, RuntimeCredentialAuthRequirement, SecretHandle,
 };
 use brassclaw_processes::ProcessError;
 
@@ -41,6 +41,7 @@ pub enum CapabilityInvocationError {
     #[error("capability {capability} invocation requires authentication")]
     AuthorizationRequiresAuth {
         capability: CapabilityId,
+        boundary: AuthDispatchBoundary,
         required_secrets: Vec<SecretHandle>,
         credential_requirements: Vec<RuntimeCredentialAuthRequirement>,
     },
@@ -124,6 +125,7 @@ impl From<DispatchError> for CapabilityInvocationError {
                 credential_requirements,
             } => Self::AuthorizationRequiresAuth {
                 capability,
+                boundary: AuthDispatchBoundary::DispatchAttempted,
                 required_secrets,
                 credential_requirements,
             },
@@ -285,10 +287,12 @@ mod tests {
             match err {
                 CapabilityInvocationError::AuthorizationRequiresAuth {
                     capability,
+                    boundary,
                     required_secrets,
                     credential_requirements,
                 } => {
                     assert_eq!(capability, cap(), "handles: {handles:?}");
+                    assert_eq!(boundary, AuthDispatchBoundary::DispatchAttempted);
                     assert_eq!(required_secrets, secrets, "handles: {handles:?}");
                     assert_eq!(credential_requirements, Vec::new(), "handles: {handles:?}");
                 }
@@ -300,6 +304,7 @@ mod tests {
     #[test]
     fn from_dispatch_auth_required_round_trips_credential_requirements() {
         let requirement = RuntimeCredentialAuthRequirement {
+            requirement: None,
             provider: RuntimeCredentialAccountProviderId::new("google").unwrap(),
             requester_extension: ExtensionId::new("gmail").unwrap(),
             provider_scopes: vec!["https://www.googleapis.com/auth/gmail.readonly".to_string()],
@@ -313,10 +318,12 @@ mod tests {
         match err {
             CapabilityInvocationError::AuthorizationRequiresAuth {
                 capability,
+                boundary,
                 required_secrets,
                 credential_requirements,
             } => {
                 assert_eq!(capability, cap());
+                assert_eq!(boundary, AuthDispatchBoundary::DispatchAttempted);
                 assert!(required_secrets.is_empty());
                 assert_eq!(credential_requirements, vec![requirement]);
             }

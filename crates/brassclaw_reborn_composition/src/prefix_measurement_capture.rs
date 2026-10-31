@@ -59,6 +59,7 @@ pub(crate) async fn verify(
     pool: Arc<PgPool>,
     definition: &crate::prefix_job_definitions::Definition,
 ) -> Result<(), Error> {
+    let (profile, revision) = definition.target.profile().ok_or_else(bad)?;
     let captured = read(definition.input["request_json"].as_str().ok_or_else(bad)?)?;
     let probes = captured["probes_json"].as_str().ok_or_else(bad)?;
     let mut request = definition.request["capture"].clone();
@@ -68,15 +69,9 @@ pub(crate) async fn verify(
         .remove("probes_sha256");
     request["probes_json"] = json!(probes);
     let request: MeasurePrefixRequest = serde_json::from_value(request).map_err(|_| bad())?;
-    if request.expected_profile_revision != definition.revision
-        || metadata(&definition.profile, &request)? != definition.request
-        || capture(
-            pool,
-            definition.scope.tenant_id.as_str(),
-            &definition.profile,
-            &request,
-        )
-        .await?
+    if request.expected_profile_revision != revision
+        || metadata(profile, &request)? != definition.request
+        || capture(pool, definition.scope.tenant_id.as_str(), profile, &request).await?
             != definition.input
     {
         return Err(bad());
@@ -119,6 +114,12 @@ pub(crate) async fn capture(
         return Err(bad());
     }
     let design = read(&proposal.proposal_bytes)?;
+    // The existing diagnostic measures a complete compiler-package reference.
+    // Rule-based proposals need the target-aware candidate/coverage pipeline;
+    // never interpret missing legacy geometry as zero or infer new defaults.
+    if design["format"] != "brassclaw-prefix-design-proposal/1" {
+        return Err(bad());
+    }
     let assets =
         crate::prefix_model_artifacts::PgPrefixModelArtifacts::new(pool.clone(), namespace.into())
             .get(&proposal.specification, &request.artifact_set)
@@ -209,20 +210,26 @@ pub(crate) async fn select(
     let RetainedProgram::Tools(program) = inspected.program() else {
         return Err(failed());
     };
-    let tools = crate::installed_monty_catalogue::bootstrap_measurement_tools(
-        catalogue.pool.clone(),
-        catalogue.kernel.clone(),
-        host,
-        admission,
-        program.clone(),
-        false,
-    )
-    .map_err(|_| failed())?;
+    let program = program.clone();
+    let binding_pool = catalogue.pool.clone();
+    let binding_kernel = catalogue.kernel.clone();
+    let bind_tools = Box::new(move || {
+        crate::installed_monty_catalogue::bootstrap_measurement_tools(
+            binding_pool.clone(),
+            binding_kernel.clone(),
+            host.clone(),
+            admission.clone(),
+            program.clone(),
+            false,
+        )
+    });
     Ok(Arc::new(crate::prefix_job_execution::Invocation {
+        receipt_contract: crate::prefix_job_execution::ReceiptContract::Measurement,
         definition,
         reference,
         inspected,
-        tools,
+        tools: Default::default(),
+        bind_tools,
         pool: catalogue.pool.clone(),
     }))
 }

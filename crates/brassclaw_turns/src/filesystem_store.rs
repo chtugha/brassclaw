@@ -35,8 +35,8 @@ use std::{
 
 use async_trait::async_trait;
 use brassclaw_filesystem::{
-    CasExpectation, ContentType, Entry, FilesystemError, FilesystemOperation, RecordVersion,
-    RootFilesystem, ScopedFilesystem,
+    CasExpectation, ContentType, Entry, FilesystemError, RecordVersion, RootFilesystem,
+    ScopedFilesystem,
 };
 use brassclaw_host_api::{ResourceScope, ScopedPath, UserId};
 
@@ -157,29 +157,10 @@ where
         )
     }
 
-    /// Read-modify-write the snapshot with optimistic CAS and bounded retry.
-    ///
-    /// `apply` materializes a transient [`InMemoryTurnStateStore`] from the
-    /// loaded snapshot, runs the supplied async closure against it, and the
-    /// resulting snapshot is written back. On `VersionMismatch` the loop
-    /// re-reads (cross-process contention); on `Unsupported` it falls back
-    /// to `CasExpectation::Any` so the byte-only `LocalFilesystem` path
-    /// still works through the per-record `FILESYSTEM_RECORD_LOCKS` map.
-    async fn apply<T, A, Fut>(&self, apply: A) -> Result<T, TurnError>
-    where
-        A: FnMut(InMemoryTurnStateStore) -> Fut,
-        Fut: std::future::Future<Output = (Result<T, TurnError>, InMemoryTurnStateStore)>,
-    {
-        self.apply_with_cas_fallback(true, apply).await
-    }
-
-    /// Claimed admission requires actual backend CAS. The compatibility entry's
-    /// byte-only fallback must never weaken the original parent claim fence.
-    async fn apply_with_cas_fallback<T, A, Fut>(
-        &self,
-        allow_byte_only_fallback: bool,
-        mut apply: A,
-    ) -> Result<T, TurnError>
+    /// Read-modify-write the snapshot with backend CAS and bounded retry.
+    /// Re-read only after a genuine version conflict. A backend unable to
+    /// enforce the requested condition fails without an unconditional write.
+    async fn apply<T, A, Fut>(&self, mut apply: A) -> Result<T, TurnError>
     where
         A: FnMut(InMemoryTurnStateStore) -> Fut,
         Fut: std::future::Future<Output = (Result<T, TurnError>, InMemoryTurnStateStore)>,
@@ -201,15 +182,7 @@ where
                 Some(v) => CasExpectation::Version(v),
                 None => CasExpectation::Absent,
             };
-            match put_with_cas(
-                self.filesystem.as_ref(),
-                &path,
-                entry,
-                cas,
-                allow_byte_only_fallback,
-            )
-            .await
-            {
+            match put_with_cas(self.filesystem.as_ref(), &path, entry, cas).await {
                 Ok(()) => return outcome,
                 Err(PutError::VersionMismatch) => continue,
                 Err(PutError::Other(error)) => return Err(error),
@@ -350,7 +323,7 @@ where
             })
             .await;
         let pre_resolved = PreResolvedRunProfileResolver::new(profile_resolution);
-        self.apply_with_cas_fallback(false, |store| {
+        self.apply(|store| {
             let request = request.clone();
             let parent = parent.clone();
             let pre_resolved = pre_resolved.clone();
@@ -421,9 +394,8 @@ where
         scope: &TurnScope,
         child: TurnRunId,
     ) -> Result<(), TurnError> {
-        // Exact release needs the same real backend CAS as claimed admission;
-        // the byte-only compatibility fallback cannot acknowledge this marker.
-        self.apply_with_cas_fallback(false, |store| async move {
+        // Exact release requires the same backend CAS as claimed admission.
+        self.apply(|store| async move {
             let outcome = store.release_claimed_child_reservation(scope, child).await;
             (outcome, store)
         })
@@ -537,6 +509,20 @@ where
             let request = request.clone();
             async move {
                 let outcome = store.record_model_route_snapshot(request).await;
+                (outcome, store)
+            }
+        })
+        .await
+    }
+
+    async fn block_native_auth(
+        &self,
+        request: crate::runner::native_auth::BlockNativeAuthRequest,
+    ) -> Result<TurnRunState, TurnError> {
+        self.apply(|store| {
+            let request = request.clone();
+            async move {
+                let outcome = store.block_native_auth(request).await;
                 (outcome, store)
             }
         })
@@ -785,43 +771,20 @@ enum PutError {
     Other(TurnError),
 }
 
-/// Issue a `put` honoring the requested CAS expectation.
-///
-/// Compatibility calls may fall back to `CasExpectation::Any` when the backend
-/// reports `Unsupported` — `LocalFilesystem` is byte-only and only accepts `Any`.
-/// Claimed admission disables that fallback and surfaces the backend error.
-/// On a byte-only backend the in-process record-lock map provides
-/// intra-process serialization; cross-process safety on those backends is a
-/// documented process-local limitation (matches
-/// `brassclaw_run_state::put_with_cas`).
+/// Keep every caller's exact precondition at the backend.
 async fn put_with_cas<F>(
     filesystem: &ScopedFilesystem<F>,
     path: &ScopedPath,
     entry: Entry,
     cas: CasExpectation,
-    allow_byte_only_fallback: bool,
 ) -> Result<(), PutError>
 where
     F: RootFilesystem,
 {
-    let fallback_entry = allow_byte_only_fallback.then(|| entry.clone());
     let scope = ResourceScope::system();
     match filesystem.put(&scope, path, entry, cas).await {
         Ok(_) => Ok(()),
         Err(FilesystemError::VersionMismatch { .. }) => Err(PutError::VersionMismatch),
-        Err(
-            error @ FilesystemError::Unsupported {
-                operation: FilesystemOperation::WriteFile,
-                ..
-            },
-        ) => match fallback_entry {
-            Some(entry) => filesystem
-                .put(&scope, path, entry, CasExpectation::Any)
-                .await
-                .map(|_| ())
-                .map_err(|error| PutError::Other(fs_error(error))),
-            None => Err(PutError::Other(fs_error(error))),
-        },
         Err(error) => Err(PutError::Other(fs_error(error))),
     }
 }

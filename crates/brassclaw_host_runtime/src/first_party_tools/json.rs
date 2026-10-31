@@ -147,6 +147,21 @@ fn dispatch_with_limits(
                 limits,
             )
         }
+        "parse_strict" => {
+            // A successor operation on the same bounded primitive. Legacy
+            // operations keep their original duplicate-key behavior.
+            if input.as_object().is_none_or(|fields| fields.len() != 2) {
+                return Err(input_error());
+            }
+            let text = input
+                .get("data")
+                .and_then(Value::as_str)
+                .ok_or_else(input_error)?;
+            finish_document(
+                read_json(text, limits, DuplicateKeys::Reject).map_err(read_error)?,
+                limits,
+            )
+        }
         "parse" => {
             let data = input.get("data").ok_or_else(input_error)?;
             let text = data.as_str().ok_or_else(input_error)?;

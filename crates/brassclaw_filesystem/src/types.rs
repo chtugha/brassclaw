@@ -104,6 +104,13 @@ pub enum FilesystemError {
         expected: Option<RecordVersion>,
         found: Option<RecordVersion>,
     },
+    /// The version was reusable but the selected opaque body changed. No entry
+    /// write occurred; omit hashes/bodies to avoid exposing sensitive content.
+    #[error("record snapshot changed before {operation} at {path}")]
+    SnapshotMismatch {
+        path: VirtualPath,
+        operation: FilesystemOperation,
+    },
     /// Mounted backend does not implement the requested operation. Capability
     /// checks at mount time should catch most cases; this remains for
     /// runtime-conditional capabilities (e.g. a Postgres mount built against a
@@ -330,6 +337,10 @@ pub enum Capability {
     EntryIndexMetadata,
     /// Native opaque writes atomically reject structured targets.
     OpaqueWrite,
+    /// Atomic version-plus-body preconditions for record writes.
+    EntryBodyCas,
+    /// Atomic single-leaf deletion conditional on version and body.
+    ConditionalEntryDelete,
 }
 
 impl Capability {
@@ -357,6 +368,8 @@ impl Capability {
             Capability::EntryMetadata,
             Capability::EntryIndexMetadata,
             Capability::OpaqueWrite,
+            Capability::EntryBodyCas,
+            Capability::ConditionalEntryDelete,
         ]
     }
 }

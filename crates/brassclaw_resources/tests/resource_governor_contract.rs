@@ -2885,3 +2885,57 @@ fn persistent_governor_rejects_inconsistent_retained_reservations_without_writes
         dec!(0.25)
     );
 }
+
+#[test]
+fn filesystem_resource_limit_update_rejects_unsupported_cas_without_overwrite() {
+    use brassclaw_filesystem::{LocalFilesystem, ScopedFilesystem};
+    use brassclaw_host_api::{
+        HostPath, MountAlias, MountGrant, MountPermissions, MountView, VirtualPath,
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let mut root = LocalFilesystem::new();
+    root.mount_local(
+        VirtualPath::new("/tenants/tenant1/users/user1/resources").unwrap(),
+        HostPath::from_path_buf(directory.path().to_path_buf()),
+    )
+    .unwrap();
+    let mounts = MountView::new(vec![MountGrant::new(
+        MountAlias::new("/resources").unwrap(),
+        VirtualPath::new("/tenants/tenant1/users/user1/resources").unwrap(),
+        MountPermissions::read_write_list_delete(),
+    )])
+    .unwrap();
+    let filesystem = std::sync::Arc::new(ScopedFilesystem::with_fixed_view(
+        std::sync::Arc::new(root),
+        mounts,
+    ));
+    let governor =
+        PersistentResourceGovernor::new(FilesystemResourceGovernorStore::new(filesystem));
+    let scope = sample_scope("tenant1", "user1", Some("project1"));
+    let account = ResourceAccount::tenant(scope.tenant_id.clone());
+    governor
+        .try_set_limit(
+            account.clone(),
+            ResourceLimits {
+                max_concurrency_slots: Some(1),
+                ..ResourceLimits::default()
+            },
+        )
+        .unwrap();
+    let original = std::fs::read(directory.path().join("snapshot.json")).unwrap();
+    assert!(
+        governor
+            .try_set_limit(
+                account,
+                ResourceLimits {
+                    max_concurrency_slots: Some(2),
+                    ..ResourceLimits::default()
+                }
+            )
+            .is_err()
+    );
+    assert_eq!(
+        std::fs::read(directory.path().join("snapshot.json")).unwrap(),
+        original
+    );
+}

@@ -13,7 +13,8 @@ use std::collections::HashSet;
 use crate::ApprovalRequest;
 use crate::{
     CapabilityId, ExtensionId, HostApiError, MountView, NetworkPolicy, ResourceCeiling,
-    ResourceReservationId, RuntimeCredentialAccountProviderId, SecretHandle,
+    ResourceReservationId, RuntimeCredentialAccountProviderId, RuntimeCredentialAccountRequirement,
+    SecretHandle,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -61,6 +62,10 @@ pub enum Obligation {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         provider_scopes: Vec<String>,
         requester_extension: ExtensionId,
+        /// Exact trusted declaration; absent historical records remain readable,
+        /// but absence supplies no requirement/account selection evidence.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        requirement: Option<Box<RuntimeCredentialAccountRequirement>>,
     },
     FirstPartyCredentialStagedViaHostPort {
         capability_id: CapabilityId,
@@ -78,6 +83,9 @@ pub enum Obligation {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeCredentialAuthRequirement {
+    /// Preserved through blocked auth setup; never rederive from today's labels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirement: Option<RuntimeCredentialAccountRequirement>,
     pub provider: RuntimeCredentialAccountProviderId,
     pub requester_extension: ExtensionId,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -130,6 +138,19 @@ pub struct Obligations(Vec<Obligation>);
 impl Obligations {
     pub fn new(obligations: Vec<Obligation>) -> Result<Self, HostApiError> {
         for obligation in &obligations {
+            if let Obligation::InjectCredentialAccountOnce {
+                handle,
+                provider,
+                provider_scopes,
+                requester_extension,
+                requirement: Some(exact),
+            } = obligation
+                && !exact.matches_dispatch(handle, provider, provider_scopes, requester_extension)
+            {
+                return Err(HostApiError::invariant(
+                    "credential obligation declaration differs",
+                ));
+            }
             if !OBLIGATION_EVALUATION_ORDER.contains(&obligation.kind()) {
                 return Err(HostApiError::invariant(format!(
                     "{kind:?} is missing from OBLIGATION_EVALUATION_ORDER",

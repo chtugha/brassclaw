@@ -402,6 +402,7 @@ mod tests {
 
     fn manual_requirement(name: &str, provider: &str) -> LifecycleExtensionCredentialRequirement {
         LifecycleExtensionCredentialRequirement {
+            runtime_requirement: None,
             name: name.to_string(),
             provider: provider.to_string(),
             required: true,
@@ -411,6 +412,7 @@ mod tests {
 
     fn oauth_requirement(name: &str, provider: &str) -> LifecycleExtensionCredentialRequirement {
         LifecycleExtensionCredentialRequirement {
+            runtime_requirement: None,
             name: name.to_string(),
             provider: provider.to_string(),
             required: true,

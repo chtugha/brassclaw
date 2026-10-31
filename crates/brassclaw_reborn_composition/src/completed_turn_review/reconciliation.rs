@@ -42,6 +42,9 @@ pub(super) async fn reconcile(
         return Ok(false);
     }
     let backend = &ports.backend;
+    if !backend.persist_retained_wire().await {
+        return Ok(false);
+    }
     let attempt = backend.attempt;
     let client = pool
         .get()
@@ -136,7 +139,7 @@ pub(super) async fn reconcile(
     {
         let model = backend.model_work.lock().await;
         if (work.get::<_, i32>(2) == 1 && model.request.is_none())
-            || (observed.is_some() && model.response.is_none())
+            || (observed.is_some() && model.response.is_none() && !model.confirmed_unsubmitted)
         {
             return Ok(false);
         }

@@ -182,6 +182,8 @@ pub struct TurnGateAuthFlowQuery {
 /// Input used to create an auth flow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewAuthFlow {
+    /// Exact usage and selection precondition captured before the challenge.
+    pub requirement_setup: Option<Box<crate::CredentialRequirementSetup>>,
     pub id: Option<AuthFlowId>,
     pub scope: AuthProductScope,
     pub kind: AuthFlowKind,
@@ -208,6 +210,9 @@ pub enum ProviderCallbackOutcome {
 /// [`crate::OAuthProviderCallbackRequest`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OAuthCallbackInput {
+    /// Exact original dispatch evidence for Authorized, absent for Denied.
+    /// This is custody/fencing metadata, never an invocation grant.
+    pub dispatched: Option<crate::OAuthCallbackAction>,
     pub flow_id: AuthFlowId,
     pub opaque_state_hash: OpaqueStateHash,
     pub outcome: ProviderCallbackOutcome,
@@ -216,6 +221,7 @@ pub struct OAuthCallbackInput {
 /// Terminal failure input for an already-claimed OAuth callback.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OAuthCallbackFailureInput {
+    pub dispatched: Option<crate::OAuthCallbackAction>,
     pub flow_id: AuthFlowId,
     pub opaque_state_hash: OpaqueStateHash,
     pub error: AuthErrorCode,
@@ -236,18 +242,129 @@ pub struct ManualTokenCompletionInput {
     pub credential_account_id: CredentialAccountId,
 }
 
-/// Pre-egress claim for an authorized OAuth callback. This validates and marks
-/// the scoped flow before one-shot provider exchange can consume a raw code.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OAuthCallbackClaimRequest {
-    pub flow_id: AuthFlowId,
-    pub opaque_state_hash: OpaqueStateHash,
-    pub provider: AuthProviderId,
-    pub pkce_verifier_hash: crate::PkceVerifierHash,
-}
+/// Complete prepared original for a single owned authorized exchange.
+/// Preparation is metadata only; only a returned Dispatch owns the first call.
+pub type OAuthCallbackClaimRequest = crate::OAuthCallbackPrepared;
 
 #[async_trait]
 pub trait AuthFlowManager: Send + Sync {
+    /// Authenticate and persist the first OAuth setup in the existing flow/CAS
+    /// owner. Readback of an existing exact original never grants another call.
+    /// Only an absent flow may acquire a canceled/expired projection here; normal
+    /// cancellation of an existing flow uses cancel_flow. Preparation/later-use
+    /// custody must be checked before the first insert. Do not select today's
+    /// account: the authenticated original already carries its first snapshot.
+    async fn prepare_oauth_setup(
+        &self,
+        original: crate::OAuthSetupOriginal,
+        retirement: Option<crate::OAuthSetupRetirement>,
+    ) -> Result<crate::OAuthSetupState, AuthProductError>;
+
+    /// Original metadata only, including after private material retirement.
+    /// Legacy absence is not permission to backfill from current configuration.
+    async fn read_oauth_setup(
+        &self,
+        scope: &AuthProductScope,
+        flow_id: AuthFlowId,
+    ) -> Result<Option<crate::OAuthSetupState>, AuthProductError>;
+
+    /// Read only the original setup custody of an existing flow. Missing old
+    /// metadata is not permission to reconstruct it from current settings.
+    async fn requirement_setup(
+        &self,
+        _scope: &AuthProductScope,
+        _flow: AuthFlowId,
+    ) -> Result<Option<crate::CredentialRequirementSetup>, AuthProductError> {
+        Err(AuthProductError::BackendUnavailable)
+    }
+
+    /// Attach only authenticated existing legacy material, without creating a
+    /// registration result, replacing the flow or reading a new account target.
+    async fn retain_legacy_dcr(
+        &self,
+        selection: crate::DcrLegacySelection,
+    ) -> Result<crate::DcrLegacyState, AuthProductError>;
+
+    /// Persist the exact local cleanup plan or authenticated closure readback.
+    /// A caller must receive/read this plan before closing any secret identity.
+    async fn update_dcr_retirement(
+        &self,
+        original: &crate::DcrRegistrationOriginal,
+        update: crate::DcrRetirementUpdate,
+    ) -> Result<crate::DcrRegistrationState, AuthProductError>;
+
+    /// First acknowledged durable management intent only; readback never grants
+    /// another DELETE. Concrete owners authenticate encrypted management inputs.
+    async fn claim_dcr_cleanup(
+        &self,
+        prepared: crate::DcrCleanupPrepared,
+    ) -> Result<crate::DcrCleanupAdmission, AuthProductError>;
+    /// Record the exact management result before retiring any local artifact.
+    async fn record_dcr_cleanup(
+        &self,
+        scope: &AuthProductScope,
+        completion: crate::DcrCleanupCompletion,
+    ) -> Result<crate::DcrRegistrationState, AuthProductError>;
+    /// Retain a visible non-dispatchable cleanup disposition, never a false
+    /// success when registration outcome or management support is unavailable.
+    async fn mark_dcr_cleanup_unavailable(
+        &self,
+        original: &crate::DcrRegistrationOriginal,
+        issue: crate::DcrCleanupUnavailable,
+    ) -> Result<crate::DcrRegistrationState, AuthProductError>;
+
+    /// Atomically retain the original local flow and pre-challenge account
+    /// snapshot before any dynamic-client registration. Existing identities
+    /// return their original state without selecting a later account. A first
+    /// insertion requires authenticated preparation and no later-stage artifact;
+    /// missing flow state alone never proves that registration was not sent.
+    /// Elapsed preparations use the terminal restoration contract below.
+    async fn prepare_dcr_registration(
+        &self,
+        original: crate::DcrRegistrationOriginal,
+    ) -> Result<crate::DcrRegistrationState, AuthProductError>;
+
+    /// Restore only a canceled/expired, never-dispatched preparation under its
+    /// original ID. Concrete owners authenticate its encrypted source and all
+    /// later-stage absences before the absent-flow CAS. An existing original
+    /// wins unchanged; this operation neither snapshots today's account nor
+    /// dispatches registration, cleanup HTTP or a continuation.
+    async fn retire_dcr_preparation(
+        &self,
+        original: crate::DcrRegistrationOriginal,
+        reason: crate::DcrCleanupReason,
+    ) -> Result<crate::DcrRegistrationState, AuthProductError>;
+
+    /// Read the original even after cancellation or expiry. This is metadata,
+    /// not dispatch authority, and does not create or repair a missing flow.
+    async fn read_dcr_registration(
+        &self,
+        scope: &AuthProductScope,
+        flow_id: AuthFlowId,
+    ) -> Result<Option<crate::DcrRegistrationState>, AuthProductError>;
+
+    /// Only the acknowledged first durable claim may return Dispatch.
+    /// Lost acknowledgement/recovery returns Original and cannot repeat POST.
+    async fn claim_dcr_registration(
+        &self,
+        original: &crate::DcrRegistrationOriginal,
+    ) -> Result<crate::DcrRegistrationAdmission, AuthProductError>;
+
+    /// Retain exact encrypted response/outcome evidence even after cancellation.
+    async fn record_dcr_registration(
+        &self,
+        scope: &AuthProductScope,
+        completion: crate::DcrRegistrationCompletion,
+    ) -> Result<crate::DcrRegistrationState, AuthProductError>;
+
+    /// Publish only after authenticating the exact retained output generations;
+    /// terminal flow state wins over a late registration response.
+    async fn publish_dcr_challenge(
+        &self,
+        original: &crate::DcrRegistrationOriginal,
+        challenge: crate::DcrRegistrationChallenge,
+    ) -> Result<crate::DcrRegistrationState, AuthProductError>;
+
     async fn create_flow(&self, request: NewAuthFlow) -> Result<AuthFlowRecord, AuthProductError>;
 
     async fn get_flow(
@@ -260,7 +377,21 @@ pub trait AuthFlowManager: Send + Sync {
         &self,
         scope: &AuthProductScope,
         request: OAuthCallbackClaimRequest,
-    ) -> Result<AuthFlowRecord, AuthProductError>;
+    ) -> Result<crate::OAuthCallbackAdmission, AuthProductError>;
+
+    /// Read one coherent original before automatic provider/PKCE preparation.
+    async fn read_oauth_callback_original(
+        &self,
+        scope: &AuthProductScope,
+        reference: &crate::OAuthCallbackReference,
+    ) -> Result<Option<crate::OAuthCallbackState>, AuthProductError>;
+
+    /// Store-only original reconciliation. Never consumes code or calls issuer.
+    async fn reconcile_oauth_callback(
+        &self,
+        scope: &AuthProductScope,
+        reference: &crate::OAuthCallbackReference,
+    ) -> Result<crate::OAuthCallbackState, AuthProductError>;
 
     async fn complete_oauth_callback(
         &self,

@@ -152,11 +152,15 @@ impl CapabilityInvocationError {
             Self::ObligationFailed { .. } => Some(CapabilityRunStateTransition::Fail {
                 error_kind: "ObligationFailed",
             }),
-            Self::AuthorizationRequiresAuth { .. } => {
-                Some(CapabilityRunStateTransition::BlockAuth {
-                    error_kind: "AuthRequired",
-                })
-            }
+            Self::AuthorizationRequiresAuth {
+                boundary: brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
+                ..
+            } => Some(CapabilityRunStateTransition::BlockAuth {
+                error_kind: "AuthRequired",
+            }),
+            Self::AuthorizationRequiresAuth { .. } => Some(CapabilityRunStateTransition::Fail {
+                error_kind: "AuthOutcomeUnresolved",
+            }),
             Self::Dispatch { .. } => None,
             Self::UnknownCapability { .. }
             | Self::AuthorizationDenied { .. }
@@ -367,6 +371,7 @@ mod tests {
     fn authorization_requires_auth_still_blocks_auth() {
         let error = CapabilityInvocationError::AuthorizationRequiresAuth {
             capability: capability(),
+            boundary: brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
             required_secrets: Vec::new(),
             credential_requirements: Vec::new(),
         };
@@ -377,5 +382,26 @@ mod tests {
             transition,
             CapabilityRunStateTransition::BlockAuth { .. }
         ));
+    }
+
+    #[test]
+    fn dispatched_and_unproven_auth_fail_without_auth_resume() {
+        for boundary in [
+            brassclaw_host_api::AuthDispatchBoundary::DispatchAttempted,
+            brassclaw_host_api::AuthDispatchBoundary::Unproven,
+        ] {
+            let error = CapabilityInvocationError::AuthorizationRequiresAuth {
+                capability: capability(),
+                boundary,
+                required_secrets: Vec::new(),
+                credential_requirements: Vec::new(),
+            };
+            assert!(matches!(
+                error.run_state_transition(),
+                Some(CapabilityRunStateTransition::Fail {
+                    error_kind: "AuthOutcomeUnresolved"
+                })
+            ));
+        }
     }
 }

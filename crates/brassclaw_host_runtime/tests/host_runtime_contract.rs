@@ -68,6 +68,58 @@ fn bounded_contract_strings_share_validation_semantics() {
 }
 
 #[tokio::test]
+async fn default_runtime_preserves_dispatch_auth_origin_and_failed_run() {
+    let registry = Arc::new(registry_with_echo_capability());
+    let dispatcher = Arc::new(DispatchedAuthRequired::default());
+    let run_state = Arc::new(InMemoryRunStateStore::new());
+    let runtime = DefaultHostRuntime::new(
+        registry,
+        dispatcher.clone(),
+        Arc::new(GrantAuthorizer),
+        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
+        local_test_runtime_policy(),
+    )
+    .with_trust_policy(Arc::new(local_manifest_trust_policy()))
+    .with_run_state(run_state.clone());
+    let context = execution_context_with_dispatch_grant();
+    let scope = context.resource_scope.clone();
+    let invocation_id = context.invocation_id;
+    let request = RuntimeCapabilityRequest::new(
+        context,
+        capability_id(),
+        ResourceEstimate::default(),
+        json!({"message": "auth after entry"}),
+        trust_decision_with_dispatch_authority(),
+    );
+    let outcome = runtime.invoke_capability(request).await.unwrap();
+    let brassclaw_host_runtime::RuntimeCapabilityOutcome::AuthRequired(gate) = outcome else {
+        panic!("expected native auth provenance");
+    };
+    assert_eq!(gate.boundary, AuthDispatchBoundary::DispatchAttempted);
+    assert_eq!(dispatcher.0.load(Ordering::SeqCst), 1);
+    let record = run_state.get(&scope, invocation_id).await.unwrap().unwrap();
+    assert_eq!(record.status, brassclaw_run_state::RunStatus::Failed);
+    assert_eq!(record.error_kind.as_deref(), Some("AuthOutcomeUnresolved"));
+}
+
+#[derive(Default)]
+struct DispatchedAuthRequired(AtomicUsize);
+#[async_trait]
+impl CapabilityDispatcher for DispatchedAuthRequired {
+    async fn dispatch_json(
+        &self,
+        request: CapabilityDispatchRequest,
+    ) -> Result<CapabilityDispatchResult, DispatchError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Err(DispatchError::AuthRequired {
+            capability: request.capability_id,
+            required_secrets: Vec::new(),
+            credential_requirements: Vec::new(),
+        })
+    }
+}
+
+#[tokio::test]
 async fn default_runtime_returns_completed_outcome_for_authorized_dispatch() {
     let registry = Arc::new(registry_with_echo_capability());
     let dispatcher = Arc::new(RecordingDispatcher::default());

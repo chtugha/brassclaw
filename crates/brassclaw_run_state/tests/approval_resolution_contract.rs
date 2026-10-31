@@ -155,15 +155,11 @@ async fn filesystem_approval_store_rejects_duplicate_pending_save() {
     );
 }
 
-fn engine_filesystem() -> brassclaw_filesystem::LocalFilesystem {
-    let storage = tempfile::tempdir().unwrap().keep();
-    let mut fs = brassclaw_filesystem::LocalFilesystem::new();
-    fs.mount_local(
-        VirtualPath::new("/engine").unwrap(),
-        HostPath::from_path_buf(storage),
-    )
-    .unwrap();
-    fs
+// Versioned transitions require a record-capable owner. Actual local-disk
+// unsupported-update preservation is covered in run_state_contract; the same
+// consumer contract is also exercised against native PostgreSQL.
+fn engine_filesystem() -> brassclaw_filesystem::InMemoryBackend {
+    brassclaw_filesystem::InMemoryBackend::new()
 }
 
 /// Build a [`ScopedFilesystem`] exposing `/run-state` and `/approvals`

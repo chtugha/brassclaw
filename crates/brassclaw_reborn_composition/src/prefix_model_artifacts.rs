@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, sync::Arc};
 
-const FILES: [&str; 8] = [
+const FILES: &[&str] = &[
     "config.json",
     "tokenizer.json",
     "tokenizer_config.json",
@@ -21,6 +21,9 @@ const FILES: [&str; 8] = [
     "vocab.json",
     "merges.txt",
     "chat_template.jinja",
+    // Optional complete model documentation, retained as data. This is never a
+    // template/tokenizer input or verified provider/runtime-cache evidence.
+    "README.md",
 ];
 fn sha(data: &[u8]) -> String {
     hex::encode(Sha256::digest(data))
@@ -272,6 +275,12 @@ impl PgPrefixModelArtifacts {
             crate::prefix_model_configuration::observe(specification, id, &bytes, &files)?;
         Ok(brassclaw_product_workflow::PrefixModelArtifactDetail {
             configuration_observation: Some(configuration_observation),
+            format_observation: Some(crate::prefix_model_configuration::observe_format_sources(
+                specification,
+                id,
+                &bytes,
+                &files,
+            )?),
             summary: summary(specification, id.into(), files, binding),
             artifact_set_bytes: bytes,
         })
@@ -389,6 +398,45 @@ mod tests {
         assert!(package(&value.to_string()).is_err());
         value.as_object_mut().unwrap().remove("origin");
         value["qualification"] = json!("approved");
+        assert!(package(&value.to_string()).is_err());
+    }
+
+    #[test]
+    fn model_card_is_optional_literal_utf8_with_checked_original_identity() {
+        let files: serde_json::Map<String, Value> =
+            ["config.json", "tokenizer.json", "tokenizer_config.json"]
+                .into_iter()
+                .map(|name| {
+                    (
+                        name.into(),
+                        json!({"encoding":"base64","data":STANDARD.encode(b"{}")}),
+                    )
+                })
+                .collect();
+        let mut value =
+            json!({"format":"brassclaw-prefix-model-artifact-import/1","artifacts":files});
+        let (without, _) = package(&value.to_string()).unwrap();
+        let card = "\u{feff}# Model documentation ü\r\n{{ never_execute() }}\r\n<script>literal</script>\r\n";
+        value["artifacts"]["README.md"] =
+            json!({"encoding":"base64","data":STANDARD.encode(card.as_bytes())});
+        let (retained, inventory) = package(&value.to_string()).unwrap();
+        assert_ne!(sha(without.as_bytes()), sha(retained.as_bytes()));
+        let original = inventory
+            .iter()
+            .find(|file| file.name == "README.md")
+            .unwrap();
+        assert_eq!(original.bytes, card.len() as u64);
+        assert_eq!(original.sha256, sha(card.as_bytes()));
+        let mut parsed: Value = serde_json::from_str(&retained).unwrap();
+        assert_eq!(
+            STANDARD
+                .decode(parsed["artifacts"]["README.md"]["data"].as_str().unwrap())
+                .unwrap(),
+            card.as_bytes()
+        );
+        parsed["artifacts"]["README.md"]["sha256"] = json!("0".repeat(64));
+        assert!(package(&parsed.to_string()).is_err());
+        value["artifacts"]["README.md"]["data"] = json!(STANDARD.encode([0xff]));
         assert!(package(&value.to_string()).is_err());
     }
 }

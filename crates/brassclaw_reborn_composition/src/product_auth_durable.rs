@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "durable product-auth is staged for production/webui composition; clippy can check this crate before those callers are enabled"
-)]
-
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, Weak},
@@ -11,8 +6,8 @@ use std::{
 use futures::{StreamExt as _, TryStreamExt as _, stream};
 
 use brassclaw_filesystem::{
-    CasExpectation, ContentType, Entry, FileType, FilesystemError, RecordVersion, RootFilesystem,
-    ScopedFilesystem,
+    CasExpectation, ContentType, Entry, EntryBodyChecksum, FileType, FilesystemError,
+    RecordVersion, RootFilesystem, ScopedFilesystem,
 };
 use brassclaw_host_api::{ResourceScope, ScopedPath};
 use brassclaw_secrets::SecretStore;
@@ -31,17 +26,39 @@ use self::paths::{
 };
 
 mod accounts;
+mod callback;
 mod cleanup;
+mod dcr;
 mod domain;
 mod flows;
 mod interactions;
+mod manual;
+mod manual_setup;
+mod oauth_setup;
 mod paths;
 mod provider;
+mod refresh;
+mod requirement;
+mod selection;
 #[cfg(test)]
 mod tests;
 
-const MAX_OWNER_SESSION_ROOTS_PER_SURFACE: usize = 1024;
-const MAX_OWNER_RECORDS_PER_ROOT: usize = 1024;
+/// Exact entry identity captured together, never reconstructed from a later read.
+/// Auth metadata contains handles only; this is not a secret-value fingerprint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AuthRecordSnapshot {
+    version: RecordVersion,
+    body_checksum: EntryBodyChecksum,
+}
+
+impl AuthRecordSnapshot {
+    fn cas(self) -> CasExpectation {
+        CasExpectation::VersionAndBody {
+            version: self.version,
+            body_checksum: self.body_checksum,
+        }
+    }
+}
 
 pub(crate) use provider::UnavailableAuthProviderClient;
 
@@ -50,29 +67,11 @@ pub(crate) use provider::UnavailableAuthProviderClient;
 /// Records live under the caller's scoped `/secrets/product-auth` tree. Raw
 /// provider tokens and manual token values are stored only through
 /// [`SecretStore`] and represented here by opaque secret handles.
-//
-// Known tech-debt (#4175): project completed product-auth accounts into
-// `brassclaw_secrets::CredentialAccountStore` so the runtime credential
-// broker shares one source of truth with the product-auth UX layer.
-// Implementation plan: .sweepfix/plan_stub_line_54_product_auth_durable.md
-//
-// Today two `CredentialAccount` records coexist:
-//   * `brassclaw_auth::CredentialAccount` — product-auth UX record stored
-//     here (provider id, label, owner_extension, grants, status,
-//     provider_scopes, access/refresh secret handles). Read/written by
-//     setup, OAuth callback, manual-token submit, uninstall cleanup.
-//   * `brassclaw_secrets::CredentialAccount` — runtime broker record
-//     consumed on every extension HTTP call to issue
-//     `CredentialSessionRequest`s (invocation_id, capability_id,
-//     extension_id, method, url, expires_at, max_uses).
-//
-// They are deliberately separate stores (see
-// `docs/reborn/contracts/auth-product.md` → "Durable Production Slice")
-// because their consumers, lifecycles, and access patterns differ. The
-// missing link is a one-way projection product-auth → broker on flow
-// completion / account update / cleanup, so the two universes cannot
-// drift. Until that lands, broker-account population stays the caller's
-// responsibility and drift is not policed here.
+// Product-auth UX metadata and runtime broker grants have different contracts.
+// The existing ProductAuthRuntimeCredentialResolver selects authenticated account
+// metadata for host-mediated staging; a copied row or snapshot hash is no grant.
+// Keep dedicated original-grant/expiry/final-use migration in Simplified K3's
+// existing owner instead of reviving the retired projection-plan placeholder.
 pub(crate) struct FilesystemAuthProductServices<F>
 where
     F: RootFilesystem,
@@ -115,7 +114,7 @@ where
         &self,
         scope: &ResourceScope,
         path: &ScopedPath,
-    ) -> Result<Option<(T, RecordVersion)>, AuthProductError>
+    ) -> Result<Option<(T, AuthRecordSnapshot)>, AuthProductError>
     where
         T: DeserializeOwned,
     {
@@ -124,7 +123,13 @@ where
         };
         let value = serde_json::from_slice(&versioned.entry.body)
             .map_err(|_| AuthProductError::BackendUnavailable)?;
-        Ok(Some((value, versioned.version)))
+        Ok(Some((
+            value,
+            AuthRecordSnapshot {
+                version: versioned.version,
+                body_checksum: EntryBodyChecksum::for_body(&versioned.entry.body),
+            },
+        )))
     }
 
     async fn read_account_record_for_scan(
@@ -146,41 +151,124 @@ where
         path: &ScopedPath,
         value: &T,
         cas: CasExpectation,
-    ) -> Result<RecordVersion, AuthProductError>
+    ) -> Result<AuthRecordSnapshot, AuthProductError>
     where
         T: Serialize,
     {
+        if matches!(cas, CasExpectation::Any | CasExpectation::Version(_)) {
+            return Err(AuthProductError::BackendConflict);
+        }
         let body = serde_json::to_vec(value).map_err(|_| AuthProductError::BackendUnavailable)?;
+        let body_checksum = EntryBodyChecksum::for_body(&body);
         let entry = Entry::bytes(body).with_content_type(ContentType::json());
-        self.filesystem
+        let version = self
+            .filesystem
             .put(scope, path, entry, cas)
             .await
-            .map_err(fs_error)
+            .map_err(fs_error)?;
+        Ok(AuthRecordSnapshot {
+            version,
+            body_checksum,
+        })
     }
 
+    async fn read_flow_document(
+        &self,
+        scope: &brassclaw_auth::AuthProductScope,
+        flow_id: AuthFlowId,
+    ) -> Result<
+        Option<(crate::auth_flow_custody::StoredAuthFlow, AuthRecordSnapshot)>,
+        AuthProductError,
+    > {
+        let document: Option<(crate::auth_flow_custody::StoredAuthFlow, AuthRecordSnapshot)> = self
+            .read_record(&scope.resource, &flow_path(scope, flow_id))
+            .await?;
+        if let Some((document, _)) = &document
+            && (!scope_matches(scope, &document.flow.scope) || document.flow.id != flow_id)
+        {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        Ok(document)
+    }
     async fn read_flow(
         &self,
         scope: &brassclaw_auth::AuthProductScope,
         flow_id: AuthFlowId,
-    ) -> Result<Option<(AuthFlowRecord, RecordVersion)>, AuthProductError> {
-        self.read_record(&scope.resource, &flow_path(scope, flow_id))
+    ) -> Result<Option<(AuthFlowRecord, AuthRecordSnapshot)>, AuthProductError> {
+        Ok(self
+            .read_flow_document(scope, flow_id)
+            .await?
+            .map(|(doc, version)| (doc.flow, version)))
+    }
+    async fn write_flow_document(
+        &self,
+        document: &crate::auth_flow_custody::StoredAuthFlow,
+        cas: CasExpectation,
+    ) -> Result<AuthRecordSnapshot, AuthProductError> {
+        self.write_record(
+            &document.flow.scope.resource,
+            &flow_path(&document.flow.scope, document.flow.id),
+            document,
+            cas,
+        )
+        .await
+    }
+    async fn write_new_flow(
+        &self,
+        flow: &AuthFlowRecord,
+        snapshot: Option<CredentialAccount>,
+        setup: Option<Box<brassclaw_auth::CredentialRequirementSetup>>,
+    ) -> Result<AuthRecordSnapshot, AuthProductError> {
+        let document = crate::auth_flow_custody::StoredAuthFlow::new(flow.clone(), snapshot)?
+            .with_requirement_setup(setup)?;
+        self.write_flow_document(&document, CasExpectation::Absent)
             .await
     }
-
     async fn write_flow(
         &self,
         scope: &brassclaw_auth::AuthProductScope,
-        record: &AuthFlowRecord,
+        flow: &AuthFlowRecord,
         cas: CasExpectation,
-    ) -> Result<RecordVersion, AuthProductError> {
-        self.write_record(&scope.resource, &flow_path(scope, record.id), record, cas)
-            .await
+    ) -> Result<AuthRecordSnapshot, AuthProductError> {
+        if !scope_matches(scope, &flow.scope) {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        let custody = match cas {
+            CasExpectation::VersionAndBody { .. } => {
+                let (document, version) = self
+                    .read_flow_document(scope, flow.id)
+                    .await?
+                    .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+                if version.cas() != cas || document.fs_callback_publication.is_some() {
+                    return Err(AuthProductError::BackendConflict);
+                }
+                document.auth_custody
+            }
+            CasExpectation::Absent => {
+                if flow.update_binding.is_some() {
+                    return Err(AuthProductError::BackendConflict);
+                }
+                brassclaw_auth::AuthFlowCustody::default()
+            }
+            CasExpectation::Any | CasExpectation::Version(_) => {
+                return Err(AuthProductError::BackendConflict);
+            }
+        };
+        self.write_flow_document(
+            &crate::auth_flow_custody::StoredAuthFlow {
+                flow: flow.clone(),
+                auth_custody: custody,
+                fs_callback_publication: None,
+            },
+            cas,
+        )
+        .await
     }
 
     async fn flows_for_scope(
         &self,
         scope: &brassclaw_auth::AuthProductScope,
-    ) -> Result<Vec<(AuthFlowRecord, RecordVersion)>, AuthProductError> {
+    ) -> Result<Vec<(AuthFlowRecord, AuthRecordSnapshot)>, AuthProductError> {
         let mut flows = self.flow_records_under_scope_root(scope).await?;
         flows.retain(|(flow, _)| scope_matches(scope, &flow.scope));
         flows.sort_by_key(|(flow, _)| flow.id);
@@ -190,7 +278,7 @@ where
     async fn flow_records_under_scope_root(
         &self,
         scope: &brassclaw_auth::AuthProductScope,
-    ) -> Result<Vec<(AuthFlowRecord, RecordVersion)>, AuthProductError> {
+    ) -> Result<Vec<(AuthFlowRecord, AuthRecordSnapshot)>, AuthProductError> {
         let root = flow_root(scope);
         let entries = match self.filesystem.list_dir(&scope.resource, &root).await {
             Ok(entries) => entries,
@@ -198,7 +286,7 @@ where
             Err(error) => return Err(fs_error(error)),
         };
         const MAX_CONCURRENT_READS: usize = 16;
-        let mut flows: Vec<(AuthFlowRecord, RecordVersion)> = stream::iter(
+        let mut flows: Vec<(AuthFlowRecord, AuthRecordSnapshot)> = stream::iter(
             entries
                 .into_iter()
                 .filter(|e| e.name.ends_with(".json"))
@@ -244,22 +332,11 @@ where
                     .filter(|flow| owner.matches(flow)),
             );
             let sessions_root = surface_sessions_root(&resource, surface);
-            let mut entries = match self
-                .filesystem
-                .list_dir_bounded(
-                    &resource,
-                    &sessions_root,
-                    MAX_OWNER_SESSION_ROOTS_PER_SURFACE.saturating_add(1),
-                )
-                .await
-            {
+            let mut entries = match self.filesystem.list_dir(&resource, &sessions_root).await {
                 Ok(entries) => entries,
                 Err(FilesystemError::NotFound { .. }) => continue,
                 Err(error) => return Err(fs_error(error)),
             };
-            if entries.len() > MAX_OWNER_SESSION_ROOTS_PER_SURFACE {
-                return Err(AuthProductError::BackendUnavailable);
-            }
             entries.sort_by(|left, right| left.name.cmp(&right.name));
             for entry in entries {
                 if entry.file_type != FileType::Directory {
@@ -289,20 +366,55 @@ where
         &self,
         scope: &brassclaw_auth::AuthProductScope,
         account_id: CredentialAccountId,
-    ) -> Result<Option<(CredentialAccount, RecordVersion)>, AuthProductError> {
-        self.read_record(&scope.resource, &account_path(scope, account_id))
-            .await
+    ) -> Result<Option<(CredentialAccount, AuthRecordSnapshot)>, AuthProductError> {
+        Ok(self
+            .read_account_document(scope, account_id)
+            .await?
+            .map(|(document, version)| (document.account, version)))
     }
 
     async fn write_account(
         &self,
         account: &CredentialAccount,
         cas: CasExpectation,
-    ) -> Result<RecordVersion, AuthProductError> {
-        self.write_record(
-            &account.scope.resource,
-            &account_path(&account.scope, account.id),
-            account,
+    ) -> Result<AuthRecordSnapshot, AuthProductError> {
+        let (refresh_actions, callback_actions, manual_actions, lifecycle_cleanup) = match cas {
+            CasExpectation::Absent => (
+                std::collections::BTreeMap::new(),
+                std::collections::BTreeMap::new(),
+                std::collections::BTreeMap::new(),
+                Vec::new(),
+            ),
+            CasExpectation::VersionAndBody { .. } => {
+                let (document, version) = self
+                    .read_account_document(&account.scope, account.id)
+                    .await?
+                    .ok_or(AuthProductError::CredentialMissing)?;
+                if version.cas() != cas {
+                    return Err(AuthProductError::BackendConflict);
+                }
+                (
+                    document.auth_refresh_actions,
+                    document.auth_callback_actions,
+                    document.auth_manual_actions,
+                    document.auth_lifecycle_cleanup,
+                )
+            }
+            CasExpectation::Any | CasExpectation::Version(_) => {
+                return Err(AuthProductError::InvalidRequest {
+                    reason: "auth account mutation requires absence or the original entry snapshot"
+                        .into(),
+                });
+            }
+        };
+        self.write_account_document(
+            &refresh::StoredCredentialAccount {
+                account: account.clone(),
+                auth_refresh_actions: refresh_actions,
+                auth_callback_actions: callback_actions,
+                auth_manual_actions: manual_actions,
+                auth_lifecycle_cleanup: lifecycle_cleanup,
+            },
             cas,
         )
         .await
@@ -411,22 +523,11 @@ where
                 continue;
             }
             let sessions_root = surface_sessions_root(&resource, surface);
-            let mut entries = match self
-                .filesystem
-                .list_dir_bounded(
-                    &resource,
-                    &sessions_root,
-                    MAX_OWNER_SESSION_ROOTS_PER_SURFACE.saturating_add(1),
-                )
-                .await
-            {
+            let mut entries = match self.filesystem.list_dir(&resource, &sessions_root).await {
                 Ok(entries) => entries,
                 Err(FilesystemError::NotFound { .. }) => continue,
                 Err(error) => return Err(fs_error(error)),
             };
-            if entries.len() > MAX_OWNER_SESSION_ROOTS_PER_SURFACE {
-                return Err(AuthProductError::BackendUnavailable);
-            }
             entries.sort_by(|left, right| left.name.cmp(&right.name));
             for entry in entries {
                 if entry.file_type != FileType::Directory {
@@ -451,17 +552,16 @@ where
         let mut accounts = Vec::new();
         for scope in self.account_scopes_for_owner(owner).await? {
             accounts.extend(
-                self.account_records_under_scope_root_with_limit(
-                    &scope,
-                    Some(MAX_OWNER_RECORDS_PER_ROOT),
-                )
-                .await?
-                .into_iter()
-                .filter(|account| owner.matches(account)),
+                self.account_records_under_scope_root_with_limit(&scope, None)
+                    .await?
+                    .into_iter()
+                    .filter(|account| owner.matches(account)),
             );
         }
         accounts.sort_by_key(|account| account.id);
-        accounts.dedup_by_key(|account| account.id);
+        if accounts.windows(2).any(|pair| pair[0].id == pair[1].id) {
+            return Err(AuthProductError::BackendConflict);
+        }
         Ok(accounts)
     }
 
@@ -474,15 +574,12 @@ where
         let mut selected = None;
         for scope in self.account_scopes_for_owner(&owner).await? {
             for account in self
-                .account_records_under_scope_root_with_limit(
-                    &scope,
-                    Some(MAX_OWNER_RECORDS_PER_ROOT),
-                )
+                .account_records_under_scope_root_with_limit(&scope, None)
                 .await?
             {
                 if !owner.matches(&account)
                     || account.provider != request.provider
-                    || account.status != CredentialAccountStatus::Configured
+                    || account.effective_status() != CredentialAccountStatus::Configured
                 {
                     continue;
                 }
@@ -521,6 +618,7 @@ where
             owner_extension: request.owner_extension,
             granted_extensions: request.granted_extensions,
             access_secret: request.access_secret,
+            access_expires_at: request.access_expires_at,
             refresh_secret: request.refresh_secret,
             scopes: request.scopes,
             created_at: now,

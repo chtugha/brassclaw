@@ -71,11 +71,21 @@ async fn mcp_lane_auth_failure_returns_manifest_credential_context_and_releases_
     let runtime = McpRuntime::new(McpRuntimeConfig::for_testing(), client);
     let (governor, account) = mcp_governor();
 
+    let request = mcp_request_from_manifest(MCP_PRODUCT_AUTH_MANIFEST, json!({"query":"auth"}));
+    let descriptor = request
+        .package
+        .capabilities
+        .iter()
+        .find(|descriptor| &descriptor.id == request.capability_id)
+        .unwrap();
+    assert_eq!(descriptor.runtime_credentials.len(), 1);
+    let expected = RuntimeCredentialAccountRequirement::new(
+        descriptor.provider.clone(),
+        descriptor.runtime_credentials[0].clone(),
+    )
+    .unwrap();
     let err = runtime
-        .execute_extension_json(
-            &governor,
-            mcp_request_from_manifest(MCP_PRODUCT_AUTH_MANIFEST, json!({"query":"auth"})),
-        )
+        .execute_extension_json(&governor, request)
         .await
         .unwrap_err();
 
@@ -86,6 +96,10 @@ async fn mcp_lane_auth_failure_returns_manifest_credential_context_and_releases_
         } => {
             assert!(required_secrets.is_empty());
             assert_eq!(credential_requirements.len(), 1);
+            assert_eq!(
+                credential_requirements[0].requirement.as_ref(),
+                Some(&expected)
+            );
             assert_eq!(
                 credential_requirements[0].provider,
                 RuntimeCredentialAccountProviderId::new("github").unwrap()

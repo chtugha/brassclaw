@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use async_trait::async_trait;
 use brassclaw_authorization::*;
 use brassclaw_capabilities::*;
@@ -35,7 +37,10 @@ async fn capability_host_blocks_auth_when_obligation_requires_secret_recovery() 
 
     assert!(matches!(
         err,
-        CapabilityInvocationError::AuthorizationRequiresAuth { .. }
+        CapabilityInvocationError::AuthorizationRequiresAuth {
+            boundary: AuthDispatchBoundary::BeforeDispatch,
+            ..
+        }
     ));
     assert!(!dispatcher.has_request());
     let run = run_state.get(&scope, invocation_id).await.unwrap().unwrap();
@@ -44,11 +49,11 @@ async fn capability_host_blocks_auth_when_obligation_requires_secret_recovery() 
 }
 
 #[tokio::test]
-async fn capability_host_blocks_auth_when_dispatch_returns_auth_required() {
-    // P1 regression: dispatch-path DispatchError::AuthRequired must transition
-    // the run to BlockedAuth, not Failed, so auth-resume can pick it up.
+async fn capability_host_fails_unresolved_dispatch_auth_without_resumable_gate() {
+    // Entering the dispatcher cannot prove that no effect occurred. A later
+    // authentication response must not authorize replay after an account change.
     let registry = registry_with_echo_capability();
-    let dispatcher = AuthRequiredDispatcher;
+    let dispatcher = AuthRequiredDispatcher::default();
     let run_state = InMemoryRunStateStore::new();
     let authorizer = PlainAllowAuthorizer;
     let host = CapabilityHost::new(&registry, &dispatcher, &authorizer).with_run_state(&run_state);
@@ -70,17 +75,21 @@ async fn capability_host_blocks_auth_when_dispatch_returns_auth_required() {
     assert!(
         matches!(
             err,
-            CapabilityInvocationError::AuthorizationRequiresAuth { .. }
+            CapabilityInvocationError::AuthorizationRequiresAuth {
+                boundary: AuthDispatchBoundary::DispatchAttempted,
+                ..
+            }
         ),
         "expected AuthorizationRequiresAuth, got {err:?}"
     );
     let run = run_state.get(&scope, invocation_id).await.unwrap().unwrap();
     assert_eq!(
         run.status,
-        RunStatus::BlockedAuth,
-        "dispatch AuthRequired must set BlockedAuth, not Failed"
+        RunStatus::Failed,
+        "dispatcher-entered auth must not become an auth-resumable run"
     );
-    assert_eq!(run.error_kind.as_deref(), Some("AuthRequired"));
+    assert_eq!(run.error_kind.as_deref(), Some("AuthOutcomeUnresolved"));
+    assert_eq!(dispatcher.0.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -190,7 +199,8 @@ impl TrustAwareCapabilityDispatchAuthorizer for PlainAllowAuthorizer {
     }
 }
 
-struct AuthRequiredDispatcher;
+#[derive(Default)]
+struct AuthRequiredDispatcher(AtomicUsize);
 
 #[async_trait]
 impl CapabilityDispatcher for AuthRequiredDispatcher {
@@ -198,6 +208,7 @@ impl CapabilityDispatcher for AuthRequiredDispatcher {
         &self,
         request: CapabilityDispatchRequest,
     ) -> Result<CapabilityDispatchResult, DispatchError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
         Err(DispatchError::AuthRequired {
             capability: request.capability_id,
             required_secrets: vec![],

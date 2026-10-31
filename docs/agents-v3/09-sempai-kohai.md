@@ -1,3 +1,43 @@
+## Current Kohai/Sempai prefix contract — 2026-10-26
+
+Follow the [shared selection/pair-design contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26)
+and [Prefix implementation owner](../plans/prefix_v3_upgrade.md). A Recipe,
+Orchestrator or role selects a specific prefix; without one, base-prompt is the
+regular default, including normal No-Match, not a Tier-2-only restriction.
+Unavailable explicit selections/conflicts block rather than silently becoming
+base. Shared knowledge/composites require an explicit content contract.
+
+Design for formats/limits belongs to the provider/model pair; role content rules
+and finished role prefixes are distinct. Same-pair Kohai/Sempai use the same
+accepted design as the generator. Generate the fixed prefix specifically for
+that pair. Kohai first formats only the dynamic Orchestrator prompt for the final
+target pair. A connected/enabled Sempai corrects that already formatted prompt,
+using its own generated reviewer prefix/target-pair design, and returns the final
+dynamic prompt. Kohai then inserts the intended finished prefix unchanged exactly
+once before it, without reformatting the return, and checks the complete request.
+Every manual limit editor links to the existing provider revision/CAS endpoint
+and shared query. Historical snapshots are not current mutable settings.
+Provider facts may be retrieved through supported APIs/documentation or supplied
+manually with provenance; no provider host/template/service edits are an option.
+
+The old store, placeholder, server-template and prewarm walkthrough below describes
+historical implementation/evidence where it differs. It is not current serving
+qualification. Generation and prefill are separate; cached tokens are not promised
+free, permanently resident or reusable without current backend-specific evidence.
+Runtime cutover/remaining acceptance stays open in the implementation index.
+
+The [explicit handoff contract](../reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests)
+distinguishes the original, Kohai-formatted and Sempai-returned dynamic prompts.
+With Sempai enabled, Kohai inserts the final-target prefix before the returned
+final value. Sempai's own reviewer prefix remains only in its separate model call.
+Without review, Kohai inserts the prefix before its initially formatted value.
+
+The [generation-dialog contract](../reborn/model-token-limits.md#generation-prompts-missing-selection-and-model-use)
+requires OK/Cancel on missing/incompatible selected prefixes and after every
+successful provider/model Use for base generation/regeneration. Use existing durable
+jobs/readiness and preserve selection on Cancel after Use; no silent fallback,
+provider call before readiness or automatic unreviewed activation.
+
 ## Binding Recipe architecture (v3)
 
 Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
@@ -36,36 +76,40 @@ typed inputs, checked single-component steps and preloaded exports on the global
 Monty service. Full-library migration, general pure approval, dynamic occurrences
 and durable recovery remain open; see the current implementation status index.
 
-> **Subsystem:** Sempai-Kohai — the prompt interceptor that **memorizes, optimizes, and
-> finalizes** LLM prompts. The Kohai is the working LLM (always on); the Sempai is an optional
-> reviewing LLM that, when connected, reviews/adjusts the outgoing prompt before it reaches the
-> Kohai and proposes new skills/tools/recipes/python-code (queued for validation). The interceptor
-> also performs the `base-prompt` placeholder substitution (Phase K.1) — see `10-prefix-base-prompt.md`.
+> **Subsystem:** Sempai-Kohai — prompt preparation, optional correction and final
+> prefix insertion. Kohai first formats the dynamic Orchestrator prompt for the
+> final provider/model pair. Connected/enabled Sempai corrects that formatted
+> prompt using its own generated prefix and target-pair design, and returns the
+> final dynamic prompt to Kohai. Kohai then prepends the intended finished prefix
+> unchanged exactly once, without another formatting pass. Generator, Kohai and
+> same-pair Sempai share the stored accepted design revision. This is the binding
+> target; the source map and legacy structures below do not establish runtime
+> conformance. See the [explicit request handoffs](../reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests).
 > **Grounded in:** `crates/brassclaw_interceptor/` (`lib.rs`, `mode.rs`, `packet.rs`,
 > `proposal_sink.rs`, `config_store.rs`, `pg_store.rs`, `store.rs`),
 > `saved_plan_to_v3.md` §0.13 / §0.14 + the v3 flow (lines 1366-1367).
 
 ## 1. Purpose
 
-The interceptor is the **single chokepoint between `PromptStage` and `ModelStage`** in the
-agent-loop pipeline. It serves three goals from the user's task description:
+The current architecture requires three responsibilities through the existing
+Kohai/Sempai owners and Recipe orchestration:
 
-1. **Memorize** — every turn's composition plan (the `ComposedProgram` — skills + steplist +
-   rust_directives + routing signals, produced by `host.compose_orchestrator`; *not* the
-   base-prompt content, §0.14) is captured as a `ForensicPacket` and persisted to the
-   `InterceptorStore` (`PgInterceptorStore`). This happens **always**, with or without a Sempai —
-   the Kohai half is always on.
-2. **Optimize** — when a Sempai provider is connected, the interceptor constructs a rich audit
-   prompt and asks the Sempai to **review and adjust the outgoing prompt before it ships to the
-   Kohai** (pre-send review). The Sempai returns adjusted volatile messages + bridge messages +
-   a composition summary.
+1. **Retain provenance** — preserve the original Orchestrator prompt, Kohai's
+   formatted dynamic prompt and any review request/result with their selected
+   provider/model, accepted design revision and generated prefix identities.
+2. **Optimize** — after Kohai formats the dynamic prompt for the final target,
+   connected/enabled Sempai corrects it and returns the final dynamic prompt.
+   Sempai's own request uses its own target-specific prefix/design. Kohai then
+   inserts the intended finished final-target prefix unchanged exactly once,
+   validates the complete request and sends it. Without Sempai, it inserts that
+   prefix before its initially formatted dynamic prompt.
 3. **Finalize** — the Sempai may also **propose** new Recipes/ToolSkills/intent-examples. These
    proposals are **not** written to production tables directly — they enter the **Q1 validation
    queue** (`pending`/`q1_auto`) via `SempaiProposalSink`, the same gate every authored
    component passes. This is the self-optimization loop (kohai+sempai → new components →
    validation → retrieval).
 
-> **"Idle-time" nuance vs. the live mechanism.** The user's description frames self-optimization
+> **Historical implementation observation, not the current serving contract.** The user's description frames self-optimization
 > as running "automatically in idle times." The **live** interceptor mechanism is **inline**: the
 > proposals are produced *as part of* the pre-send Sempai review of a turn (the
 > `SempaiReviewOutcome.proposed_*` fields) and enqueued to Q1 on the same turn. There is no
@@ -73,7 +117,7 @@ agent-loop pipeline. It serves three goals from the user's task description:
 > v3 direction (a background Sempai-driven refresh — see `DOC_CONVERSION_MECHANISM_DESIGN.md` and
 > §6 below).
 
-## 2. Location
+## 2. Historical implementation locations
 
 - **Crate:** `crates/brassclaw_interceptor/` — `#![forbid(unsafe_code)]`.
   - `lib.rs` — crate doc (routing vs. rerouting state machine), re-exports.
@@ -94,7 +138,14 @@ agent-loop pipeline. It serves three goals from the user's task description:
   flow (line 1366 `InterceptorStage — Sempai review of outgoing prompt`; 1367
   `ModelStage — LLM call (Kohai)`).
 
-## 3. Data model
+## 3. Historical implementation data model
+
+These types describe the compatibility implementation. In particular, the old
+adjusted-message/bridge-message result below is not the new serving contract:
+Sempai must return the final dynamic prompt after Kohai's initial formatting.
+Its conversion and the exact prefix join remain with the
+[Prefix implementation owner](../plans/prefix_v3_upgrade.md); do not introduce a
+second formatter after review to adapt this old result.
 
 ### `InterceptorMode` (`mode.rs`)
 
@@ -150,7 +201,15 @@ component becomes trusted" (§0.18).
 
 `InterceptorConfigStore`: `load`, `save_persona`, `save_base_prompt`, `save_prewarm_last_at`.
 
-## 4. Behavior / flow
+<a id="4-behavior--flow"></a>
+
+## 4. Historical implementation behavior / flow
+
+The following compatibility walkthrough is historical. Its adjusted-message and
+bridge-message result is not the required final dynamic-prompt return, and its
+description of Kohai as execution authority does not define current ownership.
+Monty/Recipes own sequencing; Kohai performs the formatting and prefix insertion
+specified above. Migrate these consumers under the Prefix plan's handoff contract.
 
 ### 4.0 The Kohai's duties (f7) — with and without the Sempai
 
@@ -244,7 +303,9 @@ This is the self-optimization loop: Sempai reviews a turn → proposes new
 Recipes/ToolSkills/intent-examples → they enter Q1 → Q1+Q2 graduate them → they become
 retrievable → future turns may match them. The Sempai never bypasses validation.
 
-### 4.4 The `base-prompt` placeholder substitution (shipped, V063)
+<a id="44-the-base-prompt-placeholder-substitution-shipped-v063"></a>
+
+### 4.4 Historical V063 placeholder substitution (superseded target)
 
 A single-line `base-prompt` placeholder is added to the prompt while it is composed; the
 Sempai-Kohai system replaces that placeholder with the real (precompiled, KV-cached) base-prompt
@@ -304,7 +365,9 @@ gate an authored component passes. Builtins (`source='system'`) skip Q2 but not 
   `ComposedProgram` (skills + steplist + rust_directives + routing signals) produced by
   `host.compose_orchestrator`.
 
-## 6. Status — shipped vs. pending
+<a id="6-status--shipped-vs-pending"></a>
+
+## 6. Historical shipped/pending snapshot
 
 **Shipped:**
 - `brassclaw_interceptor` crate exists and is complete for the **routing** path (capture +
@@ -328,20 +391,55 @@ gate an authored component passes. Builtins (`source='system'`) skip Q2 but not 
   `PromptStage`/`ModelStage` feed is inert in production until the driver wires the composition
   host-calls (active production path is the TURNS `PgOrchestratorLookup` bridge).
 
-## 7. LLM-relevant summary
+<a id="7-llm-relevant-summary"></a>
 
-The Sempai-Kohai interceptor (`brassclaw_interceptor`) sits between `PromptStage` and
-`ModelStage` and **memorizes** every turn's composition plan (`ComposedProgram`) as a
-`ForensicPacket` (always — the Kohai half is always on). **Kohai's duties without a Sempai
-(Routing):** be the sole execution authority — iterate the `steplist`, consult the `skills`
-array, run each step via `host.run_program`, assemble every prompt, answer the user; the prompt
-is forwarded unchanged. **With a Sempai (Rerouting):** the Sempai reviews/adjusts the outgoing
-prompt (volatile tail replaced, KV-cached base Part A kept, bridge messages injected) and the
-Kohai runs on the adjusted prompt; the Sempai also **proposes** new components but **cannot write
-production tables** — `SempaiProposalSink::submit_proposals` enqueues drafts to Q1
-(`pending`/`q1_auto`, best-effort, never aborts the Kohai call). The f8 new-component-creation
-loop (§4.5): propose → Q1 per-class criteria (`14` §4b) → Q2 graduation →
-`PgBasicPromptStore::mark_stale` → retrieval. Validated intent examples seed
-`reborn_intent_inputs` (V054). The durable base-prompt store is `reborn_basic_prompt_store`
-(V063, shipped). The live self-optimization is **inline**; true idle-time operation + C.5/C.6
-driver activation of the engine Monty VM path are the remaining v3 work.
+## 7. Current LLM-facing summary
+
+This summary describes the binding target, not completed serving integration:
+
+- Recipe, Orchestrator or role specifies a prefix; otherwise select `base-prompt`
+  for the target provider/model pair. This applies beyond Tier 2; No-Match normally
+  selects base. An unavailable explicit prefix or unresolved conflict blocks the
+  affected call rather than substituting base.
+- Formats/limit references belong to one saved accepted provider/model design.
+  Same-pair Kohai/Sempai share that design; their knowledge/content rules and finished
+  role prefixes are separate. Share source knowledge explicitly, not by compulsory
+  insertion of the whole base prefix into every role.
+- Orchestrator → Kohai formats only the dynamic prompt for its target pair →
+  optional connected Sempai corrects it and returns the final dynamic prompt →
+  Kohai inserts the intended finished prefix unchanged once, without reformatting
+  the return → actual complete-request guard →
+  send. Reviewer output cannot change fixed prefix/design/limits. No second runtime
+  prefix render or provider server/template/service modification.
+- All manually editable prefix/prompt limits link to the canonical provider record,
+  endpoint and shared settings query. Historical immutable pins remain evidence;
+  they are not another mutable settings source. Hard limits survive disabled budgets.
+- Missing/incompatible selected prefix offers OK/Cancel for supported generation.
+  Successful provider/model Use also asks to generate/regenerate base. Cancel after
+  Use preserves the committed selection and exposes readiness. Existing durable
+  jobs, validation, activation and pre-dispatch waits apply; no duplicate call or
+  original-message replay and no unreviewed automatic activation.
+- Retain full source/effect/proposal evidence and current Q1/behavior/human-Q2 or
+  verified shipped-bootstrap contracts. Cache prefill is separate from generation;
+  cache residency, token price, quality and performance need their own evidence.
+- Older placeholder, minimal/stale fallback, server-template and fixed patch-cap
+  descriptions in the historical walkthrough are not current architecture.
+  Remaining runtime integration is owned by the [Prefix plan](../plans/prefix_v3_upgrade.md)
+  and [implementation index](../implementation-status.md); follow the
+  [shared contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26).
+
+## Open K3-2 consumer successor — prefix selection and construction requests
+
+For new affected consumers, use the operator-confirmed
+[shared K3-2 selection/lifecycle contract](../reborn/model-token-limits.md#open-k3-2-successor--retained-prefix-selection-and-prefix-free-construction-workflows)
+and [Exact §5.2](../plans/Exact_V3_definition_update_at_K3-2.md#52-bestehende-retained-prefixbindung-um-drei-auswahlzustände-erweitern).
+This explicit successor replaces earlier unconditional Use→Base and required
+Prefix-Maker-prefix instructions for construction workflows, without rewriting
+historical behavior or claiming current runtime uptake.
+
+Default follows declared role/Recipe rules; explicit Selected never silently
+falls back; PrefixFreeWorkflow intentionally omits generated prefixes throughout
+required child/review work. Independent ordinary chat/Sempai reviews keep their
+normal selection. FinalBoundary defers insertion and does not mean prefix-free.
+Generation includes all Prefix-Q1 checks; publication leaves human Q2 activation
+outstanding. A future v3.5 Prefix-Maker prefix is not a present dependency.

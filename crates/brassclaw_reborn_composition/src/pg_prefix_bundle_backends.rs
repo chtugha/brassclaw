@@ -12,10 +12,41 @@ use brassclaw_pg::PgPool;
 
 use crate::{
     builtin_bootstrap::{AGENTS_MD_SEED, CLAUDE_MD_SEED},
-    interceptor_config_service::class_label,
     pg_basic_prompt_store::compute_fingerprint,
     pg_prefix_scope_ticket::{PgPrefixScopeTicketStore, ticket_digest},
 };
+
+/// Class code → human-readable type label for bundle headers.
+/// Skill classes1–3 are consumer classifications, never domain/scaffold levels.
+/// Keep this pure helper available to PostgreSQL consumers without LLM support.
+pub(crate) fn class_label(class_code: u16) -> &'static str {
+    match class_code {
+        0 => "Tool",
+        1..=3 => "Skill",
+        4 => "RustyExtension",
+        5 => "MontyExtension",
+        6 => "McpServer",
+        7 => "McpClient",
+        8 => "LlmExtension",
+        9 => "Extension",
+        10 => "Orchestrator",
+        11 => "Component", // reserved; no table
+        12 => "Spec",
+        13 => "ToolSkill",
+        14 => "Plan",
+        15 => "Summary",
+        16 => "Action",
+        17 => "Docu",
+        18 => "Lesson",
+        19 => "Issue",
+        20 => "Note",
+        21 => "Recipe",
+        22 => "PythonCode",
+        23 => "Catalogue",
+        50 => "Scaffold",
+        _ => "Component",
+    }
+}
 
 /// Static component source list for prefix assembly. Table names, expressions,
 /// and class codes are reviewed SQL literals; never derive them from request data.
@@ -308,7 +339,7 @@ impl StorePrefixBundleBackend for PgStorePrefixBundleBackend {
                 &bundle_json,
                 &fingerprint,
                 &generation_ms,
-                &generation_id,
+                &ticket_scope.request_id,
             ],
         )
         .await

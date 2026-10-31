@@ -1,0 +1,124 @@
+{
+  "bootstrap_answer": {
+    "cases": 15,
+    "errors": 0,
+    "failures": 0,
+    "native_evaluations": 53,
+    "rejected_calls": 40,
+    "rejection_diagnostics": [
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    bootstrap_answer_stage(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 26, in bootstrap_answer_stage\n    canonical = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False)\n                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\nValueError: Out of range float values are not JSON compliant: nan",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    bootstrap_answer_stage(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 28, in bootstrap_answer_stage\n    raise ValueError('canonical typed bootstrap stage input required')\nValueError: canonical typed bootstrap stage input required",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    bootstrap_answer_stage(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 34, in bootstrap_answer_stage\n    raise ValueError('unknown bootstrap stage')\nValueError: unknown bootstrap stage",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    check_bootstrap_evidence(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 200, in check_bootstrap_evidence\n    raise ValueError('uncaptured bootstrap source')\nValueError: uncaptured bootstrap source",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    check_bootstrap_evidence(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 205, in check_bootstrap_evidence\n    raise ValueError('bootstrap quote is not an exact substring')\nValueError: bootstrap quote is not an exact substring",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    check_bootstrap_evidence(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 208, in check_bootstrap_evidence\n    raise ValueError('bootstrap proposed identity differs from native string')\nValueError: bootstrap proposed identity differs from native string",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    check_bootstrap_evidence(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 214, in check_bootstrap_evidence\n    raise ValueError('bootstrap scalar quote differs')\nValueError: bootstrap scalar quote differs",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    check_bootstrap_evidence(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 217, in check_bootstrap_evidence\n    raise ValueError('bootstrap proposed value differs from native scalar')\nValueError: bootstrap proposed value differs from native scalar",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    check_bootstrap_evidence(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 219, in check_bootstrap_evidence\n    raise ValueError('bootstrap evidence must point to a supported scalar')\nValueError: bootstrap evidence must point to a supported scalar",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    resolve_bootstrap_pointer(args[0], args[1])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 153, in resolve_bootstrap_pointer\n    raise ValueError('source-view JSON pointer required')\nValueError: source-view JSON pointer required",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    resolve_bootstrap_pointer(args[0], args[1])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 160, in resolve_bootstrap_pointer\n    raise ValueError('invalid JSON pointer escape')\nValueError: invalid JSON pointer escape",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    resolve_bootstrap_pointer(args[0], args[1])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 172, in resolve_bootstrap_pointer\n    raise ValueError('source-view index out of range')\nValueError: source-view index out of range",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    resolve_bootstrap_pointer(args[0], args[1])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 175, in resolve_bootstrap_pointer\n    raise ValueError('source-view pointer does not resolve')\nValueError: source-view pointer does not resolve",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 101, in validate_bootstrap_answer\n    raise ValueError('duplicate bootstrap issue')\nValueError: duplicate bootstrap issue",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 105, in validate_bootstrap_answer\n    raise ValueError('unknown bootstrap candidate')\nValueError: unknown bootstrap candidate",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 113, in validate_bootstrap_answer\n    bootstrap_fields(fact, ['field', 'scope', 'status', 'value', 'evidence'])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 13, in bootstrap_fields\n    raise ValueError('bootstrap object fields differ')\nValueError: bootstrap object fields differ",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 120, in validate_bootstrap_answer\n    raise ValueError('unknown facts cannot supply a value or evidence')\nValueError: unknown facts cannot supply a value or evidence",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 129, in validate_bootstrap_answer\n    raise ValueError('positive exact token integer required')\nValueError: positive exact token integer required",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 139, in validate_bootstrap_answer\n    bootstrap_fields(item, ['source_id', 'locator', 'quote'])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 13, in bootstrap_fields\n    raise ValueError('bootstrap object fields differ')\nValueError: bootstrap object fields differ",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 146, in validate_bootstrap_answer\n    raise ValueError('bootstrap facts must cover each requirement exactly once')\nValueError: bootstrap facts must cover each requirement exactly once",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 86, in validate_bootstrap_answer\n    bootstrap_fields(answer, ['schema', 'task', 'request_id', 'input_sha256', 'result'])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 13, in bootstrap_fields\n    raise ValueError('bootstrap object fields differ')\nValueError: bootstrap object fields differ",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 90, in validate_bootstrap_answer\n    raise ValueError('bootstrap answer contract or echo mismatch')\nValueError: bootstrap answer contract or echo mismatch",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 92, in validate_bootstrap_answer\n    bootstrap_fields(result, ['facts', 'issues'] if task == 'extract_bootstrap_facts'\n                     else ['candidate_id', 'issues'])\n  File \"utility.py\", line 13, in bootstrap_fields\n    raise ValueError('bootstrap object fields differ')\nValueError: bootstrap object fields differ",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 99, in validate_bootstrap_answer\n    raise ValueError('unknown bootstrap issue')\nValueError: unknown bootstrap issue"
+    ],
+    "source_sha256": "30f07ff72d6c434c441fe13f18fef52342d38f77cfd68bf36577c3f0ddb5fb1b",
+    "worker_sha256": "91a2165fa396dfd9513d15e886eaba2ed692f1a5b9ac472ef3fb734391e47343"
+  },
+  "bootstrap_prompt": {
+    "constructor_source_sha256": "06accea14ce09edf6e477c7166153fa820990fde6291ad25e11a61bfe9fd6c04",
+    "emitted_source_sha256": "5f92be35cf4cbc2b69b02076c2d8a4060fd85d3a0e25f32611bec384b9a0e6b8",
+    "native_evaluations": 12,
+    "passed": 12,
+    "scope": "Actual constructor format-literal emission tested in utility worker; Rust constructor itself not compiled.",
+    "worker_sha256": "91a2165fa396dfd9513d15e886eaba2ed692f1a5b9ac472ef3fb734391e47343"
+  },
+  "document_appends": {
+    "docs/agents-v3/09-sempai-kohai.md": {
+      "appended_sha256": "efa9335330088b9e2c34bca09f7ef2451842e51d34fd1002d0f024fe34813803",
+      "before_sha256": "832390c3f5f0b14d4091fb9f778ae22e328469bb15ea8614e14508a104645bb0",
+      "inserted_heading": "## Open K3-2 consumer successor \u2014 prefix selection and construction requests"
+    },
+    "docs/agents-v3/10-prefix-base-prompt.md": {
+      "appended_sha256": "efa9335330088b9e2c34bca09f7ef2451842e51d34fd1002d0f024fe34813803",
+      "before_sha256": "e7016ac20d5208b905d8b94c92edfb7550b8e5290056e6666bdf4531522f432a",
+      "inserted_heading": "## Open K3-2 consumer successor \u2014 prefix selection and construction requests"
+    },
+    "docs/agents-v3/12-agent-loop.md": {
+      "appended_sha256": "efa9335330088b9e2c34bca09f7ef2451842e51d34fd1002d0f024fe34813803",
+      "before_sha256": "52208938221c0e3bdda7fa47ce425c723953921c39212a72e271875eb244e7f6",
+      "inserted_heading": "## Open K3-2 consumer successor \u2014 prefix selection and construction requests"
+    },
+    "docs/agents-v3/17-webui-prefix-tab.md": {
+      "appended_sha256": "efa9335330088b9e2c34bca09f7ef2451842e51d34fd1002d0f024fe34813803",
+      "before_sha256": "8b952f41822a6d2f66ae6152439e42f2517f34c1fc4ebfe12357b64a04bd79ac",
+      "inserted_heading": "## Open K3-2 consumer successor \u2014 prefix selection and construction requests"
+    },
+    "docs/plans/monty.composition.implementation.md": {
+      "appended_sha256": "d46bcb5ddd823f725a391cbf12f7d3c333312ebe681565f69e14c17f48d263d7",
+      "before_sha256": "670fdc646d82bc716c83ea4f4c356ba904452ae613349ae3d3cd0f23f0025b22",
+      "inserted_heading": "## Open K3-2 follow-up from K4 \u2014 Configuration discovery and design bootstrap implementations"
+    },
+    "docs/plans/monty.composition.md": {
+      "appended_sha256": "cbdc367ab9f13bb68bac98f337c5e552feda0e1e8f8e959c488c08cb1c38ebf1",
+      "before_sha256": "d4c1cdeb1de7801790d1707599df6cc1573d1412ba0a4c27c49281d56e5127b5",
+      "inserted_heading": "## Open K3-2 follow-up from K4 \u2014 Provider setup and design bootstrap composition"
+    },
+    "docs/plans/monty.composition.recipes.md": {
+      "appended_sha256": "5a618e0a89ab0514d5849b849721b27fe0ed1d3942ee402d13bf50de8050f620",
+      "before_sha256": "c63c19de3ccc542b7f2ec487257cd2e2c87aee5b642437876a8854b41cc64359",
+      "inserted_heading": "## Open K3-2 successor \u2014 reusable Recipe inventory"
+    },
+    "docs/plans/prefix_v3_upgrade.md": {
+      "appended_sha256": "1b35cb6a26a6a1ac5296af85e255a02195831fdb2fc1a88a849592168f546f92",
+      "before_sha256": "e71fc019bb179e7ae3d083424946bbadceea684e3a7e55d0cdadcfc0642acc13",
+      "inserted_heading": "## Open K3-2 follow-up from K4 \u2014 Use, model design, prefix Q1/Q2 and retention"
+    },
+    "docs/plans/sempai_v3.5.md": {
+      "appended_sha256": "3c752fd6a610f7da78c25d258c7e2d11a6eaeb498e6125b7266b8ebeb245c503",
+      "before_sha256": "2b6aed0d4e3986fd62827b4e29d482c7ccb4186dacf561b7b6c0e3ed53883264",
+      "inserted_heading": "## Open K3-2 successor \u2014 review workflow"
+    },
+    "docs/plans/simplify_connections_v3.5.md": {
+      "appended_sha256": "5d7d9b1008ae5f40eba15424860bc48a73dc7385d6187f2c9e9ed0eef5957266",
+      "before_sha256": "c0b68d6e941ad9b9f4130250b252ca066a216231c7bfe3d6699cdd4f4eb732ca",
+      "inserted_heading": "## Open K3-2 successor \u2014 provider receipt and capture"
+    },
+    "docs/reborn/model-token-limits.md": {
+      "appended_sha256": "e13936130f2ddd1979f1a4bd05d11748c0a1109336cd6193a610e30b012372f9",
+      "before_sha256": "2f194c9ae3d95f34946a3a40675349f6805e250d2e14d30cb4f135dab4ef5299",
+      "inserted_heading": "## Open K3-2 successor \u2014 retained prefix selection and prefix-free construction workflows"
+    },
+    "simplified_v3.md": {
+      "appended_sha256": "46ccc9e09d01aa0357fe69c8c771b918a425b8189db1914ca8b0a69186ef9e9a",
+      "before_sha256": "8be7e67f0b630a6a7bca6653b7b9fa740221149452b51a449af22225bd3cee39",
+      "inserted_heading": "## Offener Folgeauftrag K3-2 ab K4 \u2014 Provider-/Design-Ersteinrichtung und Prefix-Lebenszyklus"
+    },
+    "validator_v3.md": {
+      "appended_sha256": "238865bad2553df02a7030268efef7fed6d550f8ccbd8931802be0e1fdfebfee",
+      "before_sha256": "5c91e1f2e889392d001bca81b692f53e082aa5073ca9ab14bd9d0c3270334f32",
+      "inserted_heading": "## Open K3-2 follow-up from K4 \u2014 Design acceptance and prefix artifact Q1/Q2 boundaries"
+    }
+  },
+  "format": "brassclaw-exact-k3-2-source-progress/1",
+  "sources": {
+    "crates/brassclaw_skills/src/prefix_bootstrap_components.rs": "06accea14ce09edf6e477c7166153fa820990fde6291ad25e11a61bfe9fd6c04",
+    "scripts/prefix/bootstrap/v1/answer.schema.json": "1f893486ff764663f5d4144e2bae8ff1968d36d6f9215231b4e707b1b73dd530",
+    "scripts/prefix/bootstrap/v1/extract_bootstrap_facts.txt": "82f2bf08aa66363cfd55a1df78ca924ff7e30902decaa45f62203896c405daad",
+    "scripts/prefix/bootstrap/v1/manifest.json": "d9244add93ff91fbe0bd7f96b77742999d0dd0433e0ed026975d2f1231740323",
+    "scripts/prefix/bootstrap/v1/select_bootstrap_prefill.txt": "8d8be57f90d6673b435428731575e20868c924dbd65112a8b3d7f95fdfd46d89",
+    "scripts/prefix/bootstrap/v1/system.txt": "1d8e30e4adc755394d1ec05cb2ac99df1981994472a607152b3b95b15a04cedb",
+    "scripts/prefix/bootstrap_answer.py": "30f07ff72d6c434c441fe13f18fef52342d38f77cfd68bf36577c3f0ddb5fb1b",
+    "scripts/prefix/test_bootstrap_answer.py": "abbdc54f174289e6a48ed23a8984199390bf21215525c14a7f6e451fb37ddfb2"
+  },
+  "status": "partial-source-delivery-not-runtime-activation"
+}

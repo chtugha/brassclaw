@@ -19,9 +19,11 @@ pub(crate) mod codex_auth;
 mod codex_chatgpt;
 pub mod config;
 pub mod costs;
+mod dispatch_guard;
 mod embedding_models;
 pub mod error;
 pub mod failover;
+pub mod final_request_guard;
 pub(crate) mod gemini_oauth;
 mod github_copilot;
 pub(crate) mod github_copilot_auth;
@@ -35,6 +37,8 @@ pub mod provider_observation;
 mod reasoning;
 pub mod recording;
 pub mod registry;
+#[cfg(feature = "registry-provider-factory")]
+pub mod request_qualification;
 #[cfg(feature = "registry-provider-factory")]
 mod resolution;
 mod response_body;
@@ -71,6 +75,7 @@ pub use config::{
 };
 pub use embedding_models::{EmbeddingModelContract, EmbeddingModelContracts};
 mod model_token_limits;
+pub use dispatch_guard::{ProviderDispatchGuard, ProviderDispatchState, ProviderRequestFacts};
 pub use error::{LlmConfigError, LlmError};
 pub use failover::{CooldownConfig, FailoverProvider};
 pub(crate) use gemini_oauth::GeminiOauthProvider;
@@ -79,16 +84,18 @@ pub use host::{
     SessionSecrets, SharedSessionDb, SharedSessionKeyPersistor, SharedSessionRenewer,
     SharedSessionSecrets,
 };
-pub use model_token_limits::{ModelTokenLimitOverrides, ModelTokenLimits};
+pub use model_token_limits::{
+    ModelRequestTokenCounts, ModelTokenCheckError, ModelTokenLimitOverrides, ModelTokenLimits,
+};
 pub use nearai_chat::{DEFAULT_MODEL, ModelInfo, NearAiChatProvider, default_models};
 pub use openai_codex_provider::OpenAiCodexProvider;
-pub use openai_codex_session::{DeviceCodeStart, OpenAiCodexSessionManager};
+pub use openai_codex_session::{DeviceCodeStart, OpenAiCodexSession, OpenAiCodexSessionManager};
 pub use provider::sanitize_tool_messages;
 pub use provider::{
     ChatMessage, CompletionRequest, CompletionResponse, ContentPart, FinishReason, ImageUrl,
-    LlmProvider, ModelMetadata, ProviderDispatchPolicy, RetainedLlmProvider, Role, ToolCall,
-    ToolCompletionRequest, ToolCompletionResponse, ToolDefinition, ToolResult,
-    generate_tool_call_id, normalized_model_override,
+    LlmProvider, ModelMetadata, ProviderDispatchPolicy, ProviderSelectionPreparer,
+    RetainedLlmProvider, Role, ToolCall, ToolCompletionRequest, ToolCompletionResponse,
+    ToolDefinition, ToolResult, generate_tool_call_id, normalized_model_override,
 };
 pub use reasoning::{
     ActionPlan, Reasoning, ReasoningContext, RespondOutput, RespondResult, ResponseAnomaly,
@@ -115,7 +122,10 @@ pub use response_cache::{CachedProvider, ResponseCacheConfig, ResponseCachePolic
 pub use retry::{RetryConfig, RetryProvider, RetryTimingPolicy};
 pub use rig_adapter::{RigAdapter, RigUsageFormat};
 pub use role::ProviderRole;
-pub use runtime::{LlmReloadHandle, SwappableLlmProvider};
+pub use runtime::{
+    LlmReloadHandle, ProviderPreparationFailure, ProviderPublication, ProviderPublicationStatus,
+    ProviderSelectionRevision, SwappableLlmProvider,
+};
 pub use session::{NearWalletSignedMessage, SessionConfig, SessionManager, create_session_manager};
 pub use smart_routing::{SmartRoutingConfig, SmartRoutingProvider, TaskComplexity};
 pub use token_refreshing::TokenRefreshingProvider;
@@ -376,11 +386,8 @@ fn registry_http_client(provider: &str, timeout_secs: u64) -> Result<reqwest::Cl
             reason: "provider request deadline is invalid".into(),
         });
     }
-    reqwest::Client::builder()
-        .timeout(timeout)
-        .redirect(reqwest::redirect::Policy::none())
-        .retry(reqwest::retry::never())
-        .build()
+    final_request_guard::FinalRequestTransport::new(reqwest::Client::builder().timeout(timeout))
+        .map(final_request_guard::FinalRequestTransport::into_client)
         .map_err(|_| LlmError::RequestFailed {
             provider: provider.into(),
             reason: "provider HTTP client could not be constructed".into(),
@@ -831,6 +838,7 @@ fn sanitize_gemini_base_url(base_url: &str) -> Result<String, ()> {
 /// instead of the Chat Completions API, matching OpenClaw's approach.
 async fn create_openai_codex_provider(
     config: &LlmConfig,
+    host_managed_authentication: bool,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
     let codex = config
         .openai_codex
@@ -840,7 +848,9 @@ async fn create_openai_codex_provider(
         })?;
 
     let session_mgr = Arc::new(OpenAiCodexSessionManager::new(codex.clone())?);
-    session_mgr.ensure_authenticated().await?;
+    if !host_managed_authentication {
+        session_mgr.ensure_authenticated().await?;
+    }
 
     let token = session_mgr.get_access_token().await?;
 
@@ -858,10 +868,12 @@ async fn create_openai_codex_provider(
         codex.api_base_url,
     );
 
-    Ok(Arc::new(TokenRefreshingProvider::new(
-        provider,
-        session_mgr,
-    )))
+    let provider = TokenRefreshingProvider::new(provider, session_mgr);
+    Ok(Arc::new(if host_managed_authentication {
+        provider.with_host_managed_authentication()
+    } else {
+        provider
+    }))
 }
 
 /// Create a cheap/fast LLM provider for lightweight tasks (heartbeat, routing, evaluation).
@@ -979,21 +991,61 @@ pub(crate) async fn build_provider_chain_components(
     config: &LlmConfig,
     session: Arc<SessionManager>,
 ) -> Result<ProviderChainComponents, LlmError> {
-    build_provider_chain_components_with_options(config, session, true).await
+    build_provider_chain_components_with_options(
+        config,
+        session,
+        ProviderChainBuildOptions {
+            include_standalone_cheap: true,
+            host_managed_authentication: false,
+            guard: None,
+        },
+    )
+    .await
+}
+
+struct ProviderChainBuildOptions {
+    include_standalone_cheap: bool,
+    host_managed_authentication: bool,
+    guard: Option<Arc<dyn ProviderDispatchGuard>>,
 }
 
 async fn build_provider_chain_components_with_options(
     config: &LlmConfig,
     session: Arc<SessionManager>,
-    include_standalone_cheap: bool,
+    options: ProviderChainBuildOptions,
 ) -> Result<ProviderChainComponents, LlmError> {
+    let ProviderChainBuildOptions {
+        include_standalone_cheap,
+        host_managed_authentication,
+        guard,
+    } = options;
     let llm: Arc<dyn LlmProvider> = if matches!(config.backend_kind(), LlmBackendKind::OpenAiCodex)
     {
-        create_openai_codex_provider(config).await?
+        create_openai_codex_provider(config, host_managed_authentication || guard.is_some()).await?
     } else {
         create_llm_provider(config, session.clone()).await?
     };
     tracing::debug!("LLM provider initialized: {}", llm.model_name());
+    // A guarded DB selection never dispatches through an ambient alternate
+    // target. Preserve the existing common chain for unguarded legacy callers.
+    if guard.is_some()
+        && (config.cheap_model_name().is_some()
+            || (matches!(config.backend_kind(), LlmBackendKind::NearAi)
+                && config.nearai.fallback_model.is_some()))
+    {
+        return Err(LlmError::ConfigurationChanged {
+            provider: "selected provider".into(),
+        });
+    }
+    let llm: Arc<dyn LlmProvider> = if let Some(guard) = &guard {
+        Arc::new(dispatch_guard::GuardedProvider::new(
+            llm,
+            guard.clone(),
+            None,
+        ))
+    } else {
+        llm
+    };
 
     // 1. Retry — uses top-level LlmConfig fields (resolved from LLM_* env vars
     // with fallback to NEARAI_* for backward compatibility).
@@ -1113,17 +1165,36 @@ async fn build_provider_chain_components_with_options(
     };
 
     // 5. Response cache
-    let llm: Arc<dyn LlmProvider> = if config.response_cache_enabled {
-        let rc_config = ResponseCacheConfig {
-            ttl: std::time::Duration::from_secs(config.response_cache_ttl_secs),
-            max_entries: config.response_cache_max_entries,
+    let (llm, cache): (Arc<dyn LlmProvider>, Option<Arc<CachedProvider>>) =
+        if config.response_cache_enabled || guard.is_some() {
+            let rc_config = ResponseCacheConfig {
+                ttl: std::time::Duration::from_secs(config.response_cache_ttl_secs),
+                max_entries: if config.response_cache_enabled {
+                    config.response_cache_max_entries
+                } else {
+                    0
+                },
+            };
+            tracing::debug!(
+                enabled = config.response_cache_enabled,
+                ttl_secs = config.response_cache_ttl_secs,
+                max_entries = config.response_cache_max_entries,
+                "LLM response cache configured"
+            );
+            let cache = CachedProvider::new(llm, rc_config);
+            let cache = Arc::new(match &guard {
+                Some(guard) => cache.with_live_guard(guard.clone()),
+                None => cache,
+            });
+            (cache.clone(), Some(cache))
+        } else {
+            (llm, None)
         };
-        tracing::debug!(
-            ttl_secs = config.response_cache_ttl_secs,
-            max_entries = config.response_cache_max_entries,
-            "LLM response cache enabled"
-        );
-        Arc::new(CachedProvider::new(llm, rc_config))
+
+    // Check before cache hits and again inside retry immediately before raw
+    // attempts. Both checks use the same captured target and live guard owner.
+    let llm: Arc<dyn LlmProvider> = if let Some(guard) = guard {
+        Arc::new(dispatch_guard::GuardedProvider::new(llm, guard, cache))
     } else {
         llm
     };
@@ -1150,7 +1221,16 @@ pub async fn build_static_provider_chain(
     config: &LlmConfig,
     session: Arc<SessionManager>,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
-    let components = build_provider_chain_components_with_options(config, session, false).await?;
+    let components = build_provider_chain_components_with_options(
+        config,
+        session,
+        ProviderChainBuildOptions {
+            include_standalone_cheap: false,
+            host_managed_authentication: true,
+            guard: None,
+        },
+    )
+    .await?;
     let primary = components.primary;
     let recording_handle = RecordingLlm::from_env(primary.clone());
     Ok(if let Some(recorder) = recording_handle {
@@ -1158,6 +1238,33 @@ pub async fn build_static_provider_chain(
     } else {
         primary
     })
+}
+
+/// The ordinary DB-owned client uses the same construction pipeline with
+/// live checks before cache reuse and each underlying attempt.
+pub async fn build_static_provider_chain_with_guard(
+    config: &LlmConfig,
+    session: Arc<SessionManager>,
+    guard: Arc<dyn ProviderDispatchGuard>,
+) -> Result<Arc<dyn LlmProvider>, LlmError> {
+    let primary = build_provider_chain_components_with_options(
+        config,
+        session,
+        ProviderChainBuildOptions {
+            include_standalone_cheap: false,
+            host_managed_authentication: true,
+            guard: Some(guard),
+        },
+    )
+    .await?
+    .primary;
+    Ok(
+        if let Some(recorder) = RecordingLlm::from_env(primary.clone()) {
+            recorder as Arc<dyn LlmProvider>
+        } else {
+            primary
+        },
+    )
 }
 
 /// Apply a [`CacheRetention`] override to an `Arc<dyn LlmProvider>` produced
@@ -1284,6 +1391,52 @@ fn normalize_openai_base_url(url: &str) -> String {
     }
 }
 
+/// Exact endpoint for the existing immutable OpenAI Chat constructor. Unknown
+/// SDK defaults/custom headers/OAuth routes require their own qualified mapping;
+/// this does not construct another client or change provider configuration.
+pub fn final_chat_endpoint(
+    config: &RegistryProviderConfig,
+) -> Result<reqwest::Url, final_request_guard::FinalRequestError> {
+    if config.protocol != ProviderProtocol::OpenAiCompletions
+        || config.base_url.is_empty()
+        || !config.extra_headers.is_empty()
+        || config.oauth_token.is_some()
+    {
+        return Err(final_request_guard::FinalRequestError::UnsupportedTransport);
+    }
+    let base = normalize_openai_base_url(&config.base_url);
+    let url = reqwest::Url::parse(&format!("{base}/chat/completions"))
+        .map_err(|_| final_request_guard::FinalRequestError::Target)?;
+    if url.query().is_some()
+        || url.fragment().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err(final_request_guard::FinalRequestError::Target);
+    }
+    Ok(url)
+}
+
+/// Native implementation identity retained by Prefix acceptance. Changes to
+/// request serialization, normalization or the SDK resolution require fresh
+/// qualification; a friendly transport name alone is insufficient provenance.
+pub fn final_chat_contract_checksum() -> String {
+    use sha2::Digest;
+    let mut hash = sha2::Sha256::new();
+    for source in [
+        include_str!("lib.rs"),
+        include_str!("rig_adapter.rs"),
+        include_str!("optional_auth_http.rs"),
+        include_str!("tool_schema.rs"),
+        include_str!("request_qualification.rs"),
+        include_str!("../../../Cargo.lock"),
+    ] {
+        hash.update((source.len() as u64).to_be_bytes());
+        hash.update(source.as_bytes());
+    }
+    format!("{:x}", hash.finalize())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1330,6 +1483,54 @@ mod tests {
             response_cache_ttl_secs: 3600,
             response_cache_max_entries: 1000,
         }
+    }
+
+    #[tokio::test]
+    async fn static_codex_factory_missing_or_corrupt_session_never_starts_login() {
+        use crate::codex_test_helpers::{codex_http_fixture, test_codex_config};
+        let server = codex_http_fixture(|path, _| {
+            panic!("static SDK construction cannot initiate OAuth: {path}")
+        })
+        .await;
+        let home = tempfile::tempdir().unwrap();
+        let path = home.path().join("codex.json");
+        let mut codex = test_codex_config(path.clone());
+        codex.auth_endpoint = server.endpoint.clone();
+        codex.api_base_url = server.endpoint.clone();
+        let mut config = test_llm_config();
+        config.backend = "selected-codex".into();
+        config.resolved_protocol = Some(ProviderProtocol::OpenAiCodex);
+        config.openai_codex = Some(codex);
+        let session = Arc::new(SessionManager::new(SessionConfig {
+            auth_base_url: server.endpoint.clone(),
+            session_path: home.path().join("near.json"),
+        }));
+        let missing = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            build_static_provider_chain(&config, session.clone()),
+        )
+        .await
+        .unwrap();
+        assert!(matches!(missing, Err(LlmError::AuthFailed { .. })));
+        std::fs::write(
+            &path,
+            r#"{"access_token":"private-corrupt-token","expires_at":"private-corrupt-date"}"#,
+        )
+        .unwrap();
+        let corrupt = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            build_static_provider_chain(&config, session),
+        )
+        .await
+        .unwrap();
+        let error = match corrupt {
+            Ok(_) => panic!("corrupt credentials must fail"),
+            Err(error) => error.to_string(),
+        };
+        assert!(error.contains("saved OAuth session"));
+        assert!(!error.contains("private-corrupt"));
+        assert_eq!(server.requests.lock().await.len(), 0);
+        server.finish().await;
     }
 
     #[test]

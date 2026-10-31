@@ -1,0 +1,384 @@
+{
+  "format": "brassclaw-legacy-raw-preflight-validation/1",
+  "status": "scoped-invocation-generation-race-repaired-family-cutover-incomplete",
+  "changed_sources": {
+    "crates/brassclaw_host_runtime/src/obligations.rs": {
+      "before": "07ab7a2fa62c44fbfa1c56c78e76aa1ead784310ed3c5065ed5d18604b1b19c0",
+      "after": "d4665cbdecb5d8ab94d53e595f354dbcb08699fbb461417239e13fce36cb90e8"
+    },
+    "crates/brassclaw_host_runtime/src/obligations/tests/raw_source_tests.rs": {
+      "before": "d539ecf5b8af349198e8edaf9a081a351ecde796df0bfe6df321b9c42418dfe1",
+      "after": "c70261db10f5ca826dd29bdcbaed2d5e0452e3e274a3930f78647597578f3f14"
+    }
+  },
+  "host_validation": {
+    "status": "passed-host-legacy-raw-preflight-composition-pending",
+    "runner_pid": 30088,
+    "process_pid": null,
+    "source": "/Volumes/SSDE/brassclaw",
+    "target": "/Users/ollama/brassclaw-target",
+    "results": [
+      {
+        "label": "format-host",
+        "command": [
+          "cargo",
+          "+1.96.0",
+          "fmt",
+          "-p",
+          "brassclaw_host_runtime",
+          "--",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.425,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "host-test-images",
+        "command": [
+          "cargo",
+          "+1.96.0",
+          "test",
+          "-p",
+          "brassclaw_host_runtime",
+          "--lib",
+          "--test",
+          "builtin_obligation_handler_contract",
+          "--test",
+          "runtime_http_egress_contract",
+          "--test",
+          "first_party_builtin_tools",
+          "--features",
+          "test-support",
+          "--no-run",
+          "--locked",
+          "--message-format=json"
+        ],
+        "exit_code": 0,
+        "seconds": 11.29,
+        "log_sha256": "f8b41275b4ed60c5ca0d596432fc9c038e7bd3b421fd80e5efdbba2e86d913ed"
+      },
+      {
+        "label": "strict-host-tests",
+        "command": [
+          "cargo",
+          "+1.96.0",
+          "clippy",
+          "-p",
+          "brassclaw_host_runtime",
+          "--lib",
+          "--tests",
+          "--features",
+          "test-support",
+          "--locked",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 8.654,
+        "log_sha256": "c56601a25769f384aa0005ba00706b8d7bb1c9e5146eb9a3683fddc698656b13"
+      },
+      {
+        "label": "staging-unit",
+        "command": [
+          "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/host-1/brassclaw_host_runtime-c23b25e7aaf30c0cebc7e2dd3403b9ce5878848efda04c0084448ab05f81f91a",
+          "obligations::tests::",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.705,
+        "log_sha256": "e59a2b648e062e272e1a621b38ab9f5d83380ecbeae3ffe29a0d3285ee78ef63",
+        "passed": 18,
+        "image_sha256": "c23b25e7aaf30c0cebc7e2dd3403b9ce5878848efda04c0084448ab05f81f91a"
+      },
+      {
+        "label": "retained-services-unit",
+        "command": [
+          "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/host-1/brassclaw_host_runtime-c23b25e7aaf30c0cebc7e2dd3403b9ce5878848efda04c0084448ab05f81f91a",
+          "services::retained_credentials::tests::",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.005,
+        "log_sha256": "4244defbc1003d38a498bcf6b355748ebf262ba0bd411a6c562e39f10065d6d7",
+        "passed": 3,
+        "image_sha256": "c23b25e7aaf30c0cebc7e2dd3403b9ce5878848efda04c0084448ab05f81f91a"
+      },
+      {
+        "label": "obligation-contract",
+        "command": [
+          "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/host-1/builtin_obligation_handler_contract-1043d8b79a5881368a6610f45b0a20a83db404f28f6f88f2b6fa567209e705b5",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.748,
+        "log_sha256": "63d313af6997673ebf9e25e8c0b0d69bd58c727514b23e47fc7a7212f84cdeb8",
+        "passed": 37,
+        "image_sha256": "1043d8b79a5881368a6610f45b0a20a83db404f28f6f88f2b6fa567209e705b5"
+      },
+      {
+        "label": "actual-egress-contract",
+        "command": [
+          "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/host-1/runtime_http_egress_contract-d96f4cf33d04b513b3c3facd7429ead80be81b56372f7b108f3be9f5c0e434a6",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 1.485,
+        "log_sha256": "44148e53ade366221f27af40e4cc4e5c243030ba6436381add430e4e3cf8465b",
+        "passed": 43,
+        "image_sha256": "d96f4cf33d04b513b3c3facd7429ead80be81b56372f7b108f3be9f5c0e434a6"
+      },
+      {
+        "label": "retained-native-policy",
+        "command": [
+          "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/host-1/first_party_builtin_tools-efb1f2f8c84b95c17ab32be3d582c72abd0f30e773f38eaf849a93598fb11909",
+          "retained_child_service_preserves_native_identity_and_kernel_block",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.69,
+        "log_sha256": "366e98903babeff8bf1e8aa0b84d0ac8ae6ae9ac8e9639fe00c034a464616ff8",
+        "passed": 1,
+        "image_sha256": "efb1f2f8c84b95c17ab32be3d582c72abd0f30e773f38eaf849a93598fb11909"
+      }
+    ],
+    "artifacts": {
+      "builtin_obligation_handler_contract": {
+        "path": "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/host-1/builtin_obligation_handler_contract-1043d8b79a5881368a6610f45b0a20a83db404f28f6f88f2b6fa567209e705b5",
+        "sha256": "1043d8b79a5881368a6610f45b0a20a83db404f28f6f88f2b6fa567209e705b5",
+        "original_executable": "/Users/ollama/brassclaw-target/debug/deps/builtin_obligation_handler_contract-d5c3a5294fae0bf7",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 0,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "test-support"
+        ],
+        "manifest_path": "/Volumes/SSDE/brassclaw/crates/brassclaw_host_runtime/Cargo.toml"
+      },
+      "runtime_http_egress_contract": {
+        "path": "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/host-1/runtime_http_egress_contract-d96f4cf33d04b513b3c3facd7429ead80be81b56372f7b108f3be9f5c0e434a6",
+        "sha256": "d96f4cf33d04b513b3c3facd7429ead80be81b56372f7b108f3be9f5c0e434a6",
+        "original_executable": "/Users/ollama/brassclaw-target/debug/deps/runtime_http_egress_contract-fe312f121156021b",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 0,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "test-support"
+        ],
+        "manifest_path": "/Volumes/SSDE/brassclaw/crates/brassclaw_host_runtime/Cargo.toml"
+      },
+      "brassclaw_host_runtime": {
+        "path": "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/host-1/brassclaw_host_runtime-c23b25e7aaf30c0cebc7e2dd3403b9ce5878848efda04c0084448ab05f81f91a",
+        "sha256": "c23b25e7aaf30c0cebc7e2dd3403b9ce5878848efda04c0084448ab05f81f91a",
+        "original_executable": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_host_runtime-71eb97b4083bdd90",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 0,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "test-support"
+        ],
+        "manifest_path": "/Volumes/SSDE/brassclaw/crates/brassclaw_host_runtime/Cargo.toml"
+      },
+      "first_party_builtin_tools": {
+        "path": "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/host-1/first_party_builtin_tools-efb1f2f8c84b95c17ab32be3d582c72abd0f30e773f38eaf849a93598fb11909",
+        "sha256": "efb1f2f8c84b95c17ab32be3d582c72abd0f30e773f38eaf849a93598fb11909",
+        "original_executable": "/Users/ollama/brassclaw-target/debug/deps/first_party_builtin_tools-d5881ade9f1b5b03",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 0,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "test-support"
+        ],
+        "manifest_path": "/Volumes/SSDE/brassclaw/crates/brassclaw_host_runtime/Cargo.toml"
+      }
+    },
+    "scope": "Retain raw preflight selection through actual audit/resource preparation and inject only its conditional generation, including unbound legacy callers; no original task-family guarantee for legacy selection.",
+    "source_sha256": "675b1208c5f6683838a42d89f2a5005cc06fc04c363e136fb6c31660bcee9b5d",
+    "local_dependency_count": 31,
+    "stage": "complete",
+    "command": [
+      "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/host-1/first_party_builtin_tools-efb1f2f8c84b95c17ab32be3d582c72abd0f30e773f38eaf849a93598fb11909",
+      "retained_child_service_preserves_native_identity_and_kernel_block",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "passed": 102
+  },
+  "composition_validation": {
+    "status": "passed",
+    "runner_pid": 30217,
+    "process_pid": null,
+    "results": [
+      {
+        "stage": "format-affected",
+        "exit_code": 0,
+        "seconds": 0.34829450002871454,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "composition-image",
+        "exit_code": 0,
+        "seconds": 231.0953330830671,
+        "log_sha256": "b5297a96bcf87e49959b4015e937c31d0157c06ce7ff5b89f3a5c76b74dbb030"
+      },
+      {
+        "stage": "case-1",
+        "exit_code": 0,
+        "seconds": 2.577763000037521,
+        "log_sha256": "81f45d99b436caf9a37c2356860c3ad0a0eaca89f459052d8a1f2f3e599c51ef",
+        "case": "task_tool_credentials::tests::bound_account_view_fences_original_claim_scope_late_read_and_weak_lifetime",
+        "passed": 1
+      },
+      {
+        "stage": "case-2",
+        "exit_code": 0,
+        "seconds": 2.333393916953355,
+        "log_sha256": "02b627d8c9e11d30335b71ad4266c9e01f533c98111a65f367b15c623fde5413",
+        "case": "task_tool_credentials::tests::bound_raw_view_retains_original_generation_absence_scope_and_host_fence",
+        "passed": 1
+      },
+      {
+        "stage": "case-3",
+        "exit_code": 0,
+        "seconds": 3.0053815830033273,
+        "log_sha256": "850d377b708486d5506566c6daa1e42f15fc52a0b2af60f64798a649d0f1332c",
+        "case": "native_model_usage_tests::native_prefix_free_capture_retains_original_pair_without_prefix_table_or_dispatch_grant",
+        "passed": 1
+      },
+      {
+        "stage": "case-4",
+        "exit_code": 0,
+        "seconds": 4.688025374896824,
+        "log_sha256": "dcc2bbb5bd8e7767865ed5ab018e58f246ba8bfa1583dba94e8dff9ab3da042e",
+        "case": "native_model_usage_tests::native_task_model_usage_captures_database_selection_without_legacy_route",
+        "passed": 1
+      },
+      {
+        "stage": "case-5",
+        "exit_code": 0,
+        "seconds": 4.690372042125091,
+        "log_sha256": "3276e7a935c81d6d96ef55cc958d9eca002fa9a2691d4211c45bfd2341ffd907",
+        "case": "native_model_usage_tests::native_recipe_selected_prefix_uses_original_pair_without_base_fallback",
+        "passed": 1
+      },
+      {
+        "stage": "composition-strict",
+        "exit_code": 0,
+        "seconds": 92.89748870884068,
+        "log_sha256": "e7f77716ce3ace8879bee08a070c5cfb1875c1c1ec3a66301a579dd80329e7d1"
+      },
+      {
+        "stage": "composition-default-strict",
+        "exit_code": 0,
+        "seconds": 20.974106166977435,
+        "log_sha256": "265a8356158a397676437f9f8d759e10251e5376d8372929408fa2b0da777c0b"
+      }
+    ],
+    "scope": "Legacy raw snapshot is invocation-local and bound raw source stays original. Real current task source views and exact native Free-capture/Default/Selected model consumers; no Free dispatch or full legacy/family cutover.",
+    "stage": "terminal",
+    "command": [
+      "cargo",
+      "+1.96.0",
+      "clippy",
+      "-p",
+      "brassclaw_reborn_composition",
+      "--lib",
+      "--locked",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "image": {
+      "path": "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/comp-1/composition-tests",
+      "sha256": "42f548bd0045ef8d233f4138a53a24fbdecc1021da8fe2fffd239a90cbec651f",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-f3f60267b1e4e468",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    },
+    "worker": {
+      "path": "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/comp-1/monty_worker",
+      "sha256": "91a2165fa396dfd9513d15e886eaba2ed692f1a5b9ac472ef3fb734391e47343",
+      "original": "/Users/ollama/brassclaw-target/debug/monty_worker"
+    },
+    "model_assets": {
+      "source": "/Volumes/SSDE/brassclaw/target/validation/prefix-model-source-cacik5n7",
+      "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6",
+      "retained": "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/comp-1/model-artifacts",
+      "files": {
+        "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+        "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+        "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+        "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+        "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+        "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+      }
+    }
+  },
+  "actual_distinct_fresh_cases": 107,
+  "host_cases": 102,
+  "composition_cases": 5,
+  "source_inventories": {
+    "host-1": {
+      "path": "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/host-1/source.json",
+      "sha256": "675b1208c5f6683838a42d89f2a5005cc06fc04c363e136fb6c31660bcee9b5d",
+      "inputs": 979
+    },
+    "comp-1": {
+      "path": "/private/tmp/brassclaw-legacy-raw-preflight-validation-20261029/comp-1/source.json",
+      "sha256": "8e8ea2ca8619603a9658f5ee144dcffe3d2412b0c4177141e287c077cf532c6f",
+      "inputs": 7953
+    }
+  },
+  "root_inventory": {
+    "path": "/private/tmp/brassclaw-legacy-raw-preflight-20261029-yktp3uyk/current-root-inputs-legacy-raw-preflight.json",
+    "sha256": "6954dc6f9a2bf08415817c809d96d8d54c08d64b05deda208185d8f051bd3893",
+    "inputs": 160,
+    "incoming": "/private/tmp/brassclaw-legacy-raw-preflight-20261029-yktp3uyk/incoming-root-exact-auth.json",
+    "incoming_sha256": "becdc6055b83be398eb0d7337a02fb6d6da9536fcc036bc632a9a4ed988d3612",
+    "scope": "Last combined Root/Exact/Auth160 plus this two-path Host successor; not whole-repository acceptance."
+  },
+  "preserved_exact_free_capture": {
+    "path": "/Volumes/SSDE/brassclaw/docs/validation/2026-10-29-exact-prefix-free-capture.json",
+    "sha256": "ed9dcbad859c7c80fdd0c4434863ec03de58e91acb13f2b8d0b828a4b76e3e04",
+    "unchanged_source_paths": 25
+  },
+  "write_method": "Preconditioned complete same-directory temporary files, fsync and atomic replace; before/proposed/after/review retained internally.",
+  "failure_history": [],
+  "limits": [
+    "Unbound legacy source is still selected at invocation preflight, not original task preparation; no family, own-flow or refresh progression is established.",
+    "The new regression uses real prepare/audit/SecretStore/lease/handoff operations and a deterministic concurrent-writer audit fixture. No native raw workflow is activated.",
+    "Native Raw/account source views and Default/Selected/declared Free capture are scoped regressions. Free dispatch and activation remain closed; no qualification or policy bypass.",
+    "Actual native extension/ToolSkill integration, own-flow/refresh, native Auth-wait, multi-credential/UI/final-use, durable recovery and full K3/Exact/release/deployment remain open."
+  ]
+}

@@ -181,3 +181,8 @@ tracing-test = "0.2"
 
 [lints]
 workspace = true
+
+[[test]]
+name = "prefix_design_selection"
+path = "tests/prefix_design_selection.rs"
+required-features = ["skills-db", "root-llm-provider"]

@@ -143,7 +143,9 @@ pub(super) fn capability_error_class(kind: &CapabilityFailureKind) -> Capability
             CapabilityErrorClass::PolicyDenied
         }
         CapabilityFailureKind::Internal => CapabilityErrorClass::Internal,
-        CapabilityFailureKind::Dispatcher => CapabilityErrorClass::Permanent,
+        CapabilityFailureKind::Dispatcher | CapabilityFailureKind::EffectOutcomeUnresolved => {
+            CapabilityErrorClass::Permanent
+        }
         CapabilityFailureKind::Cancelled => CapabilityErrorClass::Permanent,
         CapabilityFailureKind::InvalidOutput
         | CapabilityFailureKind::Permanent
@@ -157,6 +159,7 @@ pub(super) fn capability_error_class(kind: &CapabilityFailureKind) -> Capability
 pub(super) fn capability_failure_kind(kind: &CapabilityFailureKind) -> LoopFailureKind {
     match kind {
         CapabilityFailureKind::InvalidInput => LoopFailureKind::ModelError,
+        CapabilityFailureKind::EffectOutcomeUnresolved => LoopFailureKind::EffectOutcomeUnresolved,
         CapabilityFailureKind::Authorization | CapabilityFailureKind::PolicyDenied => {
             LoopFailureKind::PolicyDenied
         }
@@ -196,6 +199,31 @@ mod tests {
         assert_eq!(
             capability_failure_kind(&CapabilityFailureKind::InvalidInput),
             LoopFailureKind::ModelError
+        );
+    }
+
+    #[test]
+    fn unresolved_effect_classification_survives_checkpoint_serialization() {
+        let kind = CapabilityFailureKind::EffectOutcomeUnresolved;
+        let encoded = serde_json::to_string(&kind).unwrap();
+        assert_eq!(encoded, "\"effect_outcome_unresolved\"");
+        assert_eq!(
+            serde_json::from_str::<CapabilityFailureKind>(&encoded).unwrap(),
+            kind
+        );
+        assert_eq!(
+            capability_error_class(&kind),
+            CapabilityErrorClass::Permanent
+        );
+        assert_eq!(
+            capability_failure_kind(&kind),
+            LoopFailureKind::EffectOutcomeUnresolved
+        );
+        let loop_kind = LoopFailureKind::EffectOutcomeUnresolved;
+        let encoded = serde_json::to_string(&loop_kind).unwrap();
+        assert_eq!(
+            serde_json::from_str::<LoopFailureKind>(&encoded).unwrap(),
+            loop_kind
         );
     }
 

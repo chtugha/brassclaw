@@ -229,6 +229,37 @@ pub enum ModelSubmission {
 
 #[async_trait]
 pub trait LoopModelGateway: Send + Sync {
+    async fn preflight_task_model_usage(
+        &self,
+        input: Option<&super::LoopModelInputReference>,
+    ) -> Result<(), AgentLoopHostError> {
+        if input.is_some() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unimplemented,
+                "selected model input preflight is unavailable",
+            ));
+        }
+        Ok(())
+    }
+
+    async fn capture_task_model_selection(
+        &self,
+        parent: Option<Arc<dyn super::LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn crate::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<Option<Arc<dyn super::LoopTaskModelSelection>>, AgentLoopHostError> {
+        if parent.is_some() || capture.is_some() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unimplemented,
+                "task model inheritance is unavailable",
+            ));
+        }
+        Ok(None)
+    }
+
+    fn task_model_selection(&self) -> Option<Arc<dyn super::LoopTaskModelSelection>> {
+        None
+    }
+
     /// Selected native usage: unsupported adapters fail before provider I/O.
     async fn prepare_model_call_with_observation(
         &self,
@@ -621,6 +652,27 @@ where
     G: LoopModelGateway + ?Sized,
     S: LoopHostMilestoneSink + ?Sized,
 {
+    async fn preflight_task_model_usage(
+        &self,
+        input: Option<&super::LoopModelInputReference>,
+    ) -> Result<(), AgentLoopHostError> {
+        self.gateway.preflight_task_model_usage(input).await
+    }
+
+    async fn capture_task_model_selection(
+        &self,
+        parent: Option<Arc<dyn super::LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn crate::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<Option<Arc<dyn super::LoopTaskModelSelection>>, AgentLoopHostError> {
+        self.gateway
+            .capture_task_model_selection(parent, capture.clone())
+            .await
+    }
+
+    fn task_model_selection(&self) -> Option<Arc<dyn super::LoopTaskModelSelection>> {
+        self.gateway.task_model_selection()
+    }
+
     async fn stream_model(
         &self,
         request: LoopModelRequest,

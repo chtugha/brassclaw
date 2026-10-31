@@ -1,0 +1,95 @@
+{
+  "format": "brassclaw-dcr-gate-recovery/1",
+  "status": "passed-scoped-full-k3-open",
+  "changed_sources": {
+    "crates/brassclaw_reborn_composition/src/oauth_dcr.rs": {
+      "before": "c41ce454efa0ddb1d6021875d6ca39c43ab4a60984506feeb03da417156a168e",
+      "after": "ae45bb7aa8b19e3df9e252d3430124f77c7a2825c66f01d90071a5bf5ab3785b"
+    },
+    "crates/brassclaw_reborn_composition/src/oauth_dcr_limits_tests.rs": {
+      "before": "e90efc22936cd14b9c9d580bd984e6ce6a043db94f01ab2a16074cea3dd60108",
+      "after": "1ffbd3545c5c0ce4da05805eb3bbdfc2c77ee0bfac63792e3f0ea1fbde1fb05e"
+    }
+  },
+  "validation": {
+    "path": "/private/tmp/brassclaw-dcr-gate-validation-20261030/run-2",
+    "source_sha256": "002783c1fd489af903ae7b2d6532c65e58c565744737e18334489c78d31de192",
+    "progress_sha256": "e8c3ae2d03a89e3af3093207cf9391b3239705320600f8c2192d2ce8499da954",
+    "image": {
+      "path": "/private/tmp/brassclaw-dcr-gate-validation-20261030/run-2/composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-7a32f5faf18eef18",
+      "sha256": "2ef017da2f50d3db49381c31636ea7475a80c9fbe590dadb036963e72e10bd4c",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    },
+    "worker": {
+      "path": "/private/tmp/brassclaw-dcr-gate-validation-20261030/run-2/monty_worker",
+      "sha256": "ece271358a476130cb09d695e321eb485e00e1670e89a4704aad4098dee4cb7c"
+    },
+    "results": [
+      {
+        "stage": "format",
+        "exit_code": 0,
+        "seconds": 0.34170029079541564,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "composition-image",
+        "exit_code": 0,
+        "seconds": 159.37104016705416,
+        "log_sha256": "02498d516458af837a28ece585bef269fb90d30138a985d0bcb28f598781ecb5"
+      },
+      {
+        "stage": "native-gate-recovery",
+        "exit_code": 0,
+        "seconds": 39.274616125039756,
+        "log_sha256": "90f750f481c46ae097433afbedae0f51e3757b5af384014985aaafd9f963b60b",
+        "passed": 1,
+        "case": "oauth_dcr::limits_tests::native_dcr_gate_recovers_preparation_after_flow_insert_failure_without_rebinding"
+      },
+      {
+        "stage": "dcr-regressions",
+        "exit_code": 0,
+        "seconds": 51.613716792082414,
+        "log_sha256": "d8d11f8fb0055cffecbe6d18adb702b12e2b4e954aac84e105d481aae801a807",
+        "passed": 33
+      },
+      {
+        "stage": "connected-strict",
+        "exit_code": 0,
+        "seconds": 86.34656837512739,
+        "log_sha256": "9b7dfd9bc3a2b092c04b404349a07c1866064369ad5cb919d460be203f06237d"
+      },
+      {
+        "stage": "default-strict",
+        "exit_code": 0,
+        "seconds": 15.919577208114788,
+        "log_sha256": "a5fbfcd634b4a66bc0bf7cbc2f724456a70b6d732a0cbda79f0e7f614c99e995"
+      }
+    ],
+    "distinct_passed": 34,
+    "ignored_counted": 0
+  },
+  "incoming_exact": {
+    "receipt": "docs/validation/2026-10-30-exact-model-setup-ui.json",
+    "sha256": "c87b21ceb1ac16c456aa79f569211e6a58843208eea07a2692523285fc77ac91",
+    "all16_source_afterhashes_unchanged": true
+  },
+  "failed_attempt": {
+    "path": "/private/tmp/brassclaw-dcr-gate-validation-20261030/run-1",
+    "progress_sha256": "393b77d3e5b29f88c3e56465829823a0484bb8f07b4adf89fb1e8c683e2129e3",
+    "cause": "Fixture selected Filesystem Auth without explicit build-input tenant; actual PG trigger installation rejected missing table. Both native DCR fixtures now explicitly select PostgreSQL Auth."
+  },
+  "scope_correction": "The older DCR HTTP native fixture used PG settings/global VM but Filesystem Auth. Its old receipt cannot establish PG Auth ownership. The current fresh native HTTP case and new gate case use explicit PostgreSQL Auth and real encrypted custody.",
+  "remaining": [
+    "Auth lifecycle/cache settings and browser producers",
+    "native own-flow/family/Auth-wait and Codex consumers",
+    "complete K3-K7/Exact/Prefix/recovery/platform/release/deployment"
+  ],
+  "coordination": "Root permanently retains Cargo; development-build-queue.md replaces build-window handoffs."
+}

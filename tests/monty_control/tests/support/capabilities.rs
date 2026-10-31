@@ -29,7 +29,7 @@ use std::{
     sync::Arc,
 };
 
-pub fn port(
+pub(super) fn port(
     context: &LoopRunContext,
     root: &Path,
     io: Arc<PgCapabilityIo>,

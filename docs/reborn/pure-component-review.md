@@ -202,9 +202,12 @@ implemented support.
    original submission ID/checksum, exact candidate/base/dependency choice, all
    source/interface references, required check set, selected validator manifest,
    real run/attempt and actual interpreter identity. The base comparison is review
-   context, not an extra executable dependency. Reuse exact retained roots when
-   approving a changed dependency combination; do not force meaningless code edits.
-   A supported combination-review submission route must preserve those identities.
+   context, not an extra executable dependency. In A, review the changed own
+   function and preserve still-needed consumer contracts; compatible dependency
+   updates require no new review of an unchanged pure component. Retain exact
+   original roots/records, not meaningless source edits or synthetic combination
+   submissions. S retains exact usage qualification outside the authored queue.
+   Skill implementation follows the joint own subject described below.
    Use the implemented `subject_task_inputs`/`observe_subject` boundary to derive
    the complete sealed subject and compare all actual input edges. Its
    [scoped acceptance](../validation/2026-10-23-validator-subject-inputs.md) rejects
@@ -258,8 +261,15 @@ implemented support.
    to catalogue prepare/serialization/restore/deployment, retained task selection,
    matching, private validator admission, child/wait and recovery readers. The
    existing `monty-retained-recipe-selection/1` format has eight required fields
-   plus optional association approvals; extend compatibly or version deliberately,
-   preserving historical bytes. Old valid tasks keep their selected references.
+   plus optional `association_approvals` and the already compiler-emitted
+   `model_input_binding`. The V150 reader now accepts that existing optional
+   metadata and checks it against the immutable original Recipe and selected
+   variant; historical absence differs from explicit Default. See the
+   [preparation roundtrip acceptance](../validation/2026-10-31-review-model-selection.md).
+   This is data-integrity support, not Q1, Q2, PrefixFree qualification or dispatch
+   authority. Any future pure-approval extension must remain compatible or be
+   deliberately versioned, preserving historical bytes. Old valid tasks keep
+   their selected references.
    Current Tool policy remains independent and live before each real dispatch.
 8. **Accept through real publication and reuse.** Exercise trusted PostgreSQL
    evidence -> exact human view/approval -> coherent catalogue -> two genuine
@@ -270,3 +280,32 @@ implemented support.
    qualification without human Q2, failed/lost commits and restoration. This is
    ordinary global Monty acceptance, with no Rust/per-chat fallback. Pure approval
    does not certify an entire multi-Tool Recipe or grant Tool permission.
+
+## Open successor — joint functions without combination reapproval
+
+After the currently active native review/selection package (including BUILD-014),
+the existing Validator Steps2/3/8–10 owner implements the own A subject/approval
+successor defined in [skills.md](../../skills.md#own-functional-approval-and-successor-compatibility).
+Skill and implementing class22 code share complete function checks and one exact
+human view while retaining physical IDs. Both changed roots use per-root CAS and
+atomic own approvals; one unchanged counterpart remains approved context. Pure
+standalone roots keep the existing independent route, without a dummy Skill.
+Shared helpers/implementations preserve every needed export contract, not a union
+of consumer UUIDs masquerading as occurrence coverage.
+
+Reuse existing sealed subject/coverage/observer, durable work/selection and actual
+run/attempt/interpreter/settlement. Parser facts can be reused only for their exact
+scope; equal outputs or source do not transfer behavior evidence across subjects.
+No second review queue, fourth model snapshot, public pass flag or new isolated
+runner. S qualification remains noncircular, tied to package/native bytes, without
+normal authored queue or extra installed Q2. Exact S closure membership cannot
+approve an independent prerequisite retroactively.
+
+The existing approval/activation owners connect all required readers before new
+profile publication; unchanged A consumers keep approvals under proven compatible
+successors, old valid tasks keep exact selections. Historical declarations,
+formats, acceptance and source-only results remain unchanged in meaning. Required
+negatives include foreign/partial subject, changed partner/base, uncertain commit,
+wrong interpreter, stale contract, independent occurrence without own approval,
+and mixed A/S provenance misuse. The next open Validator/Composition production
+cutover consumes these requirements; this section performs no implementation.

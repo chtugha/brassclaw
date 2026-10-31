@@ -65,12 +65,8 @@ where
 {
     /// Construct a filesystem-backed process store.
     ///
-    /// **Single-instance invariant**: the `transition_lock` only serializes
-    /// `start` and `update_status` (i.e. `complete`/`fail`/`kill`) within a
-    /// single `FilesystemProcessStore` instance. Operating multiple instances
-    /// concurrently against the same on-disk root is unsupported and will
-    /// race on the JSON record files. Construct the store once and share via
-    /// `Arc` (see [`from_arc`](Self::from_arc)).
+    /// The local lock reduces contention. Atomic absent/version checks at
+    /// the backend protect independent store instances and processes.
     pub fn new(filesystem: Arc<ScopedFilesystem<F>>) -> Self {
         Self {
             filesystem,
@@ -82,9 +78,7 @@ where
     /// sites that previously held an [`Arc<ScopedFilesystem<F>>`] separately
     /// from a borrow can continue to use the same shape.
     ///
-    /// The same single-instance invariant from [`new`](Self::new) applies:
-    /// share the resulting store via `Arc` rather than constructing multiple
-    /// instances pointed at the same root.
+    /// Independent instances retain the same backend CAS protection.
     pub fn from_arc(filesystem: Arc<ScopedFilesystem<F>>) -> Self {
         Self::new(filesystem)
     }
@@ -94,14 +88,20 @@ where
         let body = serialize_pretty(record)?;
         self.ensure_indexes(&record.scope).await?;
         let entry = process_record_entry(body, record);
-        put_with_byte_fallback(
+        put_with_projection_fallback(
             &self.filesystem,
             &record.scope,
             &path,
             entry,
-            CasExpectation::Any,
+            CasExpectation::Absent,
         )
-        .await?;
+        .await
+        .map_err(|error| match error {
+            FilesystemError::VersionMismatch { .. } => ProcessError::ProcessAlreadyExists {
+                process_id: record.process_id,
+            },
+            other => other.into(),
+        })?;
         Ok(())
     }
 
@@ -163,11 +163,9 @@ where
     /// and try again until either the CAS succeeds or
     /// [`MAX_CAS_RETRIES`] is exhausted.
     ///
-    /// Backends without versioning (LocalFilesystem) return version `0`
-    /// for every read and reject `CasExpectation::Version` with
-    /// `Unsupported`; for those, [`put_with_byte_fallback`] falls
-    /// through to `CasExpectation::Any` so the existing single-instance
-    /// guarantee from `transition_lock` carries the safety invariant.
+    /// Projection adaptation preserves this exact version precondition.
+    /// Backends without versioned writes return an error; the local lock
+    /// cannot supply cross-instance atomicity.
     async fn update_status(
         &self,
         scope: &ResourceScope,
@@ -192,7 +190,7 @@ where
             self.ensure_indexes(&record.scope).await?;
             let body = serialize_pretty(&record)?;
             let entry = process_record_entry(body, &record);
-            match put_with_byte_fallback(
+            match put_with_projection_fallback(
                 &self.filesystem,
                 scope,
                 &path,
@@ -232,11 +230,8 @@ where
     async fn start(&self, start: ProcessStart) -> Result<ProcessRecord, ProcessError> {
         let _guard = self.transition_lock.lock().await;
         let path = process_record_path(&start.scope, start.process_id);
-        // Existence check uses `get` (unified read) so it works regardless of
-        // whether the backend has native put. Atomicity is provided by the
-        // transition_lock per the single-instance invariant in this struct's
-        // docstring. A future migration can switch to `CasExpectation::Absent`
-        // once every backend in production exposes native put.
+        // Preserve the existing fast duplicate result, but also require atomic
+        // Absent on publication: another writer may win after this read.
         if self.filesystem.get(&start.scope, &path).await?.is_some() {
             return Err(ProcessError::ProcessAlreadyExists {
                 process_id: start.process_id,
@@ -758,17 +753,10 @@ fn process_status_label(status: ProcessStatus) -> &'static str {
     }
 }
 
-/// `put` with a fallback to an opaque (byte-only) entry on `Unsupported`.
-///
-/// Backends that don't yet implement records (LocalFilesystem with no
-/// sidecar metadata) reject `kind = Some(_)` or any non-`Any` CAS
-/// expectation. We try the indexed write first so SQL and in-memory
-/// backends get the projection, then retry with the same body stripped
-/// of metadata and the CAS downgraded to `Any` so the legacy byte-only
-/// path keeps working during the consumer migration. The single-instance
-/// `transition_lock` on the caller carries the ordering safety
-/// invariant that CAS would otherwise provide.
-async fn put_with_byte_fallback<F>(
+/// Retry unsupported indexed projections as opaque entries with the SAME
+/// precondition. Projection support and conditional-write support are separate:
+/// a backend unable to enforce CAS must fail before mutation.
+async fn put_with_projection_fallback<F>(
     filesystem: &ScopedFilesystem<F>,
     scope: &ResourceScope,
     path: &ScopedPath,
@@ -780,12 +768,12 @@ where
 {
     match filesystem.put(scope, path, entry.clone(), cas).await {
         Ok(_) => Ok(()),
-        Err(error) if is_unsupported(&error) => {
+        Err(FilesystemError::Unsupported {
+            operation: FilesystemOperation::WriteFile,
+            ..
+        }) if entry.kind.is_some() || !entry.indexed.is_empty() => {
             let opaque = Entry::bytes(entry.body).with_content_type(entry.content_type);
-            filesystem
-                .put(scope, path, opaque, CasExpectation::Any)
-                .await
-                .map(|_| ())
+            filesystem.put(scope, path, opaque, cas).await.map(|_| ())
         }
         Err(error) => Err(error),
     }

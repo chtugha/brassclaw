@@ -67,10 +67,14 @@ async fn verify(
     let subject = PgReviewSubmissionStore::read_in_transaction(tx, value.submission_id)
         .await?
         .ok_or(SubmissionStoreError::Invalid)?;
-    if !matches!(
-        subject.candidate.class_code,
-        0 | 1 | 2 | 3 | 13 | 21 | 22 | 23
-    ) {
+    // Existing /1 preparation covers one class/root. Never retain a partial
+    // selection for a function subject with a changed or contextual partner.
+    if subject.function_partner.is_some()
+        || !matches!(
+            subject.candidate.class_code,
+            0 | 1 | 2 | 3 | 13 | 21 | 22 | 23
+        )
+    {
         return Err(SubmissionStoreError::Invalid);
     }
     if subject.checksum != value.subject_checksum
@@ -97,9 +101,13 @@ async fn verify(
     ];
     let object = selection.as_object().ok_or(SubmissionStoreError::Invalid)?;
     if fields.iter().any(|name| !object.contains_key(*name))
-        || object
-            .keys()
-            .any(|name| !fields.contains(&name.as_str()) && name != "association_approvals")
+        || object.keys().any(|name| {
+            !fields.contains(&name.as_str())
+                && !matches!(
+                    name.as_str(),
+                    "association_approvals" | "model_input_binding"
+                )
+        })
         || !matches!(
             selection["workflow_class"].as_str(),
             Some("deterministic" | "requires_model")
@@ -127,10 +135,37 @@ async fn verify(
     let key = selection["variant"]["variant_key"]
         .as_str()
         .ok_or(SubmissionStoreError::Invalid)?;
-    let variant = doc["variants"]
+    let variants = doc["variants"]
         .as_array()
-        .and_then(|variants| variants.iter().find(|v| v["variant_key"] == key))
         .ok_or(SubmissionStoreError::Invalid)?;
+    let declared_variants = variants
+        .iter()
+        .map(|variant| {
+            variant["variant_key"]
+                .as_str()
+                .map(str::to_owned)
+                .ok_or(SubmissionStoreError::Invalid)
+        })
+        .collect::<Result<std::collections::BTreeSet<_>, _>>()?;
+    if declared_variants.len() != variants.len() {
+        return Err(SubmissionStoreError::Invalid);
+    }
+    let variant = variants
+        .iter()
+        .find(|variant| variant["variant_key"] == key)
+        .ok_or(SubmissionStoreError::Invalid)?;
+    // Resolve from the actual retained document with the same parser as IBS.
+    // A captured selection may neither omit an explicit binding nor replace
+    // historical absence, switch profiles, or invent a prefix-free capability.
+    let model_input =
+        crate::recipe_model_input::RecipeModelInput::for_variant(doc, &declared_variants, key)
+            .map_err(|_| SubmissionStoreError::Invalid)?;
+    let expected_binding = doc
+        .get("model_input_bindings")
+        .map(|_| model_input.retained_binding());
+    if selection.get("model_input_binding") != expected_binding.as_ref() {
+        return Err(SubmissionStoreError::Invalid);
+    }
     if doc["validates_class_code"].as_i64() != Some(i64::from(subject.candidate.class_code))
         || doc["consumer_tags"] != serde_json::json!(["05:validator"])
         || variant["intent_examples"] != serde_json::json!([])

@@ -35,12 +35,14 @@ function initialForm(provider, overrides, cacheDefaults, discoveryDefaults, requ
     discoveryTimeout: discovery?.timeout_secs ?? "",
     discoveryBytes: discovery?.max_response_bytes ?? "",
     cacheEnabled: cache?.enabled === true,
+    activateProvider: false,
     cacheEntries: cache?.max_entries ?? "",
     cacheTtlSecs: cache?.ttl_secs ?? "",
   };
 }
 
 export function useProviderDialogForm({
+  activateOnSave = false,
   provider,
   allProviderIds,
   builtinOverrides,
@@ -83,6 +85,7 @@ export function useProviderDialogForm({
   }, []);
 
   const validate = React.useCallback(() => {
+    if ((activateOnSave || form.activateProvider) && !form.model.trim()) return t("llm.modelRequired");
     if (!form.name.trim() || !form.id.trim()) return t("llm.fieldsRequired");
     if (!isValidProviderId(form.id.trim())) return t("llm.invalidId");
     if (!isEditing && !isBuiltin && allProviderIds.includes(form.id.trim())) {
@@ -99,7 +102,7 @@ export function useProviderDialogForm({
     try { providerRequestPolicy(form); } catch { return t("llm.requestPolicyInvalid"); }
     try { providerEmbeddingModels(form); } catch { return t("llm.embeddingModelsInvalid"); }
     return "";
-  }, [allProviderIds, form.id, form.name, form.cacheEntries, form.cacheTtlSecs, form.discoveryTimeout, form.discoveryBytes, form.adapter, form.responseBytes, form.requestTimeout, form.requestRetries, form.circuitThreshold, form.circuitRecovery, form.retryBase, form.retryMax, form.retryJitter, form.retryAfterMax, form.embeddingModels, isBuiltin, isEditing, t]);
+  }, [activateOnSave, allProviderIds, form.activateProvider, form.model, form.id, form.name, form.cacheEntries, form.cacheTtlSecs, form.discoveryTimeout, form.discoveryBytes, form.adapter, form.responseBytes, form.requestTimeout, form.requestRetries, form.circuitThreshold, form.circuitRecovery, form.retryBase, form.retryMax, form.retryJitter, form.retryAfterMax, form.embeddingModels, isBuiltin, isEditing, t]);
 
   const submit = React.useCallback(async () => {
     const error = validate();
@@ -109,14 +112,14 @@ export function useProviderDialogForm({
     }
     setBusy("save");
     try {
-      await onSave({ form, apiKey, provider });
+      await onSave({ form, apiKey, provider, activate: activateOnSave || form.activateProvider === true });
       onClose();
     } catch (err) {
       setMessage({ tone: "error", text: err.status === 409 ? t("llm.providerChanged") : err.message });
     } finally {
       setBusy("");
     }
-  }, [apiKey, form, onClose, onSave, provider, validate]);
+  }, [activateOnSave, apiKey, form, onClose, onSave, provider, validate]);
 
   const runTest = React.useCallback(async () => {
     try { providerModelDiscoveryPolicy(form); } catch {

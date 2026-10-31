@@ -1,3 +1,6 @@
+#[path = "auth_google_original.rs"]
+mod google_original;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -7,16 +10,16 @@ use brassclaw_auth::{
     AuthFlowStatus, AuthGateRef, AuthInteractionId, AuthInteractionService, AuthProductError,
     AuthProductScope, AuthProviderClient, AuthProviderId, CredentialAccountChoiceRequest,
     CredentialAccountId, CredentialAccountLabel, CredentialAccountListPage,
-    CredentialAccountListRequest, CredentialAccountLookupRequest, CredentialAccountProjection,
-    CredentialAccountRecordSource, CredentialAccountService, CredentialAccountStatus,
-    CredentialAccountUpdateBinding, CredentialRecoveryProjection, CredentialRecoveryRequest,
-    CredentialRefreshReport, CredentialRefreshRequest, CredentialSetupService,
-    InMemoryAuthProductServices, ManualTokenSetupRequest, NewAuthFlow, OAuthAuthorizationUrl,
+    CredentialAccountListRequest, CredentialAccountProjection, CredentialAccountRecordSource,
+    CredentialAccountService, CredentialAccountStatus, CredentialAccountUpdateBinding,
+    CredentialRecoveryProjection, CredentialRecoveryRequest, CredentialRefreshReport,
+    CredentialRefreshRequest, CredentialSetupService, InMemoryAuthProductServices,
+    ManualTokenSetupIdentity, ManualTokenSetupRequest, NewAuthFlow, OAuthAuthorizationUrl,
     OAuthCallbackClaimRequest, OAuthCallbackFailureInput, OAuthCallbackInput,
     OAuthProviderCallbackRequest, OAuthProviderExchangeContext, OpaqueStateHash, PkceVerifierHash,
     ProviderBackedCredentialAccountService, ProviderCallbackOutcome, ProviderScope,
     SecretCleanupReport, SecretCleanupRequest, SecretCleanupService, SecretSubmitRequest,
-    SecretSubmitResult, Timestamp, TurnGateAuthFlowQuery, TurnRunRef, scope_matches,
+    Timestamp, TurnGateAuthFlowQuery, TurnRunRef, scope_matches,
 };
 use brassclaw_product_adapters::AuthPromptChallengeKind;
 use brassclaw_product_workflow::ProductAuthTurnGateResumeDispatcher;
@@ -102,6 +105,8 @@ pub struct RebornOAuthCallbackRequest {
 /// product-auth semantics stay here with the auth service boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RebornOAuthStartFlowRequest {
+    /// Complete usage and previous selection captured before the challenge.
+    pub(crate) requirement_setup: Option<Box<brassclaw_auth::CredentialRequirementSetup>>,
     pub(crate) flow_id: Option<AuthFlowId>,
     pub(crate) scope: AuthProductScope,
     pub(crate) provider: AuthProviderId,
@@ -118,12 +123,100 @@ pub(crate) struct RebornOAuthStartFlowRequest {
     reason = "used by the webui-v2-beta extension OAuth route through product-auth route composition"
 )]
 pub(crate) struct RebornDcrOAuthStartFlowRequest {
+    /// Complete usage and previous selection captured before the challenge.
+    pub(crate) requirement_setup: Option<Box<brassclaw_auth::CredentialRequirementSetup>>,
+    pub(crate) flow_id: AuthFlowId,
     pub(crate) scope: AuthProductScope,
     pub(crate) provider: AuthProviderId,
     pub(crate) account_label: CredentialAccountLabel,
     pub(crate) provider_scopes: Vec<ProviderScope>,
     pub(crate) update_binding: Option<CredentialAccountUpdateBinding>,
     pub(crate) expires_at: brassclaw_auth::Timestamp,
+}
+
+/// Complete explicit correlation checked before repairing a partial DCR original.
+/// This is host-auth metadata, not a browser-defined credential declaration.
+#[derive(Clone)]
+pub(crate) struct RebornDcrSetupOriginalLookup<'a> {
+    pub(crate) scope: &'a AuthProductScope,
+    pub(crate) flow_id: AuthFlowId,
+    pub(crate) provider: &'a AuthProviderId,
+    pub(crate) account_label: &'a CredentialAccountLabel,
+    pub(crate) provider_scopes: &'a [ProviderScope],
+    pub(crate) expires_at: brassclaw_auth::Timestamp,
+    pub(crate) requester_extension: &'a brassclaw_host_api::ExtensionId,
+    pub(crate) requirement_name: Option<&'a str>,
+    pub(crate) target: Option<&'a brassclaw_product_workflow::ExtensionCredentialTarget>,
+    pub(crate) cancel_preparation: bool,
+}
+
+fn verify_extension_oauth_selection(
+    setup: Option<&brassclaw_auth::CredentialRequirementSetup>,
+    binding: Option<&CredentialAccountUpdateBinding>,
+    requester: &brassclaw_host_api::ExtensionId,
+    requirement_name: Option<&str>,
+    target: Option<&brassclaw_product_workflow::ExtensionCredentialTarget>,
+) -> Result<(), AuthProductError> {
+    let Some(setup) = setup else {
+        return if requirement_name.is_none() && target.is_none() {
+            Ok(())
+        } else {
+            Err(AuthProductError::BackendConflict)
+        };
+    };
+    if setup.requirement().requester_extension() != requester
+        || requirement_name
+            != Some(
+                setup
+                    .requirement()
+                    .reference()
+                    .map_err(|_| AuthProductError::BackendConflict)?
+                    .as_str(),
+            )
+    {
+        return Err(AuthProductError::BackendConflict);
+    }
+    let same_target = match (target, binding) {
+        (Some(brassclaw_product_workflow::ExtensionCredentialTarget::New {}), None) => true,
+        (
+            Some(brassclaw_product_workflow::ExtensionCredentialTarget::Existing { account_id }),
+            Some(binding),
+        ) => *account_id == binding.account_id,
+        _ => false,
+    };
+    if !same_target {
+        return Err(AuthProductError::BackendConflict);
+    }
+    Ok(())
+}
+
+impl RebornDcrSetupOriginalLookup<'_> {
+    fn verify_preparation(
+        &self,
+        original: &brassclaw_auth::DcrRegistrationOriginal,
+    ) -> Result<(), AuthProductError> {
+        if original.scope != *self.scope || original.flow_id != self.flow_id {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        if &original.provider != self.provider
+            || &original.account_label != self.account_label
+            || original.requested_scopes.as_slice() != self.provider_scopes
+            || original.expires_at != self.expires_at
+            || original.continuation != AuthContinuationRef::SetupOnly
+        {
+            return Err(AuthProductError::BackendConflict);
+        }
+        if let Some(setup) = &original.requirement_setup {
+            setup.verify_oauth(self.scope, self.provider, self.provider_scopes)?;
+        }
+        verify_extension_oauth_selection(
+            original.requirement_setup.as_deref(),
+            original.update_binding.as_ref(),
+            self.requester_extension,
+            self.requirement_name,
+            self.target,
+        )
+    }
 }
 
 /// Host-route OAuth callback parse result.
@@ -151,14 +244,24 @@ pub struct RebornOAuthCallbackResponse {
 pub struct RebornAuthProductError {
     pub code: AuthErrorCode,
     pub retryable: bool,
+    /// Safe original/precondition conflict disposition, without backend details.
+    /// Old serialized errors remain readable and ordinary wire bodies unchanged.
+    #[serde(default, skip_serializing_if = "auth_error_is_not_conflict")]
+    pub conflict: bool,
+}
+
+fn auth_error_is_not_conflict(conflict: &bool) -> bool {
+    !*conflict
 }
 
 impl From<AuthProductError> for RebornAuthProductError {
     fn from(error: AuthProductError) -> Self {
         let code = error.code();
+        let conflict = matches!(error, AuthProductError::BackendConflict);
         Self {
             code,
-            retryable: is_retryable_auth_error(code),
+            retryable: !conflict && is_retryable_auth_error(code),
+            conflict,
         }
     }
 }
@@ -179,6 +282,7 @@ pub struct RebornManualTokenSetupRequest {
     pub label: CredentialAccountLabel,
     pub continuation: AuthContinuationRef,
     pub update_binding: Option<CredentialAccountUpdateBinding>,
+    pub requirement_setup: Option<Box<brassclaw_auth::CredentialRequirementSetup>>,
     pub expires_at: Timestamp,
 }
 
@@ -196,12 +300,21 @@ impl RebornManualTokenSetupRequest {
             label,
             continuation,
             update_binding: None,
+            requirement_setup: None,
             expires_at,
         }
     }
 
     pub fn with_update_binding(mut self, update_binding: CredentialAccountUpdateBinding) -> Self {
         self.update_binding = Some(update_binding);
+        self
+    }
+
+    pub fn with_requirement_setup(
+        mut self,
+        setup: brassclaw_auth::CredentialRequirementSetup,
+    ) -> Self {
+        self.requirement_setup = Some(Box::new(setup));
         self
     }
 }
@@ -213,6 +326,15 @@ pub struct RebornManualTokenChallenge {
     pub provider: AuthProviderId,
     pub label: CredentialAccountLabel,
     pub expires_at: Timestamp,
+}
+
+/// Original metadata receipt. A terminal status never becomes a fresh challenge;
+/// raw acceptance and confirmed-reference continuation remain separate operations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RebornManualTokenSetupReceipt {
+    pub identity: ManualTokenSetupIdentity,
+    pub status: AuthFlowStatus,
+    pub challenge: RebornManualTokenChallenge,
 }
 
 /// Secure manual-token submit request.
@@ -335,7 +457,6 @@ impl RebornProductAuthServicePorts {
         let manual_token_flow_service = Arc::new(PortBackedManualTokenFlowService::new(
             flow_manager.clone(),
             interaction_service.clone(),
-            credential_account_service.clone(),
         ));
         Self {
             flow_manager,
@@ -515,7 +636,6 @@ impl RebornProductAuthServices {
         let manual_token_flow_service = Arc::new(PortBackedManualTokenFlowService::new(
             flow_manager.clone(),
             interaction_service.clone(),
-            credential_account_service.clone(),
         ));
         Self {
             flow_manager,
@@ -666,12 +786,24 @@ impl RebornProductAuthServices {
         self
     }
 
-    fn with_manual_token_flow_service(
+    /// Attach a concrete shared owner for original setup/publication custody.
+    /// Composing unrelated lower ports does not establish that contract.
+    pub fn with_manual_token_flow_service(
         mut self,
         service: Arc<dyn RebornManualTokenFlowService>,
     ) -> Self {
         self.manual_token_flow_service = service;
         self
+    }
+
+    /// Tests only: the exact native owner attached by the production Auth factory.
+    /// Enables acknowledgement loss after its real publication, before the facade
+    /// dispatches continuation; it creates no replacement store or authority.
+    #[cfg(all(test, feature = "skills-db"))]
+    pub(crate) fn manual_token_flow_service_for_tests(
+        &self,
+    ) -> Arc<dyn RebornManualTokenFlowService> {
+        self.manual_token_flow_service.clone()
     }
 
     fn with_credential_account_record_source(
@@ -792,103 +924,197 @@ impl RebornProductAuthServices {
             .map_err(RebornCredentialLifecycleError::from)
     }
 
+    /// Resume only the retained explicit callback. This does not need a current
+    /// provider configuration or the one-shot PKCE verifier that was consumed.
+    pub(crate) async fn resume_oauth_callback_original(
+        &self,
+        reference: &brassclaw_auth::OAuthCallbackReference,
+    ) -> Result<Option<RebornOAuthCallbackResponse>, RebornOAuthCallbackError> {
+        let Some(original) = self
+            .flow_manager
+            .read_oauth_callback_original(&reference.scope, reference)
+            .await
+            .map_err(RebornOAuthCallbackError::from)?
+        else {
+            return Ok(None);
+        };
+        let flow = self
+            .resolve_callback_original(original)
+            .await
+            .map_err(RebornOAuthCallbackError::from)?;
+        self.finish_oauth_callback(flow).await.map(Some)
+    }
+
+    async fn resolve_callback_original(
+        &self,
+        original: brassclaw_auth::OAuthCallbackState,
+    ) -> Result<AuthFlowRecord, AuthProductError> {
+        let state = if original.action.needs_publication() {
+            self.flow_manager
+                .reconcile_oauth_callback(
+                    &original.action.original.scope,
+                    &original.action.original.reference(),
+                )
+                .await?
+        } else {
+            original
+        };
+        state.completed_flow()
+    }
+
+    async fn finish_oauth_callback(
+        &self,
+        completed: AuthFlowRecord,
+    ) -> Result<RebornOAuthCallbackResponse, RebornOAuthCallbackError> {
+        self.retire_google_original_if_terminal(&completed)
+            .await
+            .map_err(RebornOAuthCallbackError::from)?;
+        let completed = self
+            .dispatch_completed_continuation(completed)
+            .await
+            .map_err(RebornOAuthCallbackError::from)?;
+        Ok(RebornOAuthCallbackResponse {
+            flow_id: completed.id,
+            status: completed.status,
+            credential_account_id: completed.credential_account_id,
+            continuation: completed.continuation,
+        })
+    }
+
     pub async fn handle_oauth_callback(
         &self,
         request: RebornOAuthCallbackRequest,
     ) -> Result<RebornOAuthCallbackResponse, RebornOAuthCallbackError> {
-        let (mut completed, should_dispatch_continuation) = match request.outcome {
+        let completed = match request.outcome {
             RebornOAuthCallbackOutcome::Authorized { provider_request } => {
-                let claimed = self
+                let original = brassclaw_auth::OAuthCallbackOriginal::from_request(
+                    request.scope.clone(),
+                    request.flow_id,
+                    request.opaque_state_hash.clone(),
+                    &provider_request,
+                )
+                .map_err(RebornOAuthCallbackError::from)?;
+                let reference = original.reference();
+                let admission = match self
                     .flow_manager
-                    .claim_oauth_callback(
-                        &request.scope,
-                        OAuthCallbackClaimRequest {
-                            flow_id: request.flow_id,
-                            opaque_state_hash: request.opaque_state_hash.clone(),
-                            provider: provider_request.provider.clone(),
-                            pkce_verifier_hash: provider_request.pkce_verifier_hash.clone(),
-                        },
-                    )
+                    .read_oauth_callback_original(&request.scope, &reference)
                     .await
-                    .map_err(RebornOAuthCallbackError::from)?;
-
-                if claimed.status == AuthFlowStatus::Completed {
-                    let should_dispatch = claimed.continuation_emitted_at.is_none();
-                    (claimed, should_dispatch)
-                } else {
-                    let exchange = match self
-                        .provider_client
-                        .exchange_callback(
-                            OAuthProviderExchangeContext {
-                                scope: request.scope.clone(),
-                                flow_id: request.flow_id,
-                            },
-                            provider_request,
-                        )
-                        .await
-                    {
-                        Ok(exchange) => exchange,
-                        Err(error) => {
-                            let error_code = error.code();
-                            if let Err(fail_error) = self
+                    .map_err(RebornOAuthCallbackError::from)?
+                {
+                    Some(state) => {
+                        state
+                            .action
+                            .original
+                            .verify(&original)
+                            .map_err(RebornOAuthCallbackError::from)?;
+                        brassclaw_auth::OAuthCallbackAdmission::Original(state)
+                    }
+                    None => {
+                        let context = OAuthProviderExchangeContext {
+                            scope: request.scope.clone(),
+                            flow_id: request.flow_id,
+                        };
+                        let destinations = self
+                            .provider_client
+                            .prepare_callback(&context, &provider_request)
+                            .await
+                            .map_err(RebornOAuthCallbackError::from)?;
+                        self.flow_manager
+                            .claim_oauth_callback(
+                                &request.scope,
+                                OAuthCallbackClaimRequest {
+                                    original: original.clone(),
+                                    destinations,
+                                },
+                            )
+                            .await
+                            .map_err(RebornOAuthCallbackError::from)?
+                    }
+                };
+                match admission {
+                    brassclaw_auth::OAuthCallbackAdmission::Original(state) => {
+                        state
+                            .action
+                            .original
+                            .verify(&original)
+                            .map_err(RebornOAuthCallbackError::from)?;
+                        self.resolve_callback_original(state)
+                            .await
+                            .map_err(RebornOAuthCallbackError::from)?
+                    }
+                    brassclaw_auth::OAuthCallbackAdmission::Dispatch(state) => {
+                        // Exactly this newly owned durable admission may call the
+                        // issuer. All recovery below reads the same original.
+                        state
+                            .action
+                            .original
+                            .verify(&original)
+                            .map_err(RebornOAuthCallbackError::from)?;
+                        let dispatched = state.action;
+                        let write = match self
+                            .provider_client
+                            .exchange_callback(
+                                OAuthProviderExchangeContext {
+                                    scope: request.scope.clone(),
+                                    flow_id: request.flow_id,
+                                },
+                                provider_request,
+                            )
+                            .await
+                        {
+                            Ok(exchange) => {
+                                self.flow_manager
+                                    .complete_oauth_callback(
+                                        &request.scope,
+                                        OAuthCallbackInput {
+                                            dispatched: Some(dispatched),
+                                            flow_id: request.flow_id,
+                                            opaque_state_hash: request.opaque_state_hash,
+                                            outcome: ProviderCallbackOutcome::Authorized {
+                                                exchange,
+                                            },
+                                        },
+                                    )
+                                    .await
+                            }
+                            Err(error) => self
                                 .flow_manager
                                 .fail_oauth_callback(
                                     &request.scope,
                                     OAuthCallbackFailureInput {
+                                        dispatched: Some(dispatched),
                                         flow_id: request.flow_id,
                                         opaque_state_hash: request.opaque_state_hash,
-                                        error: error_code,
+                                        error: error.code(),
                                     },
                                 )
                                 .await
-                            {
-                                tracing::warn!(
-                                    flow_id = %request.flow_id,
-                                    exchange_error_code = ?error_code,
-                                    fail_error_code = ?fail_error.code(),
-                                    "reborn auth callback provider exchange failed and flow failure update failed"
-                                );
-                            }
-                            return Err(error.into());
+                                .and(Err(error)),
+                        };
+                        // A failed acknowledgement never proves unpublished
+                        // credentials. Keep the original artifacts; no cleanup
+                        // or second issuer submission follows an uncertain write.
+                        let stored = self
+                            .flow_manager
+                            .read_oauth_callback_original(&request.scope, &reference)
+                            .await
+                            .map_err(RebornOAuthCallbackError::from)?
+                            .ok_or(RebornOAuthCallbackError::from(
+                                AuthProductError::BackendUnavailable,
+                            ))?;
+                        if matches!(
+                            stored.action.outcome,
+                            brassclaw_auth::OAuthCallbackOutcome::Submitted
+                        ) {
+                            return Err(write
+                                .err()
+                                .unwrap_or(AuthProductError::BackendUnavailable)
+                                .into());
                         }
-                    };
-                    let exchange_for_cleanup = exchange.clone();
-                    let completed = match self
-                        .flow_manager
-                        .complete_oauth_callback(
-                            &request.scope,
-                            OAuthCallbackInput {
-                                flow_id: request.flow_id,
-                                opaque_state_hash: request.opaque_state_hash.clone(),
-                                outcome: ProviderCallbackOutcome::Authorized { exchange },
-                            },
-                        )
-                        .await
-                    {
-                        Ok(completed) => completed,
-                        Err(error) => {
-                            if let Err(cleanup_error) = self
-                                .provider_client
-                                .cleanup_exchange(
-                                    OAuthProviderExchangeContext {
-                                        scope: request.scope.clone(),
-                                        flow_id: request.flow_id,
-                                    },
-                                    &exchange_for_cleanup,
-                                )
-                                .await
-                            {
-                                tracing::warn!(
-                                    flow_id = %request.flow_id,
-                                    completion_error_code = ?error.code(),
-                                    cleanup_error_code = ?cleanup_error.code(),
-                                    "reborn auth callback completion failed and token cleanup failed"
-                                );
-                            }
-                            return Err(error.into());
-                        }
-                    };
-                    (completed, true)
+                        self.resolve_callback_original(stored)
+                            .await
+                            .map_err(RebornOAuthCallbackError::from)?
+                    }
                 }
             }
             RebornOAuthCallbackOutcome::ProviderDenied => self
@@ -896,32 +1122,50 @@ impl RebornProductAuthServices {
                 .complete_oauth_callback(
                     &request.scope,
                     OAuthCallbackInput {
+                        dispatched: None,
                         flow_id: request.flow_id,
                         opaque_state_hash: request.opaque_state_hash,
                         outcome: ProviderCallbackOutcome::Denied,
                     },
                 )
                 .await
-                .map(|completed| (completed, true))
                 .map_err(RebornOAuthCallbackError::from)?,
             RebornOAuthCallbackOutcome::Malformed => {
                 return Err(AuthProductError::MalformedCallback.into());
             }
         };
+        self.finish_oauth_callback(completed).await
+    }
 
-        if should_dispatch_continuation {
-            completed = self
-                .dispatch_completed_continuation(completed)
-                .await
-                .map_err(RebornOAuthCallbackError::from)?;
+    /// A public callback may release its cached verifier only after proving
+    /// ownership of the exact durable OAuth flow. Error codes alone do not
+    /// establish ownership or a terminal outcome; no expiry or configuration
+    /// lookup may turn a still-pending original into cleanup authority.
+    pub(crate) async fn oauth_callback_flow_is_terminal(
+        &self,
+        scope: &AuthProductScope,
+        flow_id: AuthFlowId,
+        state_hash: &OpaqueStateHash,
+    ) -> Result<bool, RebornOAuthCallbackError> {
+        let record = self
+            .flow_manager
+            .get_flow(scope, flow_id)
+            .await
+            .map_err(RebornOAuthCallbackError::from)?
+            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+        if record.id != flow_id
+            || !scope_matches(scope, &record.scope)
+            || !record
+                .opaque_state_hash
+                .as_ref()
+                .is_some_and(|expected| expected.constant_time_eq(state_hash))
+        {
+            return Err(AuthProductError::CrossScopeDenied.into());
         }
-
-        Ok(RebornOAuthCallbackResponse {
-            flow_id: completed.id,
-            status: completed.status,
-            credential_account_id: completed.credential_account_id,
-            continuation: completed.continuation,
-        })
+        if !matches!(record.challenge, Some(AuthChallenge::OAuthUrl { .. })) {
+            return Err(AuthProductError::MalformedCallback.into());
+        }
+        Ok(brassclaw_auth::is_terminal_status(record.status))
     }
 
     #[allow(dead_code, reason = "used by upcoming Reborn OAuth setup route wiring")]
@@ -956,7 +1200,7 @@ impl RebornProductAuthServices {
     ) -> Result<Option<SecretString>, RebornOAuthCallbackError> {
         if let Some(registry) = &self.oauth_gate_registry
             && let Some(pkce) = registry
-                .pkce_verifier_for_flow(scope, provider, flow_id)
+                .pkce_verifier_for_flow(&self.flow_manager, scope, provider, flow_id)
                 .await
                 .map_err(RebornOAuthCallbackError::from)?
         {
@@ -966,9 +1210,175 @@ impl RebornProductAuthServices {
             return Ok(None);
         };
         registry
-            .pkce_verifier_for_flow(scope, provider, flow_id)
+            .pkce_verifier_for_flow(&self.flow_manager, scope, provider, flow_id)
             .await
             .map_err(RebornOAuthCallbackError::from)
+    }
+
+    /// Capture one explicit OAuth usage/target before its first challenge.
+    /// The source declaration is supplied by the existing Product resolver;
+    /// original recovery never calls this method against today's head/account.
+    pub(crate) async fn prepare_extension_oauth_requirement(
+        &self,
+        scope: &AuthProductScope,
+        requirement: brassclaw_host_api::RuntimeCredentialAccountRequirement,
+        requested_account: Option<CredentialAccountId>,
+    ) -> Result<
+        (
+            brassclaw_auth::CredentialRequirementSetup,
+            Option<CredentialAccountUpdateBinding>,
+        ),
+        AuthProductError,
+    > {
+        let brassclaw_host_api::RuntimeCredentialRequirementSource::ProductAuthAccount {
+            provider,
+            setup: brassclaw_host_api::RuntimeCredentialAccountSetup::OAuth { scopes },
+        } = &requirement.requirement().source
+        else {
+            return Err(AuthProductError::BackendConflict);
+        };
+        let provider = AuthProviderId::new(provider.as_str())?;
+        let scopes = scopes
+            .iter()
+            .cloned()
+            .map(ProviderScope::new)
+            .collect::<Result<Vec<_>, _>>()?;
+        let previous = self
+            .credential_account_record_source
+            .requirement_selection(scope, &requirement)
+            .await?;
+        let binding = if let Some(account_id) = requested_account {
+            let account = self
+                .credential_account_service
+                .get_account(
+                    brassclaw_auth::CredentialAccountLookupRequest::new(scope.clone(), account_id)
+                        .for_extension(requirement.requester_extension().clone()),
+                )
+                .await?
+                .ok_or(AuthProductError::CredentialMissing)?;
+            if !scope_matches(scope, &account.scope)
+                || account.provider != provider
+                || !account.is_authorized_for_requester(Some(requirement.requester_extension()))
+            {
+                return Err(AuthProductError::CrossScopeDenied);
+            }
+            Some(CredentialAccountUpdateBinding::from_projection(
+                &account.projection(),
+            ))
+        } else {
+            None
+        };
+        let setup = brassclaw_auth::CredentialRequirementSetup::new(scope, requirement, previous)?;
+        setup.verify_oauth(scope, &provider, &scopes)?;
+        Ok((setup, binding))
+    }
+
+    /// Validate browser correlation against immutable stored usage, never a
+    /// current manifest. Legacy originals remain metadata-only, without backfill.
+    pub(crate) async fn verify_extension_oauth_original(
+        &self,
+        scope: &AuthProductScope,
+        flow: &AuthFlowRecord,
+        requester: &brassclaw_host_api::ExtensionId,
+        requirement_name: Option<&str>,
+        target: Option<&brassclaw_product_workflow::ExtensionCredentialTarget>,
+    ) -> Result<(), AuthProductError> {
+        let setup = self.flow_manager.requirement_setup(scope, flow.id).await?;
+        if let Some(setup) = &setup {
+            setup.verify_flow(flow)?;
+        }
+        verify_extension_oauth_selection(
+            setup.as_ref(),
+            flow.update_binding.as_ref(),
+            requester,
+            requirement_name,
+            target,
+        )
+    }
+
+    /// Recover only the accepted Google setup, without current provider/account
+    /// selection or fresh PKCE preparation. SetupOnly is never a task grant.
+    async fn recover_google_setup_original_legacy(
+        &self,
+        scope: &AuthProductScope,
+        flow_id: AuthFlowId,
+        label: &CredentialAccountLabel,
+        scopes: &[ProviderScope],
+        expires_at: Timestamp,
+    ) -> Result<Option<AuthFlowRecord>, AuthProductError> {
+        let Some(flow) = self.flow_manager.get_flow(scope, flow_id).await? else {
+            return Ok(None);
+        };
+        if flow.scope != *scope
+            || flow.kind != AuthFlowKind::IntegrationCredential
+            || flow.provider.as_str() != brassclaw_auth::GOOGLE_PROVIDER_ID
+            || flow.continuation != AuthContinuationRef::SetupOnly
+            || flow.expires_at != expires_at
+        {
+            return Err(AuthProductError::BackendConflict);
+        }
+        let Some(AuthChallenge::OAuthUrl {
+            authorization_url,
+            expires_at: challenge_expiry,
+        }) = &flow.challenge
+        else {
+            return Err(AuthProductError::BackendConflict);
+        };
+        if *challenge_expiry != flow.expires_at {
+            return Err(AuthProductError::BackendConflict);
+        }
+        let url = url::Url::parse(authorization_url.as_str())
+            .map_err(|_| AuthProductError::BackendConflict)?;
+        let mut states = url.query_pairs().filter(|(name, _)| name == "state");
+        let (_, original_state) = states.next().ok_or(AuthProductError::BackendConflict)?;
+        if states.next().is_some()
+            || flow.opaque_state_hash.as_ref()
+                != Some(&brassclaw_auth::opaque_state_hash(&original_state)?)
+        {
+            return Err(AuthProductError::BackendConflict);
+        }
+        let decoded = brassclaw_auth::GoogleOAuthCallbackState::decode(&original_state)?;
+        if decoded.flow_id() != flow_id
+            || decoded.scope().resource != scope.resource
+            || decoded.scope().session_id != scope.session_id
+            || decoded.account_label() != label
+            || decoded.requested_scopes() != scopes
+        {
+            return Err(AuthProductError::BackendConflict);
+        }
+        if let Some(setup) = self.flow_manager.requirement_setup(scope, flow_id).await? {
+            setup.verify_oauth(scope, &flow.provider, decoded.requested_scopes())?;
+        }
+        Ok(Some(flow))
+    }
+
+    /// Cancel/reconcile this exact setup. A completed callback wins; readback
+    /// cannot authorize a new setup, issuer request or continuation.
+    async fn cancel_google_setup_flow(
+        &self,
+        scope: &AuthProductScope,
+        flow_id: AuthFlowId,
+        label: &CredentialAccountLabel,
+        scopes: &[ProviderScope],
+        expires_at: Timestamp,
+    ) -> Result<AuthFlowRecord, AuthProductError> {
+        let original = self
+            .recover_google_setup_original(scope, flow_id, label, scopes, expires_at)
+            .await?
+            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+        if brassclaw_auth::is_terminal_status(original.status) {
+            return Ok(original);
+        }
+        match self.flow_manager.cancel_flow(scope, flow_id).await {
+            Ok(flow) => Ok(flow),
+            Err(error) => match self
+                .recover_google_setup_original(scope, flow_id, label, scopes, expires_at)
+                .await?
+            {
+                Some(actual) if brassclaw_auth::is_terminal_status(actual.status) => Ok(actual),
+                _ => Err(error),
+            },
+        }
     }
 
     #[allow(dead_code, reason = "used by upcoming Reborn OAuth setup route wiring")]
@@ -978,6 +1388,7 @@ impl RebornProductAuthServices {
     ) -> Result<AuthFlowRecord, AuthProductError> {
         self.flow_manager
             .create_flow(NewAuthFlow {
+                requirement_setup: request.requirement_setup,
                 id: request.flow_id,
                 scope: request.scope,
                 kind: AuthFlowKind::IntegrationCredential,
@@ -999,6 +1410,180 @@ impl RebornProductAuthServices {
         dead_code,
         reason = "used by the webui-v2-beta extension OAuth route through product-auth route composition"
     )]
+    /// Cancel this already retained original only. A terminal callback wins;
+    /// lost acknowledgement is reconciled by exact original readback.
+    pub(crate) async fn cancel_dcr_setup_original(
+        &self,
+        scope: &AuthProductScope,
+        flow_id: AuthFlowId,
+    ) -> Result<AuthFlowRecord, AuthProductError> {
+        let modern = self
+            .flow_manager
+            .read_dcr_registration(scope, flow_id)
+            .await?;
+        let Some(original) = modern else {
+            let flow = self
+                .flow_manager
+                .get_flow(scope, flow_id)
+                .await?
+                .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+            let registry = self
+                .dcr_oauth_registry
+                .as_ref()
+                .ok_or(AuthProductError::BackendUnavailable)?;
+            let selected = registry.legacy_definition(&flow).await?;
+            if brassclaw_auth::is_terminal_status(flow.status) {
+                return Ok(flow);
+            }
+            return match self.flow_manager.cancel_flow(scope, flow_id).await {
+                Ok(flow) => {
+                    selected.verify_flow(&flow)?;
+                    Ok(flow)
+                }
+                Err(error) => {
+                    let actual = self
+                        .flow_manager
+                        .get_flow(scope, flow_id)
+                        .await?
+                        .ok_or(AuthProductError::BackendUnavailable)?;
+                    selected.verify_flow(&actual)?;
+                    if brassclaw_auth::is_terminal_status(actual.status) {
+                        Ok(actual)
+                    } else {
+                        Err(error)
+                    }
+                }
+            };
+        };
+        if let Err(error) = self.flow_manager.cancel_flow(scope, flow_id).await {
+            let actual = self
+                .flow_manager
+                .read_dcr_registration(scope, flow_id)
+                .await?
+                .ok_or(AuthProductError::BackendUnavailable)?;
+            actual.action.original.verify(&original.action.original)?;
+            if !brassclaw_auth::is_terminal_status(actual.flow.status) {
+                return Err(error);
+            }
+        }
+        let actual = self
+            .flow_manager
+            .read_dcr_registration(scope, flow_id)
+            .await?
+            .ok_or(AuthProductError::BackendUnavailable)?;
+        actual.action.original.verify(&original.action.original)?;
+        if actual.flow.status == AuthFlowStatus::Completed {
+            return Ok(actual.flow);
+        }
+        self.dcr_oauth_registry
+            .as_ref()
+            .ok_or(AuthProductError::BackendUnavailable)?
+            .cleanup_original(&self.flow_manager, actual)
+            .await
+    }
+
+    pub(crate) async fn dcr_cleanup_status(
+        &self,
+        scope: &AuthProductScope,
+        flow_id: AuthFlowId,
+    ) -> Result<brassclaw_auth::DcrCleanupProjection, AuthProductError> {
+        if let Some(state) = self
+            .flow_manager
+            .read_dcr_registration(scope, flow_id)
+            .await?
+        {
+            return Ok(state.cleanup_projection());
+        }
+        let flow = self
+            .flow_manager
+            .get_flow(scope, flow_id)
+            .await?
+            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+        self.dcr_oauth_registry
+            .as_ref()
+            .ok_or(AuthProductError::BackendUnavailable)?
+            .legacy_definition(&flow)
+            .await?
+            .cleanup_projection(&flow)
+    }
+
+    /// Recover the first definition before current declaration selection. A
+    /// missing Auth projection may be repaired only from its authenticated
+    /// encrypted preparation, after checking the complete explicit correlation.
+    /// This never dispatches registration, cleanup HTTP or fresh preparation.
+    pub(crate) async fn recover_dcr_setup_original(
+        &self,
+        request: RebornDcrSetupOriginalLookup<'_>,
+    ) -> Result<Option<AuthFlowRecord>, AuthProductError> {
+        if let Some(state) = self
+            .flow_manager
+            .read_dcr_registration(request.scope, request.flow_id)
+            .await?
+        {
+            request.verify_preparation(&state.action.original)?;
+            return Ok(Some(state.flow));
+        }
+        if let Some(flow) = self
+            .flow_manager
+            .get_flow(request.scope, request.flow_id)
+            .await?
+        {
+            if flow.kind != AuthFlowKind::IntegrationCredential
+                || &flow.provider != request.provider
+                || flow.continuation != AuthContinuationRef::SetupOnly
+                || flow.expires_at != request.expires_at
+            {
+                return Err(AuthProductError::BackendConflict);
+            }
+            let original = self
+                .dcr_oauth_registry
+                .as_ref()
+                .ok_or(AuthProductError::BackendUnavailable)?
+                .legacy_definition(&flow)
+                .await?;
+            if &original.provider != request.provider
+                || &original.account_label != request.account_label
+                || original.requested_scopes.as_slice() != request.provider_scopes
+                || original.continuation != AuthContinuationRef::SetupOnly
+            {
+                return Err(AuthProductError::BackendConflict);
+            }
+            self.verify_extension_oauth_original(
+                request.scope,
+                &flow,
+                request.requester_extension,
+                request.requirement_name,
+                request.target,
+            )
+            .await?;
+            return Ok(Some(flow));
+        }
+        let Some(registry) = &self.dcr_oauth_registry else {
+            return Ok(None);
+        };
+        let Some(original) = registry
+            .retained_setup_preparation(request.scope, request.flow_id, request.provider)
+            .await?
+        else {
+            return Ok(None);
+        };
+        request.verify_preparation(&original)?;
+        let restored = if request.cancel_preparation || original.expires_at <= chrono::Utc::now() {
+            let reason = if request.cancel_preparation {
+                brassclaw_auth::DcrCleanupReason::Canceled
+            } else {
+                brassclaw_auth::DcrCleanupReason::Expired
+            };
+            self.flow_manager
+                .retire_dcr_preparation(original, reason)
+                .await?
+        } else {
+            self.flow_manager.prepare_dcr_registration(original).await?
+        };
+        request.verify_preparation(&restored.action.original)?;
+        Ok(Some(restored.flow))
+    }
+
     pub(crate) async fn start_dcr_setup_oauth_flow(
         &self,
         request: RebornDcrOAuthStartFlowRequest,
@@ -1010,6 +1595,8 @@ impl RebornProductAuthServices {
             .start_setup_flow(
                 &self.flow_manager,
                 DcrSetupFlowRequest {
+                    requirement_setup: request.requirement_setup,
+                    flow_id: request.flow_id,
                     scope: request.scope,
                     provider: request.provider,
                     account_label: request.account_label,
@@ -1028,6 +1615,7 @@ impl RebornProductAuthServices {
         let challenge = self
             .manual_token_flow_service
             .request_manual_token_flow(ManualTokenSetupRequest {
+                requirement_setup: request.requirement_setup,
                 scope: request.scope,
                 provider: request.provider,
                 label: request.label,
@@ -1057,13 +1645,170 @@ impl RebornProductAuthServices {
         }
     }
 
+    /// Metadata recovery for a consumer that lost its original setup receipt.
+    /// This cannot create a setup, prove raw input or resume a task. The consumer
+    /// must compare its provider/label/continuation/original account selection
+    /// before reusing the retained binding for the explicit original operation.
+    pub(crate) async fn recover_original_manual_token_setup(
+        &self,
+        scope: &AuthProductScope,
+        identity: ManualTokenSetupIdentity,
+    ) -> Result<Option<AuthFlowRecord>, RebornManualTokenError> {
+        let Some(flow) = self
+            .manual_token_flow_service
+            .recover_original_manual_token_flow(scope, identity)
+            .await
+            .map_err(RebornManualTokenError::from)?
+        else {
+            return Ok(None);
+        };
+        let Some(AuthChallenge::ManualTokenRequired { label, .. }) = flow.challenge.as_ref() else {
+            return Err(AuthProductError::BackendConflict.into());
+        };
+        let original = ManualTokenSetupRequest {
+            // Flow-only structural projection. The original setup owner has
+            // verified its custody; usage consumers read the retained setup
+            // through AuthFlowManager instead of inferring it from this DTO.
+            requirement_setup: None,
+            scope: scope.clone(),
+            provider: flow.provider.clone(),
+            label: label.clone(),
+            continuation: flow.continuation.clone(),
+            update_binding: flow.update_binding.clone(),
+            expires_at: flow.expires_at,
+        };
+        brassclaw_auth::domain::validate_original_manual_setup_flow(
+            identity, &original, &original, &flow,
+        )
+        .map_err(RebornManualTokenError::from)?;
+        Ok(Some(flow))
+    }
+
+    pub async fn request_original_manual_token_setup(
+        &self,
+        identity: ManualTokenSetupIdentity,
+        request: RebornManualTokenSetupRequest,
+    ) -> Result<RebornManualTokenSetupReceipt, RebornManualTokenError> {
+        let requested = ManualTokenSetupRequest {
+            requirement_setup: request.requirement_setup,
+            scope: request.scope,
+            provider: request.provider,
+            label: request.label,
+            continuation: request.continuation,
+            update_binding: request.update_binding,
+            expires_at: request.expires_at,
+        };
+        let flow = self
+            .manual_token_flow_service
+            .request_original_manual_token_flow(identity, requested.clone())
+            .await
+            .map_err(RebornManualTokenError::from)?;
+        let mut original = requested.clone();
+        original.expires_at = flow.expires_at;
+        brassclaw_auth::domain::validate_original_manual_setup_flow(
+            identity, &original, &requested, &flow,
+        )
+        .map_err(RebornManualTokenError::from)?;
+        if flow.status == AuthFlowStatus::AwaitingUser && flow.expires_at <= Utc::now() {
+            return Err(AuthProductError::UnknownOrExpiredFlow.into());
+        }
+        let Some(AuthChallenge::ManualTokenRequired {
+            interaction_id,
+            provider,
+            label,
+            expires_at,
+        }) = flow.challenge
+        else {
+            return Err(AuthProductError::BackendConflict.into());
+        };
+        Ok(RebornManualTokenSetupReceipt {
+            identity,
+            status: flow.status,
+            challenge: RebornManualTokenChallenge {
+                interaction_id,
+                provider,
+                label,
+                expires_at,
+            },
+        })
+    }
+
+    pub async fn submit_original_manual_token(
+        &self,
+        identity: ManualTokenSetupIdentity,
+        request: RebornManualTokenSubmitRequest,
+    ) -> Result<RebornManualTokenSubmitResponse, RebornManualTokenError> {
+        if request.interaction_id != identity.interaction_id {
+            return Err(AuthProductError::BackendConflict.into());
+        }
+        let scope = request.scope;
+        let (result, completed) = self
+            .manual_token_flow_service
+            .submit_original_manual_token_flow(&scope, identity, request.secret)
+            .await
+            .map_err(RebornManualTokenError::from)?;
+        Self::validate_original_manual_completion(&scope, identity, &result, &completed)?;
+        self.dispatch_completed_continuation(completed)
+            .await
+            .map_err(RebornManualTokenError::from)?;
+        Ok(RebornManualTokenSubmitResponse {
+            account_id: result.account_id,
+            status: result.status,
+            continuation: result.continuation,
+        })
+    }
+
+    fn validate_original_manual_completion(
+        scope: &AuthProductScope,
+        identity: ManualTokenSetupIdentity,
+        result: &brassclaw_auth::SecretSubmitResult,
+        completed: &AuthFlowRecord,
+    ) -> Result<(), RebornManualTokenError> {
+        if completed.id != identity.flow_id
+            || !scope_matches(scope, &completed.scope)
+            || completed.kind != AuthFlowKind::IntegrationCredential
+            || completed.status != AuthFlowStatus::Completed
+            || completed.error.is_some()
+            || completed.credential_account_id != Some(result.account_id)
+            || completed.continuation != result.continuation
+            || result.status != CredentialAccountStatus::Configured
+            || !matches!(&completed.challenge,Some(AuthChallenge::ManualTokenRequired{interaction_id,..}) if *interaction_id==identity.interaction_id)
+        {
+            return Err(AuthProductError::BackendConflict.into());
+        }
+        Ok(())
+    }
+
+    pub async fn continue_original_manual_token(
+        &self,
+        scope: &AuthProductScope,
+        identity: ManualTokenSetupIdentity,
+    ) -> Result<RebornManualTokenSubmitResponse, RebornManualTokenError> {
+        let (result, completed) = self
+            .manual_token_flow_service
+            .continue_original_manual_token_flow(scope, identity)
+            .await
+            .map_err(RebornManualTokenError::from)?;
+        Self::validate_original_manual_completion(scope, identity, &result, &completed)?;
+        self.dispatch_completed_continuation(completed)
+            .await
+            .map_err(RebornManualTokenError::from)?;
+        Ok(RebornManualTokenSubmitResponse {
+            account_id: result.account_id,
+            status: result.status,
+            continuation: result.continuation,
+        })
+    }
+
     pub async fn submit_manual_token(
         &self,
         request: RebornManualTokenSubmitRequest,
     ) -> Result<RebornManualTokenSubmitResponse, RebornManualTokenError> {
         let scope = request.scope;
         let interaction_id = request.interaction_id;
-        let submit = self
+        // Raw acceptance always belongs to the original-input owner. A completed
+        // flow or today's account cannot prove that this submitted token matches.
+        let (result, completed) = self
             .manual_token_flow_service
             .submit_manual_token_flow(
                 &scope,
@@ -1072,16 +1817,8 @@ impl RebornProductAuthServices {
                     secret: request.secret,
                 },
             )
-            .await;
-        let (result, completed) = match submit {
-            Ok(completed) => completed,
-            Err(AuthProductError::UnknownOrExpiredFlow) => self
-                .recover_completed_manual_token_submit(&scope, interaction_id)
-                .await?
-                .ok_or(AuthProductError::UnknownOrExpiredFlow)
-                .map_err(RebornManualTokenError::from)?,
-            Err(error) => return Err(RebornManualTokenError::from(error)),
-        };
+            .await
+            .map_err(RebornManualTokenError::from)?;
         self.dispatch_completed_continuation(completed)
             .await
             .map_err(RebornManualTokenError::from)?;
@@ -1091,62 +1828,6 @@ impl RebornProductAuthServices {
             status: result.status,
             continuation: result.continuation,
         })
-    }
-
-    async fn recover_completed_manual_token_submit(
-        &self,
-        scope: &AuthProductScope,
-        interaction_id: AuthInteractionId,
-    ) -> Result<Option<(SecretSubmitResult, AuthFlowRecord)>, RebornManualTokenError> {
-        let Some(source) = &self.flow_record_source else {
-            return Ok(None);
-        };
-        let Some(thread_id) = scope.resource.thread_id.clone() else {
-            return Ok(None);
-        };
-        let flows = source
-            .flows_for_owner(AuthFlowOwnerScope {
-                tenant_id: scope.resource.tenant_id.clone(),
-                user_id: scope.resource.user_id.clone(),
-                agent_id: scope.resource.agent_id.clone(),
-                project_id: scope.resource.project_id.clone(),
-                thread_id,
-            })
-            .await
-            .map_err(RebornManualTokenError::from)?;
-        let Some(completed) = flows.into_iter().find(|flow| {
-            flow.status == AuthFlowStatus::Completed
-                && flow.continuation_emitted_at.is_none()
-                && scope_matches(scope, &flow.scope)
-                && matches!(
-                    &flow.challenge,
-                    Some(AuthChallenge::ManualTokenRequired { interaction_id: id, .. })
-                        if id == &interaction_id
-                )
-        }) else {
-            return Ok(None);
-        };
-        let Some(account_id) = completed.credential_account_id else {
-            return Ok(None);
-        };
-        let account = self
-            .credential_account_service
-            .get_account(CredentialAccountLookupRequest::new(
-                completed.scope.clone(),
-                account_id,
-            ))
-            .await
-            .map_err(RebornManualTokenError::from)?
-            .ok_or(AuthProductError::CredentialMissing)
-            .map_err(RebornManualTokenError::from)?;
-        Ok(Some((
-            SecretSubmitResult {
-                account_id,
-                status: account.status,
-                continuation: completed.continuation.clone(),
-            },
-            completed,
-        )))
     }
 
     pub async fn abandon_manual_token(
@@ -1164,6 +1845,11 @@ impl RebornProductAuthServices {
         &self,
         completed: AuthFlowRecord,
     ) -> Result<AuthFlowRecord, AuthProductError> {
+        // Check before the dispatcher has any effect, including already marked
+        // records. A denied/failed/unknown flow cannot emit a success event.
+        if completed.status != AuthFlowStatus::Completed {
+            return Err(AuthProductError::FlowAlreadyTerminal);
+        }
         if completed.continuation_emitted_at.is_some() {
             return Ok(completed);
         }
@@ -1443,6 +2129,116 @@ mod tests {
 
     #[async_trait::async_trait]
     impl AuthFlowManager for SharedAuthTestDouble {
+        async fn claim_dcr_cleanup(
+            &self,
+            _prepared: brassclaw_auth::DcrCleanupPrepared,
+        ) -> Result<brassclaw_auth::DcrCleanupAdmission, brassclaw_auth::AuthProductError> {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
+        async fn record_dcr_cleanup(
+            &self,
+            _scope: &brassclaw_auth::AuthProductScope,
+            _completion: brassclaw_auth::DcrCleanupCompletion,
+        ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError>
+        {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
+        async fn update_dcr_retirement(
+            &self,
+            _original: &brassclaw_auth::DcrRegistrationOriginal,
+            _update: brassclaw_auth::DcrRetirementUpdate,
+        ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError>
+        {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
+        async fn retain_legacy_dcr(
+            &self,
+            _selection: brassclaw_auth::DcrLegacySelection,
+        ) -> Result<brassclaw_auth::DcrLegacyState, brassclaw_auth::AuthProductError> {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
+        async fn mark_dcr_cleanup_unavailable(
+            &self,
+            _original: &brassclaw_auth::DcrRegistrationOriginal,
+            _issue: brassclaw_auth::DcrCleanupUnavailable,
+        ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError>
+        {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
+        async fn prepare_oauth_setup(
+            &self,
+            _original: brassclaw_auth::OAuthSetupOriginal,
+            _retirement: Option<brassclaw_auth::OAuthSetupRetirement>,
+        ) -> Result<brassclaw_auth::OAuthSetupState, brassclaw_auth::AuthProductError> {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
+        async fn read_oauth_setup(
+            &self,
+            _scope: &brassclaw_auth::AuthProductScope,
+            _flow_id: brassclaw_auth::AuthFlowId,
+        ) -> Result<Option<brassclaw_auth::OAuthSetupState>, brassclaw_auth::AuthProductError>
+        {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
+        async fn prepare_dcr_registration(
+            &self,
+            _original: brassclaw_auth::DcrRegistrationOriginal,
+        ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError>
+        {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
+        async fn retire_dcr_preparation(
+            &self,
+            _original: brassclaw_auth::DcrRegistrationOriginal,
+            _reason: brassclaw_auth::DcrCleanupReason,
+        ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError>
+        {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
+        async fn read_dcr_registration(
+            &self,
+            _scope: &brassclaw_auth::AuthProductScope,
+            _id: brassclaw_auth::AuthFlowId,
+        ) -> Result<Option<brassclaw_auth::DcrRegistrationState>, brassclaw_auth::AuthProductError>
+        {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
+        async fn claim_dcr_registration(
+            &self,
+            _original: &brassclaw_auth::DcrRegistrationOriginal,
+        ) -> Result<brassclaw_auth::DcrRegistrationAdmission, brassclaw_auth::AuthProductError>
+        {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
+        async fn record_dcr_registration(
+            &self,
+            _scope: &brassclaw_auth::AuthProductScope,
+            _completion: brassclaw_auth::DcrRegistrationCompletion,
+        ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError>
+        {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
+        async fn publish_dcr_challenge(
+            &self,
+            _original: &brassclaw_auth::DcrRegistrationOriginal,
+            _challenge: brassclaw_auth::DcrRegistrationChallenge,
+        ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError>
+        {
+            Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+        }
+
         async fn create_flow(
             &self,
             _request: NewAuthFlow,
@@ -1462,8 +2258,24 @@ mod tests {
             &self,
             _scope: &AuthProductScope,
             _request: OAuthCallbackClaimRequest,
-        ) -> Result<AuthFlowRecord, AuthProductError> {
+        ) -> Result<brassclaw_auth::OAuthCallbackAdmission, AuthProductError> {
             unreachable!("constructor tests do not call auth-flow methods")
+        }
+
+        async fn read_oauth_callback_original(
+            &self,
+            _scope: &AuthProductScope,
+            _reference: &brassclaw_auth::OAuthCallbackReference,
+        ) -> Result<Option<brassclaw_auth::OAuthCallbackState>, AuthProductError> {
+            unreachable!("constructor tests do not use callback custody")
+        }
+
+        async fn reconcile_oauth_callback(
+            &self,
+            _scope: &AuthProductScope,
+            _reference: &brassclaw_auth::OAuthCallbackReference,
+        ) -> Result<brassclaw_auth::OAuthCallbackState, AuthProductError> {
+            unreachable!("constructor tests do not use callback custody")
         }
 
         async fn complete_oauth_callback(
@@ -1552,6 +2364,40 @@ mod tests {
 
     #[async_trait::async_trait]
     impl CredentialSetupService for SharedAuthTestDouble {
+        async fn refresh_action(
+            &self,
+            _request: &CredentialRefreshRequest,
+        ) -> Result<Option<brassclaw_auth::CredentialRefreshAction>, AuthProductError> {
+            unreachable!("constructor tests do not call credential-setup methods")
+        }
+        async fn begin_refresh(
+            &self,
+            _prepared: brassclaw_auth::CredentialRefreshPrepared,
+        ) -> Result<brassclaw_auth::CredentialRefreshAdmission, AuthProductError> {
+            unreachable!("constructor tests do not call credential-setup methods")
+        }
+        async fn reconcile_refresh(
+            &self,
+            _request: &brassclaw_auth::CredentialRefreshRequest,
+        ) -> Result<Option<brassclaw_auth::CredentialRefreshAction>, AuthProductError> {
+            unreachable!("constructor-only test double")
+        }
+
+        async fn complete_refresh(
+            &self,
+            _completion: brassclaw_auth::CredentialRefreshCompletion,
+        ) -> Result<brassclaw_auth::CredentialRefreshAction, AuthProductError> {
+            unreachable!("constructor tests do not call credential-setup methods")
+        }
+
+        async fn compare_and_update_account(
+            &self,
+            _expected: &CredentialAccount,
+            _request: NewCredentialAccount,
+        ) -> Result<CredentialAccount, AuthProductError> {
+            unreachable!("constructor tests do not call credential-setup methods")
+        }
+
         async fn create_or_update_account(
             &self,
             _request: CredentialAccountMutation,
@@ -1659,6 +2505,21 @@ mod tests {
 
     #[async_trait::async_trait]
     impl AuthProviderClient for SharedAuthTestDouble {
+        async fn prepare_callback(
+            &self,
+            _context: &brassclaw_auth::OAuthProviderExchangeContext,
+            _request: &brassclaw_auth::OAuthProviderCallbackRequest,
+        ) -> Result<brassclaw_auth::OAuthTokenDestinations, AuthProductError> {
+            unreachable!("constructor-only test double")
+        }
+
+        async fn prepare_refresh(
+            &self,
+            _request: &OAuthProviderRefreshRequest,
+        ) -> Result<brassclaw_auth::OAuthProviderRefreshPreparation, AuthProductError> {
+            unreachable!("constructor tests do not call provider-client methods")
+        }
+
         async fn exchange_callback(
             &self,
             _context: OAuthProviderExchangeContext,
@@ -1670,6 +2531,7 @@ mod tests {
         async fn refresh_token(
             &self,
             _request: OAuthProviderRefreshRequest,
+            _preparation: brassclaw_auth::OAuthProviderRefreshPreparation,
         ) -> Result<OAuthProviderRefresh, AuthProductError> {
             unreachable!("constructor tests do not call provider-client methods")
         }

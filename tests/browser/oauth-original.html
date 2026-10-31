@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Native OAuth original</title>
+<script type="importmap" nonce="__FIXTURE_NONCE__">__IMPORT_MAP__</script></head>
+<body><div id="root"></div>
+<script nonce="__FIXTURE_NONCE__">
+sessionStorage.setItem("brassclaw_token","__FIXTURE_BEARER__");
+localStorage.setItem("brassclaw_language","en");
+window.oauthAudit=JSON.parse(sessionStorage.getItem("native-oauth-audit")||"[]");
+window.blockedPopupAttempts=0;
+// Explicit popup-blocked scenario: no navigation or request to a real issuer.
+window.open=()=>{window.blockedPopupAttempts++;return null;};
+const actualFetch=window.fetch.bind(window);
+window.fetch=async(path,options)=>{
+  if(new URL(path,location.origin).pathname!=="/api/webchat/v2/extensions/notion/setup/oauth/start")return actualFetch(path,options);
+  const body=JSON.parse(options.body);
+  const originals=Object.entries(sessionStorage).filter(([key])=>key.startsWith("brassclaw:extension-oauth-original:")).map(([,text])=>JSON.parse(text));
+  const record={body,retained_before_transport:originals.some(value=>value.flowId===body.flow_id&&value.invocationId===body.invocation_id&&value.expiresAt===body.expires_at)};
+  window.oauthAudit.push(record);
+  const response=await actualFetch(path,options);record.status=response.status;
+  sessionStorage.setItem("native-oauth-audit",JSON.stringify(window.oauthAudit));return response;
+};
+</script>
+<script type="module" nonce="__FIXTURE_NONCE__">
+import {html} from "/js/lib/html.js";
+import {createRoot} from "react-dom/client";
+import {QueryClientProvider} from "@tanstack/react-query";
+import {queryClient} from "/js/lib/query-client.js";
+import {I18nProvider} from "/js/lib/i18n.js";
+import "/js/i18n/en.js";import "/js/i18n/de.js";
+import {OAuthOriginalSetup} from "/js/pages/extensions/components/oauth-original-setup.js";
+const secret=__FIXTURE_SECRET__;
+createRoot(document.getElementById("root")).render(html`<${QueryClientProvider} client=${queryClient}><${I18nProvider}>
+<${OAuthOriginalSetup} packageRef=${{kind:"extension",id:"notion"}} secret=${secret}/>
+<//><//>`);
+</script></body></html>

@@ -3,18 +3,19 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 function fixture({ conflict = false } = {}) {
-  const state = []; let cursor = 0; let failed = true; let loads = 0; let ids = 0; const calls = [];
+  const state = []; let cursor = 0; let failed = true; let loads = 0; let ids = 0; const calls = [], reconciliations = [];
   const context = {
     React: { useState(initial) { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], v => { state[i] = v; }]; },
       useRef(initial) { const i = cursor++; state[i] ??= { current: initial }; return state[i]; } },
-    html: (strings, ...values) => ({ strings: [...strings], values }), Card: "Card", useT: () => key => key,
+    html: (strings, ...values) => ({ strings: [...strings], values }), Card: "Card", CataloguePublicationStatus: "CataloguePublicationStatus", useT: () => key => key,
     clientActionId: () => { ids++; return "routing-action"; },
-    fetchCatalogueActivationStatus: async () => { loads++; return { generation: "inspected", recipes: ["custom"], selections: [{ recipe_id: "custom", components: ["exact"] }], packaged_recipe_ids: ["builtin"], disabled_recipe_ids: ["withdrawn"] }; },
+    fetchCatalogueActivationStatus: async () => { loads++; return { generation: loads > 1 ? "new-stored-generation" : "inspected", recipes: ["custom"], selections: [{ recipe_id: "custom", components: ["exact"] }], packaged_recipe_ids: ["builtin"], disabled_recipe_ids: ["withdrawn"], publication: { desired_generation: "new-stored-generation", effective_generation: "new-stored-generation", prefix_invalidation_id: "stored-activation", pending: true } }; },
+    reconcileCataloguePublication: async id => { reconciliations.push(id); return { activation_id: id, generation: "new-stored-generation", catalogue_activated: true }; },
     activateComponentDeployment: async request => { calls.push(request); await Promise.resolve(); if (failed) { failed = false; const e = Error("publication error"); if (conflict) e.status = 409; throw e; } return { generation: "published", catalogue_activated: true }; },
   };
   const source = readFileSync(new URL("./catalogue-routing-panel.js", import.meta.url), "utf8").split("\n").filter(line => !line.startsWith("import ")).join("\n").replace("export function", "function");
   vm.createContext(context); vm.runInContext(source + "\nglobalThis.render = CatalogueRoutingPanel;", context);
-  return { render: () => { cursor = 0; return context.render(); }, calls, loads: () => loads, ids: () => ids };
+  return { render: () => { cursor = 0; return context.render(); }, calls, reconciliations, loads: () => loads, ids: () => ids };
 }
 function nodes(root) { const out = []; const visit = v => { if (Array.isArray(v)) return v.forEach(visit); if (!v?.strings) return; out.push(v); v.values.forEach(visit); }; visit(root); return out; }
 function prop(n, name) { const i = n.strings.findIndex(s => s.endsWith(`${name}=`)); assert.notEqual(i, -1); return n.values[i]; }
@@ -42,4 +43,19 @@ test("definite stale generation permits reload without auto-republication", asyn
   await prop(button(f.render(), "catalogueRouting.save"), "onClick")();
   assert.equal(prop(button(f.render(), "catalogueRouting.load"), "disabled"), false);
   await load(f); assert.equal(f.loads(), 2); assert.equal(f.calls.length, 1);
+});
+
+test("publication inspection and reference reconciliation never rebase an uncertain routing request", async () => {
+  const f = fixture(); await load(f);
+  await prop(button(f.render(), "catalogueRouting.save"), "onClick")();
+  const publication = () => nodes(f.render()).find(n => n.values.includes("CataloguePublicationStatus"));
+  await prop(publication(), "onRefresh")();
+  assert.equal(f.loads(), 2);
+  assert.equal(prop(button(f.render(), "catalogueRouting.load"), "disabled"), true);
+  await prop(publication(), "onReconcile")();
+  assert.deepEqual(f.reconciliations, ["stored-activation"]);
+  assert.equal(f.calls.length, 1); assert.equal(f.ids(), 1);
+  await prop(button(f.render(), "catalogueRouting.retry"), "onClick")();
+  assert.strictEqual(f.calls[0], f.calls[1]);
+  assert.equal(f.calls[1].expected_generation, "inspected");
 });

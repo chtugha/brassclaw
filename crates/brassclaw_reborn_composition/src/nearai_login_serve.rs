@@ -1,12 +1,12 @@
 //! Public NEAR AI login callback route.
 //!
 //! NEAR AI completes its own GitHub/Google OAuth and redirects the browser to
-//! this server's `…/nearai/{state}/auth/callback?token=…`. The route consumes
-//! the state from an authenticated login-start flow, stores the session token on
-//! the live provider, makes NEAR AI active, hot-swaps the running provider, and
-//! bounces the tab to the app. It does not require a bearer token — the browser
-//! arrives straight from NEAR AI — but the descriptor still records the
-//! one-time OAuth state guard and host-resolved effect path before mutation.
+//! this server's `…/nearai/{state}/auth/callback?token=…`. A new callback
+//! consumes the original authenticated login context before its coordinated
+//! credential/selection/receipt transaction. An exact committed callback retry
+//! reads/reconciles that receipt, including after loss of RAM state. It never
+//! writes a session file or publishes a token before the database commit.
+//! The existing one-time OAuth state/host-resolved ingress boundary remains.
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -23,10 +23,7 @@ use brassclaw_host_api::ingress::{
 use brassclaw_host_api::{IngressScopeSource, NetworkMethod};
 use serde::Deserialize;
 
-use crate::LlmReloadTrigger;
-use crate::llm_config_service::{
-    NEARAI_LOGIN_CALLBACK_PATH, NearAiLoginStateStore, apply_nearai_login,
-};
+use crate::llm_config_service::NEARAI_LOGIN_CALLBACK_PATH;
 use crate::webui_serve::PublicRouteMount;
 
 const NEARAI_CALLBACK_RATE_WINDOW_SECONDS: NonZeroU32 = match NonZeroU32::new(60) {
@@ -42,9 +39,7 @@ const NEARAI_CALLBACK_RATE_MAX: NonZeroU32 = match NonZeroU32::new(60) {
 
 #[derive(Clone)]
 struct NearAiCallbackState {
-    session: Arc<brassclaw_llm::SessionManager>,
-    reload: Arc<dyn LlmReloadTrigger>,
-    states: Arc<NearAiLoginStateStore>,
+    configuration: Arc<crate::RebornLlmConfigService>,
 }
 
 #[derive(Deserialize)]
@@ -58,14 +53,15 @@ async fn nearai_callback(
     Path(login_state): Path<String>,
     Query(query): Query<CallbackQuery>,
 ) -> Redirect {
-    if !state.states.consume(&login_state).await {
-        return Redirect::to("/v2/settings/inference?nearai_login=error");
-    }
     let Some(token) = query.token.filter(|token| !token.trim().is_empty()) else {
         return Redirect::to("/v2/settings/inference?nearai_login=error");
     };
-    match apply_nearai_login(&state.session, state.reload.as_ref(), &token).await {
-        Ok(()) => Redirect::to("/v2/chat"),
+    match state
+        .configuration
+        .complete_nearai_browser_login(&login_state, &token)
+        .await
+    {
+        Ok(_) => Redirect::to("/v2/chat"),
         Err(error) => {
             tracing::warn!(%error, "NEAR AI login callback failed");
             Redirect::to("/v2/settings/inference?nearai_login=error")
@@ -76,17 +72,11 @@ async fn nearai_callback(
 /// Build the public NEAR AI login callback mount for composition to merge via
 /// [`crate::webui_serve::WebuiServeConfig::with_public_route_mount`].
 pub(crate) fn nearai_login_callback_mount(
-    session: Arc<brassclaw_llm::SessionManager>,
-    reload: Arc<dyn LlmReloadTrigger>,
-    states: Arc<NearAiLoginStateStore>,
+    configuration: Arc<crate::RebornLlmConfigService>,
 ) -> PublicRouteMount {
     let router = Router::new()
         .route(NEARAI_LOGIN_CALLBACK_PATH, get(nearai_callback))
-        .with_state(NearAiCallbackState {
-            session,
-            reload,
-            states,
-        });
+        .with_state(NearAiCallbackState { configuration });
     PublicRouteMount::new(router, vec![nearai_callback_descriptor()])
 }
 

@@ -4,8 +4,8 @@
 //! list providers, add/edit/remove custom providers (including an API key),
 //! pick the active provider+model, and probe a provider (test connection /
 //! list models). The concrete implementation lives in the composition root
-//! (`brassclaw_reborn_composition`), which owns the provider catalog overlay,
-//! the operator-scoped secret store, the config-file writer, and the live
+//! (`brassclaw_reborn_composition`), which owns the revisioned PostgreSQL catalogue,
+//! the operator-scoped encrypted secret store, atomic role writer, and the live
 //! provider-reload handle. Keeping the port here lets the facade stay the
 //! single stable surface the route handlers depend on.
 //!
@@ -62,6 +62,20 @@ pub trait LlmConfigService: Send + Sync {
         caller: WebUiAuthenticatedCaller,
         provider_id: String,
         expected_revision: u64,
+        mutation_id: uuid::Uuid,
+    ) -> Result<LlmConfigSnapshot, LlmConfigServiceError>;
+
+    /// Read the original committed change, without resubmitting any data.
+    async fn provider_mutation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        mutation_id: uuid::Uuid,
+    ) -> Result<ProviderMutationReceipt, LlmConfigServiceError>;
+
+    async fn reconcile_provider_mutation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        mutation_id: uuid::Uuid,
     ) -> Result<LlmConfigSnapshot, LlmConfigServiceError>;
 
     /// Select the active provider + model.
@@ -87,21 +101,27 @@ pub trait LlmConfigService: Send + Sync {
 
     /// Begin a NEAR AI browser login (GitHub/Google SSO). Returns the provider
     /// authorization URL for the frontend to open; NEAR AI redirects the browser
-    /// back to this server's public callback route, which stores the session
-    /// token, makes NEAR AI active, and hot-swaps the running provider. The
-    /// caller polls the snapshot until NEAR AI is active.
+    /// back to the state-guarded callback. Credentials, selection and original
+    /// receipt commit together; callers inspect that exact receipt and runtime
+    /// reconciliation rather than polling an already active provider name.
     async fn start_nearai_login(
         &self,
         caller: WebUiAuthenticatedCaller,
         request: NearAiLoginRequest,
     ) -> Result<NearAiLoginStart, LlmConfigServiceError>;
 
+    /// Capture a one-use server nonce and original settings context before signing.
+    async fn start_nearai_wallet_login(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: NearAiWalletLoginStartRequest,
+    ) -> Result<NearAiWalletLoginStart, LlmConfigServiceError>;
+
     /// Complete a NEAR AI wallet (NEP-413) login. The frontend connects a NEAR
-    /// wallet, signs the fixed login message, and posts the signature here; this
-    /// exchanges it for a session token at NEAR AI's `/v1/auth/near`, stores the
-    /// token, makes NEAR AI active, and hot-swaps the running provider. Unlike
-    /// the SSO redirect, wallet signing must happen in the browser, so there is
-    /// no server-built auth URL.
+    /// wallet, signs the exact start response and posts it with its original ID.
+    /// One consumed challenge permits one exchange; retries read the original
+    /// receipt. Encrypted credentials/selection commit together before uptake.
+    /// Wallet signing happens externally; there is no server-built auth URL.
     async fn complete_nearai_wallet_login(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -150,14 +170,36 @@ pub struct NearAiLoginRequest {
 /// The authorization URL the frontend opens to complete NEAR AI login.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NearAiLoginStart {
+    /// Original publication receipt to inspect; an active provider name is insufficient.
+    pub mutation_id: uuid::Uuid,
     pub auth_url: String,
+}
+
+/// Optional redirect value that the external wallet includes in its signature.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NearAiWalletLoginStartRequest {
+    #[serde(default)]
+    pub callback_url: Option<String>,
+}
+
+/// Sign these exact values with the external wallet, then complete this ID.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NearAiWalletLoginStart {
+    pub mutation_id: uuid::Uuid,
+    pub message: String,
+    pub recipient: String,
+    pub nonce: Vec<u8>,
+    pub callback_url: Option<String>,
 }
 
 /// A NEP-413 wallet signature plus the payload it covers, posted by the browser
 /// after it connects a NEAR wallet and signs the fixed login message. The server
 /// relays this to NEAR AI's `/v1/auth/near` to obtain a session token.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct NearAiWalletLoginRequest {
+    /// Original server challenge, never generated again for a transport retry.
+    pub mutation_id: uuid::Uuid,
     pub account_id: String,
     pub public_key: String,
     /// base64-standard encoding of the 64 raw ed25519 signature bytes.
@@ -173,11 +215,20 @@ pub struct NearAiWalletLoginRequest {
     pub callback_url: Option<String>,
 }
 
+impl std::fmt::Debug for NearAiWalletLoginRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NearAiWalletLoginRequest")
+            .field("mutation_id", &self.mutation_id)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Result of a completed NEAR AI wallet login. `active` is true once NEAR AI is
 /// the live provider; the frontend can then proceed to chat.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NearAiWalletLoginResult {
     pub active: bool,
+    pub mutation_receipt: ProviderMutationReceipt,
 }
 
 /// The device code + verification URL the frontend displays for Codex login.
@@ -192,6 +243,29 @@ pub struct CodexLoginStart {
 /// Merged catalog plus the active selection. Keys are masked.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LlmConfigSnapshot {
+    /// Desired identities from the same read-only database snapshot as the
+    /// definitions, role selection and authenticated credential metadata. This
+    /// is not client or prefix uptake; untracked denotes unresolved selection.
+    #[serde(default)]
+    pub desired_publications:
+        std::collections::BTreeMap<String, brassclaw_llm::ProviderPublication>,
+    /// Exact displayed role selections for optimistic edits. These content
+    /// references grant no authority and are distinct from task/client pins.
+    #[serde(default)]
+    pub role_selection_refs: std::collections::BTreeMap<String, String>,
+    /// Metadata published with the actual live client. This may precede the
+    /// current desired selections; untracked is not an acknowledgement.
+    #[serde(default)]
+    pub runtime_publications:
+        std::collections::BTreeMap<String, brassclaw_llm::ProviderPublication>,
+    /// Failed target captured by the same actual publication owner. It may be
+    /// older than desired and contains no backend error text or credentials.
+    #[serde(default)]
+    pub runtime_publication_failures:
+        std::collections::BTreeMap<String, brassclaw_llm::ProviderPublication>,
+    /// Original committed request. Current selections below may be newer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutation_receipt: Option<ProviderMutationReceipt>,
     pub providers: Vec<LlmProviderView>,
     /// Retained definitions available only for explicit operator reactivation.
     #[serde(default)]
@@ -219,6 +293,18 @@ pub struct LlmConfigSnapshot {
     /// Absent means no embedding provider is configured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub embedding_active: Option<LlmActiveSelection>,
+}
+
+/// Immutable publication acknowledgement, not a client/prefix uptake claim.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderMutationReceipt {
+    pub mutation_id: uuid::Uuid,
+    pub operation: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_role: Option<ProviderRole>,
+    pub provider_id: Option<String>,
+    pub provider_revision: Option<u64>,
+    pub role_selections: std::collections::BTreeMap<String, String>,
 }
 
 /// One provider in the merged catalog, annotated for the settings UI.
@@ -285,7 +371,14 @@ pub struct LlmActiveSelection {
 
 /// Add or update a custom provider. Deserialize-only (carries a secret).
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UpsertLlmProviderRequest {
+    /// Reuse this exact identity and payload after an uncertain response.
+    pub mutation_id: uuid::Uuid,
+    /// Required for a new set_active publication, from the displayed Kohai role.
+    /// Kept optional on the wire so an old committed request can be reconciled.
+    #[serde(default)]
+    pub expected_selection_ref: Option<String>,
     /// Omitted preserves the previous model contracts; an empty object clears them.
     #[serde(default, deserialize_with = "deserialize_embedding_models_update")]
     pub embedding_models: Option<brassclaw_llm::EmbeddingModelContracts>,
@@ -359,7 +452,15 @@ fn deserialize_model_discovery_update<'de, D: serde::Deserializer<'de>>(
 
 /// Select the active provider + model.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SetActiveLlmRequest {
+    pub mutation_id: uuid::Uuid,
+    /// Required for every new edit; original committed retries are read first.
+    #[serde(default)]
+    pub expected_selection_ref: Option<String>,
+    /// Compare the selected provider definition when the caller has a snapshot.
+    #[serde(default)]
+    pub expected_revision: Option<u64>,
     pub provider_id: String,
     #[serde(default)]
     pub model: Option<String>,

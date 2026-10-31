@@ -32,7 +32,9 @@ The aggregate declares required boolean `pass` and list `errors` outputs.
 
 The selected validator has `consumer_tags=["05:validator"]`, no ordinary intent
 examples and `validates_class_code` selecting one of 0, 1, 2, 3, 13, 21, 22 or 23.
-Protected class-10/50 changes need their separate owner and trust path. The
+The current legacy class-10/50 protected handling is an implementation boundary.
+In the successor target only class10 retains root protection; class50 has no new
+validator route or protected status. Historical rows/pins remain exact. The
 catalogue preparation consumer checks these declarations against retained IBS
 before admitting a validator-tagged workflow.
 
@@ -86,3 +88,35 @@ A structural Q1 record's `semantic_approval=false` is not itself a failed audit;
 do not use a blanket flag check to reject that supported combination. Likewise,
 the mere presence of a successful structural record cannot establish complete
 class or whole-workflow qualification.
+
+## Scope successor — complete own rules, no second combination phase
+
+After bounded BUILD-014 acceptance, the remaining existing Validator Steps2/3/
+5–9 work follows the own-function target in
+[skills.md](../../../skills.md#own-functional-approval-and-successor-compatibility),
+replacing contradictory open A combination-review instructions without first
+implementing them. Keep the exact current declaration/report formats above;
+root grouping needs its deliberate strict subject successor, not unknown keys
+in `validator-coverage/1` or a new class/queue.
+
+For A, the Skill route evaluates prose and implementation functions together,
+including the applicable class22 checks as reused parts of the same full rule
+set. Separate IDs do not require a second complete rule/behavior run or Q2 view.
+Standalone pure roots keep their route. Approved dependencies are verified and
+used, not re-enqueued. Shared implementation exports retain every needed distinct
+contract. No rule named generic-combination-approval is required for A; actual
+usage, binding, semantics, effect and error checks are still mandatory.
+
+Reuse equal source/schema facts only for their real pinned rule/source/profile
+scope. Behavior additionally retains actual inputs, subject, worker/native artifact,
+run/attempt/limits and settlement. Equal outputs or overlapping rule names cannot
+substitute another subject's evidence. All required rules remain complete; no
+positive cache entry or public pass report supplies Q2/whole-class qualification.
+
+Recipe rules cover their own offered supported variants and integration, not
+reapproval of every component. S prerequisite and exact-usage qualification stay
+with noncircular bootstrap, outside authored review admission. The validator's
+already qualified S execution program does not turn its A subject into S or
+require the candidate's entire dependency combination to be newly approved.
+The next open Validator/Composition production gate consumes the joint subject,
+coverage, trusted evidence and reader cutover through their existing owners.

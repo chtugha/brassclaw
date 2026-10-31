@@ -108,17 +108,76 @@ what this plan corrects.
   and explicit technical transport/resource limits; reject whole oversized data
   rather than silently truncating evidence or proposals.
 
+### Separate pre-call correction and completed-turn review contracts
+
+These are two existing entry purposes, not one response schema or a new review
+loop. Implement each delta in its existing entry/transport owner; reusable model
+transport does not merge task identity, eligibility, completion or approval.
+
+| Contract | Pre-call prompt correction | Completed-turn analysis |
+| --- | --- | --- |
+| Input | Already formatted dynamic Kohai prompt plus trusted target/pair facts | Immutable completed-turn evidence and original task/selection references |
+| Result | Final dynamic prompt; Sempai's own prefix is not returned as Kohai content | Analysis and any unreviewed candidate proposals under the actual post-turn envelope |
+| Completion/effects | Kohai adds its unchanged intended prefix once, guards the complete request and sends | Retain original answer/evidence; candidates use submission/review owners without editing or replaying the original turn |
+| Eligibility | Existing optional connected/enabled pre-call path | Existing eligible original No-Match turns only; do not broaden to every matched/validator/reviewer task |
+
+Steps 2/6/10–12 and their future consumers must name which contract they implement.
+Follow the original claims, effective model-policy checks, native settlement and
+existing recursion exclusion separately for each path. Do not add a component-set
+bypass flag. Missing evidence or an uncertain model result remains incomplete;
+provider disconnection neither proves cancellation nor permits replay. Same-pair
+roles can share accepted formatting design while keeping distinct finished role
+prefixes; different pairs retain their own exact selections. Reuse existing
+same/different-pair, disabled pre-call and no-replay caller evidence where applicable.
+These clarifications do not activate new business conversion, occurrence support,
+standalone pure approval or a validator route.
+
 ### Per-target token limits and size-dependent review knowledge
+
+Follow the [shared prefix-selection/pair-design contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26).
+The provider/model pair owns formatting and canonical limit references; Sempai's
+profile owns reviewer knowledge. Same-pair Kohai/Sempai share a design with distinct
+finished role prefixes. Base is selected only when Recipe, Orchestrator and role
+specify none; an explicit unavailable Sempai prefix blocks review, not silently
+base. Shared knowledge/composites need explicit coverage, not compulsory base
+inheritance. Kohai first formats only the dynamic Orchestrator prompt for the final
+answer target using the stored accepted pair design. If Sempai is connected/enabled,
+it optimizes/corrects that already formatted prompt using its own prefix, generated
+for its target-pair design, and returns the final dynamic prompt to Kohai. Kohai
+then joins the intended finished prefix unchanged exactly once before it, without
+formatting Sempai's return again, before final checking/send. Generator, Kohai and
+Sempai share the same saved accepted design revision when targeting the same pair.
+Sempai's review request has its own pair-bound artifact. Provider metadata,
+documentation or operator input supplies evidenced format facts; manual limits
+use the existing shared provider endpoint/query, not copied role settings.
+No provider server/template/service change is an option. Extend the Step 6/10–12
+caller acceptance with default/specific/conflicting selection, same/different pair
+roles, exact prefix text/order and synchronized manual settings. These remain
+requirements, not current runtime qualification.
+
+Use the [generation-dialog contract](../reborn/model-token-limits.md#generation-prompts-missing-selection-and-model-use)
+when the selected reviewer prefix is missing/incompatible. Offer OK/Cancel for its
+supported generation, preserving pre-dispatch wait/no-replay. A successful Sempai
+provider/model Use also asks about base generation; base preparation never replaces
+the required reviewer prefix. Cancel keeps committed provider selection visible
+and starts no generation/model call. Exact design/readiness gates still apply.
 
 These two input ceilings are always-on hard limits. Persist and enforce them
 even when `token_budgets_enabled = false`; no optional budget branch may clear,
 ignore or replace them. Kohai's selected workflow needs both the active answer
 target's and Sempai target's host-resolved ceilings/geometry, not just its own.
-The trusted Sempai review envelope carries the original target limits explicitly.
-Step 6 must check the complete Sempai request before review, then reassemble and
-check the final active-provider request after any Sempai edit, including actual
-history/tools/framing and prefix exactly once. Shared transport repeats the
-technical check on the actual transformed envelope immediately before dispatch,
+Each trusted Sempai request carries the limits appropriate to its declared purpose.
+Step 6 checks the complete Sempai request before either kind of review. In the
+pre-call correction path, Sempai returns the final dynamic prompt to Kohai; its
+own reviewer prefix is not part of that return. Completed-turn analysis instead
+returns its analysis/proposal envelope and never resumes the original model send.
+For pre-call correction, Kohai prepends the intended finished active-target prefix
+unchanged exactly once to that returned prompt and checks the complete request, including actual
+history/tools/framing. This join performs no further dynamic-prompt formatting.
+Without Sempai, the join uses Kohai's initially formatted dynamic prompt. Follow
+the [explicit handoff acceptance](../reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests).
+Shared transport repeats the technical check on the actual transformed envelope
+immediately before dispatch,
 independently of budgeting, review mode, retries and tool continuations. Post-turn
 review has the same Sempai-target guard. Keep evidence/repair policy in Recipes.
 
@@ -159,7 +218,7 @@ separately. Use the prefix plan's [budget-aware design contract](prefix_v3_upgra
 not a second Sempai sizing algorithm.
 
 The review's Sempai target and the original Kohai target can differ. Capture both
-identities and limits: Sempai fits its own base-plus-Sempai knowledge and evidence
+identities and limits: Sempai fits its own selected reviewer knowledge and evidence
 request; proposed Kohai prompt improvements respect the original target's policy.
 Prefix-Maker uses its own design-provider envelope while designing for that target.
 Never assume a policy or tokenizer transfers because a model display name matches.
@@ -173,7 +232,8 @@ Otherwise return Capacity blocked. Never hide incomplete evidence behind a summa
 or allow fewer tokens to weaken proposal/validation requirements. Do not truncate
 original conversations, Tool outcomes, unresolved effects or binding contracts.
 
-The Sempai prefix design needs accepted size-dependent selection/presentation rules:
+The Sempai profile's content rules, bound to the shared pair design, need accepted
+size-dependent selection/presentation rules:
 mandatory authoring/validation knowledge first, complete examples and dependencies,
 then optional units in deterministic priority order, all with provenance/citations.
 Regenerate applies existing accepted rules at the newly pinned budget; unsupported
@@ -181,7 +241,7 @@ budgets require explicit Redesign. No hidden provider rewrite on Generate. Compl
 originals remain immutable even if only an approved view enters the model context.
 
 Steps 10–12 must demonstrate smaller/larger supported budgets with held-out prompt
-repair and component-authoring cases, aggregate base-plus-Sempai fit, real dynamic
+repair and component-authoring cases, complete selected Sempai prefix/composite fit, real dynamic
 history/tool framing, exact-limit and one-token-over cases, missing policy,
 mandatory-content overflow, provider/model switch, concurrent policy edits and
 retained old reviews. Test both prefix and non-prefix prompt ceilings plus deployed
@@ -234,6 +294,16 @@ and explicitly associates its executable export and compatible ToolSkill.
 
 Exit: every target part has an owning layer and a concrete reuse decision. Existing
 consumer/integration evidence is recorded with its limits and current applicability.
+
+**Cross-step contract clarification (2026-10-28):** the Sempai, audit and genuine
+other-reviewer Recipes are concrete consumers, not required owners of each Skill.
+Steps 2/10–12 preserve their real reuse/behavior/cutover obligations without adding
+one companion Recipe per usage. A validator may execute a contained Skill review
+without an MCP command. Keep exact combination approvals separate from workflow
+and optional MCP qualification; internal review remains private. Existing factory
+prose with Recipe/command examples is consumer documentation, not a completeness
+gate. Changed shipped prose requires new exact revision/integrity qualification;
+the current complete-Recipe deployment boundary remains unchanged.
 
 ### Step 2 — author contracts and the two consuming Recipes first
 
@@ -430,7 +500,7 @@ whether the workflow goal was achieved and how its result is expressed.
   and a manifest alone never establish trusted bootstrap or combination approval.
 - [ ] Update `Package::boot` and retained component selection to the successor
   graph. Keep internal-only review usages out of public matching and MCP discovery.
-  Reusable public usages need real canonical execution Recipes and accurate commands.
+  Shared usages need no dedicated Recipe or MCP command. Only usages intended for MCP publication need a qualified MCP-call Recipe/variant and accurate commands; a public function export alone is not MCP exposure.
 
 Exit: both target Recipes select one coherent qualified graph. No mutable callable,
 latest lookup or generated wrapper substitutes for a retained approved export.
@@ -538,3 +608,72 @@ Recipes. Explicit activation retains subject pins and uses the existing immutabl
 receipt/CAS path; it does not create validation evidence or replay effects. This
 management integration does not convert the Sempai authoring, validation or domain
 workflow into reusable components. Keep those conversion steps open.
+
+## Open K3-2 successor — review workflow
+
+Consume the [shared K3-2 contract](../reborn/model-token-limits.md#open-k3-2-successor--retained-prefix-selection-and-prefix-free-construction-workflows)
+and the relevant [Exact implementation mapping](Exact_V3_definition_update_at_K3-2.md).
+This is an open consumer delta, not completion or a new implementation owner.
+The existing receipt, task capture, Recipe, native child/review and response owners
+remain authoritative. Extend their retained prefix binding with Default, Selected
+and PrefixFreeWorkflow, rather than a separate prefixless flag/queue.
+
+Required construction child/review workflows inherit prefix-free operation and
+keep their original model/auth/catalogue references. General independent chats and
+reviews are unchanged. Bootstrap values use supported technical reads first and
+optional B1/B2 source interpretation with strict non-LLM response checks. All
+generation-specific Q1 steps belong to the original generation Recipe; no second
+validation workflow is introduced merely to rename existing checks. Match the
+actual existing usages before adding new components. Prefix-Maker-prefix usage
+is only the future optional seam in Exact §5.1.
+
+
+## Open Exact-validation successor — own A functions, S qualification and workflow scope
+
+**Open text handoff, not implemented.** The sequencing prerequisite is terminal
+acceptance of Root's actually running bounded BUILD-014 review/model-selection
+repair, not completion of all earlier open steps or the obsolete general authored
+exact-closure approval design. Immediately afterward, these target rules replace
+contradictory still-open implementation instructions in the same existing owner
+steps. Retain accepted packages, original evidence and valid old /1 profiles;
+do not reopen K0–K3 or alter BUILD-014's frozen inputs/contracts. New-profile
+publication still requires the connected successor readers/writers, not prior
+implementation of the superseded design. No second plan owner, queue or VM.
+
+Consume the binding target in [skills.md](../../skills.md#own-functional-approval-and-successor-compatibility): authored installed changes (A) have
+own Q1/behavior/human Q2; Skill and implementation code share one functional
+subject with distinct immutable IDs. S retains exact Skill-usage qualification
+after independently qualified Tool then ToolSkill, outside normal authored queue,
+with no additional installed Q2. Provenance belongs to each revision/usage; mixed
+graphs are allowed but do not transfer S exact evidence to changed partner bytes.
+Existing Single-root/exact-combination/Recipe-deployment APIs remain current
+support boundaries until the following connected successor is implemented.
+For new implementation immediately after BUILD-014, earlier blanket authored
+combination-review and class-10/50 protection instructions no longer govern the
+contradictory open work: only S exact usages retain the extra combination record,
+and only class10 retains root protection. Existing exact-profile readers keep
+their current checks until a qualified successor replaces them; preserving that
+support does not require completing an obsolete general A reapproval engine.
+
+### Existing Sempai Steps10–12 successor
+
+After bounded BUILD-014 acceptance, apply this target to the remaining open
+Steps10–12 work; do not finish the superseded A design first. Step10's shipped
+library stays S: Tool then
+ToolSkill then joint Skill/code qualification, exact usage evidence, independently
+qualified prerequisites, no normal authored queue or installed Q2. Step11/12's
+new installed proposals/edits are A, including edits to previously seeded UUIDs.
+Use the existing Validator's joint-subject own function review and compatible
+successor contract; no Sempai review queue, combinationapproval cascade or new
+consumerregistry. Retain proposals/old artifacts and preserve overrides.
+
+New/changed Sempai Recipes consume complete own workflow/variant qualification;
+existing approved functions are executed as workflow steps without new individual
+approval. Reuse shared compatible ToolSkills with unambiguous actual selection;
+missing selector/runtime support stays with Composition/Simplified. Pure helpers
+retain their own route. Class50-specific workflows migrate through Composition
+to actual ordinary Recipes, never to a new protected Sempai component kind.
+
+**Outgoing gate:** next open Steps11/12 library/proposal/production successor and
+its existing V35 handoff must consume the qualified Validator/Composition records
+before new A publication; current proposal or source-only results do not grant it.

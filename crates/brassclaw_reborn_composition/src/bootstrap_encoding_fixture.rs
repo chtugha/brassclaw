@@ -109,6 +109,35 @@ impl Fixture {
             "missing-assets" => value["artifact_set"] = json!("0".repeat(64)),
             "invalid-hash" => value["specification"] = json!("invalid"),
             "invalid-probes" => value["probes_json"] = json!("[]"),
+            "leading-chat"
+            | "leading-chat-mismatch"
+            | "leading-chat-boundary"
+            | "leading-chat-unicode" => {
+                let unicode = case == "leading-chat-unicode";
+                let content = if unicode { "ü world" } else { "hello world" };
+                let prefix = match case {
+                    "leading-chat-mismatch" => "world",
+                    "leading-chat-boundary" => "hell",
+                    "leading-chat-unicode" if effective => "hello ü",
+                    "leading-chat-unicode" => "ü",
+                    _ => "hello",
+                };
+                value["probes_json"] = json!(json!([
+                    {"kind":"leading_prefix_chat","context_json":json!({"messages":[{"role":"user","content":content}]}).to_string(),"leading_prefix":prefix},
+                    {"kind":"text","text":"hello world"}
+                ]).to_string());
+            }
+            "partition" | "partition-boundary" | "partition-utf8" => {
+                let (text, start, end) = match case {
+                    "partition-boundary" => ("hello world", 0, 4),
+                    "partition-utf8" => ("ü world", 0, 1),
+                    _ => ("hello world", 6, 11),
+                };
+                value["probes_json"] = json!(json!([
+                    {"kind":"partitioned_text","text":text,"prefix_start":start,"prefix_end":end},
+                    {"kind":"text","text":"hello world"}
+                ]).to_string());
+            }
             "bad-template" => {
                 value["template_utf8"] = json!("{{ raise_exception('closed fixture rejection') }}");
             }
@@ -121,7 +150,12 @@ impl Fixture {
         }
         value
     }
-    pub(super) fn verify(&self, bytes: &str, effective: bool) -> Result<Value, RebornBuildError> {
+    pub(super) fn verify(
+        &self,
+        bytes: &str,
+        effective: bool,
+        case: &str,
+    ) -> Result<Value, RebornBuildError> {
         let actual: Value = brassclaw_skills::value_contract::strict_json(
             bytes,
             brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
@@ -138,11 +172,64 @@ impl Fixture {
             hex::encode(h.finalize())
         };
         let probe = |rendered: &str, values: &[u32]| json!({"rendered_sha256":checksum(rendered.as_bytes()),"rendered_bytes":rendered.len(),"token_count":values.len(),"token_ids_sha256":ids(values)});
-        let expected = json!({"format":"brassclaw-model-encoding/1","tokenizer_sha256":checksum(tokenizer().as_bytes()),
+        let mut expected = json!({"format":"brassclaw-model-encoding/1","tokenizer_sha256":checksum(tokenizer().as_bytes()),
             "tokenizer_config_sha256":checksum(config().as_bytes()),"chat_template_sha256":checksum(if effective { EFFECTIVE.as_bytes() } else { TEMPLATE.as_bytes() }),
             "truncation_disabled":true,"padding_disabled":true,
             "probes":[probe(&"hello ".repeat(2050),&vec![1;2050]),if effective {probe("hello hello world",&[1,1,2])} else {probe("hello world",&[1,2])}],
             "common_prefix_tokens":if effective {2} else {1},"common_prefix_sha256":if effective {ids(&[1,1])} else {ids(&[1])}});
+        if case == "partition" {
+            let mut partitioned = probe("hello world", &[1, 2]);
+            partitioned["partition"] = json!({"prefix_start":6,"prefix_end":11,
+                "prefix_bytes_sha256":checksum(b"world"),"prefix_tokens":1,"prompt_tokens":1,
+                "prefix_token_ids_sha256":ids(&[2]),"prompt_token_ids_sha256":ids(&[1]),
+                "qualification":"supplied-byte-span-only"});
+            expected["format"] = json!("brassclaw-model-encoding/2");
+            expected["probes"] = json!([partitioned, probe("hello world", &[1, 2])]);
+            expected["common_prefix_tokens"] = json!(2);
+            expected["common_prefix_sha256"] = json!(ids(&[1, 2]));
+        }
+        if matches!(case, "leading-chat" | "leading-chat-unicode") {
+            let unicode = case == "leading-chat-unicode";
+            let content = if unicode { "ü world" } else { "hello world" };
+            let (rendered, values, prefix, prefix_ids, prompt_ids, common) =
+                match (unicode, effective) {
+                    (false, false) => (
+                        "hello world",
+                        vec![1, 2],
+                        "hello",
+                        vec![1],
+                        vec![2],
+                        vec![1, 2],
+                    ),
+                    (false, true) => (
+                        "hello hello world",
+                        vec![1, 1, 2],
+                        "hello",
+                        vec![1],
+                        vec![1, 2],
+                        vec![1],
+                    ),
+                    (true, false) => ("ü world", vec![0, 2], "ü", vec![0], vec![2], vec![]),
+                    (true, true) => (
+                        "hello ü world",
+                        vec![1, 0, 2],
+                        "hello ü",
+                        vec![1, 0],
+                        vec![2],
+                        vec![1],
+                    ),
+                };
+            let context = json!({"messages":[{"role":"user","content":content}]}).to_string();
+            let mut measured = probe(rendered, &values);
+            measured["partition"] = json!({"prefix_start":0,"prefix_end":prefix.len(),
+                "prefix_bytes_sha256":checksum(prefix.as_bytes()),"prefix_tokens":prefix_ids.len(),"prompt_tokens":prompt_ids.len(),
+                "prefix_token_ids_sha256":ids(&prefix_ids),"prompt_token_ids_sha256":ids(&prompt_ids),
+                "qualification":"verified-leading-render-bytes-only","render_context_sha256":checksum(context.as_bytes())});
+            expected["format"] = json!("brassclaw-model-encoding/2");
+            expected["probes"] = json!([measured, probe("hello world", &[1, 2])]);
+            expected["common_prefix_tokens"] = json!(common.len());
+            expected["common_prefix_sha256"] = json!(ids(&common));
+        }
         let valid_hash = |v: &Value| {
             v.as_str().is_some_and(|s| {
                 s.len() == 64

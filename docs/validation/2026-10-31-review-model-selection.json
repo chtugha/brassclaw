@@ -1,0 +1,172 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-014",
+  "status": "passed",
+  "package": "/private/tmp/brassclaw-review-model-selection-20261031-9b8wmv25",
+  "package_after_sha256": "efe45c1839ea78fca62a03483c45928321c77f7d2eac1826c5965073ccbdf9bb",
+  "sources": {
+    "crates/brassclaw_skills/src/recipe_model_input.rs": "30661225a52218ea825f5731807586811ab10f5145c936cc191151aa1e740ad7",
+    "crates/brassclaw_skills/src/review_selection_store.rs": "3ced0f4164ce93ed283bc128ff8be7c7b71b1fcbb0fb144438fc60c21fea7e44",
+    "crates/brassclaw_engine/src/memory/retained_instruction.rs": "f343ebe2113e46de888e4322ee0e3757166c4e3a5b5fc71e4c6a218d21f2b675",
+    "crates/brassclaw_reborn_composition/src/pg_review_submission.rs": "60c4a7b9eea2a12d11040e588c61bd48b782324718e4dbb882a48b8f8c8d3ecb",
+    "crates/brassclaw_reborn_composition/src/pg_review_model_selection_tests.rs": "6d4e652c6d4420acf41e6784f51e5d1bfadb448a2b779fd54e05a8b1265bedb6"
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-review-model-selection-validation-20261031/run-1/source.json",
+    "sha256": "36acce9dc07a0d0f94ad4315a864df35d8cc91aa0e8619c045167979cea53753",
+    "entries": 7996,
+    "reviewed_root": "/private/tmp/brassclaw-review-model-selection-20261031-9b8wmv25/current-root-inputs-review-model-selection.json",
+    "reviewed_root_sha256": "215638eb9d0c18c7cc728e90aef1837186f64cdede027724b9179c5fff9acdfd",
+    "reviewed_root_paths": 251
+  },
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-review-model-selection-validation-20261031/run-1",
+      "status": "passed",
+      "progress_sha256": "011859ce8c93fbdaa10f932b8ba156ef3b9271f5405f5ebe1aff99449d651153",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.22568504186347127,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "connected-images",
+          "exit_code": 0,
+          "seconds": 243.74433058290742,
+          "log_sha256": "af6e4635a20f1f685561c52330bdbf397151dc27f69598444390460d0a2f1e77"
+        },
+        {
+          "stage": "actual-review-model-preparation",
+          "exit_code": 0,
+          "seconds": 3.954551999922842,
+          "log_sha256": "60a152d7c6ec454201470227fec49c9ffedfdba728f2d047dc636fd5b1eb0d44",
+          "passed": 1
+        },
+        {
+          "stage": "shared-model-input-parser",
+          "exit_code": 0,
+          "seconds": 0.22199641703628004,
+          "log_sha256": "ca4aa7a9e1fb5429d483747afd9a51b3fc7c5c6156f7fe122d5c98d5c9ad17f9",
+          "passed": 3
+        },
+        {
+          "stage": "existing-bound-structure-observers",
+          "exit_code": 0,
+          "seconds": 80.58229162497446,
+          "log_sha256": "27a5ffea357f02a0e8aac78edf514c2f02b4c58d137a725ba72598ce0c664a85",
+          "passed": 2
+        },
+        {
+          "stage": "actual-default-model-sdk",
+          "exit_code": 0,
+          "seconds": 5.101929666940123,
+          "log_sha256": "52ab4fd83884de6f7a39f237464892f4519b08f1825eb296c2636fccd7dcfbfb",
+          "passed": 1
+        },
+        {
+          "stage": "actual-selected-model-sdk",
+          "exit_code": 0,
+          "seconds": 5.139532124856487,
+          "log_sha256": "2bf978bf67d7bdfa7cef1ada3989346a4c6a726ca3ac4fbf2326157ae9110c73",
+          "passed": 1
+        },
+        {
+          "stage": "original-capture-no-grant",
+          "exit_code": 0,
+          "seconds": 2.5051770410500467,
+          "log_sha256": "19b824ebe196463c68c07cc5c4b227af0fa411b5bb39c8d6a8085acc5e44cc9c",
+          "passed": 1
+        },
+        {
+          "stage": "connected-strict",
+          "exit_code": 0,
+          "seconds": 102.5199911671225,
+          "log_sha256": "1e0f29b91176d58012a5a1191007f665b3cf6dfa4b039c8a26aeda2903c6b41a"
+        },
+        {
+          "stage": "default-strict",
+          "exit_code": 0,
+          "seconds": 19.482475041178986,
+          "log_sha256": "34ce7acc1b6bc676013f1ba9a001f5f68576959632e989ce0f5ad76cd0b40311"
+        }
+      ]
+    }
+  },
+  "images": {
+    "brassclaw_skills": {
+      "path": "/private/tmp/brassclaw-review-model-selection-validation-20261031/run-1/brassclaw_skills-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_skills-deb9cb2f89f72f52",
+      "sha256": "420607ac15831f295b18ce6356d956d4526e2a48175789933ca9b73cfffe6688",
+      "features": [
+        "db-store",
+        "default",
+        "v1-types",
+        "v2-compat"
+      ]
+    },
+    "brassclaw_reborn_composition": {
+      "path": "/private/tmp/brassclaw-review-model-selection-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-afa5c0ef79b92c5a",
+      "sha256": "0229f2b986479e002d19a23ad2f760d1e8e4c49ead4d93f16efd999c4c1a11d0",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-review-model-selection-validation-20261031/run-1/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+    "build_evidence": "/private/tmp/brassclaw-model-host-compatibility-validation-20261031/run-6/progress.json",
+    "build_evidence_sha256": "a0aae3aade2e9010846ad5c77dbad45e879e27f90448807cedccc89c324e9ec5",
+    "reason": "Only Skills/Engine/Composition changed; actual Monty worker and all its lower dependencies unchanged, exact source inventory checked."
+  },
+  "model_assets": {
+    "source": "/Volumes/SSDE/brassclaw/target/validation/prefix-model-source-cacik5n7",
+    "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6",
+    "retained": "/private/tmp/brassclaw-review-model-selection-validation-20261031/run-1/model-artifacts",
+    "files": {
+      "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+      "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+      "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+      "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+      "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+      "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+    }
+  },
+  "tests": {
+    "fresh_distinct": 9,
+    "ignored": 0,
+    "names": [
+      "native_model_usage_tests::native_prefix_free_capture_retains_original_pair_without_prefix_table_or_dispatch_grant",
+      "native_model_usage_tests::native_recipe_selected_prefix_uses_original_pair_without_base_fallback",
+      "native_model_usage_tests::native_task_model_usage_captures_database_selection_without_legacy_route",
+      "pg_review_submission::model_selection_tests::native_validator_preparation_pins_model_input_and_rejects_rewritten_bindings",
+      "recipe_model_input::tests::absent_and_explicit_default_preserve_default_but_null_does_not",
+      "recipe_model_input::tests::exact_variant_policy_is_isolated_and_never_interprets_prompt_data",
+      "recipe_model_input::tests::malformed_sibling_or_unknown_shape_is_not_silently_ignored",
+      "runtime::tests::source_inventory_usage_tests::python_structure_review_tests::native_private_pure_structure_recipe_checks_all_exports_and_hidden_host_calls",
+      "runtime::tests::source_inventory_usage_tests::python_structure_review_tests::native_private_structure_recipe_joins_original_inventory_definitions_contracts_and_sealed_observer"
+    ]
+  },
+  "scope": [
+    "One existing RecipeModelInput envelope owner feeds Engine and exact V150 preparation comparison.",
+    "Real PostgreSQL, IBS, retained worker parser and preparation restoration cover six original variants: absence, explicit Default, selected A/B, sibling-only map and capture-only Free declaration.",
+    "Checksum-correct binding deletion/null/profile/purpose/format/extra-field forgeries are rejected; later immutable Recipe successors preserve all original selections.",
+    "Existing bound structural observers, original Default/Selected provider SDK and capture-no-grant cases plus shared parser pass with zero ignored cases.",
+    "No approval, association grant, task admission or Tool invocation is produced by the new metadata roundtrip case."
+  ],
+  "limits": [
+    "Preparation metadata is not successful Q1, human Q2, pure approval, Free qualification or dispatch authority.",
+    "Structural observers are partial checks, not complete eight-class review or semantic approval.",
+    "Existing native SDK fixtures use a local recording endpoint; no real inference or Serving qualification.",
+    "No new profile activation, original Use bootstrap job, complete I1/I2, durable recovery, platform deployment or full-plan/release acceptance."
+  ]
+}

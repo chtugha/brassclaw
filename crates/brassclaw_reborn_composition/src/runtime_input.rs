@@ -125,6 +125,8 @@ pub struct ResolvedRebornLlm {
     provider_id: String,
     model: String,
     pub(crate) config: brassclaw_llm::LlmConfig,
+    pub(crate) publication: Option<brassclaw_llm::ProviderSelectionRevision>,
+    pub(crate) dispatch_guard: Option<Arc<dyn brassclaw_llm::ProviderDispatchGuard>>,
 }
 
 #[cfg(feature = "root-llm-provider")]
@@ -142,7 +144,25 @@ impl ResolvedRebornLlm {
             provider_id: config.active_provider_id(),
             model: config.active_model_name(),
             config,
+            publication: None,
+            dispatch_guard: None,
         }
+    }
+
+    pub(crate) fn with_publication(
+        mut self,
+        publication: brassclaw_llm::ProviderSelectionRevision,
+    ) -> Self {
+        self.publication = Some(publication);
+        self
+    }
+
+    pub(crate) fn with_dispatch_guard(
+        mut self,
+        guard: Arc<dyn brassclaw_llm::ProviderDispatchGuard>,
+    ) -> Self {
+        self.dispatch_guard = Some(guard);
+        self
     }
 }
 

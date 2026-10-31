@@ -315,9 +315,18 @@ async fn memory_services(
         MEMORY_SEARCH_CAPABILITY_ID | MEMORY_WRITE_CAPABILITY_ID
     );
     let embedding = if needs_embedding {
-        match &state.embedding_source {
-            Some(source) => source.snapshot().await.map_err(|_| operation_error())?,
-            None => state.embedding_provider.clone(),
+        if let Some(selected) = &request.services.memory_embeddings {
+            // Explicit captured absence must not acquire the current global
+            // provider. Invalid task bindings remain failures before writes.
+            selected
+                .snapshot(&request.scope)
+                .await
+                .map_err(|_| operation_error())?
+        } else {
+            match &state.embedding_source {
+                Some(source) => source.snapshot().await.map_err(|_| operation_error())?,
+                None => state.embedding_provider.clone(),
+            }
         }
     } else {
         None

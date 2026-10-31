@@ -1,21 +1,16 @@
 def check_review_python_contracts(inputs):
     import json
-    subject = json.loads(inputs["subject_json"])
-    if type(subject) is not dict or subject.get("format") != "component-validator-subject/1":
-        raise ValueError("complete retained validator subject required")
-    candidate = subject.get("candidate")
-    dependencies = subject.get("dependencies")
-    if type(candidate) is not dict or type(dependencies) is not list:
-        raise ValueError("complete retained validator subject required")
-    root_reference = candidate.get("reference")
-    if type(root_reference) is not dict or type(root_reference.get("class_code")) is not int or root_reference["class_code"] != 22:
+    subject, entries = _validator_review_subject(inputs)
+    if subject["format"] == "component-validator-subject/1" and subject["candidate"]["reference"]["class_code"] != 22:
+        raise ValueError("PythonCode review subject required")
+    if not any(entry["reference"]["class_code"] == 22 for entry in entries):
         raise ValueError("PythonCode review subject required")
     seen = set()
     errors = []
     # Compare only the selected candidate/dependency graph. The comparison base
     # is not a newly proposed executable dependency. Original integrity and the
     # validator's fixed class/position selection belong to the trusted owner.
-    for index, entry in enumerate([candidate] + dependencies):
+    for index, entry in enumerate(entries):
         if type(entry) is not dict or type(entry.get("reference")) is not dict or type(entry.get("revision")) is not dict:
             raise ValueError("complete retained revision required")
         reference = entry["reference"]

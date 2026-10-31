@@ -19,13 +19,13 @@ def check_review_python_graph(inputs):
     imports = set(profile["import_names"])
     if not builtins or not imports or len(builtins) != len(profile["builtin_names"]) or len(imports) != len(profile["import_names"]):
         raise ValueError("complete distinct native profile names required")
-    subject = json.loads(inputs["subject_json"])
+    subject, entries = _validator_review_subject(inputs)
     inventory = json.loads(inputs["inventory_json"])
-    if subject.get("format") != "component-validator-subject/1" or inventory.get("format") != "python-source-inventory/1":
+    if inventory.get("format") != "python-source-inventory/1":
         raise ValueError("complete original subject and native inventory required")
     records = {}
     indices = {}
-    for index, entry in enumerate([subject["candidate"]] + subject["dependencies"]):
+    for index, entry in enumerate(entries):
         if entry["reference"]["class_code"] == 22:
             identity = entry["reference"]["uuid"]
             if identity in records:
@@ -33,6 +33,8 @@ def check_review_python_graph(inputs):
             records[identity] = entry["revision"]
             indices[identity] = index
     root = subject["candidate"]["reference"]["uuid"]
+    if subject["candidate"]["reference"]["class_code"] in [1, 2, 3] and subject["format"] == "component-validator-subject/2":
+        root = subject["function_partner"]["component"]["reference"]["uuid"]
     if root not in records or set(records) != set(inventory["sources"]):
         raise ValueError("complete original Python graph and native inventory required")
     errors = []

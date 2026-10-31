@@ -15,7 +15,7 @@ function fixture({ fail = false, status = "Completed", saved = "" } = {}) {
   clientActionId: () => `00000000-0000-4000-8000-${String(++identities).padStart(12, "0")}`,
   sessionStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
   setTimeout: callback => { const id = ++timerId; timers.set(id, callback); return id; }, clearTimeout: id => timers.delete(id),
-  fetchPrefixModelDesigns: async () => ({ proposals: [{ id: "proposal", profile: "base-prompt", specification: "spec" }, { id: "other-profile", profile: "sempai", specification: "spec" }], artifact_sets: [{ id: "files", specification: "spec" }, { id: "wrong-files", specification: "other-spec" }], specifications: [{ id: "spec", model: "model", provider_id: "provider", specification_bytes: '{"configured_context_window":131072}' }] }),
+  fetchPrefixModelDesigns: async () => ({ proposals: [{ id: "proposal", profile: "base-prompt", specification: "spec", proposal_bytes: '{"format":"brassclaw-prefix-design-proposal/1"}' }, { id: "other-profile", profile: "sempai", specification: "spec", proposal_bytes: '{"format":"brassclaw-prefix-design-proposal/1"}' }, { id: "rule-proposal", profile: "base-prompt", specification: "spec", proposal_bytes: '{"format":"brassclaw-prefix-design-proposal/2"}' }, { id: "invalid-proposal", profile: "base-prompt", specification: "spec", proposal_bytes: 'null' }], artifact_sets: [{ id: "files", specification: "spec" }, { id: "wrong-files", specification: "other-spec" }], specifications: [{ id: "spec", model: "model", provider_id: "provider", specification_bytes: '{"configured_context_window":131072}' }] }),
   fetchPrefixJob: async (_profile, id) => ({ job_id: id, run_status: status, answered_tool_calls: 2 }),
   measurePrefix: async (profile, id, request) => { requests.push({ profile, id, request }); await Promise.resolve(); if (fail) { fail = false; throw Error("lost response"); } return { job_id: id, run_status: status, answered_tool_calls: 2, internal_receipt: status === "Completed" ? JSON.stringify({ format: "brassclaw-prefix-capacity-comparison/1", fits: false, required_tokens: 150000, context_window_tokens: 131072 }) : null }; },
   };
@@ -99,4 +99,18 @@ test("an explicit new measurement gets a new identity without modifying the prio
   assert.equal(f.requests.length, 2); assert.notEqual(f.requests[0].id, f.requests[1].id);
   assert.equal(f.requests[0].request.expected_profile_revision, 1);
   assert.equal(f.requests[1].request.expected_profile_revision, 2);
+});
+
+test("reference-rule proposals stay outside the legacy diagnostic and cannot dispatch", async () => {
+  const f = fixture(); await choose(f);
+  const rendered = f.render();
+  assert.ok(button(rendered, "prefix.measureRuleDesignNotice"));
+  const select = controls(rendered, "select")[0];
+  assert.ok(!JSON.stringify(select).includes("rule-proposal"));
+  assert.ok(!JSON.stringify(select).includes("invalid-proposal"));
+  attribute(select, "onChange")({ target: { value: "rule-proposal" } });
+  await attribute(button(f.render(), "prefix.measureStart"), "onClick")();
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.identities(), 0);
+  assert.ok(button(f.render(), "prefix.measureSelectInputs"));
 });

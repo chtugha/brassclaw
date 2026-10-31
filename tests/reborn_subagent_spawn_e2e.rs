@@ -473,6 +473,11 @@ fn assert_child_thread_invariants(parent: &SubmittedTurn, child: &brassclaw_turn
     assert_eq!(child.scope.tenant_id, parent.scope.tenant_id);
     assert_eq!(child.scope.agent_id, parent.scope.agent_id);
     assert_eq!(child.scope.project_id, parent.scope.project_id);
+    assert_eq!(
+        child.scope.explicit_owner_user_id(),
+        Some(&parent.actor.user_id),
+        "child admission must retain its transcript owner"
+    );
     assert_ne!(
         child.scope.thread_id, parent.scope.thread_id,
         "child must run on a distinct thread"

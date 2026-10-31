@@ -9,6 +9,16 @@ failed qualification makes new discovery unavailable; it does not silently
 continue advertising a known invalid catalogue. A losing stale publisher does
 not replace the current generation.
 
+The current K2 implementation extends that same publisher with a durable prefix
+invalidation reference in its activation transaction (V177). The operator status
+reports the committed target, runtime generation and discovery generation
+separately; a failed postcommit qualification leaves discovery uptake pending.
+Reference-only reconciliation reads the original activation and never republishes
+a superseded receipt. An empty advertised snapshot by itself does not acknowledge
+qualification. Generated-prefix rebuilding remains pending independently of the
+qualified retained inline context. The [implementation journal](plans/simplified-v3-implementation.md)
+records the exact native acceptance scope and outstanding checks.
+
 The current installation catalogue contains the packaged public reply and internal
 history workflows. History stays private. Until complete ordinary-command evidence
 exists, startup publishes an explicitly unadvertised empty snapshot. Once the

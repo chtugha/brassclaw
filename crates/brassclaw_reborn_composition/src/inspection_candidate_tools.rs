@@ -2,6 +2,46 @@
 //! These constructors grant no qualification or production catalogue selection.
 use super::*;
 
+// Closed design-selection execution reuses the two existing primitives. The
+// captured variant hashes its authoritative originals before checking coverage.
+pub(crate) fn design_selection_candidate_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    let expected: &[(&str, &str)] = if program.bindings().contains_key("2:4") {
+        &[
+            ("2:4", brassclaw_host_runtime::JSON_CAPABILITY_ID),
+            ("2:9", brassclaw_host_runtime::JSON_CAPABILITY_ID),
+            ("2:11", brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID),
+        ]
+    } else if program.bindings().contains_key("1:3") {
+        &[
+            ("1:3", brassclaw_host_runtime::JSON_CAPABILITY_ID),
+            ("1:8", brassclaw_host_runtime::JSON_CAPABILITY_ID),
+            ("1:10", brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID),
+        ]
+    } else {
+        &[
+            ("0:3", brassclaw_host_runtime::JSON_CAPABILITY_ID),
+            ("0:5", brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID),
+        ]
+    };
+    if program.bindings().len() != expected.len()
+        || expected.iter().any(|(step, capability)| {
+            program
+                .bindings()
+                .get(*step)
+                .is_none_or(|binding| binding.capability_id() != *capability)
+        })
+    {
+        return Err(invalid("design selection candidate bindings differ"));
+    }
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, false)
+}
+
 pub(crate) fn source_inventory_candidate_tools(
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,
@@ -67,6 +107,9 @@ pub(crate) fn source_inventory_candidate_tools(
         admission,
         program,
         runtimes,
+        kernel,
+        credential_policies: BTreeMap::new(),
+        credentials: crate::task_tool_credentials::CapturedToolCredentials::Uncaptured,
         mounts: MountView::default(),
         answers: native_answers::NativeToolAnswers::default(),
         model_responses: None,
@@ -86,6 +129,27 @@ pub(crate) fn response_parser_candidate_tools(
         })
     {
         return Err(invalid("response parser candidate binding differs"));
+    }
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, false)
+}
+
+// Closed development caller only. No workflow qualification or public admission.
+pub(crate) fn pair_case_candidate_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    if program.bindings().len() != 2
+        || program.bindings().get("0:3").is_none_or(|binding| {
+            binding.capability_id() != brassclaw_host_runtime::JSON_CAPABILITY_ID
+        })
+        || program.bindings().get("0:5").is_none_or(|binding| {
+            binding.capability_id() != brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID
+        })
+    {
+        return Err(invalid("pair case candidate bindings differ"));
     }
     bootstrap_builtin_tools(pool, kernel, host, admission, program, false)
 }

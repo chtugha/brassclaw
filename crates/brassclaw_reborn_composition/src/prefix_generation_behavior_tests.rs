@@ -168,7 +168,7 @@ async fn assert_native_package(
             catalogue.pool.clone(),
             "bootstrap-prefix-generation",
             "Contained candidate storage validation",
-        ))
+        None,))
         .await
         .unwrap();
         admitted
@@ -420,6 +420,7 @@ pub(super) async fn assert_native_source_compiler(catalogue: &Arc<InstalledMonty
             catalogue.pool.clone(),
             "prefix-compiler-development",
             &format!("compiler-development:{mode}:{generation}"),
+            None,
         ))
         .await
         .unwrap();

@@ -123,11 +123,20 @@ pub struct WebUiListAutomationsRequest {
 /// path and lifted into a lifecycle package ref by the handler before
 /// it crosses the facade boundary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct WebUiSetupExtensionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub payload: Option<serde_json::Value>,
+    pub payload: Option<WebUiExtensionSetupPayload>,
+}
+
+/// Nonsecret configuration only. Credential values have a separate ingress.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct WebUiExtensionSetupPayload {
+    #[serde(default)]
+    pub fields: std::collections::BTreeMap<String, String>,
 }
 
 /// Browser body for WebUI gate-resolution mutation.

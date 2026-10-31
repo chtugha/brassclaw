@@ -601,16 +601,50 @@ impl LocalDevResultHydratingModelGateway {
 
 #[async_trait::async_trait]
 impl HostManagedModelGateway for LocalDevResultHydratingModelGateway {
-    fn retain_model_selection(
+    async fn capture_task_model_selection(
+        &self,
+        parent: Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<
+        Option<brassclaw_loop_support::HostManagedTaskModelSelection>,
+        brassclaw_loop_support::HostManagedModelError,
+    > {
+        Ok(self
+            .inner
+            .capture_task_model_selection(parent, capture.clone())
+            .await?
+            .map(
+                |selected| brassclaw_loop_support::HostManagedTaskModelSelection {
+                    binding: selected.binding,
+                    gateway: Arc::new(Self {
+                        inner: selected.gateway,
+                        capability_io: self.capability_io.clone(),
+                    }),
+                },
+            ))
+    }
+
+    async fn preflight_task_model_usage(
+        &self,
+        input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
+    ) -> Result<(), brassclaw_loop_support::HostManagedModelError> {
+        self.inner.preflight_task_model_usage(input).await
+    }
+
+    async fn retain_model_selection(
         &self,
         request: &HostManagedModelRequest,
     ) -> Result<Option<Arc<dyn HostManagedModelGateway>>, HostManagedModelError> {
-        Ok(self.inner.retain_model_selection(request)?.map(|inner| {
-            Arc::new(Self {
-                inner,
-                capability_io: self.capability_io.clone(),
-            }) as Arc<dyn HostManagedModelGateway>
-        }))
+        Ok(self
+            .inner
+            .retain_model_selection(request)
+            .await?
+            .map(|inner| {
+                Arc::new(Self {
+                    inner,
+                    capability_io: self.capability_io.clone(),
+                }) as Arc<dyn HostManagedModelGateway>
+            }))
     }
 
     fn supports_provider_observation(&self) -> bool {

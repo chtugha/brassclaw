@@ -21,9 +21,11 @@ export function ProviderDialog({
   onSave,
   onTest,
   onListModels,
+  activateOnSave = false,
 }) {
   const t = useT();
   const formState = useProviderDialogForm({
+    activateOnSave,
     provider,
     allProviderIds,
     builtinOverrides,
@@ -113,6 +115,15 @@ export function ProviderDialog({
             ${message.text}
           </div>
         `}
+
+        <label className="block space-y-2 text-sm text-[var(--v2-text-strong)]">
+          <span className="flex items-center gap-2">
+            <input type="checkbox" checked=${activateOnSave || form.activateProvider}
+              disabled=${activateOnSave} onChange=${(event) => formState.update("activateProvider", event.target.checked)} />
+            ${t("llm.activateOnSave")}
+          </span>
+          <p className="text-xs text-[var(--v2-text-muted)]">${t("llm.activateOnSaveHelp")}</p>
+        </label>
 
         <fieldset className="space-y-3 rounded-md border border-[var(--v2-panel-border)] p-3">
           <legend className="px-1 text-sm font-medium text-[var(--v2-text-strong)]">${t("llm.embeddingModelsTitle")}</legend>

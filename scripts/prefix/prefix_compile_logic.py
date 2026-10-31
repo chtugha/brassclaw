@@ -90,6 +90,30 @@ def prefix_prepare(inputs):
     return {'state_bytes': prefix_json(state), 'texts': texts}
 
 
+def prefix_design_inputs(inputs):
+    # Reuse the captured profile's compiler-owned requirements. Never derive
+    # this floor from a model proposal or a caller-edited intermediate state.
+    prefix_fields(inputs, ['snapshot_bytes', 'digests'])
+    prepared = prefix_prepare({'snapshot_bytes': inputs['snapshot_bytes']})
+    state = prefix_decode(prepared['state_bytes'])
+    digests = inputs['digests']
+    prefix_digest_list(digests, len(prepared['texts']))
+    sources = []
+    position = 0
+    for record in state['records']:
+        source = record['source']
+        if source['disposition'] == 'included':
+            sources.append({'path': source['path'], 'sha256': digests[position], 'text': source['text']})
+        position += 1 + len(record['units'])
+    floor = {'format': 'brassclaw-prefix-coverage-floor/1', 'profile': state['snapshot']['profile'],
+             'required_coverage': [{'path': path, 'match': 'exact', 'first_lines': []}
+                                   for path in state['required_sources']]}
+    return {'floor_bytes': prefix_json(floor),
+            'sources_bytes': prefix_json({'format': 'brassclaw-prefix-design-sources/1', 'sources': sources}),
+            'snapshot_bytes': inputs['snapshot_bytes'],
+            'qualification': 'captured-profile-inputs-only; caller must authenticate snapshot and digest results; no design approval or activation'}
+
+
 def prefix_reference(inputs):
     import base64
     state = prefix_decode(inputs['state_bytes'])
@@ -202,6 +226,8 @@ def compile_stage(inputs):
     phase = inputs['phase']
     if phase == 'prepare':
         return prefix_json(prefix_prepare({'snapshot_bytes': inputs['snapshot_bytes']}))
+    if phase == 'design-inputs':
+        return prefix_json(prefix_design_inputs({'snapshot_bytes': inputs['snapshot_bytes'], 'digests': inputs['digests']}))
     arguments = {'state_bytes': inputs['state_bytes'], 'digests': inputs['digests']}
     if phase == 'reference':
         return prefix_json(prefix_reference(arguments))

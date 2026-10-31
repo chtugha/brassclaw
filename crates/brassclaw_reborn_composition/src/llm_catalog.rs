@@ -99,7 +99,85 @@ pub async fn resolve_llm_selection_against_catalog_db(
 ) -> Result<Option<brassclaw_llm::LlmConfig>, RebornLlmCatalogError> {
     Ok(resolve_provider_selection_db(pool, tenant_id, keys)
         .await?
-        .map(|(config, _)| config))
+        .map(|selected| selected.config))
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) struct ResolvedProviderSelection {
+    pub config: brassclaw_llm::LlmConfig,
+    pub definition: ProviderDefinition,
+    pub revision: brassclaw_llm::ProviderSelectionRevision,
+    pub guard: std::sync::Arc<dyn brassclaw_llm::ProviderDispatchGuard>,
+}
+
+/// A bad optional model configuration blocks that usage, not instance
+/// administration or deterministic work. Database snapshot failures still fail
+/// startup; only a successfully captured optional role can be unavailable here.
+#[cfg(feature = "postgres")]
+pub(crate) struct BootProviderResolution {
+    pub selection: Option<ResolvedProviderSelection>,
+    pub failure: Option<BootProviderFailure>,
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) struct BootProviderFailure {
+    pub target: Option<brassclaw_llm::ProviderPublication>,
+    pub reason_kind: &'static str,
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) async fn resolve_boot_provider_selection_db(
+    pool: &brassclaw_pg::PgPool,
+    tenant_id: &str,
+    keys: &crate::LlmKeyStore,
+) -> Result<BootProviderResolution, RebornLlmCatalogError> {
+    use brassclaw_llm::{ProviderPublication, ProviderRole};
+    let admin = crate::RebornProviderAdmin::new(pool.clone(), tenant_id);
+    let snapshot = admin
+        .capture_task_provider_selections(keys)
+        .await
+        .map_err(|_| RebornLlmCatalogError::DbError {
+            reason: "startup provider snapshot is unavailable".into(),
+        })?;
+    if !snapshot.role_configured("kohai") {
+        return Ok(BootProviderResolution {
+            selection: None,
+            failure: None,
+        });
+    }
+    let mut target = snapshot
+        .role_revision(ProviderRole::Kohai)
+        .cloned()
+        .map(|selection| ProviderPublication::Configured { selection });
+    let unavailable = |target, reason_kind| BootProviderResolution {
+        selection: None,
+        failure: Some(BootProviderFailure {
+            target,
+            reason_kind,
+        }),
+    };
+    if target.is_none() {
+        return Ok(unavailable(None, "primary_selection_invalid"));
+    }
+    let prepared = match admin
+        .prepare_task_provider(&snapshot, ProviderRole::Kohai, keys, None)
+        .await
+    {
+        Ok(prepared) => prepared,
+        Err(_) => return Ok(unavailable(target, "primary_selection_preparation_failed")),
+    };
+    // A trusted envelope upgrade may have produced a new authenticated record
+    // identity. Any following failure belongs to that actual prepared capture.
+    target = Some(ProviderPublication::Configured {
+        selection: prepared.captured.revision.clone(),
+    });
+    match resolve_captured_provider_selection(pool, tenant_id, keys, prepared.captured) {
+        Ok(selection) => Ok(BootProviderResolution {
+            selection: Some(selection),
+            failure: None,
+        }),
+        Err(_) => Ok(unavailable(target, "primary_configuration_invalid")),
+    }
 }
 
 #[cfg(feature = "postgres")]
@@ -107,7 +185,7 @@ pub(crate) async fn resolve_provider_selection_db(
     pool: &brassclaw_pg::PgPool,
     tenant_id: &str,
     keys: &crate::LlmKeyStore,
-) -> Result<Option<(brassclaw_llm::LlmConfig, ProviderDefinition)>, RebornLlmCatalogError> {
+) -> Result<Option<ResolvedProviderSelection>, RebornLlmCatalogError> {
     let captured = crate::RebornProviderAdmin::new(pool.clone(), tenant_id)
         .capture_selection(
             crate::provider_admin::ProviderSelectionSource::Role(
@@ -122,15 +200,39 @@ pub(crate) async fn resolve_provider_selection_db(
     let Some(captured) = captured else {
         return Ok(None);
     };
+    resolve_captured_provider_selection(pool, tenant_id, keys, captured).map(Some)
+}
+
+/// Resolve exactly the supplied capture without another database/credential
+/// read. Publication owners can retain its identity through preparation errors.
+#[cfg(feature = "postgres")]
+pub(crate) fn resolve_captured_provider_selection(
+    pool: &brassclaw_pg::PgPool,
+    tenant_id: &str,
+    keys: &crate::LlmKeyStore,
+    captured: crate::provider_admin::CapturedProviderSelection,
+) -> Result<ResolvedProviderSelection, RebornLlmCatalogError> {
+    let guard = crate::provider_dispatch::PgProviderDispatchGuard::from_capture(
+        pool.clone(),
+        tenant_id,
+        keys.clone(),
+        &captured,
+    )
+    .map_err(|source| RebornLlmCatalogError::ProviderConstruction { source })?;
     let registry = ProviderRegistry::new(vec![captured.definition.clone()]);
-    Ok(Some((
-        resolve_against_registry_with_credentials(
-            &captured.selection,
-            &registry,
-            captured.credential,
-        )?,
-        captured.definition,
-    )))
+    let config = resolve_against_registry_with_credentials(
+        &captured.selection,
+        &registry,
+        captured.credential,
+    )?;
+    let mut revision = captured.revision;
+    revision.model = config.active_model_name();
+    Ok(ResolvedProviderSelection {
+        config,
+        definition: captured.definition,
+        revision,
+        guard,
+    })
 }
 
 /// Resolve a selection against a pre-built registry. Useful in tests
@@ -211,7 +313,7 @@ fn resolve_registry_selection(
     result.map_err(|source| RebornLlmCatalogError::ProviderConstruction { source })
 }
 
-fn validate_selection(
+pub(crate) fn validate_selection(
     selection: &LlmSlotSelection,
     provider: &ProviderDefinition,
     catalog_index: usize,
@@ -227,6 +329,7 @@ fn validate_selection(
         validate_catalog_text(provider, catalog_index, "selection_base_url", base_url)?;
     }
     if let Some(model) = selection.model.as_deref() {
+        validate_model_name(provider, catalog_index, "selection_model", model)?;
         validate_catalog_text(provider, catalog_index, "selection_model", model)?;
     }
     Ok(())
@@ -277,6 +380,12 @@ fn validate_catalog_provider(
     provider: &ProviderDefinition,
     catalog_index: usize,
 ) -> Result<(), RebornLlmCatalogError> {
+    validate_model_name(
+        provider,
+        catalog_index,
+        "default_model",
+        &provider.default_model,
+    )?;
     provider
         .model_token_limits
         .validate(&provider.default_model, provider.context_window_tokens)
@@ -358,6 +467,22 @@ fn validate_catalog_provider(
             "extra_headers_env",
             extra_headers_env,
         )?;
+    }
+    Ok(())
+}
+
+fn validate_model_name(
+    provider: &ProviderDefinition,
+    catalog_index: usize,
+    field: &'static str,
+    model: &str,
+) -> Result<(), RebornLlmCatalogError> {
+    if model.is_empty() || model.trim() != model || model.chars().any(char::is_control) {
+        return Err(RebornLlmCatalogError::CatalogFieldInvalid {
+            provider: safe_catalog_display_value("providers.<id>", &provider.id),
+            catalog_index,
+            field,
+        });
     }
     Ok(())
 }
@@ -770,6 +895,32 @@ mod tests {
         assert_eq!(provider.base_url, "http://localhost:11434"); // catalog default
         assert_eq!(provider.protocol, ProviderProtocol::Ollama);
         assert!(provider.api_key.is_none());
+    }
+
+    #[test]
+    fn model_selection_preserves_exact_valid_names_and_rejects_malformed_values() {
+        let mut definition = provider_no_key_required("alpha");
+        definition.default_model = "default".into();
+        let selection = LlmSlotSelection {
+            provider_id: Some("alpha".into()),
+            ..Default::default()
+        };
+        let registry = ProviderRegistry::new(vec![definition.clone()]);
+        assert_eq!(
+            resolve_against_registry(&selection, &registry)
+                .unwrap()
+                .active_model_name(),
+            "default"
+        );
+        for malformed in ["", " model", "model ", "model\nname", "model\0name"] {
+            let invalid = LlmSlotSelection {
+                model: Some(malformed.into()),
+                ..selection.clone()
+            };
+            assert!(resolve_against_registry(&invalid, &registry).is_err());
+            definition.default_model = malformed.into();
+            assert!(validate_catalog(&ProviderRegistry::new(vec![definition.clone()])).is_err());
+        }
     }
 
     #[test]

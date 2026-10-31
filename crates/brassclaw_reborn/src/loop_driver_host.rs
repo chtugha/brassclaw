@@ -1809,6 +1809,8 @@ where
             #[cfg(feature = "root-llm-provider")]
             mode: self.interceptor_mode.clone(),
             #[cfg(feature = "root-llm-provider")]
+            task_selection: None,
+            #[cfg(feature = "root-llm-provider")]
             accountant: sempai_accountant,
             #[cfg(feature = "root-llm-provider")]
             policy_guard: Arc::clone(&self.model_policy_guard),
@@ -1817,6 +1819,7 @@ where
             thread_service: Arc::clone(&self.thread_service),
             thread_scope: effective_scope.clone(),
             host_gateway: intercepted_gateway,
+            task_selection: tokio::sync::OnceCell::new(),
             max_messages,
             identity_context_source: self.identity_context_source.clone(),
             instruction_materialization_store: Some(Arc::clone(&instruction_materialization_store)),
@@ -2163,6 +2166,32 @@ impl LoopInputPort for RebornLoopDriverHost {
 
 #[async_trait]
 impl LoopModelPort for RebornLoopDriverHost {
+    async fn preflight_task_model_usage(
+        &self,
+        input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
+    ) -> Result<(), AgentLoopHostError> {
+        self.model.preflight_task_model_usage(input).await
+    }
+
+    async fn capture_task_model_selection(
+        &self,
+        parent: Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<
+        Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        AgentLoopHostError,
+    > {
+        self.model
+            .capture_task_model_selection(parent, capture.clone())
+            .await
+    }
+
+    fn task_model_selection(
+        &self,
+    ) -> Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>> {
+        self.model.task_model_selection()
+    }
+
     async fn stream_model_with_custody(
         &self,
         request: LoopModelRequest,

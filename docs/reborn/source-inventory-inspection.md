@@ -62,7 +62,8 @@ includes both profiles, actual policy/settings, existing parser/formatter consum
 and the unchanged model-encoding operation against a real offline reference.
 
 `source_inventory_drafts` now defines the one-Tool Skill/export/association,
-shared ToolSkill and canonical execution Recipe. The command
+shared ToolSkill and separate reference execution Recipe. This workflow is not
+a Skill-completeness prerequisite and does not itself establish MCP exposure. The command
 `inspect Python inventory entries %` captures `entries_json` as literal string
 data: a JSON list of `[ID, source]` pairs. A separate pure PythonCode decoder
 rejects duplicate IDs, including escaped equivalents, before constructing a map.

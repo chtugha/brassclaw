@@ -1776,11 +1776,22 @@ async fn runtime_outcome_to_loop(
             gate_ref: loop_gate_ref("approval", gate.approval_request_id.to_string())?,
             safe_summary: blocked_summary(gate.reason).to_string(),
         },
-        RuntimeCapabilityOutcome::AuthRequired(gate) => CapabilityOutcome::AuthRequired {
-            gate_ref: loop_gate_ref("auth", gate.gate_id.to_string())?,
-            credential_requirements: gate.credential_requirements,
-            safe_summary: blocked_summary(gate.reason).to_string(),
-        },
+        RuntimeCapabilityOutcome::AuthRequired(gate)
+            if gate.boundary == brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch =>
+        {
+            CapabilityOutcome::AuthRequired {
+                gate_ref: loop_gate_ref("auth", gate.gate_id.to_string())?,
+                credential_requirements: gate.credential_requirements,
+                safe_summary: blocked_summary(gate.reason).to_string(),
+            }
+        }
+        RuntimeCapabilityOutcome::AuthRequired(_) => CapabilityOutcome::Failed(CapabilityFailure {
+            error_kind: CapabilityFailureKind::EffectOutcomeUnresolved,
+            safe_summary:
+                "authentication failed after possible dispatch; effect reconciliation is required"
+                    .into(),
+            detail: None,
+        }),
         RuntimeCapabilityOutcome::ResourceBlocked(gate) => CapabilityOutcome::ResourceBlocked {
             gate_ref: loop_gate_ref("resource", gate.gate_id.to_string())?,
             safe_summary: blocked_summary(gate.reason).to_string(),
@@ -1843,6 +1854,17 @@ fn runtime_terminal_milestone(
                 provider: Some(provider),
                 runtime: Some(runtime),
                 reason_kind: capability_failure_kind(unknown.kind.clone())?,
+            })
+        }
+        RuntimeCapabilityOutcome::AuthRequired(gate)
+            if gate.boundary != brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch =>
+        {
+            Some(LoopHostMilestoneKind::CapabilityFailed {
+                activity_id,
+                capability_id: gate.capability_id.clone(),
+                provider: Some(provider),
+                runtime: Some(runtime),
+                reason_kind: CapabilityFailureKind::EffectOutcomeUnresolved,
             })
         }
         RuntimeCapabilityOutcome::ApprovalRequired(_)

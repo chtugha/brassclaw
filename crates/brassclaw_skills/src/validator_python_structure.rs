@@ -21,6 +21,7 @@ pub fn python_definitions_draft(
             "distinct Python definition rule identities required",
         ));
     }
+    let subject_reader = packaged_component_id("validator:review-subject-reader");
     let draft = ComponentRevisionDraft::from_json(&json!({
         "format":"component-revision/1","uuid":id,"class_code":22,
         "document":{
@@ -33,8 +34,8 @@ pub fn python_definitions_draft(
             },"result_contract":super::rule_contract(),
             "preload":{"format":"python-preload/2","exports":{
                 "check_review_python_definitions":{"symbol":"check_review_python_definitions","parameters":["inputs"],"mapping":true}
-            },"private_functions":{"_validator_review_declaration_shape":["value"]},"constants":[],"imports":["json"],"dependencies":[definition_rule],"default_export":"check_review_python_definitions"}
-        },"dependencies":[definition_rule],"association":null
+            },"private_functions":{"_validator_review_declaration_shape":["value"]},"constants":[],"imports":["json"],"dependencies":[definition_rule,subject_reader],"default_export":"check_review_python_definitions"}
+        },"dependencies":[definition_rule,subject_reader],"association":null
     }).to_string())?;
     validate(&draft)?;
     Ok(draft)
@@ -45,6 +46,7 @@ pub fn python_graph_draft(id: Uuid, source: &str) -> Result<ComponentRevisionDra
     profile["required"] = json!(true);
     let mut check = super::rule_contract();
     check["required"] = json!(true);
+    let subject_reader = packaged_component_id("validator:review-subject-reader");
     let draft = ComponentRevisionDraft::from_json(&json!({
         "format":"component-revision/1","uuid":id,"class_code":22,
         "document":{"name":"check-review-python-graph",
@@ -55,14 +57,14 @@ pub fn python_graph_draft(id: Uuid, source: &str) -> Result<ComponentRevisionDra
                 "definitions":check,"contracts":check},"result_contract":super::rule_contract(),
             "preload":{"format":"python-preload/2","exports":{
                 "check_review_python_graph":{"symbol":"check_review_python_graph","parameters":["inputs"],"mapping":true}
-            },"private_functions":{"_validator_python_graph_result":["errors"]},"constants":[],"imports":["json"],"dependencies":[],"default_export":"check_review_python_graph"}
-        },"dependencies":[],"association":null
+            },"private_functions":{"_validator_python_graph_result":["errors"]},"constants":[],"imports":["json"],"dependencies":[subject_reader],"default_export":"check_review_python_graph"}
+        },"dependencies":[subject_reader],"association":null
     }).to_string())?;
     validate(&draft)?;
     Ok(draft)
 }
 
-fn profile_contract() -> Value {
+pub(super) fn profile_contract() -> Value {
     let text = json!({"type":"string","checks":[{"kind":"min_length","value":1}]});
     let names = json!({"type":"list","required":true,"checks":[],"items":text});
     json!({"type":"object","checks":[],"allow_extra_fields":false,"fields":{

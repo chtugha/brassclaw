@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { React } from "../../../lib/html.js";
 import { useT } from "../../../lib/i18n.js";
+import { waitForProviderLogin } from "../lib/provider-login.js";
 import {
   fetchLlmProviders,
   startCodexLogin,
@@ -27,15 +28,14 @@ async function pollUntilActive(providerId, deadlineMs) {
   return false;
 }
 
-// Shared NEAR AI + OpenAI Codex login flows, surface-agnostic. The onboarding
-// screen and the Settings → Inference tab both drive the same backend login
-// endpoints; this hook owns the open-tab + poll-until-active choreography so the
-// two surfaces stay in sync. `onSuccess` runs after the provider goes active
-// (the onboarding screen navigates to chat; settings just lets the refreshed
-// snapshot re-render the now-active card).
+// Shared login presentation for onboarding and Inference. NEAR browser login
+// waits for its exact publication receipt; Codex retains the legacy provider
+// polling until its dedicated credential/controller migration is completed.
 export function useProviderLogin({ onSuccess } = {}) {
   const t = useT();
   const queryClient = useQueryClient();
+  const loginGeneration = React.useRef(0);
+  React.useEffect(() => () => { loginGeneration.current += 1; }, []);
 
   const [nearaiBusy, setNearaiBusy] = React.useState(false);
   const [nearaiError, setNearaiError] = React.useState("");
@@ -43,32 +43,35 @@ export function useProviderLogin({ onSuccess } = {}) {
   const [codexError, setCodexError] = React.useState("");
   const [codexCode, setCodexCode] = React.useState(null);
 
-  const finishActive = React.useCallback(async () => {
+  const finishActive = React.useCallback(async (isCurrent = () => true) => {
     await queryClient.invalidateQueries({ queryKey: ["llm-providers"] });
-    if (onSuccess) {
+    if (onSuccess && isCurrent()) {
       onSuccess();
     }
   }, [queryClient, onSuccess]);
 
   const startNearai = React.useCallback(
     async (provider) => {
+      const generation = ++loginGeneration.current;
+      const isCurrent = () => loginGeneration.current === generation;
       setNearaiError("");
       setNearaiBusy(true);
       try {
-        const { auth_url: authUrl } = await startNearaiLogin({
+        const { auth_url: authUrl, mutation_id: mutationId } = await startNearaiLogin({
           provider,
           origin: window.location.origin,
         });
+        if (!isCurrent()) return;
         window.open(authUrl, "_blank", "noopener");
-        if (await pollUntilActive("nearai", NEARAI_POLL_DEADLINE_MS)) {
-          await finishActive();
+        if (await waitForProviderLogin(mutationId, "nearai", NEARAI_POLL_DEADLINE_MS, POLL_INTERVAL_MS, isCurrent)) {
+          await finishActive(isCurrent);
           return;
         }
-        setNearaiError(t("onboarding.nearaiTimeout"));
+        if (isCurrent()) setNearaiError(t("onboarding.nearaiTimeout"));
       } catch (_err) {
-        setNearaiError(t("onboarding.nearaiFailed"));
+        if (isCurrent()) setNearaiError(t("onboarding.nearaiFailed"));
       } finally {
-        setNearaiBusy(false);
+        if (isCurrent()) setNearaiBusy(false);
       }
     },
     [finishActive, t]

@@ -55,6 +55,21 @@ struct FailingProviderClient {
 
 #[async_trait]
 impl AuthProviderClient for FailingProviderClient {
+    async fn prepare_callback(
+        &self,
+        context: &brassclaw_auth::OAuthProviderExchangeContext,
+        _request: &brassclaw_auth::OAuthProviderCallbackRequest,
+    ) -> Result<brassclaw_auth::OAuthTokenDestinations, AuthProductError> {
+        brassclaw_auth::InMemoryAuthProductServices::callback_destinations_for_tests(context)
+    }
+
+    async fn prepare_refresh(
+        &self,
+        request: &OAuthProviderRefreshRequest,
+    ) -> Result<brassclaw_auth::OAuthProviderRefreshPreparation, AuthProductError> {
+        brassclaw_auth::InMemoryAuthProductServices::refresh_preparation_for_tests(request)
+    }
+
     async fn exchange_callback(
         &self,
         _context: OAuthProviderExchangeContext,
@@ -66,6 +81,7 @@ impl AuthProviderClient for FailingProviderClient {
     async fn refresh_token(
         &self,
         _request: OAuthProviderRefreshRequest,
+        _preparation: brassclaw_auth::OAuthProviderRefreshPreparation,
     ) -> Result<OAuthProviderRefresh, AuthProductError> {
         Err(self.error.clone())
     }
@@ -84,6 +100,21 @@ impl CountingProviderClient {
 
 #[async_trait]
 impl AuthProviderClient for CountingProviderClient {
+    async fn prepare_callback(
+        &self,
+        context: &brassclaw_auth::OAuthProviderExchangeContext,
+        _request: &brassclaw_auth::OAuthProviderCallbackRequest,
+    ) -> Result<brassclaw_auth::OAuthTokenDestinations, AuthProductError> {
+        brassclaw_auth::InMemoryAuthProductServices::callback_destinations_for_tests(context)
+    }
+
+    async fn prepare_refresh(
+        &self,
+        request: &OAuthProviderRefreshRequest,
+    ) -> Result<brassclaw_auth::OAuthProviderRefreshPreparation, AuthProductError> {
+        brassclaw_auth::InMemoryAuthProductServices::refresh_preparation_for_tests(request)
+    }
+
     async fn exchange_callback(
         &self,
         _context: OAuthProviderExchangeContext,
@@ -96,6 +127,7 @@ impl AuthProviderClient for CountingProviderClient {
     async fn refresh_token(
         &self,
         _request: OAuthProviderRefreshRequest,
+        _preparation: brassclaw_auth::OAuthProviderRefreshPreparation,
     ) -> Result<OAuthProviderRefresh, AuthProductError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Err(AuthProductError::RefreshFailed)
@@ -123,6 +155,30 @@ impl SuccessfulCountingProviderClient {
 
 #[async_trait]
 impl AuthProviderClient for SuccessfulCountingProviderClient {
+    async fn prepare_callback(
+        &self,
+        _context: &brassclaw_auth::OAuthProviderExchangeContext,
+        _request: &brassclaw_auth::OAuthProviderCallbackRequest,
+    ) -> Result<brassclaw_auth::OAuthTokenDestinations, AuthProductError> {
+        Ok(brassclaw_auth::OAuthTokenDestinations {
+            access_secret: brassclaw_host_api::SecretHandle::new("oauth-access").unwrap(),
+            refresh_secret: brassclaw_host_api::SecretHandle::new("oauth-refresh").unwrap(),
+        })
+    }
+
+    async fn prepare_refresh(
+        &self,
+        request: &OAuthProviderRefreshRequest,
+    ) -> Result<brassclaw_auth::OAuthProviderRefreshPreparation, AuthProductError> {
+        let mut preparation =
+            brassclaw_auth::InMemoryAuthProductServices::refresh_preparation_for_tests(request)?;
+        preparation.destinations = brassclaw_auth::OAuthTokenDestinations {
+            access_secret: SecretHandle::new("oauth-refreshed-access").unwrap(),
+            refresh_secret: SecretHandle::new("oauth-refreshed-refresh").unwrap(),
+        };
+        Ok(preparation)
+    }
+
     async fn exchange_callback(
         &self,
         context: OAuthProviderExchangeContext,
@@ -139,6 +195,7 @@ impl AuthProviderClient for SuccessfulCountingProviderClient {
             authorization_code_hash: request.authorization_code_hash,
             pkce_verifier_hash: request.pkce_verifier_hash,
             access_secret: SecretHandle::new("oauth-access").unwrap(),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("oauth-refresh").unwrap()),
             scopes: request.scopes,
             account_id: None,
@@ -148,11 +205,13 @@ impl AuthProviderClient for SuccessfulCountingProviderClient {
     async fn refresh_token(
         &self,
         request: OAuthProviderRefreshRequest,
+        _preparation: brassclaw_auth::OAuthProviderRefreshPreparation,
     ) -> Result<OAuthProviderRefresh, AuthProductError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(OAuthProviderRefresh {
             provider: request.provider,
             access_secret: SecretHandle::new("oauth-refreshed-access").unwrap(),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("oauth-refreshed-refresh").unwrap()),
             scopes: request.scopes,
         })
@@ -179,6 +238,24 @@ impl CleanupRecordingProviderClient {
 
 #[async_trait]
 impl AuthProviderClient for CleanupRecordingProviderClient {
+    async fn prepare_callback(
+        &self,
+        _context: &brassclaw_auth::OAuthProviderExchangeContext,
+        _request: &brassclaw_auth::OAuthProviderCallbackRequest,
+    ) -> Result<brassclaw_auth::OAuthTokenDestinations, AuthProductError> {
+        Ok(brassclaw_auth::OAuthTokenDestinations {
+            access_secret: brassclaw_host_api::SecretHandle::new("orphan-access").unwrap(),
+            refresh_secret: brassclaw_host_api::SecretHandle::new("orphan-refresh").unwrap(),
+        })
+    }
+
+    async fn prepare_refresh(
+        &self,
+        request: &OAuthProviderRefreshRequest,
+    ) -> Result<brassclaw_auth::OAuthProviderRefreshPreparation, AuthProductError> {
+        brassclaw_auth::InMemoryAuthProductServices::refresh_preparation_for_tests(request)
+    }
+
     async fn exchange_callback(
         &self,
         _context: OAuthProviderExchangeContext,
@@ -190,6 +267,7 @@ impl AuthProviderClient for CleanupRecordingProviderClient {
             authorization_code_hash: request.authorization_code_hash,
             pkce_verifier_hash: request.pkce_verifier_hash,
             access_secret: SecretHandle::new("orphan-access").unwrap(),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("orphan-refresh").unwrap()),
             scopes: request.scopes,
             account_id: Some(CredentialAccountId::new()),
@@ -199,6 +277,7 @@ impl AuthProviderClient for CleanupRecordingProviderClient {
     async fn refresh_token(
         &self,
         _request: OAuthProviderRefreshRequest,
+        _preparation: brassclaw_auth::OAuthProviderRefreshPreparation,
     ) -> Result<OAuthProviderRefresh, AuthProductError> {
         Err(AuthProductError::RefreshFailed)
     }
@@ -250,11 +329,17 @@ fn state_hash(value: &str) -> OpaqueStateHash {
 }
 
 fn pkce_hash(value: &str) -> PkceVerifierHash {
-    PkceVerifierHash::new(fake_digest(value)).unwrap()
+    brassclaw_auth::pkce_verifier_hash(
+        &PkceVerifierSecret::new(secret(value)).expect("valid fixture input"),
+    )
+    .unwrap()
 }
 
 fn code_hash(value: &str) -> AuthorizationCodeHash {
-    AuthorizationCodeHash::new(fake_digest(value)).unwrap()
+    brassclaw_auth::authorization_code_hash(
+        &OAuthAuthorizationCode::new(secret(value)).expect("valid fixture input"),
+    )
+    .unwrap()
 }
 
 fn fake_digest(value: &str) -> String {
@@ -282,6 +367,7 @@ async fn create_flow(services: &RebornProductAuthServices, scope: AuthProductSco
     services
         .flow_manager()
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope,
             kind: AuthFlowKind::IntegrationCredential,
@@ -295,7 +381,7 @@ async fn create_flow(services: &RebornProductAuthServices, scope: AuthProductSco
             },
             update_binding: None,
             opaque_state_hash: Some(state_hash("state-hash")),
-            pkce_verifier_hash: Some(pkce_hash("pkce-hash")),
+            pkce_verifier_hash: Some(pkce_hash("raw-pkce-verifier")),
             expires_at: Utc::now() + Duration::minutes(5),
         })
         .await
@@ -313,9 +399,9 @@ fn authorized_request(scope: AuthProductScope, flow_id: AuthFlowId) -> RebornOAu
                 provider: provider(),
                 account_label: label(),
                 authorization_code: OAuthAuthorizationCode::new(secret("raw-auth-code")).unwrap(),
-                authorization_code_hash: code_hash("code-hash"),
+                authorization_code_hash: code_hash("raw-auth-code"),
                 pkce_verifier: PkceVerifierSecret::new(secret("raw-pkce-verifier")).unwrap(),
-                pkce_verifier_hash: pkce_hash("pkce-hash"),
+                pkce_verifier_hash: pkce_hash("raw-pkce-verifier"),
                 scopes: vec![provider_scope("repo")],
             },
         },
@@ -429,7 +515,7 @@ async fn oauth_callback_handler_reports_completed_continuation_dispatch_failure_
 }
 
 #[tokio::test]
-async fn oauth_callback_handler_cleans_provider_tokens_when_completion_rejects_exchange() {
+async fn oauth_callback_handler_retains_unusable_original_without_cleanup_or_success() {
     let dispatcher = Arc::new(RecordingContinuationDispatcher::default());
     let provider_client = Arc::new(CleanupRecordingProviderClient::default());
     let services = auth_services(dispatcher).with_provider_client(provider_client.clone());
@@ -441,13 +527,10 @@ async fn oauth_callback_handler_cleans_provider_tokens_when_completion_rejects_e
         .await
         .expect_err("invalid exchange account id is rejected");
 
-    assert_eq!(error.code, AuthErrorCode::CrossScopeDenied);
-    assert_eq!(
-        provider_client.cleaned(),
-        vec![
-            SecretHandle::new("orphan-access").unwrap(),
-            SecretHandle::new("orphan-refresh").unwrap(),
-        ]
+    assert_eq!(error.code, AuthErrorCode::TokenExchangeFailed);
+    assert!(
+        provider_client.cleaned().is_empty(),
+        "an unusable/uncertain result is retained, never blind cleanup authority"
     );
 }
 
@@ -482,6 +565,7 @@ async fn oauth_callback_handler_rejects_wrong_pkce_without_provider_exchange_or_
     let RebornOAuthCallbackOutcome::Authorized { provider_request } = &mut request.outcome else {
         panic!("authorized request expected");
     };
+    provider_request.pkce_verifier = PkceVerifierSecret::new(secret("wrong-pkce")).unwrap();
     provider_request.pkce_verifier_hash = pkce_hash("wrong-pkce");
 
     let error = services
@@ -583,9 +667,21 @@ async fn oauth_callback_handler_routes_exchange_failures_through_provider_bounda
     assert_eq!(flow.status, brassclaw_auth::AuthFlowStatus::Failed);
     assert_eq!(flow.error, Some(AuthErrorCode::TokenExchangeFailed));
 
-    let retry = services
-        .handle_oauth_callback(authorized_request(owner, flow_id))
+    let replacement = Arc::new(CountingProviderClient::default());
+    let retry_services = services.with_provider_client(replacement.clone());
+    let retry = retry_services
+        .handle_oauth_callback(authorized_request(owner.clone(), flow_id))
         .await
-        .expect_err("failed flow rejects retry");
-    assert_eq!(retry.code, AuthErrorCode::FlowAlreadyTerminal);
+        .expect_err("same original reads the recorded failure without issuer replay");
+    assert_eq!(retry, error);
+    assert_eq!(replacement.calls(), 0);
+    assert!(dispatcher.events().is_empty());
+    assert_eq!(
+        retry_services
+            .flow_manager()
+            .get_flow(&owner, flow_id)
+            .await
+            .unwrap(),
+        Some(flow)
+    );
 }

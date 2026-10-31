@@ -39,10 +39,45 @@ use crate::{
 /// uses its own explicit provider; it cannot become a production approval flag.
 /// Host-only child preparation from private durable provenance. Selection is
 /// explicit, never inferred from a user message or a fabricated intent match.
-pub(crate) struct CapturedChildRecipe {
+pub(crate) struct BoundChildRecipe {
     pub(crate) catalogue: Arc<dyn MontyTaskCatalogue>,
     pub(crate) selected: crate::global_recipe_ports::SelectedMontyRecipe,
     pub(crate) dependency_parent: Arc<dyn TaskPorts>,
+}
+
+/// Captured native lineage and view only. No consumer runtime exists yet.
+#[async_trait]
+pub(crate) trait CapturedChildBindings: Send + Sync {
+    fn captured_programs(
+        &self,
+    ) -> Vec<Arc<brassclaw_engine::executor::retained_source::InspectedRetainedProgram>>;
+    async fn bind(&self) -> Result<BoundChildRecipe, AgentLoopDriverError>;
+}
+pub(crate) struct CapturedChildRecipe {
+    pub(crate) bindings: Arc<dyn CapturedChildBindings>,
+    pub(crate) parent_model_selection:
+        Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+}
+
+/// The catalogue owner's one immutable selection, before task-local runtime
+/// construction. Binding consumes that captured selection; it never matches
+/// again, reads latest or creates another admission.
+#[async_trait]
+pub(crate) trait CapturedMontyCatalogue: Send + Sync {
+    fn selected_workflow(
+        &self,
+    ) -> Result<
+        Option<Arc<brassclaw_engine::executor::retained_source::InspectedRetainedProgram>>,
+        AgentLoopDriverError,
+    >;
+    fn captured_programs(
+        &self,
+    ) -> Vec<Arc<brassclaw_engine::executor::retained_source::InspectedRetainedProgram>>;
+    async fn bind(
+        &self,
+        host: Arc<MontyTaskHost>,
+        admission: Arc<PgMontyAdmission>,
+    ) -> Result<Arc<dyn MontyTaskCatalogue>, AgentLoopDriverError>;
 }
 
 #[async_trait]
@@ -98,12 +133,12 @@ pub(crate) trait MontyCatalogueProvider: Send + Sync {
     > {
         Ok(None)
     }
-    async fn capture(
+    async fn prepare(
         &self,
         host: Arc<MontyTaskHost>,
         admission: Arc<PgMontyAdmission>,
         input: &TaskInput,
-    ) -> Result<Arc<dyn MontyTaskCatalogue>, AgentLoopDriverError>;
+    ) -> Result<Arc<dyn CapturedMontyCatalogue>, AgentLoopDriverError>;
 }
 
 /// Retain an already selected request-local provider exchange. This lifecycle
@@ -128,6 +163,7 @@ struct RetainedTask {
     host: Arc<MontyTaskHost>,
     retention: Arc<AttemptRetentionLease>,
     admission: Arc<PgMontyAdmission>,
+    preparation: Option<Arc<CapturedTaskPreparation>>,
     ports: Option<Arc<GlobalRecipePorts>>,
     receipt: Option<Arc<TaskReceipt>>,
     execution_report: Option<Value>,
@@ -135,6 +171,31 @@ struct RetainedTask {
     provider_watch: Option<tokio_util::task::AbortOnDropHandle<()>>,
     provider_port: Option<Arc<dyn TaskProviderLease>>,
     unsubmitted: Option<Arc<UnsubmittedTask>>,
+}
+
+/// Retained before model/configuration awaits, including caller cancellation.
+/// This owns only captured data/binding constructors, never another work queue.
+enum CapturedTaskPreparation {
+    Child(CapturedChildRecipe),
+    Internal(Arc<dyn crate::global_recipe_ports::InternalRecipeSource>),
+    Ordinary(Arc<dyn CapturedMontyCatalogue>),
+}
+impl CapturedTaskPreparation {
+    fn captured_programs(
+        &self,
+    ) -> Result<
+        Vec<Arc<brassclaw_engine::executor::retained_source::InspectedRetainedProgram>>,
+        AgentLoopDriverError,
+    > {
+        match self {
+            Self::Child(child) => Ok(child.bindings.captured_programs()),
+            Self::Ordinary(captured) => Ok(captured.captured_programs()),
+            Self::Internal(source) => source
+                .captured_program()
+                .map(|program| vec![program])
+                .ok_or_else(|| failed("internal_recipe_capture_missing")),
+        }
+    }
 }
 
 /// Transfers the real host, private admission address, child/Tool port state
@@ -166,6 +227,66 @@ pub(crate) struct OwnedGlobalTaskFactory {
 }
 
 impl OwnedGlobalTaskFactory {
+    /// Read-only retained fixture facts after an observed terminal turn. Report
+    /// construction reads the actual retained ports; it never acknowledges,
+    /// retries or transfers a settlement and never exposes raw task payloads.
+    #[cfg(test)]
+    pub(crate) async fn test_settlement_observations(
+        &self,
+        run: TurnRunId,
+    ) -> Result<Vec<Value>, AgentLoopDriverError> {
+        let selected = {
+            let tasks = self.tasks()?;
+            tasks
+                .iter()
+                .filter(|(attempt, _)| attempt.run_id == run)
+                .map(|(attempt, task)| {
+                    (
+                        *attempt,
+                        task.settled,
+                        task.receipt.clone(),
+                        task.ports.clone(),
+                        task.execution_report.clone(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        fn summarize(mut report: Value) -> Value {
+            if let Some(fields) = report.as_object_mut() {
+                let present = fields
+                    .remove("internal_receipt")
+                    .is_some_and(|receipt| !receipt.is_null());
+                fields.insert("internal_receipt_present".into(), json!(present));
+            }
+            report
+        }
+        let mut observations = Vec::with_capacity(selected.len());
+        for (attempt, settled, receipt, ports, retained_report) in selected {
+            let observed_report = match (&ports, &receipt) {
+                (Some(ports), Some(receipt)) => Some(
+                    ports
+                        .settlement_report(receipt)
+                        .await
+                        .map(summarize)
+                        .map_err(|error| format!("{error:?}")),
+                ),
+                _ => None,
+            };
+            observations.push(json!({
+                "attempt": format!("{attempt:?}"),
+                "settled": settled,
+                "receipt_outcome": receipt.as_ref().map(|receipt| match &receipt.outcome {
+                    TaskOutcome::InternalCompleted { .. } => "internal_completed",
+                    TaskOutcome::Completed { .. } => "completed",
+                    TaskOutcome::Failed { reason_kind } => reason_kind.as_str(),
+                }),
+                "retained_report": retained_report.map(summarize),
+                "observed_report": observed_report,
+            }));
+        }
+        Ok(observations)
+    }
+
     pub(crate) fn new(
         pool: Arc<PgPool>,
         ownership: GlobalOwnerCheck,
@@ -296,6 +417,24 @@ impl OwnedGlobalTaskFactory {
         Ok(Some(ports))
     }
 
+    #[cfg(all(test, feature = "root-llm-provider"))]
+    /// Test-only view of the actual host retained by `build` before admission.
+    /// Mirrors native Recipe dispatch custody; it creates no task or authority.
+    pub(crate) fn retained_host_for_test(
+        &self,
+        thread: &brassclaw_host_api::ThreadId,
+    ) -> Result<Option<Arc<MontyTaskHost>>, AgentLoopDriverError> {
+        let tasks = self.tasks()?;
+        let mut matching = tasks
+            .values()
+            .filter(|task| !task.settled && &task.host.run_context().thread_id == thread);
+        let host = matching.next().map(|task| task.host.clone());
+        if matching.next().is_some() {
+            return Err(failed("test_task_identity_ambiguous"));
+        }
+        Ok(host)
+    }
+
     #[cfg(test)]
     pub(crate) fn take_failed_settlement(
         &self,
@@ -389,6 +528,8 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             self.pool.clone(),
             context,
             host.attempt(),
+            host.claimed_run()
+                .map(|claimed| &claimed.state.source_binding_ref),
         )?);
         {
             let mut tasks = self.tasks()?;
@@ -409,6 +550,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                     host: host.clone(),
                     retention,
                     admission: admission.clone(),
+                    preparation: None,
                     ports: None,
                     receipt: None,
                     execution_report: None,
@@ -423,53 +565,117 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         // and a caller dropping this future. No registry lock crosses I/O.
         admission.persist_reservation().await?;
         let observation_admission = admission.clone();
-        let child = self
+        let preparation = if let Some(child) = self
             .catalogue
             .capture_child(host.clone(), admission.clone(), &input)
-            .await?;
-        let dependency_parent;
-        let ports = if let Some(child) = child {
-            if context.trusted_internal_turn || child.catalogue.catalogue_reference().is_none() {
-                return Err(failed("child_recipe_admission_invalid"));
-            }
-            input.entry = brassclaw_monty_host::service::TaskEntry::ChildRecipe;
-            dependency_parent = Some(child.dependency_parent);
-            GlobalRecipePorts::new(
-                host.clone(),
-                admission,
-                child.catalogue,
-                input.user_input.clone(),
-                self.ownership.clone(),
-                self.recipe_capacity.clone(),
-            )
-            .with_child_recipe(child.selected)
-            .map_err(|_| failed("child_recipe_admission_invalid"))?
+            .await?
+        {
+            CapturedTaskPreparation::Child(child)
+        } else if let Some(source) = self
+            .catalogue
+            .capture_internal(host.clone(), admission.clone(), &input)
+            .await?
+        {
+            CapturedTaskPreparation::Internal(source)
         } else {
-            dependency_parent = self.dependency_parent(&host, &input).await?;
-            let internal = self
-                .catalogue
-                .capture_internal(host.clone(), admission.clone(), &input)
-                .await?;
-            if let Some(source) = internal {
-                if !context.trusted_internal_turn || source.reference() != input.user_input {
+            if host.is_result_only_completion() {
+                return Err(failed("internal_recipe_source_unavailable"));
+            }
+            CapturedTaskPreparation::Ordinary(
+                self.catalogue
+                    .prepare(host.clone(), admission.clone(), &input)
+                    .await?,
+            )
+        };
+        // Keep the original selection even if a model/configuration await or
+        // the caller fails. Recovery never selects a newer view in its place.
+        {
+            let mut tasks = self.tasks()?;
+            let task = tasks
+                .get_mut(&host.attempt())
+                .ok_or_else(|| failed("monty_task_registry_failed"))?;
+            if task.preparation.is_some() {
+                return Err(failed("monty_task_preparation_conflict"));
+            }
+            task.preparation = Some(Arc::new(preparation));
+        }
+        let preparation = self
+            .tasks()?
+            .get(&host.attempt())
+            .and_then(|task| task.preparation.clone())
+            .ok_or_else(|| failed("monty_task_preparation_missing"))?;
+        // The captured source must expose its actual inspected definitions
+        // before model/source capture, never an empty placeholder catalogue.
+        if preparation.captured_programs()?.is_empty() {
+            return Err(failed("monty_task_preparation_empty"));
+        }
+        let parent_model_selection = match preparation.as_ref() {
+            CapturedTaskPreparation::Child(child) => {
+                Some(child.parent_model_selection.clone().unwrap_or_else(|| {
+                    Arc::new(brassclaw_turns::run_profile::InheritedUnavailableModelSelection)
+                }))
+            }
+            _ => None,
+        };
+        // Only the actual retained root workflow may declare capture without
+        // accepted prefix bindings. Children keep the original family, never
+        // recapture or refill it. This declaration is not dispatch qualification.
+        let root_workflow = match preparation.as_ref() {
+            CapturedTaskPreparation::Ordinary(captured) => captured.selected_workflow()?,
+            CapturedTaskPreparation::Internal(source) => source.captured_program(),
+            CapturedTaskPreparation::Child(_) => None,
+        };
+        crate::task_model_capture::capture_task_models(
+            &host,
+            &admission,
+            root_workflow.as_deref(),
+            parent_model_selection,
+        )
+        .await?;
+        let dependency_parent;
+        let ports = match preparation.as_ref() {
+            CapturedTaskPreparation::Child(child) => {
+                let child = child.bindings.bind().await?;
+                if context.trusted_internal_turn || child.catalogue.catalogue_reference().is_none()
+                {
+                    return Err(failed("child_recipe_admission_invalid"));
+                }
+                input.entry = brassclaw_monty_host::service::TaskEntry::ChildRecipe;
+                dependency_parent = Some(child.dependency_parent);
+                GlobalRecipePorts::new(
+                    host.clone(),
+                    admission,
+                    child.catalogue,
+                    input.user_input.clone(),
+                    self.ownership.clone(),
+                    self.recipe_capacity.clone(),
+                )
+                .with_child_recipe(child.selected)
+                .map_err(|_| failed("child_recipe_admission_invalid"))?
+            }
+            CapturedTaskPreparation::Internal(source) => {
+                dependency_parent = self.dependency_parent(&host, &input).await?;
+                if source.reference() != input.user_input {
                     return Err(failed("internal_recipe_admission_invalid"));
                 }
+                source
+                    .bind_native_runtimes()
+                    .map_err(|_| failed("internal_recipe_binding_failed"))?;
                 input.entry = brassclaw_monty_host::service::TaskEntry::InternalRecipe {
                     name: source.name().to_owned(),
                 };
                 GlobalRecipePorts::for_internal(
                     host.clone(),
                     admission,
-                    source,
+                    source.clone(),
                     Some(self.ownership.clone()),
                     false,
                     self.recipe_capacity.clone(),
                 )
-            } else {
-                let catalogue = self
-                    .catalogue
-                    .capture(host.clone(), admission.clone(), &input)
-                    .await?;
+            }
+            CapturedTaskPreparation::Ordinary(captured) => {
+                dependency_parent = self.dependency_parent(&host, &input).await?;
+                let catalogue = captured.bind(host.clone(), admission.clone()).await?;
                 GlobalRecipePorts::new(
                     host.clone(),
                     admission,
@@ -554,7 +760,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
     ) -> Result<(), AgentLoopDriverError> {
         let mut outcome = match &receipt.outcome {
             TaskOutcome::InternalCompleted { receipt_ref } => {
-                if !host.run_context().trusted_internal_turn
+                if !host.is_result_only_completion()
                     || host.finalized_reply_ref().is_some()
                     || !receipt.withheld.is_empty()
                     || host.has_withheld_results()

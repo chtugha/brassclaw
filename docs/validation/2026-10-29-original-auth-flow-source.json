@@ -1,0 +1,339 @@
+{
+  "format": "brassclaw-original-auth-flow-source-validation/1",
+  "status": "scoped-owner-acceptance-native-auth-workflow-incomplete",
+  "changed_sources": {
+    "crates/brassclaw_auth/src/ids.rs": {
+      "before": "2ecf1b3625254fe7a76c2b137fc32ab5d6b78ec38efbd91721e8bca08ac7dc39",
+      "after": "9a0166fc104914f3f115d142d7123b5f4aa84eed5f1e6e784491035a2bde99d1"
+    },
+    "crates/brassclaw_auth/src/lib.rs": {
+      "before": "3ac5efbedb20ba3ec24aa0e93c9d744f64bc56636621bab54ba42e98244d87c2",
+      "after": "846eb89cac942af02f5f5deef49c296b4afb2391cba910c4bdfdfe7f0cbd3dde"
+    },
+    "crates/brassclaw_auth/src/callback.rs": {
+      "before": "8462411db694355a18c9391e8d894849b87cd79540290887858a5ff217a1a044",
+      "after": "18ef4dfa1a4961b4cc5b6b418d3394200f98ea72d774f28f1f0ee50e3bf8d708"
+    },
+    "crates/brassclaw_auth/src/credential.rs": {
+      "before": "5b68987b443d035402c6c9b25a86f8be6584fd45ba047601758d23b36c455f1a",
+      "after": "060280b65db4e1ada076e25731d7728d7a27a4a496ce6036f292cbbef2365337"
+    },
+    "crates/brassclaw_auth/src/fakes.rs": {
+      "before": "dc0daa0692e176ab5e252b97393bfb29b8b3ecca1972a85f493f8e1e4e2ad684",
+      "after": "6e5c224c646d7ca61055741dd4ba9c9ff4398f81617888377595d56e88027a54"
+    },
+    "crates/brassclaw_auth/src/fakes_dcr.rs": {
+      "before": "9155478251777b37022f36542706786652e285d0da776eec87e2b899ac7c6559",
+      "after": "6bc1c8967fecf4d2ed3e68b7297a102e69b11b3596adec88e8fe48bd1fa268d7"
+    },
+    "crates/brassclaw_reborn_composition/src/auth_flow_custody.rs": {
+      "before": "bbf41e56cf25436e25b1df4964e9f6765ea207ce723dacd6d624232aa9375ae8",
+      "after": "b1b315dbf0deb69db0e0f4e17f0e04e78aae3d6bc0fe3908c563af0ba55b7a08"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_requirement.rs": {
+      "before": "08a99cfa1b0d15b59c59b9645a6afbef08137c2099052f200ae1ad6a88579267",
+      "after": "f787a65b148d117c1d116462387026ec51b397998cd408f0aae23bd1d6bf6b94"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs": {
+      "before": "f4644ff8d84735ba1d4162abbfdca918e64841796c348b54823477fa5a9f43e7",
+      "after": "7c9043add7d0d5144ea6b1c2e636043c38641942ef88049c56b4244b891ec99a"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_durable/accounts.rs": {
+      "before": "8b630ead311530ecb1e108c7ebd46c4b3d1b2d4472bde9fff88f2b6172850ce2",
+      "after": "e1f3ec72e4dede0832a8a0bdc6cb6243e2bb11b429eb521fe02719d074ddaed0"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_durable/requirement.rs": {
+      "before": "9a6123e65861f23e331f27de56de63c16864c2aab05f23410f3da056d665c399",
+      "after": "7c99741ea36612d75e7ff371a56f0d06b2534119a3d60655ace27eb414c11c46"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_durable/manual_requirement.rs": {
+      "before": "58ff1642fd4b75d79c39f0deeed3cee84d6ce0ad37f9bfcd4d742199d5fb22b5",
+      "after": "e351a73a4b8fe1342bd5e3caafda86671452012feeabb94e7333fd12895c5f54"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_durable/manual.rs": {
+      "before": "025631a3a482979dcb74a4af925e1a0a58222f1c28ed3ec3a7aec1c956c2b8c1",
+      "after": "4e3baa6f78fba6bf614eb6e8af45c66fb8a6f154171e6dc5bd748ae0ef39aac2"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_durable/callback.rs": {
+      "before": "20cc927beb755106ae2a8e94f544bd94ab09e193df9f0145c754445cf3ff47a8",
+      "after": "db9846a520c49c4f4ce610ddca84f16dc7a1fbdc53de634f6bd5b881bb34268a"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_durable/selection.rs": {
+      "before": "e2e1bdd15f13556f37a09fbb005a1c8f6a697bebeee13bce71255d139e27e527",
+      "after": "7f9f821509e53e95b183f9845ee3df03e1eed8910b0ccae44b61a31e79766a46"
+    },
+    "crates/brassclaw_auth/src/requirement.rs": {
+      "before": "017988b6d5fb3047f8b8470ffc69b42111172357ce820b96e10933ce53275f1a",
+      "after": "c18510a1d62b597cc17c00fee7229a5be11dac173d6f4529ee2e7679c638f889"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_manual.rs": {
+      "before": "316f825b329ad549eb24ac106c99aeb1c722a932653fcca28205f014d07a0ae1",
+      "after": "87426553119dddce647b4d203e4659b50e21a695beb6265e774a4ae9f8291e85"
+    },
+    "crates/brassclaw_reborn_composition/src/credential_requirement_custody_tests.rs": {
+      "before": "c84f9e4f36955ad428532e11d15ec21b6d433edd56df572d36bff4f904618d09",
+      "after": "11108a707bad86fe16665fad5d3fa3b54a9043e6236c291094ef013c32abffdc"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_requirement_tests.rs": {
+      "before": "7504656fe96c15a87f31a094e20ff3c4b240386e4df8f4d451919d17ee869fc4",
+      "after": "d4624f3dac8fff1c275d9bf6979e50c598ab49d2561f915d8ec72f2302b05c73"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_manual_tests.rs": {
+      "before": "323701ec229543405a19f62503d14414782fba40238ed3e4de80190c95eb1bfb",
+      "after": "bd66f278ab4a65ca61334ff574db9327271babb4c9399d4dcdde335b9e5c0f1c"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_durable/requirement_publication_tests.rs": {
+      "before": "692a0ce4bbbadf535fdab099c3a4acfdb3246cb9994cf82e2c02fff1142d1c9a",
+      "after": "2712880e00f75450664d8afbc5d782add44d526aa092727cfec7645cdbba09ac"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_durable/other_requirement_publication_tests.rs": {
+      "before": "7ec09746f0a272d4ee77af28a7f8fc13f19720afdf64d12e22758d52fb042a34",
+      "after": "9d31ed8d4560a1ec34ea605ee000e3662952d86365ee0017ecded375cbab4ca0"
+    },
+    "crates/brassclaw_auth/src/dcr.rs": {
+      "before": "f648756be56fb8747488dca6bb5c389508e78a53603aeac4a72e141f3dc76d74",
+      "after": "f765c5a22bc1030644907c4ea59ae6753b44858a49cab095e38028dca3a188cd"
+    },
+    "crates/brassclaw_auth/src/requirement_source.rs": {
+      "before": null,
+      "after": "86a6d68c119502d1631d13f65c480e10f07753ba618195523bc7c2ecf17d6f08"
+    }
+  },
+  "validation": {
+    "status": "passed",
+    "runner_pid": 16725,
+    "process_pid": null,
+    "results": [
+      {
+        "stage": "format-affected",
+        "exit_code": 0,
+        "seconds": 0.421127500012517,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "composition-image",
+        "exit_code": 0,
+        "seconds": 153.31589966616593,
+        "log_sha256": "d4c631ca199c33c0519dd757eea322afb6152c3678e8b4c1565af1077bbfd6e7"
+      },
+      {
+        "stage": "owner-group-1",
+        "exit_code": 0,
+        "seconds": 0.3568906248547137,
+        "log_sha256": "c1e3596bbff3cfd7ecc24c5ebc75132e3fe6939aa27f45b73d42a8ee2dd59211",
+        "passed": 3,
+        "group": "credential_requirement_custody_tests::",
+        "cases": [
+          "credential_requirement_custody_tests::absent_requirement_custody_preserves_historical_serialized_shape",
+          "credential_requirement_custody_tests::in_memory_original_flow_selection_survives_changed_head_without_latest_fallback",
+          "credential_requirement_custody_tests::in_memory_original_requirement_custody_rejects_reinterpretation"
+        ]
+      },
+      {
+        "stage": "owner-group-2",
+        "exit_code": 0,
+        "seconds": 12.14123341604136,
+        "log_sha256": "ec376a3f3028c99a17d5892ea4d1501846aa3d0d2ca98d88f29ecaa7a690d7cb",
+        "passed": 11,
+        "group": "product_auth_durable::tests::requirement_publication_tests::",
+        "cases": [
+          "product_auth_durable::tests::requirement_publication_tests::archived_v1_fs_original_keeps_its_result_without_inventing_a_binding",
+          "product_auth_durable::tests::requirement_publication_tests::memory_fs_original_flow_selection_survives_head_change_without_latest_fallback",
+          "product_auth_durable::tests::requirement_publication_tests::memory_fs_requirement_publication_recovers_originals_and_fences_competitors",
+          "product_auth_durable::tests::requirement_publication_tests::memory_fs_runtime_uses_exact_completed_requirement_without_account_substitution",
+          "product_auth_durable::tests::requirement_publication_tests::native_fs_original_flow_selection_survives_head_change_without_latest_fallback",
+          "product_auth_durable::tests::requirement_publication_tests::native_fs_requirement_publication_recovers_originals_and_fences_competitors",
+          "product_auth_durable::tests::requirement_publication_tests::native_fs_runtime_uses_exact_completed_requirement_without_account_substitution",
+          "product_auth_durable::tests::requirement_publication_tests::other::memory_fs_account_choice_retains_head_originals_and_cancellation_fence",
+          "product_auth_durable::tests::requirement_publication_tests::other::memory_fs_oauth_retains_head_originals_and_partial_effects",
+          "product_auth_durable::tests::requirement_publication_tests::other::native_fs_account_choice_retains_head_originals_and_cancellation_fence",
+          "product_auth_durable::tests::requirement_publication_tests::other::native_fs_oauth_retains_head_originals_and_partial_effects"
+        ]
+      },
+      {
+        "stage": "owner-group-3",
+        "exit_code": 0,
+        "seconds": 12.387308458099142,
+        "log_sha256": "3a1095240b9e740bece31a0325b5dfa894dd396bd4313adfbf24a960d5113f71",
+        "passed": 6,
+        "group": "pg_auth_product_services::requirement_tests::",
+        "cases": [
+          "pg_auth_product_services::requirement_tests::native_account_choice_competitors_cannot_complete_losing_originals",
+          "pg_auth_product_services::requirement_tests::native_account_choice_head_commits_with_original_and_recovers_after_lost_ack",
+          "pg_auth_product_services::requirement_tests::native_auth_wait_retains_pg_claim_on_resume_and_fences_missing_cancel_ack",
+          "pg_auth_product_services::requirement_tests::native_oauth_requirement_uses_retained_return_through_publication_failure",
+          "pg_auth_product_services::requirement_tests::native_pg_original_flow_selection_survives_head_change_without_latest_fallback",
+          "pg_auth_product_services::requirement_tests::native_runtime_requirement_selects_exact_account_and_authenticated_material"
+        ]
+      },
+      {
+        "stage": "owner-group-4",
+        "exit_code": 0,
+        "seconds": 70.41550954198465,
+        "log_sha256": "5f83b2a332358045adba69dbe219a112a17bea2eb024149a6f4ea2c6bdb7e806",
+        "passed": 29,
+        "group": "pg_auth_product_services::manual::tests::",
+        "cases": [
+          "pg_auth_product_services::manual::tests::native_dcr_oauth_requirement_handoff_keeps_target_head_and_callback_original",
+          "pg_auth_product_services::manual::tests::native_dcr_preparation_restores_expired_cancel_and_live_originals_without_replay",
+          "pg_auth_product_services::manual::tests::native_extension_adapter_keeps_original_target_expiry_and_secret_proof",
+          "pg_auth_product_services::manual::tests::native_extension_elapsed_expiry_reads_metadata_without_accepting_input",
+          "pg_auth_product_services::manual::tests::native_extension_requirement_binding_controls_readiness_and_original_recovery",
+          "pg_auth_product_services::manual::tests::native_google_private_client_and_pkce_survive_restart_callback_and_refresh",
+          "pg_auth_product_services::manual::tests::native_google_setup_preserves_original_identity_and_verifier",
+          "pg_auth_product_services::manual::tests::native_google_setup_recovers_actual_lost_insert_ack_without_new_pkce",
+          "pg_auth_product_services::manual::tests::native_manual_abandon_preserves_completed_publication_and_consumed_proof",
+          "pg_auth_product_services::manual::tests::native_manual_abandon_reconciles_real_committed_update_with_lost_commit_ack",
+          "pg_auth_product_services::manual::tests::native_manual_abandon_retains_canceled_disposition_without_account_effects",
+          "pg_auth_product_services::manual::tests::native_manual_actual_facade_never_recovers_a_changed_raw_input_as_latest_account",
+          "pg_auth_product_services::manual::tests::native_manual_cancellation_and_stale_bound_setup_cannot_publish_secrets",
+          "pg_auth_product_services::manual::tests::native_manual_flow_rejection_rolls_back_input_output_account_and_interaction",
+          "pg_auth_product_services::manual::tests::native_manual_independent_changed_inputs_publish_exactly_one_winner",
+          "pg_auth_product_services::manual::tests::native_manual_legacy_bound_interaction_uses_its_original_flow_snapshot",
+          "pg_auth_product_services::manual::tests::native_manual_lost_commit_recovers_original_without_reselecting_a_newer_account",
+          "pg_auth_product_services::manual::tests::native_manual_occupied_output_rolls_back_new_original_without_cleanup_or_overwrite",
+          "pg_auth_product_services::manual::tests::native_manual_original_survives_restart_acknowledgement_and_later_account_change",
+          "pg_auth_product_services::manual::tests::native_manual_requirement_competition_rolls_back_the_losing_whole_publication",
+          "pg_auth_product_services::manual::tests::native_manual_requirement_flow_failure_cannot_leave_a_published_selection",
+          "pg_auth_product_services::manual::tests::native_manual_requirement_publication_survives_commit_loss_and_later_selection",
+          "pg_auth_product_services::manual::tests::native_manual_setup_original_fences_pair_before_effects_and_reference_uses_confirmed_original",
+          "pg_auth_product_services::manual::tests::native_manual_setup_original_reconciles_actual_commit_loss_and_keeps_first_definition",
+          "pg_auth_product_services::manual::tests::native_manual_setup_recovery_reads_original_binding_without_new_setup_or_latest_account",
+          "pg_auth_product_services::manual::tests::native_manual_unbound_setup_never_overwrites_another_account_without_its_binding",
+          "pg_auth_product_services::manual::tests::native_manual_v1_original_keeps_its_historical_bound_scope_result",
+          "pg_auth_product_services::manual::tests::native_oauth_setup_original_keeps_custody_and_reconciles_insert_loss",
+          "pg_auth_product_services::manual::tests::native_original_requirement_custody_survives_reopen_and_rejects_reinterpretation"
+        ]
+      },
+      {
+        "stage": "owner-group-5",
+        "exit_code": 0,
+        "seconds": 49.18206391693093,
+        "log_sha256": "b65353e342edb9381bab2de78f6560b6f395280d5f21ceaaa81d8274b9ff9ac8",
+        "passed": 24,
+        "group": "product_auth_durable::tests::manual_publication_tests::",
+        "cases": [
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_memory_actual_facade_keeps_raw_proof_distinct_from_reference_continuation",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_memory_bound_snapshot_and_original_flow_legacy_proof",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_memory_cancellation_fences_original_decision_and_settles_chosen_writes",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_memory_extension_elapsed_expiry_keeps_metadata_and_effect_fences",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_memory_independent_same_and_changed_inputs_retain_one_original_result",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_memory_original_setup_cancellation_during_projection_never_resurrects",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_memory_original_setup_recovers_exact_write_boundaries_and_confirmed_reference",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_memory_reconciles_actual_lost_ack_at_every_write",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_memory_rejects_each_write_without_cleanup_or_reselection",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_native_actual_facade_keeps_raw_proof_distinct_from_reference_continuation",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_native_bound_snapshot_and_original_flow_legacy_proof",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_native_cancellation_fences_original_decision_and_settles_chosen_writes",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_native_extension_elapsed_expiry_keeps_metadata_and_effect_fences",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_native_independent_same_and_changed_inputs_retain_one_original_result",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_native_original_setup_cancellation_during_projection_never_resurrects",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_native_original_setup_recovers_exact_write_boundaries_and_confirmed_reference",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_native_reconciles_actual_lost_ack_at_every_write",
+          "product_auth_durable::tests::manual_publication_tests::manual_fs_native_rejects_each_write_without_cleanup_or_reselection",
+          "product_auth_durable::tests::manual_publication_tests::native_fs_dcr_oauth_requirement_handoff_keeps_target_head_and_callback_original",
+          "product_auth_durable::tests::manual_publication_tests::native_fs_dcr_preparation_restores_expired_cancel_and_live_originals_without_replay",
+          "product_auth_durable::tests::manual_publication_tests::native_fs_extension_requirement_binding_controls_readiness_and_original_recovery",
+          "product_auth_durable::tests::manual_publication_tests::native_fs_google_private_client_and_pkce_survive_restart_callback_and_refresh",
+          "product_auth_durable::tests::manual_publication_tests::native_fs_google_setup_preserves_original_identity_and_verifier",
+          "product_auth_durable::tests::manual_publication_tests::native_fs_oauth_setup_original_keeps_custody_and_reconciles_insert_loss"
+        ]
+      },
+      {
+        "stage": "composition-strict",
+        "exit_code": 0,
+        "seconds": 90.91169058298692,
+        "log_sha256": "7c4dc15de91937677e59ea866d1c701697661882090e625b61107a265eb7a990"
+      },
+      {
+        "stage": "composition-default-strict",
+        "exit_code": 0,
+        "seconds": 22.473756625084206,
+        "log_sha256": "daa6ba7038dca3af61e00fd1d401a2103ee214b207713a3fe739b4d1bec883bd"
+      },
+      {
+        "stage": "whitespace",
+        "exit_code": 0,
+        "seconds": 0.6155445829499513,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "scope": "Protected original Auth-flow encrypted-generation proof at first publication/choice, readonly original getters, no latest-backfill; real native PG and memory/native-backed RecordFS. Not native Auth-wait activation, family progression or full K3.",
+    "stage": "terminal",
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "reused_auth_checks": {
+      "source": "/private/tmp/brassclaw-original-flow-source-validation-20261029/run-2",
+      "source_sha256": "dca485e979f63397cf56c4460c8d04a286ea45ce48aa0c9fe415a541889d018b",
+      "checks": [
+        {
+          "stage": "auth-tests",
+          "exit_code": 0,
+          "seconds": 7.556805250002071,
+          "log_sha256": "0570f80943fc21ecd7304dbca7210d42df0495629ff82a2c6ea5b4c30a6c3cd8",
+          "passed": 120
+        },
+        {
+          "stage": "auth-strict",
+          "exit_code": 0,
+          "seconds": 2.546049833064899,
+          "log_sha256": "f1a5990c54267c4f8b241040fa35fb3d788cb7d2ee0807ccf51a10f564a89238"
+        }
+      ],
+      "applicability": "Only Composition source/test inputs changed; no Auth dependency or test input changed."
+    },
+    "image": {
+      "path": "/private/tmp/brassclaw-original-flow-source-validation-20261029/run-4/composition-tests",
+      "sha256": "d0ec4643b31932a24aa242b572309ce88d65c0aa09c455575c5f5471c7213389",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-f3f60267b1e4e468",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    },
+    "source_sha256": "af54b6a698b3593328722cf0e470dd6a1c13d207de446e174607982ef323ffc6",
+    "subject_sha256": "6cd3d6336e4f14d1415c255fa18a7991136a19fc5ae1f1ca745b6dc6ee3de4e0",
+    "passed": 73
+  },
+  "actual_distinct_cases": 193,
+  "fresh_composition_cases": 73,
+  "reused_unchanged_auth_cases": 120,
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-original-flow-source-validation-20261029/run-4/source.json",
+    "sha256": "af54b6a698b3593328722cf0e470dd6a1c13d207de446e174607982ef323ffc6"
+  },
+  "subject": {
+    "path": "/private/tmp/brassclaw-original-flow-source-validation-20261029/run-4/subject.json",
+    "sha256": "6cd3d6336e4f14d1415c255fa18a7991136a19fc5ae1f1ca745b6dc6ee3de4e0"
+  },
+  "root_inventory": {
+    "path": "/private/tmp/brassclaw-original-flow-source-20261029-i0zen17z/current-root-inputs-original-flow-source.json",
+    "sha256": "345ebe296bad2cac6d32891f9a73ebdb2b4d7f144369637230bbc460c96926a3",
+    "inputs": 139,
+    "predecessor": "/private/tmp/brassclaw-source-use-fence-20261029-adlsdui7/current-root-inputs-source-use-fence.json",
+    "predecessor_sha256": "749aa08f46255dae365a2658500b4da1187caa5102d2d0b023d507ec1c7579f4",
+    "scope": "Prior Root117 plus preserved Exact10 and this Auth/Composition24; not whole-repository acceptance."
+  },
+  "preserved_exact_contract": {
+    "path": "/Volumes/SSDE/brassclaw/docs/validation/2026-10-29-exact-prefix-input-binding.json",
+    "sha256": "759bb82b74bed755cad577c08464c9bb18c84ede1988fbd27ba2758b3517920d"
+  },
+  "failure_history": {
+    "run-1": "Auth compile rejected an omitted field in the Self initializer for retired DCR preparations. Constructor and adjacent pending-state guards corrected, no warning suppression.",
+    "run-2": "Auth120 tests and strict passed; Composition rejected too-private shared RecordFS capture helper. Its parent-module visibility was corrected.",
+    "run-3": "Composition compiled; the new absence fixture attempted Delete through an observing wrapper without that operation, and old archive fixture removed selection but retained the new proof. Absence now uses a distinct material-free account; corrupt proof remains explicitly rejected before the real historical shape is restored.",
+    "run-4": "All73 selected Composition owner cases and connected/default strict checks pass. Auth120/strict reused only after confirming their entire observed inputs unchanged; no second Cargo execution overlaps."
+  },
+  "limits": [
+    "Source proof identifies the generation observed at the original publication/choice, not an independent issuer-return/material-lineage guarantee or current eligibility.",
+    "Completed/staged historical absence stays absent; metadata fake fails source proof closed. No migration backfill or copied-reference authority.",
+    "No original task-family own-flow progression, refresh-input capture/continuation, native Auth-wait producer, aggregate multi-credential readiness or activated credential workflow.",
+    "No raw-handle consumer migration, new native GSuite/ToolSkill registration, durable recovery, complete global/UI/platform/release/deployment or full K3/Prefix completion."
+  ]
+}

@@ -172,6 +172,37 @@ async fn canonical_model_drafts_retain_typed_parse_model_reply_edges_and_reject_
     )
     .unwrap();
     schema.validate(&prompt).unwrap();
+    for tokens in [37, 79] {
+        let mut explicit = prompt.clone();
+        explicit["max_output_tokens"] = json!(tokens);
+        schema.validate(&explicit).unwrap();
+        let arguments = json!({"prompt":explicit});
+        assert_eq!(
+            program.bindings()["0:4"]
+                .bind_tool_arguments(&arguments, &arguments)
+                .unwrap(),
+            arguments
+        );
+    }
+    for invalid_setting in [
+        json!(null),
+        json!(0),
+        json!(-1),
+        json!(true),
+        json!(1.0),
+        json!("37"),
+        json!(u64::from(u32::MAX) + 1),
+    ] {
+        let mut invalid = prompt.clone();
+        invalid["max_output_tokens"] = invalid_setting;
+        assert!(schema.validate(&invalid).is_err());
+        let arguments = json!({"prompt":invalid});
+        assert!(
+            program.bindings()["0:4"]
+                .bind_tool_arguments(&arguments, &arguments)
+                .is_err()
+        );
+    }
     for invalid in [
         json!({"user_query":"missing history"}),
         json!({"user_query":null,"chat_history":[]}),

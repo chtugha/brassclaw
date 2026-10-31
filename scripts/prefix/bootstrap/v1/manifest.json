@@ -1,0 +1,10 @@
+{
+  "answer_schema": "brassclaw-bootstrap-answer/1",
+  "artifacts": {
+    "answer.schema.json": "1f893486ff764663f5d4144e2bae8ff1968d36d6f9215231b4e707b1b73dd530",
+    "extract_bootstrap_facts.txt": "82f2bf08aa66363cfd55a1df78ca924ff7e30902decaa45f62203896c405daad",
+    "select_bootstrap_prefill.txt": "8d8be57f90d6673b435428731575e20868c924dbd65112a8b3d7f95fdfd46d89",
+    "system.txt": "1d8e30e4adc755394d1ec05cb2ac99df1981994472a607152b3b95b15a04cedb"
+  },
+  "format": "brassclaw-bootstrap-prompts/1"
+}

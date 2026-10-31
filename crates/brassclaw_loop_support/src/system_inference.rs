@@ -119,18 +119,22 @@ impl GuardedSystemInferencePort {
 
 #[async_trait]
 impl SystemInferencePort for GuardedSystemInferencePort {
-    fn retain_model_selection(
+    async fn retain_model_selection(
         &self,
         request: &SystemInferenceRequest,
     ) -> Result<Option<Arc<dyn SystemInferencePort>>, SystemInferenceError> {
-        Ok(self.inner.retain_model_selection(request)?.map(|inner| {
-            Arc::new(Self {
-                inner,
-                run_context: self.run_context.clone(),
-                accountant: self.accountant.clone(),
-                policy_guard: self.policy_guard.clone(),
-            }) as Arc<dyn SystemInferencePort>
-        }))
+        Ok(self
+            .inner
+            .retain_model_selection(request)
+            .await?
+            .map(|inner| {
+                Arc::new(Self {
+                    inner,
+                    run_context: self.run_context.clone(),
+                    accountant: self.accountant.clone(),
+                    policy_guard: self.policy_guard.clone(),
+                }) as Arc<dyn SystemInferencePort>
+            }))
     }
 
     async fn call_system_inference(
@@ -147,7 +151,7 @@ impl SystemInferencePort for GuardedSystemInferencePort {
         Result<SystemInferenceResponse, SystemInferenceError>,
         ModelSubmission,
     ) {
-        let selected = match self.inner.retain_model_selection(&request) {
+        let selected = match self.inner.retain_model_selection(&request).await {
             Ok(selected) => selected,
             Err(error) => return (Err(error), ModelSubmission::NotSubmitted),
         };
@@ -223,7 +227,7 @@ impl<G> SystemInferencePort for ModelGatewayBackedSystemInferencePort<G>
 where
     G: HostManagedModelGateway + ?Sized,
 {
-    fn retain_model_selection(
+    async fn retain_model_selection(
         &self,
         request: &SystemInferenceRequest,
     ) -> Result<Option<Arc<dyn SystemInferencePort>>, SystemInferenceError> {
@@ -235,6 +239,7 @@ where
         let Some(gateway) = self
             .gateway
             .retain_model_selection(&model_request)
+            .await
             .map_err(|error| map_model_error(error.kind))?
         else {
             return Ok(None);

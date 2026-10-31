@@ -43,6 +43,7 @@ async fn dcr_challenge_errors_propagate_through_product_auth_provider() {
         .as_auth_challenge_provider()
         .expect("challenge provider");
     let requirements = vec![RuntimeCredentialAuthRequirement {
+        requirement: None,
         provider: RuntimeCredentialAccountProviderId::new("notion".to_string()).unwrap(),
         provider_scopes: Vec::new(),
         requester_extension: ExtensionId::new("notion-mcp".to_string()).unwrap(),
@@ -106,6 +107,7 @@ async fn dcr_registry_returns_none_for_zero_and_multiple_requirements() {
     let run_id = TurnRunId::new();
     let gate_ref = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
     let notion = RuntimeCredentialAuthRequirement {
+        requirement: None,
         provider: RuntimeCredentialAccountProviderId::new("notion".to_string()).unwrap(),
         provider_scopes: Vec::new(),
         requester_extension: ExtensionId::new("notion-mcp".to_string()).unwrap(),

@@ -15,7 +15,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -133,12 +135,12 @@ Boundary rule: if you need an upstream crate in a low-level crate, stop and chec
 | Crate | Load first | Owns / go here for | Avoid moving in |
 | --- | --- | --- | --- |
 | `brassclaw_trust` | `brassclaw_trust/AGENTS.md`, `brassclaw_trust/CLAUDE.md`, `brassclaw_trust/CONTRACT.md` | Host-controlled trust classes, policy sources, requested-vs-effective trust, invalidation. | Authorization grants, runtime dispatch, product workflow. |
-| `brassclaw_authorization` | `brassclaw_authorization/AGENTS.md`, `brassclaw_authorization/CLAUDE.md` | Grant matching, leases, dispatch/spawn authorization decisions, DB-backed auth state. | Execution, approvals, run-state persistence, prompting. |
-| `brassclaw_approvals` | `brassclaw_approvals/AGENTS.md`, `brassclaw_approvals/CLAUDE.md` | Exact-invocation approval requests, leases, resume coordination, approval events. | Reusable broad approvals or dispatch before fingerprinted lease claim. |
-| `brassclaw_run_state` | `brassclaw_run_state/AGENTS.md`, `brassclaw_run_state/CLAUDE.md` | Durable invocation state and approval request records. | Authorization policy, approval resolution, dispatch, runtime execution, process lifecycle. |
+| `brassclaw_authorization` | `brassclaw_authorization/AGENTS.md`, `brassclaw_authorization/CLAUDE.md` | Legacy/compatibility grant matching, leases and scoped dispatch/spawn decisions; migrate through the simplified-v3 policy/data owner, do not extend as v3 requirements. | Execution, approvals, run-state persistence, prompting. |
+| `brassclaw_approvals` | `brassclaw_approvals/AGENTS.md`, `brassclaw_approvals/CLAUDE.md` | Legacy/compatibility invocation approvals and leases; preserve existing consumers until coordinated cutover. These are not v3 Tool grants or authored component Q1/Q2. | New v3 invocation/run/attempt approvals; bypassing current kernel checks during migration. |
+| `brassclaw_run_state` | `brassclaw_run_state/AGENTS.md`, `brassclaw_run_state/CLAUDE.md` | Durable invocation/attempt fencing and legacy approval records; claims are not v3 Tool grants. | Authorization policy, approval resolution, dispatch, runtime execution, process lifecycle. |
 | `brassclaw_resources` | `brassclaw_resources/AGENTS.md`, `brassclaw_resources/CLAUDE.md` | Reservation, reconciliation, release, quota accounting. | Runtime dispatch, product workflow, hidden costed work without reservation. |
 | `brassclaw_auth` | `brassclaw_auth/AGENTS.md`, `brassclaw_auth/CLAUDE.md`, `docs/reborn/contracts/auth-product.md` | Product-facing Reborn auth-flow, secure interaction, credential account, provider exchange, continuation, cleanup contracts and fakes. | V1 route handlers/pending maps, durable secret storage, raw provider HTTP, runtime injection, extension lifecycle mutation. |
-| `brassclaw_runtime_policy` | `brassclaw_runtime_policy/AGENTS.md`, `brassclaw_runtime_policy/CLAUDE.md`, `docs/reborn/contracts/runtime-profiles.md` | Runtime profile resolver and runtime selection policy. | Runtime startup, action dispatch, product strategy outside selection. |
+| `brassclaw_runtime_policy` | `brassclaw_runtime_policy/AGENTS.md`, `brassclaw_runtime_policy/CLAUDE.md`, `docs/reborn/contracts/runtime-profiles.md` | Existing compatibility profile resolver/selection inventory; simplified-v3 Phases 2/3/6/8 own coordinated removal. Do not create new feature-role or per-run Tool grants. | Runtime startup, action dispatch, product strategy outside selection. |
 | `brassclaw_outbound` | `brassclaw_outbound/AGENTS.md`, `brassclaw_outbound/CLAUDE.md` | Metadata-only outbound egress policy, notification opt-in, projection subscription cursors, delivery attempt/status metadata. | Transport sends, concrete Slack/Telegram/Web payload validation, transcript/projection mutation. |
 | `brassclaw_hooks` | `brassclaw_hooks/CLAUDE.md`, `Cargo.toml`, `src/lib.rs` | Reborn loop hook framework: trust-tiered hook contracts, sealed decision sinks, predicates, ordering, dispatch, telemetry, and failure policy. | Authority grants, runtime-policy bypasses, ambient secrets/network/filesystem handles, extension installation. |
 

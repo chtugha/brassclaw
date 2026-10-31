@@ -21,8 +21,29 @@ use brassclaw_secrets::SecretStore;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 
-const DEFAULT_TIMEOUT_MS: u32 = 30_000;
-const DEFAULT_RESPONSE_BODY_LIMIT: u64 = 16 * 1024;
+/// Both OAuth protocol clients use the existing acknowledged host policy.
+/// A configured unavailable owner never falls back to local canonical defaults.
+pub(super) async fn acknowledged_oauth_limits(
+    source: Option<&Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
+) -> Result<brassclaw_host_api::MontyExecutionLimits, AuthProductError> {
+    let limits = match source {
+        Some(source) => {
+            let snapshot = source
+                .snapshot()
+                .await
+                .map_err(|_| AuthProductError::BackendUnavailable)?;
+            if snapshot.revision == 0 {
+                return Err(AuthProductError::BackendUnavailable);
+            }
+            snapshot.limits
+        }
+        None => brassclaw_host_api::MontyExecutionLimits::default(),
+    };
+    limits
+        .validate()
+        .map_err(|_| AuthProductError::BackendUnavailable)?;
+    Ok(limits)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExchangeScopePolicy {
@@ -66,6 +87,21 @@ pub(crate) trait OAuthClientMaterialSource: Send + Sync + fmt::Debug {
         &self,
         scope: &ResourceScope,
         flow_id: AuthFlowId,
+        refresh_secret: &SecretHandle,
+    ) -> Result<(), AuthProductError>;
+
+    /// Preserve the exact client registration when a provider rotates its
+    /// refresh secret. Static clients require no per-secret association.
+    async fn bind_rotated_refresh_material(
+        &self,
+        scope: &ResourceScope,
+        previous: &SecretHandle,
+        replacement: &SecretHandle,
+    ) -> Result<(), AuthProductError>;
+
+    async fn cleanup_refresh_material(
+        &self,
+        scope: &ResourceScope,
         refresh_secret: &SecretHandle,
     ) -> Result<(), AuthProductError>;
 
@@ -123,6 +159,23 @@ impl OAuthClientMaterialSource for StaticOAuthClientMaterialSource {
         Ok(())
     }
 
+    async fn bind_rotated_refresh_material(
+        &self,
+        _scope: &ResourceScope,
+        _previous: &SecretHandle,
+        _replacement: &SecretHandle,
+    ) -> Result<(), AuthProductError> {
+        Ok(())
+    }
+
+    async fn cleanup_refresh_material(
+        &self,
+        _scope: &ResourceScope,
+        _refresh_secret: &SecretHandle,
+    ) -> Result<(), AuthProductError> {
+        Ok(())
+    }
+
     async fn cleanup_exchange_material(
         &self,
         _scope: &ResourceScope,
@@ -142,8 +195,7 @@ pub(crate) struct HostOAuthProviderClient {
     static_client_material: Option<OAuthClientMaterial>,
     runtime: RuntimeKind,
     capability_id: CapabilityId,
-    timeout_ms: u32,
-    response_body_limit: u64,
+    primitive_settings: Option<Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
 }
 
 impl HostOAuthProviderClient {
@@ -175,8 +227,7 @@ impl HostOAuthProviderClient {
             static_client_material: Some(material),
             runtime: RuntimeKind::System,
             capability_id,
-            timeout_ms: DEFAULT_TIMEOUT_MS,
-            response_body_limit: DEFAULT_RESPONSE_BODY_LIMIT,
+            primitive_settings: None,
         })
     }
 
@@ -199,9 +250,19 @@ impl HostOAuthProviderClient {
             static_client_material: None,
             runtime: RuntimeKind::System,
             capability_id,
-            timeout_ms: DEFAULT_TIMEOUT_MS,
-            response_body_limit: DEFAULT_RESPONSE_BODY_LIMIT,
+            primitive_settings: None,
         })
+    }
+
+    /// Native composition supplies the same acknowledged owner used by Monty.
+    /// Host-only local-dev composition has no such owner and uses canonical
+    /// defaults. A configured but unavailable owner never falls back.
+    pub(crate) fn with_primitive_settings_source(
+        mut self,
+        source: Option<Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
+    ) -> Self {
+        self.primitive_settings = source;
+        self
     }
 
     pub(crate) fn with_client_secret(mut self, client_secret: SecretString) -> Self {
@@ -224,7 +285,12 @@ impl HostOAuthProviderClient {
         refresh_request: bool,
     ) -> Result<OAuthTokenResponse, AuthProductError> {
         let token_host = oauth_endpoint_host(token_endpoint)?;
-        let policy = oauth_network_policy(&token_host, self.response_body_limit);
+        // Capture one coherent, acknowledged revision before any network effect.
+        // Authorizing/waiting below cannot mix a newer timeout with older bytes.
+        let limits = acknowledged_oauth_limits(self.primitive_settings.as_ref()).await?;
+        let timeout_ms = limits.oauth_token_timeout_millis;
+        let response_body_limit = limits.oauth_token_response_body_bytes;
+        let policy = oauth_network_policy(&token_host, response_body_limit);
         authorize_oauth_egress(
             Arc::clone(&self.obligation_handler),
             &scope,
@@ -250,9 +316,9 @@ impl HostOAuthProviderClient {
                 body,
                 network_policy: policy,
                 credential_injections: Vec::<RuntimeCredentialInjection>::new(),
-                response_body_limit: Some(self.response_body_limit),
+                response_body_limit: Some(response_body_limit),
                 save_body_to: None,
-                timeout_ms: Some(self.timeout_ms),
+                timeout_ms: Some(timeout_ms),
             })
             .await
             .map_err(|_| AuthProductError::BackendUnavailable)?;
@@ -280,50 +346,36 @@ impl HostOAuthProviderClient {
     async fn store_tokens(
         &self,
         scope: ResourceScope,
-        flow_id: AuthFlowId,
+        destinations: TokenDestinations,
         tokens: OAuthTokenResponse,
+        request_started_at: brassclaw_auth::Timestamp,
     ) -> Result<StoredOAuthTokens, AuthProductError> {
-        let access_secret =
-            exchange_token_handle(&self.spec, flow_id, scope.invocation_id, "access")?;
-        let refresh_secret = tokens
-            .refresh_token
-            .as_ref()
-            .map(|_| exchange_token_handle(&self.spec, flow_id, scope.invocation_id, "refresh"))
-            .transpose()?;
-        self.store_token_pair(scope, access_secret, refresh_secret, tokens)
-            .await
+        let access_expires_at = access_deadline(request_started_at, tokens.expires_in_seconds)?;
+        let refresh_secret = tokens.refresh_token.as_ref().map(|_| destinations.refresh);
+        self.store_token_pair(
+            scope,
+            destinations.access,
+            refresh_secret,
+            tokens,
+            access_expires_at,
+        )
+        .await
     }
 
     async fn load_refresh_token(
         &self,
-        scope: &ResourceScope,
-        handle: &SecretHandle,
+        source: &brassclaw_auth::OAuthRefreshSource,
     ) -> Result<SecretString, AuthProductError> {
         let lease = self
             .secret_store
-            .lease_once(scope, handle)
+            .lease_once_if_record_reference(&source.scope, &source.handle, &source.record_reference)
             .await
-            .map_err(map_refresh_secret_error)?;
+            .map_err(map_refresh_secret_error)?
+            .ok_or(AuthProductError::BackendConflict)?;
         self.secret_store
-            .consume(scope, lease.id)
+            .consume(&source.scope, lease.id)
             .await
             .map_err(map_refresh_secret_error)
-    }
-
-    async fn store_refreshed_tokens(
-        &self,
-        scope: ResourceScope,
-        account_id: CredentialAccountId,
-        tokens: OAuthTokenResponse,
-    ) -> Result<StoredOAuthTokens, AuthProductError> {
-        let access_secret = refresh_token_handle(&self.spec, account_id, "access")?;
-        let refresh_secret = tokens
-            .refresh_token
-            .as_ref()
-            .map(|_| refresh_token_handle(&self.spec, account_id, "refresh"))
-            .transpose()?;
-        self.store_token_pair(scope, access_secret, refresh_secret, tokens)
-            .await
     }
 
     async fn store_token_pair(
@@ -332,10 +384,16 @@ impl HostOAuthProviderClient {
         access_secret: SecretHandle,
         refresh_secret: Option<SecretHandle>,
         tokens: OAuthTokenResponse,
+        access_expires_at: Option<brassclaw_auth::Timestamp>,
     ) -> Result<StoredOAuthTokens, AuthProductError> {
         let refresh_token = tokens.refresh_token;
         self.secret_store
-            .put(scope.clone(), access_secret.clone(), tokens.access_token)
+            .put_with_expiry(
+                scope.clone(),
+                access_secret.clone(),
+                tokens.access_token,
+                access_expires_at,
+            )
             .await
             .map_err(map_secret_store_error)?;
         let refresh_secret = match (refresh_secret, refresh_token) {
@@ -362,7 +420,34 @@ impl HostOAuthProviderClient {
         Ok(StoredOAuthTokens {
             access_secret,
             refresh_secret,
+            access_expires_at,
         })
+    }
+
+    async fn cleanup_unpublished_tokens(
+        &self,
+        scope: &ResourceScope,
+        tokens: &StoredOAuthTokens,
+    ) -> Result<(), AuthProductError> {
+        let mut handles = vec![tokens.access_secret.clone()];
+        handles.extend(tokens.refresh_secret.clone());
+        let token_cleanup = self.delete_tokens(scope, &handles).await;
+        let material_cleanup = match &tokens.refresh_secret {
+            Some(handle) => {
+                self.client_material
+                    .cleanup_refresh_material(scope, handle)
+                    .await
+            }
+            None => Ok(()),
+        };
+        if let Err(error) = &token_cleanup {
+            tracing::debug!(code = ?error.code(), "Unpublished OAuth token cleanup failed");
+        }
+        if let Err(error) = &material_cleanup {
+            tracing::debug!(code = ?error.code(), "Unpublished OAuth client-material cleanup failed");
+        }
+        token_cleanup?;
+        material_cleanup
     }
 
     async fn delete_tokens(
@@ -390,14 +475,68 @@ impl fmt::Debug for HostOAuthProviderClient {
             .field("client_material", &self.client_material)
             .field("runtime", &self.runtime)
             .field("capability_id", &self.capability_id)
-            .field("timeout_ms", &self.timeout_ms)
-            .field("response_body_limit", &self.response_body_limit)
+            .field("acknowledged_settings", &self.primitive_settings.is_some())
             .finish()
     }
 }
 
 #[async_trait]
 impl AuthProviderClient for HostOAuthProviderClient {
+    async fn prepare_callback(
+        &self,
+        context: &brassclaw_auth::OAuthProviderExchangeContext,
+        request: &brassclaw_auth::OAuthProviderCallbackRequest,
+    ) -> Result<brassclaw_auth::OAuthTokenDestinations, AuthProductError> {
+        validate_provider_callback_request(request)?;
+        if request.provider.as_str() != self.spec.provider_id || context.scope.resource.is_system()
+        {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        let destinations = TokenDestinations::exchange(
+            &self.spec,
+            context.flow_id,
+            context.scope.resource.invocation_id,
+        )?;
+        Ok(brassclaw_auth::OAuthTokenDestinations {
+            access_secret: destinations.access,
+            refresh_secret: destinations.refresh,
+        })
+    }
+
+    async fn prepare_refresh(
+        &self,
+        request: &OAuthProviderRefreshRequest,
+    ) -> Result<brassclaw_auth::OAuthProviderRefreshPreparation, AuthProductError> {
+        if request.provider.as_str() != self.spec.provider_id || request.scope.resource.is_system()
+        {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        let destinations = TokenDestinations::refresh(
+            &self.spec,
+            request.account_id,
+            request.refresh_id.as_uuid(),
+        )?;
+        let record_reference = self
+            .secret_store
+            .record_reference(&request.scope.resource, &request.refresh_secret)
+            .await
+            .map_err(map_refresh_secret_error)?
+            .ok_or(AuthProductError::CredentialMissing)?;
+        let source = brassclaw_auth::OAuthRefreshSource {
+            scope: request.scope.resource.clone(),
+            handle: request.refresh_secret.clone(),
+            record_reference,
+        };
+        source.verify(request)?;
+        Ok(brassclaw_auth::OAuthProviderRefreshPreparation {
+            destinations: brassclaw_auth::OAuthTokenDestinations {
+                access_secret: destinations.access,
+                refresh_secret: destinations.refresh,
+            },
+            source,
+        })
+    }
+
     async fn exchange_callback(
         &self,
         context: OAuthProviderExchangeContext,
@@ -411,6 +550,8 @@ impl AuthProviderClient for HostOAuthProviderClient {
         if callback_scope.is_system() {
             return Err(AuthProductError::CrossScopeDenied);
         }
+        let destinations =
+            TokenDestinations::exchange(&self.spec, context.flow_id, callback_scope.invocation_id)?;
         let material = self
             .client_material
             .exchange_material(&callback_scope, context.flow_id)
@@ -423,6 +564,7 @@ impl AuthProviderClient for HostOAuthProviderClient {
             request.authorization_code.expose_secret(),
             request.pkce_verifier.expose_secret(),
         );
+        let request_started_at = chrono::Utc::now();
         let token_response = self
             .execute_token_request(
                 callback_scope.clone(),
@@ -433,12 +575,33 @@ impl AuthProviderClient for HostOAuthProviderClient {
             .await?;
         let scopes = scopes_for_exchange(&self.spec, &token_response, &request.scopes)?;
         let stored_tokens = self
-            .store_tokens(callback_scope, context.flow_id, token_response)
+            .store_tokens(
+                callback_scope,
+                destinations,
+                token_response,
+                request_started_at,
+            )
             .await?;
-        if let Some(refresh_secret) = &stored_tokens.refresh_secret {
-            self.client_material
+        if let Some(refresh_secret) = &stored_tokens.refresh_secret
+            && let Err(error) = self
+                .client_material
                 .bind_refresh_material(&context.scope.resource, context.flow_id, refresh_secret)
-                .await?;
+                .await
+        {
+            tracing::debug!(code = ?error.code(), "Initial OAuth client binding failed before account publication");
+            let token_cleanup = self
+                .cleanup_unpublished_tokens(&context.scope.resource, &stored_tokens)
+                .await;
+            let flow_cleanup = self
+                .client_material
+                .cleanup_exchange_material(&context.scope.resource, context.flow_id)
+                .await;
+            if let Err(cleanup_error) = &flow_cleanup {
+                tracing::debug!(code = ?cleanup_error.code(), "Unpublished OAuth flow-material cleanup failed");
+            }
+            token_cleanup?;
+            flow_cleanup?;
+            return Err(error);
         }
 
         Ok(OAuthProviderExchange {
@@ -447,6 +610,7 @@ impl AuthProviderClient for HostOAuthProviderClient {
             authorization_code_hash: request.authorization_code_hash,
             pkce_verifier_hash: request.pkce_verifier_hash,
             access_secret: stored_tokens.access_secret,
+            access_expires_at: stored_tokens.access_expires_at,
             refresh_secret: stored_tokens.refresh_secret,
             scopes,
             account_id: None,
@@ -456,17 +620,27 @@ impl AuthProviderClient for HostOAuthProviderClient {
     async fn refresh_token(
         &self,
         request: OAuthProviderRefreshRequest,
+        preparation: brassclaw_auth::OAuthProviderRefreshPreparation,
     ) -> Result<OAuthProviderRefresh, AuthProductError> {
         if request.provider.as_str() != self.spec.provider_id {
             return Err(AuthProductError::RefreshFailed);
         }
+        preparation.source.verify(&request)?;
         let refresh_scope = request.scope.resource.clone();
         if refresh_scope.is_system() {
             return Err(AuthProductError::CrossScopeDenied);
         }
-        let refresh_token = self
-            .load_refresh_token(&refresh_scope, &request.refresh_secret)
-            .await?;
+        let targets = TokenDestinations::refresh(
+            &self.spec,
+            request.account_id,
+            request.refresh_id.as_uuid(),
+        )?;
+        if targets.access != preparation.destinations.access_secret
+            || targets.refresh != preparation.destinations.refresh_secret
+        {
+            return Err(AuthProductError::BackendConflict);
+        }
+        let refresh_token = self.load_refresh_token(&preparation.source).await?;
         let material = self
             .client_material
             .refresh_material(&refresh_scope, &request.refresh_secret)
@@ -477,16 +651,41 @@ impl AuthProviderClient for HostOAuthProviderClient {
             material.client_secret.as_ref(),
             refresh_token.expose_secret(),
         );
+        let request_started_at = chrono::Utc::now();
         let token_response = self
             .execute_token_request(refresh_scope.clone(), &material.token_endpoint, body, true)
             .await?;
         let scopes = scopes_for_refresh(&token_response, &request.scopes);
         let stored_tokens = self
-            .store_refreshed_tokens(refresh_scope, request.account_id, token_response)
-            .await?;
+            .store_tokens(
+                refresh_scope.clone(),
+                targets,
+                token_response,
+                request_started_at,
+            )
+            .await
+            .map_err(|error| match error {
+                AuthProductError::TokenExchangeFailed => AuthProductError::RefreshFailed,
+                error => error,
+            })?;
+        if let Some(replacement) = &stored_tokens.refresh_secret
+            && let Err(error) = self
+                .client_material
+                .bind_rotated_refresh_material(&refresh_scope, &request.refresh_secret, replacement)
+                .await
+        {
+            // These fresh handles have not been returned or published to
+            // an account. Cleanup cannot delete another refresh's tokens.
+            tracing::debug!(code = ?error.code(), "Rotated OAuth client binding failed before account publication");
+            self.cleanup_unpublished_tokens(&refresh_scope, &stored_tokens)
+                .await?;
+            return Err(error);
+        }
+
         Ok(OAuthProviderRefresh {
             provider: request.provider,
             access_secret: stored_tokens.access_secret,
+            access_expires_at: stored_tokens.access_expires_at,
             refresh_secret: stored_tokens.refresh_secret,
             scopes,
         })
@@ -510,10 +709,55 @@ impl AuthProviderClient for HostOAuthProviderClient {
     }
 }
 
+struct TokenDestinations {
+    access: SecretHandle,
+    refresh: SecretHandle,
+}
+impl TokenDestinations {
+    fn refresh(
+        spec: &HostOAuthProviderSpec,
+        account_id: CredentialAccountId,
+        write_id: uuid::Uuid,
+    ) -> Result<Self, AuthProductError> {
+        Ok(Self {
+            access: refresh_token_handle(spec, account_id, write_id, "access")?,
+            refresh: refresh_token_handle(spec, account_id, write_id, "refresh")?,
+        })
+    }
+    fn exchange(
+        spec: &HostOAuthProviderSpec,
+        flow_id: AuthFlowId,
+        invocation_id: brassclaw_host_api::InvocationId,
+    ) -> Result<Self, AuthProductError> {
+        Ok(Self {
+            access: exchange_token_handle(spec, flow_id, invocation_id, "access")?,
+            refresh: exchange_token_handle(spec, flow_id, invocation_id, "refresh")?,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StoredOAuthTokens {
     access_secret: SecretHandle,
     refresh_secret: Option<SecretHandle>,
+    access_expires_at: Option<brassclaw_auth::Timestamp>,
+}
+
+fn access_deadline(
+    request_started_at: brassclaw_auth::Timestamp,
+    expires_in_seconds: Option<u64>,
+) -> Result<Option<brassclaw_auth::Timestamp>, AuthProductError> {
+    let Some(seconds) = expires_in_seconds else {
+        return Ok(None);
+    };
+    let duration = i64::try_from(seconds)
+        .ok()
+        .and_then(chrono::Duration::try_seconds)
+        .ok_or(AuthProductError::TokenExchangeFailed)?;
+    request_started_at
+        .checked_add_signed(duration)
+        .map(Some)
+        .ok_or(AuthProductError::TokenExchangeFailed)
 }
 
 #[derive(Debug, Deserialize)]
@@ -524,10 +768,18 @@ struct TokenResponseBody {
     refresh_token: Option<SecretString>,
     #[serde(default)]
     scope: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_lifetime_seconds")]
     expires_in: Option<u64>,
     #[serde(default)]
     token_type: Option<String>,
+}
+
+fn deserialize_lifetime_seconds<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<u64>, D::Error> {
+    // Missing is unknown. An explicitly supplied value must be a JSON integer;
+    // null must not silently turn a finite/invalid response into unknown expiry.
+    u64::deserialize(deserializer).map(Some)
 }
 
 fn parse_token_response(body: &[u8]) -> Result<OAuthTokenResponse, AuthProductError> {
@@ -637,10 +889,11 @@ fn exchange_token_handle(
 fn refresh_token_handle(
     spec: &HostOAuthProviderSpec,
     account_id: CredentialAccountId,
+    write_id: uuid::Uuid,
     token_kind: &'static str,
 ) -> Result<SecretHandle, AuthProductError> {
     SecretHandle::new(format!(
-        "{}-oauth-refresh-{token_kind}-{account_id}",
+        "{}-oauth-refresh-{token_kind}-{account_id}-{write_id}",
         spec.secret_handle_prefix
     ))
     .map_err(|_| AuthProductError::BackendUnavailable)

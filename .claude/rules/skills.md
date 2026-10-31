@@ -19,7 +19,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -67,9 +69,15 @@ the remote catalog, the gating/scoring/selection/attenuation pipeline, the
 first-party tools, the `skill_install` / `skill_remove` lifecycle commands, the "Skill
 Packages" WebUI tab, and the repo-root `skills/` directory have all been removed.
 
-Do not reintroduce a filesystem skill-loading path. Authoring a skill means inserting a
-class-1/2/3 row through the component pipeline (Q1 automated → Q2 human review), or
-seeding it as `source = "system"` in `builtin_bootstrap.rs`.
+Do not reintroduce a filesystem skill-loading path. Installed-instance authoring
+uses the supported immutable component/association pipeline with Q1, behavioral
+evidence and human Q2 before coherent activation. First-party installation seeds
+use the installation-owned `system_seed` bootstrap with noncircular review,
+Q1/integrity and behavioral evidence; no extra installed-instance human Q2 is
+required. A `source = "system"` label or row insertion supplies none of that evidence.
+Retaining a revision, approving a combination, publishing a catalogue and actual
+Tool dispatch are separate operations. Preserve old revisions, overrides and
+selected tasks when shipping successors; follow [the approval contract](../../skills.md#exact-version-association-approval-evidence).
 
 ## What This Crate Still Owns
 

@@ -15,7 +15,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -309,6 +311,16 @@ pub struct TurnRoutingSignals {
 ---
 
 ### 0.7 Current Turn Pipeline
+
+This is a historical Rust-loop pipeline observation, not the target prompt
+assembly sequence. All model consumers follow the
+[four binding rules](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26):
+immutable finished pair-specific prefix; one saved accepted pair design shared
+by generator, Kohai and same-pair Sempai; Kohai formats the dynamic prompt before
+optional Sempai correction; Sempai uses its own generated reviewer prefix/design
+and returns the final dynamic prompt; Kohai then inserts the intended prefix
+unchanged exactly once, without formatting the return again. The old stage names
+below do not authorize review-before-format or whole-prefix runtime rendering.
 
 ```
 1.  CheckpointStage     — cancel-check

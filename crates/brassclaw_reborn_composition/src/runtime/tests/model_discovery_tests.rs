@@ -359,7 +359,7 @@ async fn native_model_discovery_uses_explicit_endpoint_policy_and_atomic_credent
         .upsert_provider(
             caller.clone(),
             serde_json::from_value(json!({
-                "id":"openai","expected_revision":before.revision,"adapter":"open_ai_completions",
+                "mutation_id":uuid::Uuid::new_v4(),"id":"openai","expected_revision":before.revision,"adapter":"open_ai_completions",
                 "model_discovery":{"timeout_secs":3,"max_response_bytes":4096}
             }))
             .unwrap(),

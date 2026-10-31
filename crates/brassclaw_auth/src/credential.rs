@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, sync::Arc, sync::Mutex};
+use std::{collections::HashMap, fmt, sync::Arc, sync::Mutex, sync::Weak};
 
 use async_trait::async_trait;
 use brassclaw_host_api::{
@@ -10,7 +10,7 @@ use tokio::sync::OwnedMutexGuard;
 use crate::{
     AuthProductError, AuthProviderClient, CredentialAccountId, CredentialAccountLabel,
     OAuthProviderRefreshRequest, ProviderScope, Timestamp, ids::AuthProviderId,
-    scope::AuthProductScope, scope_matches,
+    scope::AuthProductScope,
 };
 
 /// Credential account status projected to product surfaces.
@@ -49,6 +49,8 @@ pub struct CredentialAccount {
     pub owner_extension: Option<ExtensionId>,
     pub granted_extensions: Vec<ExtensionId>,
     pub access_secret: Option<SecretHandle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_expires_at: Option<Timestamp>,
     pub refresh_secret: Option<SecretHandle>,
     pub scopes: Vec<ProviderScope>,
     pub created_at: Timestamp,
@@ -76,6 +78,7 @@ impl fmt::Debug for CredentialAccount {
                 &self.refresh_secret.as_ref().map(|_| "[REDACTED]"),
             )
             .field("scopes", &self.scopes)
+            .field("access_expires_at", &self.access_expires_at)
             .field("created_at", &self.created_at)
             .field("updated_at", &self.updated_at)
             .finish()
@@ -83,14 +86,40 @@ impl fmt::Debug for CredentialAccount {
 }
 
 impl CredentialAccount {
+    /// Wall-clock eligibility is a read projection. It must never change the
+    /// raw snapshot used to fence refresh/publication against concurrent edits.
+    pub fn effective_status_at(&self, now: Timestamp) -> CredentialAccountStatus {
+        if self.status == CredentialAccountStatus::Configured
+            && self.access_expires_at.is_some_and(|expiry| expiry <= now)
+        {
+            CredentialAccountStatus::Expired
+        } else {
+            self.status
+        }
+    }
+
+    pub fn effective_status(&self) -> CredentialAccountStatus {
+        self.effective_status_at(chrono::Utc::now())
+    }
+    /// Exact metadata snapshot identity, never an auth grant or a secret value.
+    pub fn snapshot_ref(&self) -> Result<crate::CredentialAccountSnapshotRef, AuthProductError> {
+        let bytes = serde_json::to_vec(self).map_err(|_| AuthProductError::BackendUnavailable)?;
+        crate::CredentialAccountSnapshotRef::new(brassclaw_common::hashing::sha256_hex(&bytes))
+    }
+
     pub fn projection(&self) -> CredentialAccountProjection {
+        self.projection_at(chrono::Utc::now())
+    }
+
+    pub fn projection_at(&self, now: Timestamp) -> CredentialAccountProjection {
         let secret_handle_count =
             self.access_secret.iter().count() + self.refresh_secret.iter().count();
         CredentialAccountProjection {
             id: self.id,
             provider: self.provider.clone(),
             label: self.label.clone(),
-            status: self.status,
+            status: self.effective_status_at(now),
+            access_expires_at: self.access_expires_at,
             ownership: self.ownership,
             owner_extension: self.owner_extension.clone(),
             granted_extensions: self.granted_extensions.clone(),
@@ -120,6 +149,8 @@ pub struct CredentialAccountProjection {
     pub provider: AuthProviderId,
     pub label: CredentialAccountLabel,
     pub status: CredentialAccountStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_expires_at: Option<Timestamp>,
     pub ownership: CredentialOwnership,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_extension: Option<ExtensionId>,
@@ -420,6 +451,7 @@ impl CredentialAccountChoiceRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CredentialRefreshRequest {
+    pub id: crate::CredentialRefreshId,
     pub scope: AuthProductScope,
     pub provider: AuthProviderId,
     pub account_id: CredentialAccountId,
@@ -433,11 +465,18 @@ impl CredentialRefreshRequest {
         account_id: CredentialAccountId,
     ) -> Self {
         Self {
+            id: crate::CredentialRefreshId::new(),
             scope,
             provider,
             account_id,
             requester_extension: None,
         }
+    }
+
+    /// Reuse the exact original operation on a transport retry or readback.
+    pub fn with_id(mut self, id: crate::CredentialRefreshId) -> Self {
+        self.id = id;
+        self
     }
 
     pub fn for_extension(mut self, extension_id: ExtensionId) -> Self {
@@ -451,6 +490,8 @@ impl CredentialRefreshRequest {
 /// strings, secret handles, or provider response bodies.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CredentialRefreshReport {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original: Option<crate::CredentialRefreshReceipt>,
     pub account: CredentialAccountProjection,
     pub recovery: CredentialRecoveryProjection,
     pub refreshed: bool,
@@ -467,6 +508,7 @@ pub struct NewCredentialAccount {
     pub owner_extension: Option<ExtensionId>,
     pub granted_extensions: Vec<ExtensionId>,
     pub access_secret: Option<SecretHandle>,
+    pub access_expires_at: Option<Timestamp>,
     pub refresh_secret: Option<SecretHandle>,
     pub scopes: Vec<ProviderScope>,
 }
@@ -578,6 +620,52 @@ impl CredentialAccountOwnerScope {
 /// layers decide which account, provider, or requester policy to apply.
 #[async_trait]
 pub trait CredentialAccountRecordSource: Send + Sync {
+    /// Read one original account location without choosing by label/recency.
+    /// This host metadata port grants no runtime or external-service access.
+    async fn account_record(
+        &self,
+        _scope: &AuthProductScope,
+        _account: CredentialAccountId,
+    ) -> Result<Option<CredentialAccount>, AuthProductError> {
+        Err(AuthProductError::BackendUnavailable)
+    }
+
+    /// Canonical requirement/account metadata in this same Auth owner. A
+    /// read neither selects another account nor grants secret access.
+    async fn requirement_selection(
+        &self,
+        _scope: &AuthProductScope,
+        _requirement: &brassclaw_host_api::RuntimeCredentialAccountRequirement,
+    ) -> Result<Option<crate::CredentialRequirementSelection>, AuthProductError> {
+        Err(AuthProductError::BackendUnavailable)
+    }
+
+    /// Read the protected selection from this exact original completed flow,
+    /// independently of a later requirement-head/account-choice change. This
+    /// returns historical metadata, not current eligibility, an encrypted
+    /// generation, task-family lineage or runtime access. Unsupported owners
+    /// reject; callers must never substitute the current selection on failure.
+    async fn requirement_selection_for_flow(
+        &self,
+        _scope: &AuthProductScope,
+        _flow: crate::AuthFlowId,
+        _requirement: &brassclaw_host_api::RuntimeCredentialAccountRequirement,
+    ) -> Result<Option<crate::CredentialRequirementSelection>, AuthProductError> {
+        Err(AuthProductError::BackendUnavailable)
+    }
+
+    /// Protected generation captured with this original completed flow's own
+    /// selection. Historical missing proof is not read-latest authority. This
+    /// metadata grants no material, live eligibility or task-family ownership.
+    async fn requirement_source_for_flow(
+        &self,
+        _scope: &AuthProductScope,
+        _flow: crate::AuthFlowId,
+        _requirement: &brassclaw_host_api::RuntimeCredentialAccountRequirement,
+    ) -> Result<Option<crate::CredentialRequirementSource>, AuthProductError> {
+        Err(AuthProductError::BackendUnavailable)
+    }
+
     async fn accounts_for_owner(
         &self,
         scope: &AuthProductScope,
@@ -593,7 +681,7 @@ pub trait CredentialAccountRecordSource: Send + Sync {
             .into_iter()
             .filter(|account| {
                 account.provider == request.provider
-                    && account.status == CredentialAccountStatus::Configured
+                    && account.effective_status() == CredentialAccountStatus::Configured
             })
             .collect::<Vec<_>>();
         if configured.is_empty() {
@@ -615,6 +703,36 @@ pub trait CredentialAccountRecordSource: Send + Sync {
 
 #[async_trait]
 pub trait CredentialSetupService: Send + Sync {
+    async fn refresh_action(
+        &self,
+        request: &CredentialRefreshRequest,
+    ) -> Result<Option<crate::CredentialRefreshAction>, AuthProductError>;
+
+    async fn begin_refresh(
+        &self,
+        prepared: crate::CredentialRefreshPrepared,
+    ) -> Result<crate::CredentialRefreshAdmission, AuthProductError>;
+
+    /// Reconcile only the original stored result; never call the issuer.
+    async fn reconcile_refresh(
+        &self,
+        request: &CredentialRefreshRequest,
+    ) -> Result<Option<crate::CredentialRefreshAction>, AuthProductError>;
+
+    async fn complete_refresh(
+        &self,
+        completion: crate::CredentialRefreshCompletion,
+    ) -> Result<crate::CredentialRefreshAction, AuthProductError>;
+
+    /// Atomically replace the exact observed account snapshot. A later status,
+    /// credential, ownership or grant mutation must cause BackendConflict.
+    /// This is a storage fence, not a permission or a refresh-attempt receipt.
+    async fn compare_and_update_account(
+        &self,
+        expected: &CredentialAccount,
+        request: NewCredentialAccount,
+    ) -> Result<CredentialAccount, AuthProductError>;
+
     async fn create_or_update_account(
         &self,
         request: CredentialAccountMutation,
@@ -627,7 +745,7 @@ pub struct ProviderBackedCredentialAccountService {
     accounts: Arc<dyn CredentialAccountService>,
     setup: Arc<dyn CredentialSetupService>,
     provider: Arc<dyn AuthProviderClient>,
-    refresh_locks: Mutex<HashMap<CredentialAccountId, Arc<tokio::sync::Mutex<()>>>>,
+    refresh_locks: Mutex<HashMap<CredentialAccountId, Weak<tokio::sync::Mutex<()>>>>,
 }
 
 impl ProviderBackedCredentialAccountService {
@@ -645,31 +763,20 @@ impl ProviderBackedCredentialAccountService {
     }
 
     fn refresh_lock(&self, account_id: CredentialAccountId) -> Arc<tokio::sync::Mutex<()>> {
-        let mut refresh_locks = self
+        let mut locks = self
             .refresh_locks
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        refresh_locks
-            .entry(account_id)
-            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
-            .clone()
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        if let Some(lock) = locks.get(&account_id).and_then(Weak::upgrade) {
+            return lock;
+        }
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        locks.insert(account_id, Arc::downgrade(&lock));
+        lock
     }
-
     async fn acquire_refresh_lock(&self, account_id: CredentialAccountId) -> OwnedMutexGuard<()> {
         self.refresh_lock(account_id).lock_owned().await
-    }
-
-    fn release_refresh_lock(&self, account_id: CredentialAccountId) {
-        let mut refresh_locks = self
-            .refresh_locks
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if refresh_locks
-            .get(&account_id)
-            .is_some_and(|lock| Arc::strong_count(lock) == 1)
-        {
-            refresh_locks.remove(&account_id);
-        }
     }
 
     fn refresh_lookup_request(
@@ -683,75 +790,62 @@ impl ProviderBackedCredentialAccountService {
         lookup
     }
 
-    fn validate_refresh_target(
-        account: &CredentialAccount,
-        request: &CredentialRefreshRequest,
-    ) -> Result<(), AuthProductError> {
-        if !scope_matches(&request.scope, &account.scope) || account.provider != request.provider {
-            return Err(AuthProductError::CrossScopeDenied);
-        }
-        if !account_is_authorized_for_requester(account, request.requester_extension.as_ref()) {
-            return Err(AuthProductError::CrossScopeDenied);
-        }
-        if matches!(
-            account.status,
-            CredentialAccountStatus::Missing
-                | CredentialAccountStatus::PendingSetup
-                | CredentialAccountStatus::Inactive
-                | CredentialAccountStatus::Revoked
-        ) {
-            return Err(AuthProductError::CredentialMissing);
-        }
-        Ok(())
-    }
-
-    fn account_update(
-        account: &CredentialAccount,
-        access_secret: Option<SecretHandle>,
-        refresh_secret: Option<SecretHandle>,
-        status: CredentialAccountStatus,
-        scopes: Vec<ProviderScope>,
-    ) -> CredentialAccountMutation {
-        CredentialAccountMutation::Update(CredentialAccountUpdate {
-            account_id: account.id,
-            account: NewCredentialAccount {
-                scope: account.scope.clone(),
-                provider: account.provider.clone(),
-                label: account.label.clone(),
-                status,
-                ownership: account.ownership,
-                owner_extension: account.owner_extension.clone(),
-                granted_extensions: account.granted_extensions.clone(),
-                access_secret,
-                refresh_secret,
-                scopes,
-            },
-        })
-    }
-
-    async fn report_for(
+    async fn reconcile_known_original(
         &self,
-        account: &CredentialAccount,
-        requester_extension: Option<&ExtensionId>,
-        refreshed: bool,
+        original: crate::CredentialRefreshAction,
+        request: &CredentialRefreshRequest,
+    ) -> Result<crate::CredentialRefreshAction, AuthProductError> {
+        original.original.verify(request)?;
+        if original.needs_publication() {
+            self.setup
+                .reconcile_refresh(request)
+                .await?
+                .ok_or(AuthProductError::BackendUnavailable)
+        } else {
+            Ok(original)
+        }
+    }
+
+    async fn read_original_refresh(
+        &self,
+        request: &CredentialRefreshRequest,
+    ) -> Result<Option<crate::CredentialRefreshAction>, AuthProductError> {
+        match self.setup.refresh_action(request).await? {
+            Some(original) => self
+                .reconcile_known_original(original, request)
+                .await
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    async fn report_action(
+        &self,
+        action: &crate::CredentialRefreshAction,
+        request: &CredentialRefreshRequest,
     ) -> Result<CredentialRefreshReport, AuthProductError> {
+        action.original.verify(request)?;
+        let account = self
+            .accounts
+            .get_account(Self::refresh_lookup_request(request))
+            .await?
+            .ok_or(AuthProductError::CredentialMissing)?;
         let recovery_request =
-            CredentialRecoveryRequest::new(account.scope.clone(), account.provider.clone());
+            CredentialRecoveryRequest::new(request.scope.clone(), request.provider.clone());
+        // This read may fail independently of the original committed result.
+        // Propagation is safe: an original retry never repeats the issuer call.
         let recovery = self
             .accounts
-            .project_credential_recovery(match requester_extension {
-                Some(requester_extension) => {
-                    recovery_request.for_extension(requester_extension.clone())
-                }
+            .project_credential_recovery(match &request.requester_extension {
+                Some(extension) => recovery_request.for_extension(extension.clone()),
                 None => recovery_request,
             })
-            // silent-ok: refresh reporting is allowed to degrade to the
-            // single-account projection when the broader recovery projection
-            // lookup fails; the refresh mutation has already been applied and
-            // the caller still gets the refreshed account snapshot.
-            .await
-            .unwrap_or_else(|_| single_account_recovery(account));
+            .await?;
+        let receipt = action.receipt()?;
+        let refreshed =
+            receipt.confirmed_refresh() && action.published_account.as_ref() == Some(&account);
         Ok(CredentialRefreshReport {
+            original: Some(receipt),
             account: account.projection(),
             recovery,
             refreshed,
@@ -818,186 +912,75 @@ impl CredentialAccountService for ProviderBackedCredentialAccountService {
         &self,
         request: CredentialRefreshRequest,
     ) -> Result<CredentialRefreshReport, AuthProductError> {
-        let lookup_request = Self::refresh_lookup_request(&request);
-        let initial_account = self
+        let initial = self
             .accounts
-            .get_account(lookup_request.clone())
+            .get_account(Self::refresh_lookup_request(&request))
             .await?
             .ok_or(AuthProductError::CredentialMissing)?;
-        Self::validate_refresh_target(&initial_account, &request)?;
-        let refresh_lock = self.acquire_refresh_lock(initial_account.id).await;
-        let result = async {
-            let account = self
-                .accounts
-                .get_account(lookup_request.clone())
-                .await?
-                .ok_or(AuthProductError::CredentialMissing)?;
-            if account != initial_account {
-                return self
-                    .report_for(&account, request.requester_extension.as_ref(), false)
-                    .await;
+        if let Some(original) = self.read_original_refresh(&request).await? {
+            return self.report_action(&original, &request).await;
+        }
+        crate::domain::validate_refresh_target(&initial, &request)?;
+        let _guard = self.acquire_refresh_lock(initial.id).await;
+        // A waiting caller and an independent wrapper both read the original.
+        if let Some(original) = self.read_original_refresh(&request).await? {
+            return self.report_action(&original, &request).await;
+        }
+        let current = self
+            .accounts
+            .get_account(Self::refresh_lookup_request(&request))
+            .await?
+            .ok_or(AuthProductError::CredentialMissing)?;
+        let provider_request =
+            initial
+                .refresh_secret
+                .as_ref()
+                .map(|refresh_secret| OAuthProviderRefreshRequest {
+                    refresh_id: request.id,
+                    provider: initial.provider.clone(),
+                    scope: initial.scope.clone(),
+                    account_id: initial.id,
+                    refresh_secret: refresh_secret.clone(),
+                    scopes: initial.scopes.clone(),
+                });
+        let preparation = match (&provider_request, current == initial) {
+            (Some(provider_request), true) => {
+                Some(self.provider.prepare_refresh(provider_request).await?)
             }
-
-            let Some(refresh_secret) = account.refresh_secret.clone() else {
-                let updated = self
-                    .setup
-                    .create_or_update_account(Self::account_update(
-                        &account,
-                        account.access_secret.clone(),
-                        account.refresh_secret.clone(),
-                        CredentialAccountStatus::RefreshFailed,
-                        account.scopes.clone(),
-                    ))
-                    .await?;
-                return self
-                    .report_for(&updated, request.requester_extension.as_ref(), false)
-                    .await;
-            };
-
-            let provider_request = OAuthProviderRefreshRequest {
-                provider: account.provider.clone(),
-                scope: account.scope.clone(),
-                account_id: account.id,
-                refresh_secret: refresh_secret.clone(),
-                scopes: account.scopes.clone(),
-            };
-
-            match self.provider.refresh_token(provider_request).await {
-                Ok(refresh) => {
-                    let current = self
-                        .accounts
-                        .get_account(lookup_request.clone())
-                        .await?
-                        .ok_or(AuthProductError::CredentialMissing)?;
-                    if current != account {
-                        return self
-                            .report_for(&current, request.requester_extension.as_ref(), false)
-                            .await;
-                    }
-                    if refresh.provider != current.provider {
-                        return Err(AuthProductError::CrossScopeDenied);
-                    }
-                    let refresh_secret = refresh
-                        .refresh_secret
-                        .or_else(|| current.refresh_secret.clone());
-                    let updated = self
-                        .setup
-                        .create_or_update_account(Self::account_update(
-                            &current,
-                            Some(refresh.access_secret),
-                            refresh_secret,
-                            CredentialAccountStatus::Configured,
-                            refresh.scopes,
-                        ))
-                        .await?;
-                    self.report_for(&updated, request.requester_extension.as_ref(), true)
-                        .await
-                }
-                Err(AuthProductError::RefreshFailed | AuthProductError::TokenExchangeFailed) => {
-                    let current = self
-                        .accounts
-                        .get_account(lookup_request.clone())
-                        .await?
-                        .ok_or(AuthProductError::CredentialMissing)?;
-                    if current != account {
-                        return self
-                            .report_for(&current, request.requester_extension.as_ref(), false)
-                            .await;
-                    }
-                    let updated = self
-                        .setup
-                        .create_or_update_account(Self::account_update(
-                            &current,
-                            current.access_secret.clone(),
-                            current.refresh_secret.clone(),
-                            CredentialAccountStatus::RefreshFailed,
-                            current.scopes.clone(),
-                        ))
-                        .await?;
-                    self.report_for(&updated, request.requester_extension.as_ref(), false)
-                        .await
-                }
-                Err(error) => Err(error),
+            _ => None,
+        };
+        let admission = self
+            .setup
+            .begin_refresh(crate::CredentialRefreshPrepared {
+                original: crate::CredentialRefreshOriginal::from(&request),
+                expected_account: initial,
+                preparation,
+            })
+            .await?;
+        let action = match admission {
+            crate::CredentialRefreshAdmission::Original(original) => {
+                self.reconcile_known_original(original, &request).await?
             }
-        }
-        .await;
-        drop(refresh_lock);
-        self.release_refresh_lock(initial_account.id);
-        result
-    }
-}
-
-fn account_is_authorized_for_requester(
-    account: &CredentialAccount,
-    requester_extension: Option<&ExtensionId>,
-) -> bool {
-    match account.ownership {
-        CredentialOwnership::UserReusable => true,
-        CredentialOwnership::ExtensionOwned => account
-            .owner_extension
-            .as_ref()
-            .is_some_and(|owner_extension| requester_extension == Some(owner_extension)),
-        CredentialOwnership::SharedAdminManaged => requester_extension
-            .is_some_and(|requester| account.granted_extensions.contains(requester)),
-        CredentialOwnership::System => false,
-    }
-}
-
-fn single_account_recovery(account: &CredentialAccount) -> CredentialRecoveryProjection {
-    let (kind, reason) = recovery_kind_and_reason_for_status(account.status);
-    match kind {
-        CredentialRecoveryKind::Configured => {
-            CredentialRecoveryProjection::configured(account.provider.clone(), account.projection())
-        }
-        CredentialRecoveryKind::SetupRequired => CredentialRecoveryProjection::setup_required(
-            account.provider.clone(),
-            reason,
-            vec![account.projection()],
-        ),
-        CredentialRecoveryKind::ReauthorizeRequired => {
-            CredentialRecoveryProjection::reauthorize_required(
-                account.provider.clone(),
-                reason,
-                vec![account.projection()],
-            )
-        }
-        CredentialRecoveryKind::AccountSelectionRequired => {
-            unreachable!("single account recovery cannot produce account selection required")
-        }
-    }
-}
-
-fn recovery_kind_and_reason_for_status(
-    status: CredentialAccountStatus,
-) -> (CredentialRecoveryKind, CredentialRecoveryReason) {
-    match status {
-        CredentialAccountStatus::Configured => (
-            CredentialRecoveryKind::Configured,
-            CredentialRecoveryReason::Configured,
-        ),
-        CredentialAccountStatus::PendingSetup => (
-            CredentialRecoveryKind::SetupRequired,
-            CredentialRecoveryReason::PendingSetup,
-        ),
-        CredentialAccountStatus::Missing => (
-            CredentialRecoveryKind::SetupRequired,
-            CredentialRecoveryReason::AccountMissing,
-        ),
-        CredentialAccountStatus::Inactive => (
-            CredentialRecoveryKind::SetupRequired,
-            CredentialRecoveryReason::AccountInactive,
-        ),
-        CredentialAccountStatus::Expired => (
-            CredentialRecoveryKind::ReauthorizeRequired,
-            CredentialRecoveryReason::AccountExpired,
-        ),
-        CredentialAccountStatus::RefreshFailed => (
-            CredentialRecoveryKind::ReauthorizeRequired,
-            CredentialRecoveryReason::RefreshFailed,
-        ),
-        CredentialAccountStatus::Revoked => (
-            CredentialRecoveryKind::ReauthorizeRequired,
-            CredentialRecoveryReason::AccountRevoked,
-        ),
+            crate::CredentialRefreshAdmission::Dispatch(dispatched) => {
+                let (provider_request, preparation) = dispatched.provider_dispatch()?;
+                let outcome = match self
+                    .provider
+                    .refresh_token(provider_request, preparation)
+                    .await
+                {
+                    Ok(result) => crate::CredentialRefreshOutcome::Returned(result),
+                    Err(error) => crate::CredentialRefreshOutcome::Unknown(error.code()),
+                };
+                // No cleanup/retry follows an unreadable or unconfirmed write.
+                // The prepared destinations already belong to this durable intent.
+                self.setup
+                    .complete_refresh(crate::CredentialRefreshCompletion {
+                        dispatched,
+                        outcome,
+                    })
+                    .await?
+            }
+        };
+        self.report_action(&action, &request).await
     }
 }

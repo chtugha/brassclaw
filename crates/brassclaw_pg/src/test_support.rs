@@ -210,8 +210,22 @@ impl AckCutTransport {
                         connections.spawn(relay(downstream, upstream, selected.clone(), next.clone(), observed.clone()));
                     },
                     finished = connections.join_next(), if !connections.is_empty() => {
-                        finished.ok_or_else(|| io::Error::other("missing wire task"))?
-                            .map_err(|_| io::Error::other("wire task failed"))??;
+                        let result = finished.ok_or_else(|| io::Error::other("missing wire task"))?
+                            .map_err(|_| io::Error::other("wire task failed"))?;
+                        match result {
+                            Ok(()) => {},
+                            Err(error) if matches!(error.kind(),
+                                io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset
+                                | io::ErrorKind::ConnectionAborted | io::ErrorKind::UnexpectedEof
+                                | io::ErrorKind::NotConnected) => {
+                                // A deliberately terminated backend can race a
+                                // rollback/write on this socket. Close only that
+                                // connection; keep the independent observer,
+                                // ownership session and real listener alive.
+                                tracing::warn!(kind = ?error.kind(), "PostgreSQL test relay connection ended after peer disconnect");
+                            },
+                            Err(error) => return Err(error),
+                        }
                     },
                 }
             }

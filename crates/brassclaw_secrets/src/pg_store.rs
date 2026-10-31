@@ -22,8 +22,9 @@
 //!
 //! New secret and lease envelopes bind the physical store tenant, row identity
 //! and logical owner through length-prefixed AAD. Owner-authenticated legacy
-//! secret rows upgrade atomically on access; old lease envelopes remain readable
-//! until consumed/revoked. Historical ciphertext cannot retroactively gain a
+//! secret rows upgrade atomically on access; old unproven leases remain readable
+//! for explicit revocation, but cannot consume a generation they never pinned.
+//! Historical ciphertext cannot retroactively gain a
 //! physical-owner binding before that upgrade.
 //!
 //! # Schema
@@ -44,20 +45,31 @@ use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use brassclaw_host_api::{ResourceScope, SecretHandle, Timestamp};
 use brassclaw_pg::PgPool;
+use chrono::Utc;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::custody::{
+    CUSTODY_FORMAT_V1, CustodyBody, DecodedSecretValue, OrdinarySecretValue,
+    TIMED_ORDINARY_FORMAT_V1, decrypt_stored_value,
+};
+use crate::stored_scope::deserialize_stored_scope;
+
 use crate::{
     __internal_session_for_filesystem_store, CredentialAccount, CredentialAccountId,
     CredentialAccountStore, CredentialBrokerError, CredentialSession, CredentialSessionId,
-    CredentialSessionStore, SecretLease, SecretLeaseId, SecretLeaseStatus, SecretMaterial,
-    SecretMetadata, SecretStore, SecretStoreError, SecretsCrypto, credential_account_aad,
-    credential_session_aad, filesystem_secret_aad,
+    CredentialSessionStore, SecretCustodyMetadata, SecretCustodySource, SecretLease, SecretLeaseId,
+    SecretLeaseStatus, SecretMaterial, SecretMetadata, SecretStore, SecretStoreError,
+    SecretsCrypto, credential_account_aad, credential_session_aad, filesystem_secret_aad,
 };
 
 /// Size of the HKDF salt in bytes, matching `SecretsCrypto::SALT_SIZE = 32`.
 const SALT_SIZE: usize = 32;
+
+// Colon is outside ordinary STANDARD base64; no raw-material heuristic.
+const CUSTODY_CIPHERTEXT_PREFIX: &str = "custody-v1:";
+const TIMED_ORDINARY_CIPHERTEXT_PREFIX: &str = "timed-v1:";
 
 // ---------------------------------------------------------------------------
 // Wire DTOs (private, encrypted payloads)
@@ -68,45 +80,12 @@ struct StoredLeasePayload {
     handle: SecretHandle,
     #[serde(deserialize_with = "deserialize_stored_scope")]
     scope: ResourceScope,
-}
-
-// Only authenticated storage payloads may contain the reserved system identity.
-// Public TenantId/UserId deserialization must continue rejecting that sentinel.
-fn deserialize_stored_scope<'de, D>(deserializer: D) -> Result<ResourceScope, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    struct StoredScope {
-        tenant_id: String,
-        user_id: String,
-        agent_id: Option<brassclaw_host_api::AgentId>,
-        project_id: Option<brassclaw_host_api::ProjectId>,
-        thread_id: Option<brassclaw_host_api::ThreadId>,
-        invocation_id: brassclaw_host_api::InvocationId,
-    }
-    let stored = StoredScope::deserialize(deserializer)?;
-    if stored.tenant_id == brassclaw_host_api::SYSTEM_RESERVED_ID
-        && stored.user_id == brassclaw_host_api::SYSTEM_RESERVED_ID
-        && stored.agent_id.is_none()
-        && stored.project_id.is_none()
-        && stored.thread_id.is_none()
-    {
-        return Ok(ResourceScope {
-            invocation_id: stored.invocation_id,
-            ..ResourceScope::system()
-        });
-    }
-    Ok(ResourceScope {
-        tenant_id: brassclaw_host_api::TenantId::new(stored.tenant_id)
-            .map_err(serde::de::Error::custom)?,
-        user_id: brassclaw_host_api::UserId::new(stored.user_id)
-            .map_err(serde::de::Error::custom)?,
-        agent_id: stored.agent_id,
-        project_id: stored.project_id,
-        thread_id: stored.thread_id,
-        invocation_id: stored.invocation_id,
-    })
+    // Older leases cannot prove which generation was selected. They remain
+    // readable for explicit revocation but never authorize reading latest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    record_reference: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    secret_expires_at: Option<Timestamp>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -289,6 +268,14 @@ pub struct PgSecretStore {
     tenant_id: String,
 }
 
+// Authenticated bytes stay private to this storage owner. Never derive Debug.
+struct AuthenticatedSecretRecord {
+    key: String,
+    ciphertext: String,
+    version: i32,
+    value: DecodedSecretValue,
+}
+
 impl PgSecretStore {
     /// Construct a store scoped to a specific tenant.
     pub fn new(
@@ -314,26 +301,74 @@ impl PgSecretStore {
         scope: &ResourceScope,
         handle: &SecretHandle,
     ) -> Result<SecretLease, SecretStoreError> {
+        self.lease_selected_in_transaction(transaction, scope, handle, None)
+            .await?
+            .ok_or_else(|| SecretStoreError::UnknownSecret {
+                scope: Box::new(scope.clone()),
+                handle: handle.clone(),
+            })
+    }
+
+    /// Check the caller-selected pre-upgrade generation under the actual row
+    /// lock. The caller owns commit/rollback; no advisory lock is taken after
+    /// acquiring the row. Missing/mismatched selection creates no lease.
+    pub async fn lease_once_if_record_reference_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: &str,
+    ) -> Result<Option<SecretLease>, SecretStoreError> {
+        self.lease_selected_in_transaction(transaction, scope, handle, Some(expected))
+            .await
+    }
+
+    async fn lease_selected_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: Option<&str>,
+    ) -> Result<Option<SecretLease>, SecretStoreError> {
         // Verify the secret exists.
         if self
-            .load_secret(transaction, scope, handle)
+            .load_secret_selected(transaction, scope, handle, expected)
             .await?
             .is_none()
         {
-            return Err(SecretStoreError::UnknownSecret {
-                scope: Box::new(scope.clone()),
-                handle: handle.clone(),
-            });
+            return Ok(None);
         }
 
         let lease_id = SecretLeaseId::new();
         let lease_scope = lease_scope_str(lease_id);
 
-        // Persist the lease payload (handle + owner scope) encrypted so
-        // `consume` can reconstruct which secret to read.
+        // load_secret holds the actual row lock and upgrades legacy storage
+        // before this selection. Capture those exact authenticated bytes while
+        // the same transaction still owns the row; no new advisory lock here.
+        let record = self
+            .inspect_secret_in_transaction(transaction, scope, handle)
+            .await?
+            .ok_or_else(|| SecretStoreError::UnknownSecret {
+                scope: Box::new(scope.clone()),
+                handle: handle.clone(),
+            })?;
+        let secret_expires_at = record.value.secret_expires_at();
+        if secret_expires_at.is_some_and(|expiry| expiry <= Utc::now()) {
+            return Err(SecretStoreError::SecretExpired);
+        }
+        let record_reference = self.encrypted_record_reference(
+            &record.key,
+            handle,
+            &record.ciphertext,
+            record.version,
+        );
+        // The selected encrypted generation belongs inside the authenticated
+        // lease payload, not a later handle-only lookup or external assertion.
         let payload = StoredLeasePayload {
             handle: handle.clone(),
             scope: scope.clone(),
+            record_reference: Some(record_reference),
+            secret_expires_at,
         };
         let payload_bytes =
             serde_json::to_vec(&payload).map_err(|e| SecretStoreError::StoreUnavailable {
@@ -365,12 +400,35 @@ impl PgSecretStore {
             .await
             .map_err(map_pg_error)?;
 
-        Ok(SecretLease {
+        Ok(Some(SecretLease {
             id: lease_id,
             scope: scope.clone(),
             handle: handle.clone(),
             status: SecretLeaseStatus::Active,
-        })
+            secret_expires_at,
+        }))
+    }
+
+    async fn issue_selected_lease(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: Option<&str>,
+    ) -> Result<Option<SecretLease>, SecretStoreError> {
+        let mut client = self.pool.get().await.map_err(map_pg_pool_error)?;
+        let transaction = client.transaction().await.map_err(map_pg_error)?;
+        let lease = self
+            .lease_selected_in_transaction(&transaction, scope, handle, expected)
+            .await?;
+        transaction.commit().await.map_err(map_pg_error)?;
+        if lease
+            .as_ref()
+            .and_then(|lease| lease.secret_expires_at)
+            .is_some_and(|expiry| expiry <= Utc::now())
+        {
+            return Err(SecretStoreError::SecretExpired);
+        }
+        Ok(lease)
     }
 
     /// Consume exactly this authenticated lease inside the caller transaction.
@@ -380,6 +438,24 @@ impl PgSecretStore {
         scope: &ResourceScope,
         lease_id: SecretLeaseId,
     ) -> Result<SecretMaterial, SecretStoreError> {
+        let selected = self
+            .consume_selected_in_transaction(transaction, scope, lease_id)
+            .await?;
+        if selected
+            .expires_at
+            .is_some_and(|expiry| expiry <= Utc::now())
+        {
+            return Err(SecretStoreError::SecretExpired);
+        }
+        Ok(selected.material)
+    }
+
+    async fn consume_selected_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        lease_id: SecretLeaseId,
+    ) -> Result<OrdinarySecretValue, SecretStoreError> {
         let (lease_scope, payload) =
             self.load_lease(transaction, lease_id)
                 .await?
@@ -393,13 +469,47 @@ impl PgSecretStore {
                 lease_id,
             });
         }
-        let material = self
-            .load_secret(transaction, &payload.scope, &payload.handle)
+        let expected = payload
+            .record_reference
+            .as_deref()
+            .filter(|reference| !reference.is_empty())
+            .ok_or(SecretStoreError::LeaseRevoked { lease_id })?;
+        // Keep the selected secret row locked through lease deletion/commit.
+        // Do not acquire a writer advisory lock after the lease/secret row, or
+        // migrate a replacement before establishing that it was selected.
+        self.lock_secret_rows(transaction, &[(&payload.scope, &payload.handle)])
+            .await?;
+        let record = self
+            .inspect_secret_in_transaction(transaction, &payload.scope, &payload.handle)
             .await?
             .ok_or_else(|| SecretStoreError::UnknownSecret {
                 scope: Box::new(payload.scope.clone()),
                 handle: payload.handle.clone(),
             })?;
+        if self.encrypted_record_reference(
+            &record.key,
+            &payload.handle,
+            &record.ciphertext,
+            record.version,
+        ) != expected
+        {
+            return Err(SecretStoreError::LeaseRevoked { lease_id });
+        }
+        if record.value.secret_expires_at() != payload.secret_expires_at {
+            return Err(SecretStoreError::LeaseRevoked { lease_id });
+        }
+        if payload
+            .secret_expires_at
+            .is_some_and(|expiry| expiry <= Utc::now())
+        {
+            return Err(SecretStoreError::SecretExpired);
+        }
+        let material = record.value.into_runtime_material().ok_or_else(|| {
+            SecretStoreError::UnknownSecret {
+                scope: Box::new(payload.scope.clone()),
+                handle: payload.handle.clone(),
+            }
+        })?;
 
         let deleted = transaction
             .execute(
@@ -414,13 +524,403 @@ impl PgSecretStore {
                 lease_id,
             });
         }
-        Ok(material)
+        Ok(OrdinarySecretValue {
+            material,
+            expires_at: payload.secret_expires_at,
+        })
     }
 
     /// Trusted setup/composition write participating in the caller's PostgreSQL
     /// transaction. The caller owns commit/rollback; encryption, owner binding
     /// and authentication of preceding material remain owned by this store.
     /// This is not a runtime/plugin API or an authorization grant.
+    async fn lock_secret_records(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        identities: &[(&ResourceScope, &SecretHandle)],
+    ) -> Result<(), SecretStoreError> {
+        let mut locks = Vec::new();
+        for (scope, handle) in identities {
+            let key = secret_scope_str(scope, handle);
+            let aad = pg_record_aad(
+                &self.tenant_id,
+                &key,
+                handle.as_str(),
+                &filesystem_secret_aad(scope, handle),
+            );
+            let digest = Sha256::digest(&aad);
+            let mut lock_bytes = [0u8; 8];
+            lock_bytes.copy_from_slice(&digest[..8]);
+            locks.push(i64::from_be_bytes(lock_bytes));
+        }
+        locks.sort_unstable();
+        locks.dedup();
+        for lock_id in locks {
+            transaction
+                .query_one("SELECT pg_advisory_xact_lock($1)", &[&lock_id])
+                .await
+                .map_err(map_pg_error)?;
+        }
+        self.lock_secret_rows(transaction, identities).await
+    }
+
+    // Reads that already own a row through lease/consume must never acquire a
+    // new advisory write lock AFTER that row. provider_admin's real capture
+    // reads a key and then its reference in one transaction. A writer can own
+    // advisory before waiting on that row; acquiring it here would form a cycle.
+    async fn lock_secret_rows(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        identities: &[(&ResourceScope, &SecretHandle)],
+    ) -> Result<(), SecretStoreError> {
+        let mut rows: Vec<_> = identities
+            .iter()
+            .map(|(scope, handle)| {
+                (
+                    secret_scope_str(scope, handle),
+                    legacy_secret_scope_str(scope, handle),
+                    handle.as_str().to_owned(),
+                )
+            })
+            .collect();
+        rows.sort();
+        rows.dedup();
+        for (key, legacy, name) in rows {
+            transaction.query("SELECT scope FROM brassclaw_secrets WHERE tenant_id=$1 AND (scope=$2 OR scope=$3) AND name=$4 ORDER BY scope FOR UPDATE", &[&self.tenant_id, &key, &legacy, &name]).await.map_err(map_pg_error)?;
+            // A legacy reader may have moved the row while the first query
+            // waited. Lock its actual current key under the same transaction.
+            transaction.query("SELECT scope FROM brassclaw_secrets WHERE tenant_id=$1 AND scope=$2 AND name=$3 FOR UPDATE", &[&self.tenant_id, &key, &name]).await.map_err(map_pg_error)?;
+        }
+        Ok(())
+    }
+
+    fn custody_metadata_for(
+        &self,
+        record: &AuthenticatedSecretRecord,
+        handle: &SecretHandle,
+    ) -> Option<SecretCustodyMetadata> {
+        record.value.custody().map(|body| {
+            body.metadata(
+                handle.clone(),
+                self.encrypted_record_reference(
+                    &record.key,
+                    handle,
+                    &record.ciphertext,
+                    record.version,
+                ),
+            )
+        })
+    }
+
+    fn encode_custody(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        body: &CustodyBody,
+    ) -> Result<String, SecretStoreError> {
+        if crate::scoped_legacy_user_id(body.scope()) != crate::scoped_legacy_user_id(scope) {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "custody encryption owner mismatch".into(),
+            });
+        }
+        let key = secret_scope_str(scope, handle);
+        let aad = pg_record_aad(
+            &self.tenant_id,
+            &key,
+            handle.as_str(),
+            &filesystem_secret_aad(scope, handle),
+        );
+        let (ciphertext, salt) =
+            crate::custody::encrypt_body(&self.crypto, &aad, body).map_err(|_| {
+                SecretStoreError::BackendMisconfigured {
+                    reason: "custody record encryption failed".into(),
+                }
+            })?;
+        Ok(format!(
+            "{CUSTODY_CIPHERTEXT_PREFIX}{}",
+            encode_ciphertext(&salt, &ciphertext)
+        ))
+    }
+
+    async fn insert_custody(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        body: &CustodyBody,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        let key = secret_scope_str(scope, handle);
+        let ciphertext = self.encode_custody(scope, handle, body)?;
+        let affected = transaction.execute("INSERT INTO brassclaw_secrets (tenant_id,scope,name,ciphertext,key_version) VALUES ($1,$2,$3,$4,1) ON CONFLICT (tenant_id,scope,name) DO NOTHING", &[&self.tenant_id, &key, &handle.as_str(), &ciphertext]).await.map_err(map_pg_error)?;
+        Ok((affected == 1).then(|| {
+            body.metadata(
+                handle.clone(),
+                self.encrypted_record_reference(&key, handle, &ciphertext, 1),
+            )
+        }))
+    }
+
+    /// Prepare an original and its immutable output under one sorted lock set.
+    /// This joins the caller's transaction; a conflict (`None`) or error requires
+    /// rollback. It does not commit, authorize publication or expose raw material.
+    pub async fn put_original_and_retained_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        source: (ResourceScope, SecretHandle),
+        material: SecretMaterial,
+        context: serde_json::Value,
+        destination: (ResourceScope, SecretHandle),
+    ) -> Result<Option<(SecretCustodyMetadata, SecretCustodyMetadata)>, SecretStoreError> {
+        if source.1 == destination.1 {
+            return Ok(None);
+        }
+        if crate::scoped_legacy_user_id(&source.0) != crate::scoped_legacy_user_id(&destination.0) {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "custody source owner mismatch".into(),
+            });
+        }
+        self.lock_secret_records(
+            transaction,
+            &[(&source.0, &source.1), (&destination.0, &destination.1)],
+        )
+        .await?;
+        let Some(original) = self
+            .put_original_locked(transaction, source.0, source.1, material, context)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let reference = SecretCustodySource {
+            scope: original.scope.clone(),
+            handle: original.handle.clone(),
+            reference: original.reference.clone(),
+        };
+        let Some(retained) = self
+            .put_retained_from_original_locked(transaction, destination.0, destination.1, reference)
+            .await?
+        else {
+            return Ok(None);
+        };
+        Ok(Some((original, retained)))
+    }
+
+    /// Retain the first authenticated input and context in the caller's native
+    /// transaction. Exact repeats read it without re-encryption or replacement.
+    /// Close one exact custody identity under the same actual target writer lock.
+    /// The caller owns its transaction and any product-level publication receipt.
+    pub async fn close_identity_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        expected: crate::SecretIdentityClosure,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        if expected.source().is_some_and(|source| {
+            crate::scoped_legacy_user_id(&source.scope) != crate::scoped_legacy_user_id(&scope)
+        }) {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "custody source owner mismatch".into(),
+            });
+        }
+        self.lock_secret_records(transaction, &[(&scope, &handle)])
+            .await?;
+        let record = self
+            .inspect_secret_in_transaction(transaction, &scope, &handle)
+            .await?;
+        let reference = record
+            .as_ref()
+            .map(|r| self.encrypted_record_reference(&r.key, &handle, &r.ciphertext, r.version));
+        let current = record
+            .as_ref()
+            .zip(reference.as_deref())
+            .map(|(r, reference)| (&r.value, reference));
+        match expected.decide(&scope, current) {
+            crate::identity_closure::ClosureDecision::Reject => Ok(None),
+            crate::identity_closure::ClosureDecision::Keep => Ok(record
+                .as_ref()
+                .and_then(|r| self.custody_metadata_for(r, &handle))),
+            crate::identity_closure::ClosureDecision::Write(body) => {
+                if let Some(record) = record {
+                    let ciphertext = self.encode_custody(&scope, &handle, &body)?;
+                    transaction.execute("UPDATE brassclaw_secrets SET ciphertext=$4,scope=$5,updated_at=now() WHERE tenant_id=$1 AND scope=$2 AND name=$3",
+                        &[&self.tenant_id,&record.key,&handle.as_str(),&ciphertext,&secret_scope_str(&scope,&handle)]).await.map_err(map_pg_error)?;
+                    self.custody_in_transaction(transaction, &scope, &handle)
+                        .await
+                } else {
+                    self.insert_custody(transaction, &scope, &handle, &body)
+                        .await
+                }
+            }
+        }
+    }
+
+    pub async fn put_original_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        context: serde_json::Value,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        self.lock_secret_records(transaction, &[(&scope, &handle)])
+            .await?;
+        self.put_original_locked(transaction, scope, handle, material, context)
+            .await
+    }
+
+    async fn put_original_locked(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        context: serde_json::Value,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        if let Some(record) = self
+            .inspect_secret_in_transaction(transaction, &scope, &handle)
+            .await?
+        {
+            let Some(CustodyBody::Original {
+                scope: original_scope,
+                context: original_context,
+                material: original_material,
+            }) = record.value.custody()
+            else {
+                return Ok(None);
+            };
+            return if original_scope == &scope
+                && original_context == &context
+                && crate::crypto::secret_values_match(
+                    original_material.expose_secret(),
+                    material.expose_secret(),
+                ) {
+                Ok(self.custody_metadata_for(&record, &handle))
+            } else {
+                Ok(None)
+            };
+        }
+        let body = CustodyBody::Original {
+            scope: scope.clone(),
+            context,
+            material,
+        };
+        self.insert_custody(transaction, &scope, &handle, &body)
+            .await
+    }
+
+    /// Read actual authenticated custody metadata. Never locks, migrates or
+    /// returns raw values; caller may use a read-only transaction.
+    pub async fn custody_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        Ok(self
+            .inspect_secret_in_transaction(transaction, scope, handle)
+            .await?
+            .and_then(|record| self.custody_metadata_for(&record, handle)))
+    }
+
+    /// Copy one exact live original into an immutable retained output under
+    /// the same actual transaction/locks. Metadata alone cannot create material.
+    pub async fn put_retained_from_original_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        source: SecretCustodySource,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        if crate::scoped_legacy_user_id(&scope) != crate::scoped_legacy_user_id(&source.scope) {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "custody source owner mismatch".into(),
+            });
+        }
+        self.lock_secret_records(
+            transaction,
+            &[(&scope, &handle), (&source.scope, &source.handle)],
+        )
+        .await?;
+        self.put_retained_from_original_locked(transaction, scope, handle, source)
+            .await
+    }
+
+    async fn put_retained_from_original_locked(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        source: SecretCustodySource,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        if crate::scoped_legacy_user_id(&scope) != crate::scoped_legacy_user_id(&source.scope) {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "custody source owner mismatch".into(),
+            });
+        }
+        if handle == source.handle {
+            return Ok(None);
+        }
+        let Some(original) = self
+            .inspect_secret_in_transaction(transaction, &source.scope, &source.handle)
+            .await?
+        else {
+            return Ok(None);
+        };
+        if self.encrypted_record_reference(
+            &original.key,
+            &source.handle,
+            &original.ciphertext,
+            original.version,
+        ) != source.reference
+        {
+            return Ok(None);
+        }
+        let DecodedSecretValue::Custody(body) = original.value else {
+            return Ok(None);
+        };
+        let CustodyBody::Original {
+            scope: original_scope,
+            material,
+            ..
+        } = *body
+        else {
+            return Ok(None);
+        };
+        if original_scope != source.scope {
+            return Ok(None);
+        }
+        if let Some(record) = self
+            .inspect_secret_in_transaction(transaction, &scope, &handle)
+            .await?
+        {
+            let Some(CustodyBody::Retained {
+                scope: original_target_scope,
+                source: original_source,
+                material: original_material,
+            }) = record.value.custody()
+            else {
+                return Ok(None);
+            };
+            return if original_target_scope == &scope
+                && original_source == &source
+                && crate::crypto::secret_values_match(
+                    original_material.expose_secret(),
+                    material.expose_secret(),
+                ) {
+                Ok(self.custody_metadata_for(&record, &handle))
+            } else {
+                Ok(None)
+            };
+        }
+        let body = CustodyBody::Retained {
+            scope: scope.clone(),
+            source,
+            material,
+        };
+        self.insert_custody(transaction, &scope, &handle, &body)
+            .await
+    }
+
     pub async fn put_in_transaction(
         &self,
         transaction: &tokio_postgres::Transaction<'_>,
@@ -428,6 +928,68 @@ impl PgSecretStore {
         handle: SecretHandle,
         material: SecretMaterial,
     ) -> Result<SecretMetadata, SecretStoreError> {
+        self.put_with_expiry_in_transaction(transaction, scope, handle, material, None)
+            .await
+    }
+
+    /// Write a deadline authenticated with this generation within the caller's
+    /// transaction; never derive a lifetime from account labels or lease TTL.
+    pub async fn put_with_expiry_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expires_at: Option<Timestamp>,
+    ) -> Result<SecretMetadata, SecretStoreError> {
+        self.put_checked_in_transaction(
+            transaction,
+            scope,
+            handle,
+            OrdinarySecretValue {
+                material,
+                expires_at,
+            },
+            None,
+        )
+        .await?
+        .ok_or_else(|| SecretStoreError::StoreUnavailable {
+            reason: "unconditional secret write was not applied".into(),
+        })
+    }
+
+    /// Compare authenticated ciphertext identity and write inside the caller's
+    /// transaction. None means the original reference changed; nothing is written.
+    /// An absent expected reference also protects against a concurrent INSERT.
+    pub async fn put_if_record_reference_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expected: Option<&str>,
+    ) -> Result<Option<SecretMetadata>, SecretStoreError> {
+        self.put_checked_in_transaction(
+            transaction,
+            scope,
+            handle,
+            OrdinarySecretValue {
+                material,
+                expires_at: None,
+            },
+            Some(expected),
+        )
+        .await
+    }
+
+    async fn put_checked_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: OrdinarySecretValue,
+        expected: Option<Option<&str>>,
+    ) -> Result<Option<SecretMetadata>, SecretStoreError> {
         let scope_key = secret_scope_str(&scope, &handle);
         let aad = pg_record_aad(
             &self.tenant_id,
@@ -435,31 +997,251 @@ impl PgSecretStore {
             handle.as_str(),
             &filesystem_secret_aad(&scope, &handle),
         );
-        // Row locks cannot protect an absent row. Serialize trusted writers by
-        // physical owner and secret identity before authenticating or inserting.
-        // A hash collision only serializes unrelated writes; it grants nothing.
-        let digest = Sha256::digest(&aad);
-        let mut lock_bytes = [0u8; 8];
-        lock_bytes.copy_from_slice(&digest[..8]);
-        let lock_id = i64::from_be_bytes(lock_bytes);
-        transaction
-            .query_one("SELECT pg_advisory_xact_lock($1)", &[&lock_id])
-            .await
-            .map_err(map_pg_error)?;
-        drop(self.load_secret(transaction, &scope, &handle).await?);
-        let (nonce_and_ct, salt) = self
-            .crypto
-            .encrypt(material.expose_secret().as_bytes(), &aad)
-            .map_err(|_| SecretStoreError::BackendMisconfigured {
+        self.lock_secret_records(transaction, &[(&scope, &handle)])
+            .await?;
+        let current = self
+            .inspect_secret_in_transaction(transaction, &scope, &handle)
+            .await?;
+        let reference = current.as_ref().map(|record| {
+            self.encrypted_record_reference(
+                &record.key,
+                &handle,
+                &record.ciphertext,
+                record.version,
+            )
+        });
+        if let Some(expected) = expected
+            && reference.as_deref() != expected
+        {
+            return Ok(None);
+        }
+        if current
+            .as_ref()
+            .and_then(|record| record.value.custody())
+            .is_some()
+        {
+            return Ok(None);
+        }
+        let migrate_legacy = current
+            .as_ref()
+            .is_some_and(|record| record.key != scope_key);
+        drop(current);
+        if migrate_legacy {
+            drop(self.load_secret(transaction, &scope, &handle).await?);
+        }
+        let encrypted = material.encrypt(&self.crypto, &aad).map_err(|_| {
+            SecretStoreError::BackendMisconfigured {
                 reason: "secret record encryption failed".into(),
-            })?;
-        let ciphertext = encode_ciphertext(&salt, &nonce_and_ct);
-        transaction.execute(
-            "INSERT INTO brassclaw_secrets (tenant_id, scope, name, ciphertext, key_version) VALUES ($1, $2, $3, $4, 1) ON CONFLICT (tenant_id, scope, name) DO UPDATE SET ciphertext = excluded.ciphertext, updated_at = now()",
-            &[&self.tenant_id, &scope_key, &handle.as_str(), &ciphertext],
-        ).await.map_err(map_pg_error)?;
-        Ok(SecretMetadata { scope, handle })
+            }
+        })?;
+        let encoded = encode_ciphertext(&encrypted.salt, &encrypted.ciphertext);
+        let ciphertext = match encrypted.format {
+            None => encoded,
+            Some(TIMED_ORDINARY_FORMAT_V1) => {
+                format!("{TIMED_ORDINARY_CIPHERTEXT_PREFIX}{encoded}")
+            }
+            Some(_) => {
+                return Err(SecretStoreError::BackendMisconfigured {
+                    reason: "unsupported ordinary secret encryption format".into(),
+                });
+            }
+        };
+        let affected = match expected {
+            Some(None) => transaction.execute(
+                "INSERT INTO brassclaw_secrets (tenant_id,scope,name,ciphertext,key_version) VALUES ($1,$2,$3,$4,1) ON CONFLICT (tenant_id,scope,name) DO NOTHING",
+                &[&self.tenant_id,&scope_key,&handle.as_str(),&ciphertext],
+            ).await,
+            Some(Some(_)) => transaction.execute(
+                "UPDATE brassclaw_secrets SET ciphertext=$4,updated_at=now() WHERE tenant_id=$1 AND scope=$2 AND name=$3",
+                &[&self.tenant_id,&scope_key,&handle.as_str(),&ciphertext],
+            ).await,
+            None => transaction.execute(
+                "INSERT INTO brassclaw_secrets (tenant_id,scope,name,ciphertext,key_version) VALUES ($1,$2,$3,$4,1) ON CONFLICT (tenant_id,scope,name) DO UPDATE SET ciphertext=excluded.ciphertext,updated_at=now()",
+                &[&self.tenant_id,&scope_key,&handle.as_str(),&ciphertext],
+            ).await,
+        }.map_err(map_pg_error)?;
+        Ok((affected == 1).then_some(SecretMetadata { scope, handle }))
     }
+
+    /// Identify the authenticated encrypted record without exposing its value.
+    /// This is a version reference, never a credential or an authorization grant.
+    /// Randomized ciphertext (not plaintext) is hashed; legacy rows are first
+    /// authenticated and upgraded under the existing row lock.
+    pub async fn authenticated_record_reference_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<String>, SecretStoreError> {
+        self.lock_secret_rows(transaction, &[(scope, handle)])
+            .await?;
+        let Some(record) = self
+            .inspect_secret_in_transaction(transaction, scope, handle)
+            .await?
+        else {
+            return Ok(None);
+        };
+        if record.key == secret_scope_str(scope, handle) {
+            return Ok(Some(self.encrypted_record_reference(
+                &record.key,
+                handle,
+                &record.ciphertext,
+                record.version,
+            )));
+        }
+        drop(record);
+        if self
+            .load_secret(transaction, scope, handle)
+            .await?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        let key = secret_scope_str(scope, handle);
+        let row = transaction.query_one(
+            "SELECT ciphertext,key_version FROM brassclaw_secrets WHERE tenant_id=$1 AND scope=$2 AND name=$3",
+            &[&self.tenant_id, &key, &handle.as_str()],
+        ).await.map_err(map_pg_error)?;
+        let ciphertext: String = row.try_get(0).map_err(map_pg_error)?;
+        let version: i32 = row.try_get(1).map_err(map_pg_error)?;
+        Ok(Some(self.encrypted_record_reference(
+            &key,
+            handle,
+            &ciphertext,
+            version,
+        )))
+    }
+
+    /// Authenticate metadata in the caller's read-only snapshot. Unlike a
+    /// consuming read, this never locks/upgrades a legacy row or issues a lease.
+    /// A legacy reference identifies those exact legacy bytes until migration.
+    pub async fn inspect_record_reference_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<String>, SecretStoreError> {
+        let Some(record) = self
+            .inspect_secret_in_transaction(transaction, scope, handle)
+            .await?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(self.encrypted_record_reference(
+            &record.key,
+            handle,
+            &record.ciphertext,
+            record.version,
+        )))
+    }
+
+    /// Read/authenticate the selected bytes without locking or legacy migration.
+    /// Material remains inside this storage owner; callers project only reference
+    /// or boolean comparison. A conflicting legacy/current pair stays an error.
+    async fn inspect_secret_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<AuthenticatedSecretRecord>, SecretStoreError> {
+        let key = secret_scope_str(scope, handle);
+        let legacy = legacy_secret_scope_str(scope, handle);
+        let rows = transaction.query(
+            "SELECT scope, ciphertext, key_version FROM brassclaw_secrets WHERE tenant_id=$1 AND (scope=$2 OR scope=$3) AND name=$4",
+            &[&self.tenant_id, &key, &legacy, &handle.as_str()],
+        ).await.map_err(map_pg_error)?;
+        if rows.len() > 1 {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "conflicting current and legacy secret records require reconciliation"
+                    .into(),
+            });
+        }
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        let stored_key: String = row.get(0);
+        let ciphertext: String = row.get(1);
+        let version: i32 = row.get(2);
+        let value =
+            self.authenticate_secret_record(scope, handle, &stored_key, &ciphertext, version)?;
+        Ok(Some(AuthenticatedSecretRecord {
+            key: stored_key,
+            ciphertext,
+            version,
+            value,
+        }))
+    }
+
+    fn encrypted_record_reference(
+        &self,
+        key: &str,
+        handle: &SecretHandle,
+        ciphertext: &str,
+        version: i32,
+    ) -> String {
+        let mut digest = Sha256::new();
+        digest.update(b"brassclaw-encrypted-secret-reference/1\0");
+        for value in [
+            self.tenant_id.as_bytes(),
+            key.as_bytes(),
+            handle.as_str().as_bytes(),
+            ciphertext.as_bytes(),
+        ] {
+            digest.update((value.len() as u64).to_be_bytes());
+            digest.update(value);
+        }
+        digest.update(version.to_be_bytes());
+        format!("{:x}", digest.finalize())
+    }
+
+    /// Trusted publication-owner comparison inside its existing transaction.
+    /// The expected fingerprint stays encrypted at rest and material never
+    /// crosses this port. This neither issues a lease nor replaces a secret.
+    /// As with other authenticated reads, legacy envelopes may be upgraded.
+    pub async fn matches_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        candidate: &SecretMaterial,
+    ) -> Result<bool, SecretStoreError> {
+        self.lock_secret_rows(transaction, &[(scope, handle)])
+            .await?;
+        let Some(record) = self
+            .inspect_secret_in_transaction(transaction, scope, handle)
+            .await?
+        else {
+            return Err(SecretStoreError::UnknownSecret {
+                scope: Box::new(scope.clone()),
+                handle: handle.clone(),
+            });
+        };
+        if record.key == secret_scope_str(scope, handle) {
+            let expected = record.value.material_for_compare().ok_or_else(|| {
+                SecretStoreError::UnknownSecret {
+                    scope: Box::new(scope.clone()),
+                    handle: handle.clone(),
+                }
+            })?;
+            return Ok(crate::crypto::secret_values_match(
+                expected.expose_secret(),
+                candidate.expose_secret(),
+            ));
+        }
+        drop(record);
+        let expected = self
+            .load_secret(transaction, scope, handle)
+            .await?
+            .ok_or_else(|| SecretStoreError::UnknownSecret {
+                scope: Box::new(scope.clone()),
+                handle: handle.clone(),
+            })?;
+        Ok(crate::crypto::secret_values_match(
+            expected.expose_secret(),
+            candidate.expose_secret(),
+        ))
+    }
+
     fn decode_lease_payload(
         &self,
         ciphertext: &str,
@@ -502,6 +1284,17 @@ impl PgSecretStore {
         scope: &ResourceScope,
         handle: &SecretHandle,
     ) -> Result<Option<SecretMaterial>, SecretStoreError> {
+        self.load_secret_selected(transaction, scope, handle, None)
+            .await
+    }
+
+    async fn load_secret_selected(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: Option<&str>,
+    ) -> Result<Option<SecretMaterial>, SecretStoreError> {
         let key = secret_scope_str(scope, handle);
         let legacy = legacy_secret_scope_str(scope, handle);
         let mut rows = transaction.query(
@@ -526,26 +1319,23 @@ impl PgSecretStore {
         let Some(row) = rows.first() else {
             return Ok(None);
         };
-        if row.get::<_, i32>(2) != 1 {
-            return Err(SecretStoreError::StoreUnavailable {
-                reason: "unsupported secret master-key version".into(),
-            });
-        }
         let stored_key: String = row.get(0);
         let ciphertext: String = row.get(1);
-        let (salt, nonce_and_ct) = decode_ciphertext(&ciphertext)?;
-        let inner = filesystem_secret_aad(scope, handle);
-        let aad = if stored_key == key {
-            pg_record_aad(&self.tenant_id, &key, handle.as_str(), &inner)
-        } else {
-            inner
+        let decoded =
+            self.authenticate_secret_record(scope, handle, &stored_key, &ciphertext, row.get(2))?;
+        // Compare before migrating legacy bytes. This exact row is locked
+        // until the owner transaction ends, so a replacement cannot be selected
+        // between the precondition and creation of the authenticated lease.
+        if let Some(expected) = expected
+            && self.encrypted_record_reference(&stored_key, handle, &ciphertext, row.get(2))
+                != expected
+        {
+            return Ok(None);
+        }
+        let Some(plaintext) = decoded.into_runtime_material() else {
+            // Immutable input and retired values never become runtime credentials.
+            return Ok(None);
         };
-        let plaintext = self
-            .crypto
-            .decrypt(&nonce_and_ct, &salt, &aad)
-            .map_err(|_| SecretStoreError::StoreUnavailable {
-                reason: "secret record ownership or integrity verification failed".into(),
-            })?;
         if stored_key == legacy {
             let new_aad = pg_record_aad(
                 &self.tenant_id,
@@ -555,7 +1345,7 @@ impl PgSecretStore {
             );
             let (nonce_and_ct, salt) = self
                 .crypto
-                .encrypt(plaintext.expose().as_bytes(), &new_aad)
+                .encrypt(plaintext.expose_secret().as_bytes(), &new_aad)
                 .map_err(|_| SecretStoreError::StoreUnavailable {
                     reason: "legacy secret upgrade encryption failed".into(),
                 })?;
@@ -574,7 +1364,63 @@ impl PgSecretStore {
                 &[&self.tenant_id, &legacy, &handle.as_str()],
             ).await.map_err(map_pg_error)?;
         }
-        Ok(Some(SecretMaterial::from(plaintext.expose().to_owned())))
+        Ok(Some(plaintext))
+    }
+
+    fn authenticate_secret_record(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        stored_key: &str,
+        ciphertext: &str,
+        version: i32,
+    ) -> Result<DecodedSecretValue, SecretStoreError> {
+        if version != 1 {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "unsupported secret master-key version".into(),
+            });
+        }
+        let key = secret_scope_str(scope, handle);
+        let (encoded, format) = match ciphertext.strip_prefix(CUSTODY_CIPHERTEXT_PREFIX) {
+            Some(encoded) => {
+                if stored_key != key {
+                    return Err(SecretStoreError::StoreUnavailable {
+                        reason: "custody record has invalid native identity".into(),
+                    });
+                }
+                (encoded, Some(CUSTODY_FORMAT_V1))
+            }
+            None => match ciphertext.strip_prefix(TIMED_ORDINARY_CIPHERTEXT_PREFIX) {
+                Some(encoded) if stored_key == key => (encoded, Some(TIMED_ORDINARY_FORMAT_V1)),
+                Some(_) => {
+                    return Err(SecretStoreError::StoreUnavailable {
+                        reason: "expiring secret record has invalid native identity".into(),
+                    });
+                }
+                None => (ciphertext, None),
+            },
+        };
+        // Unknown purpose prefixes are not base64 and fail closed. Raw ordinary
+        // material is never inspected or reinterpreted as structured JSON.
+        let (salt, nonce_and_ct) = decode_ciphertext(encoded)?;
+        let inner = filesystem_secret_aad(scope, handle);
+        let aad = if stored_key == key {
+            pg_record_aad(&self.tenant_id, &key, handle.as_str(), &inner)
+        } else {
+            inner
+        };
+        let value = decrypt_stored_value(&self.crypto, &aad, &nonce_and_ct, &salt, format)
+            .map_err(|_| SecretStoreError::StoreUnavailable {
+                reason: "secret record ownership or integrity verification failed".into(),
+            })?;
+        if let Some(body) = value.custody()
+            && crate::scoped_legacy_user_id(body.scope()) != crate::scoped_legacy_user_id(scope)
+        {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "custody record has invalid stored owner".into(),
+            });
+        }
+        Ok(value)
     }
 
     async fn load_lease(
@@ -610,6 +1456,21 @@ impl PgSecretStore {
 
 #[async_trait]
 impl SecretStore for PgSecretStore {
+    async fn close_identity(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        expected: crate::SecretIdentityClosure,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        let mut client = self.pool.get().await.map_err(map_pg_pool_error)?;
+        let transaction = client.transaction().await.map_err(map_pg_error)?;
+        let metadata = self
+            .close_identity_in_transaction(&transaction, scope, handle, expected)
+            .await?;
+        transaction.commit().await.map_err(map_pg_error)?;
+        Ok(metadata)
+    }
+
     async fn put(
         &self,
         scope: ResourceScope,
@@ -620,6 +1481,143 @@ impl SecretStore for PgSecretStore {
         let transaction = client.transaction().await.map_err(map_pg_error)?;
         let metadata = self
             .put_in_transaction(&transaction, scope, handle, material)
+            .await?;
+        transaction.commit().await.map_err(map_pg_error)?;
+        Ok(metadata)
+    }
+
+    async fn put_with_expiry(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expires_at: Option<Timestamp>,
+    ) -> Result<SecretMetadata, SecretStoreError> {
+        let mut client = self.pool.get().await.map_err(map_pg_pool_error)?;
+        let transaction = client.transaction().await.map_err(map_pg_error)?;
+        let metadata = self
+            .put_with_expiry_in_transaction(&transaction, scope, handle, material, expires_at)
+            .await?;
+        transaction.commit().await.map_err(map_pg_error)?;
+        Ok(metadata)
+    }
+
+    async fn record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<String>, SecretStoreError> {
+        let mut client = self.pool.get().await.map_err(map_pg_pool_error)?;
+        let transaction = client
+            .build_transaction()
+            .read_only(true)
+            .start()
+            .await
+            .map_err(map_pg_error)?;
+        let reference = self
+            .inspect_record_reference_in_transaction(&transaction, scope, handle)
+            .await?;
+        transaction.commit().await.map_err(map_pg_error)?;
+        Ok(reference)
+    }
+
+    async fn put_if_record_reference(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expected: Option<&str>,
+    ) -> Result<Option<SecretMetadata>, SecretStoreError> {
+        let mut client = self.pool.get().await.map_err(map_pg_pool_error)?;
+        let transaction = client.transaction().await.map_err(map_pg_error)?;
+        let written = self
+            .put_if_record_reference_in_transaction(&transaction, scope, handle, material, expected)
+            .await?;
+        transaction.commit().await.map_err(map_pg_error)?;
+        Ok(written)
+    }
+
+    async fn matches(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        candidate: &SecretMaterial,
+    ) -> Result<bool, SecretStoreError> {
+        let mut client = self.pool.get().await.map_err(map_pg_pool_error)?;
+        let transaction = client
+            .build_transaction()
+            .read_only(true)
+            .start()
+            .await
+            .map_err(map_pg_error)?;
+        let Some(record) = self
+            .inspect_secret_in_transaction(&transaction, scope, handle)
+            .await?
+        else {
+            return Err(SecretStoreError::UnknownSecret {
+                scope: Box::new(scope.clone()),
+                handle: handle.clone(),
+            });
+        };
+        let matches = crate::crypto::secret_values_match(
+            record
+                .value
+                .material_for_compare()
+                .ok_or_else(|| SecretStoreError::UnknownSecret {
+                    scope: Box::new(scope.clone()),
+                    handle: handle.clone(),
+                })?
+                .expose_secret(),
+            candidate.expose_secret(),
+        );
+        drop(record);
+        transaction.commit().await.map_err(map_pg_error)?;
+        Ok(matches)
+    }
+
+    async fn put_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        context: serde_json::Value,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        let mut client = self.pool.get().await.map_err(map_pg_pool_error)?;
+        let transaction = client.transaction().await.map_err(map_pg_error)?;
+        let metadata = self
+            .put_original_in_transaction(&transaction, scope, handle, material, context)
+            .await?;
+        transaction.commit().await.map_err(map_pg_error)?;
+        Ok(metadata)
+    }
+    async fn custody(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        let mut client = self.pool.get().await.map_err(map_pg_pool_error)?;
+        let transaction = client
+            .build_transaction()
+            .read_only(true)
+            .start()
+            .await
+            .map_err(map_pg_error)?;
+        let metadata = self
+            .custody_in_transaction(&transaction, scope, handle)
+            .await?;
+        transaction.commit().await.map_err(map_pg_error)?;
+        Ok(metadata)
+    }
+    async fn put_retained_from_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        source: SecretCustodySource,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        let mut client = self.pool.get().await.map_err(map_pg_pool_error)?;
+        let transaction = client.transaction().await.map_err(map_pg_error)?;
+        let metadata = self
+            .put_retained_from_original_in_transaction(&transaction, scope, handle, source)
             .await?;
         transaction.commit().await.map_err(map_pg_error)?;
         Ok(metadata)
@@ -650,23 +1648,44 @@ impl SecretStore for PgSecretStore {
     ) -> Result<bool, SecretStoreError> {
         let mut client = self.pool.get().await.map_err(map_pg_pool_error)?;
         let transaction = client.transaction().await.map_err(map_pg_error)?;
-        if self
-            .load_secret(&transaction, scope, handle)
+        self.lock_secret_records(&transaction, &[(scope, handle)])
+            .await?;
+        let Some(record) = self
+            .inspect_secret_in_transaction(&transaction, scope, handle)
             .await?
-            .is_none()
-        {
+        else {
             return Ok(false);
-        }
-        let scope_key = secret_scope_str(scope, handle);
-        let rows = transaction
-            .execute(
-                "DELETE FROM brassclaw_secrets WHERE tenant_id = $1 AND scope = $2 AND name = $3",
-                &[&self.tenant_id, &scope_key, &handle.as_str()],
-            )
-            .await
-            .map_err(map_pg_error)?;
+        };
+        let reference = self.encrypted_record_reference(
+            &record.key,
+            handle,
+            &record.ciphertext,
+            record.version,
+        );
+        let changed = match record.value {
+            DecodedSecretValue::Custody(body) => {
+                if body.is_retired() {
+                    return Ok(false);
+                }
+                let retired = (*body).retire(reference);
+                let ciphertext = self.encode_custody(scope, handle, &retired)?;
+                transaction.execute("UPDATE brassclaw_secrets SET ciphertext=$4,updated_at=now() WHERE tenant_id=$1 AND scope=$2 AND name=$3", &[&self.tenant_id, &record.key, &handle.as_str(), &ciphertext]).await.map_err(map_pg_error)?
+            }
+            DecodedSecretValue::Ordinary(material) => {
+                drop(material);
+                // Delete the authenticated actual key, including an old legacy
+                // key, without encrypting a replacement merely to delete it.
+                transaction
+                    .execute(
+                        "DELETE FROM brassclaw_secrets WHERE tenant_id=$1 AND scope=$2 AND name=$3",
+                        &[&self.tenant_id, &record.key, &handle.as_str()],
+                    )
+                    .await
+                    .map_err(map_pg_error)?
+            }
+        };
         transaction.commit().await.map_err(map_pg_error)?;
-        Ok(rows == 1)
+        Ok(changed == 1)
     }
 
     async fn lease_once(
@@ -674,13 +1693,22 @@ impl SecretStore for PgSecretStore {
         scope: &ResourceScope,
         handle: &SecretHandle,
     ) -> Result<SecretLease, SecretStoreError> {
-        let mut client = self.pool.get().await.map_err(map_pg_pool_error)?;
-        let transaction = client.transaction().await.map_err(map_pg_error)?;
-        let lease = self
-            .lease_once_in_transaction(&transaction, scope, handle)
-            .await?;
-        transaction.commit().await.map_err(map_pg_error)?;
-        Ok(lease)
+        self.issue_selected_lease(scope, handle, None)
+            .await?
+            .ok_or_else(|| SecretStoreError::UnknownSecret {
+                scope: Box::new(scope.clone()),
+                handle: handle.clone(),
+            })
+    }
+
+    async fn lease_once_if_record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: &str,
+    ) -> Result<Option<SecretLease>, SecretStoreError> {
+        self.issue_selected_lease(scope, handle, Some(expected))
+            .await
     }
 
     async fn consume(
@@ -691,10 +1719,16 @@ impl SecretStore for PgSecretStore {
         let mut client = self.pool.get().await.map_err(map_pg_pool_error)?;
         let transaction = client.transaction().await.map_err(map_pg_error)?;
         let material = self
-            .consume_in_transaction(&transaction, scope, lease_id)
+            .consume_selected_in_transaction(&transaction, scope, lease_id)
             .await?;
         transaction.commit().await.map_err(map_pg_error)?;
-        Ok(material)
+        if material
+            .expires_at
+            .is_some_and(|expiry| expiry <= Utc::now())
+        {
+            return Err(SecretStoreError::SecretExpired);
+        }
+        Ok(material.material)
     }
 
     async fn revoke(
@@ -731,6 +1765,7 @@ impl SecretStore for PgSecretStore {
             scope: scope.clone(),
             handle: payload.handle,
             status: SecretLeaseStatus::Revoked,
+            secret_expires_at: payload.secret_expires_at,
         })
     }
 
@@ -768,7 +1803,15 @@ impl SecretStore for PgSecretStore {
                     id: lease_id,
                     scope: payload.scope,
                     handle: payload.handle,
-                    status: SecretLeaseStatus::Active,
+                    status: if payload
+                        .secret_expires_at
+                        .is_some_and(|expiry| expiry <= Utc::now())
+                    {
+                        SecretLeaseStatus::Expired
+                    } else {
+                        SecretLeaseStatus::Active
+                    },
+                    secret_expires_at: payload.secret_expires_at,
                 });
             }
         }

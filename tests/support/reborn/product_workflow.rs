@@ -6,7 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use brassclaw_filesystem::{FilesystemError, LocalFilesystem, RootFilesystem, ScopedFilesystem};
+use brassclaw_filesystem::{FilesystemError, RootFilesystem, ScopedFilesystem};
 use brassclaw_host_api::{
     AgentId, HostApiError, MountAlias, MountGrant, MountPermissions, MountView, ProjectId,
     ResourceScope, ScopedPath, TenantId, ThreadId, UserId, VirtualPath,
@@ -22,8 +22,6 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::sync::Mutex;
 
-use super::filesystem::local_filesystem;
-
 #[derive(Debug, Error)]
 pub enum RebornProductWorkflowHarnessError {
     #[error("failed to create product workflow harness tempdir: {0}")]
@@ -36,26 +34,18 @@ pub enum RebornProductWorkflowHarnessError {
     MissingAgentScope,
 }
 
-pub struct RebornProductWorkflowHarness {
+pub struct RebornProductWorkflowHarness<F: RootFilesystem> {
     pub scope: ResourceScope,
-    filesystem: Arc<ScopedFilesystem<LocalFilesystem>>,
-    backend: Arc<LocalFilesystem>,
+    filesystem: Arc<ScopedFilesystem<F>>,
+    backend: Arc<F>,
     root: Arc<tempfile::TempDir>,
     idempotency_lock: Arc<Mutex<()>>,
 }
 
-impl RebornProductWorkflowHarness {
-    pub fn filesystem_temp(
-        scope: ResourceScope,
-    ) -> Result<Self, RebornProductWorkflowHarnessError> {
-        let root = Arc::new(tempfile::tempdir()?);
-        let backend = Arc::new(local_filesystem(root.path())?);
-        Self::filesystem_shared_backend(scope, backend, root)
-    }
-
+impl<F: RootFilesystem> RebornProductWorkflowHarness<F> {
     pub fn filesystem_shared_backend(
         scope: ResourceScope,
-        backend: Arc<LocalFilesystem>,
+        backend: Arc<F>,
         root: Arc<tempfile::TempDir>,
     ) -> Result<Self, RebornProductWorkflowHarnessError> {
         let idempotency_lock = idempotency_lock_for_workflow_root(&root, &scope);
@@ -64,7 +54,7 @@ impl RebornProductWorkflowHarness {
 
     fn filesystem_shared_backend_with_lock(
         scope: ResourceScope,
-        backend: Arc<LocalFilesystem>,
+        backend: Arc<F>,
         root: Arc<tempfile::TempDir>,
         idempotency_lock: Arc<Mutex<()>>,
     ) -> Result<Self, RebornProductWorkflowHarnessError> {
@@ -101,10 +91,7 @@ impl RebornProductWorkflowHarness {
 
     pub fn binding_service(
         &self,
-    ) -> Result<
-        FilesystemConversationBindingService<LocalFilesystem>,
-        RebornProductWorkflowHarnessError,
-    > {
+    ) -> Result<FilesystemConversationBindingService<F>, RebornProductWorkflowHarnessError> {
         let agent_id = self
             .scope
             .agent_id
@@ -118,7 +105,7 @@ impl RebornProductWorkflowHarness {
         ))
     }
 
-    pub fn idempotency_ledger(&self) -> FilesystemIdempotencyLedger<LocalFilesystem> {
+    pub fn idempotency_ledger(&self) -> FilesystemIdempotencyLedger<F> {
         FilesystemIdempotencyLedger::new_with_lock(
             Arc::clone(&self.filesystem),
             self.scope.clone(),
@@ -130,7 +117,7 @@ impl RebornProductWorkflowHarness {
     pub fn idempotency_ledger_with_ttl(
         &self,
         lease_ttl: Duration,
-    ) -> FilesystemIdempotencyLedger<LocalFilesystem> {
+    ) -> FilesystemIdempotencyLedger<F> {
         FilesystemIdempotencyLedger::new_with_lock(
             Arc::clone(&self.filesystem),
             self.scope.clone(),
@@ -200,11 +187,12 @@ where
             ProductConversationRouteKind::Direct => Some(actor_user_id.clone()),
             ProductConversationRouteKind::Shared => Some(self.scope.user_id.clone()),
         };
+        let thread_id = thread_id_for_binding(&self.scope, &request, subject_user_id.as_ref())?;
         let binding = ResolvedBinding {
             tenant_id: self.scope.tenant_id.clone(),
             actor_user_id,
             subject_user_id,
-            thread_id: thread_id_for_binding(&self.scope, &request)?,
+            thread_id,
             agent_id: Some(self.agent_id.clone()),
             project_id: self.project_id.clone(),
         };
@@ -482,6 +470,7 @@ fn binding_path(
             project_id,
             request.adapter_id.as_str(),
             request.installation_id.as_str(),
+            route_kind_part(request.route_kind),
             request.external_actor_ref.kind(),
             request.external_actor_ref.id(),
             &request.external_conversation_ref.conversation_fingerprint(),
@@ -532,6 +521,7 @@ fn user_id_for_binding(
         "user",
         &[
             tenant_id.as_str(),
+            request.adapter_id.as_str(),
             request.installation_id.as_str(),
             request.external_actor_ref.kind(),
             request.external_actor_ref.id(),
@@ -543,6 +533,7 @@ fn user_id_for_binding(
 fn thread_id_for_binding(
     scope: &ResourceScope,
     request: &ResolveBindingRequest,
+    subject_user_id: Option<&UserId>,
 ) -> Result<ThreadId, ProductWorkflowError> {
     let agent_id = scope.agent_id.as_ref().map_or("", AgentId::as_str);
     let project_id = scope.project_id.as_ref().map_or("", ProjectId::as_str);
@@ -552,11 +543,21 @@ fn thread_id_for_binding(
             scope.tenant_id.as_str(),
             agent_id,
             project_id,
+            request.adapter_id.as_str(),
             request.installation_id.as_str(),
+            route_kind_part(request.route_kind),
+            subject_user_id.map_or("", UserId::as_str),
             &request.external_conversation_ref.conversation_fingerprint(),
         ],
         ThreadId::new,
     )
+}
+
+fn route_kind_part(route_kind: ProductConversationRouteKind) -> &'static str {
+    match route_kind {
+        ProductConversationRouteKind::Direct => "direct",
+        ProductConversationRouteKind::Shared => "shared",
+    }
 }
 
 fn scoped_id<T>(

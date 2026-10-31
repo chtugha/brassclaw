@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use brassclaw_pg::PgPool;
 use brassclaw_product_workflow::{
+    ComponentFunctionReviewPartner, ComponentFunctionReviewPartnerReceipt,
     ComponentReviewSubmissionReceipt, ComponentReviewSubmissionView, ComponentRevisionSelection,
     RecipeStoreError, SubmitComponentReviewRequest,
 };
@@ -11,8 +12,8 @@ use brassclaw_skills::{
     association_contract::ComponentRevisionRef,
     component_revision::ComponentRevisionDraft,
     review_submission_store::{
-        PgReviewSubmissionStore, RetainedReviewSubmission, ReviewSubmissionDraft,
-        SubmissionStoreError,
+        FunctionReviewPartnerDraft, PgReviewSubmissionStore, RetainedReviewSubmission,
+        ReviewSubmissionDraft, SubmissionStoreError,
     },
     revision_store::RevisionStoreError,
 };
@@ -74,6 +75,13 @@ fn receipt(value: &RetainedReviewSubmission) -> ComponentReviewSubmissionReceipt
         candidate: selection(value.candidate),
         base: value.base.map(selection),
         dependencies: value.dependencies.iter().copied().map(selection).collect(),
+        function_partner: value.function_partner.map(|partner| {
+            ComponentFunctionReviewPartnerReceipt {
+                reference: selection(partner.reference),
+                changed: partner.changed,
+                base: partner.base.map(selection),
+            }
+        }),
         review_status: "unreviewed".into(),
         catalogue_activated: false,
     }
@@ -110,11 +118,47 @@ pub(crate) async fn submit(
         .iter()
         .map(reference)
         .collect::<Result<Vec<_>, _>>()?;
-    let draft = match request.expected_previous_version {
-        Some(head) => {
+    let draft = match (request.expected_previous_version, request.function_partner) {
+        (Some(head), Some(partner)) => {
+            let partner = match partner {
+                ComponentFunctionReviewPartner::Changed {
+                    candidate_bytes,
+                    base,
+                    expected_previous_version,
+                } => FunctionReviewPartnerDraft::Changed {
+                    candidate: Box::new(
+                        ComponentRevisionDraft::from_json(&candidate_bytes).map_err(|_| {
+                            RecipeStoreError::Invalid("invalid immutable partner revision".into())
+                        })?,
+                    ),
+                    base: base.as_ref().map(reference).transpose()?,
+                    expected_previous_version,
+                },
+                ComponentFunctionReviewPartner::Context { reference: value } => {
+                    FunctionReviewPartnerDraft::Context {
+                        reference: reference(&value)?,
+                    }
+                }
+            };
+            ReviewSubmissionDraft::new_function(
+                id,
+                actor,
+                candidate,
+                base,
+                dependencies,
+                head,
+                partner,
+            )
+        }
+        (None, Some(_)) => {
+            return Err(RecipeStoreError::Invalid(
+                "function review requires each changed allocation head".into(),
+            ));
+        }
+        (Some(head), None) => {
             ReviewSubmissionDraft::new_after_head(id, actor, candidate, base, dependencies, head)
         }
-        None => ReviewSubmissionDraft::new(id, actor, candidate, base, dependencies),
+        (None, None) => ReviewSubmissionDraft::new(id, actor, candidate, base, dependencies),
     }
     .map_err(storage)?;
     let retained = PgReviewSubmissionStore::new(pool.clone())
@@ -191,3 +235,11 @@ pub(crate) async fn get(
 #[cfg(test)]
 #[path = "pg_review_submission_tests.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "skills-db"))]
+#[path = "pg_review_model_selection_tests.rs"]
+mod model_selection_tests;
+
+#[cfg(test)]
+#[path = "pg_function_review_submission_tests.rs"]
+mod function_tests;

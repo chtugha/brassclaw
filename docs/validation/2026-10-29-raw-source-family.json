@@ -1,0 +1,468 @@
+{
+  "format": "brassclaw-raw-source-family-validation/1",
+  "status": "scoped-source-and-consumer-acceptance-ordinary-workflow-incomplete",
+  "changed_sources": {
+    "crates/brassclaw_host_runtime/src/lib.rs": {
+      "before": "897d14b1611845aa617ba8b25c0f120bd3ed8761aa529d9ae01253ed2eb59a42",
+      "after": "5abe3001bd800e019cbb2262b71dfc630a077894f1878b4f7ff25323eb91a235"
+    },
+    "crates/brassclaw_host_runtime/src/obligations.rs": {
+      "before": "6b874a330a971c83565f10a7b9ac52dccf6a244c86db65135909fc4776319705",
+      "after": "07ab7a2fa62c44fbfa1c56c78e76aa1ead784310ed3c5065ed5d18604b1b19c0"
+    },
+    "crates/brassclaw_host_runtime/src/services/retained_capability.rs": {
+      "before": "580048a5f9d464ccf2a432ddcb74711f43eecbbedf48d133eaa2bfe316aed6c8",
+      "after": "251c5abc941bdd0cbc0272c87260275539ed9c75dceab579bbb9a7bc81b90c15"
+    },
+    "crates/brassclaw_reborn_composition/src/task_tool_credentials.rs": {
+      "before": "94d577aee8826d58d4880552d1f1794cfc513f0049b73469b59c8589c8623e73",
+      "after": "499e96b5f9eed7cf8494d480f7bf8d8897edc851de2c8d71f785ebe23ef9c1f0"
+    },
+    "crates/brassclaw_reborn_composition/src/task_tool_credentials_tests.rs": {
+      "before": "f2a20d1ca73c8e8897acddb450acdccf723c769941c93fb2de2e217c94563b1a",
+      "after": "cc2549a1094d52d0968f45fcf7bb1b5b2976ed106d03f19bc4a1cfa847b7cb4e"
+    },
+    "crates/brassclaw_reborn_composition/src/monty_kernel.rs": {
+      "before": "74fdbe8bd5729a4ac2d68be80a592977ea5b04acf066ae3a026667f24d4a3bd7",
+      "after": "7391b74d14a8223eeed0b9cdbbbce5d0b212cd240e94978787ef64410f959a66"
+    },
+    "crates/brassclaw_reborn_composition/src/installed_monty_catalogue.rs": {
+      "before": "ddab83602a1ec993380225476792cfeef5d34adad3c93ae6b9d2105bf5074b08",
+      "after": "646a54055566fbb227650820ee07e1f0db15463e76546c3b7278e75639afbae2"
+    },
+    "crates/brassclaw_reborn_composition/src/task_catalogue_binding.rs": {
+      "before": "04b1dbcd3b052290f8840f346e7d2043a44cf0eb2f6da124ab72350fe0dfc7ac",
+      "after": "f969b9bce3cc741a4ea0c749e718146f7309f7f5d2d65f3db163ccbe40bf3d91"
+    },
+    "crates/brassclaw_host_runtime/tests/first_party_builtin_tools.rs": {
+      "before": "632cd425a045317789dcc1a50ff4088148455492000029cd1d41d96b07bb803b",
+      "after": "d7b70122514ce24a16ab41293a05a03c4b9105f27349669de81c7076dd170ad1"
+    },
+    "crates/brassclaw_host_runtime/src/raw_secret_source.rs": {
+      "before": null,
+      "after": "092c684281034aa58e24fee932a65565f85055a1708c6beebdb2be643c6e7c58"
+    },
+    "crates/brassclaw_host_runtime/src/obligations/tests/raw_source_tests.rs": {
+      "before": null,
+      "after": "d539ecf5b8af349198e8edaf9a081a351ecde796df0bfe6df321b9c42418dfe1"
+    }
+  },
+  "host_validation": {
+    "status": "passed-host-raw-source-family-composition-pending",
+    "runner_pid": 21859,
+    "process_pid": null,
+    "source": "/Volumes/SSDE/brassclaw",
+    "target": "/Users/ollama/brassclaw-target",
+    "results": [
+      {
+        "label": "format-host",
+        "command": [
+          "cargo",
+          "+1.96.0",
+          "fmt",
+          "-p",
+          "brassclaw_host_runtime",
+          "--",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.255,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "host-test-images",
+        "command": [
+          "cargo",
+          "+1.96.0",
+          "test",
+          "-p",
+          "brassclaw_host_runtime",
+          "--lib",
+          "--test",
+          "builtin_obligation_handler_contract",
+          "--test",
+          "runtime_http_egress_contract",
+          "--test",
+          "first_party_builtin_tools",
+          "--features",
+          "test-support",
+          "--no-run",
+          "--locked",
+          "--message-format=json"
+        ],
+        "exit_code": 0,
+        "seconds": 9.79,
+        "log_sha256": "153427e8e48cc88f47a420dd30c61616b98f022c38b6a88e96f4ef0832ece1ff"
+      },
+      {
+        "label": "strict-host-tests",
+        "command": [
+          "cargo",
+          "+1.96.0",
+          "clippy",
+          "-p",
+          "brassclaw_host_runtime",
+          "--lib",
+          "--tests",
+          "--features",
+          "test-support",
+          "--locked",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 8.024,
+        "log_sha256": "66a7656b49bf32275d27b67005ffbcb279a05fe7f6e0af58b654c22cb7eed004"
+      },
+      {
+        "label": "staging-unit",
+        "command": [
+          "/private/tmp/brassclaw-raw-source-family-validation-20261029/host-1/brassclaw_host_runtime-e0b2971548b5c3f42dc0ae722478cacc4cc2c59990ceada374e208af902e367b",
+          "obligations::tests::",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.688,
+        "log_sha256": "63c85079374ffbafb873a4f1534740fd1cdc02479abad8c0c3b999453da8dd66",
+        "passed": 17,
+        "image_sha256": "e0b2971548b5c3f42dc0ae722478cacc4cc2c59990ceada374e208af902e367b"
+      },
+      {
+        "label": "retained-services-unit",
+        "command": [
+          "/private/tmp/brassclaw-raw-source-family-validation-20261029/host-1/brassclaw_host_runtime-e0b2971548b5c3f42dc0ae722478cacc4cc2c59990ceada374e208af902e367b",
+          "services::retained_credentials::tests::",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.005,
+        "log_sha256": "de168d2286d9cfede10c329ca24007112c3a06bb02c0c247e419d2a71fd1211c",
+        "passed": 3,
+        "image_sha256": "e0b2971548b5c3f42dc0ae722478cacc4cc2c59990ceada374e208af902e367b"
+      },
+      {
+        "label": "obligation-contract",
+        "command": [
+          "/private/tmp/brassclaw-raw-source-family-validation-20261029/host-1/builtin_obligation_handler_contract-c04968723081c99c77b846a45f7bcf82ec0a68d68ad089a281b2e3445641cd76",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.749,
+        "log_sha256": "63d313af6997673ebf9e25e8c0b0d69bd58c727514b23e47fc7a7212f84cdeb8",
+        "passed": 37,
+        "image_sha256": "c04968723081c99c77b846a45f7bcf82ec0a68d68ad089a281b2e3445641cd76"
+      },
+      {
+        "label": "actual-egress-contract",
+        "command": [
+          "/private/tmp/brassclaw-raw-source-family-validation-20261029/host-1/runtime_http_egress_contract-09dc4355005febf6c221d1c9b72ebe5dbc8f34e90113de7aa98a0061633f3332",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 1.472,
+        "log_sha256": "44148e53ade366221f27af40e4cc4e5c243030ba6436381add430e4e3cf8465b",
+        "passed": 43,
+        "image_sha256": "09dc4355005febf6c221d1c9b72ebe5dbc8f34e90113de7aa98a0061633f3332"
+      },
+      {
+        "label": "retained-native-policy",
+        "command": [
+          "/private/tmp/brassclaw-raw-source-family-validation-20261029/host-1/first_party_builtin_tools-2ab18ff2d4f4ca66ec3bc3a5a8bb88c0d36ada50279f1cce6b34deed1b5e4d98",
+          "retained_child_service_preserves_native_identity_and_kernel_block",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.69,
+        "log_sha256": "6b41f61681e78c781499ad1690fd9f3d422686dc6799a47f0e67a3bc6b02f361",
+        "passed": 1,
+        "image_sha256": "2ab18ff2d4f4ca66ec3bc3a5a8bb88c0d36ada50279f1cce6b34deed1b5e4d98"
+      }
+    ],
+    "artifacts": {
+      "builtin_obligation_handler_contract": {
+        "path": "/private/tmp/brassclaw-raw-source-family-validation-20261029/host-1/builtin_obligation_handler_contract-c04968723081c99c77b846a45f7bcf82ec0a68d68ad089a281b2e3445641cd76",
+        "sha256": "c04968723081c99c77b846a45f7bcf82ec0a68d68ad089a281b2e3445641cd76",
+        "original_executable": "/Users/ollama/brassclaw-target/debug/deps/builtin_obligation_handler_contract-d5c3a5294fae0bf7",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 0,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "test-support"
+        ],
+        "manifest_path": "/Volumes/SSDE/brassclaw/crates/brassclaw_host_runtime/Cargo.toml"
+      },
+      "runtime_http_egress_contract": {
+        "path": "/private/tmp/brassclaw-raw-source-family-validation-20261029/host-1/runtime_http_egress_contract-09dc4355005febf6c221d1c9b72ebe5dbc8f34e90113de7aa98a0061633f3332",
+        "sha256": "09dc4355005febf6c221d1c9b72ebe5dbc8f34e90113de7aa98a0061633f3332",
+        "original_executable": "/Users/ollama/brassclaw-target/debug/deps/runtime_http_egress_contract-fe312f121156021b",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 0,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "test-support"
+        ],
+        "manifest_path": "/Volumes/SSDE/brassclaw/crates/brassclaw_host_runtime/Cargo.toml"
+      },
+      "brassclaw_host_runtime": {
+        "path": "/private/tmp/brassclaw-raw-source-family-validation-20261029/host-1/brassclaw_host_runtime-e0b2971548b5c3f42dc0ae722478cacc4cc2c59990ceada374e208af902e367b",
+        "sha256": "e0b2971548b5c3f42dc0ae722478cacc4cc2c59990ceada374e208af902e367b",
+        "original_executable": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_host_runtime-71eb97b4083bdd90",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 0,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "test-support"
+        ],
+        "manifest_path": "/Volumes/SSDE/brassclaw/crates/brassclaw_host_runtime/Cargo.toml"
+      },
+      "first_party_builtin_tools": {
+        "path": "/private/tmp/brassclaw-raw-source-family-validation-20261029/host-1/first_party_builtin_tools-2ab18ff2d4f4ca66ec3bc3a5a8bb88c0d36ada50279f1cce6b34deed1b5e4d98",
+        "sha256": "2ab18ff2d4f4ca66ec3bc3a5a8bb88c0d36ada50279f1cce6b34deed1b5e4d98",
+        "original_executable": "/Users/ollama/brassclaw-target/debug/deps/first_party_builtin_tools-d5881ade9f1b5b03",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 0,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "test-support"
+        ],
+        "manifest_path": "/Volumes/SSDE/brassclaw/crates/brassclaw_host_runtime/Cargo.toml"
+      }
+    },
+    "scope": "Explicit raw-handle source resolution and mandatory source-use fencing through the actual obligation/conditional lease/consume/cleanup path. No activated ordinary native raw workflow or own-auth progression.",
+    "source_sha256": "f6c254da320e2ab47c4857701c57fa20ef8336e693b30ecde10c499020e4c9a3",
+    "local_dependency_count": 31,
+    "stage": "complete",
+    "command": [
+      "/private/tmp/brassclaw-raw-source-family-validation-20261029/host-1/first_party_builtin_tools-2ab18ff2d4f4ca66ec3bc3a5a8bb88c0d36ada50279f1cce6b34deed1b5e4d98",
+      "retained_child_service_preserves_native_identity_and_kernel_block",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "passed": 101
+  },
+  "composition_validation": {
+    "status": "passed",
+    "runner_pid": 21978,
+    "process_pid": null,
+    "results": [
+      {
+        "stage": "format-affected",
+        "exit_code": 0,
+        "seconds": 0.39392833411693573,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "composition-image",
+        "exit_code": 0,
+        "seconds": 228.68528708303347,
+        "log_sha256": "a81f773a16726f59e7570f449c3ce88510f5dc48a8b4c073afd30d544dee727f"
+      },
+      {
+        "stage": "case-1",
+        "exit_code": 0,
+        "seconds": 0.3409347499255091,
+        "log_sha256": "163696540f93934ba395893b44af974cffec88b8c7d84f076d060f32bd671414",
+        "case": "product_auth_runtime_credentials::captured::tests::original_source_survives_head_change_but_never_ciphertext_replacement",
+        "passed": 1
+      },
+      {
+        "stage": "case-2",
+        "exit_code": 0,
+        "seconds": 0.3416507919318974,
+        "log_sha256": "2f9880a8880207797d53e0084c0a82e548206b3d451616abc03b01730bb82a56",
+        "case": "product_auth_runtime_credentials::captured::tests::captured_absence_cannot_adopt_later_global_selection_or_material",
+        "passed": 1
+      },
+      {
+        "stage": "case-3",
+        "exit_code": 0,
+        "seconds": 0.3389892498962581,
+        "log_sha256": "607119724463a7dcf6d24985f3664e814027475d768be17e0220c9a18de7a02b",
+        "case": "product_auth_runtime_credentials::captured::tests::original_selection_is_retained_when_live_account_is_revoked",
+        "passed": 1
+      },
+      {
+        "stage": "case-4",
+        "exit_code": 0,
+        "seconds": 3.480469665955752,
+        "log_sha256": "a92c574829b42be4d07eb3c105ac03a211348aea1b7b5284912dde06fb8fdc45",
+        "case": "task_tool_credentials::tests::bound_account_view_fences_original_claim_scope_late_read_and_weak_lifetime",
+        "passed": 1
+      },
+      {
+        "stage": "case-5",
+        "exit_code": 0,
+        "seconds": 2.5048883750569075,
+        "log_sha256": "f14290e5be96c10ff9a5b18b0049753a5a70c3d1a2c6563a4739fa8c9deb3ab1",
+        "case": "task_tool_credentials::tests::bound_raw_view_retains_original_generation_absence_scope_and_host_fence",
+        "passed": 1
+      },
+      {
+        "stage": "case-6",
+        "exit_code": 0,
+        "seconds": 84.59862870792858,
+        "log_sha256": "9e87f1cb0fbbe34752b0b28ac6a616d9680e1ed54ed6bddfc1a1ba1322a74a5b",
+        "case": "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match",
+        "passed": 1
+      },
+      {
+        "stage": "case-7",
+        "exit_code": 0,
+        "seconds": 4.757038375129923,
+        "log_sha256": "f85656b7450544caec3a7f89a0add51dc922989339750bbc48c0d11ed9ead98e",
+        "case": "native_model_usage_tests::native_task_model_usage_captures_database_selection_without_legacy_route",
+        "passed": 1
+      },
+      {
+        "stage": "case-8",
+        "exit_code": 0,
+        "seconds": 4.6837373750749975,
+        "log_sha256": "30b870c95e40aac819576a3edd6352a5e7a6ac8e4739d55e24d5657f1997bef8",
+        "case": "native_model_usage_tests::native_recipe_selected_prefix_uses_original_pair_without_base_fallback",
+        "passed": 1
+      },
+      {
+        "stage": "case-9",
+        "exit_code": 0,
+        "seconds": 44.20428854087368,
+        "log_sha256": "18ce4e287e54c273d27a0564f58996508394270d2b57a0803461ad7c6459d14d",
+        "case": "runtime::tests::child_task_execution_tests::native_child_uses_claimed_parent_old_catalogue_and_same_global_vm",
+        "passed": 1
+      },
+      {
+        "stage": "case-10",
+        "exit_code": 0,
+        "seconds": 39.43965345900506,
+        "log_sha256": "fdf537b943f541654061ef9c45d85fdb73a96e46156ba74077ff7c7f190926a3",
+        "case": "runtime::tests::child_task_execution_tests::parent_recipe_tests::native_complete_parent_recipe_delegates_on_the_instance_global_vm",
+        "passed": 1
+      },
+      {
+        "stage": "composition-strict",
+        "exit_code": 0,
+        "seconds": 88.90105241700076,
+        "log_sha256": "86b99623124c4463a077b61cfc68489013df55a06b791af35dea37bcb4c9934c"
+      },
+      {
+        "stage": "composition-default-strict",
+        "exit_code": 0,
+        "seconds": 20.455640041967854,
+        "log_sha256": "0ded5f0897f934724614ba42197a8ce1290adfdb3ab203b3eb6b223e5bc42e34"
+      }
+    ],
+    "scope": "Original raw-handle generations/absence on the existing family and exact invocation source-use fence; same native binding and kernel policy. Account, global/child, Default/Selected model consumers are regressions. No activated native raw/GSuite workflow, own-auth or refresh progression.",
+    "stage": "terminal",
+    "command": [
+      "cargo",
+      "+1.96.0",
+      "clippy",
+      "-p",
+      "brassclaw_reborn_composition",
+      "--lib",
+      "--locked",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "image": {
+      "path": "/private/tmp/brassclaw-raw-source-family-validation-20261029/comp-1/composition-tests",
+      "sha256": "a79107c1c2c321961da0c7eca2a948e598cc44459b41b5792f19a599a30d9e2f",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-f3f60267b1e4e468",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    },
+    "worker": {
+      "path": "/private/tmp/brassclaw-raw-source-family-validation-20261029/comp-1/monty_worker",
+      "sha256": "91a2165fa396dfd9513d15e886eaba2ed692f1a5b9ac472ef3fb734391e47343",
+      "original": "/Users/ollama/brassclaw-target/debug/monty_worker"
+    },
+    "model_assets": {
+      "source": "/Volumes/SSDE/brassclaw/target/validation/prefix-model-source-cacik5n7",
+      "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6",
+      "retained": "/private/tmp/brassclaw-raw-source-family-validation-20261029/comp-1/model-artifacts",
+      "files": {
+        "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+        "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+        "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+        "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+        "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+        "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+      }
+    }
+  },
+  "actual_distinct_fresh_cases": 111,
+  "host_cases": 101,
+  "composition_cases": 10,
+  "source_inventories": {
+    "host-1": {
+      "path": "/private/tmp/brassclaw-raw-source-family-validation-20261029/host-1/source.json",
+      "sha256": "f6c254da320e2ab47c4857701c57fa20ef8336e693b30ecde10c499020e4c9a3",
+      "inputs": 978
+    },
+    "comp-1": {
+      "path": "/private/tmp/brassclaw-raw-source-family-validation-20261029/comp-1/source.json",
+      "sha256": "3ec2ab3dc1342bb9fcbb592360a004b140148d168bb7228fb5955ebeda55059a",
+      "inputs": 7951
+    }
+  },
+  "root_inventory": {
+    "path": "/private/tmp/brassclaw-raw-source-family-20261029-beurypb1/current-root-inputs-raw-source-family.json",
+    "sha256": "b9fdfb0850102e111a74ff34e1ea29e143c75f5af863e69f1501b95db5b46281",
+    "inputs": 156,
+    "incoming": "/private/tmp/brassclaw-raw-source-family-20261029-beurypb1/incoming-root-exact-auth.json",
+    "incoming_sha256": "0babc4516c24267bf69995eba6d9ee78d7d16aecef4c73d6a680ff62edf7c170",
+    "scope": "Prior Root/Exact/Auth154 plus this11-path successor; not whole-repository acceptance."
+  },
+  "preserved_original_auth_sources": {
+    "paths": 24,
+    "manifest": "/private/tmp/brassclaw-original-flow-source-20261029-i0zen17z/after.json",
+    "sha256": "6cd3d6336e4f14d1415c255fa18a7991136a19fc5ae1f1ca745b6dc6ee3de4e0"
+  },
+  "exact_recipe_selection_basis": {
+    "path": "/Volumes/SSDE/brassclaw/docs/validation/2026-10-29-exact-recipe-prefix-selection.json",
+    "sha256": "b4899c9b2f2391e82c6a6028cfe9681c8c1513dd19f6b97ed9a94b394da62f46",
+    "unchanged_paths": 21,
+    "affected_path": "crates/brassclaw_reborn_composition/src/task_catalogue_binding.rs",
+    "reason": "Extend the existing credential-policy binding condition to every declared credential source; typed Recipe/Default/Selected preflight and model consumers stay intact."
+  },
+  "failure_history": {
+    "screen-in-sandbox": "No session/progress or Cargo was created; approved outside-sandbox Screen launched the actual serial run."
+  },
+  "limits": [
+    "New raw obligation and conditional storage tests exercise real material/leases/cleanup; source metadata/fence fixture is not a native Tool or workflow.",
+    "New Composition test uses a real claimed PG task and native PG SecretStore with the actual family/invocation view. It is not registration or execution of a qualified native raw Tool.",
+    "Native builtin credential lists remain empty. Actual raw extension/ToolSkill/native workflow qualification and unbound legacy consumers remain open; no fabricated GSuite registration or fallback.",
+    "Own-flow adoption, refresh-input progression, native Auth-wait production, aggregate multi-credential readiness and complete final-use/UI/recovery/full K3/Exact/release/deployment remain open."
+  ]
+}

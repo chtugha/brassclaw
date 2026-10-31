@@ -1,0 +1,296 @@
+{
+  "format": "brassclaw-dcr-http-validation/1",
+  "status": "passed-scoped",
+  "changed_sources": {
+    "crates/brassclaw_host_api/src/monty_resources.rs": {
+      "before": "d1bd18ce975547292e8318cb62d8e7bca43ddb949f418f1d9c6924b4a115e7df",
+      "after": "e204f469c2fca721328c50346bee2fff18b9c741d0456e0f237de8e6f5b54d2c"
+    },
+    "crates/brassclaw_reborn_composition/src/live_monty_settings.rs": {
+      "before": "ff4e19aeea13c06e80774f8b5502edfbda902b732434fbf2d209a4bf4d0efe01",
+      "after": "5d8fdc11b18b3750159dc06685430fe860b04f1baf52ca6c899211e211120ace"
+    },
+    "crates/brassclaw_reborn_composition/src/oauth_provider_client.rs": {
+      "before": "c6f76d59bac734df9c147bfd07a1ef569524cd30f2f318ba44e6754b3c8ba85f",
+      "after": "f15133bcc4d0c59480798abbee04ac19625516f12d1777a68a25779e7dca0d10"
+    },
+    "crates/brassclaw_reborn_composition/src/oauth_dcr.rs": {
+      "before": "5345f01a31fd87863a7d8d7f41e7a35da28d8f67c212e30a230ec06bf7b0c6fd",
+      "after": "c41ce454efa0ddb1d6021875d6ca39c43ab4a60984506feeb03da417156a168e"
+    },
+    "crates/brassclaw_reborn_composition/src/oauth_dcr_original.rs": {
+      "before": "5807af1df2313fb26dbc99bde5af75491bd7ebfd34197b734f2ffb3519570631",
+      "after": "14e659b4de7f1409f8df087a0bfca571b4952d30874b81e10e7653fe82376ad5"
+    },
+    "crates/brassclaw_reborn_composition/src/oauth_dcr_cleanup.rs": {
+      "before": "621ef66cf631ba5700cbfa0ab5b2e1d5c58a778137fe58e6864252ead9f0775d",
+      "after": "e4a9cadeada0147a05e02f430e349c8d6844be6b4003f4399e9a310ac5e88f69"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_providers.rs": {
+      "before": "8d443c78a5a95eded408348c38f9b8cd1e923dd52163f80ee52c9f7088644fe3",
+      "after": "e3edaa64811f97811baa74b830fb3f2683d5b9be2d394d231d22d6e59334fd27"
+    },
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/monty-vm-tab.js": {
+      "before": "779d95ba6f976dba47206e638723813e4efa85666080d9a895dc15a10645b68f",
+      "after": "9c843c773f8343e6883de2b83eb9d82495522ca03127b7e7e1872fd9a3dd53be"
+    },
+    "crates/brassclaw_webui_v2_static/static/js/i18n/en.js": {
+      "before": "a0d07b8d0f67ee6100d5666af9eb7a54f9b3a3809a1985bf19b2acc06b75e55a",
+      "after": "a34ce12585ae1c78f16b2687cbf50aa1f0a62fc311c8ae55ecc09d12c150ee98"
+    },
+    "crates/brassclaw_webui_v2_static/static/js/i18n/de.js": {
+      "before": "7959900caf08997afa3436e25fce877041f10dd9ed455b94dd346765834e6e32",
+      "after": "f0754b0eca35a4a15078f8e89afe773d41849c8689fc898642f654df2c9cb78f"
+    },
+    "crates/brassclaw_pg/migrations/V189__oauth_dcr_http_limits.sql": {
+      "before": null,
+      "after": "66bf96b0bc22d5ce093e7addea2407c936b1238a68ba984260afefd0b0d4fdbf"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs": {
+      "before": "fe4656869e65c8329d5ae62c9abbb725936358ec00c564d6db9650c34552c5e8",
+      "after": "4981a38d8dce7e4ad2c51bc7c0d4025fd642c8816b285fe583680d2a2ffe05d7"
+    },
+    "crates/brassclaw_reborn_composition/src/oauth_dcr_limits_tests.rs": {
+      "before": null,
+      "after": "e90efc22936cd14b9c9d580bd984e6ce6a043db94f01ab2a16074cea3dd60108"
+    },
+    "tests/browser/monty-vm-resource-limits.mjs": {
+      "before": "61517efae6adab49fd6b47a557cdc5c093edf38173e6f515983368bc0f110b61",
+      "after": "46cd63c67e68f942b568b2e4dffe39e47989f5cbb6c54dfedd03dda595a1a83e"
+    }
+  },
+  "current_validation": {
+    "source": "/private/tmp/brassclaw-dcr-http-validation-20261029/run-2/source.json",
+    "source_sha256": "c86a3c723659b865bd38e51e22380245bfa06043829381b1b3b71344570ae35a",
+    "progress": "/private/tmp/brassclaw-dcr-http-validation-20261029/run-2/progress.json",
+    "progress_sha256": "8a60463d743330e5931dcf15761eae9c86f80a957a149aeaaefaa136976043a2",
+    "image": {
+      "path": "/private/tmp/brassclaw-dcr-http-validation-20261029/run-2/composition-tests",
+      "sha256": "056037900ec13d9e5102d7e18bf76f426f41fc2203c14f0d88442dbef4d78b8b",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-f3f60267b1e4e468",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    },
+    "worker": {
+      "path": "/private/tmp/brassclaw-dcr-http-validation-20261029/run-2/monty_worker",
+      "sha256": "ece271358a476130cb09d695e321eb485e00e1670e89a4704aad4098dee4cb7c",
+      "original": "/Users/ollama/brassclaw-target/debug/monty_worker"
+    },
+    "results": [
+      {
+        "stage": "format-affected",
+        "exit_code": 0,
+        "seconds": 0.38053170894272625,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "javascript-syntax",
+        "exit_code": 0,
+        "seconds": 0.34319091681391,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "javascript-module-0",
+        "exit_code": 0,
+        "seconds": 0.34376758290454745,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "javascript-module-1",
+        "exit_code": 0,
+        "seconds": 0.3486196252051741,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "javascript-module-2",
+        "exit_code": 0,
+        "seconds": 0.34785400005057454,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "stage": "composition-image",
+        "exit_code": 0,
+        "seconds": 224.80512712500058,
+        "log_sha256": "a008c69f35296429c0c3e35baace3b3601e2e8addf20450c5906f65fb0d55da1"
+      },
+      {
+        "stage": "dcr-originals-final",
+        "exit_code": 0,
+        "seconds": 52.66103345807642,
+        "log_sha256": "f013800d2e329225c22b1a88dbd33b5d1fffcf43c64467da528e3b9aa5181dad",
+        "passed": 33
+      },
+      {
+        "stage": "composition-strict",
+        "exit_code": 0,
+        "seconds": 86.0786391668953,
+        "log_sha256": "759bd473386aff26fbfc1c8600b841f7b134e2aa4db85ff266e3a69ce5f07b4a"
+      },
+      {
+        "stage": "composition-default-strict",
+        "exit_code": 0,
+        "seconds": 15.749499999918044,
+        "log_sha256": "017f5af20e35183651b58a374a9820be154577cfda402d29705a77eac8ff418f"
+      }
+    ],
+    "distinct_fresh_cases": 33
+  },
+  "r1_applicability": {
+    "source": "/private/tmp/brassclaw-dcr-http-validation-20261029/run-1/source.json",
+    "source_sha256": "d153e09c16ab4ef769659ddef79551d29eb03200df838cdb9cf185c4185a192e",
+    "only_source_delta": [
+      "crates/brassclaw_reborn_composition/src/oauth_dcr.rs",
+      "crates/brassclaw_reborn_composition/src/oauth_dcr_limits_tests.rs",
+      "crates/brassclaw_webui_v2_static/static/js/i18n/de.js",
+      "crates/brassclaw_webui_v2_static/static/js/i18n/en.js"
+    ],
+    "unchanged_neutral_owner_inputs": 337,
+    "results": [
+      {
+        "stage": "native-worker",
+        "exit_code": 0,
+        "seconds": 5.595616542035714,
+        "log_sha256": "7d92574b2d7726879a69298774d9f7df8efe0d41aa9132b950eb53145cfa035c"
+      },
+      {
+        "stage": "neutral-contracts",
+        "exit_code": 0,
+        "seconds": 60.998341667000204,
+        "log_sha256": "7e023619651838126d215d87aa08c728b2d50921930725bdc4d3ff6727decc59"
+      },
+      {
+        "stage": "neutral-strict",
+        "exit_code": 0,
+        "seconds": 33.36909949989058,
+        "log_sha256": "d2de029503d73ca00624a2f0044d07da3ba8ecf3328fd50f69ad41855d8697d8"
+      },
+      {
+        "stage": "case-3",
+        "exit_code": 0,
+        "seconds": 104.15693441592157,
+        "log_sha256": "bfd41a4fca4cb7e59473c3d0f3ac771957e877440436eb04f19f312503a14d27",
+        "case": "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match",
+        "passed": 1
+      },
+      {
+        "stage": "token-consumers",
+        "exit_code": 0,
+        "seconds": 52.510106459027156,
+        "log_sha256": "83d725c7336f901a7df8f32cf57e8c3f1772f1aeb9ae10f4d6ba3d6a031accd1",
+        "passed": 19
+      },
+      {
+        "stage": "provider-composition",
+        "exit_code": 0,
+        "seconds": 0.3398772918153554,
+        "log_sha256": "2dfade619798707b5561f6fd04d309b514defd1a69064a494a291348045d18dd",
+        "passed": 7
+      },
+      {
+        "stage": "settings-migrations",
+        "exit_code": 0,
+        "seconds": 62.99206899991259,
+        "log_sha256": "0356e787f48fa13788e33f15e1a7df6acedc970f8ca0167c0aaa8ef5fdbbb4dc",
+        "passed": 32
+      },
+      {
+        "stage": "incoming-exact-models",
+        "exit_code": 0,
+        "seconds": 13.747319166082889,
+        "log_sha256": "6268480514bc009bb72a15de848b5407395f964f079e8cb22c4a4db1a53f6af0",
+        "passed": 10
+      }
+    ],
+    "excluded": "The R1 native phase-pair test is superseded, not accepted as the final per-request contract. R1 DCR group is superseded by the fresh R2 group. Browser controls/data paths are unchanged; final phase/request help wording is source-reviewed and syntax-checked."
+  },
+  "reused_neutral_cases": 480,
+  "reused_other_cases": 69,
+  "reused_other_results": {
+    "case-3": {
+      "stage": "case-3",
+      "exit_code": 0,
+      "seconds": 104.15693441592157,
+      "log_sha256": "bfd41a4fca4cb7e59473c3d0f3ac771957e877440436eb04f19f312503a14d27",
+      "case": "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match",
+      "passed": 1
+    },
+    "token-consumers": {
+      "stage": "token-consumers",
+      "exit_code": 0,
+      "seconds": 52.510106459027156,
+      "log_sha256": "83d725c7336f901a7df8f32cf57e8c3f1772f1aeb9ae10f4d6ba3d6a031accd1",
+      "passed": 19
+    },
+    "provider-composition": {
+      "stage": "provider-composition",
+      "exit_code": 0,
+      "seconds": 0.3398772918153554,
+      "log_sha256": "2dfade619798707b5561f6fd04d309b514defd1a69064a494a291348045d18dd",
+      "passed": 7
+    },
+    "settings-migrations": {
+      "stage": "settings-migrations",
+      "exit_code": 0,
+      "seconds": 62.99206899991259,
+      "log_sha256": "0356e787f48fa13788e33f15e1a7df6acedc970f8ca0167c0aaa8ef5fdbbb4dc",
+      "passed": 32
+    },
+    "incoming-exact-models": {
+      "stage": "incoming-exact-models",
+      "exit_code": 0,
+      "seconds": 13.747319166082889,
+      "log_sha256": "6268480514bc009bb72a15de848b5407395f964f079e8cb22c4a4db1a53f6af0",
+      "passed": 10
+    }
+  },
+  "distinct_cases_across_scopes": 582,
+  "count_rule": "R2 fresh DCR33 supersedes the R1 DCR group and obsolete phase-pair probe. Reused other R1 cases counted once; new migration exact run also belongs to settings32. No ignored cases in selected executions.",
+  "preserved_exact_model_setup": {
+    "receipt_sha256": "79abc9b691c77a81bd198861598a86ef7fc5282f5dce179da852f11282a20c6c",
+    "all_eight_afterhashes_unchanged": true
+  },
+  "root_inventory": {
+    "path": "/private/tmp/brassclaw-dcr-http-20261029-2sq2hc7j/current-root-inputs-dcr-http.json",
+    "paths": 182,
+    "sha256": "dfcdf2fd4b2c7dc9de9e2159fc72405cc9177d9e6c3aa9693298d8cb5eaf9d90"
+  },
+  "review_history": [
+    {
+      "run": "run-1",
+      "result": "All selected compilation/tests/strict/browser checks passed for original scope. Review refined discovery from one phase pair to per-HTTP-request capture; the R1 phase-pair native probe is not final acceptance."
+    },
+    {
+      "edit": "A guarded edit stopped on a source-format mismatch after its first planned write. The partial file was verified byte-for-byte against the planned transformation before updating metadata and finishing the remaining guarded edits. No older source was restored."
+    },
+    {
+      "run": "run-2",
+      "result": "Fresh current compilation, all33 DCR cases and connected/default strict passed. Only two DCR Rust files and EN/DE phase/request wording differ from R1; unchanged owners retain their original evidence."
+    }
+  ],
+  "limits": [
+    "No live OAuth issuer success or full deployed/platform acceptance; the new native case uses actual PG/store/host/network policy denial and metadata-only cached issuer fixture, never a fake successful registration. Existing controlled protocol fixtures remain scoped unit/integration evidence.",
+    "Original cleanup state-machine regressions and actual DELETE-bound forwarding pass; not a real issuer cleanup certificate.",
+    "DCR setup/cache lifetime, ProductAuth backend/browser/setup/ingress bounds, native own-flow/Auth-wait/Codex/recovery and complete K3 remain open.",
+    "Model setup remains an unaccepted draft; no automatic import/Use/design/Free activation, release/tag/commit/push/reinstall."
+  ],
+  "final_whitespace_projection": {
+    "path": "crates/brassclaw_webui_v2_static/static/js/i18n/en.js",
+    "tested_sha256": "23ed3e4d6208443381439c22eef9bc186dbef433470e50b13a2832c121957d92",
+    "final_sha256": "a34ce12585ae1c78f16b2687cbf50aa1f0a62fc311c8ae55ecc09d12c150ee98",
+    "lines": [
+      799,
+      803,
+      807
+    ],
+    "change": "Only spaces on three already blank separator lines in the locale object; newline count, adjacent comma/property boundaries and every nonblank line are identical. No JavaScript statement, key or string value changes. Existing baseline whitespace resolved; final Node syntax passes.",
+    "final_source": "/private/tmp/brassclaw-dcr-http-20261029-2sq2hc7j/final-source.json",
+    "final_source_sha256": "7c28dab48f1e9b8a7565ee1c4b7c300adc79bb39dd122c37131eddb48b20ad38",
+    "tested_source": "/private/tmp/brassclaw-dcr-http-validation-20261029/run-2/source.json",
+    "tested_source_sha256": "c86a3c723659b865bd38e51e22380245bfa06043829381b1b3b71344570ae35a"
+  }
+}

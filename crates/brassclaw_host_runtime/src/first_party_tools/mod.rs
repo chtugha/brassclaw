@@ -47,6 +47,7 @@ use crate::{
     FirstPartyCapabilityRequest, FirstPartyCapabilityResult,
 };
 
+use self::schemas::current_builtin_input_schema_ref;
 pub(crate) use self::schemas::resolve_builtin_input_schema_ref;
 
 pub use component_db::{
@@ -253,9 +254,8 @@ pub async fn builtin_native_first_party_handlers(
             .strip_prefix("builtin.")
             .ok_or(crate::NativeRegistrationError::Declaration)?
             .replace('.', "-");
-        let schema =
-            resolve_builtin_input_schema_ref(&format!("schemas/builtin/{name}.input.v1.json"))
-                .ok_or(crate::NativeRegistrationError::Declaration)?;
+        let schema = resolve_builtin_input_schema_ref(&current_builtin_input_schema_ref(&name))
+            .ok_or(crate::NativeRegistrationError::Declaration)?;
         registry.record_native(crate::native_registration::NativeBuiltinRegistration::new(
             image.clone(),
             descriptor,
@@ -419,8 +419,8 @@ fn first_party_capability_manifest(
         effects,
         default_permission,
         visibility: CapabilityVisibility::Model,
-        input_schema_ref: CapabilityProfileSchemaRef::new(format!(
-            "schemas/builtin/{schema_name}.input.v1.json"
+        input_schema_ref: CapabilityProfileSchemaRef::new(current_builtin_input_schema_ref(
+            &schema_name,
         ))?,
         output_schema_ref: CapabilityProfileSchemaRef::new(format!(
             "schemas/builtin/{schema_name}.output.v1.json"
@@ -769,7 +769,7 @@ fn normalize_optional_null_sentinels(request: &mut FirstPartyCapabilityRequest) 
         .unwrap_or(request.capability_id.as_str())
         .replace('.', "-");
     let Some(schema) =
-        resolve_builtin_input_schema_ref(&format!("schemas/builtin/{schema_name}.input.v1.json"))
+        resolve_builtin_input_schema_ref(&current_builtin_input_schema_ref(&schema_name))
     else {
         return;
     };

@@ -1,7 +1,9 @@
 //! OAuth start and callback handlers.
 
 use super::*;
+use crate::auth::RebornDcrSetupOriginalLookup;
 use crate::oauth_dcr::DcrOAuthCallbackState;
+use brassclaw_auth::AuthFlowRecord;
 
 pub(super) async fn oauth_start_handler(
     State(state): State<ProductAuthRouteState>,
@@ -19,6 +21,9 @@ pub(super) async fn oauth_start_handler(
     let provider = AuthProviderId::new(request.provider).map_err(|_| {
         ProductAuthRouteFailure::new(StatusCode::BAD_REQUEST, AuthErrorCode::InvalidRequest)
     })?;
+    if provider.as_str() == GOOGLE_PROVIDER_ID {
+        return Err(ProductAuthRouteFailure::invalid_request());
+    }
     let authorization_endpoint = authorization_endpoint_url(&request.authorization_url)?;
     let opaque_state = request
         .opaque_state
@@ -36,6 +41,7 @@ pub(super) async fn oauth_start_handler(
         state
             .product_auth
             .start_setup_oauth_flow(RebornOAuthStartFlowRequest {
+                requirement_setup: None,
                 flow_id: None,
                 scope: scope.clone(),
                 provider: provider.clone(),
@@ -67,7 +73,25 @@ pub(super) async fn google_oauth_start_handler(
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(request): Json<GoogleOAuthStartRequest>,
 ) -> Result<Json<ProductOAuthStartResponse>, ProductAuthRouteFailure> {
-    start_google_oauth_flow(state, caller, request, None, false).await
+    let flow = start_google_oauth_flow(state, caller, request, None).await?;
+    let expired = flow.expires_at <= Utc::now();
+    let terminal = brassclaw_auth::is_terminal_status(flow.status) || expired;
+    let authorization_url = if terminal {
+        None
+    } else {
+        Some(google_flow_authorization_url(&flow)?)
+    };
+    Ok(Json(ProductOAuthStartResponse {
+        flow_id: flow.id,
+        status: flow.status,
+        provider: flow.provider,
+        authorization_url,
+        terminal,
+        expired,
+        expires_at: flow.expires_at,
+        continuation: flow.continuation,
+        callback_scope: scope_hint(&flow.scope),
+    }))
 }
 
 pub(super) async fn extension_oauth_start_handler(
@@ -75,25 +99,154 @@ pub(super) async fn extension_oauth_start_handler(
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(package_id): Path<String>,
     Json(request): Json<ExtensionOAuthStartRequest>,
-) -> Result<Json<ProductOAuthStartResponse>, ProductAuthRouteFailure> {
+) -> Result<(StatusCode, Json<ExtensionOAuthResponse>), ProductAuthRouteFailure> {
     let requester_extension =
         ExtensionId::new(package_id).map_err(|_| ProductAuthRouteFailure::invalid_request())?;
     if request.provider != GOOGLE_PROVIDER_ID {
         return start_dcr_extension_oauth_flow(state, caller, request, requester_extension).await;
     }
-    start_google_oauth_flow(
-        state,
-        caller,
-        GoogleOAuthStartRequest {
-            account_label: request.account_label,
-            scopes: request.scopes,
-            expires_at: request.expires_at,
+    let flow_id = AuthFlowId::from_uuid(
+        Uuid::parse_str(
+            request
+                .flow_id
+                .as_deref()
+                .ok_or_else(ProductAuthRouteFailure::invalid_request)?,
+        )
+        .map_err(|_| ProductAuthRouteFailure::invalid_request())?,
+    );
+    let label = CredentialAccountLabel::new(request.account_label.clone())
+        .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
+    let scopes =
+        parse_google_requested_scopes(&request.scopes).map_err(ProductAuthRouteFailure::from)?;
+    let scope = scope_from_authenticated_caller_parts_requiring_invocation(
+        &caller,
+        &ScopeFields {
             session_id: None,
             thread_id: None,
-            invocation_id: request.invocation_id,
+            invocation_id: request.invocation_id.clone(),
         },
-        Some(requester_extension),
-        true,
+    )?;
+    // Read the accepted original before config, clock limits or account lookup.
+    // Recover/cancel can never create a new flow or generate another verifier.
+    let original =
+        recover_google_setup_original(&state, &scope, flow_id, &label, &scopes, request.expires_at)
+            .await?;
+    if let Some(original) = &original {
+        extension_oauth_requirement::verify(
+            &state,
+            &scope,
+            original,
+            &requester_extension,
+            &request,
+        )
+        .await?;
+    }
+    let flow = match request.action {
+        ExtensionOAuthAction::Recover => original.ok_or(AuthProductError::UnknownOrExpiredFlow)?,
+        ExtensionOAuthAction::Cancel => {
+            run_with_backend_timeout(state.product_auth.cancel_google_setup_original(
+                &scope,
+                flow_id,
+                &label,
+                &scopes,
+                request.expires_at,
+            ))
+            .await?
+        }
+        ExtensionOAuthAction::Start => match original {
+            Some(flow) => flow,
+            None => {
+                let prepared = extension_oauth_requirement::prepare(
+                    &state,
+                    &caller,
+                    &scope,
+                    &requester_extension,
+                    &request,
+                )
+                .await?;
+
+                start_google_oauth_flow(
+                    state.clone(),
+                    caller,
+                    GoogleOAuthStartRequest {
+                        flow_id,
+                        account_label: request.account_label.clone(),
+                        scopes: request.scopes.clone(),
+                        expires_at: request.expires_at,
+                        session_id: None,
+                        thread_id: None,
+                        invocation_id: request.invocation_id.clone(),
+                    },
+                    Some(prepared),
+                )
+                .await?
+            }
+        },
+    };
+    extension_oauth_requirement::verify(&state, &scope, &flow, &requester_extension, &request)
+        .await?;
+    let terminal = brassclaw_auth::is_terminal_status(flow.status);
+    let expired = !terminal && flow.expires_at <= Utc::now();
+    if terminal {
+        state.remove_pkce_verifier(flow.id);
+    }
+    let authorization_url = if flow.status == AuthFlowStatus::AwaitingUser && !expired {
+        Some(google_flow_authorization_url(&flow)?)
+    } else {
+        None
+    };
+    let http = if matches!(
+        flow.status,
+        AuthFlowStatus::Pending | AuthFlowStatus::CallbackReceived | AuthFlowStatus::Completing
+    ) {
+        StatusCode::ACCEPTED
+    } else {
+        StatusCode::OK
+    };
+    Ok((
+        http,
+        Json(ExtensionOAuthResponse {
+            flow_id: flow.id,
+            status: flow.status,
+            provider: flow.provider,
+            account_label: label,
+            scopes,
+            authorization_url,
+            expires_at: flow.expires_at,
+            continuation: flow.continuation,
+            callback_scope: scope_hint(&scope),
+            error: None,
+            terminal,
+            expired,
+            cleanup: None,
+        }),
+    ))
+}
+
+fn google_flow_authorization_url(
+    flow: &AuthFlowRecord,
+) -> Result<OAuthAuthorizationUrl, ProductAuthRouteFailure> {
+    match &flow.challenge {
+        Some(AuthChallenge::OAuthUrl {
+            authorization_url,
+            expires_at,
+        }) if *expires_at == flow.expires_at => Ok(authorization_url.clone()),
+        _ => Err(AuthProductError::BackendConflict.into()),
+    }
+}
+
+async fn recover_google_setup_original(
+    state: &ProductAuthRouteState,
+    scope: &AuthProductScope,
+    flow_id: AuthFlowId,
+    label: &CredentialAccountLabel,
+    scopes: &[ProviderScope],
+    expires_at: Timestamp,
+) -> Result<Option<AuthFlowRecord>, ProductAuthRouteFailure> {
+    run_with_backend_timeout(
+        state
+            .product_auth
+            .recover_google_setup_original(scope, flow_id, label, scopes, expires_at),
     )
     .await
 }
@@ -103,83 +256,201 @@ async fn start_dcr_extension_oauth_flow(
     caller: WebUiAuthenticatedCaller,
     request: ExtensionOAuthStartRequest,
     requester_extension: ExtensionId,
-) -> Result<Json<ProductOAuthStartResponse>, ProductAuthRouteFailure> {
-    let now = Utc::now();
-    if request.expires_at <= now
-        || request.expires_at > now + ChronoDuration::seconds(PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS)
-    {
-        return Err(ProductAuthRouteFailure::invalid_request());
-    }
-
-    let provider = AuthProviderId::new(request.provider)
+) -> Result<(StatusCode, Json<ExtensionOAuthResponse>), ProductAuthRouteFailure> {
+    let flow_id = AuthFlowId::from_uuid(
+        Uuid::parse_str(
+            request
+                .flow_id
+                .as_deref()
+                .ok_or_else(ProductAuthRouteFailure::invalid_request)?,
+        )
+        .map_err(|_| ProductAuthRouteFailure::invalid_request())?,
+    );
+    let provider = AuthProviderId::new(request.provider.as_str())
         .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
-    let account_label = CredentialAccountLabel::new(request.account_label)
+    let account_label = CredentialAccountLabel::new(request.account_label.as_str())
         .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
-    let requested_scopes = request
+    let scopes = request
         .scopes
-        .into_iter()
+        .iter()
+        .cloned()
         .map(ProviderScope::new)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
     let fields = ScopeFields {
         session_id: None,
         thread_id: None,
-        invocation_id: request.invocation_id,
+        invocation_id: request.invocation_id.clone(),
     };
     let scope = scope_from_authenticated_caller_parts_requiring_invocation(&caller, &fields)?;
-    let update_binding = scoped_update_binding_for_requester(
-        &state,
-        scope.clone(),
-        provider.clone(),
-        requested_scopes.clone(),
-        Some(&requester_extension),
+    let original_lookup = RebornDcrSetupOriginalLookup {
+        scope: &scope,
+        flow_id,
+        provider: &provider,
+        account_label: &account_label,
+        provider_scopes: &scopes,
+        expires_at: request.expires_at,
+        requester_extension: &requester_extension,
+        requirement_name: request.requirement.as_deref(),
+        target: request.target.as_ref(),
+        cancel_preparation: request.action == ExtensionOAuthAction::Cancel,
+    };
+    let original = run_with_backend_timeout(
+        state
+            .product_auth
+            .recover_dcr_setup_original(original_lookup.clone()),
     )
     .await?;
-    let flow = run_with_backend_timeout(state.product_auth.start_dcr_setup_oauth_flow(
-        RebornDcrOAuthStartFlowRequest {
-            scope: scope.clone(),
-            provider: provider.clone(),
-            account_label,
-            provider_scopes: requested_scopes,
-            update_binding,
-            expires_at: request.expires_at,
-        },
-    ))
-    .await?
-    .ok_or_else(ProductAuthRouteFailure::malformed_config)?;
-    let Some(AuthChallenge::OAuthUrl {
-        authorization_url, ..
-    }) = &flow.challenge
-    else {
-        return Err(ProductAuthRouteFailure::backend_unavailable());
+    let mut error = None;
+    let flow = match request.action {
+        ExtensionOAuthAction::Recover => original.ok_or(AuthProductError::UnknownOrExpiredFlow)?,
+        ExtensionOAuthAction::Cancel => {
+            original.ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+            match run_with_backend_timeout(
+                state
+                    .product_auth
+                    .cancel_dcr_setup_original(&scope, flow_id),
+            )
+            .await
+            {
+                Ok(flow) => flow,
+                Err(failure) => {
+                    // Cancellation may already be committed while provider or
+                    // local cleanup remains unknown. Retain that actual original
+                    // disposition and the full safe error instead of reverting
+                    // the browser to its earlier authorization state.
+                    let safe_failure = failure.body;
+                    let actual = run_with_backend_timeout(
+                        state
+                            .product_auth
+                            .recover_dcr_setup_original(original_lookup.clone()),
+                    )
+                    .await?
+                    .ok_or(failure)?;
+                    error = Some(safe_failure);
+                    actual
+                }
+            }
+        }
+        ExtensionOAuthAction::Start => {
+            let (requirement_setup, binding) = match original {
+                Some(original) => (
+                    run_with_backend_timeout(
+                        state
+                            .product_auth
+                            .flow_manager()
+                            .requirement_setup(&scope, flow_id),
+                    )
+                    .await?
+                    .map(Box::new),
+                    original.update_binding,
+                ),
+                None => {
+                    let now = Utc::now();
+                    if request.expires_at <= now
+                        || request.expires_at
+                            > now + ChronoDuration::seconds(PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS)
+                    {
+                        return Err(ProductAuthRouteFailure::invalid_request());
+                    }
+                    let (setup, binding) = extension_oauth_requirement::prepare(
+                        &state,
+                        &caller,
+                        &scope,
+                        &requester_extension,
+                        &request,
+                    )
+                    .await?;
+                    (Some(Box::new(setup)), binding)
+                }
+            };
+            match run_with_backend_timeout(state.product_auth.start_dcr_setup_oauth_flow(
+                RebornDcrOAuthStartFlowRequest {
+                    requirement_setup,
+                    flow_id,
+                    scope: scope.clone(),
+                    provider: provider.clone(),
+                    account_label: account_label.clone(),
+                    provider_scopes: scopes.clone(),
+                    update_binding: binding,
+                    expires_at: request.expires_at,
+                },
+            ))
+            .await
+            {
+                Ok(Some(flow)) => flow,
+                Ok(None) => return Err(ProductAuthRouteFailure::malformed_config()),
+                Err(failure) => {
+                    // Preserve and expose the actual original disposition alongside
+                    // the failure. A 202 receipt is not successful authorization.
+                    let safe_failure = failure.body;
+                    let actual = run_with_backend_timeout(
+                        state
+                            .product_auth
+                            .recover_dcr_setup_original(original_lookup.clone()),
+                    )
+                    .await?
+                    .ok_or(failure)?;
+                    error = Some(safe_failure);
+                    actual
+                }
+            }
+        }
     };
-
-    Ok(Json(ProductOAuthStartResponse {
-        flow_id: flow.id,
-        status: flow.status,
-        provider,
-        authorization_url: authorization_url.clone(),
-        expires_at: flow.expires_at,
-        continuation: flow.continuation,
-        callback_scope: scope_hint(&scope),
-    }))
+    extension_oauth_requirement::verify(&state, &scope, &flow, &requester_extension, &request)
+        .await?;
+    let cleanup = Some(
+        run_with_backend_timeout(state.product_auth.dcr_cleanup_status(&scope, flow.id)).await?,
+    );
+    let status = flow.status;
+    let terminal = brassclaw_auth::is_terminal_status(status);
+    let expired = !terminal && flow.expires_at <= Utc::now();
+    let authorization_url = if status == AuthFlowStatus::AwaitingUser && error.is_none() && !expired
+    {
+        match &flow.challenge {
+            Some(AuthChallenge::OAuthUrl {
+                authorization_url, ..
+            }) => Some(authorization_url.clone()),
+            _ => return Err(ProductAuthRouteFailure::backend_unavailable()),
+        }
+    } else {
+        None
+    };
+    let http = if error.is_some()
+        || matches!(
+            status,
+            AuthFlowStatus::Pending | AuthFlowStatus::CallbackReceived | AuthFlowStatus::Completing
+        ) {
+        StatusCode::ACCEPTED
+    } else {
+        StatusCode::OK
+    };
+    Ok((
+        http,
+        Json(ExtensionOAuthResponse {
+            flow_id: flow.id,
+            status,
+            provider,
+            account_label,
+            scopes,
+            authorization_url,
+            expires_at: flow.expires_at,
+            continuation: flow.continuation,
+            callback_scope: scope_hint(&scope),
+            error,
+            terminal,
+            expired,
+            cleanup,
+        }),
+    ))
 }
 
 async fn start_google_oauth_flow(
     state: ProductAuthRouteState,
     caller: WebUiAuthenticatedCaller,
     request: GoogleOAuthStartRequest,
-    requester_extension: Option<ExtensionId>,
-    require_invocation_id: bool,
-) -> Result<Json<ProductOAuthStartResponse>, ProductAuthRouteFailure> {
-    let now = Utc::now();
-    if request.expires_at <= now
-        || request.expires_at > now + ChronoDuration::seconds(PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS)
-    {
-        return Err(ProductAuthRouteFailure::invalid_request());
-    }
-
-    let config = state.google_oauth_config()?;
+    prepared: Option<extension_oauth_requirement::PreparedOAuthRequirement>,
+) -> Result<AuthFlowRecord, ProductAuthRouteFailure> {
     let provider = AuthProviderId::new(GOOGLE_PROVIDER_ID)
         .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
     let account_label = CredentialAccountLabel::new(request.account_label)
@@ -191,69 +462,69 @@ async fn start_google_oauth_flow(
         thread_id: request.thread_id,
         invocation_id: request.invocation_id,
     };
-    let scope = if require_invocation_id {
-        scope_from_authenticated_caller_parts_requiring_invocation(&caller, &fields)?
-    } else {
-        scope_from_authenticated_caller_parts(&caller, &fields)?
-    };
-    let flow_id = AuthFlowId::new();
-    let update_binding = scoped_update_binding_for_requester(
+    let scope = scope_from_authenticated_caller_parts_requiring_invocation(&caller, &fields)?;
+    let flow_id = request.flow_id;
+    if flow_id.as_uuid().is_nil() || scope.resource.invocation_id.as_uuid().is_nil() {
+        return Err(ProductAuthRouteFailure::invalid_request());
+    }
+    if let Some(flow) = recover_google_setup_original(
         &state,
-        scope.clone(),
-        provider.clone(),
-        requested_scopes.clone(),
-        requester_extension.as_ref(),
-    )
-    .await?;
-    let opaque_state = GoogleOAuthCallbackState::new(
+        &scope,
         flow_id,
-        scope.clone(),
-        account_label,
-        requested_scopes.clone(),
-    )
-    .map_err(ProductAuthRouteFailure::from)?
-    .encode()
-    .map_err(ProductAuthRouteFailure::from)?;
-    let opaque_state_hash = opaque_state_hash(opaque_state.as_str())?;
-    let pkce_verifier_secret = SecretString::from(brassclaw_common::pkce::generate_code_verifier());
-    let pkce_verifier_hash = pkce_verifier_hash(pkce_verifier_secret.expose_secret())?;
-    let pkce_secret = PkceVerifierSecret::new(pkce_verifier_secret.clone())
-        .map_err(ProductAuthRouteFailure::from)?;
-    let pkce_challenge = pkce_s256_challenge(&pkce_secret);
-    let authorization_url = build_google_authorization_url(
-        config.client_id().as_str(),
-        config.redirect_uri().as_str(),
-        opaque_state.as_str(),
-        &pkce_challenge,
+        &account_label,
         &requested_scopes,
-        config.hosted_domain_hint(),
+        request.expires_at,
     )
-    .map_err(ProductAuthRouteFailure::from)?;
+    .await?
+    {
+        return Ok(flow);
+    }
+    let now = Utc::now();
+    if request.expires_at <= now
+        || request.expires_at > now + ChronoDuration::seconds(PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS)
+    {
+        return Err(ProductAuthRouteFailure::invalid_request());
+    }
 
-    let flow = run_with_backend_timeout(state.product_auth.start_setup_oauth_flow(
-        RebornOAuthStartFlowRequest {
-            flow_id: Some(flow_id),
+    let config = state.google_oauth_config()?;
+    let (requirement_setup, update_binding) = prepared.map_or((None, None), |(setup, binding)| {
+        (Some(Box::new(setup)), binding)
+    });
+    if let Some(setup) = &requirement_setup {
+        setup.verify_oauth(&scope, &provider, &requested_scopes)?;
+    }
+    let created = run_with_backend_timeout(state.product_auth.start_captured_google_setup(
+        crate::oauth_gate::GoogleSetupRequest {
             scope: scope.clone(),
-            provider: provider.clone(),
-            authorization_url: authorization_url.clone(),
-            opaque_state_hash: opaque_state_hash.clone(),
-            pkce_verifier_hash,
+            flow_id,
+            account_label: account_label.clone(),
+            requested_scopes: requested_scopes.clone(),
+            continuation: AuthContinuationRef::SetupOnly,
+            requirement_setup,
             update_binding,
-            expires_at: request.expires_at,
+            update_account_snapshot: None,
+            deadline: crate::oauth_gate::GoogleSetupDeadline::Exact(request.expires_at),
         },
+        config,
     ))
-    .await?;
-    state.store_pkce_verifier(flow.id, pkce_verifier_secret, flow.expires_at)?;
-
-    Ok(Json(ProductOAuthStartResponse {
-        flow_id: flow.id,
-        status: flow.status,
-        provider,
-        authorization_url,
-        expires_at: flow.expires_at,
-        continuation: flow.continuation,
-        callback_scope: scope_hint(&scope),
-    }))
+    .await;
+    let flow = match created {
+        Ok(flow) => flow,
+        Err(failure) => match recover_google_setup_original(
+            &state,
+            &scope,
+            flow_id,
+            &account_label,
+            &requested_scopes,
+            request.expires_at,
+        )
+        .await?
+        {
+            Some(flow) => flow,
+            None => return Err(failure),
+        },
+    };
+    Ok(flow)
 }
 
 pub(super) async fn oauth_callback_handler(
@@ -289,51 +560,62 @@ pub(super) async fn oauth_callback_handler(
         .unwrap_or_else(|| scope_from_callback_query(&state, &query))?;
     let state_hash = opaque_state_hash(state_value.as_str())?;
 
-    let flow_provider = if is_authorized_callback_candidate(&query, decoded_state.as_ref()) {
-        Some(
-            run_with_backend_timeout(
+    let result = async {
+        if is_authorized_callback_candidate(&query, decoded_state.as_ref()) {
+            let reference =
+                callback_reference_from_query(flow_id, &scope, decoded_state.as_ref(), &query)?;
+            if let Some(response) = run_with_backend_timeout(
                 state
                     .product_auth
-                    .ensure_oauth_callback_flow_known(&scope, flow_id),
+                    .resume_oauth_callback_original(&reference),
             )
-            .await?,
-        )
-    } else {
-        None
-    };
-    let outcome = callback_outcome_from_query(
-        &state,
-        flow_id,
-        &scope,
-        flow_provider.as_ref(),
-        decoded_state.as_ref(),
-        &query,
-    )
-    .await?;
-
-    let response = match run_with_backend_timeout(state.product_auth.handle_oauth_callback(
-        RebornOAuthCallbackRequest {
-            scope,
-            flow_id,
-            opaque_state_hash: state_hash,
-            outcome,
-        },
-    ))
-    .await
-    {
-        Ok(response) => {
-            state.remove_pkce_verifier(flow_id);
-            response
-        }
-        Err(error) => {
-            if should_forget_pkce_verifier(error.body.code) {
+            .await?
+            {
                 state.remove_pkce_verifier(flow_id);
+                return Ok(oauth_callback_response(&headers, response));
             }
-            return Err(error);
         }
-    };
 
-    Ok(oauth_callback_response(&headers, response))
+        let flow_provider = if is_authorized_callback_candidate(&query, decoded_state.as_ref()) {
+            Some(
+                run_with_backend_timeout(
+                    state
+                        .product_auth
+                        .ensure_oauth_callback_flow_known(&scope, flow_id),
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
+        let outcome = callback_outcome_from_query(
+            &state,
+            flow_id,
+            &scope,
+            flow_provider.as_ref(),
+            decoded_state.as_ref(),
+            &query,
+        )
+        .await?;
+
+        let response = run_with_backend_timeout(state.product_auth.handle_oauth_callback(
+            RebornOAuthCallbackRequest {
+                scope: scope.clone(),
+                flow_id,
+                opaque_state_hash: state_hash.clone(),
+                outcome,
+            },
+        ))
+        .await?;
+        state.remove_pkce_verifier(flow_id);
+
+        Ok(oauth_callback_response(&headers, response))
+    }
+    .await;
+    if result.is_err() {
+        forget_pkce_for_terminal_callback(&state, &scope, flow_id, &state_hash).await?;
+    }
+    result
 }
 
 pub(super) async fn google_oauth_callback_handler(
@@ -357,110 +639,99 @@ pub(super) async fn google_oauth_callback_handler(
     let flow_id = callback_state.flow_id();
     let callback_scope = callback_state.scope();
 
-    if query
-        .error
-        .as_deref()
-        .is_some_and(|value| !value.is_empty())
-    {
-        let response = run_with_backend_timeout(state.product_auth.handle_oauth_callback(
-            RebornOAuthCallbackRequest {
-                scope: callback_scope.clone(),
-                flow_id,
-                opaque_state_hash: state_hash.clone(),
-                outcome: RebornOAuthCallbackOutcome::ProviderDenied,
-            },
-        ))
-        .await;
-        state.remove_pkce_verifier(flow_id);
-        return response.map(|response| oauth_callback_response(&headers, response));
-    }
-
-    let provider = match run_with_backend_timeout(
-        state
-            .product_auth
-            .ensure_oauth_callback_flow_known(callback_scope, flow_id),
-    )
-    .await
-    {
-        Ok(provider) => provider,
-        Err(error) => {
-            state.remove_pkce_verifier(flow_id);
-            return Err(error);
-        }
-    };
-    let Some(code) = query.code.as_ref() else {
-        state.remove_pkce_verifier(flow_id);
-        return Err(ProductAuthRouteFailure::malformed_callback());
-    };
-    let pkce_verifier =
-        match pkce_verifier_for_known_callback_flow(&state, callback_scope, &provider, flow_id)
-            .await
+    let result = async {
+        if query
+            .error
+            .as_deref()
+            .is_some_and(|value| !value.is_empty())
         {
-            Ok(pkce_verifier) => pkce_verifier,
-            Err(error) => {
-                state.remove_pkce_verifier(flow_id);
-                return Err(error);
-            }
-        };
-    let requested_scopes = callback_state.requested_scopes();
-    let callback_scopes = match parse_google_callback_scopes(query.scopes.as_deref()) {
-        Ok(Some(callback_scopes)) => {
-            if let Err(error) = validate_google_callback_includes_requested_scopes(
-                &callback_scopes,
-                requested_scopes,
-            ) {
-                state.remove_pkce_verifier(flow_id);
-                return Err(error);
-            }
-            requested_scopes.to_vec()
-        }
-        Ok(None) => requested_scopes.to_vec(),
-        Err(error) => {
-            state.remove_pkce_verifier(flow_id);
-            return Err(ProductAuthRouteFailure::from(error));
-        }
-    };
-    let authorization_code_hash = authorization_code_hash(code.expose_secret())?;
-    let pkce_verifier_hash = pkce_verifier_hash(pkce_verifier.expose_secret())?;
-
-    let response = match run_with_backend_timeout(
-        state
-            .product_auth
-            .handle_oauth_callback(RebornOAuthCallbackRequest {
-                scope: callback_scope.clone(),
-                flow_id,
-                opaque_state_hash: state_hash.clone(),
-                outcome: RebornOAuthCallbackOutcome::Authorized {
-                    provider_request: OAuthProviderCallbackRequest {
-                        provider: AuthProviderId::new(GOOGLE_PROVIDER_ID)
-                            .map_err(|_| ProductAuthRouteFailure::malformed_callback())?,
-                        account_label: callback_state.account_label().clone(),
-                        authorization_code: OAuthAuthorizationCode::new(code.clone_secret())
-                            .map_err(ProductAuthRouteFailure::from)?,
-                        authorization_code_hash,
-                        pkce_verifier: PkceVerifierSecret::new(pkce_verifier)
-                            .map_err(ProductAuthRouteFailure::from)?,
-                        pkce_verifier_hash,
-                        scopes: callback_scopes,
-                    },
+            let response = run_with_backend_timeout(state.product_auth.handle_oauth_callback(
+                RebornOAuthCallbackRequest {
+                    scope: callback_scope.clone(),
+                    flow_id,
+                    opaque_state_hash: state_hash.clone(),
+                    outcome: RebornOAuthCallbackOutcome::ProviderDenied,
                 },
-            }),
-    )
-    .await
-    {
-        Ok(response) => {
-            state.remove_pkce_verifier(flow_id);
-            response
+            ))
+            .await;
+            return response.map(|response| oauth_callback_response(&headers, response));
         }
-        Err(error) => {
-            if should_forget_pkce_verifier(error.body.code) {
-                state.remove_pkce_verifier(flow_id);
-            }
-            return Err(error);
-        }
-    };
 
-    Ok(oauth_callback_response(&headers, response))
+        let Some(code) = query.code.as_ref() else {
+            return Err(ProductAuthRouteFailure::malformed_callback());
+        };
+        let requested_scopes = callback_state.requested_scopes();
+        if let Some(callback_scopes) = parse_google_callback_scopes(query.scopes.as_deref())
+            .map_err(ProductAuthRouteFailure::from)?
+        {
+            validate_google_callback_includes_requested_scopes(&callback_scopes, requested_scopes)?;
+        }
+        let callback_scopes = requested_scopes.to_vec();
+        let authorization_code_hash = authorization_code_hash(code.expose_secret())?;
+        let reference = brassclaw_auth::OAuthCallbackReference {
+            scope: callback_scope.clone(),
+            flow_id,
+            provider: AuthProviderId::new(GOOGLE_PROVIDER_ID)
+                .map_err(|_| ProductAuthRouteFailure::malformed_callback())?,
+            opaque_state_hash: state_hash.clone(),
+            authorization_code_hash: authorization_code_hash.clone(),
+            account_label: callback_state.account_label().clone(),
+            requested_scopes: callback_scopes.clone(),
+        };
+        if let Some(response) = run_with_backend_timeout(
+            state
+                .product_auth
+                .resume_oauth_callback_original(&reference),
+        )
+        .await?
+        {
+            state.remove_pkce_verifier(flow_id);
+            return Ok(oauth_callback_response(&headers, response));
+        }
+        let provider = run_with_backend_timeout(
+            state
+                .product_auth
+                .ensure_oauth_callback_flow_known(callback_scope, flow_id),
+        )
+        .await?;
+        let pkce_verifier =
+            pkce_verifier_for_known_callback_flow(&state, callback_scope, &provider, flow_id)
+                .await?;
+        let pkce_verifier_hash = pkce_verifier_hash(pkce_verifier.expose_secret())?;
+
+        let response = run_with_backend_timeout(
+            state
+                .product_auth
+                .handle_oauth_callback(RebornOAuthCallbackRequest {
+                    scope: callback_scope.clone(),
+                    flow_id,
+                    opaque_state_hash: state_hash.clone(),
+                    outcome: RebornOAuthCallbackOutcome::Authorized {
+                        provider_request: OAuthProviderCallbackRequest {
+                            provider: AuthProviderId::new(GOOGLE_PROVIDER_ID)
+                                .map_err(|_| ProductAuthRouteFailure::malformed_callback())?,
+                            account_label: callback_state.account_label().clone(),
+                            authorization_code: OAuthAuthorizationCode::new(code.clone_secret())
+                                .map_err(ProductAuthRouteFailure::from)?,
+                            authorization_code_hash,
+                            pkce_verifier: PkceVerifierSecret::new(pkce_verifier)
+                                .map_err(ProductAuthRouteFailure::from)?,
+                            pkce_verifier_hash,
+                            scopes: callback_scopes,
+                        },
+                    },
+                }),
+        )
+        .await?;
+        state.remove_pkce_verifier(flow_id);
+
+        Ok(oauth_callback_response(&headers, response))
+    }
+    .await;
+    if result.is_err() {
+        forget_pkce_for_terminal_callback(&state, callback_scope, flow_id, &state_hash).await?;
+    }
+    result
 }
 
 fn validate_google_callback_includes_requested_scopes(
@@ -478,6 +749,9 @@ fn validate_google_callback_includes_requested_scopes(
 }
 
 fn oauth_callback_response(headers: &HeaderMap, response: RebornOAuthCallbackResponse) -> Response {
+    if response.status != AuthFlowStatus::Completed {
+        return ProductAuthRouteFailure::backend_unavailable().into_response();
+    }
     if wants_oauth_callback_html(headers) {
         return oauth_callback_completion_html(&response);
     }
@@ -558,6 +832,40 @@ pub(super) async fn callback_outcome_from_query(
         return Ok(RebornOAuthCallbackOutcome::ProviderDenied);
     }
 
+    let reference = callback_reference_from_query(flow_id, scope, callback_state, query)?;
+    if flow_provider.is_some_and(|known_provider| known_provider != &reference.provider) {
+        return Err(ProductAuthRouteFailure::malformed_callback());
+    }
+    let pkce_verifier =
+        pkce_verifier_for_known_callback_flow(state, scope, &reference.provider, flow_id).await?;
+    let code = query
+        .code
+        .as_ref()
+        .ok_or_else(ProductAuthRouteFailure::malformed_callback)?;
+    let pkce_verifier_hash = pkce_verifier_hash(pkce_verifier.expose_secret())?;
+    Ok(RebornOAuthCallbackOutcome::Authorized {
+        provider_request: OAuthProviderCallbackRequest {
+            provider: reference.provider,
+            account_label: reference.account_label,
+            authorization_code: OAuthAuthorizationCode::new(code.clone_secret())
+                .map_err(ProductAuthRouteFailure::from)?,
+            authorization_code_hash: reference.authorization_code_hash,
+            pkce_verifier: PkceVerifierSecret::new(pkce_verifier)
+                .map_err(ProductAuthRouteFailure::from)?,
+            pkce_verifier_hash,
+            scopes: reference.requested_scopes,
+        },
+    })
+}
+
+/// Parse only explicit payload metadata. This never loads PKCE/current provider
+/// config or rejects an already committed original because its first-call TTL ended.
+fn callback_reference_from_query(
+    flow_id: AuthFlowId,
+    scope: &AuthProductScope,
+    callback_state: Option<&DcrOAuthCallbackState>,
+    query: &OAuthCallbackQuery,
+) -> Result<brassclaw_auth::OAuthCallbackReference, ProductAuthRouteFailure> {
     let provider = match query.provider.as_deref() {
         Some(provider) => AuthProviderId::new(provider.to_string())
             .map_err(|_| ProductAuthRouteFailure::malformed_callback())?,
@@ -565,11 +873,8 @@ pub(super) async fn callback_outcome_from_query(
             .map(|state| state.provider().clone())
             .ok_or_else(ProductAuthRouteFailure::malformed_callback)?,
     };
-    if flow_provider.is_some_and(|known_provider| known_provider != &provider) {
-        return Err(ProductAuthRouteFailure::malformed_callback());
-    }
     let account_label = match query.account_label.as_deref() {
-        Some(account_label) => CredentialAccountLabel::new(account_label.to_string())
+        Some(label) => CredentialAccountLabel::new(label.to_string())
             .map_err(|_| ProductAuthRouteFailure::malformed_callback())?,
         None => callback_state
             .map(|state| state.account_label().clone())
@@ -579,34 +884,24 @@ pub(super) async fn callback_outcome_from_query(
         .code
         .as_ref()
         .ok_or_else(ProductAuthRouteFailure::malformed_callback)?;
-    let pkce_verifier = pkce_verifier_for_known_callback_flow(
-        state,
-        scope,
-        flow_provider.unwrap_or(&provider),
-        flow_id,
-    )
-    .await?;
-    let scopes = match query.scopes.as_deref() {
+    let state = query
+        .state
+        .as_ref()
+        .ok_or_else(ProductAuthRouteFailure::malformed_callback)?;
+    let requested_scopes = match query.scopes.as_deref() {
         Some(raw) => parse_provider_scopes(Some(raw))?,
         None => callback_state
             .map(|state| state.requested_scopes().to_vec())
             .unwrap_or_default(),
     };
-    let authorization_code_hash = authorization_code_hash(code.expose_secret())?;
-    let pkce_verifier_hash = pkce_verifier_hash(pkce_verifier.expose_secret())?;
-
-    Ok(RebornOAuthCallbackOutcome::Authorized {
-        provider_request: OAuthProviderCallbackRequest {
-            provider,
-            account_label,
-            authorization_code: OAuthAuthorizationCode::new(code.clone_secret())
-                .map_err(ProductAuthRouteFailure::from)?,
-            authorization_code_hash,
-            pkce_verifier: PkceVerifierSecret::new(pkce_verifier)
-                .map_err(ProductAuthRouteFailure::from)?,
-            pkce_verifier_hash,
-            scopes,
-        },
+    Ok(brassclaw_auth::OAuthCallbackReference {
+        scope: scope.clone(),
+        flow_id,
+        provider,
+        account_label,
+        opaque_state_hash: opaque_state_hash(state.as_str())?,
+        authorization_code_hash: authorization_code_hash(code.expose_secret())?,
+        requested_scopes,
     })
 }
 
@@ -616,6 +911,15 @@ async fn pkce_verifier_for_known_callback_flow(
     provider: &AuthProviderId,
     flow_id: AuthFlowId,
 ) -> Result<SecretString, ProductAuthRouteFailure> {
+    if provider.as_str() == GOOGLE_PROVIDER_ID {
+        return run_with_backend_timeout(
+            state
+                .product_auth
+                .oauth_pkce_verifier_for_flow(scope, provider, flow_id),
+        )
+        .await?
+        .ok_or_else(ProductAuthRouteFailure::unknown_or_expired_flow);
+    }
     let cache_error = match state.pkce_verifier_for_callback(flow_id) {
         Ok(verifier) => return Ok(verifier),
         Err(error) => error,
@@ -655,17 +959,22 @@ pub(super) fn is_authorized_callback_candidate(
         && query.code.is_some()
 }
 
-pub(super) fn should_forget_pkce_verifier(code: AuthErrorCode) -> bool {
-    matches!(
-        code,
-        AuthErrorCode::ProviderDenied
-            | AuthErrorCode::Canceled
-            | AuthErrorCode::FlowAlreadyTerminal
-            | AuthErrorCode::TokenExchangeFailed
-            | AuthErrorCode::RefreshFailed
-            | AuthErrorCode::CredentialMissing
-            | AuthErrorCode::AccountSelectionRequired
+async fn forget_pkce_for_terminal_callback(
+    state: &ProductAuthRouteState,
+    scope: &AuthProductScope,
+    flow_id: AuthFlowId,
+    state_hash: &OpaqueStateHash,
+) -> Result<(), ProductAuthRouteFailure> {
+    if run_with_backend_timeout(
+        state
+            .product_auth
+            .oauth_callback_flow_is_terminal(scope, flow_id, state_hash),
     )
+    .await?
+    {
+        state.remove_pkce_verifier(flow_id);
+    }
+    Ok(())
 }
 
 fn dcr_callback_state_from_oauth_state(
@@ -694,6 +1003,74 @@ mod tests {
     use brassclaw_secrets::{InMemorySecretStore, SecretStore};
     use brassclaw_turns::{TurnRunId, TurnScope};
     use std::sync::{Arc, Mutex};
+
+    #[tokio::test]
+    async fn pkce_cleanup_requires_owned_terminal_oauth_flow() {
+        let shared = Arc::new(InMemoryAuthProductServices::new());
+        let product_auth = Arc::new(RebornProductAuthServices::from_shared(
+            shared,
+            Arc::new(RecordingDispatcher::default()),
+        ));
+        let state = ProductAuthRouteState::new(
+            product_auth.clone(),
+            TenantId::new("tenant-alpha").unwrap(),
+            None,
+            None,
+        );
+        let scope = AuthProductScope::new(
+            ResourceScope::local_default(UserId::new("user-alpha").unwrap(), InvocationId::new())
+                .unwrap(),
+            AuthSurface::Callback,
+        );
+        let hash = opaque_state_hash("owned-state").unwrap();
+        let flow = product_auth
+            .start_setup_oauth_flow(RebornOAuthStartFlowRequest {
+                requirement_setup: None,
+                flow_id: None,
+                scope: scope.clone(),
+                provider: AuthProviderId::new("google").unwrap(),
+                authorization_url: OAuthAuthorizationUrl::new(
+                    "https://accounts.google.com/authorize",
+                )
+                .unwrap(),
+                opaque_state_hash: hash.clone(),
+                pkce_verifier_hash: pkce_verifier_hash("owned-verifier").unwrap(),
+                update_binding: None,
+                expires_at: Utc::now() + ChronoDuration::minutes(5),
+            })
+            .await
+            .unwrap();
+        state
+            .store_pkce_verifier(
+                flow.id,
+                SecretString::from("owned-verifier"),
+                flow.expires_at,
+            )
+            .unwrap();
+        forget_pkce_for_terminal_callback(&state, &scope, flow.id, &hash)
+            .await
+            .unwrap();
+        assert!(state.pkce_verifier_for_callback(flow.id).is_ok());
+        product_auth
+            .flow_manager()
+            .cancel_flow(&scope, flow.id)
+            .await
+            .unwrap();
+        let error = forget_pkce_for_terminal_callback(
+            &state,
+            &scope,
+            flow.id,
+            &opaque_state_hash("foreign-state").unwrap(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.body.code, AuthErrorCode::CrossScopeDenied);
+        assert!(state.pkce_verifier_for_callback(flow.id).is_ok());
+        forget_pkce_for_terminal_callback(&state, &scope, flow.id, &hash)
+            .await
+            .unwrap();
+        assert!(state.pkce_verifier_for_callback(flow.id).is_err());
+    }
 
     #[tokio::test]
     async fn google_oauth_callback_uses_gate_pkce_store_when_route_cache_misses() {
@@ -733,6 +1110,7 @@ mod tests {
         let run_id = TurnRunId::new();
         let gate_ref = "gate:google-auth";
         let requirements = vec![RuntimeCredentialAuthRequirement {
+            requirement: None,
             provider: RuntimeCredentialAccountProviderId::new("google").expect("provider"),
             requester_extension: ExtensionId::new("google-calendar").expect("extension"),
             provider_scopes: vec![GOOGLE_CALENDAR_READONLY_SCOPE.to_string()],

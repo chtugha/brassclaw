@@ -13,6 +13,7 @@ export function ComponentSubmissionPanel() {
   const [allocation, setAllocation] = React.useState("");
   const [base, setBase] = React.useState("null");
   const [dependencies, setDependencies] = React.useState("[]");
+  const [partner, setPartner] = React.useState("null");
   const [pending, setPending] = React.useState(null);
   const [view, setView] = React.useState(null);
   const [receipt, setReceipt] = React.useState(null);
@@ -30,10 +31,16 @@ export function ComponentSubmissionPanel() {
       if (!pending && (allocation.trim() === "" || !Number.isSafeInteger(head) || head < 0)) {
         throw new Error(t("componentSubmission.headInvalid"));
       }
+      const selectedPartner = pending ? null : JSON.parse(partner);
+      if (selectedPartner?.role === "changed" && (!Number.isSafeInteger(selectedPartner.expected_previous_version)
+          || selectedPartner.expected_previous_version < 0)) {
+        throw new Error(t("componentSubmission.headInvalid"));
+      }
       const request = pending ?? {
         submission_id: id.trim(), candidate_bytes: candidate,
         expected_previous_version: head,
         base: JSON.parse(base), dependencies: JSON.parse(dependencies),
+        ...(selectedPartner === null ? {} : { function_partner: selectedPartner }),
       };
       // Serialize before locking: syntax/transport errors make no request.
       const bytes = JSON.stringify(request);
@@ -119,6 +126,11 @@ export function ComponentSubmissionPanel() {
           <label className="block text-sm">${t("componentSubmission.dependencies")}
             <textarea className="mt-1 w-full rounded border p-2 bg-transparent font-mono text-xs" value=${dependencies}
               disabled=${locked} onChange=${e => setDependencies(e.target.value)} />
+          </label>
+          <label className="block text-sm">${t("componentSubmission.partner")}
+            <textarea className="mt-1 w-full rounded border p-2 bg-transparent font-mono text-xs" rows="6"
+              value=${partner} disabled=${locked} onChange=${e => setPartner(e.target.value)} />
+            <span className="mt-1 block text-xs">${t("componentSubmission.partnerHelp")}</span>
           </label>
           <button type="button" className="rounded border px-3 py-2 text-sm" disabled=${busy || Boolean(receipt) || !id.trim() || !candidate.trim()} onClick=${submit}>
             ${t(pending ? "componentSubmission.retry" : "componentSubmission.submit")}

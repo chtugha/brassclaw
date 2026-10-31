@@ -7,7 +7,7 @@
 
 use brassclaw_pg::PgPool;
 use brassclaw_turns::{
-    AcceptedMessageRef, TurnId, TurnPersistenceSnapshot, TurnScope, TurnStatus,
+    AcceptedMessageRef, SourceBindingRef, TurnId, TurnPersistenceSnapshot, TurnScope, TurnStatus,
     run_profile::{AgentLoopDriverError, LoopRunContext, MontyTaskAttempt},
 };
 use chrono::{DateTime, Utc};
@@ -36,10 +36,13 @@ pub(crate) struct PgMontyAdmission {
     turn_id: TurnId,
     accepted: AcceptedMessageRef,
     trusted_internal_turn: bool,
+    source_binding_ref: Option<SourceBindingRef>,
+    actor: Option<brassclaw_turns::TurnActor>,
     attempt: MontyTaskAttempt,
     key: [u8; 32],
     checksum: [u8; 32],
     catalogue: OnceLock<Option<CatalogueReference>>,
+    task_models: OnceLock<Option<Value>>,
 }
 
 impl PgMontyAdmission {
@@ -51,7 +54,7 @@ impl PgMontyAdmission {
         context: &LoopRunContext,
         attempt: MontyTaskAttempt,
     ) -> Result<Self, AgentLoopDriverError> {
-        let reservation = Self::prepare(pool, context, attempt)?;
+        let reservation = Self::prepare(pool, context, attempt, None)?;
         reservation.persist_reservation().await?;
         Ok(reservation)
     }
@@ -63,8 +66,15 @@ impl PgMontyAdmission {
         pool: Arc<PgPool>,
         context: &LoopRunContext,
         attempt: MontyTaskAttempt,
+        source_binding_ref: Option<&SourceBindingRef>,
     ) -> Result<Self, AgentLoopDriverError> {
-        if context.run_id != attempt.run_id {
+        if context.run_id != attempt.run_id
+            || source_binding_ref.is_some_and(|source| {
+                context.trusted_internal_turn
+                    != (source.as_str()
+                        == brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING)
+            })
+        {
             return Err(failed("monty_admission_identity_invalid"));
         }
         let accepted = context
@@ -81,10 +91,13 @@ impl PgMontyAdmission {
             turn_id: context.turn_id,
             accepted,
             trusted_internal_turn: context.trusted_internal_turn,
+            source_binding_ref: source_binding_ref.cloned(),
+            actor: context.actor.clone(),
             attempt,
             key: Sha256::digest(nonce).into(),
             checksum: Sha256::digest(claim).into(),
             catalogue: OnceLock::new(),
+            task_models: OnceLock::new(),
         })
     }
 
@@ -105,6 +118,83 @@ impl PgMontyAdmission {
         }
     }
 
+    /// Pin metadata from the real task model port before effects. It carries
+    /// references, not authority; never backfill an old admission from latest.
+    pub(crate) fn bind_task_models(
+        &self,
+        selection: Option<Value>,
+    ) -> Result<(), AgentLoopDriverError> {
+        if selection.as_ref().is_some_and(|selection| {
+            let format = selection["format"].as_str();
+            let fields = match format {
+                Some("brassclaw-task-provider-binding/1") => 3,
+                Some("brassclaw-task-provider-binding/2") => 4,
+                Some("brassclaw-task-provider-binding/3") => 5,
+                _ => return true,
+            };
+            !selection["selection"].is_object()
+                || selection.as_object().is_none_or(|s| s.len() != fields)
+                || (fields >= 4 && !selection["prefix_bindings"].is_array())
+                || (fields == 5
+                    && (selection["prefix_bindings"]
+                        .as_array()
+                        .is_none_or(|p| !p.is_empty())
+                        || selection["selection"]["namespace"]
+                            .as_str()
+                            .is_none_or(|namespace| {
+                                crate::task_model_capture_record::PrefixFreeCaptureRecord::parse(
+                                    &selection["prefix_capture"],
+                                    namespace,
+                                )
+                                .is_none()
+                            })))
+                || selection["checksum"].as_str().is_none_or(|checksum| {
+                    checksum.len() != 64
+                        || !checksum
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                })
+        }) {
+            return Err(failed("monty_task_model_reference_invalid"));
+        }
+        if let Some(selection) = &selection {
+            let mut document = selection["selection"].clone();
+            document.sort_all_objects();
+            let mut checksum = hex::encode(Sha256::digest(
+                serde_json::to_vec(&document)
+                    .map_err(|_| failed("monty_task_model_reference_invalid"))?,
+            ));
+            if matches!(
+                selection["format"].as_str(),
+                Some("brassclaw-task-provider-binding/2" | "brassclaw-task-provider-binding/3")
+            ) {
+                let mut prefixes = selection["prefix_bindings"].clone();
+                prefixes.sort_all_objects();
+                let mut subject = serde_json::json!([checksum, prefixes]);
+                if selection["format"] == "brassclaw-task-provider-binding/3" {
+                    let mut capture = selection["prefix_capture"].clone();
+                    capture.sort_all_objects();
+                    subject
+                        .as_array_mut()
+                        .ok_or_else(|| failed("monty_task_model_reference_invalid"))?
+                        .push(capture);
+                }
+                checksum = hex::encode(Sha256::digest(
+                    serde_json::to_vec(&subject)
+                        .map_err(|_| failed("monty_task_model_reference_invalid"))?,
+                ));
+            }
+            if selection["checksum"].as_str() != Some(checksum.as_str()) {
+                return Err(failed("monty_task_model_reference_invalid"));
+            }
+        }
+        match self.task_models.set(selection) {
+            Ok(()) => Ok(()),
+            Err(selection) if self.task_models.get() == Some(&selection) => Ok(()),
+            Err(_) => Err(failed("monty_task_model_reference_conflict")),
+        }
+    }
+
     /// Persist this exact prepared address once. A conflict is not permission
     /// to replace another admission; an uncertain result requires recovery with
     /// this retained address, never another reservation or effect replay.
@@ -121,17 +211,23 @@ impl PgMontyAdmission {
         self.preflight_claim(&transaction).await?;
         let scope = serde_json::to_value(&self.scope)
             .map_err(|_| failed("monty_admission_identity_invalid"))?;
+        let actor = serde_json::to_value(&self.actor)
+            .map_err(|_| failed("monty_admission_identity_invalid"))?;
         let runner = serde_json::to_value(self.attempt.runner_id)
             .map_err(|_| failed("monty_admission_identity_invalid"))?
             .as_str()
             .ok_or_else(|| failed("monty_admission_identity_invalid"))?
             .to_owned();
+        let source_binding = self
+            .source_binding_ref
+            .as_ref()
+            .map(SourceBindingRef::as_str);
         let inserted = transaction.execute("INSERT INTO brassclaw_monty_task_admissions
             (run_id, turn_id, scope, accepted_message_ref, runner_id, claim_checksum, admission_key, phase, trusted_internal_turn,
-             catalogue_reference_version)
-            VALUES ($1,$2,$3,$4,$5::text::uuid,$6,$7,'reserved',$8,1) ON CONFLICT (run_id) DO NOTHING",
+             catalogue_reference_version, task_model_selection_version,native_actor,source_binding_ref)
+            VALUES ($1,$2,$3,$4,$5::text::uuid,$6,$7,'reserved',$8,1,1,$9,$10) ON CONFLICT (run_id) DO NOTHING",
             &[&self.attempt.run_id.as_uuid(), &self.turn_id.as_uuid(), &scope, &self.accepted.as_str(),
-                &runner, &&self.checksum[..], &&self.key[..], &self.trusted_internal_turn])
+                &runner, &&self.checksum[..], &&self.key[..], &self.trusted_internal_turn,&actor,&source_binding])
             .await.map_err(|_| failed("monty_admission_database_failed"))?;
         if inserted != 1 {
             return Err(failed("monty_admission_replay_requires_recovery"));
@@ -151,6 +247,8 @@ impl PgMontyAdmission {
         // Direct internal/qualification callers explicitly freeze absence too.
         // An unconfigured old admission cannot later acquire a fresh selection.
         self.bind_catalogue(self.catalogue.get().copied().flatten())?;
+        self.bind_task_models(self.task_models.get().cloned().flatten())?;
+        let task_models = self.task_models.get().cloned().flatten();
         let reference = self.catalogue.get().copied().flatten();
         let catalogue_id = reference.map(|reference| reference.id);
         let catalogue_checksum = reference.map(|reference| hex::encode(reference.checksum));
@@ -167,14 +265,22 @@ impl PgMontyAdmission {
         let changed = transaction.execute("UPDATE brassclaw_monty_task_admissions
             SET phase='started', started_at=COALESCE(started_at,clock_timestamp()),
                 catalogue_id=COALESCE(catalogue_id,$4),
-                catalogue_checksum=COALESCE(catalogue_checksum,$5)
+                catalogue_checksum=COALESCE(catalogue_checksum,$5),
+                task_model_selection=COALESCE(task_model_selection,$6)
             WHERE run_id=$1 AND admission_key=$2 AND claim_checksum=$3 AND phase IN ('reserved','started')
                 AND ((catalogue_id IS NULL AND catalogue_checksum IS NULL
                       AND ($4::uuid IS NULL OR (phase='reserved' AND catalogue_reference_version=1)))
-                     OR (catalogue_id=$4 AND catalogue_checksum=$5))",
+                     OR (catalogue_id=$4 AND catalogue_checksum=$5))
+                AND (task_model_selection IS NOT DISTINCT FROM $6::jsonb
+                     OR (task_model_selection IS NULL AND phase='reserved' AND task_model_selection_version=1))",
             &[&self.attempt.run_id.as_uuid(), &&self.key[..], &&self.checksum[..],
-                &catalogue_id, &catalogue_checksum])
-            .await.map_err(|_| failed("monty_admission_database_failed"))?;
+                &catalogue_id, &catalogue_checksum, &task_models])
+            .await.map_err(|error| {
+                tracing::warn!(sqlstate = error.code().map(|code| code.code()),
+                    constraint = error.as_db_error().and_then(|error| error.constraint()),
+                    "original Monty admission start failed");
+                failed("monty_admission_database_failed")
+            })?;
         if changed != 1 {
             return Err(failed("monty_admission_fenced"));
         }
@@ -188,7 +294,11 @@ impl PgMontyAdmission {
     /// Only the verified actual root outcome belongs here. This method records
     /// local settlement and does not declare external effects reconciled.
     pub(crate) async fn settle(&self, outcome: Value) -> Result<(), AgentLoopDriverError> {
-        validate_outcome(&outcome, self.trusted_internal_turn, self.attempt.run_id)?;
+        let result_only = self.trusted_internal_turn
+            || self.source_binding_ref.as_ref().is_some_and(|source| {
+                source.as_str() == brassclaw_turns::run_profile::INTERNAL_MODEL_SOURCE_BINDING
+            });
+        validate_outcome(&outcome, result_only, self.attempt.run_id)?;
         let mut client = self
             .pool
             .get()
@@ -204,7 +314,8 @@ impl PgMontyAdmission {
         // evidence. Its private key/checksum and outcome CAS still fence it.
         let row = transaction
             .query_opt(
-                "SELECT phase, outcome FROM brassclaw_monty_task_admissions
+                "SELECT phase, outcome, source_binding_ref, result_only_completion
+            FROM brassclaw_monty_task_admissions
             WHERE run_id=$1 AND admission_key=$2 AND claim_checksum=$3 FOR UPDATE",
                 &[
                     &self.attempt.run_id.as_uuid(),
@@ -215,6 +326,15 @@ impl PgMontyAdmission {
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?
             .ok_or_else(|| failed("monty_admission_fenced"))?;
+        if row.get::<_, Option<String>>(2).as_deref()
+            != self
+                .source_binding_ref
+                .as_ref()
+                .map(SourceBindingRef::as_str)
+            || row.get::<_, bool>(3) != result_only
+        {
+            return Err(failed("monty_admission_fenced"));
+        }
         let phase: &str = row.get(0);
         if phase == "settled" {
             if row.get::<_, Option<Value>>(1).as_ref() != Some(&outcome) {
@@ -249,7 +369,7 @@ impl PgMontyAdmission {
         &self,
         transaction: &Transaction<'_>,
     ) -> Result<(), AgentLoopDriverError> {
-        self.inspect_claim(transaction, true).await
+        self.inspect_claim(transaction, true).await.map(|_| ())
     }
 
     /// Reject stale preparation without holding the cancellation/heartbeat
@@ -259,14 +379,14 @@ impl PgMontyAdmission {
         &self,
         transaction: &Transaction<'_>,
     ) -> Result<(), AgentLoopDriverError> {
-        self.inspect_claim(transaction, false).await
+        self.inspect_claim(transaction, false).await.map(|_| ())
     }
 
     async fn inspect_claim(
         &self,
         transaction: &Transaction<'_>,
         retain_lock: bool,
-    ) -> Result<(), AgentLoopDriverError> {
+    ) -> Result<Option<brassclaw_turns::TurnRunId>, AgentLoopDriverError> {
         // Same snapshot key/lock as PgTurnStateStore. The snapshot row lock
         // fences the final claim check and COMMIT, after all effect-free journal
         // preparation. A blocked journal must not hold up cancellation or lease
@@ -305,6 +425,14 @@ impl PgMontyAdmission {
             .find(|run| run.run_id == self.attempt.run_id)
             .ok_or_else(|| failed("monty_admission_fenced"))?;
         if run.scope != self.scope
+            || self.actor.as_ref().is_some_and(|actor| {
+                !snapshot.turns.iter().any(|turn| {
+                    turn.turn_id == self.turn_id
+                        && turn.scope == self.scope
+                        && &turn.actor == actor
+                        && turn.accepted_message_ref == self.accepted
+                })
+            })
             || run.turn_id != self.turn_id
             || run.accepted_message_ref != self.accepted
             || run.runner_id != Some(self.attempt.runner_id)
@@ -316,11 +444,18 @@ impl PgMontyAdmission {
             || self.trusted_internal_turn
                 != (run.source_binding_ref.as_str()
                     == brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING)
+            || self
+                .source_binding_ref
+                .as_ref()
+                .is_some_and(|source| source != &run.source_binding_ref)
+            || (self.source_binding_ref.is_none()
+                && run.source_binding_ref.as_str()
+                    == brassclaw_turns::run_profile::INTERNAL_MODEL_SOURCE_BINDING)
             || run.status != TurnStatus::Running
         {
             return Err(failed("monty_admission_fenced"));
         }
-        Ok(())
+        Ok(run.parent_run_id)
     }
 }
 
@@ -329,7 +464,7 @@ impl PgMontyAdmission {
 /// durable settlement and its scope. A caller-provided marker grants nothing.
 pub(super) fn validate_outcome(
     value: &Value,
-    trusted_internal: bool,
+    result_only: bool,
     run: brassclaw_turns::TurnRunId,
 ) -> Result<(), AgentLoopDriverError> {
     let invalid = || failed("monty_admission_outcome_invalid");
@@ -337,7 +472,7 @@ pub(super) fn validate_outcome(
     let execution = object.get("execution");
     let internal =
         execution.is_some_and(|report| report["format"] == "monty-internal-task-execution/1");
-    if internal && !trusted_internal {
+    if (internal && !result_only) || (result_only && value["status"] == "completed" && !internal) {
         return Err(invalid());
     }
     if let Some(report) = execution {

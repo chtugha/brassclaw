@@ -41,6 +41,7 @@ impl Default for EmbeddingCacheConfig {
 pub struct CachedEmbeddingProvider {
     inner: Arc<dyn EmbeddingProvider>,
     cache: Mutex<CacheState>,
+    dispatch_guard: Option<Arc<dyn crate::EmbeddingDispatchGuard>>,
 }
 
 struct CacheState {
@@ -48,6 +49,8 @@ struct CacheState {
     max_entries: usize,
     // Holding this token across a request prevents old inserts after clear/resize.
     generation: Arc<()>,
+    definition_revision: Option<u64>,
+    retired: bool,
 }
 
 impl CacheState {
@@ -74,11 +77,75 @@ impl CachedEmbeddingProvider {
         Self::warn_large_capacity(max_entries);
         Self {
             inner,
+            dispatch_guard: None,
             cache: Mutex::new(CacheState {
                 entries: LruCache::unbounded_with_hasher(RandomState::new()),
                 max_entries,
                 generation: Arc::new(()),
+                definition_revision: None,
+                retired: false,
             }),
+        }
+    }
+
+    /// Attach the owning target's authoritative guard before publication.
+    pub fn with_dispatch_guard(mut self, guard: Arc<dyn crate::EmbeddingDispatchGuard>) -> Self {
+        self.dispatch_guard = Some(guard);
+        self
+    }
+
+    async fn check_dispatch(&self) -> Result<(), EmbeddingError> {
+        let Some(guard) = &self.dispatch_guard else {
+            return Ok(());
+        };
+        let current = guard.check().await?;
+        if current.definition_revision == 0 {
+            return Err(EmbeddingError::InvalidResponse(
+                "invalid embedding publication revision".into(),
+            ));
+        }
+        let mut state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        if state
+            .definition_revision
+            .is_some_and(|revision| current.definition_revision < revision)
+        {
+            return Err(EmbeddingError::InvalidResponse(
+                "embedding publication advanced during preparation".into(),
+            ));
+        }
+        if state.definition_revision != Some(current.definition_revision) {
+            state.entries = LruCache::unbounded_with_hasher(RandomState::new());
+            state.generation = Arc::new(());
+            state.definition_revision = Some(current.definition_revision);
+        }
+        let max_entries = if state.retired {
+            0
+        } else {
+            current.cache_max_entries
+        };
+        if max_entries != state.max_entries {
+            Self::warn_large_capacity(max_entries);
+            state.max_entries = max_entries;
+            state.generation = Arc::new(());
+            if max_entries == 0 {
+                state.entries = LruCache::unbounded_with_hasher(RandomState::new());
+            } else {
+                while state.entries.len() > max_entries {
+                    state.entries.pop_lru();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn refresh_retention(&self) {
+        // A late incompatibility forbids caching; the real completed result
+        // still belongs to its original caller and is never replayed here.
+        if self.check_dispatch().await.is_err() {
+            tracing::debug!(
+                "completed embedding not cached after configuration change or unavailable readback"
+            );
+            self.clear();
         }
     }
 
@@ -106,6 +173,9 @@ impl CachedEmbeddingProvider {
     /// leaves the generation and retained entries intact.
     pub fn set_max_entries(&self, max_entries: usize) {
         let mut state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        if state.retired {
+            return;
+        }
         if state.max_entries == max_entries {
             return;
         }
@@ -120,6 +190,17 @@ impl CachedEmbeddingProvider {
                 state.entries.pop_lru();
             }
         }
+    }
+
+    /// A replaced source releases its cache permanently. Retained operations
+    /// may still finish using their target; live policy cannot re-enable fills
+    /// in a client no longer owned by the source.
+    pub fn retire(&self) {
+        let mut state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        state.retired = true;
+        state.max_entries = 0;
+        state.entries = LruCache::unbounded_with_hasher(RandomState::new());
+        state.generation = Arc::new(());
     }
 
     /// Number of entries currently in the cache.
@@ -170,6 +251,7 @@ impl EmbeddingProvider for CachedEmbeddingProvider {
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
+        self.check_dispatch().await?;
         let generation = {
             let state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
             (state.max_entries != 0).then(|| Arc::clone(&state.generation))
@@ -195,7 +277,9 @@ impl EmbeddingProvider for CachedEmbeddingProvider {
         // uncached key will each call the inner provider. This is acceptable:
         // embeddings are idempotent and the last writer wins in the LruCache.
 
+        self.check_dispatch().await?;
         let embedding = self.inner.embed(text).await?;
+        self.refresh_retention().await;
 
         // Store result under lock. Re-check first: another concurrent caller
         // may have already cached this key while the lock was released.
@@ -221,6 +305,8 @@ impl EmbeddingProvider for CachedEmbeddingProvider {
         if texts.is_empty() {
             return Ok(Vec::new());
         }
+
+        self.check_dispatch().await?;
 
         let generation = {
             let state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
@@ -273,8 +359,23 @@ impl EmbeddingProvider for CachedEmbeddingProvider {
         }
 
         // Fetch missing embeddings
+        self.check_dispatch().await?;
+        if !Arc::ptr_eq(
+            &generation,
+            &self
+                .cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .generation,
+        ) {
+            // A policy read awaited after partitioning. Do not reuse partial
+            // hits selected under a now-retired cache generation.
+            results.fill(None);
+            miss_indices = (0..texts.len()).collect();
+        }
         let miss_texts: Vec<String> = miss_indices.iter().map(|&i| texts[i].clone()).collect();
         let new_embeddings = self.inner.embed_batch(&miss_texts).await?;
+        self.refresh_retention().await;
 
         if new_embeddings.len() != miss_indices.len() {
             return Err(EmbeddingError::InvalidResponse(format!(

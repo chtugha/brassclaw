@@ -29,7 +29,9 @@ const PROJECT_BETA_IDENTITY: &str = "Alice project beta identity: carries violet
 async fn reborn_identity_project_scope_isolation_parity() {
     const ROOM: &str = "room-project-identity-shared";
 
-    let shared_storage = RebornHarnessSharedStorage::new().expect("shared storage");
+    let shared_storage = RebornHarnessSharedStorage::new()
+        .await
+        .expect("shared storage");
     let identity_source = Arc::new(ProjectIdentitySource::default());
     let project_alpha = test_product_scope(
         "tenant-project-identity-e2e",

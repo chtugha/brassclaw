@@ -34,8 +34,8 @@ use brassclaw_authorization::{GrantAuthorizer, TrustAwareCapabilityDispatchAutho
 use brassclaw_extensions::ExtensionRegistry;
 use brassclaw_filesystem::{
     BackendCapabilities, BackendId, BackendKind, CompositeRootFilesystem, ContentKind,
-    InMemoryBackend, IndexPolicy, LocalFilesystem, MountDescriptor, RootFilesystem,
-    ScopedFilesystem, StorageClass,
+    InMemoryBackend, IndexPolicy, LocalFilesystem, MountDescriptor, PostgresRootFilesystem,
+    RootFilesystem, ScopedFilesystem, StorageClass,
 };
 use brassclaw_host_api::{
     AgentId, CapabilityDescriptor, CapabilityGrant, CapabilityGrantId, CapabilityId, CapabilitySet,
@@ -105,22 +105,22 @@ use brassclaw_reborn_composition::{
 };
 use brassclaw_resources::InMemoryResourceGovernor;
 use brassclaw_secrets::{
-    InMemorySecretStore, SecretLease, SecretLeaseId, SecretLeaseStatus, SecretMaterial,
-    SecretMetadata, SecretStore, SecretStoreError,
+    InMemorySecretStore, SecretLease, SecretLeaseId, SecretMaterial, SecretMetadata, SecretStore,
+    SecretStoreError,
 };
 use brassclaw_threads::{
-    FilesystemSessionThreadService, SessionThreadService, ThreadHistoryRequest,
-    ThreadMessageRecord, ThreadScope,
+    PgSessionThreadService, SessionThreadService, ThreadHistoryRequest, ThreadMessageRecord,
+    ThreadScope,
 };
 use brassclaw_trust::{AdminConfig, AdminEntry, HostTrustAssignment, HostTrustPolicy};
 use brassclaw_trust::{EffectiveTrustClass, TrustDecision};
 use brassclaw_turns::{
-    AgentLoopDriverResumeRequest, CancelRunRequest, FilesystemTurnStateStore, GateRef,
-    GetLoopCheckpointRequest, GetRunStateRequest, IdempotencyKey, InMemoryCheckpointStateStore,
-    LoopBlockedKind, LoopCheckpointKind, LoopCheckpointStore, LoopExit, LoopGateRef, LoopResultRef,
-    ReplyTargetBindingRef, ResumeTurnRequest, SanitizedCancelReason, SourceBindingRef, TurnActor,
-    TurnCoordinator, TurnError, TurnRunId, TurnRunRecord, TurnRunState, TurnScope,
-    TurnSpawnTreeStateStore, TurnStateStore, TurnStatus,
+    AgentLoopDriverResumeRequest, CancelRunRequest, GateRef, GetLoopCheckpointRequest,
+    GetRunStateRequest, IdempotencyKey, InMemoryCheckpointStateStore, LoopBlockedKind,
+    LoopCheckpointKind, LoopCheckpointStore, LoopExit, LoopGateRef, LoopResultRef,
+    PgTurnStateStore, ReplyTargetBindingRef, ResumeTurnRequest, SanitizedCancelReason,
+    SourceBindingRef, TurnActor, TurnCoordinator, TurnError, TurnRunId, TurnRunRecord,
+    TurnRunState, TurnScope, TurnSpawnTreeStateStore, TurnStateStore, TurnStatus,
     run_profile::{
         AgentLoopDriver, AgentLoopDriverError, AgentLoopDriverRunRequest, AgentLoopHostError,
         AgentLoopHostErrorKind, CapabilityBatchInvocation, CapabilityBatchOutcome,
@@ -139,7 +139,6 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     config::WaitConfig,
-    filesystem::local_filesystem,
     github as github_support,
     model_replay::RebornTraceReplayModelGateway,
     product_workflow::{RebornProductWorkflowHarness, resource_scope},
@@ -148,6 +147,20 @@ use super::{
 };
 
 pub type HarnessWaitConfig = WaitConfig;
+
+/// Keep dispatcher stage diagnostics scoped to one synthetic fixture test.
+/// The adapter target logs stages and classified failures, never raw inputs.
+pub fn trace_fixture_runtime_dispatch() -> tracing::subscriber::DefaultGuard {
+    let filter = tracing_subscriber::EnvFilter::new(
+        "warn,brassclaw_host_runtime::services::runtime_adapters=debug",
+    );
+    tracing::subscriber::set_default(
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_test_writer()
+            .finish(),
+    )
+}
 
 /// [`MontyTurnDriverPort`] for the test harness.
 ///
@@ -333,9 +346,9 @@ pub struct RebornBinaryE2EHarness {
     binding: ResolvedBinding,
     thread_scope: ThreadScope,
     turn_scope: TurnScope,
-    turn_store: Arc<FilesystemTurnStateStore<LocalFilesystem>>,
+    turn_store: Arc<PgTurnStateStore>,
     coordinator: Arc<dyn TurnCoordinator>,
-    _product_harness: RebornProductWorkflowHarness,
+    _product_harness: RebornProductWorkflowHarness<PostgresRootFilesystem>,
     thread_harness: RebornThreadHarness,
     model_gateway: RebornTraceReplayModelGateway,
     capability_recorder: HarnessCapabilityRecorder,
@@ -343,7 +356,7 @@ pub struct RebornBinaryE2EHarness {
     worker: Arc<TurnRunnerWorker>,
     cancel: CancellationToken,
     worker_tasks: Vec<JoinHandle<()>>,
-    _turn_root: Arc<tempfile::TempDir>,
+    _storage: RebornHarnessSharedStorage,
     _wake_sender: TurnRunnerWakeSender,
 }
 
@@ -356,28 +369,24 @@ pub struct SubmittedTurn {
     pub actor: TurnActor,
 }
 
+/// Durable record storage for these legacy pipeline parity fixtures. Local
+/// byte files remain available to file Tools, but cannot emulate version CAS.
 #[derive(Clone)]
 pub struct RebornHarnessSharedStorage {
-    product_backend: Arc<LocalFilesystem>,
+    product_backend: Arc<PostgresRootFilesystem>,
     product_root: Arc<tempfile::TempDir>,
-    thread_backend: Arc<LocalFilesystem>,
-    thread_root: Arc<tempfile::TempDir>,
-    turn_backend: Arc<LocalFilesystem>,
-    turn_root: Arc<tempfile::TempDir>,
+    database: Arc<super::native_pg::NativePostgres>,
 }
 
 impl RebornHarnessSharedStorage {
-    pub fn new() -> HarnessResult<Self> {
-        let product_root = Arc::new(tempfile::tempdir()?);
-        let thread_root = Arc::new(tempfile::tempdir()?);
-        let turn_root = Arc::new(tempfile::tempdir()?);
+    pub async fn new() -> HarnessResult<Self> {
+        let database = Arc::new(super::native_pg::NativePostgres::start().await);
+        let backend = Arc::new(PostgresRootFilesystem::new(database.pool.as_ref().clone()));
+        backend.run_migrations().await?;
         Ok(Self {
-            product_backend: Arc::new(local_filesystem(product_root.path())?),
-            product_root,
-            thread_backend: Arc::new(local_filesystem(thread_root.path())?),
-            thread_root,
-            turn_backend: Arc::new(local_filesystem(turn_root.path())?),
-            turn_root,
+            product_backend: backend,
+            product_root: Arc::new(tempfile::tempdir()?),
+            database,
         })
     }
 }
@@ -956,15 +965,15 @@ impl RebornBinaryE2EHarness {
     ) -> HarnessResult<Self> {
         let adapter = RebornTestProductAdapter::new(adapter_id, installation_id)?;
         let ingress = RebornTestIngress::new(adapter);
-        let product_harness = if let Some(storage) = shared_storage.as_ref() {
-            RebornProductWorkflowHarness::filesystem_shared_backend(
-                product_scope.clone(),
-                Arc::clone(&storage.product_backend),
-                Arc::clone(&storage.product_root),
-            )?
-        } else {
-            RebornProductWorkflowHarness::filesystem_temp(product_scope)?
+        let storage = match shared_storage {
+            Some(storage) => storage,
+            None => RebornHarnessSharedStorage::new().await?,
         };
+        let product_harness = RebornProductWorkflowHarness::filesystem_shared_backend(
+            product_scope,
+            Arc::clone(&storage.product_backend),
+            Arc::clone(&storage.product_root),
+        )?;
         let binding = product_harness
             .binding_service()?
             .resolve_binding(binding_request_with_trigger_and_actor(
@@ -985,28 +994,16 @@ impl RebornBinaryE2EHarness {
             binding.thread_id.clone(),
             binding.subject_user_id.clone(),
         );
-        let thread_harness = if let Some(storage) = shared_storage.as_ref() {
-            RebornThreadHarness::filesystem_shared_backend(
-                thread_scope.clone(),
-                Arc::clone(&storage.thread_backend),
-                Arc::clone(&storage.thread_root),
-            )?
-        } else {
-            RebornThreadHarness::filesystem_temp(thread_scope.clone())?
-        };
-        let (turn_backend, turn_root) = if let Some(storage) = shared_storage.as_ref() {
-            (
-                Arc::clone(&storage.turn_backend),
-                Arc::clone(&storage.turn_root),
-            )
-        } else {
-            let turn_root = Arc::new(tempfile::tempdir()?);
-            (Arc::new(local_filesystem(turn_root.path())?), turn_root)
-        };
-        let turn_store = Arc::new(FilesystemTurnStateStore::new(scoped_turns_fs(
-            turn_backend,
-            &binding,
-        )?));
+        let thread_harness =
+            RebornThreadHarness::postgres(thread_scope.clone(), Arc::clone(&storage.database.pool));
+        // Reuse production's transaction participant: a worker must never see
+        // a runnable run before its exact transcript input is Submitted.
+        let turn_store = Arc::new(
+            brassclaw_reborn_composition::test_support::postgres_turn_state_with_transcript(
+                Arc::clone(&storage.database.pool),
+                binding.tenant_id.as_str(),
+            ),
+        );
         let checkpoint_state_store = Arc::new(InMemoryCheckpointStateStore::default());
         let loop_checkpoint_store: Arc<dyn LoopCheckpointStore> = turn_store.clone();
         let milestone_sink =
@@ -1090,7 +1087,7 @@ impl RebornBinaryE2EHarness {
             Arc::new(product_harness.binding_service()?);
         let inbound: Arc<dyn InboundTurnService> = Arc::new(DefaultInboundTurnService::new(
             Arc::clone(&binding_service),
-            thread_harness.service_instance()?,
+            thread_harness.service_instance(),
             composition.coordinator.clone(),
         ));
         let ledger: Arc<dyn IdempotencyLedger> = Arc::new(product_harness.idempotency_ledger());
@@ -1110,7 +1107,7 @@ impl RebornBinaryE2EHarness {
             capability_recorder,
             milestone_sink,
             composition,
-            turn_root,
+            storage,
         ))
     }
 
@@ -1122,18 +1119,18 @@ impl RebornBinaryE2EHarness {
         binding: ResolvedBinding,
         thread_scope: ThreadScope,
         turn_scope: TurnScope,
-        turn_store: Arc<FilesystemTurnStateStore<LocalFilesystem>>,
-        product_harness: RebornProductWorkflowHarness,
+        turn_store: Arc<PgTurnStateStore>,
+        product_harness: RebornProductWorkflowHarness<PostgresRootFilesystem>,
         thread_harness: RebornThreadHarness,
         model_gateway: RebornTraceReplayModelGateway,
         capability_recorder: HarnessCapabilityRecorder,
         milestone_sink: Arc<brassclaw_turns::run_profile::InMemoryLoopHostMilestoneSink>,
         composition: RebornRuntimeLoopComposition<
-            FilesystemTurnStateStore<LocalFilesystem>,
+            PgTurnStateStore,
             dyn SessionThreadService,
             RebornTraceReplayModelGateway,
         >,
-        turn_root: Arc<tempfile::TempDir>,
+        storage: RebornHarnessSharedStorage,
     ) -> Self {
         let coordinator = Arc::clone(&composition.coordinator);
         Self {
@@ -1153,7 +1150,7 @@ impl RebornBinaryE2EHarness {
             worker: composition.worker,
             cancel: CancellationToken::new(),
             worker_tasks: Vec::new(),
-            _turn_root: turn_root,
+            _storage: storage,
             _wake_sender: composition.wake_sender,
         }
     }
@@ -1536,7 +1533,7 @@ impl Drop for RebornBinaryE2EHarness {
 }
 
 struct HarnessLoopExitEvidencePort {
-    inner: ThreadCheckpointLoopExitEvidencePort<FilesystemSessionThreadService<LocalFilesystem>>,
+    inner: ThreadCheckpointLoopExitEvidencePort<PgSessionThreadService>,
     loop_checkpoint_store: Arc<dyn LoopCheckpointStore>,
     accept_harness_blocked_evidence: bool,
 }
@@ -1849,12 +1846,9 @@ impl HostRuntimeCapabilityHarness {
         network_policy: NetworkPolicy,
     ) -> HarnessResult<Self> {
         let (root, storage_root, workspace_root) = host_runtime_storage_roots()?;
-        let runtime_http_egress = Arc::new(RecordingRuntimeHttpEgress::with_body(
-            br#"{"accepted":true}"#.to_vec(),
-        ));
-        let runtime = local_dev_host_runtime_with_http_egress(
+        let (runtime, runtime_http_egress) = local_dev_host_runtime_with_http_egress(
             storage_root.clone(),
-            Arc::clone(&runtime_http_egress),
+            br#"{"accepted":true}"#.to_vec(),
         )?;
         let mut harness = Self::core_builtin_tools_from_runtime(
             root,
@@ -1944,16 +1938,12 @@ impl HostRuntimeCapabilityHarness {
         std::fs::create_dir_all(&workspace_root)?;
         let github_fixture_response =
             br#"{"object":{"sha":"abc123def4567890abc123def4567890abc123de"},"ok":true}"#.to_vec();
-        let runtime_http_egress = Arc::new(RecordingRuntimeHttpEgress::with_body(
-            github_fixture_response.clone(),
-        ));
         let network_egress = Arc::new(RecordingNetworkHttpEgress::with_body(
             github_fixture_response,
         ));
-        let runtime = local_dev_host_runtime_with_registry_and_egress(
+        let (runtime, runtime_http_egress) = local_dev_host_runtime_with_registry_and_egress(
             storage_root.clone(),
             github_support::extension_registry()?,
-            runtime_http_egress.clone(),
             network_egress.clone(),
         )?;
         let mounts = workspace_mounts(MountPermissions::read_write_list_delete())?;
@@ -2120,7 +2110,15 @@ impl LoopCapabilityPort for RecordingDelegatingCapabilityPort {
         request: CapabilityInvocation,
     ) -> Result<CapabilityOutcome, AgentLoopHostError> {
         self.invocations.lock().unwrap().push(request.clone());
-        self.inner.invoke_capability(request).await
+        let outcome = self.inner.invoke_capability(request).await;
+        match &outcome {
+            Ok(outcome) => report_fixture_capability_failure(outcome),
+            Err(error) => eprintln!(
+                "fixture capability port failed: {:?}: {}",
+                error.kind, error.safe_summary
+            ),
+        }
+        outcome
     }
 
     async fn invoke_capability_batch(
@@ -2131,7 +2129,34 @@ impl LoopCapabilityPort for RecordingDelegatingCapabilityPort {
             .lock()
             .unwrap()
             .extend(request.invocations.iter().cloned());
-        self.inner.invoke_capability_batch(request).await
+        let outcome = self.inner.invoke_capability_batch(request).await;
+        match &outcome {
+            Ok(batch) => {
+                for outcome in &batch.outcomes {
+                    report_fixture_capability_failure(outcome);
+                }
+            }
+            Err(error) => eprintln!(
+                "fixture capability batch failed: {:?}: {}",
+                error.kind, error.safe_summary
+            ),
+        }
+        outcome
+    }
+}
+
+// Keep real failures visible in libtest's failure capture without printing
+// arguments, successful result payloads, credentials or raw backend errors.
+fn report_fixture_capability_failure(outcome: &CapabilityOutcome) {
+    match outcome {
+        CapabilityOutcome::Denied(denied) => {
+            eprintln!("fixture capability denied: {}", denied.safe_summary);
+        }
+        CapabilityOutcome::Failed(failed) => eprintln!(
+            "fixture capability failed: {:?}: {}",
+            failed.error_kind, failed.safe_summary
+        ),
+        _ => {}
     }
 }
 
@@ -2150,11 +2175,15 @@ fn local_testing_runtime_policy()
 
 fn local_dev_host_runtime_with_http_egress(
     storage_root: PathBuf,
-    egress: Arc<RecordingRuntimeHttpEgress>,
-) -> HarnessResult<Arc<dyn HostRuntime>> {
+    body: Vec<u8>,
+) -> HarnessResult<(Arc<dyn HostRuntime>, Arc<RecordingRuntimeHttpEgress>)> {
     let mut registry = ExtensionRegistry::new();
     registry.insert(builtin_first_party_package()?)?;
-    local_dev_host_runtime_with_registry_and_runtime_http_egress(storage_root, registry, egress)
+    local_dev_host_runtime_with_registry_and_runtime_http_egress(
+        storage_root,
+        registry,
+        RecordingNetworkHttpEgress::with_body(body),
+    )
 }
 
 fn host_runtime_storage_roots() -> HarnessResult<(Arc<tempfile::TempDir>, PathBuf, PathBuf)> {
@@ -2168,39 +2197,52 @@ fn host_runtime_storage_roots() -> HarnessResult<(Arc<tempfile::TempDir>, PathBu
 fn local_dev_host_runtime_with_registry_and_runtime_http_egress(
     storage_root: PathBuf,
     registry: ExtensionRegistry,
-    egress: Arc<RecordingRuntimeHttpEgress>,
-) -> HarnessResult<Arc<dyn HostRuntime>> {
+    egress: RecordingNetworkHttpEgress,
+) -> HarnessResult<(Arc<dyn HostRuntime>, Arc<RecordingRuntimeHttpEgress>)> {
+    let filesystem = local_dev_root_filesystem(storage_root, LocalDevRootMounts::core_builtins())?;
+    let body_store = Arc::new(ScopedFilesystem::with_fixed_view(
+        Arc::clone(&filesystem),
+        MountView::default(),
+    ));
+    let fixture_secrets = Arc::new(SeededFixtureSecretStore::new(
+        SecretHandle::new("github_manual_access")?,
+        SecretMaterial::from("ghp_fake_fixture_token"),
+    ));
     let services = HostRuntimeServices::new(
         Arc::new(registry),
-        local_dev_root_filesystem(storage_root, LocalDevRootMounts::core_builtins())?,
+        filesystem,
         Arc::new(InMemoryResourceGovernor::new()),
         Arc::new(GrantAuthorizer::new()),
         brassclaw_processes::ProcessServices::in_memory(),
         HostRuntimeCapabilitySurfaceVersion::new("reborn-app-v1")?,
     )
-    .with_secret_store(Arc::new(StaticSecretStore::new(
-        SecretHandle::new("github_manual_access")?,
-        SecretMaterial::from("ghp_fake_fixture_token"),
-    )))
+    .with_secret_store(fixture_secrets.clone())
     .with_runtime_credential_account_resolver(Arc::new(FixedRuntimeCredentialAccountResolver {
         result: Ok(SecretHandle::new("github_manual_access")?),
+        store: fixture_secrets,
     }))
     .with_first_party_capabilities(Arc::new(builtin_first_party_handlers(Arc::new(
         brassclaw_triggers::InMemoryTriggerRepository::default(),
     ))?))
-    .with_first_party_http_egress(egress)
+    .try_with_host_http_egress_with_body_store(egress, body_store)
+    .map_err(|report| std::io::Error::other(format!("host HTTP egress failed: {report:?}")))?
     .with_trust_policy(Arc::new(first_party_trust_policy()?))
     .with_runtime_policy(local_testing_runtime_policy()?);
 
-    Ok(Arc::new(services.host_runtime_for_local_testing()))
+    let egress = record_host_http_egress(services.runtime_http_egress())?;
+    let services = services.with_first_party_http_egress(Arc::clone(&egress));
+    Ok((Arc::new(services.host_runtime_for_local_testing()), egress))
 }
 
 fn local_dev_host_runtime_with_registry_and_egress(
     storage_root: PathBuf,
     registry: ExtensionRegistry,
-    runtime_http_egress: Arc<RecordingRuntimeHttpEgress>,
     network_egress: Arc<RecordingNetworkHttpEgress>,
-) -> HarnessResult<Arc<dyn HostRuntime>> {
+) -> HarnessResult<(Arc<dyn HostRuntime>, Arc<RecordingRuntimeHttpEgress>)> {
+    let fixture_secrets = Arc::new(SeededFixtureSecretStore::new(
+        SecretHandle::new("github_manual_access")?,
+        SecretMaterial::from("ghp_fake_fixture_token"),
+    ));
     let services = HostRuntimeServices::new(
         Arc::new(registry),
         local_dev_root_filesystem(storage_root, LocalDevRootMounts::github_assets())?,
@@ -2209,23 +2251,33 @@ fn local_dev_host_runtime_with_registry_and_egress(
         brassclaw_processes::ProcessServices::in_memory(),
         HostRuntimeCapabilitySurfaceVersion::new("reborn-app-v1")?,
     )
-    .with_secret_store(Arc::new(StaticSecretStore::new(
-        SecretHandle::new("github_manual_access")?,
-        SecretMaterial::from("ghp_fake_fixture_token"),
-    )))
+    .with_secret_store(fixture_secrets.clone())
     .with_runtime_credential_account_resolver(Arc::new(FixedRuntimeCredentialAccountResolver {
         result: Ok(SecretHandle::new("github_manual_access")?),
+        store: fixture_secrets,
     }))
     .with_first_party_capabilities(Arc::new(builtin_first_party_handlers(Arc::new(
         brassclaw_triggers::InMemoryTriggerRepository::default(),
     ))?))
-    .with_runtime_http_egress(runtime_http_egress)
     .with_trust_policy(Arc::new(github_first_party_trust_policy()?))
     .with_runtime_policy(local_testing_runtime_policy()?)
     .try_with_host_http_egress((*network_egress).clone())
     .map_err(|report| std::io::Error::other(format!("host HTTP egress failed: {report:?}")))?;
 
-    Ok(Arc::new(services.host_runtime_for_local_testing()))
+    let egress = record_host_http_egress(services.runtime_http_egress())?;
+    let services = services.with_first_party_http_egress(Arc::clone(&egress));
+    Ok((Arc::new(services.host_runtime_for_local_testing()), egress))
+}
+
+/// Observe the translated request while preserving the real staged-policy,
+/// sanitization and response-file pipeline. Only external network I/O is scripted.
+fn record_host_http_egress(
+    inner: Option<Arc<dyn RuntimeHttpEgress>>,
+) -> HarnessResult<Arc<RecordingRuntimeHttpEgress>> {
+    Ok(Arc::new(RecordingRuntimeHttpEgress {
+        inner: inner.ok_or("host HTTP egress unavailable")?,
+        requests: Arc::new(Mutex::new(Vec::new())),
+    }))
 }
 
 fn local_dev_host_runtime_with_live_http_egress(
@@ -2286,7 +2338,7 @@ fn local_dev_root_filesystem(
             StorageClass::FileContent,
             ContentKind::ProjectFile,
             IndexPolicy::NotIndexed,
-            BackendCapabilities::bytes_only(),
+            local.capabilities(),
         )?,
         Arc::clone(&local),
     )?;
@@ -2299,7 +2351,7 @@ fn local_dev_root_filesystem(
                 StorageClass::FileContent,
                 ContentKind::ExtensionPackage,
                 IndexPolicy::NotIndexed,
-                BackendCapabilities::bytes_only(),
+                local.capabilities(),
             )?,
             Arc::clone(&local),
         )?;
@@ -2412,9 +2464,14 @@ fn http_test_policy() -> NetworkPolicy {
     }
 }
 
-#[derive(Debug)]
 struct FixedRuntimeCredentialAccountResolver {
     result: Result<SecretHandle, CredentialStageError>,
+    store: Arc<dyn SecretStore>,
+}
+impl std::fmt::Debug for FixedRuntimeCredentialAccountResolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("FixedRuntimeCredentialAccountResolver")
+    }
 }
 
 #[async_trait]
@@ -2425,35 +2482,154 @@ impl RuntimeCredentialAccountResolver for FixedRuntimeCredentialAccountResolver 
     ) -> Result<RuntimeCredentialAccessSecret, CredentialStageError> {
         assert_eq!(request.provider.as_str(), "github");
         assert_eq!(request.requester_extension.as_str(), "github");
-        self.result
-            .clone()
-            .map(|handle| RuntimeCredentialAccessSecret {
-                scope: request.scope.clone(),
-                handle,
-            })
+        RuntimeCredentialAccessSecret::capture(
+            self.store.as_ref(),
+            request.scope.clone(),
+            self.result.clone()?,
+            None,
+        )
+        .await
     }
 }
 
-struct StaticSecretStore {
+/// Provision each fixture owner once, then exercise the actual encrypted store.
+/// This replaces the old synthetic write/lease replies; scope checks, generation
+/// CAS and one-shot lease state now come from the same real backing owner.
+struct SeededFixtureSecretStore {
     handle: SecretHandle,
     material: SecretMaterial,
+    inner: brassclaw_secrets::InMemorySecretStore,
+    initialized: tokio::sync::Mutex<std::collections::HashSet<String>>,
 }
 
-impl StaticSecretStore {
+impl SeededFixtureSecretStore {
     fn new(handle: SecretHandle, material: SecretMaterial) -> Self {
-        Self { handle, material }
+        Self {
+            handle,
+            material,
+            inner: brassclaw_secrets::InMemorySecretStore::new(),
+            initialized: tokio::sync::Mutex::new(std::collections::HashSet::new()),
+        }
+    }
+
+    async fn provision_fixture_owner(&self, scope: &ResourceScope) -> Result<(), SecretStoreError> {
+        // Match the actual store's tenant/user/agent/project owner partition;
+        // transient thread/invocation IDs do not recreate a deleted generation.
+        let owner = serde_json::json!([
+            scope.tenant_id,
+            scope.user_id,
+            scope.agent_id,
+            scope.project_id,
+        ])
+        .to_string();
+        let mut initialized = self.initialized.lock().await;
+        if !initialized.contains(&owner) {
+            self.inner
+                .put(scope.clone(), self.handle.clone(), self.material.clone())
+                .await?;
+            initialized.insert(owner);
+        }
+        Ok(())
     }
 }
 
 #[async_trait]
-impl SecretStore for StaticSecretStore {
+impl SecretStore for SeededFixtureSecretStore {
+    async fn close_identity(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        expected: brassclaw_secrets::SecretIdentityClosure,
+    ) -> Result<Option<brassclaw_secrets::SecretCustodyMetadata>, SecretStoreError> {
+        self.provision_fixture_owner(&scope).await?;
+        self.inner.close_identity(scope, handle, expected).await
+    }
+
     async fn put(
         &self,
         scope: ResourceScope,
         handle: SecretHandle,
-        _material: SecretMaterial,
+        material: SecretMaterial,
     ) -> Result<SecretMetadata, SecretStoreError> {
-        Ok(SecretMetadata { scope, handle })
+        self.put_with_expiry(scope, handle, material, None).await
+    }
+
+    async fn put_with_expiry(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expires_at: Option<brassclaw_host_api::Timestamp>,
+    ) -> Result<SecretMetadata, SecretStoreError> {
+        self.provision_fixture_owner(&scope).await?;
+        self.inner
+            .put_with_expiry(scope, handle, material, expires_at)
+            .await
+    }
+    async fn record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<String>, SecretStoreError> {
+        self.provision_fixture_owner(scope).await?;
+        self.inner.record_reference(scope, handle).await
+    }
+    async fn put_if_record_reference(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expected: Option<&str>,
+    ) -> Result<Option<SecretMetadata>, SecretStoreError> {
+        self.provision_fixture_owner(&scope).await?;
+        self.inner
+            .put_if_record_reference(scope, handle, material, expected)
+            .await
+    }
+    async fn matches(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        candidate: &SecretMaterial,
+    ) -> Result<bool, SecretStoreError> {
+        self.provision_fixture_owner(scope).await?;
+        self.inner.matches(scope, handle, candidate).await
+    }
+    async fn put_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        context: serde_json::Value,
+    ) -> Result<Option<brassclaw_secrets::SecretCustodyMetadata>, brassclaw_secrets::SecretStoreError>
+    {
+        self.provision_fixture_owner(&scope).await?;
+        self.inner
+            .put_original(scope, handle, material, context)
+            .await
+    }
+
+    async fn custody(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<brassclaw_secrets::SecretCustodyMetadata>, brassclaw_secrets::SecretStoreError>
+    {
+        self.provision_fixture_owner(scope).await?;
+        self.inner.custody(scope, handle).await
+    }
+
+    async fn put_retained_from_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        source: brassclaw_secrets::SecretCustodySource,
+    ) -> Result<Option<brassclaw_secrets::SecretCustodyMetadata>, brassclaw_secrets::SecretStoreError>
+    {
+        self.provision_fixture_owner(&scope).await?;
+        self.inner
+            .put_retained_from_original(scope, handle, source)
+            .await
     }
 
     async fn metadata(
@@ -2461,65 +2637,55 @@ impl SecretStore for StaticSecretStore {
         scope: &ResourceScope,
         handle: &SecretHandle,
     ) -> Result<Option<SecretMetadata>, SecretStoreError> {
-        Ok((handle == &self.handle).then(|| SecretMetadata {
-            scope: scope.clone(),
-            handle: handle.clone(),
-        }))
+        self.provision_fixture_owner(scope).await?;
+        self.inner.metadata(scope, handle).await
     }
-
     async fn delete(
         &self,
-        _scope: &ResourceScope,
-        _handle: &SecretHandle,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
     ) -> Result<bool, SecretStoreError> {
-        Ok(false)
+        self.provision_fixture_owner(scope).await?;
+        self.inner.delete(scope, handle).await
     }
-
     async fn lease_once(
         &self,
         scope: &ResourceScope,
         handle: &SecretHandle,
     ) -> Result<SecretLease, SecretStoreError> {
-        if handle != &self.handle {
-            return Err(SecretStoreError::UnknownSecret {
-                scope: Box::new(scope.clone()),
-                handle: handle.clone(),
-            });
-        }
-        Ok(SecretLease {
-            id: SecretLeaseId::new(),
-            scope: scope.clone(),
-            handle: handle.clone(),
-            status: SecretLeaseStatus::Active,
-        })
+        self.provision_fixture_owner(scope).await?;
+        self.inner.lease_once(scope, handle).await
     }
-
+    async fn lease_once_if_record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: &str,
+    ) -> Result<Option<SecretLease>, SecretStoreError> {
+        self.provision_fixture_owner(scope).await?;
+        self.inner
+            .lease_once_if_record_reference(scope, handle, expected)
+            .await
+    }
     async fn consume(
         &self,
-        _scope: &ResourceScope,
-        _lease_id: SecretLeaseId,
+        scope: &ResourceScope,
+        lease_id: SecretLeaseId,
     ) -> Result<SecretMaterial, SecretStoreError> {
-        Ok(self.material.clone())
+        self.inner.consume(scope, lease_id).await
     }
-
     async fn revoke(
         &self,
         scope: &ResourceScope,
         lease_id: SecretLeaseId,
     ) -> Result<SecretLease, SecretStoreError> {
-        Ok(SecretLease {
-            id: lease_id,
-            scope: scope.clone(),
-            handle: self.handle.clone(),
-            status: SecretLeaseStatus::Revoked,
-        })
+        self.inner.revoke(scope, lease_id).await
     }
-
     async fn leases_for_scope(
         &self,
-        _scope: &ResourceScope,
+        scope: &ResourceScope,
     ) -> Result<Vec<SecretLease>, SecretStoreError> {
-        Ok(Vec::new())
+        self.inner.leases_for_scope(scope).await
     }
 }
 
@@ -2535,6 +2701,7 @@ impl GithubHarnessAuthorizer {
                     policy: github_support::api_policy(),
                 },
                 Obligation::InjectCredentialAccountOnce {
+                    requirement: None,
                     handle: SecretHandle::new("github_runtime_token")?,
                     provider: RuntimeCredentialAccountProviderId::new("github")?,
                     provider_scopes: Vec::new(),
@@ -2572,22 +2739,13 @@ impl TrustAwareCapabilityDispatchAuthorizer for GithubHarnessAuthorizer {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct RecordingRuntimeHttpEgress {
-    default_body: Vec<u8>,
-    response_bodies: Arc<Mutex<VecDeque<Vec<u8>>>>,
+    inner: Arc<dyn RuntimeHttpEgress>,
     requests: Arc<Mutex<Vec<RuntimeHttpEgressRequest>>>,
 }
 
 impl RecordingRuntimeHttpEgress {
-    fn with_body(body: Vec<u8>) -> Self {
-        Self {
-            default_body: body,
-            response_bodies: Arc::new(Mutex::new(VecDeque::new())),
-            requests: Arc::new(Mutex::new(Vec::new())),
-        }
-    }
-
     fn requests(&self) -> Vec<RuntimeHttpEgressRequest> {
         self.requests.lock().unwrap().clone()
     }
@@ -2599,23 +2757,8 @@ impl RuntimeHttpEgress for RecordingRuntimeHttpEgress {
         &self,
         request: RuntimeHttpEgressRequest,
     ) -> Result<RuntimeHttpEgressResponse, RuntimeHttpEgressError> {
-        let request_bytes = request.body.len() as u64;
-        self.requests.lock().unwrap().push(request);
-        let body = self
-            .response_bodies
-            .lock()
-            .unwrap()
-            .pop_front()
-            .unwrap_or_else(|| self.default_body.clone());
-        Ok(RuntimeHttpEgressResponse {
-            status: 200,
-            headers: vec![("content-type".to_string(), "application/json".to_string())],
-            body: body.clone(),
-            saved_body: None,
-            request_bytes,
-            response_bytes: body.len() as u64,
-            redaction_applied: false,
-        })
+        self.requests.lock().unwrap().push(request.clone());
+        self.inner.execute(request).await
     }
 }
 
@@ -3138,29 +3281,6 @@ fn route_kind_for_trigger(trigger: ProductTriggerReason) -> ProductConversationR
         | ProductTriggerReason::BotCommand
         | ProductTriggerReason::LinkedThreadAction => ProductConversationRouteKind::Shared,
     }
-}
-
-fn scoped_turns_fs<F>(
-    backend: Arc<F>,
-    binding: &ResolvedBinding,
-) -> HarnessResult<Arc<ScopedFilesystem<F>>>
-where
-    F: RootFilesystem,
-{
-    let owner_user_id = binding
-        .subject_user_id
-        .as_ref()
-        .unwrap_or(&binding.actor_user_id);
-    let target = format!(
-        "/engine/tenants/{}/users/{}/turns",
-        binding.tenant_id, owner_user_id
-    );
-    let mounts = MountView::new(vec![MountGrant::new(
-        MountAlias::new("/turns").expect("valid turns alias"),
-        VirtualPath::new(target).expect("valid turns target"),
-        MountPermissions::read_write_list_delete(),
-    )])?;
-    Ok(Arc::new(ScopedFilesystem::with_fixed_view(backend, mounts)))
 }
 
 pub fn trace_tool_call_response() -> brassclaw_loop_support::HostManagedModelResponse {

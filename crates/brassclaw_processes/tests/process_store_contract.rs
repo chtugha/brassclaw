@@ -493,7 +493,10 @@ async fn process_host_kill_does_not_cancel_other_tenant_process() {
 
 #[tokio::test]
 async fn background_process_manager_can_use_owned_filesystem_store() {
-    let filesystem = engine_filesystem();
+    let filesystem = scoped_processes_filesystem(
+        Arc::new(InMemoryBackend::new()),
+        &default_mount_target_string(),
+    );
     let store = Arc::new(FilesystemProcessStore::from_arc(filesystem));
     let executor = Arc::new(CountingExecutor::success());
     let manager = BackgroundProcessManager::new(store.clone(), executor);
@@ -511,7 +514,10 @@ async fn background_process_manager_can_use_owned_filesystem_store() {
 
 #[tokio::test]
 async fn filesystem_process_store_rejects_terminal_status_overwrite() {
-    let fs = engine_filesystem();
+    let fs = scoped_processes_filesystem(
+        Arc::new(InMemoryBackend::new()),
+        &default_mount_target_string(),
+    );
     let store = FilesystemProcessStore::new(Arc::clone(&fs));
     let invocation_id = InvocationId::new();
     let process_id = ProcessId::new();
@@ -1561,7 +1567,10 @@ async fn filesystem_process_result_store_rejects_unexpected_output_refs() {
 
 #[tokio::test]
 async fn filesystem_process_store_persists_under_resource_scope_engine_processes() {
-    let fs = engine_filesystem();
+    let fs = scoped_processes_filesystem(
+        Arc::new(InMemoryBackend::new()),
+        &default_mount_target_string(),
+    );
     let store = FilesystemProcessStore::new(Arc::clone(&fs));
     let invocation_id = InvocationId::new();
     let process_id = ProcessId::new();
@@ -2743,4 +2752,25 @@ fn sample_scope(invocation_id: InvocationId, tenant: &str, user: &str) -> Resour
         thread_id: None,
         invocation_id,
     }
+}
+
+#[tokio::test]
+async fn local_byte_only_process_transition_preserves_original_record() {
+    let filesystem = engine_filesystem();
+    let store = FilesystemProcessStore::new(filesystem);
+    let invocation_id = InvocationId::new();
+    let process_id = ProcessId::new();
+    let scope = sample_scope(invocation_id, "tenant1", "user1");
+    let original = store
+        .start(process_start(process_id, invocation_id, scope.clone()))
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.complete(&scope, process_id).await,
+        Err(ProcessError::Filesystem(FilesystemError::Unsupported {
+            operation: FilesystemOperation::WriteFile,
+            ..
+        }))
+    ));
+    assert_eq!(store.get(&scope, process_id).await.unwrap(), Some(original));
 }

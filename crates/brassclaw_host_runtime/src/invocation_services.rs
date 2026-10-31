@@ -34,6 +34,7 @@ use crate::{ExecutionPlan, RuntimeProcessPort};
 pub struct InvocationServices {
     pub filesystem: Arc<dyn RootFilesystem>,
     pub child_tasks: Option<Arc<dyn crate::RuntimeChildTaskPort>>,
+    pub memory_embeddings: Option<Arc<dyn crate::RuntimeMemoryEmbeddingPort>>,
     pub runtime_http_egress: Option<Arc<dyn RuntimeHttpEgress>>,
     pub tool_call_http_egress: Option<Arc<dyn ToolCallHttpEgress>>,
     pub process: Arc<dyn RuntimeProcessPort>,
@@ -50,6 +51,10 @@ impl fmt::Debug for InvocationServices {
             .field(
                 "child_tasks",
                 &self.child_tasks.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field(
+                "memory_embeddings",
+                &self.memory_embeddings.as_ref().map(|_| "[REDACTED]"),
             )
             .field(
                 "runtime_http_egress",
@@ -258,6 +263,7 @@ impl InvocationServicesResolver for LocalInvocationServicesResolver {
         }
         Ok(InvocationServices {
             child_tasks: None,
+            memory_embeddings: None,
             filesystem: Arc::clone(&self.filesystem),
             runtime_http_egress: plan
                 .requires_network

@@ -1,14 +1,16 @@
+import { CataloguePublicationStatus } from "./catalogue-publication-status.js";
 import { React, html } from "../../../lib/html.js";
 import { Card } from "../../../design-system/card.js";
 import { useT } from "../../../lib/i18n.js";
 import { clientActionId } from "../../../lib/api.js";
-import { fetchCatalogueActivationStatus, activateComponentDeployment } from "../lib/settings-api.js";
+import { fetchCatalogueActivationStatus, activateComponentDeployment, reconcileCataloguePublication } from "../lib/settings-api.js";
 
 // Routing choices are part of an immutable generation. Preserve an uncertain
 // publication's exact request; a refresh must never silently rebase that request.
 export function CatalogueRoutingPanel() {
   const t = useT();
   const [status, setStatus] = React.useState(null);
+  const [publication, setPublication] = React.useState(null);
   const [disabled, setDisabled] = React.useState([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -16,13 +18,31 @@ export function CatalogueRoutingPanel() {
   const pending = React.useRef(null);
   const inFlight = React.useRef(false);
   const uncertain = React.useRef(false);
+  const readPublication = async () => {
+    const current = await fetchCatalogueActivationStatus();
+    if (!current.publication) throw Error(t("cataloguePublication.unavailable"));
+    setPublication(current.publication);
+  };
+  const inspectPublication = async (reconcile = false) => {
+    if (inFlight.current) return;
+    inFlight.current = true; setBusy(true); setError("");
+    try {
+      if (reconcile) {
+        if (!publication?.prefix_invalidation_id) throw Error(t("cataloguePublication.unavailable"));
+        await reconcileCataloguePublication(publication.prefix_invalidation_id);
+      }
+      await readPublication();
+    } catch (err) { setPublication(null); setError(err.message); }
+    finally { inFlight.current = false; setBusy(false); }
+  };
+
   const load = async () => {
     if (inFlight.current || (pending.current && !receipt)) return;
     inFlight.current = true; setBusy(true); setError("");
     try {
       const current = await fetchCatalogueActivationStatus();
       if (!Array.isArray(current.selections) || !Array.isArray(current.disabled_recipe_ids) || !Array.isArray(current.packaged_recipe_ids)) throw Error(t("catalogueRouting.unavailable"));
-      setStatus(current); setDisabled(current.disabled_recipe_ids);
+      setStatus(current); setPublication(current.publication || null); setDisabled(current.disabled_recipe_ids);
       pending.current = null; uncertain.current = false; setReceipt(null);
     } catch (err) { setError(err.message); }
     finally { inFlight.current = false; setBusy(false); }
@@ -34,6 +54,10 @@ export function CatalogueRoutingPanel() {
       pending.current ??= { activation_id: clientActionId(), expected_generation: status.generation,
         recipes: status.selections, disabled_recipe_ids: [...disabled].sort() };
       setReceipt(await activateComponentDeployment(pending.current));
+      setPublication(null);
+      // Status failure must not turn a confirmed write into an uncertain one.
+      try { await readPublication(); } catch (err) { setError(err.message); }
+
     } catch (err) {
       if (!uncertain.current && [400, 401, 403, 404, 409, 413, 422, 429].includes(err.status)) pending.current = null;
       else uncertain.current = true;
@@ -56,6 +80,8 @@ export function CatalogueRoutingPanel() {
       <button type="button" className="rounded border px-3 py-2 text-sm" disabled=${busy || Boolean(receipt)} onClick=${save}>${t(pending.current ? "catalogueRouting.retry" : "catalogueRouting.save")}</button>
     </div>`}
     ${receipt && html`<p role="status" className="mt-3 break-all text-sm">${t(receipt.catalogue_activated ? "catalogueRouting.active" : "catalogueRouting.historical", { value: receipt.generation })}</p>`}
+    <${CataloguePublicationStatus} publication=${publication} busy=${busy}
+      onRefresh=${() => inspectPublication()} onReconcile=${() => inspectPublication(true)} />
     ${error && html`<p role="alert" className="mt-3 text-sm text-[var(--v2-danger-text)]">${error}</p>`}
   <//>`;
 }

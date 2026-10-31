@@ -4,6 +4,9 @@ use crate::common::*;
 async fn extension_owned_accounts_require_owner_and_cleanup_is_action_specific() {
     let services = InMemoryAuthProductServices::new();
     let owner = scope("alice");
+    let mut lifecycle_scope = owner.clone();
+    lifecycle_scope.resource.invocation_id = InvocationId::new();
+    lifecycle_scope.surface = AuthSurface::Callback;
     let extension = ExtensionId::new("github").unwrap();
     let orphan = services
         .create_account(NewCredentialAccount {
@@ -15,6 +18,7 @@ async fn extension_owned_accounts_require_owner_and_cleanup_is_action_specific()
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-orphan").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -32,6 +36,7 @@ async fn extension_owned_accounts_require_owner_and_cleanup_is_action_specific()
             owner_extension: Some(extension.clone()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-owned").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -47,6 +52,7 @@ async fn extension_owned_accounts_require_owner_and_cleanup_is_action_specific()
             owner_extension: None,
             granted_extensions: vec![extension.clone()],
             access_secret: Some(SecretHandle::new("github-reusable").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -55,7 +61,7 @@ async fn extension_owned_accounts_require_owner_and_cleanup_is_action_specific()
 
     let deactivate = services
         .cleanup_for_lifecycle(SecretCleanupRequest {
-            scope: owner.clone(),
+            scope: lifecycle_scope.clone(),
             extension_id: extension.clone(),
             action: SecretCleanupAction::Deactivate,
         })
@@ -84,6 +90,7 @@ async fn extension_owned_accounts_require_owner_and_cleanup_is_action_specific()
             owner_extension: Some(extension.clone()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-isolated-owned").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -91,7 +98,7 @@ async fn extension_owned_accounts_require_owner_and_cleanup_is_action_specific()
         .expect("isolated owned account");
     isolated_services
         .cleanup_for_lifecycle(SecretCleanupRequest {
-            scope: owner.clone(),
+            scope: lifecycle_scope.clone(),
             extension_id: extension.clone(),
             action: SecretCleanupAction::Deactivate,
         })
@@ -117,13 +124,41 @@ async fn extension_owned_accounts_require_owner_and_cleanup_is_action_specific()
 
     let uninstall = services
         .cleanup_for_lifecycle(SecretCleanupRequest {
-            scope: owner,
-            extension_id: extension,
+            scope: lifecycle_scope.clone(),
+            extension_id: extension.clone(),
             action: SecretCleanupAction::Uninstall,
         })
         .await
         .expect("uninstall");
     assert!(uninstall.revoked_accounts.contains(&owned.id));
+    let revoked = services
+        .get_account(
+            CredentialAccountLookupRequest::new(owner.clone(), owned.id)
+                .for_extension(extension.clone()),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    lifecycle_scope.resource.invocation_id = InvocationId::new();
+    services
+        .cleanup_for_lifecycle(SecretCleanupRequest {
+            scope: lifecycle_scope,
+            extension_id: extension.clone(),
+            action: SecretCleanupAction::Deactivate,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        services
+            .get_account(
+                CredentialAccountLookupRequest::new(owner, owned.id).for_extension(extension)
+            )
+            .await
+            .unwrap()
+            .unwrap(),
+        revoked,
+        "a later deactivate cannot restore a revoked account or churn its timestamp"
+    );
 }
 
 #[tokio::test]
@@ -143,6 +178,7 @@ async fn cleanup_for_lifecycle_ignores_cross_scope_accounts() {
             owner_extension: Some(extension.clone()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-foreign-owned").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -158,6 +194,7 @@ async fn cleanup_for_lifecycle_ignores_cross_scope_accounts() {
             owner_extension: None,
             granted_extensions: vec![extension.clone()],
             access_secret: Some(SecretHandle::new("github-foreign-granted").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -213,6 +250,7 @@ async fn cleanup_lifecycle_is_idempotent_and_quarantines_partial_failures() {
             owner_extension: Some(extension.clone()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-owned-secret").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -228,6 +266,7 @@ async fn cleanup_lifecycle_is_idempotent_and_quarantines_partial_failures() {
             owner_extension: None,
             granted_extensions: vec![extension.clone(), other_extension.clone()],
             access_secret: Some(SecretHandle::new("github-shared-secret").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -243,6 +282,7 @@ async fn cleanup_lifecycle_is_idempotent_and_quarantines_partial_failures() {
             owner_extension: None,
             granted_extensions: vec![extension.clone()],
             access_secret: Some(SecretHandle::new("github-system-secret").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -258,6 +298,7 @@ async fn cleanup_lifecycle_is_idempotent_and_quarantines_partial_failures() {
             owner_extension: Some(extension.clone()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-quarantine-secret").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -360,6 +401,7 @@ async fn deactivate_cleanup_quarantines_partial_failures_without_mutating_accoun
             owner_extension: Some(extension.clone()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-deactivate-quarantine").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })

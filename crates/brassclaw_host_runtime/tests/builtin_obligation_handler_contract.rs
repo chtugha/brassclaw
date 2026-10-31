@@ -1399,6 +1399,150 @@ fn trust_decision() -> TrustDecision {
     }
 }
 
+#[derive(Debug, Default)]
+struct CapturingRequirementResolver {
+    seen: std::sync::Mutex<Option<RuntimeCredentialAccountRequirement>>,
+}
+
+#[async_trait]
+impl RuntimeCredentialAccountResolver for CapturingRequirementResolver {
+    async fn resolve_access_secret(
+        &self,
+        request: RuntimeCredentialAccountRequest<'_>,
+    ) -> Result<RuntimeCredentialAccessSecret, CredentialStageError> {
+        *self.seen.lock().unwrap() = request.requirement.cloned();
+        Err(CredentialStageError::AuthRequired)
+    }
+}
+
+fn exact_account_requirement() -> RuntimeCredentialAccountRequirement {
+    RuntimeCredentialAccountRequirement::new(
+        ExtensionId::new("example").unwrap(),
+        RuntimeCredentialRequirement {
+            handle: SecretHandle::new("runtime-slot").unwrap(),
+            source: RuntimeCredentialRequirementSource::ProductAuthAccount {
+                provider: RuntimeCredentialAccountProviderId::new("example").unwrap(),
+                setup: RuntimeCredentialAccountSetup::OAuth {
+                    scopes: vec!["read".into()],
+                },
+            },
+            provider_scopes: vec!["read".into()],
+            audience: NetworkTargetPattern {
+                scheme: None,
+                host_pattern: "api.example.com".into(),
+                port: None,
+            },
+            target: RuntimeCredentialTarget::Header {
+                name: "Authorization".into(),
+                prefix: Some("Bearer ".into()),
+            },
+            required: true,
+        },
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn exact_requirement_reaches_resolver_and_original_auth_gate_without_a_secret_lease() {
+    let secret_store = Arc::new(InMemorySecretStore::new());
+    let resolver = Arc::new(CapturingRequirementResolver::default());
+    let services = BuiltinObligationServices::new(
+        Arc::new(InMemoryAuditSink::new()),
+        secret_store.clone(),
+        Arc::new(InMemoryResourceGovernor::new()),
+    )
+    .with_credential_account_resolver(resolver.clone());
+    let requirement = exact_account_requirement();
+    let obligations = vec![Obligation::InjectCredentialAccountOnce {
+        handle: requirement.requirement().handle.clone(),
+        provider: RuntimeCredentialAccountProviderId::new("example").unwrap(),
+        provider_scopes: vec!["read".into()],
+        requester_extension: requirement.requester_extension().clone(),
+        requirement: Some(Box::new(requirement.clone())),
+    }];
+    let context = execution_context(CapabilitySet::default());
+    let estimate = ResourceEstimate::default();
+    let capability = capability_id();
+    let error = services
+        .obligation_handler()
+        .satisfy(CapabilityObligationRequest {
+            phase: CapabilityObligationPhase::Invoke,
+            context: &context,
+            capability_id: &capability,
+            estimate: &estimate,
+            obligations: &obligations,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(resolver.seen.lock().unwrap().as_ref(), Some(&requirement));
+    let CapabilityObligationError::AuthRequired {
+        credential_requirements,
+    } = error
+    else {
+        panic!("expected original Auth requirement");
+    };
+    assert_eq!(credential_requirements.len(), 1);
+    assert_eq!(
+        credential_requirements[0].requirement.as_ref(),
+        Some(&requirement)
+    );
+    assert!(
+        secret_store
+            .leases_for_scope(&context.resource_scope)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn conflicting_requirement_stops_before_resolver_and_secret_selection() {
+    for (handle, provider, requester) in [
+        ("different-slot", "example", "example"),
+        ("runtime-slot", "different-provider", "example"),
+        ("runtime-slot", "example", "different-requester"),
+    ] {
+        let secret_store = Arc::new(InMemorySecretStore::new());
+        let resolver = Arc::new(CapturingRequirementResolver::default());
+        let services = BuiltinObligationServices::new(
+            Arc::new(InMemoryAuditSink::new()),
+            secret_store.clone(),
+            Arc::new(InMemoryResourceGovernor::new()),
+        )
+        .with_credential_account_resolver(resolver.clone());
+        let obligations = vec![Obligation::InjectCredentialAccountOnce {
+            handle: SecretHandle::new(handle).unwrap(),
+            provider: RuntimeCredentialAccountProviderId::new(provider).unwrap(),
+            provider_scopes: vec!["read".into()],
+            requester_extension: ExtensionId::new(requester).unwrap(),
+            requirement: Some(Box::new(exact_account_requirement())),
+        }];
+        let context = execution_context(CapabilitySet::default());
+        let estimate = ResourceEstimate::default();
+        let capability = capability_id();
+        let error = services
+            .obligation_handler()
+            .satisfy(CapabilityObligationRequest {
+                phase: CapabilityObligationPhase::Invoke,
+                context: &context,
+                capability_id: &capability,
+                estimate: &estimate,
+                obligations: &obligations,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(error, CapabilityObligationError::Failed { .. }));
+        assert!(resolver.seen.lock().unwrap().is_none());
+        assert!(
+            secret_store
+                .leases_for_scope(&context.resource_scope)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
+
 #[derive(Debug)]
 struct AlwaysAuthRequiredResolver;
 
@@ -1412,8 +1556,15 @@ impl RuntimeCredentialAccountResolver for AlwaysAuthRequiredResolver {
     }
 }
 
-#[derive(Debug)]
-struct FixedHandleResolver(brassclaw_host_api::SecretHandle);
+struct FixedHandleResolver {
+    handle: brassclaw_host_api::SecretHandle,
+    store: Arc<dyn brassclaw_secrets::SecretStore>,
+}
+impl std::fmt::Debug for FixedHandleResolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("FixedHandleResolver")
+    }
+}
 
 #[async_trait::async_trait]
 impl RuntimeCredentialAccountResolver for FixedHandleResolver {
@@ -1421,17 +1572,25 @@ impl RuntimeCredentialAccountResolver for FixedHandleResolver {
         &self,
         request: RuntimeCredentialAccountRequest<'_>,
     ) -> Result<RuntimeCredentialAccessSecret, brassclaw_host_api::CredentialStageError> {
-        Ok(RuntimeCredentialAccessSecret {
-            scope: request.scope.clone(),
-            handle: self.0.clone(),
-        })
+        RuntimeCredentialAccessSecret::capture(
+            self.store.as_ref(),
+            request.scope.clone(),
+            self.handle.clone(),
+            None,
+        )
+        .await
     }
 }
 
-#[derive(Debug)]
 struct SourceScopedHandleResolver {
     source_scope: ResourceScope,
     handle: brassclaw_host_api::SecretHandle,
+    store: Arc<dyn brassclaw_secrets::SecretStore>,
+}
+impl std::fmt::Debug for SourceScopedHandleResolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SourceScopedHandleResolver")
+    }
 }
 
 #[async_trait::async_trait]
@@ -1440,10 +1599,13 @@ impl RuntimeCredentialAccountResolver for SourceScopedHandleResolver {
         &self,
         _request: RuntimeCredentialAccountRequest<'_>,
     ) -> Result<RuntimeCredentialAccessSecret, brassclaw_host_api::CredentialStageError> {
-        Ok(RuntimeCredentialAccessSecret {
-            scope: self.source_scope.clone(),
-            handle: self.handle.clone(),
-        })
+        RuntimeCredentialAccessSecret::capture(
+            self.store.as_ref(),
+            self.source_scope.clone(),
+            self.handle.clone(),
+            None,
+        )
+        .await
     }
 }
 
@@ -1462,6 +1624,7 @@ async fn inject_credential_account_once_fails_when_no_resolver_wired() {
     let capability_id = capability_id();
     let estimate = ResourceEstimate::default();
     let obligations = vec![Obligation::InjectCredentialAccountOnce {
+        requirement: None,
         handle: brassclaw_host_api::SecretHandle::new("github_runtime_token").unwrap(),
         provider: brassclaw_host_api::RuntimeCredentialAccountProviderId::new("github").unwrap(),
         provider_scopes: Vec::new(),
@@ -1502,6 +1665,7 @@ async fn inject_credential_account_once_fails_when_resolver_returns_auth_require
     let estimate = ResourceEstimate::default();
     let provider_scopes = vec!["https://www.googleapis.com/auth/drive.readonly".to_string()];
     let obligations = vec![Obligation::InjectCredentialAccountOnce {
+        requirement: None,
         handle: brassclaw_host_api::SecretHandle::new("github_runtime_token").unwrap(),
         provider: brassclaw_host_api::RuntimeCredentialAccountProviderId::new("github").unwrap(),
         provider_scopes: provider_scopes.clone(),
@@ -1555,15 +1719,19 @@ async fn inject_credential_account_once_resolves_and_stages_secret() {
     let governor = Arc::new(brassclaw_resources::InMemoryResourceGovernor::new());
     let services = BuiltinObligationServices::new(
         Arc::new(brassclaw_events::InMemoryAuditSink::new()),
-        secret_store,
+        secret_store.clone(),
         governor,
     )
-    .with_credential_account_resolver(Arc::new(FixedHandleResolver(access_handle.clone())));
+    .with_credential_account_resolver(Arc::new(FixedHandleResolver {
+        handle: access_handle.clone(),
+        store: secret_store.clone(),
+    }));
     let handler = services.obligation_handler();
     let context = execution_context(CapabilitySet::default());
     let capability_id = capability_id();
     let estimate = ResourceEstimate::default();
     let obligations = vec![Obligation::InjectCredentialAccountOnce {
+        requirement: None,
         handle: injection_slot.clone(),
         provider: brassclaw_host_api::RuntimeCredentialAccountProviderId::new("github").unwrap(),
         provider_scopes: Vec::new(),
@@ -1603,12 +1771,13 @@ async fn inject_credential_account_once_reads_from_resolved_source_scope() {
     let governor = Arc::new(brassclaw_resources::InMemoryResourceGovernor::new());
     let services = BuiltinObligationServices::new(
         Arc::new(brassclaw_events::InMemoryAuditSink::new()),
-        secret_store,
+        secret_store.clone(),
         governor,
     )
     .with_credential_account_resolver(Arc::new(SourceScopedHandleResolver {
         source_scope,
         handle: access_handle,
+        store: secret_store.clone(),
     }));
     let handler = services.obligation_handler();
     let mut context = execution_context(CapabilitySet::default());
@@ -1616,6 +1785,7 @@ async fn inject_credential_account_once_reads_from_resolved_source_scope() {
     let capability_id = capability_id();
     let estimate = ResourceEstimate::default();
     let obligations = vec![Obligation::InjectCredentialAccountOnce {
+        requirement: None,
         handle: injection_slot,
         provider: brassclaw_host_api::RuntimeCredentialAccountProviderId::new("github").unwrap(),
         provider_scopes: Vec::new(),
@@ -1648,15 +1818,19 @@ async fn inject_credential_account_once_maps_unknown_resolved_secret_to_auth_req
     let governor = Arc::new(brassclaw_resources::InMemoryResourceGovernor::new());
     let services = BuiltinObligationServices::new(
         Arc::new(brassclaw_events::InMemoryAuditSink::new()),
-        secret_store,
+        secret_store.clone(),
         governor,
     )
-    .with_credential_account_resolver(Arc::new(FixedHandleResolver(access_handle.clone())));
+    .with_credential_account_resolver(Arc::new(FixedHandleResolver {
+        handle: access_handle.clone(),
+        store: secret_store.clone(),
+    }));
     let handler = services.obligation_handler();
     let context = execution_context(CapabilitySet::default());
     let capability_id = capability_id();
     let estimate = ResourceEstimate::default();
     let obligations = vec![Obligation::InjectCredentialAccountOnce {
+        requirement: None,
         handle: brassclaw_host_api::SecretHandle::new("github_runtime_token").unwrap(),
         provider: brassclaw_host_api::RuntimeCredentialAccountProviderId::new("github").unwrap(),
         provider_scopes: Vec::new(),
@@ -1707,3 +1881,152 @@ effects = ["dispatch_capability"]
 default_permission = "allow"
 parameters_schema = {}
 "#;
+
+mod captured_credential_material_tests {
+    use super::*;
+
+    #[derive(Debug)]
+    struct CapturedResolver(RuntimeCredentialAccessSecret);
+
+    #[async_trait::async_trait]
+    impl RuntimeCredentialAccountResolver for CapturedResolver {
+        async fn resolve_access_secret(
+            &self,
+            _: RuntimeCredentialAccountRequest<'_>,
+        ) -> Result<RuntimeCredentialAccessSecret, brassclaw_host_api::CredentialStageError>
+        {
+            Ok(self.0.clone())
+        }
+    }
+
+    async fn reject_selected_source(
+        selected: RuntimeCredentialAccessSecret,
+        store: Arc<brassclaw_secrets::InMemorySecretStore>,
+        context: brassclaw_host_api::ExecutionContext,
+    ) {
+        let services = BuiltinObligationServices::new(
+            Arc::new(brassclaw_events::InMemoryAuditSink::new()),
+            store.clone(),
+            Arc::new(brassclaw_resources::InMemoryResourceGovernor::new()),
+        )
+        .with_credential_account_resolver(Arc::new(CapturedResolver(selected)));
+        let capability = capability_id();
+        let estimate = ResourceEstimate::default();
+        let obligations = [Obligation::InjectCredentialAccountOnce {
+            requirement: None,
+            handle: brassclaw_host_api::SecretHandle::new("captured-runtime-slot").unwrap(),
+            provider: brassclaw_host_api::RuntimeCredentialAccountProviderId::new("github")
+                .unwrap(),
+            provider_scopes: Vec::new(),
+            requester_extension: brassclaw_host_api::ExtensionId::new("github").unwrap(),
+        }];
+        let error = services
+            .obligation_handler()
+            .satisfy(CapabilityObligationRequest {
+                phase: CapabilityObligationPhase::Invoke,
+                context: &context,
+                capability_id: &capability,
+                estimate: &estimate,
+                obligations: &obligations,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            CapabilityObligationError::AuthRequired { .. }
+        ));
+        assert!(
+            brassclaw_secrets::SecretStore::leases_for_scope(
+                store.as_ref(),
+                &context.resource_scope,
+            )
+            .await
+            .unwrap()
+            .is_empty(),
+            "rejected selection must not lease today's source"
+        );
+    }
+
+    #[tokio::test]
+    async fn selected_generation_rejects_replacement_and_aba_before_account_injection() {
+        for aba in [false, true] {
+            let store = Arc::new(brassclaw_secrets::InMemorySecretStore::new());
+            let context = execution_context(CapabilitySet::default());
+            let handle = brassclaw_host_api::SecretHandle::new("captured-account-access").unwrap();
+            brassclaw_secrets::SecretStore::put(
+                store.as_ref(),
+                context.resource_scope.clone(),
+                handle.clone(),
+                "original material".into(),
+            )
+            .await
+            .unwrap();
+            let selected = RuntimeCredentialAccessSecret::capture(
+                store.as_ref(),
+                context.resource_scope.clone(),
+                handle.clone(),
+                None,
+            )
+            .await
+            .unwrap();
+            assert!(!format!("{selected:?}").contains(&selected.record_reference));
+            brassclaw_secrets::SecretStore::put(
+                store.as_ref(),
+                context.resource_scope.clone(),
+                handle.clone(),
+                "replacement material".into(),
+            )
+            .await
+            .unwrap();
+            if aba {
+                brassclaw_secrets::SecretStore::put(
+                    store.as_ref(),
+                    context.resource_scope.clone(),
+                    handle.clone(),
+                    "original material".into(),
+                )
+                .await
+                .unwrap();
+            }
+            assert_ne!(
+                brassclaw_secrets::SecretStore::record_reference(
+                    store.as_ref(),
+                    &context.resource_scope,
+                    &handle,
+                )
+                .await
+                .unwrap()
+                .as_deref(),
+                Some(selected.record_reference.as_str()),
+            );
+            reject_selected_source(selected, store, context).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn elapsed_selected_account_deadline_rejects_staging_even_with_live_store_record() {
+        let store = Arc::new(brassclaw_secrets::InMemorySecretStore::new());
+        let context = execution_context(CapabilitySet::default());
+        let handle = brassclaw_host_api::SecretHandle::new("elapsed-account-access").unwrap();
+        brassclaw_secrets::SecretStore::put(
+            store.as_ref(),
+            context.resource_scope.clone(),
+            handle.clone(),
+            "live store material".into(),
+        )
+        .await
+        .unwrap();
+        let mut selected = RuntimeCredentialAccessSecret::capture(
+            store.as_ref(),
+            context.resource_scope.clone(),
+            handle,
+            None,
+        )
+        .await
+        .unwrap();
+        // Represent the already-selected issuer deadline after a wait without
+        // sleeping or extending the independently live underlying store record.
+        selected.access_expires_at = Some(chrono::Utc::now() - chrono::Duration::seconds(1));
+        reject_selected_source(selected, store, context).await;
+    }
+}

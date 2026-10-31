@@ -459,6 +459,20 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
         ChildCandidateShape::NativeCalls(1),
     )
     .await;
+    let original_model_selection = host
+        .task_model_selection()
+        .expect("ordinary parent's model selection")
+        .retained_metadata()
+        .unwrap();
+    crate::db_config::save_config_key(
+        rig.pool.as_ref(),
+        host.run_context().scope.tenant_id.as_str(),
+        "llm.default.provider_id",
+        "must-not-rebind-original-child",
+        crate::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
     let binding = &program.bindings()["0:2"];
     let policy = Arc::new(crate::monty_kernel::PgSelectedToolPolicy {
         host: host.clone(),
@@ -672,7 +686,22 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
             }
         };
         let (outcome, ()) = tokio::join!(native_call, release_child);
-        let outcome = outcome.unwrap();
+        if outcome.is_err() {
+            let client = rig.pool.get().await.unwrap();
+            let admissions = client.query("SELECT run_id,phase,task_model_selection IS NOT NULL FROM brassclaw_monty_task_admissions ORDER BY reserved_at",&[]).await.unwrap();
+            for row in admissions {
+                eprintln!(
+                    "child diagnostic step={step} run={} phase={} model_bound={}",
+                    row.get::<_, Uuid>(0),
+                    row.get::<_, String>(1),
+                    row.get::<_, bool>(2)
+                );
+            }
+            let statuses:Value = client.query_one("SELECT COALESCE(jsonb_agg(jsonb_build_object('run_id',r->'run_id','status',r->'status','source',r->'source_binding_ref')),'[]'::jsonb) FROM brassclaw_turns t CROSS JOIN LATERAL jsonb_array_elements(t.payload->'runs') r",&[]).await.unwrap().get(0);
+            eprintln!("child diagnostic statuses={statuses}");
+        }
+        let outcome = outcome
+            .unwrap_or_else(|error| panic!("child step {step} did not acknowledge: {error}"));
         assert_eq!(
             transport.cut_count(),
             cuts_before + usize::from(interrupted_write.is_some()),
@@ -694,8 +723,13 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
                 let id = Uuid::parse_str(output["child_run_id"].as_str().unwrap()).unwrap();
                 child_run = Some(id);
                 let client = rig.pool.get().await.unwrap();
-                let row = client.query_one("SELECT catalogue_id,outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",
+                let row = client.query_one("SELECT catalogue_id,outcome,task_model_selection FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",
                     &[&id]).await.unwrap();
+                assert_eq!(
+                    row.get::<_, Value>(2),
+                    original_model_selection,
+                    "real child admission inherits its original parent's provider selection across settings changes"
+                );
                 assert_eq!(row.get::<_, Uuid>(0), original.generation);
                 let evidence: Value = row.get(1);
                 assert_eq!(evidence["execution"]["intent_outcome"], "child_recipe");

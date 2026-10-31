@@ -8,7 +8,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
 
@@ -51,6 +51,11 @@ use crate::{
 };
 
 const MODEL_CREDITS_EXHAUSTED_SUMMARY: &str = "model provider account is out of credits";
+fn native_pre_dispatch_failure(error: HostManagedModelError) -> HostManagedModelError {
+    tracing::warn!(kind=?error.kind,reason_kind=?error.reason_kind,"native model preparation rejected before provider submission");
+    brassclaw_llm::provider_observation::record_pre_submission_rejection();
+    error.before_provider_dispatch()
+}
 
 /// Fail-closed routing policy from resolved Reborn model profile ids to the
 /// host-selected provider/model envelope.
@@ -288,7 +293,134 @@ where
     }
 }
 
-/// Host-managed model gateway backed by the shared `brassclaw_llm::LlmProvider` abstraction.
+/// Captures data before task effects and prepares only the selected role.
+/// Implementations must validate parent provenance through their existing task
+/// owner and retain live transport/kernel checks on the returned client.
+pub struct TaskFinalModelRequest {
+    pub guard: Arc<brassclaw_llm::final_request_guard::FinalRequestGuard>,
+    pub binding: brassclaw_turns::run_profile::LoopModelInputReference,
+    pub input: TaskFinalModelInput,
+    /// Original native request fallback. An explicit positive SDK value wins;
+    /// absence never invents a limit or requires artificial token budgets.
+    pub request_output_tokens: Option<std::num::NonZeroU32>,
+}
+/// Resolved native instructions. Prefix omission does not omit the final guard
+/// or the original occurrence's selected-input identity.
+pub enum TaskFinalModelInput {
+    /// Original reference content, not a preframed string to template twice.
+    /// The guard verifies the resulting model-facing bytes against the exact
+    /// finished generated prefix under the accepted original default template.
+    Prefix {
+        reference: Arc<str>,
+    },
+    PrefixFreeWorkflow,
+}
+impl TaskFinalModelRequest {
+    fn apply(
+        self,
+        completion: &mut CompletionRequest,
+        custodian: Option<&dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    ) -> Result<Arc<brassclaw_llm::final_request_guard::FinalRequestGuard>, HostManagedModelError>
+    {
+        let reject = || {
+            HostManagedModelError::safe(
+                HostManagedModelErrorKind::ConfigurationError,
+                "original model input binding does not match the final request",
+            )
+            .before_provider_dispatch()
+        };
+        let prefix_free = self.binding.selection
+            == brassclaw_turns::run_profile::RecipePrefixSelection::PrefixFreeWorkflow;
+        match &self.input {
+            TaskFinalModelInput::Prefix { reference } => {
+                if reference.trim().is_empty() || prefix_free {
+                    return Err(reject());
+                }
+            }
+            TaskFinalModelInput::PrefixFreeWorkflow => {
+                if !prefix_free {
+                    return Err(reject());
+                }
+            }
+        }
+        let binding_reference = &self.binding.reference;
+        if binding_reference.trim().is_empty() || binding_reference.chars().any(char::is_control) {
+            return Err(reject());
+        }
+        let expected = custodian.and_then(|owner| owner.retained_model_input_reference());
+        if expected.is_some_and(|expected| expected != &self.binding)
+            || custodian.is_some_and(|owner| owner.requires_provider_observation())
+                && expected.is_none()
+            || prefix_free && expected.is_none()
+        {
+            return Err(reject());
+        }
+        // Validate the effective value before mutating messages. In particular,
+        // an explicit invalid zero never falls through to a native fallback.
+        let output_tokens = completion
+            .max_tokens
+            .or_else(|| self.request_output_tokens.map(std::num::NonZeroU32::get))
+            .filter(|tokens| *tokens > 0)
+            .ok_or_else(reject)?;
+        match self.input {
+            TaskFinalModelInput::Prefix { reference, .. } => {
+                completion
+                    .messages
+                    .insert(0, ChatMessage::system(reference.to_string()));
+            }
+            TaskFinalModelInput::PrefixFreeWorkflow => {}
+        }
+        completion.max_tokens = Some(output_tokens);
+        Ok(self.guard)
+    }
+}
+#[async_trait]
+pub trait TaskModelProviderSource: Send + Sync {
+    async fn capture(
+        &self,
+        parent: Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>, HostManagedModelError>;
+    async fn prepare(
+        &self,
+        selection: &Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>,
+    ) -> Result<brassclaw_llm::RetainedLlmProvider, HostManagedModelError>;
+    /// Effect-free preparation; actual request counting remains at submission.
+    async fn preflight_compatibility(
+        &self,
+        selection: &Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>,
+        max_output_tokens: Option<u32>,
+        input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
+    ) -> Result<(), HostManagedModelError> {
+        if input.is_some() {
+            return Err(HostManagedModelError::safe(
+                HostManagedModelErrorKind::ConfigurationError,
+                "selected model input preflight is unavailable",
+            ));
+        }
+        let retained = self.prepare(selection).await?;
+        retained
+            .provider
+            .check_dispatch(Some(&retained.model), max_output_tokens)
+            .await
+            .map_err(map_provider_error)
+    }
+    /// Mandatory native final-request owner for a task-backed role. Missing
+    /// support is an error, never permission to use the unguarded SDK path.
+    async fn final_request_guard(
+        &self,
+        _selection: &Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>,
+        _request: &HostManagedModelRequest,
+        _input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
+    ) -> Result<TaskFinalModelRequest, HostManagedModelError> {
+        Err(HostManagedModelError::safe(
+            HostManagedModelErrorKind::ConfigurationError,
+            "accepted model-prefix final-request binding is unavailable",
+        ))
+    }
+}
+
+/// Host-managed gateway backed by the shared LLM provider abstraction.
 #[derive(Clone)]
 pub struct LlmProviderModelGateway<P>
 where
@@ -301,6 +433,8 @@ where
     /// Present only on a host-retained selection. Never re-resolve a role from
     /// its underlying provider while dispatching this prepared operation.
     retained_model: Option<String>,
+    task_source: Option<Arc<dyn TaskModelProviderSource>>,
+    task_selection: Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
     /// Per-provider output ceiling forwarded to `CompletionRequest.max_tokens`.
     /// Live-updatable: the settings service can call `.set()` on the shared
     /// slot and the next model call picks up the new value immediately.
@@ -340,9 +474,18 @@ where
             policy,
             provider_turn_sequence: Arc::new(AtomicU64::new(1)),
             retained_model: None,
+            task_source: None,
+            task_selection: None,
             max_output_tokens: None,
             total_input_tokens: None,
         }
+    }
+
+    /// Bind a fixed task role. Profile policy can restrict its use, but cannot
+    /// replace the captured model with a different profile override.
+    pub fn with_task_source(mut self, source: Arc<dyn TaskModelProviderSource>) -> Self {
+        self.task_source = Some(source);
+        self
     }
 
     /// Set the per-provider output token ceiling via a live-updatable slot.
@@ -365,6 +508,39 @@ where
     ) -> Self {
         self.total_input_tokens = total_input_tokens;
         self
+    }
+
+    fn check_task_model_profile(&self, model: &str) -> Result<(), HostManagedModelError> {
+        if self.task_selection.is_some()
+            && (self.policy.routes.is_empty()
+                || self.policy.routes.values().any(|route| {
+                    route
+                        .model_override
+                        .as_deref()
+                        .is_some_and(|override_model| {
+                            !override_model.eq_ignore_ascii_case("default")
+                                && override_model != model
+                        })
+                }))
+        {
+            return Err(HostManagedModelError::safe(
+                HostManagedModelErrorKind::ConfigurationError,
+                "model profile conflicts with the original task selection",
+            ));
+        }
+        Ok(())
+    }
+
+    fn configured_output_limit(&self) -> Result<Option<u32>, HostManagedModelError> {
+        self.max_output_tokens
+            .as_ref()
+            .and_then(|slot| slot.get())
+            .map(|limit| {
+                u32::try_from(limit).map_err(|_| HostManagedModelError::safe(
+                HostManagedModelErrorKind::ConfigurationError,
+                "configured output token limit exceeds the provider protocol representation"))
+            })
+            .transpose()
     }
 
     /// Estimate the prompt token count for a slice of `HostManagedModelMessage`s
@@ -397,18 +573,95 @@ where
 #[async_trait]
 impl<P> HostManagedModelGateway for LlmProviderModelGateway<P>
 where
-    P: LlmProvider + ?Sized + Send + Sync,
+    P: LlmProvider + ?Sized + Send + Sync + 'static,
 {
-    fn retain_model_selection(
+    async fn preflight_task_model_usage(
+        &self,
+        input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
+    ) -> Result<(), HostManagedModelError> {
+        if let (Some(source), Some(selection)) = (&self.task_source, &self.task_selection) {
+            let retained = source
+                .prepare(selection)
+                .await
+                .map_err(native_pre_dispatch_failure)?;
+            self.check_task_model_profile(&retained.model)?;
+            source
+                .preflight_compatibility(selection, self.configured_output_limit()?, input)
+                .await
+                .map_err(native_pre_dispatch_failure)?;
+        } else if input.is_some() {
+            return Err(HostManagedModelError::safe(
+                HostManagedModelErrorKind::ConfigurationError,
+                "original task model input selection is unavailable",
+            ));
+        }
+        Ok(())
+    }
+
+    async fn capture_task_model_selection(
+        &self,
+        parent: Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<Option<brassclaw_loop_support::HostManagedTaskModelSelection>, HostManagedModelError>
+    {
+        let Some(source) = &self.task_source else {
+            if capture.is_some() {
+                return Err(HostManagedModelError::safe(
+                    HostManagedModelErrorKind::ConfigurationError,
+                    "retained workflow model capture is unavailable",
+                ));
+            }
+            if let Some(parent) = parent {
+                return brassclaw_loop_support::HostManagedTaskModelSelection::inherited_unavailable(parent).map(Some);
+            }
+            return Ok(None);
+        };
+        let binding = source.capture(parent, capture).await?;
+        Ok(Some(
+            brassclaw_loop_support::HostManagedTaskModelSelection {
+                binding: binding.clone(),
+                gateway: Arc::new(Self {
+                    provider_id: self.provider_id.clone(),
+                    provider: self.provider.clone(),
+                    policy: self.policy.clone(),
+                    provider_turn_sequence: self.provider_turn_sequence.clone(),
+                    retained_model: None,
+                    task_source: self.task_source.clone(),
+                    task_selection: Some(binding),
+                    max_output_tokens: self.max_output_tokens.clone(),
+                    total_input_tokens: self.total_input_tokens.clone(),
+                }),
+            },
+        ))
+    }
+
+    async fn retain_model_selection(
         &self,
         request: &HostManagedModelRequest,
     ) -> Result<Option<Arc<dyn HostManagedModelGateway>>, HostManagedModelError> {
         if self.retained_model.is_some() {
             return Ok(None);
         }
-        let Some(selection) = self.provider.retained_provider() else {
+        let selected = match (&self.task_source, &self.task_selection) {
+            (Some(source), Some(selection)) => Some(
+                source
+                    .prepare(selection)
+                    .await
+                    .map_err(native_pre_dispatch_failure)?,
+            ),
+            // Explicit non-task callers retain the existing live role path.
+            // Ordinary Monty admission binds a task gateway before any effects.
+            _ => self
+                .provider
+                .prepare_retained_provider()
+                .await
+                .map_err(map_provider_error)
+                .map_err(native_pre_dispatch_failure)?,
+        };
+        let Some(selection) = selected else {
             return Ok(None);
         };
+        self.check_task_model_profile(&selection.model)?;
         let route = self
             .policy
             .route_for(&request.model_profile_id)
@@ -434,6 +687,8 @@ where
             policy,
             provider_turn_sequence: self.provider_turn_sequence.clone(),
             retained_model: Some(model),
+            task_source: self.task_source.clone(),
+            task_selection: self.task_selection.clone(),
             max_output_tokens: self.max_output_tokens.clone(),
             total_input_tokens: self.total_input_tokens.clone(),
         })))
@@ -450,6 +705,18 @@ where
         &self,
         request: HostManagedModelRequest,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        if self.retained_model.is_none() && self.task_selection.is_some() {
+            let gateway = self
+                .retain_model_selection(&request)
+                .await?
+                .ok_or_else(|| {
+                    HostManagedModelError::safe(
+                        HostManagedModelErrorKind::ConfigurationError,
+                        "task model selection is unavailable",
+                    )
+                })?;
+            return gateway.stream_model(request).await;
+        }
         if let Some(model) = &self.retained_model {
             self.stream_selected(
                 request,
@@ -459,7 +726,13 @@ where
                 None,
             )
             .await
-        } else if let Some(retained) = self.provider.retained_provider() {
+        } else if let Some(retained) = self
+            .provider
+            .prepare_retained_provider()
+            .await
+            .map_err(map_provider_error)
+            .map_err(native_pre_dispatch_failure)?
+        {
             self.stream_selected(
                 request,
                 retained.provider.as_ref(),
@@ -479,6 +752,20 @@ where
         request: HostManagedModelRequest,
         capabilities: Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        if self.retained_model.is_none() && self.task_selection.is_some() {
+            let gateway = self
+                .retain_model_selection(&request)
+                .await?
+                .ok_or_else(|| {
+                    HostManagedModelError::safe(
+                        HostManagedModelErrorKind::ConfigurationError,
+                        "task model selection is unavailable",
+                    )
+                })?;
+            return gateway
+                .stream_model_with_capabilities(request, capabilities)
+                .await;
+        }
         if let Some(model) = &self.retained_model {
             self.stream_selected(
                 request,
@@ -488,7 +775,13 @@ where
                 None,
             )
             .await
-        } else if let Some(retained) = self.provider.retained_provider() {
+        } else if let Some(retained) = self
+            .provider
+            .prepare_retained_provider()
+            .await
+            .map_err(map_provider_error)
+            .map_err(native_pre_dispatch_failure)?
+        {
             self.stream_selected(
                 request,
                 retained.provider.as_ref(),
@@ -514,6 +807,20 @@ where
         capabilities: Option<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>>,
         custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        if self.retained_model.is_none() && self.task_selection.is_some() {
+            let gateway = self
+                .retain_model_selection(&request)
+                .await?
+                .ok_or_else(|| {
+                    HostManagedModelError::safe(
+                        HostManagedModelErrorKind::ConfigurationError,
+                        "task model selection is unavailable",
+                    )
+                })?;
+            return gateway
+                .stream_model_observed(request, capabilities, custodian)
+                .await;
+        }
         if let Some(model) = &self.retained_model {
             self.stream_selected(
                 request,
@@ -523,7 +830,13 @@ where
                 Some(custodian),
             )
             .await
-        } else if let Some(retained) = self.provider.retained_provider() {
+        } else if let Some(retained) = self
+            .provider
+            .prepare_retained_provider()
+            .await
+            .map_err(map_provider_error)
+            .map_err(native_pre_dispatch_failure)?
+        {
             self.stream_selected(
                 request,
                 retained.provider.as_ref(),
@@ -557,6 +870,7 @@ where
         provider: &Q,
         selection: Option<(&str, &str)>,
         has_capabilities: bool,
+        requested_output_tokens: Option<std::num::NonZeroU32>,
     ) -> Result<PreparedProviderRequest, HostManagedModelError> {
         self.check_total_input_budget(&request.messages)?;
         let route = self
@@ -581,14 +895,17 @@ where
             CompletionRequest::new(convert_messages(request.messages, &replay_identity)?);
         completion.dispatch_policy = provider_dispatch_policy(request.dispatch_policy);
         completion.model = Some(model_override);
-        if let Some(cap) = self.max_output_tokens.as_ref().and_then(|slot| slot.get()) {
-            completion.max_tokens = Some(u32::try_from(cap).map_err(|_| {
-                HostManagedModelError::safe(
-                    HostManagedModelErrorKind::ConfigurationError,
-                    "configured output token limit exceeds the provider protocol representation",
-                )
-            })?);
+        let configured = self.configured_output_limit()?;
+        let requested = requested_output_tokens.map(std::num::NonZeroU32::get);
+        if let (Some(requested), Some(limit)) = (requested, configured)
+            && requested > limit
+        {
+            return Err(HostManagedModelError::safe(
+                HostManagedModelErrorKind::BudgetExceeded,
+                "explicit output reservation exceeds the enabled token budget",
+            ));
         }
+        completion.max_tokens = requested.or(configured);
         add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
         let provider_turn_scope = if has_capabilities {
             let sequence = self
@@ -626,13 +943,48 @@ where
     where
         Q: LlmProvider + ?Sized,
     {
+        let final_input = match (&self.task_source, &self.task_selection) {
+            (Some(source), Some(selected)) => Some(
+                source
+                    .final_request_guard(
+                        selected,
+                        &request,
+                        custodian
+                            .as_deref()
+                            .and_then(|owner| owner.retained_model_input_reference()),
+                    )
+                    .await
+                    .map_err(native_pre_dispatch_failure)?,
+            ),
+            // Non-task callers retain their explicit native qualification path.
+            // Ordinary PostgreSQL admission always supplies both dependencies.
+            (None, None) => None,
+            _ => {
+                return Err(HostManagedModelError::safe(
+                    HostManagedModelErrorKind::ConfigurationError,
+                    "task model-prefix selection is required",
+                )
+                .before_provider_dispatch());
+            }
+        };
         let PreparedProviderRequest {
-            completion,
+            mut completion,
             provider_turn_scope,
             replay_identity,
         } = self
-            .prepare_selected_request(request, provider, selection, capabilities.is_some())
-            .map_err(HostManagedModelError::before_provider_dispatch)?;
+            .prepare_selected_request(
+                request,
+                provider,
+                selection,
+                capabilities.is_some(),
+                custodian
+                    .as_ref()
+                    .and_then(|owner| owner.requested_output_tokens()),
+            )
+            .map_err(native_pre_dispatch_failure)?;
+        let final_guard = final_input
+            .map(|input| input.apply(&mut completion, custodian.as_deref()))
+            .transpose()?;
         complete_model_request(
             provider,
             completion,
@@ -640,6 +992,7 @@ where
             provider_turn_scope,
             replay_identity,
             custodian,
+            final_guard,
         )
         .await
     }
@@ -866,7 +1219,7 @@ where
             ))
         }
         .await
-        .map_err(HostManagedModelError::before_provider_dispatch)?;
+        .map_err(native_pre_dispatch_failure)?;
         let PreparedProviderRequest {
             completion,
             provider_turn_scope,
@@ -879,6 +1232,7 @@ where
             provider_turn_scope,
             replay_identity,
             custodian,
+            None,
         )
         .await
     }
@@ -1063,17 +1417,27 @@ where
     let model_override = route
         .model_override
         .as_deref()
+        .filter(|model| !model.eq_ignore_ascii_case("default"))
         .or(retained_model)
         .map(str::to_string)
         .unwrap_or_else(|| provider.active_model_name());
-    let trimmed = model_override.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("default") {
+    if model_override.is_empty()
+        || model_override.eq_ignore_ascii_case("default")
+        || model_override.trim() != model_override
+        || model_override.chars().any(char::is_control)
+    {
         return Err(HostManagedModelError::safe(
             HostManagedModelErrorKind::PolicyDenied,
             "model profile route must resolve to a concrete provider model",
         ));
     }
-    Ok(trimmed.to_string())
+    if provider.effective_model_name(Some(&model_override)) != model_override {
+        return Err(HostManagedModelError::safe(
+            HostManagedModelErrorKind::ConfigurationError,
+            "selected provider cannot dispatch the requested model without changing its target",
+        ));
+    }
+    Ok(model_override)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1141,6 +1505,7 @@ async fn complete_model_request<P>(
     provider_turn_scope: Option<String>,
     replay_identity: ProviderReplayIdentity,
     custodian: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>>,
+    final_guard: Option<Arc<brassclaw_llm::final_request_guard::FinalRequestGuard>>,
 ) -> Result<HostManagedModelResponse, HostManagedModelError>
 where
     P: LlmProvider + ?Sized,
@@ -1149,7 +1514,7 @@ where
         let mut tool_definitions = capabilities
             .tool_definitions()
             .map_err(map_capability_host_error)
-            .map_err(HostManagedModelError::before_provider_dispatch)?;
+            .map_err(native_pre_dispatch_failure)?;
         // Deterministic tool ordering is required for vLLM/Anthropic-prefix
         // cache hits — the tool list is part of the stable system-prompt
         // prefix, so any reordering between turns invalidates the cache.
@@ -1178,13 +1543,20 @@ where
             let tool_request =
                 ToolCompletionRequest::from_completion_request(completion, llm_tool_definitions);
             debug!("reborn model gateway dispatching tool-capable provider request");
-            let response = observed_provider_call(
-                &custodian,
-                &replay_identity,
-                provider.complete_with_tools(tool_request),
-            )
-            .await
-            .map_err(map_provider_error)?;
+            if final_guard.is_none() {
+                provider
+                    .check_dispatch(tool_request.model.as_deref(), tool_request.max_tokens)
+                    .await
+                    .map_err(map_provider_error)
+                    .map_err(native_pre_dispatch_failure)?;
+            }
+            let complete = async {
+                match final_guard {
+                    Some(guard) => guard.complete_with_tools(provider, tool_request).await,
+                    None => provider.complete_with_tools(tool_request).await,
+                }
+            };
+            let response = observed_provider_call(&custodian, &replay_identity, complete).await?;
             if let Some(custodian) = custodian.as_ref() {
                 retain_provider_observation(custodian,&replay_identity,serde_json::json!({
                     "kind":"tools","content":response.content,"tool_calls":response.tool_calls,
@@ -1213,10 +1585,20 @@ where
         );
     }
 
-    let response =
-        observed_provider_call(&custodian, &replay_identity, provider.complete(completion))
+    if final_guard.is_none() {
+        provider
+            .check_dispatch(completion.model.as_deref(), completion.max_tokens)
             .await
-            .map_err(map_provider_error)?;
+            .map_err(map_provider_error)
+            .map_err(native_pre_dispatch_failure)?;
+    }
+    let complete = async {
+        match final_guard {
+            Some(guard) => guard.complete(provider, completion).await,
+            None => provider.complete(completion).await,
+        }
+    };
+    let response = observed_provider_call(&custodian, &replay_identity, complete).await?;
     if let Some(custodian) = custodian.as_ref() {
         retain_provider_observation(custodian,&replay_identity,serde_json::json!({
             "kind":"text","content":response.content,"finish_reason":finish_reason_name(response.finish_reason),
@@ -1234,9 +1616,28 @@ where
 struct ProviderWireCustodian {
     custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
     identity: ProviderReplayIdentity,
+    submission_started: AtomicBool,
+    preflight_denied: AtomicBool,
 }
 #[async_trait]
 impl brassclaw_llm::provider_observation::ProviderWireObserver for ProviderWireCustodian {
+    async fn before_submission(
+        &self,
+    ) -> Result<(), brassclaw_llm::provider_observation::ProviderObservationError> {
+        self.custodian
+            .before_provider_submission()
+            .await
+            .map_err(|_| {
+                self.preflight_denied.store(true, Ordering::Release);
+                brassclaw_llm::provider_observation::ProviderObservationError
+            })
+    }
+    fn submission_rejected(&self) {
+        self.preflight_denied.store(true, Ordering::Release);
+    }
+    fn submission_started(&self) {
+        self.submission_started.store(true, Ordering::Release);
+    }
     fn receive_response(
         &self,
         status: u16,
@@ -1264,21 +1665,31 @@ async fn observed_provider_call<T>(
     custodian: &Option<Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>>,
     identity: &ProviderReplayIdentity,
     operation: impl std::future::Future<Output = Result<T, brassclaw_llm::LlmError>>,
-) -> Result<T, brassclaw_llm::LlmError> {
+) -> Result<T, HostManagedModelError> {
     if let Some(custodian) = custodian
         .as_ref()
         .filter(|c| c.requires_provider_observation())
     {
-        brassclaw_llm::provider_observation::observe_chat_completion(
-            Arc::new(ProviderWireCustodian {
-                custodian: custodian.clone(),
-                identity: identity.clone(),
-            }),
-            operation,
-        )
-        .await
+        let observer = Arc::new(ProviderWireCustodian {
+            custodian: custodian.clone(),
+            identity: identity.clone(),
+            submission_started: AtomicBool::new(false),
+            preflight_denied: AtomicBool::new(false),
+        });
+        brassclaw_llm::provider_observation::observe_chat_completion(observer.clone(), operation)
+            .await
+            .map_err(|error| {
+                let error = map_provider_error(error);
+                if observer.preflight_denied.load(Ordering::Acquire)
+                    && !observer.submission_started.load(Ordering::Acquire)
+                {
+                    error.before_provider_dispatch()
+                } else {
+                    error
+                }
+            })
     } else {
-        operation.await
+        operation.await.map_err(map_provider_error)
     }
 }
 
@@ -1863,6 +2274,21 @@ fn map_provider_error(error: LlmError) -> HostManagedModelError {
         .with_reason_kind(MODEL_CREDITS_EXHAUSTED_REASON_KIND);
     }
     match error {
+        LlmError::FinalRequestRejected { reason } => HostManagedModelError::safe(
+            if matches!(
+                reason,
+                brassclaw_llm::final_request_guard::FinalRequestError::Tokens(_)
+            ) {
+                HostManagedModelErrorKind::BudgetExceeded
+            } else {
+                HostManagedModelErrorKind::ConfigurationError
+            },
+            reason.to_string(),
+        ),
+        LlmError::ConfigurationChanged { .. } => HostManagedModelError::safe(
+            HostManagedModelErrorKind::ConfigurationError,
+            "model configuration changed or could not be verified",
+        ),
         LlmError::ResponseTooLarge { limit, .. } => HostManagedModelError::safe(
             HostManagedModelErrorKind::BudgetExceeded,
             format!("model response exceeded its configured {limit} byte capacity"),
@@ -1977,6 +2403,10 @@ mod tests {
 
     #[test]
     fn is_credit_exhaustion_error_returns_false_for_non_request_failed_variants() {
+        let changed = map_provider_error(LlmError::ConfigurationChanged {
+            provider: "selected provider".into(),
+        });
+        assert_eq!(changed.kind, HostManagedModelErrorKind::ConfigurationError);
         let non_request_failed = [
             LlmError::ContextLengthExceeded {
                 used: 1000,
@@ -2170,3 +2600,7 @@ mod usage_presence_contract {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "model_gateway_final_request_tests.rs"]
+mod final_request_tests;

@@ -11,15 +11,15 @@
 #[serde(rename_all = "snake_case")]
 pub enum ProviderRole {
     /// Primary inference model — executes tool calls, writes code, produces output.
-    /// Maps to the `llm.kohai.provider_id` config key.
+    /// Maps to the `llm.default.provider_id` config key.
     Kohai,
     /// Teaching/auditing model — intercepts assembled prompts before Kohai receives them.
     /// Maps to the `llm.sempai.provider_id` config key.
     Sempai,
     /// Vector-embedding provider for memory chunk indexing and similarity search.
     /// Maps to the `embedding.provider_id` config key. A provider MAY hold
-    /// `Embedding` alongside `Kohai` or `Sempai`; `Kohai` + `Sempai` still
-    /// conflict with each other.
+    /// `Embedding`, `Kohai` and `Sempai` are independent selections; multiple
+    /// roles may use the same provider with different models.
     Embedding,
 }
 

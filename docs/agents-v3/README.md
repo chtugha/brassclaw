@@ -1,5 +1,24 @@
 # BrassClaw Reborn — Agents v3 System Documentation
 
+## Binding prefix and prompt assembly order — 2026-10-27
+
+The [four-rule contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26)
+supersedes earlier prompt/prefix sequences in this documentation and its historical
+subplans. Generate and immutably store the finished prefix for the concrete
+provider/model pair. Generator, Kohai and Sempai use the same saved accepted design
+revision whenever they target that same pair; role-specific prefix content remains
+separate.
+
+Kohai first formats only the dynamic Orchestrator prompt for the final target pair.
+If Sempai is connected/enabled, it corrects that already formatted prompt using its
+own generated reviewer prefix and its own target-pair design, then returns the
+final dynamic prompt to Kohai. Kohai inserts the intended finished prefix unchanged
+and exactly once before that prompt, without formatting Sempai's return again.
+Without Sempai, the initially formatted dynamic prompt is the final one.
+The complete-request guard follows assembly. The
+[Prefix plan](../plans/prefix_v3_upgrade.md) owns the remaining implementation;
+historical completion marks below do not establish that serving cutover.
+
 ## Binding Recipe architecture (v3)
 
 Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
@@ -107,8 +126,8 @@ documentation effort.
 | 06 | `06-tools-system.md` | `reborn_tools` + `capability_id` (V071 — the Executioner's dispatch id; dropped `cdylib_artifact_path` + 5 legacy cols), builtin bootstrap (`host.*` tools), tool approval/auth, Rust-Executioner framing | done |
 | 07 | `07-pythoncode-system.md` | `reborn_python_code` (V052 + `includes` JSONB V069), snippet→component promotion, `{{...}}` placeholder-grammar Q1 gate (`validate_python_code_placeholders` — shipped), `UnpromotedSnippet`, shell-injection scan, class 22 in retrieval UNION/by-id | done |
 | 08 | `08-actions-system.md` | Class-16 Actions, 13 step types, `execute_action_procedure` (no-LLM), `override_prompt_creation` (Solution Override, LLM path), `action_short_circuit` (Phase E/G), dead `__retrieve_docs__` shim (§0.9), `call_action` by-name→UUID migration (Phase G) | done |
-| 09 | `09-sempai-kohai.md` | Sempai-Kohai interceptor: routing (Kohai always-on) vs rerouting (Sempai pre-send review); `SempaiReviewOutcome` → adjusted prompt + Q1 proposals (`SempaiProposalSink`); base-prompt config keys; `base-prompt` substitution shipped (per-turn `get_system_bundle` + `minimal_base_prompt_fallback`); New-Component-Creation Process (f8) | done |
-| 10 | `10-prefix-base-prompt.md` | vLLM prefix caching, `base-prompt` placeholder substitution (shipped: per-turn `get_system_bundle` + `minimal_base_prompt_fallback`), `reborn_basic_prompt_store` (V063) + `PgBasicPromptStore` (`get_for_scope`/`store`/`mark_stale`), Sempai vs Kohai base prompt, `do_assemble_bundle` assembly, Prefix Tab | done |
+| 09 | `09-sempai-kohai.md` | Kohai formats the dynamic prompt first; optional Sempai corrects it using its own generated prefix and returns the final dynamic prompt; Kohai prepends the finished target prefix unchanged once. Same-pair roles share the generator's accepted design revision. Historical interceptor/result structures are distinguished from the required handoff. | documented; runtime migration open in Prefix plan |
+| 10 | `10-prefix-base-prompt.md` | Immutable finished prefixes per provider/model pair, shared accepted pair design and separate role content; exact prefix insertion after dynamic formatting and optional correction. Historical placeholder/store/prewarm observations do not qualify current serving. | documented; runtime migration open in Prefix plan |
 | 11 | `11-retrieval-system.md` | `RetrievalSource` trait, `PostgresSource` (active prod backend via `PgRetrievalLookup`, intent-driven UNION ALL across class tables 1–23), `RamSource` (keyword-over-postgres, dormant → deleted Phase K.3), `fetch_for_turn` vs `fetch_for_consumer`, all 4 `FetchForTurnResult` variants, `fetch_component_by_id`, SEC-01 validated gate, class 22/23 shipped | done |
 | 12 | `12-agent-loop.md` | Canonical executor pipeline (`DefaultExecutorPipeline` stages incl. `tier_zero`) IS the production turn driver via `PlannedDriver`→`CanonicalAgentLoopExecutor::execute_family`; `ExecutorStage` trait; real `RecipeStage` (H.9 retrieval + H.10 `Continue`/`TierZero` dispatch, not a stub); 15-port `AgentLoopDriverHost` (`LoopRetrievalPort`+`LoopOrchestratorPort` added); `TierZeroExecutionStage`; engine Monty VM `execute_orchestrator` dormant → activated C.5/C.6 (`host.run_program`) | done |
 | 13 | `13-orchestrator-default-py.md` | The Orchestrator/Executioner split: Monty (Python) = brain (recipe/intent-driven, calls tools via `host.<tool>(...)`, assembles every LLM prompt, runs composed code via `host.run_program`); Rust = executioner (precompiled Tools + ToolSkills, executes on call, no sequencing). The retired `default.py` Model-A outer loop + meta-primitives (`__execute_action__` etc.) are gone; the composed-program runner is the C.5/C.6 activation | done |

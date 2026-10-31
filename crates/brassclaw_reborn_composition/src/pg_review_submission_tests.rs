@@ -28,7 +28,7 @@ impl WebuiAuthenticator for Operator {
         true
     }
 }
-fn draft(id: Uuid, dependencies: &[Uuid], content: &str) -> ComponentRevisionDraft {
+pub(super) fn draft(id: Uuid, dependencies: &[Uuid], content: &str) -> ComponentRevisionDraft {
     ComponentRevisionDraft::from_json(
         &json!({
             "format":"component-revision/1", "uuid":id, "class_code":22,
@@ -41,7 +41,7 @@ fn draft(id: Uuid, dependencies: &[Uuid], content: &str) -> ComponentRevisionDra
     )
     .unwrap()
 }
-fn request(
+pub(super) fn request(
     id: Uuid,
     draft: &ComponentRevisionDraft,
     base: Option<ComponentRevisionRef>,
@@ -53,10 +53,11 @@ fn request(
         expected_previous_version: None,
         base: base.map(selection),
         dependencies: deps.iter().copied().map(selection).collect(),
+        function_partner: None,
     })
     .unwrap()
 }
-async fn send(
+pub(super) async fn send(
     app: &Router,
     method: &str,
     uri: &str,
@@ -88,7 +89,7 @@ async fn send(
         serde_json::from_slice(&bytes).unwrap_or(Value::Null),
     )
 }
-fn app(pool: Arc<PgPool>) -> Router {
+pub(super) fn app(pool: Arc<PgPool>) -> Router {
     let tenant = "submission-test-instance";
     let api = RebornServices::new(
         Arc::new(PgSessionThreadService::new(pool.clone(), tenant)),

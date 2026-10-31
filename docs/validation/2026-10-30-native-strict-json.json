@@ -1,0 +1,231 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-30",
+  "request": "BUILD-006",
+  "status": "scoped-accepted",
+  "package": "/private/tmp/brassclaw-strict-json-20261030-s7l3bvyd",
+  "sources": {
+    "crates/brassclaw_host_runtime/src/first_party_tools/json.rs": "539cb614129c3d174c1e469c45899a4690502c8a4effc775e2ea8013c6433432",
+    "crates/brassclaw_host_runtime/src/first_party_tools/schemas.rs": "8ca68e35834680d7fdfee51a06e84ec63aec2d326da8efe1b1693448844bbd97",
+    "crates/brassclaw_host_runtime/src/first_party_tools/mod.rs": "f6dba0592844c902880a88e9961baad2aea3540c06587bd994e100efa3bef435",
+    "crates/brassclaw_host_runtime/tests/first_party_builtin_tools.rs": "c893062e2df7b2a3d175736087df4afdde356461e3e4f47ba83718138589f3a8"
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-strict-json-validation-20261030/run-2/source.json",
+    "count": 7963,
+    "sha256": "42398a71d3b594c2f76185b2ecd1e20ae8e534667759147c8fe0874685d8cfbe"
+  },
+  "proposal": {
+    "status": "private-source-proposal-not-applied-not-formatted-not-compiled-not-run",
+    "patch": "/private/tmp/brassclaw-exact-strict-json-20261030/001-strict-json-native.patch",
+    "patch_sha256": "9be6184029dafa4d9fff1df8feb5526f9e3e347f1a333b3dd0abc673d3f27055",
+    "sources": {
+      "crates/brassclaw_host_runtime/src/first_party_tools/json.rs": {
+        "before": "a8b3781970f9db0cf267f9612b00339ca4d61ef8a835cc6ca947e338fc3fa5ba",
+        "after": "f39ef59b7b054538b3eda8b95c2410e08c3956b9b1bd3467970b86a0f3e5ad82"
+      },
+      "crates/brassclaw_host_runtime/src/first_party_tools/schemas.rs": {
+        "before": "1a973c5c7935684b866f47ffb80c86429b2d32b794576e9d21f6f03cff73b83c",
+        "after": "cc193be30f5454645b12f5dbd79229c2d2ec204e5b109fbcb2e366db8ed20bd4"
+      },
+      "crates/brassclaw_host_runtime/src/first_party_tools/mod.rs": {
+        "before": "2c72a7bc5efe68d6b989f545ac3679812acb2a99550ab768bba4acba307dd0b0",
+        "after": "c85ad9275780f438a09ac429ca4a7ba62853783d9c592d35e83304ace84af78c"
+      },
+      "crates/brassclaw_host_runtime/tests/first_party_builtin_tools.rs": {
+        "before": "d7b70122514ce24a16ab41293a05a03c4b9105f27349669de81c7076dd170ad1",
+        "after": "4661105534dfc97df24e4414ebe598677541a6cbf8aba71789ae59389af2e361"
+      }
+    },
+    "scope": "same builtin JSON primitive parse_strict and versioned schema/native registration; no activated new usage or Free workflow"
+  },
+  "attempts": {
+    "1": {
+      "directory": "/private/tmp/brassclaw-strict-json-validation-20261030/run-1",
+      "state": {
+        "status": "failed",
+        "runner_pid": 69696,
+        "process_pid": null,
+        "results": [
+          {
+            "stage": "format",
+            "exit_code": 0,
+            "seconds": 0.23348008282482624,
+            "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "stage": "native-images",
+            "exit_code": 101,
+            "seconds": 12.369722499977797,
+            "log_sha256": "59c60b3976431c4a00f9bdfee80f01c01f67de43d9d13ab42012642adf1e7d52"
+          }
+        ],
+        "images": {
+          "brassclaw_host_runtime": {
+            "path": "/private/tmp/brassclaw-strict-json-validation-20261030/run-1/brassclaw_host_runtime-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_host_runtime-5424fd2ac0d7678d",
+            "sha256": "af9c31814e6541f4a9400e9f672f5bdab8cd9264af70abd510a22c0ba1016bca",
+            "features": [
+              "default",
+              "postgres",
+              "test-support"
+            ]
+          }
+        },
+        "scope": "Existing builtin.json parse_strict, versioned schema/current native declaration and retained live-policy/resource enforcement. No new activated usage or workflow approval.",
+        "worker": {
+          "path": "/Users/ollama/brassclaw-target/debug/monty_worker",
+          "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+          "reused_from": "BUILD-003; unchanged worker dependency graph, HostRuntime is outside it"
+        },
+        "stage": "native-images",
+        "command": [
+          "cargo",
+          "+1.96.0",
+          "test",
+          "-p",
+          "brassclaw_host_runtime",
+          "--lib",
+          "--test",
+          "first_party_builtin_tools",
+          "--features",
+          "postgres,test-support",
+          "--no-run",
+          "--locked",
+          "--message-format=json"
+        ],
+        "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-strict-json-validation.py\", line 95, in <module>\n    run('native-images',['cargo','+1.96.0','test','-p','brassclaw_host_runtime','--lib','--test','first_party_builtin_tools','--features','postgres,test-support','--no-run','--locked','--message-format=json'],True)\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-strict-json-validation.py\", line 71, in run\n    assert code==0,(label,code)\n           ^^^^^^^\nAssertionError: ('native-images', 101)\n"
+      },
+      "source_sha256": "dd9fcf072d021a318eb5e1466943aa0e693677ea0252353305e7e4d020f5434e"
+    },
+    "2": {
+      "directory": "/private/tmp/brassclaw-strict-json-validation-20261030/run-2",
+      "state": {
+        "status": "passed",
+        "runner_pid": 69810,
+        "process_pid": null,
+        "results": [
+          {
+            "stage": "format",
+            "exit_code": 0,
+            "seconds": 0.22959545790217817,
+            "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "stage": "native-images",
+            "exit_code": 0,
+            "seconds": 1.9675541250035167,
+            "log_sha256": "b98160acba02024e16e4dfcc132bef9c69fa5b178bb2ceaec88a9ff92b2c9fcb"
+          },
+          {
+            "stage": "schema-successor",
+            "exit_code": 0,
+            "seconds": 0.1830222918651998,
+            "log_sha256": "d1ca5e9927b2f01d5f5c3fe6994ef31d5da4aed88e699c27bb5c52cd48bc4d5c",
+            "passed": 1
+          },
+          {
+            "stage": "json-primitives",
+            "exit_code": 0,
+            "seconds": 0.17894562520086765,
+            "log_sha256": "57db39792501714a69a1f6b29d88e52c450bb55d9dfc69fec50e10372d53e6fa",
+            "passed": 2
+          },
+          {
+            "stage": "native-retained-policy",
+            "exit_code": 0,
+            "seconds": 0.4722777500282973,
+            "log_sha256": "dcbfb47de443aa47e87c4c4e9f1954d81261a9cfa85bc46503d1cda634c369e4",
+            "passed": 1
+          },
+          {
+            "stage": "json-consumers",
+            "exit_code": 0,
+            "seconds": 0.4251474170014262,
+            "log_sha256": "856c0968737233f11ccc4a049dd2110720c5c00dec096348be57b9f66dcf3bac",
+            "passed": 5
+          },
+          {
+            "stage": "declaration",
+            "exit_code": 0,
+            "seconds": 0.1752399168908596,
+            "log_sha256": "96ce7efe4bf7a87f5635ff7f6c55e34326718d7e40b908deaa41814d34458521",
+            "passed": 1
+          },
+          {
+            "stage": "registry-surface",
+            "exit_code": 0,
+            "seconds": 0.1908274998422712,
+            "log_sha256": "5d36449a7eacd7a252ad46806c1f61b8bb6877a3749e1d1001db96ef20897de4",
+            "passed": 1
+          },
+          {
+            "stage": "connected-strict",
+            "exit_code": 0,
+            "seconds": 10.29612599988468,
+            "log_sha256": "8be615db34bfbc30c495e22a2faa7d949d9ae740a8739eaef9417cd2dec193f0"
+          },
+          {
+            "stage": "default-strict",
+            "exit_code": 0,
+            "seconds": 8.481785499956459,
+            "log_sha256": "9a3f0c66a04c493040a39217c02184cecc1a31a97aba877e953479c3b7977a15"
+          }
+        ],
+        "images": {
+          "brassclaw_host_runtime": {
+            "path": "/private/tmp/brassclaw-strict-json-validation-20261030/run-2/brassclaw_host_runtime-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_host_runtime-5424fd2ac0d7678d",
+            "sha256": "af9c31814e6541f4a9400e9f672f5bdab8cd9264af70abd510a22c0ba1016bca",
+            "features": [
+              "default",
+              "postgres",
+              "test-support"
+            ]
+          },
+          "first_party_builtin_tools": {
+            "path": "/private/tmp/brassclaw-strict-json-validation-20261030/run-2/first_party_builtin_tools-tests",
+            "original": "/Users/ollama/brassclaw-target/debug/deps/first_party_builtin_tools-a4450ad7d1e4670d",
+            "sha256": "e54509be1e33fac701dbc8bcce4b4843df2e7bf3359e7eb8bf0f6250f3ebd222",
+            "features": [
+              "default",
+              "postgres",
+              "test-support"
+            ]
+          }
+        },
+        "scope": "Existing builtin.json parse_strict, versioned schema/current native declaration and retained live-policy/resource enforcement. No new activated usage or workflow approval.",
+        "worker": {
+          "path": "/Users/ollama/brassclaw-target/debug/monty_worker",
+          "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+          "reused_from": "BUILD-003; unchanged worker dependency graph, HostRuntime is outside it"
+        },
+        "stage": "terminal",
+        "command": [
+          "cargo",
+          "+1.96.0",
+          "clippy",
+          "-p",
+          "brassclaw_host_runtime",
+          "--lib",
+          "--test",
+          "first_party_builtin_tools",
+          "--locked",
+          "--",
+          "-D",
+          "warnings"
+        ]
+      },
+      "source_sha256": "42398a71d3b594c2f76185b2ecd1e20ae8e534667759147c8fe0874685d8cfbe"
+    }
+  },
+  "distinct_fresh_passed": 11,
+  "ignored": 0,
+  "scope": "Existing native JSON primitive parse_strict, exact legacy/v2 schema behavior, real native retention/live instance policy and captured physical bounds.",
+  "limitations": [
+    "No new activated Skill/Recipe/Free workflow or approval is supplied.",
+    "Actual application/test native identity is verified; the unchanged Monty worker is not the Tool implementation.",
+    "This does not certify general old-native artifact loading across upgrades, deployed/platform support, full B1/B2 semantics or I2 completion.",
+    "BUILD-005 earlier images retain their own scope and predate this new HostRuntime primitive; later combined workflow qualification must use the current native artifact."
+  ]
+}

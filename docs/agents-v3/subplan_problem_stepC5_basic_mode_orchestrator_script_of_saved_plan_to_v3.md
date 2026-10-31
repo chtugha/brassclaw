@@ -8,6 +8,18 @@
 
 # Subplan — Step C.5: Basic-mode orchestrator script
 
+> **Prompt/prefix precedence — 2026-10-27:** the sequences below record the
+> historical implementation. New work follows the
+> [four-rule contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26)
+> and its [Prefix implementation owner](../plans/prefix_v3_upgrade.md): generate
+> the immutable finished prefix for the concrete provider/model pair; generator,
+> Kohai and same-pair Sempai share the saved accepted design revision. Kohai first
+> formats the dynamic Orchestrator prompt for the final target pair. Optional
+> connected/enabled Sempai corrects that formatted prompt using its own generated
+> reviewer prefix and target-pair design, then returns the final dynamic prompt.
+> Kohai inserts the intended finished prefix unchanged exactly once before it,
+> without formatting the return again. The complete-request guard follows assembly.
+
 > Parent: `./saved_plan_to_v3.md` Step C (C.1–C.7). Sequenced after **C.4.5
 > (COMPLETE)** and before **C.6 (production driver switch)**. Per saved_plan
 > line 5948-5965: "C.5 — Basic-mode orchestrator script. The built-in Phase-1

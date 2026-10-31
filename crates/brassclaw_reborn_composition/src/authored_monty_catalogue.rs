@@ -27,6 +27,9 @@ use std::{
 use tokio_postgres::{IsolationLevel, Transaction};
 use uuid::Uuid;
 
+#[path = "catalogue_publication.rs"]
+mod publication;
+
 pub(crate) struct CatalogueGeneration {
     pub(crate) generation: Uuid,
     pub(crate) bytes: String,
@@ -127,6 +130,7 @@ impl InstalledMontyCatalogue {
         let expected = identifier(&request.expected_generation)?;
         let bytes = serde_json::to_string(&request).map_err(invalid)?;
         let _serial = self.activation.lock().await;
+        self.reconcile_committed_runtime_locked().await?;
         let policy = self.preparation_policy().await.map_err(|_| {
             RecipeStoreError::Unavailable("acknowledged catalogue settings unavailable".into())
         })?;
@@ -144,15 +148,11 @@ impl InstalledMontyCatalogue {
             .map_err(storage)?;
         if let Some(row) = tx.query_opt("SELECT actor,request_bytes,request_checksum,catalogue_id FROM brassclaw_monty_catalogue_activations WHERE activation_id=$1", &[&activation]).await.map_err(storage)? {
             if row.get::<_, String>(0) != actor || row.get::<_, String>(1) != bytes || row.get::<_, String>(2) != digest(&bytes) {
-                return Err(invalid("activation identifier already belongs to different content"));
+                return Err(RecipeStoreError::Conflict("activation identifier already belongs to different content".into()));
             }
-            let generation: Uuid = row.get(3);
-            let current: Uuid = tx.query_one("SELECT catalogue_id FROM brassclaw_monty_active_catalogue WHERE singleton", &[]).await.map_err(storage)?.get(0);
             tx.commit().await.map_err(storage)?;
             drop(client);
-            // An old idempotent receipt never republishes an old generation.
-            if current == generation { self.restore_authored_locked().await?; }
-            return Ok(CatalogueActivationReceipt { activation_id: activation.to_string(), generation: generation.to_string(), catalogue_activated: current == generation });
+            return self.finish_activation(actor, activation, &bytes, None).await;
         }
         let current: Uuid = tx.query_one("SELECT catalogue_id FROM brassclaw_monty_active_catalogue WHERE singleton FOR UPDATE", &[]).await.map_err(storage)?.get(0);
         if current != expected {
@@ -244,8 +244,6 @@ impl InstalledMontyCatalogue {
                 }
             }
         }
-        let _publication = self.discovery_publication.lock().await;
-        let discovery_expected = self.mcp_discovery.snapshot().ok().map(|v| v.generation());
         tx.execute("INSERT INTO brassclaw_monty_boot_catalogues(catalogue_id,catalogue_bytes,checksum) VALUES($1,$2,$3) ON CONFLICT(catalogue_id) DO NOTHING", &[&view.generation, &view.bytes, &digest(&view.bytes)]).await.map_err(storage)?;
         let actual: String = tx
             .query_one(
@@ -283,23 +281,31 @@ impl InstalledMontyCatalogue {
         )
         .await
         .map_err(invalid)?;
-        tx.execute("INSERT INTO brassclaw_monty_catalogue_activations(activation_id,actor,request_bytes,request_checksum,catalogue_id) VALUES($1,$2,$3,$4,$5)", &[&activation, &actor, &bytes, &digest(&bytes), &view.generation]).await.map_err(storage)?;
-        tx.execute("UPDATE brassclaw_monty_active_catalogue SET catalogue_id=$1 WHERE singleton AND catalogue_id=$2", &[&view.generation, &expected]).await.map_err(storage)?;
-        tx.commit().await.map_err(storage)?;
-        let generation = view.generation;
-        self.mcp_discovery
-            .publish_unadvertised_installed(discovery_expected, generation, &advertised)
-            .map_err(invalid)?;
+        let invalidation = self.prefix_invalidation(&tx, &view).await?;
+        let invalidation_bytes: i32 = tx
+            .query_one("SELECT octet_length($1::jsonb::text)", &[&invalidation])
+            .await
+            .map_err(storage)?
+            .get(0);
+        if u64::try_from(invalidation_bytes).map_err(invalid)? > policy.max_catalogue_bytes {
+            return Err(invalid(
+                "catalogue invalidation exceeds preparation capacity",
+            ));
+        }
+        tx.execute("INSERT INTO brassclaw_monty_catalogue_activations(activation_id,actor,request_bytes,request_checksum,catalogue_id,prefix_invalidation) VALUES($1,$2,$3,$4,$5,$6)", &[&activation, &actor, &bytes, &digest(&bytes), &view.generation, &invalidation]).await.map_err(storage)?;
+        let updated = tx.execute("UPDATE brassclaw_monty_active_catalogue SET catalogue_id=$1,activation_id=$3 WHERE singleton AND catalogue_id=$2", &[&view.generation, &expected, &activation]).await.map_err(storage)?;
+        if updated != 1 {
+            return Err(RecipeStoreError::Conflict(
+                "catalogue publication pointer changed".into(),
+            ));
+        }
+        if tx.commit().await.is_err() {
+            tracing::warn!(%activation, "catalogue commit acknowledgement uncertain; reading original activation");
+        }
         drop(advertised);
-        *self.active.write().await = Arc::new(view);
-        drop(_publication);
         drop(client);
-        self.refresh_active_discovery().await.map_err(invalid)?;
-        Ok(CatalogueActivationReceipt {
-            activation_id: activation.to_string(),
-            generation: generation.to_string(),
-            catalogue_activated: true,
-        })
+        self.finish_activation(actor, activation, &bytes, Some(view))
+            .await
     }
 
     pub(crate) async fn prepare_authored(
@@ -438,6 +444,11 @@ impl InstalledMontyCatalogue {
                     },
                 )
                 .map_err(invalid)?;
+                if !crate::global_recipe_ports::model_input_supported(&compiled) {
+                    return Err(invalid(
+                        "Recipe model-input declaration has no complete native runner",
+                    ));
+                }
                 let program = prepare_retained_tool_program(compiled).map_err(invalid)?;
                 let mut canonical_generation = None;
                 let mut independently_qualified = BTreeSet::new();
@@ -623,6 +634,7 @@ impl InstalledMontyCatalogue {
         let compatibility_policy = self.preparation_policy().await.map_err(|_| {
             RecipeStoreError::Unavailable("acknowledged catalogue settings unavailable".into())
         })?;
+        let publication = self.discovery_publication.lock().await;
         let mut client = self.pool.get().await.map_err(storage)?;
         let tx = client
             .build_transaction()
@@ -631,13 +643,19 @@ impl InstalledMontyCatalogue {
             .await
             .map_err(storage)?;
         tx.execute("INSERT INTO brassclaw_monty_active_catalogue(singleton,catalogue_id) VALUES(true,$1) ON CONFLICT(singleton) DO NOTHING", &[&self.generation]).await.map_err(storage)?;
-        let row = tx.query_one("SELECT c.catalogue_id,c.catalogue_bytes,c.checksum FROM brassclaw_monty_active_catalogue a JOIN brassclaw_monty_boot_catalogues c USING(catalogue_id) WHERE singleton", &[]).await.map_err(storage)?;
+        let row = tx.query_one("SELECT c.catalogue_id,c.catalogue_bytes,c.checksum,p.prefix_invalidation FROM brassclaw_monty_active_catalogue a JOIN brassclaw_monty_boot_catalogues c USING(catalogue_id) LEFT JOIN brassclaw_monty_catalogue_activations p ON p.activation_id=a.activation_id AND p.catalogue_id=a.catalogue_id WHERE singleton FOR SHARE OF a", &[]).await.map_err(storage)?;
         let generation: Uuid = row.get(0);
         let bytes: String = row.get(1);
         if digest(&bytes) != row.get::<_, String>(2) {
             return Err(invalid("active catalogue integrity failed"));
         }
+        self.verify_prefix_invalidation(generation, &bytes, row.get(3))?;
         if generation == self.generation {
+            if self.active.read().await.generation != generation {
+                return Err(RecipeStoreError::Conflict(
+                    "installation catalogue reset requires explicit reconciliation".into(),
+                ));
+            }
             tx.commit().await.map_err(storage)?;
             return Ok(());
         }
@@ -692,10 +710,14 @@ impl InstalledMontyCatalogue {
         if view.generation != generation || view.bytes != bytes {
             return Err(invalid("active catalogue selection differs"));
         }
+        self.publish_committed_view_locked(view, &publication)
+            .await?;
         tx.commit().await.map_err(storage)?;
-        *self.active.write().await = Arc::new(view);
         drop(client);
-        self.refresh_active_discovery().await.map_err(invalid)
+        drop(publication);
+        self.refresh_active_discovery()
+            .await
+            .map_err(|_| RecipeStoreError::Unavailable("catalogue discovery uptake pending".into()))
     }
 
     async fn verify_implementation(
@@ -884,10 +906,12 @@ impl InstalledMontyCatalogue {
         if current.as_ref().is_some_and(|v| {
             v.generation() == view.generation && v.qualification_checksum().is_some()
         }) {
+            *self.discovery_effective.write().await = Some(view.generation);
             return Ok(());
         }
         let expected = current.map(|v| v.generation());
-        match crate::mcp_command_qualification::qualify_authored_commands(
+        *self.discovery_effective.write().await = None;
+        let result = match crate::mcp_command_qualification::qualify_authored_commands(
             &self.pool,
             &self.qualification_scope,
             view.generation,
@@ -907,7 +931,11 @@ impl InstalledMontyCatalogue {
                 .mcp_discovery
                 .publish_unadvertised_installed(expected, view.generation, &programs),
             Err(error) => Err(error),
+        };
+        if result.is_ok() {
+            *self.discovery_effective.write().await = Some(view.generation);
         }
+        result
     }
 }
 

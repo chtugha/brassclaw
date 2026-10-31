@@ -37,7 +37,7 @@ pub(super) fn snapshot(revision: u64, enabled: bool, tool: Uuid) -> StableToolPo
         capabilities: HashMap::from([(CapabilityId::new("builtin.json").unwrap(), tool)]),
     }
 }
-pub(super) fn trust() -> TrustDecision {
+pub(crate) fn trust() -> TrustDecision {
     TrustDecision {
         effective_trust: EffectiveTrustClass::user_trusted(),
         authority_ceiling: AuthorityCeiling {
@@ -49,14 +49,14 @@ pub(super) fn trust() -> TrustDecision {
     }
 }
 
-pub(super) async fn runtime(
+pub(crate) async fn runtime(
     program: &brassclaw_engine::memory::retained_tools::RetainedToolProgram,
     step: &str,
 ) -> (Arc<RetainedFirstPartyCapability>, Arc<LiveStableToolPolicy>) {
     runtime_with_budget_events(program, step, None).await
 }
 
-pub(super) async fn runtime_with_budget_events(
+pub(crate) async fn runtime_with_budget_events(
     program: &brassclaw_engine::memory::retained_tools::RetainedToolProgram,
     step: &str,
     events: Option<Arc<dyn brassclaw_resources::BudgetEventSink>>,

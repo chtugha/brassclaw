@@ -10,12 +10,14 @@ use brassclaw_host_runtime::{
     APPLY_PATCH_CAPABILITY_ID, COMPONENT_DB_CAPABILITY_ID, ECHO_CAPABILITY_ID, GLOB_CAPABILITY_ID,
     GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID, HTTP_SAVE_CAPABILITY_ID, JSON_CAPABILITY_ID,
     LIST_DIR_CAPABILITY_ID, MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID,
-    MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, READ_FILE_CAPABILITY_ID,
-    SHELL_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID, STORE_PREFIX_BUNDLE_CAPABILITY_ID,
-    SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID, TIME_CAPABILITY_ID, TRIGGER_CREATE_CAPABILITY_ID,
-    TRIGGER_GET_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID,
-    TRIGGER_RUN_HISTORY_CAPABILITY_ID, TRIGGER_SET_STATE_CAPABILITY_ID,
-    TRIGGER_UPDATE_CAPABILITY_ID, WRITE_FILE_CAPABILITY_ID, builtin_first_party_package,
+    MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MODEL_ENCODING_CAPABILITY_ID,
+    PREFIX_GENERATION_CAPABILITY_ID, PREFIX_SOURCE_CAPABILITY_ID, READ_FILE_CAPABILITY_ID,
+    SHELL_CAPABILITY_ID, SOURCE_INSPECTION_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID,
+    STORE_PREFIX_BUNDLE_CAPABILITY_ID, SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID,
+    TIME_CAPABILITY_ID, TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_GET_CAPABILITY_ID,
+    TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID, TRIGGER_RUN_HISTORY_CAPABILITY_ID,
+    TRIGGER_SET_STATE_CAPABILITY_ID, TRIGGER_UPDATE_CAPABILITY_ID, WRITE_FILE_CAPABILITY_ID,
+    builtin_first_party_package,
 };
 use brassclaw_loop_support::{HostManagedModelMessageRole, HostManagedModelResponse};
 use brassclaw_turns::{TurnStatus, run_profile::LoopHostMilestoneKind};
@@ -60,6 +62,20 @@ const REBORN_FIRST_PARTY_E2E_COVERED_CAPABILITIES: &[&str] = &[
     // postgres_prefix_tools_dispatch_and_publish_exact_bundle_once.
     SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID,
     STORE_PREFIX_BUNDLE_CAPABILITY_ID,
+    // Actual native registration, retained execution, source jobs, immutable
+    // model-artifact import and exact encoding/measurement are exercised by
+    // composition runtime::tests::authored_catalogue_tests::
+    // component_deployment_tests::
+    // native_component_deployment_preserves_recipes_and_pins_review_subjects.
+    // This inventory links their owner; running this set check alone does not
+    // execute that native suite or certify normal Generate/serving/activation.
+    MODEL_ENCODING_CAPABILITY_ID,
+    PREFIX_GENERATION_CAPABILITY_ID,
+    PREFIX_SOURCE_CAPABILITY_ID,
+    // Actual nonexecuting dispatch, live limits and policy are exercised by
+    // composition runtime::tests::source_inspection_tests::
+    // native_source_inspection_is_registered_nonexecuting_and_uses_live_limits_and_policy.
+    SOURCE_INSPECTION_CAPABILITY_ID,
 ];
 
 #[test]
@@ -217,6 +233,7 @@ async fn reborn_trace_spawn_subagent_is_surface_text_and_structured_tool() {
 
 #[tokio::test]
 async fn reborn_trace_http_save_first_party_tool_parity() {
+    let _dispatch_trace = reborn_support::harness::trace_fixture_runtime_dispatch();
     let http_save = CapabilityId::new(HTTP_SAVE_CAPABILITY_ID).expect("valid capability id");
     let model_gateway = RebornTraceReplayModelGateway::with_scripted_steps([
         RebornModelReplayStep::ProviderToolCalls {
@@ -267,6 +284,22 @@ async fn reborn_trace_http_save_first_party_tool_parity() {
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].capability_id, http_save);
     assert_eq!(results[0].output["status"], serde_json::json!(200));
+    assert_eq!(
+        std::fs::read(
+            harness
+                .host_workspace_file_path("http-save-response.json")
+                .expect("host workspace path"),
+        )
+        .expect("HTTP-save must actually persist the response"),
+        br#"{"accepted":true}"#,
+    );
+    assert_eq!(
+        results[0].output["saved_body"],
+        serde_json::json!({
+            "path": "/workspace/http-save-response.json",
+            "bytes_written": br#"{"accepted":true}"#.len(),
+        }),
+    );
     harness.assert_model_exhausted();
 
     harness.shutdown().await;

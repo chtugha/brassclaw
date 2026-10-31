@@ -11,6 +11,9 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 use uuid::Uuid;
 
+#[path = "catalogue_publication_tests.rs"]
+mod publication_tests;
+
 struct CatalogueOperator;
 #[async_trait::async_trait]
 impl crate::WebuiAuthenticator for CatalogueOperator {
@@ -320,6 +323,7 @@ async fn native_catalogue_reference_upgrade_preserves_legacy_receipts() {
             Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
         );
     }
+    publication_tests::upgrade_publication_records(&mut client).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -327,13 +331,37 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
     let rig = super::super::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
+    use brassclaw_pg::test_support::{AckBoundary, AckCutRule, AckCutTransport};
+    use secrecy::ExposeSecret;
+    let activation = Uuid::new_v4();
+    let transport = AckCutTransport::start(
+        rig.url.expose_secret(),
+        vec![AckCutRule::after_bind(
+            1,
+            vec![
+                activation.as_bytes().to_vec(),
+                b"catalogue-prefix-invalidation/1".to_vec(),
+            ],
+            vec![],
+            AckBoundary::Commit,
+        )],
+    )
+    .await
+    .unwrap();
+    let pool = transport.pool.clone();
+    let model_requests = Arc::new(StdMutex::new(Vec::<HostManagedModelRequest>::new()));
     let input = RebornRuntimeInput::from_services(
-        rig.build_input("authored-catalogue-owner", root.path())
-            .with_runtime_policy(local_dev_runtime_policy()),
+        crate::RebornBuildInput::postgres_with_reborn_home(
+            "authored-catalogue-owner",
+            (*pool).clone(),
+            brassclaw_secrets::SecretMaterial::from(transport.connection_string().to_owned()),
+            root.path().to_path_buf(),
+        )
+        .with_runtime_policy(local_dev_runtime_policy()),
     )
     .with_model_gateway_override(Arc::new(RecordingGateway {
         reply: "unmatched reply".into(),
-        requests: Arc::new(StdMutex::new(Vec::new())),
+        requests: model_requests.clone(),
     }))
     .with_poll_settings(PollSettings {
         interval: Duration::from_millis(10),
@@ -384,7 +412,7 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
     document["input_layouts"]["alternative"] =
         document["input_layouts"][installed.variant().variant_key.as_str()].clone();
     let draft = ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":new_id,"class_code":21,"document":document,"dependencies":original.draft().dependencies(),"association":null}).to_string()).unwrap();
-    let revised = PgComponentRevisionStore::new(rig.pool.clone())
+    let revised = PgComponentRevisionStore::new(pool.clone())
         .stage(&draft, 0)
         .await
         .unwrap();
@@ -410,7 +438,7 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
     .unwrap();
     let (status, initial) = call(&app, "GET", None, true).await;
     assert_eq!(status, StatusCode::OK);
-    verify_packaged_pure_boundary(&catalogue, &rig.pool, &app).await;
+    verify_packaged_pure_boundary(&catalogue, &pool, &app).await;
     // Exact installed Tool usages remain qualified, but adding validator
     // metadata cannot bypass its private coverage contract by omitting the tag.
     // Preparation invokes no Recipe steps and cannot publish either draft.
@@ -441,7 +469,7 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
             .to_string(),
         )
         .unwrap();
-        let invalid_revision = PgComponentRevisionStore::new(rig.pool.clone())
+        let invalid_revision = PgComponentRevisionStore::new(pool.clone())
             .stage(&invalid_draft, 0)
             .await
             .unwrap();
@@ -452,7 +480,7 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
             "components":components,"association_approvals":{}
         }))
         .unwrap();
-        let mut client = rig.pool.get().await.unwrap();
+        let mut client = pool.get().await.unwrap();
         let tx = client
             .build_transaction()
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -475,21 +503,46 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
         tx.rollback().await.unwrap();
         assert_eq!(catalogue.active.read().await.generation, old.generation);
     }
-    let activation = Uuid::new_v4();
     let request = json!({"activation_id":activation,"expected_generation":initial["generation"],"recipes":[{"recipe_id":new_id,"workflow_class":"deterministic","components":refs,"association_approvals":{}}]});
     assert_eq!(
         call(&app, "POST", Some(&request), false).await.0,
         StatusCode::UNAUTHORIZED
     );
-    let client = rig.pool.get().await.unwrap();
+    let client = pool.get().await.unwrap();
     let evidence_before: i64 = client
         .query_one("SELECT count(*) FROM reborn_component_review_evidence", &[])
         .await
         .unwrap()
         .get(0);
+    publication_tests::reject_before_commit(&pool, &catalogue, &app, &request).await;
+    transport.arm(1).unwrap();
     let (status, receipt) = call(&app, "POST", Some(&request), true).await;
     assert_eq!(status, StatusCode::OK, "{receipt}");
     assert_eq!(receipt["catalogue_activated"], true);
+    assert_eq!(
+        transport.cut_count(),
+        1,
+        "actual activation COMMIT acknowledgement was cut"
+    );
+    publication_tests::assert_committed(&pool, &app, &request, &receipt).await;
+    let mut changed_original = request.clone();
+    changed_original["recipes"] = json!([]);
+    assert_eq!(
+        call(&app, "POST", Some(&changed_original), true).await.0,
+        StatusCode::CONFLICT
+    );
+    let captured = catalogue
+        .capture_core_prefix_sources("base-prompt")
+        .await
+        .unwrap();
+    let captured: Value = serde_json::from_str(&captured).unwrap();
+    let source_release: Value =
+        serde_json::from_str(captured["release"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        source_release["catalogue_generation"],
+        receipt["generation"]
+    );
+
     let discovery = runtime.mcp_recipe_discovery().snapshot().unwrap();
     assert_eq!(json!(discovery.generation()), receipt["generation"]);
     assert_eq!(
@@ -532,6 +585,10 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
         effects_at_activation,
         "restoration must not execute the Recipe"
     );
+    publication_tests::failed_build_keeps_invalidation(&pool, &app, &runtime, &request, &receipt)
+        .await;
+    publication_tests::assert_new_inline_model_context(&runtime, &pool, &model_requests, &old)
+        .await;
     let selected = catalogue.active.read().await.clone();
     assert_eq!(old.programs.len(), 0);
     assert_eq!(selected.programs.len(), 2);
@@ -702,8 +759,8 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
     assert_eq!(unchanged.get::<_, Option<Uuid>>(1), None);
     assert_eq!(unchanged.get::<_, Option<String>>(2), None);
     let withdrawn = json!({"activation_id":Uuid::new_v4(),"expected_generation":receipt["generation"],"recipes":[]});
-    let (status, withdrawal) = call(&app, "POST", Some(&withdrawn), true).await;
-    assert_eq!(status, StatusCode::OK, "{withdrawal}");
+    let withdrawal =
+        publication_tests::reject_discovery_after_commit(&pool, &app, &withdrawn).await;
     assert!(catalogue.active.read().await.programs.is_empty());
     assert_eq!(
         selected.programs.len(),
@@ -714,7 +771,7 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
     // Verify the actual old graph/approvals in one real database snapshot while
     // the normal task is paused before constructing its task-local bindings.
     {
-        let mut integrity_client = rig.pool.get().await.unwrap();
+        let mut integrity_client = pool.get().await.unwrap();
         let tx = integrity_client
             .build_transaction()
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -784,10 +841,26 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
         false,
         "an old receipt must not republish a withdrawn generation"
     );
+    let (status, reconciled) =
+        publication_tests::reconcile(&app, request["activation_id"].as_str().unwrap(), true).await;
+    assert_eq!(status, StatusCode::OK, "{reconciled}");
+    assert_eq!(reconciled["catalogue_activated"], false);
+    assert_eq!(
+        json!(catalogue.active.read().await.generation),
+        withdrawal["generation"]
+    );
     drop(client);
+    publication_tests::one_connection_reconciliation(
+        &pool,
+        &catalogue,
+        &app,
+        withdrawn["activation_id"].as_str().unwrap(),
+    )
+    .await;
     drop(app);
     drop(catalogue);
     shutdown_shared_runtime(runtime).await.unwrap();
+    transport.shutdown().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1026,6 +1099,25 @@ async fn native_catalogue_routing_choices_survive_restart_and_reactivation() {
         readded["generation"]
     );
     assert_eq!(owner.active.read().await.disabled_recipes.len(), 2);
+    let publication = owner.activation_status().await.unwrap().publication;
+    assert_eq!(
+        publication.desired_generation,
+        readded["generation"].as_str().unwrap()
+    );
+    assert_eq!(
+        publication.effective_generation,
+        publication.desired_generation
+    );
+    assert_eq!(
+        publication.discovery_effective_generation.as_deref(),
+        Some(publication.desired_generation.as_str())
+    );
+    assert_eq!(
+        publication.prefix_invalidation_id.as_deref(),
+        readd["activation_id"].as_str()
+    );
+    assert!(!publication.pending);
+    assert!(publication.prefix_rebuild_pending);
     assert_eq!(
         runtime
             .mcp_recipe_discovery()
@@ -1112,7 +1204,7 @@ async fn native_catalogue_routing_choices_survive_restart_and_reactivation() {
         let tx = client.transaction().await.unwrap();
         tx.execute("INSERT INTO brassclaw_monty_boot_catalogues(catalogue_id,catalogue_bytes,checksum) VALUES($1,$2,$3)", &[&generation,&bytes,&checksum]).await.unwrap();
         tx.execute(
-            "UPDATE brassclaw_monty_active_catalogue SET catalogue_id=$1 WHERE singleton",
+            "UPDATE brassclaw_monty_active_catalogue SET catalogue_id=$1,activation_id=NULL WHERE singleton",
             &[&generation],
         )
         .await
@@ -1123,6 +1215,16 @@ async fn native_catalogue_routing_choices_survive_restart_and_reactivation() {
         let restored = owner.active.read().await.clone();
         assert_eq!(restored.generation, generation);
         assert_eq!(restored.bytes, bytes);
+        assert!(
+            owner
+                .activation_status()
+                .await
+                .unwrap()
+                .publication
+                .prefix_invalidation_id
+                .is_none(),
+            "historical fixtures must not acquire fabricated invalidation provenance"
+        );
         assert!(restored.disabled_recipes.is_empty());
         let reply = runtime
             .send_user_message(&chat, "authored reply from historical policy")
@@ -1137,8 +1239,85 @@ async fn native_catalogue_routing_choices_survive_restart_and_reactivation() {
         assert_eq!(retained.get::<_, Option<Uuid>>(0), Some(generation));
         assert_eq!(retained.get::<_, Option<String>>(1), Some(checksum));
     }
+    let provider_tenant = runtime.webui_tenant_id().to_owned();
     drop(owner);
     shutdown_shared_runtime(runtime).await.unwrap();
+    // Real production gateway on restart, with both optional role selections
+    // invalid. Approved deterministic routing must remain available without a
+    // mock model or a newly authored component; model-dependent work must fail.
+    crate::db_config::save_config_changes(
+        &rig.pool,
+        &provider_tenant,
+        &[
+            ("llm.default.provider_id", Some("missing-startup-primary")),
+            ("llm.sempai.provider_id", Some("missing-startup-sempai")),
+        ],
+        crate::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+    let input = RebornRuntimeInput::from_services(
+        rig.build_input("routing-owner", root.path())
+            .with_runtime_policy(local_dev_runtime_policy()),
+    )
+    .with_poll_settings(PollSettings {
+        interval: Duration::from_millis(10),
+        max_total: RUNTIME_SEND_TIMEOUT,
+    });
+    let runtime = build_reborn_runtime(input).await.unwrap();
+    assert_eq!(runtime.webui_tenant_id(), provider_tenant);
+    let chat = runtime.new_conversation().await.unwrap();
+    let root_identity = runtime.global_monty_owner.client().root_identity();
+    let reply = runtime
+        .send_user_message(&chat, "authored reply provider-free after restart")
+        .await
+        .unwrap();
+    assert_eq!(reply.status, TurnStatus::Completed);
+    assert_eq!(reply.text.as_deref(), Some("provider-free after restart"));
+    let outcome: Value = rig.pool.get().await.unwrap().query_one(
+        "SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",
+        &[&reply.run_id.as_uuid()],
+    ).await.unwrap().get(0);
+    assert_eq!(outcome["execution"]["model_exchange_count"], 0);
+    assert!(
+        outcome["execution"]["all_selected_recipes_complete"]
+            .as_bool()
+            .unwrap()
+    );
+    let denied = runtime
+        .send_user_message(&chat, "unmatched startup model request")
+        .await
+        .unwrap();
+    assert_eq!(denied.status, TurnStatus::Failed);
+    assert!(denied.text.is_none());
+    let denied_outcome: Value = rig.pool.get().await.unwrap().query_one(
+        "SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",
+        &[&denied.run_id.as_uuid()],
+    ).await.unwrap().get(0);
+    // This observation counts entering the host port, before preparation, not
+    // HTTP submissions. Preserve the denied attempt instead of hiding it.
+    assert_eq!(denied_outcome["execution"]["model_exchange_count"], 1);
+    assert_eq!(denied_outcome["execution"]["capability_dispatch_count"], 0);
+    let selected: Value = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT task_model_selection FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&denied.run_id.as_uuid()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    for role in ["kohai", "sempai"] {
+        assert_eq!(selected["selection"]["roles"][role]["state"], "unavailable");
+    }
+    assert_eq!(
+        runtime.global_monty_owner.client().root_identity(),
+        root_identity
+    );
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

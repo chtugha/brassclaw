@@ -425,6 +425,8 @@ pub enum LoopFailureKind {
     ModelError,
     ContextBuildFailed,
     CapabilityProtocolError,
+    /// A possibly dispatched effect requires reconciliation before further execution.
+    EffectOutcomeUnresolved,
     IterationLimit,
     InvalidModelOutput,
     CheckpointRejected,
@@ -451,6 +453,7 @@ impl LoopFailureKind {
             Self::ModelError => "model_error",
             Self::ContextBuildFailed => "context_build_failed",
             Self::CapabilityProtocolError => "capability_protocol_error",
+            Self::EffectOutcomeUnresolved => "effect_outcome_unresolved",
             Self::IterationLimit => "iteration_limit",
             Self::InvalidModelOutput => "invalid_model_output",
             Self::CheckpointRejected => "checkpoint_rejected",

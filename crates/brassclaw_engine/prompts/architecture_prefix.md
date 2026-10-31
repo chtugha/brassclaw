@@ -33,10 +33,21 @@ Version: 1.1.x · Model target: Ornith-1.5-9B (Qwen3.5-base, AWQ-INT4)
 Runtime: vLLM 0.19+ with LMCache MP connector · KV block size: 1056 tokens
 Context window: 131,072 tokens · Thinking mode: enabled (`<think>…</think>`)
 
-> This document is the static system prefix. It is byte-identical across every
-> request and is stored as precomputed KV blocks in LMCache (CPU RAM offload).
-> Do not modify its content at runtime. Every section is load-bearing for
-> KV-cache alignment.
+> **Historical standalone Ornith fixture, not current architecture:** the former
+> description treated this document as one static system prefix across all requests
+> and assumed precomputed LMCache blocks. Those claims do not establish current
+> cache residency or make every section physically required for alignment.
+> Current generated prefixes are fixed per profile and provider/model pair;
+> same-pair roles share a format/limit design, not necessarily prefix content.
+> Follow the [selection/assembly contract](../../../docs/reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26):
+> specific Recipe/Orchestrator/role prefix or base by default; Kohai first formats
+> only the dynamic Orchestrator prompt using the saved accepted target-pair design;
+> optional connected Sempai corrects that formatted prompt using its own generated
+> reviewer prefix/design and returns the final dynamic prompt; Kohai then inserts
+> the intended fixed prefix unchanged once, without reformatting the return; final
+> full-request guard. Missing/incompatible specific prefixes offer supported
+> generation through OK/Cancel, never provider server changes or a silent base
+> substitution. The remainder preserves the older reference, not serving acceptance.
 
 ---
 

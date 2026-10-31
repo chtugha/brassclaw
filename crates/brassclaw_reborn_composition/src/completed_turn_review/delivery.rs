@@ -27,6 +27,8 @@ pub(crate) struct ReviewSource {
     pub provider: Option<Arc<SwappableLlmProvider>>,
     pub accountant: Option<Arc<dyn LoopModelBudgetAccountant>>,
     pub profile: ResolvedRunProfile,
+    pub task_sources: Option<Arc<crate::task_model_provider::TaskProviderSources>>,
+    pub max_output_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
 }
 struct RetainedReview {
     ports: Arc<ReviewPorts>,
@@ -184,14 +186,20 @@ async fn deliver(
     let Some(row) = row else {
         return Ok(());
     };
-    let prefix = crate::db_config::list_config_keys(pool, scope.tenant_id.as_str())
-        .await
-        .map_err(|_| "prefix_unavailable")?
-        .into_iter()
-        .find(|(key, _)| key == "interceptor.sempai_base_prompt")
-        .map(|(_, value)| value);
-    let Some(prefix) = prefix.filter(|p| !p.trim().is_empty()) else {
-        return Ok(());
+    drop(client);
+    let legacy_prefix = if source.task_sources.is_none() {
+        let prefix = crate::db_config::list_config_keys(pool, scope.tenant_id.as_str())
+            .await
+            .map_err(|_| "prefix_unavailable")?
+            .into_iter()
+            .find(|(key, _)| key == "interceptor.sempai_base_prompt")
+            .map(|(_, value)| value);
+        match prefix.filter(|p| !p.trim().is_empty()) {
+            Some(prefix) => Some(prefix),
+            None => return Ok(()),
+        }
+    } else {
+        None
     };
     let source_id: Uuid = row.get(0);
     let event_checksum: String = row.get(1);
@@ -225,30 +233,107 @@ async fn deliver(
     let accountant = accountant
         .isolated_work_accountant()
         .ok_or("isolated_accounting_unavailable")?;
-    let gateway = Arc::new(LlmProviderModelGateway::with_provider_identity(
-        selected.provider_id,
-        provider,
-        LlmModelProfilePolicy::new().allow_model_profile(
-            context.resolved_run_profile.model_profile_id.clone(),
-            Some(model.clone()),
-        ),
-    ));
+    let closed = Arc::new(AtomicBool::new(false));
+    let (gateway, prefix, model, prefix_at_final_boundary, model_binding, provider_id): (
+        Arc<dyn brassclaw_loop_support::HostManagedModelGateway>,
+        String,
+        String,
+        bool,
+        Option<String>,
+        String,
+    ) = if let Some(sources) = &source.task_sources {
+        use brassclaw_loop_support::HostManagedModelGateway as _;
+        let role = sources.review_role(crate::task_model_provider::ReviewAdmission {
+            owner,
+            context: context.clone(),
+            ownership: ownership.clone(),
+            closed: closed.clone(),
+        });
+        let binding = role
+            .capture(None, None)
+            .await
+            .map_err(|_| "review_model_binding_unavailable")?;
+        let retained = role
+            .prepare(&binding)
+            .await
+            .map_err(|_| "review_model_binding_unavailable")?;
+        let provider_id = retained.provider_id.clone();
+        let prefix = crate::task_model_provider::prefix_from_binding(
+            binding.clone(),
+            brassclaw_llm::ProviderRole::Sempai,
+        )
+        .resolve()
+        .await
+        .map_err(|_| "review_prefix_binding_unavailable")?;
+        let metadata = serde_json::to_string(
+            &binding
+                .retained_metadata()
+                .map_err(|_| "review_model_binding_unavailable")?,
+        )
+        .map_err(|_| "review_model_binding_unavailable")?;
+        let gateway = LlmProviderModelGateway::with_provider_identity(
+            retained.provider_id,
+            retained.provider,
+            LlmModelProfilePolicy::new().allow_model_profile(
+                context.resolved_run_profile.model_profile_id.clone(),
+                Some(retained.model.clone()),
+            ),
+        )
+        .with_task_source(role)
+        .with_max_output_tokens(source.max_output_tokens.clone());
+        let captured = gateway
+            .capture_task_model_selection(Some(binding), None)
+            .await
+            .map_err(|_| "review_model_binding_unavailable")?
+            .ok_or("review_model_binding_unavailable")?;
+        (
+            captured.gateway,
+            prefix
+                .prefix_content()
+                .ok_or("review_model_binding_unavailable")?
+                .to_string(),
+            retained.model,
+            true,
+            Some(metadata),
+            provider_id,
+        )
+    } else {
+        let provider_id = selected.provider_id.clone();
+        (
+            Arc::new(LlmProviderModelGateway::with_provider_identity(
+                selected.provider_id,
+                provider,
+                LlmModelProfilePolicy::new().allow_model_profile(
+                    context.resolved_run_profile.model_profile_id.clone(),
+                    Some(model.clone()),
+                ),
+            )),
+            legacy_prefix.ok_or("review_prefix_binding_unavailable")?,
+            model,
+            false,
+            None,
+            provider_id,
+        )
+    };
     let backend = Arc::new(Backend {
         pool: pool.clone(),
         source: source_id,
         attempt,
         owner,
         ownership: ownership.clone(),
-        closed: AtomicBool::new(false),
+        closed,
         observed_model: tokio::sync::Mutex::new(None),
+        wire_original: Arc::new(Mutex::new(None)),
         model_work: tokio::sync::Mutex::new(Default::default()),
         threads: threads.clone(),
         scope: scope.clone(),
         context,
         model: PinnedModel {
+            provider_id,
             name: model.clone(),
             gateway,
             prefix: prefix.clone(),
+            prefix_at_final_boundary,
             accountant,
         },
         selection: package.selection.clone(),
@@ -271,9 +356,13 @@ async fn deliver(
             _credit: credit,
             attempt,
         });
-    let inserted=client.execute("INSERT INTO brassclaw_monty_review_work(source_run_id,attempt_id,owner_id,event_checksum,selection_bytes,prefix_bytes,model_identity)
-        VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(source_run_id) DO NOTHING",
-        &[&source_id,&attempt,&owner,&event_checksum,&package.selection,&prefix,&model]).await.map_err(|_|"reservation_unresolved")?;
+    let model_binding_checksum = model_binding
+        .as_ref()
+        .map(|bytes| super::backend::checksum(bytes));
+    let client = pool.get().await.map_err(|_| "journal_unavailable")?;
+    let inserted=client.execute("INSERT INTO brassclaw_monty_review_work(source_run_id,attempt_id,owner_id,event_checksum,selection_bytes,prefix_bytes,model_identity,model_binding_bytes,model_binding_checksum)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(source_run_id) DO NOTHING",
+        &[&source_id,&attempt,&owner,&event_checksum,&package.selection,&prefix,&model,&model_binding,&model_binding_checksum]).await.map_err(|_|"reservation_unresolved")?;
     if inserted != 1 {
         retained
             .lock()

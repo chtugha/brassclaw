@@ -1,5 +1,6 @@
 //! Contract tests for [`FilesystemTurnStateStore`] against a
-//! [`ScopedFilesystem`] over [`LocalFilesystem`]. The persistent shape is a
+//! [`ScopedFilesystem`] over actual local bytes and versioned record owners.
+//! Unsupported local transitions must preserve the original. The shape is a
 //! single `/turns/state.json` snapshot keyed by the [`MountView`] target.
 
 use std::sync::Arc;
@@ -412,7 +413,7 @@ async fn filesystem_turn_state_store_hides_records_from_other_tenants_via_mount_
 
 #[tokio::test]
 async fn filesystem_turn_state_store_persists_lineage_and_tree_reservations() {
-    let (backend, _storage_guard) = engine_filesystem();
+    let backend = Arc::new(InMemoryBackend::new());
     let scoped = scoped_turns_fs(Arc::clone(&backend));
     let store = FilesystemTurnStateStore::new(Arc::clone(&scoped));
     let resolver = InMemoryRunProfileResolver::default();
@@ -490,7 +491,7 @@ async fn filesystem_turn_state_store_persists_lineage_and_tree_reservations() {
 
 #[tokio::test]
 async fn filesystem_spawn_tree_reads_are_scope_checked() {
-    let (backend, _storage_guard) = engine_filesystem();
+    let backend = Arc::new(InMemoryBackend::new());
     let scoped = scoped_turns_fs(Arc::clone(&backend));
     let store = FilesystemTurnStateStore::new(Arc::clone(&scoped));
     let resolver = InMemoryRunProfileResolver::default();
@@ -686,10 +687,12 @@ async fn filesystem_claimed_child_admission_keeps_original_parent_fence_after_re
 
 #[tokio::test]
 async fn filesystem_claimed_child_admission_rejects_byte_only_cas_without_a_write() {
-    // The legacy parent path is process-local compatibility. A new claimed
-    // child must refuse this backend rather than substitute an unconditional put.
+    // Build a real claimed snapshot on a versioned owner, then reopen those
+    // exact retained bytes on LocalFilesystem. Neither ordinary nor claimed
+    // transitions may replace that snapshot without supported versioned CAS.
     let (backend, _storage_guard) = engine_filesystem();
-    let store = FilesystemTurnStateStore::new(scoped_turns_fs(backend));
+    let prepared = FilesystemTurnStateStore::new(scoped_turns_fs(Arc::new(InMemoryBackend::new())));
+    let store = &prepared;
     let resolver = InMemoryRunProfileResolver::default();
     let parent_scope = turn_scope("claimed-byte-only-parent");
     let parent = accepted_run_id(
@@ -712,6 +715,15 @@ async fn filesystem_claimed_child_admission_rejects_byte_only_cas_without_a_writ
         .unwrap()
         .unwrap();
     let before = store.persistence_snapshot().await.unwrap();
+    backend
+        .put(
+            &snapshot_virtual_path(),
+            brassclaw_filesystem::Entry::bytes(serde_json::to_vec_pretty(&before).unwrap()),
+            brassclaw_filesystem::CasExpectation::Absent,
+        )
+        .await
+        .unwrap();
+    let store = FilesystemTurnStateStore::new(scoped_turns_fs(backend));
     assert!(matches!(
         store
             .submit_claimed_child_turn(
@@ -730,4 +742,214 @@ async fn filesystem_claimed_child_admission_rejects_byte_only_cas_without_a_writ
         Err(TurnError::Unavailable { .. })
     ));
     assert_eq!(store.persistence_snapshot().await.unwrap(), before);
+}
+
+#[tokio::test]
+async fn local_byte_only_ordinary_claim_preserves_queued_original() {
+    let (backend, _storage_guard) = engine_filesystem();
+    let store = FilesystemTurnStateStore::new(scoped_turns_fs(backend));
+    store
+        .submit_turn(
+            submit_request_for(turn_scope("local-original"), "local-original"),
+            &AllowAllTurnAdmissionPolicy,
+            &InMemoryRunProfileResolver::default(),
+        )
+        .await
+        .unwrap();
+    let before = store.persistence_snapshot().await.unwrap();
+    assert!(matches!(
+        store
+            .claim_next_run(ClaimRunRequest {
+                runner_id: TurnRunnerId::new(),
+                lease_token: TurnLeaseToken::new(),
+                scope_filter: None
+            })
+            .await,
+        Err(TurnError::Unavailable { .. })
+    ));
+    assert_eq!(store.persistence_snapshot().await.unwrap(), before);
+}
+
+#[tokio::test]
+async fn filesystem_native_auth_wait_reopens_and_resumes_original_claim_without_worker_queue() {
+    use brassclaw_host_api::{AuthDispatchBoundary, InvocationId};
+    use brassclaw_turns::{
+        ResumeTurnPrecondition, ResumeTurnRequest,
+        runner::{HeartbeatRequest, native_auth::BlockNativeAuthRequest},
+    };
+
+    // Use the existing versioned record owner. Byte-only LocalFilesystem
+    // deliberately rejects record replacement rather than faking atomic CAS.
+    let scoped = scoped_turns_fs(Arc::new(InMemoryBackend::new()));
+    let store = FilesystemTurnStateStore::new(scoped.clone());
+    let scope = turn_scope("native-auth-filesystem");
+    store
+        .submit_turn(
+            submit_request_for(scope.clone(), "native-auth-fs-submit"),
+            &AllowAllTurnAdmissionPolicy,
+            &InMemoryRunProfileResolver::default(),
+        )
+        .await
+        .unwrap();
+    let claim = store
+        .claim_next_run(ClaimRunRequest {
+            runner_id: TurnRunnerId::new(),
+            lease_token: TurnLeaseToken::new(),
+            scope_filter: Some(scope.clone()),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let wait = BlockNativeAuthRequest {
+        scope: scope.clone(),
+        run_id: claim.state.run_id,
+        runner_id: claim.runner_id,
+        lease_token: claim.lease_token,
+        invocation_id: InvocationId::new(),
+        boundary: AuthDispatchBoundary::BeforeDispatch,
+        credential_requirements: Vec::new(),
+    };
+    let blocked = store.block_native_auth(wait.clone()).await.unwrap();
+    let original = store.persistence_snapshot().await.unwrap();
+    assert_eq!(original.runs[0].claim_count, 1);
+    assert_eq!(original.runs[0].runner_id, Some(claim.runner_id));
+    assert!(original.checkpoints.is_empty());
+    drop(store);
+
+    let reopened = FilesystemTurnStateStore::new(scoped.clone());
+    let cursor = reopened
+        .heartbeat(HeartbeatRequest {
+            run_id: wait.run_id,
+            runner_id: wait.runner_id,
+            lease_token: wait.lease_token,
+        })
+        .await
+        .unwrap();
+    assert_eq!(cursor, blocked.event_cursor);
+    assert_eq!(
+        reopened.persistence_snapshot().await.unwrap().events,
+        original.events
+    );
+    let input = ResumeTurnRequest {
+        scope: scope.clone(),
+        actor: turn_actor(),
+        run_id: wait.run_id,
+        gate_resolution_ref: blocked.gate_ref.unwrap(),
+        source_binding_ref: blocked.source_binding_ref,
+        reply_target_binding_ref: blocked.reply_target_binding_ref,
+        idempotency_key: IdempotencyKey::new("native-auth-fs-resume").unwrap(),
+        precondition: ResumeTurnPrecondition::BlockedAuthGate,
+    };
+    let resumed = reopened.resume_turn(input.clone()).await.unwrap();
+    assert_eq!(resumed.status, TurnStatus::Running);
+    drop(reopened);
+
+    let resolved = FilesystemTurnStateStore::new(scoped);
+    assert_eq!(resolved.resume_turn(input.clone()).await.unwrap(), resumed);
+    let snapshot = resolved.persistence_snapshot().await.unwrap();
+    assert_eq!(snapshot.runs[0].runner_id, Some(claim.runner_id));
+    assert_eq!(snapshot.runs[0].lease_token, Some(claim.lease_token));
+    assert_eq!(snapshot.runs[0].claim_count, 1);
+    assert!(snapshot.checkpoints.is_empty());
+    assert!(
+        !snapshot.runs[0]
+            .native_auth_wait
+            .as_ref()
+            .unwrap()
+            .is_waiting()
+    );
+    let mut conflict = input;
+    conflict.reply_target_binding_ref = ReplyTargetBindingRef::new("another-reply").unwrap();
+    assert!(matches!(
+        resolved.resume_turn(conflict).await,
+        Err(TurnError::Conflict { .. })
+    ));
+    assert!(
+        resolved
+            .claim_next_run(ClaimRunRequest {
+                runner_id: TurnRunnerId::new(),
+                lease_token: TurnLeaseToken::new(),
+                scope_filter: Some(scope),
+            })
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(resolved.persistence_snapshot().await.unwrap(), snapshot);
+}
+
+#[tokio::test]
+async fn filesystem_native_auth_wait_on_byte_only_owner_preserves_original_custody() {
+    use brassclaw_host_api::{AuthDispatchBoundary, InvocationId};
+    use brassclaw_turns::{
+        ResumeTurnPrecondition, ResumeTurnRequest,
+        runner::{HeartbeatRequest, native_auth::BlockNativeAuthRequest},
+    };
+    let prepared = FilesystemTurnStateStore::new(scoped_turns_fs(Arc::new(InMemoryBackend::new())));
+    let scope = turn_scope("native-auth-byte-only");
+    prepared
+        .submit_turn(
+            submit_request_for(scope.clone(), "native-auth-byte-submit"),
+            &AllowAllTurnAdmissionPolicy,
+            &InMemoryRunProfileResolver::default(),
+        )
+        .await
+        .unwrap();
+    let claim = prepared
+        .claim_next_run(ClaimRunRequest {
+            runner_id: TurnRunnerId::new(),
+            lease_token: TurnLeaseToken::new(),
+            scope_filter: Some(scope.clone()),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let wait = BlockNativeAuthRequest {
+        scope: scope.clone(),
+        run_id: claim.state.run_id,
+        runner_id: claim.runner_id,
+        lease_token: claim.lease_token,
+        invocation_id: InvocationId::new(),
+        boundary: AuthDispatchBoundary::BeforeDispatch,
+        credential_requirements: Vec::new(),
+    };
+    let blocked = prepared.block_native_auth(wait).await.unwrap();
+    let original = prepared.persistence_snapshot().await.unwrap();
+    let (backend, _storage_guard) = engine_filesystem();
+    backend
+        .put(
+            &snapshot_virtual_path(),
+            brassclaw_filesystem::Entry::bytes(serde_json::to_vec(&original).unwrap()),
+            brassclaw_filesystem::CasExpectation::Absent,
+        )
+        .await
+        .unwrap();
+    let readonly = FilesystemTurnStateStore::new(scoped_turns_fs(backend));
+    assert!(matches!(
+        readonly
+            .heartbeat(HeartbeatRequest {
+                run_id: claim.state.run_id,
+                runner_id: claim.runner_id,
+                lease_token: claim.lease_token,
+            })
+            .await,
+        Err(TurnError::Unavailable { .. })
+    ));
+    assert_eq!(readonly.persistence_snapshot().await.unwrap(), original);
+    assert!(matches!(
+        readonly
+            .resume_turn(ResumeTurnRequest {
+                scope,
+                actor: turn_actor(),
+                run_id: claim.state.run_id,
+                gate_resolution_ref: blocked.gate_ref.unwrap(),
+                source_binding_ref: blocked.source_binding_ref,
+                reply_target_binding_ref: blocked.reply_target_binding_ref,
+                idempotency_key: IdempotencyKey::new("native-auth-byte-resume").unwrap(),
+                precondition: ResumeTurnPrecondition::BlockedAuthGate,
+            })
+            .await,
+        Err(TurnError::Unavailable { .. })
+    ));
+    assert_eq!(readonly.persistence_snapshot().await.unwrap(), original);
 }

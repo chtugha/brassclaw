@@ -18,13 +18,13 @@ export function InferenceTab({
   searchQuery = "",
 }) {
   const t = useT();
-  if (isLoading) {
+  const llm = useLlmProviders();
+  if (isLoading || llm.isLoading) {
     return html`<${SettingsSkeleton} />`;
   }
 
-  const llm = useLlmProviders({ settings, gatewayStatus });
-  const backend = settings.llm_backend || llm.activeProviderId || gatewayStatus?.llm_backend || "";
-  const model = settings.selected_model || llm.selectedModel || gatewayStatus?.llm_model || "";
+  const backend = llm.activeProviderId;
+  const model = llm.selectedModel;
   const sections = filterSettingsSections(INFERENCE_FIELDS, settings, searchQuery, t);
   const showProviderSummary = matchesSearch(searchQuery, [
     t("inference.provider"),
@@ -54,13 +54,14 @@ export function InferenceTab({
       ${showProviderSummary &&
       html`
       <${Card} padding="none" className="p-4 sm:p-5">
+        ${llm.error && html`<p role="alert" className="mb-3 text-sm text-red-200">${t("error.loadFailed", { what: t("llm.providers"), message: llm.error.message })}</p>`}
         <h3 className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">${t("inference.provider")}</h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-4 py-3">
             <div className="text-xs text-[var(--v2-text-muted)]">${t("inference.backend")}</div>
             <div className="mt-1 flex items-center gap-2">
               <span className="font-mono text-lg font-semibold text-[var(--v2-text-strong)]">${backend || "—"}</span>
-              ${backend && html`<${Badge} tone="positive" label=${t("inference.active")} size="sm" />`}
+              ${backend && html`<${Badge} tone="positive" label=${t("inference.selected")} size="sm" />`}
             </div>
           </div>
           <div className="rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-4 py-3">
@@ -69,6 +70,16 @@ export function InferenceTab({
               ${model || t("inference.none")}
             </div>
           </div>
+        </div>
+        <p className="mt-4 text-xs text-[var(--v2-text-muted)]">${t("inference.publicationHelp")}</p>
+        <div className="mt-2 space-y-1 text-xs text-[var(--v2-text-muted)]">
+          ${["kohai", "sempai"].map((role) => {
+            const publication = llm.runtimePublications[role];
+            const selection = publication?.state === "configured" ? publication.selection : null;
+            return html`<div key=${role}><span className="font-semibold">${role === "kohai" ? "Kohai" : "Sempai"}: </span>${selection
+              ? `${selection.provider_id} / ${selection.model} · ${t("inference.definitionRevision")} ${selection.definition_revision}`
+              : t(publication?.state === "unconfigured" ? "inference.none" : "inference.publicationUnknown")}</div>`;
+          })}
         </div>
       <//>
       `}

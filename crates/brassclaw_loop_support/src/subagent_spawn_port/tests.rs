@@ -1030,6 +1030,7 @@ fn turn_record(run_context: &LoopRunContext, subagent_depth: u32) -> TurnRunReco
         subagent_depth,
         spawn_tree_root_run_id: lineage_root,
         claimed_child_reservation_released: None,
+        native_auth_wait: None,
     }
 }
 
@@ -1748,6 +1749,11 @@ async fn invoke_spawn_submits_child_run_through_spawn_tree_port() {
     let request = &requests[0];
     assert_eq!(request.parent_scope, context.scope);
     assert_eq!(request.parent_run_id, context.run_id);
+    assert_eq!(
+        request.child_scope.explicit_owner_user_id(),
+        Some(&context.actor.as_ref().unwrap().user_id),
+        "child admission must retain the actual child transcript owner"
+    );
     assert_eq!(
         request.spawn_tree_descendant_cap,
         DEFAULT_SUBAGENT_MAX_TREE_DESCENDANTS

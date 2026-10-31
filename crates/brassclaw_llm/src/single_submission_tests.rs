@@ -154,9 +154,27 @@ async fn actual_http_wire_custody_is_call_local_and_survives_cancelled_persisten
         value: std::sync::Mutex<Option<(u16, Vec<u8>)>>,
         received: tokio::sync::Notify,
         block: bool,
+        deny_submission: bool,
+        submitted: std::sync::atomic::AtomicBool,
+        rejected: std::sync::atomic::AtomicBool,
     }
     #[async_trait::async_trait]
     impl ProviderWireObserver for Record {
+        async fn before_submission(&self) -> Result<(), ProviderObservationError> {
+            if self.deny_submission {
+                Err(ProviderObservationError)
+            } else {
+                Ok(())
+            }
+        }
+        fn submission_rejected(&self) {
+            self.rejected
+                .store(true, std::sync::atomic::Ordering::Release);
+        }
+        fn submission_started(&self) {
+            self.submitted
+                .store(true, std::sync::atomic::Ordering::Release);
+        }
         fn receive_response(
             &self,
             status: u16,
@@ -246,6 +264,24 @@ async fn actual_http_wire_custody_is_call_local_and_survives_cancelled_persisten
         *second.value.lock().unwrap(),
         Some((503, b"second\0\xff".to_vec()))
     );
+    assert!(first.submitted.load(std::sync::atomic::Ordering::Acquire));
+    assert!(second.submitted.load(std::sync::atomic::Ordering::Acquire));
+    let denied = Arc::new(Record {
+        deny_submission: true,
+        ..Default::default()
+    });
+    assert!(
+        observe_chat_completion(
+            denied.clone(),
+            provider.complete(CompletionRequest::new(vec![ChatMessage::user(
+                "must never submit"
+            )])),
+        )
+        .await
+        .is_err()
+    );
+    assert!(!denied.submitted.load(std::sync::atomic::Ordering::Acquire));
+    assert!(denied.value.lock().unwrap().is_none());
     let cancelled = Arc::new(Record {
         block: true,
         ..Default::default()

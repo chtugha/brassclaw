@@ -30,19 +30,32 @@ forensic-packet lifecycle + the provider-prefix swap + the provider call, return
 answer+usage. `PgKohaiPort` (`crates/brassclaw_reborn_composition/src/pg_kohai_port.rs`)
 implements the routing path (Sempai audit gated on a Sempai sink being wired).
 
-**The corrected Kohai flow (user, 2026-09-04):**
-1. Orchestrator composes the prompt from the Recipe **and adds the
-   prefix-placeholder**; sends it to Kohai (`host.kohai_complete`).
-2. Kohai **saves** the prompt (for later component/intent creation).
-3. Kohai replaces the prefix, branching on a connected Sempai:
-   - **Sempai connected:** placeholder filled with a *precompiled* prefix for the
-     Sempai optimization pass; Sempai optimizes the volatile prompt and returns it
-     **without** the prefix; Kohai saves the optimized prompt beside the original;
-     Kohai adds the **real** Prefix (bound to that placeholder) and sends to the
-     Provider LLM.
-   - **No Sempai:** Kohai saves the prompt, adds the real Prefix, sends to the
-     Provider LLM.
-4. Kohai receives the Answer, **saves it beside its prompt**, returns the Answer
+**Required Kohai flow (operator correction, confirmed 2026-10-28):**
+The [current four-rule contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26)
+and [Prefix implementation owner](../plans/prefix_v3_upgrade.md) govern new work.
+Generate the finished immutable prefix for the exact provider/model pair;
+generator, Kohai and same-pair Sempai share its stored accepted design revision.
+Kohai formats only the dynamic Orchestrator prompt first; optional connected/
+enabled Sempai corrects that formatted prompt using its own generated prefix and
+target-pair design and returns the final dynamic prompt. Kohai then inserts the
+intended finished prefix unchanged exactly once before it, without formatting
+the return again. The implementation sequence is:
+
+1. Orchestrator composes the dynamic prompt from the Recipe and sends it to
+   Kohai. Retain its selected final-target prefix and accepted pair-design revision.
+2. Kohai saves the original and formats only the dynamic prompt for the final
+   provider/model pair, using that same accepted design as the prefix generator.
+3. If Sempai is connected/enabled, send this already formatted prompt for
+   optimization/correction. Sempai's own request uses its own prefix generated for
+   its target-pair design. It returns the final dynamic prompt to Kohai; preserve
+   the review result beside the original. Without Sempai, the initially formatted
+   dynamic prompt is final.
+4. Kohai prepends the intended finished final-target prefix unchanged exactly
+   once to Sempai's returned final dynamic prompt, or to its initially formatted
+   dynamic prompt when review is disabled. Sempai's own reviewer prefix is not
+   part of its return. No further dynamic-prompt formatting occurs. Validate the
+   complete request before sending it to the provider.
+5. Kohai receives the Answer, **saves it beside its prompt**, returns the Answer
    to the Orchestrator.
 
 `handle_llm_complete`/`__llm_complete__` (the raw `LlmBackend` arm,

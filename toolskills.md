@@ -23,7 +23,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -40,8 +42,8 @@ per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete i
 Selected retained loader/store/runner support is implemented; this contract
 does not certify every workflow or the complete migration. See
 [the current implementation status](docs/implementation-status.md).
-Current-source observations and historical step-body examples below must be
-migrated to this interface before being accepted as updated v3 implementations.
+Legacy step-body implementations must be migrated to this interface before
+being accepted as updated v3 implementations.
 
 
 This guide explains what a ToolSkill is, when to reuse one and how to author a
@@ -55,14 +57,23 @@ authorization target; [the development policy](docs/development-policy.md)
 defines relevant verification. Historical examples and source comments do not
 override these contracts.
 
-**Status:** this document specifies final-v3 requirements and describes source
-inspected on 2026-10-06. It does not implement a new schema, binding engine,
-immutable version store, association editor or production dispatch path. Keep
-design records separate from requests accepted by today's component stores.
+For development, follow the policy's bounded work packages: inspect the affected
+contracts/callers, complete connected changes, review the relevant diff, then run
+the smallest sufficient validation batch. Reuse current source knowledge and
+applicable passing evidence. A concrete uncertainty can justify an early check;
+an edit alone does not justify rebuilding or rerunning the entire acceptance
+matrix. Draft validation, component approval and ordinary activation remain
+distinct; a draft need not already be activated to be reviewed.
+
+**Status:** final-v3 requirements coexist with historical legacy-store observations.
+The ordinary retained path already supports immutable revisions, structured
+bindings and exact associations for selected qualified graphs. The status index
+owns current coverage and remaining gaps. Do not infer missing infrastructure
+from an old constructor, or treat a design record as an accepted insert request.
 
 ## 1. The definition
 
-A **ToolSkill is a reusable Rust-side binding descriptor for one Tool usage**.
+A **ToolSkill is a reusable Rust-side binding descriptor for a compatible area of one Tool**.
 It tells IBS/composition which existing Rust Tool must be made available and
 what binding contract applies: identity, supported callable, parameters,
 prerequisites, result/error expectations and compatibility requirements.
@@ -124,17 +135,19 @@ still needs both its prose and associated executable class-22 component.
 ## 3. Reuse or create: decide before writing
 
 Start with the task's Recipe or the reusable Skill usage you want to support.
-Search the library, supported catalogue, seeders and
-[historical inventory](docs/archive/builtin_stuff_v3.md). Read actual contracts;
-a matching name is insufficient.
+Inspect the relevant supported catalogue, seed owners and actual consumers.
+Use the [historical inventory](docs/archive/builtin_stuff_v3.md) as supplementary
+context, not proof of current signatures or support. Reuse already established
+source knowledge while it remains current; do not repeat a whole-library search
+for each local edit. A matching name alone is insufficient.
 
 | Situation | Correct action |
 | --- | --- |
 | Existing binding supports the same Tool, callable and argument contract | Reuse its stable ToolSkill UUID |
 | Only the user's phrasing or capture layout changes | Change the Recipe variant/intents; reuse binding and usage where compatible |
 | Different usage of the same compatible binding | Create/reuse the Skill and PythonCode; a new ToolSkill is not automatic |
-| A different operation selector or binding contract is needed | Create/reuse a distinct ToolSkill for that same primitive |
-| Existing ToolSkill is wrong or its contract changes | Author a new immutable version and approve affected combinations |
+| A different operation selector or binding contract is needed | Reuse the same descriptor if it covers that operation; split only a meaningfully different binding area |
+| Existing ToolSkill is wrong or its contract changes | Review its own immutable A successor and compatibility; S additionally qualifies required exact usages |
 | Several Tools are needed to reach the goal | Create separate Recipe usages/steps; do not bundle them in a ToolSkill |
 | No existing Tool supplies a genuinely necessary primitive | Follow tools.md to implement the Tool, then prepare compatible components |
 
@@ -143,11 +156,18 @@ One Tool can have several ToolSkills. For example, a JSON primitive can expose
 These are not three new Rust workflow Tools. Several Skills can also reuse one
 ToolSkill when their single-usage contracts remain compatible.
 
-A new ToolSkill may be authored independently of a permanent Recipe. Validate
-it with its associated usage through a small verification workflow. An unused
-metadata row alone is not evidence of a working binding.
+A new ToolSkill may be drafted independently of a larger product Recipe.
+Qualify its associated usage through supported contained review or a consuming/test
+workflow; no dedicated per-Skill or MCP Recipe is required. An unused metadata row
+alone is not evidence of a working binding. MCP command qualification applies only
+to intended publications.
 
 ## 4. What happens when a Recipe uses a ToolSkill
+
+Use [the cross-guide ownership table](recipe.md#ownership-across-the-four-guides)
+for authoritative record placement and
+[the dependency directions](recipe.md#dependency-edges-and-canonical-recipe-links)
+to avoid turning compatible-usage inventories into dependency cycles.
 
 The normal single-Tool sequence is:
 
@@ -161,7 +181,8 @@ Matched Recipe/variant and typed inputs
   -> supported binding preparation makes its selected host callable available
      (no Tool execution, no permission grant)
   -> immediately following Orchestrator-channel step references one class-22 UUID
-  -> Monty runs that PythonCode with step-local typed inputs
+  -> selected definitions preload without effects; Monty invokes the pinned export
+     with its typed step-local arguments
   -> PythonCode calls host.<tool>(...)
   -> kernel checks live policy, technical constraints and execution freshness
   -> selected Rust implementation executes and returns its actual outcome
@@ -187,7 +208,9 @@ steps. The direct dependent-chain exception in recipe.md remains applicable:
 document and verify coverage of every Tool binding in the chain. A single-Tool
 descriptor cannot cover a second Tool. Do not invent multi-component steps or
 claim chain support without a verified binding path; separate reusable paired
-steps are preferable when the runtime supports the result handoff.
+steps are required on the current ordinary retained runner, which admits one
+binding and one actual Tool call per executable step. The historical exception
+does not enable a second call on that runner.
 
 ## 5. Complete the binding design before creating a row
 
@@ -215,13 +238,15 @@ Compatible Skill/PythonCode UUIDs and explicit associations:
 Allowed failure/retry contract and trusted safety evidence:
 Referenced metadata dependencies, if any:
 Consuming Recipe tier restrictions:
-Required validation and exact-combination approval evidence:
+Required own binding validation; applicable A function or exact S usage evidence:
 Verification workflow and concrete expected outcomes:
 Actual registration/binding/runner support and unresolved gaps:
 ```
 
-Every line needs an answer or an explicit, justified “not applicable.” Do not
-write “whatever parameters are needed,” “use the appropriate Tool,” “retry on
+Each item needs a concrete answer, a reference to the exact existing contract,
+or a justified “not applicable.” Record unresolved items as gaps; do not invent
+values to make the draft appear complete. Do not write “whatever parameters
+are needed,” “use the appropriate Tool,” “retry on
 failure,” “the agent decides,” or “returns useful data.”
 
 ### Identity and binding rules
@@ -265,9 +290,13 @@ failure,” “the agent decides,” or “returns useful data.”
    Tool decoding. Reject booleans as integers and oversized values before the
    dispatch. Validate computed arguments as well as original inputs.
 7. Describe the actual Tool payload, error signals and completion meaning.
-   Distinguish it from the Python variable `result` and any outer
+   Distinguish it from the export's return value and any legacy outer
    `host.run_program` response. A process handle is not completed success; an
    error dictionary is not a successful payload just because it is data.
+   Follow [the result ownership contract](skills.md#result-ownership-and-validation-boundaries):
+   binding metadata describes the primitive/adapter payload, while the usage
+   association and code agree on the export return contract. An explicit code
+   transformation may change that shape; metadata does not perform it.
 
 ### Template and data rules
 
@@ -379,9 +408,14 @@ structured storage and consumers. Do not invent insert fields or a live
 
 The insert path uses scope/name uniqueness and `ON CONFLICT DO NOTHING`.
 An existing row is left untouched; this is not immutable revision creation.
-The current system-source branch inserts `validated` status. Authored content
-must not select `source: system` to evade Q1/human Q2. Trusted first-party seed
-integrity is a separate controlled path.
+`Ok(None)` means no row was inserted, not that the proposed new contract was
+stored or approved. Resolve and verify the existing selection before reusing it.
+The current insert stores the caller's `validation_status` unchanged; a
+`source: system` label does not promote pending metadata. Neither a supplied
+`validated` string nor a successful insert establishes v3 approval. Installed-
+instance authored changes use the supported immutable submission/deployment
+path and Q1/behavior/human Q2. Shipped first-party successors use controlled
+system-seed integrity/Q1/behavior qualification; the legacy insert is not a bypass.
 
 ### Structural metadata includes
 
@@ -438,7 +472,7 @@ association approval references in the ephemeral BuildInstruction. Retain that
 selection through the supported task snapshot/continuation contract.
 
 If the selected newest activated, approved versions have incompatible contracts
-or lack valid exact-combination approval evidence, assembly fails explicitly
+or lack required own A approval/compatibility or exact S/legacy evidence, assembly fails explicitly
 before effects. Do not silently select an older ToolSkill, Tool, Skill,
 PythonCode or dependency version to make the combination fit. The existence
 of an older approved combination is not permission to downgrade a new task.
@@ -451,31 +485,31 @@ Recipe on resume. Replacement creates a new immutable version; it does not
 overwrite, delete or invalidate the original or require its approval to be
 repeated. Keep old artifacts, metadata and evidence while tasks need them.
 
-Authored new versions pass supported Q1 and human Q2 before activation. Author
-review, relevant automated audits and behavioral validation establish that
+Authored new versions pass trusted Q1, behavioral evidence and human Q2 before
+activation. Author review, relevant automated audits and behavioral validation establish that
 binding metadata, Skill prose and PythonCode agree. IBS startup verifies approved
 structured contracts/associations; it does not interpret prose or call an LLM
 to approve a Tier-0 task.
 
-Use skills.md's exact `skill-association/1` authoring contract and separate
-trusted `skill-association-approval/1` evidence. The former links stable Skill,
-PythonCode, ToolSkill and Tool UUIDs; the latter approves the exact reviewed
-revisions/checksums and transitive dependency combination. Individually approved
-rows or a task manifest do not establish combination approval. A new combination
-needs its required evidence, even if the updated binding seems compatible.
-Unchanged components can retain their revisions; old running combinations
-do not need reapproval merely because newer versions exist.
+Use skills.md's unchanged `skill-association/1` technical relationship. In the
+successor A path the changed ToolSkill is reviewed against its already valid Tool;
+Skill/code jointly validate their own use. There is no extra A association approval
+or transitive reapproval of unchanged consumers. Binding successors preserve
+still-needed callable/adapter/parameter/result/effect guarantees. Same JSON types
+alone do not prove semantics or backward compatibility. The existing catalogue
+owner publishes compatible replacements coherently; historical task pins remain.
 
-**Approval provenance must be explicit.** Authored versions use the
-`validation_mode: "authored"` approval contract in skills.md: trusted successful
-Q1 evidence, human Q2 evidence and required observed behavioral evidence for
-the exact combination. The distinct `validation_mode: "system_seed"` contract
-is reserved for trusted first-party bootstrap/integrity validation: its
-`q2_ref` is null, while trusted successful Q1/integrity and required behavioral
-evidence still apply. Neither mode is established by a component's `source`
-label or `validated` status alone. Authors cannot relabel their proposals as
-system seeds to avoid human Q2. These are target approval contracts, not proof
-that today's insert path records or verifies this evidence.
+S retains `skill-association-approval/1` for the exact tested Skill usage after
+independent Tool then ToolSkill qualification. Its component list is the selection
+closure, not blanket own approval of each dependency. Genuine S uses controlled
+integrity/Q1/behavior with null Q2; no additional installed human action. A edits
+of seeded rows require own authored Q1/behavior/human Q2. Mixed graphs retain the
+actual provenance of each revision. Labels and mutable status fields cannot
+choose a mode or transfer an exact S record to changed partner bytes.
+
+See [the functional review and migration contract](skills.md#own-functional-approval-and-successor-compatibility).
+Existing authored exact records/readers remain their actual current profile until
+its connected successor cutover; no new JSON/API support is implied here.
 
 Approval and version pinning are **not Tool permission**. Before every dispatch,
 including retry and dispatch after a wait, the kernel checks the Tool's current
@@ -492,10 +526,17 @@ usage's approved failure contract and the Recipe/Orchestrator own recovery.
 Conflicting Tool, binding and usage contracts must be resolved before activation.
 
 Follow skills.md's exact failure contract, rather than inventing another retry
-format here. `max_attempts` counts the initial dispatch and survives waits and
-worker reclaim. Retry requires explicit eligible outcomes and trusted evidence
+format here. `max_attempts` is a positive integer including the initial dispatch;
+counts survive waits and worker reclaim. Retry requires explicit eligible outcomes and trusted evidence
 for read-only behavior or durable deduplication of the exact usage. Preserve
-required arguments/idempotency keys and recheck current policy/freshness.
+required arguments and, for deduplicated recovery, the original durable key.
+Recheck current policy, cancellation and attempt freshness before each retry.
+Unknown completion must be explicitly eligible and covered by its safety evidence;
+otherwise stop or use a separate supported reconciliation step.
+The current ordinary retained runner requires `stop`/`max_attempts: 1`; the
+broader failure declaration does not supply the missing durable retry adapter.
+Follow [skills.md's exact support boundary](skills.md#exact-failure-and-retry-contract),
+rather than introducing retries in binding metadata, code loops or child tasks.
 
 Current `ToolBinding.error_policy` has legacy `fail`, `ignore`, `retry` and
 `fallback` variants. These labels alone do not implement the final failure
@@ -512,8 +553,9 @@ Bindings neither reset attempt counts nor create another Orchestrator lifecycle.
 
 The ToolSkill class does not determine a Recipe tier. Deterministic validation,
 computation and result handoff may remain Tier 0. Explicit LLM reasoning or
-content composition is Tier 1. **Every shell and spawn_subagent Recipe is Tier 1**,
-even with fixed inputs, preseeded components or prior approval. A ToolSkill
+creative content composition is Tier 1; deterministic storage of supplied,
+validated content alone does not require an LLM. **Every shell and spawn_subagent
+Recipe is Tier 1**, even with fixed inputs, preseeded components or prior approval. A ToolSkill
 named “safe” or marked `validated` cannot change that restriction.
 
 ## 10. Worked example: bind file reading, execute an interval usage
@@ -574,8 +616,10 @@ def read_file_interval(path, start_line, end_line):
     return host.read_file(path=path, offset=start_line, limit=limit)
 ```
 
-Load this associated definition without effects. After its matching ToolSkill
-binding, the invocation step is:
+Declare the export and exact path/integer contracts before use. Comparisons alone
+do not reject booleans or fractional values; the typed boundary must reject them.
+Load the definition without effects. After the matching ToolSkill binding, the
+runner's conceptual invocation is:
 
 ```python
 result = read_file_interval(
@@ -584,13 +628,20 @@ result = read_file_interval(
 ```
 
 This function definition belongs in the associated class-22 component, **not** the ToolSkill.
-The `inputs` mapping and guards require actual runner/Monty support. The Skill's
-association maps `path` directly and declares approved computed `offset`/`limit`
-contracts. Metadata documents computation; approved PythonCode performs it.
+This invocation is not a second preload body or a fresh name-based export lookup.
+The ordinary retained runner supplies typed local inputs to the selected export;
+legacy callers must migrate rather than assume the same contract. The Skill's
+association maps `path` to `path` and `start_line` directly to `offset`;
+it declares only `limit` as computed from `start_line` and `end_line`. These are
+exactly the mappings in skills.md's association example. Metadata documents
+computation; approved PythonCode performs it.
 
 The Recipe then supplies:
 
 1. Its declared path/start/end inputs and verified capture/type-validation layout.
+   Decimal captures need an explicit supported conversion to integer inputs;
+   regex refinement alone returns strings. Follow skills.md's interval command
+   restrictions and bind any pure conversion step's integer results explicitly.
 2. One Rust component step including the compatible ToolSkill UUID.
 3. The immediately following Orchestrator component step including the PythonCode UUID.
 4. An explicit typed result handoff and separate next usage, such as reply posting.
@@ -637,16 +688,18 @@ different from denied access or a failed read.
    per-task values and grants out. Do not insert invented fields or formats.
 5. **Prepare the usage components.** Reuse compatible Skill/PythonCode or author
    the missing ones. Establish the explicit stable-UUID association and proposed
-   exact reviewed combination. One ToolSkill alone does not complete a Skill.
+   own functional review subject. One ToolSkill alone does not complete a Skill.
 6. **Define a verification workflow.** Pair one Rust binding step and its one
    executable step; provide typed inputs and expected outcomes. Cover missing
    references, invalid parameters, denial, Tool failure, bad results and update
    races as relevant. Use the actual host/kernel/runner, not prose simulation.
-7. **Validate before ordinary exposure.** Author review, supported Q1 audits,
-   behavioral validation and human Q2 establish the authored combination.
+7. **Validate before ordinary exposure.** Changed installed-instance authored components
+   need trusted Q1/behavior/human Q2; shipped first-party combinations use controlled
+   system-seed integrity/Q1/behavior qualification without extra installed-instance
+   human Q2. Source/status labels prove neither provenance nor approval.
    Trusted draft validation uses its explicit constrained environment and kernel
    checks; do not expose drafts through ordinary matched tasks to test them.
-8. **Commit evidence and activate coherently.** Use supported component stores,
+8. **Record evidence and activate coherently.** Use supported component stores,
    approval records and binding/registration paths. A `validated` string or
    successful metadata insert is not exact-combination approval or loading.
 9. **Verify task selection.** New tasks select the coherent activated versions;
@@ -657,8 +710,12 @@ different from denied access or a failed read.
     A Markdown descriptor is not an activated ToolSkill.
 
 A Recipe can author new ToolSkill metadata using existing component-management
-primitives where supported. Generating content is Tier 1. Creating the descriptor
-normally requires validation/approval, not compilation. If the Tool itself is
+primitives where supported. Creative/model-assisted composition is Tier 1;
+deterministic serialization of already validated metadata does not itself need an
+LLM. Creating the descriptor requires the applicable review/approval, not Rust
+compilation of the metadata. Editing a Rust seeder or embedded packaged content
+can still require rebuilding and integrity checks under the development policy.
+If the Tool itself is
 genuinely missing, follow tools.md: an existing build/compiler or shell Tool may
 build its Rust artifact, but compilation does not approve, register or activate
 it. A running task does not silently acquire that newly created component.
@@ -666,6 +723,12 @@ it. A running task does not silently acquire that newly created component.
 ## 12. Acceptance matrix and final checklist
 
 These are required expected outcomes, not claims of passing runtime tests.
+Apply relevant cases at the required integration/activation milestone and reuse
+still-applicable evidence. Do not rerun the whole matrix after each edit or
+create duplicate tests for outcomes already established through the real caller.
+Missing prerequisites or skipped/zero selected required tests are unverified,
+not passed. Scope conclusions to draft validation, ordinary activation or release
+acceptance as actually established.
 
 | Case | Required outcome |
 | --- | --- |
@@ -680,9 +743,9 @@ These are required expected outcomes, not claims of passing runtime tests.
 | Hostile input string | Python source/checksum unchanged; input remains data |
 | Block after binding/wait or through an old alias | Next dispatch refused under the same Tool's current policy |
 | Metadata include cycle/conflict | Explicit failure; no partial expansion or silent skipping |
-| Individually approved but unreviewed combination | No activation/assembly without required exact-combination evidence |
-| Newest active versions incompatible or lacking exact-combination approval | Assembly fails before effects; no silent downgrade to an older combination or Tier-2 replay |
-| Authored versus trusted system-bootstrap approval | Authored combination requires human Q2; only trusted system_seed provenance permits null q2_ref, with required Q1/integrity and behavioral evidence |
+| Individually approved A providers | Require own function approval, compatibility and unambiguous technical selection; no new extra combination approval in the qualified successor |
+| Newest active versions incompatible or lacking applicable own A or exact S/legacy evidence | Assembly fails before effects; no silent downgrade or Tier-2 replay |
+| Authored versus trusted system-bootstrap approval | A requires own Q1/behavior/human Q2; only verified S permits null q2_ref for its exact usage, with independently qualified prerequisites |
 | Authored proposal merely labelled system/validated | Label does not qualify for trusted bootstrap or bypass human Q2 |
 | Activation while a task waits | Old task retains old selection; new task selects coherent approved replacements |
 | Malformed output or failed later reply | Stop/handle explicitly; do not replay the completed effect |
@@ -699,7 +762,7 @@ These are required expected outcomes, not claims of passing runtime tests.
 - [ ] ToolSkill metadata and associated executable PythonCode are separate components.
 - [ ] Recipe component steps each contain one UUID and obey binding/execution pairing.
 - [ ] Required internal dependencies are resolved, validated and pinned.
-- [ ] Exact Skill/code/ToolSkill/Tool combination has trusted Q1 and behavioral evidence, plus human Q2 for authored versions or the distinct verified system_seed bootstrap/integrity provenance.
+- [ ] Changed own A functions have Q1/behavior/human Q2; S exact usages retain verified bootstrap/integrity/behavior and prior Tool/ToolSkill qualification.
 - [ ] Source/status labels are not used as approval evidence or to bypass authored human Q2.
 - [ ] IBS checks structured approval records, not semantic prose at task startup.
 - [ ] New immutable versions leave old running/suspended selections available.
@@ -709,9 +772,11 @@ These are required expected outcomes, not claims of passing runtime tests.
 - [ ] Tier restrictions and actual No-Match-only Tier-2 entry remain intact.
 - [ ] Actual store, registration and runner support is verified and gaps reported honestly.
 
-Prose-only creation of this guide needs review, link/format checks and
-`git diff --check`, not a Cargo run. Actual component creation or runtime changes
-need the applicable schema, integrity, approval and production-path evidence.
+Ordinary prose needs review, link/format checks and `git diff --check` rather
+than Cargo alone. This guide is also a packaged reference; a new runtime package
+must satisfy the applicable seed/integrity contract for changed embedded content.
+Actual components and runtime changes need their schema, approval, integrity and
+behavioral evidence. Editing the guide establishes none of those runtime claims.
 Read `LOCAL_TEST_ENV.md` if present before remote tests or provider setup.
 
 ## References
@@ -729,6 +794,8 @@ Read `LOCAL_TEST_ENV.md` if present before remote tests or provider setup.
 - [Current retrieval projection](crates/brassclaw_engine/src/memory/retrieval_source.rs)
 - [Current IBS persisted data-model types](crates/brassclaw_engine/src/types/ibs.rs)
 - [Current IBS builder](crates/brassclaw_engine/src/memory/instruction_builder.rs)
+- [Retained typed binding preparation](crates/brassclaw_engine/src/memory/retained_tools.rs)
+- [Exact retained association review preparation](crates/brassclaw_engine/src/memory/retained_reviews.rs)
 - [Current composer](crates/brassclaw_engine/src/memory/composition.rs)
 - [Current compose/run host bridge](crates/brassclaw_engine/src/executor/orchestrator.rs)
 - [Current file-read implementation](crates/brassclaw_first_party_extensions/src/coding/file.rs)

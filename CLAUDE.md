@@ -7,6 +7,19 @@
 > named owning plan, then reuse it here. A source-only/closed check is not public
 > activation, deployed support or full-v3 completion.
 
+## Development workflow and precedence
+
+Read [the development policy](docs/development-policy.md) before implementation.
+It governs source inspection, bounded work packages, self-review, check selection,
+evidence reuse and when validation is sufficient. Its rules supersede older blanket
+test/lint instructions here. Required subsystem acceptance, component approval and
+the disk-space rules remain binding. Reuse this session's current source knowledge
+and valid evidence instead of repeating discovery or checks after every edit.
+Runtime Tier-0 rules do not limit development reasoning.
+The binding sections below describe product contracts. Source-specific and legacy
+notes describe implementation boundaries, not alternative contracts or proof of
+acceptance. Consult the status index before repeating already completed work.
+
 
 ## Binding preloadable Skill interface (v3)
 
@@ -23,7 +36,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -34,7 +49,8 @@ MCP tools/list gives its exact sentence, variable positions/types, escaping and
 valid examples; the model sends the completed command for intent matching.
 MCP accepts the completed listed command, opens a new ordinary chat, sends it
 as a user message, forwards the correlated chat result and closes the chat.
-It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
+It accepts no executable Python payload; declared source-text strings remain data
+under the exact command grammar. It has no direct Monty/IBS/Rust Tool execution connection;
 the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
 per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
 Selected retained loader/store/runner support is implemented; this contract
@@ -98,6 +114,35 @@ typed inputs, checked single-component steps and preloaded exports on the global
 Monty service. Full-library migration, general pure approval, dynamic occurrences
 and durable recovery remain open; see the current implementation status index.
 
+## Validation scope successor — binding target, implementation pending
+
+Installed-instance authored changes (**A**) receive their own Q1/behavior/human-Q2
+approval. A Skill and its implementing PythonCode form one functional review
+subject despite separate immutable component identities; unchanged approved
+Tools, ToolSkills and helpers are prerequisites, not new review candidates.
+Controlled shipped **system_seed** qualification (**S**) retains the exact
+Skill-usage combination record. It qualifies the Tool, then its ToolSkill, then
+Skill/code together, reusing independently qualified prerequisites. It neither
+approves every dependency through a closure list nor adds installed human Q2.
+Provenance belongs to the actual revision/usage, not a catalogue-wide flag; mixed
+graphs are allowed. Labels cannot select S or overwrite authored overrides.
+
+Compatible successors preserve contracts needed by still-valid consumers for new
+use. Unchanged consumers keep their approvals. One existing catalogue owner
+publishes coherent selections: new tasks use active approved successors; running,
+waiting and resumed tasks retain exact original exports, dependencies and artifacts.
+New/changed Recipes validate their supported workflows and variants, without
+reapproving constituent components. Shared compatible ToolSkills require unique
+technical usage selection, not duplicated primitives or a new approval service.
+
+This target does not weaken existing readers before the connected cutover.
+Today's Single-root submissions, exact association approvals and complete-Recipe
+deployment remain their actual supported scopes. Missing successor subjects,
+approval writers, compatibility readers and migration are open work in the
+existing Validator/Composition/Simplified owners. Historical records and formats
+are not reinterpreted or rewritten. The detailed contract is in
+[skills.md](skills.md#own-functional-approval-and-successor-compatibility).
+
 ### Installation seeds and post-installation changes
 
 Code and first-party components developed and shipped with BrassClaw, including
@@ -121,8 +166,9 @@ request for external approval.
    prose plus explicitly associated preloaded Python functions. A Recipe orders usages and
    pure-logic components, maps inputs/results and defines completion. A Skill
    never hides a multi-Tool task. Creating a reusable Skill independently is
-   allowed; give each real Skill a canonical execution Recipe or equivalent
-   existing variant and verify its usage through that Recipe.
+   allowed; verify its function together with its implementing code through a supported contained review
+   or consuming/test workflow. No dedicated per-Skill Recipe is required; qualify
+   a separate MCP-call Recipe/variant only for intended MCP exposure.
    A Tool supplies the primitive; a ToolSkill supplies IBS binding metadata.
    The Skill tells the Orchestrator how to use that Tool; its code implements it.
 2. **Keep data separate from code.** Declare recursive input/result schemas,
@@ -130,7 +176,8 @@ request for external approval.
    defaults and numeric bounds. Missing and null are different. Defaults apply
    only to missing consumer inputs, never to invalid/null values or bad outputs.
    Recipe references bind typed data to `inputs["local_name"]`; they never paste
-   runtime values into Python source. This interface still needs runner support.
+   runtime values into Python source. The retained ordinary path supports typed
+   inputs; remaining consumer migration is tracked in the implementation index.
 3. **Review meaning before activation.** For authored versions, author review,
    supported Q1 audits, behavioral validation and human Q2 establish agreement
    between prose, binding metadata and code. Trusted bootstrap uses its distinct
@@ -138,17 +185,17 @@ request for external approval.
    Parsing and matching schemas alone do not prove behavior. IBS checks approved
    structured records; it does not interpret prose or call an LLM to approve a
    Tier-0 task at startup.
-4. **Record approval separately from selection.** Follow skills.md's exact
-   `skill-association/1` and `skill-association-approval/1` target contracts.
-   The association references stable UUIDs. The trusted approval record identifies
-   the exact reviewed revisions/checksums and dependency combination. Individual
-   component approvals or a task manifest do not establish combination approval.
-   New combinations need their required evidence before coherent activation;
-   unchanged dependencies and old running combinations do not need reapproval
-   merely because a replacement exists. Authored combinations require trusted
-   Q1, human Q2 and behavioral evidence. Only verified system_seed bootstrap
-   provenance permits null q2_ref with required Q1/integrity and behavioral
-   evidence; source/status labels alone never qualify. These are not grants.
+4. **Record approval separately from selection.** `skill-association/1` remains
+   the technical stable-UUID relationship. A validates the changed component's own
+   functions; Skill/code share one review with the unchanged counterpart as context.
+   Changed roots keep separate IDs and receive coordinated own approvals; no extra
+   authored combination approval or unchanged-consumer Q1/Q2. S retains exact
+   `skill-association-approval/1` usage evidence after independently qualified Tool
+   and ToolSkill prerequisites. Its closure identifies tested bytes, not a grant
+   of all individual approvals. Genuine S uses integrity/Q1/behavior with null
+   Q2, without an additional installed human action. Existing authored /1 records
+   retain their original exact meaning until the connected successor cutover.
+   Neither a task manifest nor caller labels create approval or Tool permission.
 5. **Pin the complete workflow.** IBS selects one consistent approved catalogue
    snapshot. Retain the Recipe revision, variant, exact `step_link`, selected
    steps/order, input layout, all component/dependency revisions/checksums and
@@ -208,8 +255,12 @@ validated UUID/revision association between the two parts; separate rows are
 permitted and do not make the Skill prose-only. A code example inside prose is
 documentation, not an implicit executable entry point. The class labels
 `skill_rusty`, `skill_monty`, `skill_llm` are existing consumer classifications,
-not leaf/domain hierarchy levels. Classes 10 and 50 are Orchestrator/Scaffold
-records sharing the table, not additional tool-usage Skill types.
+not leaf/domain hierarchy levels. Class 10 remains the protected Orchestrator.
+Class 50 is a historical Scaffold storage classification, not an active target
+component type or protected root. Inventory and migrate actual future-use flows
+to normal class-21 Recipes through the existing Composition owner; create a new
+Recipe only for a distinct required workflow. Preserve historical bytes and valid
+old pins; do not reinterpret a class-50 UUID as class 21 or add a Scaffold validator.
 
 **Execution and validation:** Tier 0 calls the preloaded associated export without an
 LLM interpreting prose. Tier 1 can use prose in its explicit LLM steps. Never
@@ -230,8 +281,8 @@ and returns a result, classified failure or explicit wait/handle. A Tool does
 not choose the task workflow. An operation selector can expose several primitive
 operations; this does not justify hiding a multi-Tool task in new Rust code.
 
-A **ToolSkill** (class 13) is reusable metadata describing one Tool usage's
-IBS binding: the Tool identity, supported callable/adapter, parameters,
+A **ToolSkill** (class 13) is reusable metadata describing a compatible Tool
+binding area, potentially shared by several Skills: the Tool identity, supported callable/adapter, parameters,
 prerequisites and result/error expectations. It executes nothing, grants no
 permission and normally requires no compilation. Several ToolSkills can describe
 different bindings of one Tool; several Skills can reuse a compatible binding.
@@ -279,27 +330,26 @@ needs its separate build, verification and supported registration/loading path.
 > through supported stores/seeders. A reusable Skill may also be created independently
 > to grow the library, following skills.md; a reusable ToolSkill can also be
 > authored independently and verified with its compatible usage. Adding behavior usually requires no new Rust.
-> New Rust is only warranted when a genuinely new
-> system-level Tool is needed that no existing Tool provides. The component library is where
+> New Rust is warranted for a missing system primitive or required runtime,
+> persistence, binding, lifecycle or kernel support in its owning layer.
+> Do not hide a task workflow in a new Rust Tool. The component library is where
 > almost all behaviour lives — more Recipes, fewer Rust branches.
 
-Read [Development reasoning and validation policy](docs/development-policy.md)
-before implementation. It governs iteration, check selection, evidence reuse
-and stopping; older blanket test/lint instructions defer to it. Use LLM reasoning
-to diagnose and complete a coherent change before compiling. Runtime Tier-0
-rules do not limit development reasoning.
-
-1. Think Before Coding
+### Think before coding
 
 Don't assume. Don't hide confusion. Surface tradeoffs.
 
 Before implementing:
 
-State your assumptions explicitly. If uncertain, ask.
-If multiple interpretations exist, present them - don't pick silently.
-If a simpler approach exists, say so. Push back when warranted.
-If something is unclear, stop. Name what's confusing. Ask.
-2. Simplicity First
+Read actual definitions, selected implementations and affected callers before
+depending on their contracts. Resolve technical uncertainty from source first;
+use a targeted experiment when necessary. State material assumptions. Ask the user
+when a missing decision changes the intended behavior or authorized scope and
+cannot be resolved from available context. Continue independent authorized work
+while waiting. Choose routine implementation details using the existing contracts.
+Explain meaningful tradeoffs and a simpler compatible approach when relevant.
+
+### Simplicity first
 
 Simplicity does not mean reducing Recipe steps. Prefer many purposeful reusable
 PythonCode components and explicit result handoffs over a specialized Rust Tool
@@ -310,20 +360,22 @@ permits internal composition under the binding Recipe contract.
 Minimum code that solves the problem. Nothing speculative.
 
 No features beyond what was asked.
-No abstractions for single-use code.
-No "flexibility" or "configurability" that wasn't requested.
-No error handling for impossible scenarios.
-If you write 200 lines and it could be 50, rewrite it.
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-For adding a user-facing capability: the minimum code is often **zero lines of Rust** — a Recipe + PythonCode achieves the same result without touching any crate. Ask "is new Rust actually required here?" before opening any file in `crates/`.
+Avoid speculative abstractions and configurability. Preserve required typed
+boundaries, operator settings and failure handling even when they add code.
+Simplify unnecessary branching and duplication when doing so helps this change;
+line count alone is not a reason to rewrite working code.
+For a new capability, look for a Recipe using existing primitives first. Inspect
+Rust adapters and stores as needed to verify actual support; reading `crates/`
+does not commit the implementation to new Rust.
 
-3. Surgical Changes
+### Surgical changes
 
 Touch only what you must. Clean up only your own mess.
 
 When editing existing code:
 
-Don't "improve" adjacent code, comments, or formatting.
+Avoid unrelated cleanup. Update comments and documentation whose meaning changes
+with the behavior, including references to moved or renamed code.
 Don't refactor things that aren't broken.
 Match existing style, even if you'd do it differently.
 If you notice unrelated dead code, mention it - don't delete it.
@@ -333,19 +385,24 @@ Remove imports/variables/functions that YOUR changes made unused.
 Don't remove pre-existing dead code unless asked.
 The test: Every changed line should trace directly to the user's request.
 
-4. Goal-Driven Execution
+### Goal-driven execution
 
-Define success criteria and the smallest checks that establish them. Stop when
-the reviewed change and required checks satisfy those criteria. Repeat checks
-only when relevant edits, failures or unresolved uncertainty justify them.
+Define success criteria and the smallest checks that establish them. Complete
+connected implementation and self-review before the targeted validation batch,
+with earlier checks when a specific uncertainty or shared boundary requires them.
+Stop redundant validation once a package's required checks pass; continue the
+remaining authorized work until the requested implementation and acceptance are
+complete. Follow the development policy for repeat checks and evidence reuse.
 
 Transform tasks into verifiable goals:
 
 "Add validation" → "Trace the caller and invalid-input contract; add focused coverage"
 "Fix the bug" → "Diagnose the cause from source and logs; verify the regression at its caller"
 "Refactor X" → "Review affected contracts and reuse valid baseline evidence; verify the final change"
-"Add capability X" → "Design the Recipe; reuse or create the required Skill/code/bindings and ≥10 intent examples; obtain required Q1/human Q2 and exact-combination approval; verify intended variant and declared tier through the actual runner (zero LLM calls for Tier 0, explicit LLM steps for Tier 1)"
-For multi-step tasks, state a brief plan:
+"Add capability X" → "Design the Recipe; reuse or create the required Skill/code/bindings and intent examples required by recipe.md; verify the intended variant/tier through the actual runner; qualify changed own A functions/workflows or exact S usage through its trusted bootstrap before activation"
+For substantial multi-step tasks, use a brief plan with verifiable outcomes.
+Do not create a separate planning document or seek new approval merely to follow
+this workflow. A plan can group multiple edits into one connected work package:
 
 1. [Step] → verify: [check]
 2. [Step] → verify: [check]
@@ -354,7 +411,9 @@ Strong success criteria give a clear stopping point. Weak criteria ("make it wor
 encourage repeated checks without establishing additional evidence.
 
 
-**BrassClaw** is a secure, local-first AI assistant built on the IronClaw Reborn architecture. It targets 7B-14B LLMs within 8,192-token context windows and is implemented as a workspace of approximately 70 Rust crates.
+**BrassClaw** is a secure, local-first AI assistant built on the IronClaw Reborn
+architecture and implemented as a Rust workspace. Model context and output limits
+depend on the selected provider/model; they are not one fixed application budget.
 
 ## Code Style
 
@@ -364,22 +423,41 @@ encourage repeated checks without establishing additional evidence.
 - No `pub use` re-exports unless exposing to downstream consumers
 - No `.unwrap()` or `.expect()` in production code (tests are fine)
 - Use `thiserror` for error types in `error.rs`
-- Map errors with context: `.map_err(|e| SomeError::Variant { reason: e.to_string() })?`
+- Add useful context when mapping errors, preserving the source and classified
+  outcome where the error contract requires them. Do not turn cancellation,
+  uncertain effects or storage failures into generic success or No-Match.
 - Prefer strong types over strings (enums, newtypes)
 - Keep functions focused, extract helpers when logic is reused
 - Comments for non-obvious logic only
-- **Do not introduce new `include_str!()` constants for behavioural prompts or scripts in production code paths.** All prompt bodies (`orchestrator:main`, `codeact_preamble`, `codeact_postamble`, `failure_explanation`, `compaction_summarizer_fresh`, `sempai_audit`, `subagent:direction:*`) are seeded as `source='system'` DB rows via `builtin_bootstrap.rs` and loaded at boot via `OnceLock` accessors. `include_str!()` is only permitted in `builtin_bootstrap.rs` seed constants and in `#[cfg(test)]` modules. Single-line format strings are fine inline. This also applies to reference documentation files embedded for runtime use (e.g. `CLAUDE.md`, `AGENTS.md`): if such a file must be included at compile time, its `include_str!()` constant belongs in `builtin_bootstrap.rs` as a `pub(crate) const`, not in any other production file. The backend or handler that uses the constant imports it as `crate::builtin_bootstrap::SOME_CONST`.
-- `info!` and `warn!` output appears in the REPL and corrupts the terminal UI. Use `debug!` for internal diagnostics (trace analysis, reflection results, engine internals). Reserve `info!` for user-facing status that the REPL intentionally renders. Background tasks must never use `info!`.
-- Test through the caller, not just the helper: when a predicate/classifier/transform helper gates a side effect (HTTP, DB write, OAuth, UI mutation, tool execution) and has any wrapper or computed input between it and that side effect, a unit test on the helper alone is not sufficient regression coverage. Add a test that drives the call site at the integration tier or higher. See `.claude/rules/testing.md` for the full rule.
+- **Keep new prompt/script embeds in the bootstrap owner.** New `include_str!()`
+  constants for behavioral prompts, scripts or runtime reference documents belong
+  in `builtin_bootstrap.rs` seed constants or `#[cfg(test)]` modules, as required
+  by AGENTS.md. Runtime handlers use the supported stores and retained selections;
+  never add an embedded executable fallback. Existing installation-owned guide
+  embeds in `prefix_reference_seeds.rs` are an established packaging path, not
+  permission to add new embeds outside the allowed locations. Preserve those
+  existing embeds and their integrity contract; do not relocate them merely to
+  centralize `include_str!()` or add a competing loader. New packaging must satisfy
+  both the location restriction and its integrity/upgrade requirements. Compatibility
+  prompt rows are seeded through `builtin_bootstrap.rs`; some use boot-time
+  `OnceLock` accessors, while preamble/postamble use the Kohai bundle assembler
+  described below. Ordinary inline format strings are not executable prompt embeds.
+- Keep routine internal/background diagnostics at `debug!`; unsolicited `info!`
+  output interferes with the REPL. Use the supported user-status and diagnostic
+  paths for information the operator must see. Do not suppress or downgrade a
+  real failure merely to keep the terminal quiet; preserve its returned error,
+  classified outcome and required durable evidence.
+- Test through the caller when a helper gates a side effect through wrappers or computed inputs. Use the smallest real caller-level test that covers the affected inputs and effect; a module test driving the actual caller can suffice. Reuse existing coverage when applicable. Pure helper tests alone do not establish the caller's behavior. See `.claude/rules/testing.md` and the development policy; use real PostgreSQL for PostgreSQL semantics and full E2E only when the claim or acceptance contract requires it.
 
 ## Tool Usage Guidelines
 
 ### Searching the codebase
 
-Use `grep` (content search) and `glob` (file name pattern) tools for codebase searches.
-For large output use range-based `read_file` to inspect specific sections without loading
-full files. Avoid running raw shell `rg`/`grep` commands when the built-in search tools
-cover the need.
+Use `rg` for content and `rg --files` for file discovery, or equivalent available
+search tools. Read relevant ranges when full output would be truncated. Batch
+independent reads/searches; follow dependencies sequentially. Reuse results while
+their sources remain current, and expand a search when a shared defect or contract
+affects other consumers.
 
 
 ## Architecture
@@ -387,7 +465,7 @@ cover the need.
 **Component authoring ground truth:** [recipe.md](recipe.md) defines ordered
 workflows, typed inputs and the actual persisted IBS schema; [skills.md](skills.md)
 defines one Tool usage with prose plus preloaded function exports, recursive contracts,
-exact-combination approval and retries; [tools.md](tools.md) defines Rust primitives,
+own functional approval, S exact-usage evidence and retries; [tools.md](tools.md) defines Rust primitives,
 retained implementations, live policy and recovery; [toolskills.md](toolskills.md)
 defines IBS binding metadata and its authoring/storage constraints.
 
@@ -401,9 +479,9 @@ Tool calls require separate steps; only the documented dependent-chain exception
 permits multiple calls in one body, with all bindings covered.
 
 Semantic agreement is reviewed before activation, not inferred by IBS from prose.
-IBS checks trusted exact-combination approval and pins one coherent workflow and
+IBS checks own A approvals or exact S usage evidence and pins one coherent workflow and
 complete dependency graph, including actual Tool artifacts. Missing/incompatible
-newest active contracts or approval fail assembly; never silently downgrade or
+newest active contracts or applicable evidence fail assembly; never silently downgrade or
 enter Tier 2. Running/resumed tasks keep their original selection. Authored
 versions require Q1/human Q2 and behavioral evidence; only verified system_seed
 bootstrap provenance permits null q2_ref with required integrity/Q1 and behavioral
@@ -424,11 +502,18 @@ BrassClaw Reborn uses a five-layer model:
 4. **Infrastructure** — Shared services: LLM providers, Postgres persistence, embeddings, skills, extensions, and observability. Lives in `crates/`.
 5. **Component Library** — Recipes, Skills, ToolSkills, PythonCode snippets, and ExtensionCatalogues stored in Postgres. **This is where most new capabilities are added.** Existing supported contracts can add component rows without a new primitive; missing schema/runner support still requires implementation. See `builtin_bootstrap.rs` for first-party seeding.
 
-New infrastructure work belongs in `crates/`. New *capabilities* belong in the Component Library (layer 5) first — only reach for `crates/` when a genuinely new system primitive is needed. The v1 `src/` tree was removed in Phase 6.
+New infrastructure work belongs in `crates/`. Design new *capabilities* in the
+Component Library (layer 5) first. Implement demonstrated primitive or
+infrastructure gaps in their owning crates, then reuse that support from the
+components. The v1 `src/` tree was removed in Phase 6.
 
 ### Component Catalog and Class Codes
 
-BrassClaw Reborn stores all reusable knowledge artifacts (specs, plans, lessons, etc.) in unified Postgres tables indexed by integer **class codes**. Each class has a dedicated table — this mapping is the verified source of truth, defined by `class_code_to_table` in `crates/brassclaw_engine/src/memory/retrieval_source.rs` and mirrored by `PgSettingsListingService` (`crates/brassclaw_reborn_composition/src/pg_settings_listing.rs`):
+BrassClaw Reborn stores reusable knowledge artifacts in Postgres tables indexed
+by integer **class codes**. Several classes share a table; the mapping is defined
+by `class_code_to_table` in `crates/brassclaw_engine/src/memory/retrieval_source.rs`
+and mirrored by `PgSettingsListingService` in
+`crates/brassclaw_reborn_composition/src/pg_settings_listing.rs`:
 
 | Class code | Type | Table |
 |------------|------|-------|
@@ -561,7 +646,7 @@ the host boundary, subject to the kernel's current authority checks.
   verify no existing Tool covers the primitive needed. A new Rust Tool is
   incomplete without a ToolSkill + PythonCode snippet + Leaf Skill + Recipe
   created or reused through supported stores/seeders, with compatible binding,
-  loading and exact-combination approval. Metadata alone does not establish
+  loading and own A approval or exact S usage evidence. Metadata alone does not establish
   Recipe reachability or Tool permission.
 
 **Tool invocation — first-class callables:** Tools are first-class callables in
@@ -573,9 +658,11 @@ uniform signatures or loading mechanisms. Retired intrinsics remain forbidden.
 
 #### Turn Execution Flow (binding target — read this first)
 
-Every user input travels exactly one of two paths within the already-running
-global orchestrator. Ordinary startup implements that lifecycle; remaining
-coverage and recovery gates are listed in the current status index.
+Successfully routed input takes Match or No-Match within the already-running
+global orchestrator. Routing can also fail or require disambiguation; neither
+outcome is No-Match. The diagram shows the two successful routing paths, not an
+exhaustive error state machine or persisted Recipe JSON. Ordinary startup owns
+the global lifecycle; remaining acceptance is listed in the status index.
 
 ```
 User Input
@@ -584,7 +671,7 @@ User Input
 Global Orchestrator (Monty) — already running since system startup
     │
     ▼
-Intent-Matching System (resolve_intent / fetch_for_turn, currently Rust)
+Retained intent matching — one coherent catalogue selection
     │
     ├─── MATCH ──────────────────────────────────────────────────────────────────┐
     │                                                                            │
@@ -612,31 +699,42 @@ Intent-Matching System (resolve_intent / fetch_for_turn, currently Rust)
      Orchestrator assembles an LLM prompt (Tier 2):
          1. User's question
          2. Conversation history for this input
-         3. base-prompt prefix (precompiled ~250k–1M tokens, added by Kohai —
-            contains all tools, recipes, skills, component descriptions)
+         3. Kohai formats only the dynamic prompt for its target pair
+         4. optional connected/enabled Sempai corrects that formatted prompt
+            using its own generated prefix/design; returns final dynamic prompt
+         5. Kohai inserts the intended finished prefix unchanged exactly once
+            BEFORE that prompt (base if none specified), then final request guard
+            provider/model serving still needs qualification
          │
          ▼
      LLM reasons over the full prompt → answer posted to user
          │
          ▼
-     Sempai interceptor reviews the completed turn →
-     proposes new Recipe + intent examples →
-     validation queue (Q1 auto → Q2 human) →
-     next match uses approved Recipe (Tier 0 if deterministic; else Tier 1)
+     Eligible completed-turn review may propose Recipe/intent changes →
+     required review/behavior/human Q2 and coherent activation →
+     later matches may select the approved Recipe at its verified tier
 ```
 
 **Key points for authoring:**
-- The Match path is 100% recipe-driven. To add behaviour, add a Recipe — not Rust.
+
+- Matched workflow sequencing belongs to Recipes/PythonCode. Reuse existing
+  primitives; implement demonstrated infrastructure gaps in their owning layer.
 - IBS is the compiler: it reads the Recipe's `step_descriptions` JSONB once at match time and produces the `BuildInstruction` that drives execution. It is ephemeral — never stored.
-- A `channel:"rust"` step only *binds* the ToolSkill (makes `host.<tool>` callable). A `channel:"orchestrator"` PythonCode step *calls* it. Two steps, always in that order.
-- The base-prompt is assembled by the Kohai from the component library — it is not hardcoded. It grows as new components are added.
-- Tier 0: no LLM involved at all. Tier 1: LLM guided by recipe prior-knowledge. Tier 2: LLM over full base-prompt (no recipe matched).
+- The diagram's channel labels are explanatory. Persist `knowledge:"rust"`
+  for a ToolSkill binding and `knowledge:"orchestrator"` for its matching
+  executable component, following recipe.md. Pure steps need no artificial
+  binding; the documented direct dependent-chain exception remains applicable.
+- Kohai assembles the selected prefix/context through the supported component
+  contracts. Catalogue growth does not imply unlimited active prompt capacity.
+- Tier 0 has no LLM step in its execution; Tier 1 follows its explicit reviewed
+  workflow; Tier 2 is reserved for actual No-Match. Post-turn review is separate.
 
 > **Monty owns Recipe data flow:** IBS compiles the Recipe into a BuildInstruction;
 > Monty executes its steps and retains the intermediate values needed by later steps.
-> Fresh empty state per PythonCode step is not mandatory. If a step runs in a child VM
-> or process, Monty manages its inputs and returned results within the same Recipe
-> execution context. Unrelated tasks and attempts remain isolated. Do not merge separate
+> Fresh empty state per PythonCode step is not mandatory. Child tasks run through
+> supported admission on the same global service with explicit typed inputs/results
+> and retained selections; do not create a child VM to pass intermediate data.
+> Unrelated tasks and attempts remain isolated. Do not merge separate
 > Recipe steps or independent Rust primitives to work around missing state handoff.
 > Only combine into one Rust tool if
 > the operations are genuinely inseparable at the system level (e.g. an atomic DB transaction
@@ -674,18 +772,15 @@ remaining full-library, authority, platform and recovery cutover is governed by 
 Phase 3a and its acceptance gates. Older per-chat lifecycle descriptions are
 historical, not an alternative execution architecture.
 
-Only the **basic mode's beginning** is built-in (boot the global orchestrator,
-receive an admitted work item, establish its task context, hand off to Phase 2).
-Everything else is
-**Instructions** — a component, most often a **Recipe**, but also possibly an
-**Action** or other instruction component. From Phase 2 onward (intent
-matching, Matching-Mode, Non-Matching-Mode, validation, component-creation,
-kohai-sempai) it is all instruction/recipe-driven, so functionality changes
-usually change reusable components/Recipes rather than Rust primitives. Missing
-store, binding, host or continuation support remains infrastructure work; neither
-a Recipe label nor an instruction body implements that support.
+The target separates Recipe/PythonCode task sequencing from Rust infrastructure.
+Rust owns startup, admission, transport, authority, accounting and effect custody;
+native matching and remaining compatibility consumers also exist. Do not describe
+all post-admission behavior as already migrated to Recipes. Change supported
+workflow behavior through components first, and repair missing store, binding,
+host or continuation support in its owning layer. The status index records which
+paths have actually been implemented and qualified.
 
-#### Phase 1 — boot once, receive work (built-in, the one exception)
+#### Phase 1 — boot once, receive work (runtime infrastructure)
 
 Monty starts once at system startup after the verified component library is
 available. On each admitted input the already-running orchestrator receives a
@@ -695,14 +790,14 @@ orchestrator. The boot/receive mechanism is the built-in exception, not a Recipe
 
 #### Phase 2 — intent match (recipe-driven in principle; Rust today)
 
-In principle Phase 2 is run by **Recipes/Instructions** (ideally a second
-Python VM), so intent-matching logic can evolve without code changes. For now
-the intent system uses the **already-existing Rust** implementation
-(`resolve_intent` / `fetch_for_turn` in `brassclaw_engine`); the
-recipe/instruction-driven second-VM version is **future work** — only do what
-is necessary for a working intent system. The intent system tries to find a
-match and returns either a **matching id** (or whatever identifies the match
-exactly) or a **"no match"** message back to the global orchestrator's active task.
+Reuse the ordinary retained matcher and coherent catalogue selection in the
+existing global path. `resolve_intent` / `fetch_for_turn` also appear in legacy
+compatibility consumers; inspect the actual caller before changing routing.
+Any future Recipe-owned matching sequence must use supported primitives on the
+same global service, not a second VM. Matching must retain the exact Recipe,
+variant and catalogue selection. Only actual No-Match enters Tier 2; ambiguity,
+database errors and unsupported or corrupt active selections remain distinct
+errors and must not be converted into No-Match.
 
 #### Phase 3 — dispatch
 
@@ -736,12 +831,17 @@ itself decides whether the LLM is needed:
 instruction, so the user's input is sent to the LLM as a **standard prompt**
 assembled by the orchestrator:
 
-1. The **chat history belonging to this exact user-input** (few tokens).
-2. The **user's question** (few tokens).
-3. A huge prefix called the **base-prompt**, where all the information about
-   BrassClaw — about all tools, recipes, skills, etc. — is **precompiled**, so
-   the LLM's answer is very fast while having access to information starting at
-   roughly **250k tokens** and pushable up to **1 million** prefix tokens.
+1. Eligible history for this exact conversation/input.
+2. The user's question.
+3. The specific prefix selected by Recipe, Orchestrator or role, or compatible
+   base-prompt when no specific prefix is selected. This default is not Tier-2-only.
+   Missing/incompatible explicit selection blocks the call instead of substituting
+   base. Shared source knowledge is not compulsory whole-base inheritance.
+
+Do not assume a fixed prefix size or claim low latency from precompilation alone.
+Large-prefix generation, serving and cache/quality acceptance remain owned by the
+prefix plan. Disabled discretionary token budgets do not disable technical limits
+or authorize silently truncating required content.
 
 The global orchestrator posts the task's LLM answer into its originating chat, then saves a
 **thorough history** so the **kohai/sempai system can build new intents,
@@ -751,23 +851,50 @@ that still needs an LLM remains Tier 1. Qualified MCP discovery/commands already
 same matching/Recipe path; broader library qualification remains open. MCP
 does not expose Python, raw Tools or a direct Monty/IBS execution port.
 
-This is **Tier 2**. It is **not "raw LLM"** — it is a recipe/instruction-driven
-non-match routine (only the basic mode's *beginning* is built-in). Because it
-can reuse supported instruction/component contracts for different prompt
-additions or prefixes. Missing transport, binding or runtime support remains
-implementation work; changing a Recipe alone does not implement those contracts.
+This is **Tier 2**: the supported non-match workflow uses retained instructions
+and host boundaries, not an unrestricted alternate agent loop. Reuse supported
+component contracts for prompt additions and prefixes. Missing transport, binding
+or runtime support remains implementation work; changing a Recipe alone does
+not implement those contracts.
 
-#### Every LLM prompt is assembled by the orchestrator (ground truth 2)
+#### Prompt assembly ownership (binding target)
 
-**Every** LLM prompt — whether it belongs to a Recipe, the non-match path, the
-Validation-System, the Component-Creation-System, or the kohai-sempai-system —
-is **assembled by the orchestrator**, which tells each system what to do and
-how to do it. Every LLM prompt is orchestrated **step by step**: *fetch this
-information, now format it for this LLM's needs, now add these sentences to
-it*, etc., until the prompt is finally created.
+Recipes/PythonCode own the sequence of context acquisition and prompt composition
+for matched, non-match, validator and Kohai/Sempai work. Rust supplies the supported
+model transport, native accounting and effect custody. This ownership target does
+not establish that all compatibility consumers have already migrated.
 
-The **kohai is always the last one** working on an LLM prompt, because it
-**exchanges the placeholders with the prefix prompts**.
+Use the [shared pair-design/selection contract](docs/reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26).
+The generator finishes and immutably stores each profile's prefix already formatted
+for its concrete provider/model pair. Generator and Kohai use the same stored,
+accepted design revision for that pair; Sempai also uses that revision when the
+same pair is its provider/model. Role content rules and generated prefixes remain
+separate.
+Orchestrator prompt → Kohai formats only the dynamic prompt for the target pair
+→ optional connected Sempai optimizes/corrects that already formatted prompt and
+returns the final dynamic prompt → Kohai inserts the selected finished prefix
+unchanged exactly once before it → full actual-request guard → model.
+There is no second Kohai formatting stage after Sempai's return.
+The final join uses Sempai's returned dynamic prompt, not the original or the
+pre-correction version. Without Sempai it uses Kohai's initially formatted prompt.
+Sempai's own generated prefix remains part of its separate review request.
+The [explicit two-request handoff](docs/reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests)
+distinguishes the formatted final-target prompt from Sempai's own model request.
+The fixed final prefix/design/limits are not editable review output. Sempai's own
+call uses its pair-specific reviewer generation. No whole-prefix runtime rendering,
+independent mutable limits or provider host/template/service changes. All views
+edit the same canonical provider policy through its existing endpoint/query;
+historical immutable pins remain labelled evidence. Use typed inputs, never source
+substitution. Final technical limits apply even with discretionary budgeting off.
+This is a binding target, not proof that existing compatibility callers implement it.
+
+The formatting part of a model design must contain the actual
+[construction instructions](docs/reborn/model-token-limits.md#formatting-design-must-contain-construction-instructions):
+provider-exposed defaults plus researched exact model/template/backend evidence,
+pinned sources and concrete prefix/prompt/join rules validated through the selected
+adapters. Cache documentation guides only evidenced supported construction choices;
+never guess deployment precision/layout or copy irrelevant cache manuals into each
+role prefix. Store and consume the resulting pair design, not just notes or labels.
 
 #### Tool Binding — how Tools become callable
 
@@ -840,17 +967,25 @@ for missing primitives or required infrastructure support.
 |-------|--------|------|
 | 1 | Add intent examples to an existing `RecipeVariant` | Zero new components — just new rows in `reborn_intent_inputs` |
 | 2 | Add a new `RecipeVariant` to an existing `Recipe` | One new variant + intent examples; reuses existing PythonCode snippets and ToolSkills |
-| 3 | Reference an existing PythonCode snippet in the new variant's `step_descriptions` | No new PythonCode row needed |
-| 4 | Reference an existing ToolSkill in the new variant's `channel:"rust"` step | No new ToolSkill row needed |
+| 3 | Reference existing PythonCode in Recipe `step_descriptions`, selected by the variant's `step_link` | No new PythonCode row needed |
+| 4 | Reference an existing ToolSkill in a step with persisted `knowledge:"rust"` | No new ToolSkill row needed |
 | 5 | Create only missing PythonCode/ToolSkill/Skill/Recipe rows through supported stores/seeders | Reuse compatible components; no new primitive unless needed; store/runner gaps remain implementation work |
 | 6 | Write a new Rust Tool + full set of components | Only when no existing Tool provides the primitive |
 
-**Check the component library before authoring anything new.** The Sempai grows the library with use; over time more tasks are covered by level 1–2 alone.
+**Check the component library before authoring a new component.** Reuse supported
+usages and workflows; ordinary documentation or infrastructure edits do not require
+a fresh inventory of the entire library.
+
+This is a reuse order, not permission to mutate approved versions. Changes use
+reviewed immutable successors and coherent activation; running tasks retain their
+original selections. Infrastructure gaps are repaired in their owning layer.
 
 **Required authoring rules** (verify actual Q1/runtime enforcement):
-- **One leaf skill per approach**: Three skills covering three patterns is better
-  than one monolithic skill covering all three. If a tool has N common usage
-  patterns, author N leaf skills.
+
+- **One Skill per required Tool-usage pattern:** reuse a compatible existing
+  Skill first; create a distinct usage when its contract or behavior requires it.
+  Do not hide unrelated usages in one monolithic Skill or author every imaginable
+  Tool pattern merely because it might be useful later.
 - **One predictable layout/workflow per variant**: Compatible variants may share
   a Recipe. Give every variant verified positive/negative intent examples and a
   nonempty `step_link`. Split incompatible operations/layouts into separate
@@ -893,19 +1028,31 @@ The built-in archive, tomedo reference and Zencoder plan are historical/worked
 examples; verify their schema, bindings and signatures before reuse. They do not
 supersede the ground-truth input, approval, version or Tool-policy contracts.
 
-### Recipe Tier Lifecycle — LLM as One-Time Cost
+### Recipe tiers and approval lifecycle
 
-**The LLM is a one-time cost per pattern. Recipes are the permanent return.**
+Reusable Recipes can avoid repeated LLM reasoning for eligible deterministic
+work. Tier-1 execution and optional post-turn review can still consume model
+tokens. Do not infer total task cost or latency from a tier label alone.
 
 The three tiers map directly to what happens on a given turn:
 
-| Tier | Condition | LLM call | Typical cost |
-|------|-----------|----------|--------------|
-| **0** | Recipe matched; `llm_call_required: false` | ❌ never | Zero tokens |
-| **1** | Recipe matched; `llm_call_required: true` | ✅ guided by recipe prior-knowledge | Low |
-| **2** | No match — Non-Matching-Mode | ✅ full reasoning over base-prompt | Full |
+| Tier | Required execution behavior | LLM use during that execution |
+|------|-----------------------------|-------------------------------|
+| **0** | Matched, qualified deterministic Recipe with no LLM step; shell and spawn_subagent are excluded | None |
+| **1** | Matched Recipe requiring explicit reasoning/composition, shell or spawn_subagent | As required by its supported, reviewed workflow |
+| **2** | Actual No-Match enters the supported non-match workflow | Model reasoning with the assembled context |
 
-**Why Tier 2 matters:** The first time a user asks something new, no recipe matches. The LLM reasons through it. The **Sempai interceptor** reviews the completed turn, evaluates the outcome, and `proposed_recipe_updates` + `proposed_intent_examples` enter the validation queue via `PgSempaiProposalSink`. After **Q1** (automated, sandboxed) and **Q2** (human review — mandatory, never automated), the recipe graduates to `validated`. After coherent activation, subsequent matches use the Recipe at its verified tier. Deterministic Tier-0 Recipes make zero LLM calls; Tier-1 Recipes retain their explicit LLM work. Approval does not guarantee zero execution latency.
+`llm_call_required` is a declaration to validate against the actual workflow, not
+proof of the tier or permission to omit a required LLM/confirmation step.
+
+**Why Tier 2 matters:** When no approved Recipe matches, the model reasons through
+the admitted input. Completed-turn review may propose reusable components or
+intent examples; existing proposal infrastructure includes `PgSempaiProposalSink`.
+Recipe-owned Sempai semantics and complete validator routes remain work tracked
+by the status index and `path_to_v3.5.md`. A proposal or `validated` label alone
+does not activate a workflow. Changed authored components need own trusted Q1,
+behavioral evidence, human Q2 and coherent activation before later tasks select
+them. First-party bootstrap follows its separate contract below.
 
 **Why pre-seeded extensions exist:** Trusted first-party bootstrap supplies
 validated components through a distinct integrity-checked system path, without
@@ -915,7 +1062,9 @@ requiring LLM work, shell or spawn_subagent remain Tier 1. Authored updates and
 operator overrides follow their required Q1/human-Q2 approval path. Pre-seeding
 encodes reusable usage and workflow knowledge; it does not grant Tool permission.
 
-**The Sempai grows the library.** Patterns the extension author didn't anticipate — novel combinations, edge-case filters, multi-step flows — emerge from Tier-2 turns. The Sempai proposes them; Q1+Q2 graduates them. The library grows through reviewed reusable components; missing primitives or runtime contracts still require implementation.
+**Sempai proposals can grow the library.** Novel combinations and reusable
+patterns must still pass the applicable review and activation path. Missing
+primitives or runtime contracts require implementation, not a new approval label.
 
 **Conceptual Tier-1 workflow — not persisted Recipe JSON:**
 
@@ -958,11 +1107,14 @@ Remaining migration is owned by simplified v3; never extend these as new grants.
 
 Components carry `consumer_tags[]` that control which agent roles may access them. The `sender_class_code` on a turn maps to a consumer tag; `PostgresSource` enforces a `SEC-01` validation gate — only `Validated` components are returned. Actions (class **16**) are exempt from the prior-knowledge token budget. (Class 11 is unallocated — see the class code table above.)
 
-### 4-Queue Validation Lifecycle (§3.5.1)
+### Legacy validation queue labels (§3.5.1)
 
 These stores remain in use. The complete class-specific review workflows and
 standalone pure approval are still owned by validator_v3.md. Historical body
 checks below do not replace retained preload/export validation.
+The labels do not define the v3 check set: Q1 is the required automated review
+workflow, with LLM work only where its supported checks require it. A queue
+transition or clean LLM response alone does not establish the required own functional Q1.
 
 | Queue | Code | Meaning |
 |-------|------|---------|
@@ -971,9 +1123,25 @@ checks below do not replace retained preload/export validation.
 | Q3 | `revision` | Automated revision by class-09 extension |
 | Q4 | `rejection` | Rejected; retained for `q4_retention_days` then wiped |
 
-State transitions enforced by `is_valid_transition` in `brassclaw_product_workflow::recipes`. For Orchestrator (10) and Scaffold (50) classes, `Q1→Q2` requires a clean LLM audit pass.
+The Q4 retention description is legacy queue behavior, not authorization to delete
+LLM history, immutable reviews, selected revisions or artifacts needed by tasks.
+Preserve that evidence under the binding retention/recovery contracts when migrating
+or repairing queue consumers.
 
-**Recovery from Q4 rejection:** Read the Q1 audit output — it will identify the specific violation (forbidden symbol, wrong `class_code`, missing `result =` assignment, channel isolation error, `step_link` without `RecipeVariant.description`, etc.). Fix the component and re-submit. **Do not rewrite the capability as Rust because a recipe was rejected.** Fix the recipe. Common Q1 failure causes:
+Current legacy state transitions are enforced by `is_valid_transition` in
+`brassclaw_product_workflow::recipes`; its class-10/50 clean-audit rule is an
+implementation observation, not a future Scaffold validator. The open class-50
+retirement closes new authoring/import/approval/publication paths while preserving
+historical decoding and valid old task selections. Class-10 protection remains.
+
+**Recovery from Q4 rejection:** Read the actual audit output and identify the
+failed contract. Historical checks for top-level `result =` assignments do not
+define the retained preload interface: use declared exports and typed returns.
+Create a corrected successor and resubmit through the supported path; do not
+mutate an approved original. Missing audit evidence is incomplete, not proof of
+a specific candidate defect. **Do not rewrite a capability as Rust merely because
+a Recipe was rejected.** Common failures include:
+
 - Tool usage missing its required `host.<tool>(...)` call; pure-logic
   PythonCode may make zero calls; retained preloads return through a declared export
 - `import os` / `import subprocess` / `exec(` / `eval(` / `open(` in PythonCode body
@@ -1081,7 +1249,9 @@ The Sempai/Kohai review loop intercepts each agent turn:
 | `KohaiPort` | `crates/brassclaw_engine/src/executor/kohai_port.rs` | Engine-side port for Kohai LLM bundle (impl: `PgKohaiPort` in composition) |
 | `OrchestratorCodePort` | `crates/brassclaw_engine/src/executor/orchestrator_code_port.rs` | Engine-side port for loading the class-10 Orchestrator body from `reborn_skills` (impl: `PgOrchestratorCodePort` in composition, gated `postgres+skills-db`) |
 
-All I/O is async with tokio. Use `Arc<T>` for shared state, `RwLock` for concurrent access.
+Use the existing async I/O interfaces and runtime adapters. Use `Arc<T>` for
+shared ownership when needed; choose synchronization for the actual access pattern.
+Do not add an `RwLock` by default or hold a blocking lock across `.await`.
 
 **LLM data is never deleted.** All LLM output — context fed to the model, reasoning, tool calls, messages, events, steps — is the most valuable data in the system. Never strip, truncate, or delete it from the database. Mark with timestamps, make filterable, but always retain. In-memory HashMaps are caches; the database (via Workspace) is the source of truth.
 
@@ -1109,26 +1279,30 @@ historical evidence and must not become alternative development/build trees.
 Before publishing, stage the reviewed common tree, verify it, and use an ordinary
 fast-forward push; never copy an old validation snapshot over current source.
 
-> **Mandatory:** Every `cargo build`/`test`/`clippy`/`check` **must** set
-> `CARGO_TARGET_DIR=/Users/ollama/brassclaw-target` (NVMe) — never build in-place on the
-> slow external repo drive. **Before** compiling, check free space on that volume and clean
-> it if it is too full:
+> **Mandatory on this host:** use the configured
+> `CARGO_TARGET_DIR=/Users/ollama/brassclaw-target` (NVMe), supplied by Codex.
+> Invoke Cargo directly without an inline target override or shell wrapper.
+> Before each compilation, check free space on that volume:
 >
 > ```bash
 > df -h /Users/ollama/brassclaw-target          # check before every compile
-> # If Avail < 15 GB or Capacity > 90%, clean first:
-> CARGO_TARGET_DIR=/Users/ollama/brassclaw-target cargo clean
-> # Then run the actual command with the target dir set:
-> CARGO_TARGET_DIR=/Users/ollama/brassclaw-target cargo <build|test|clippy|check> ...
 > ```
 >
-> The NVMe target dir accumulates multi-GB artifacts and can fill the 228 GB volume
-> mid-build, starving/corrupting the run — the space check + clean is mandatory, not optional.
+> If available space is below 15 GB or usage exceeds 90%, preserve required
+> executable evidence and clean disposable build artifacts before compiling.
+> Follow AGENTS.md and the development policy; never clean the repository's whole
+> `target` directory, which contains retained evidence. Do not clean routinely
+> when capacity is sufficient. Other hosts use their configured canonical target.
+
+The commands below are examples to select for the affected claim, not a checklist.
+Keep Cargo executions serial under `/private/tmp/brassclaw-target-cargo.lock`.
+Use relevant features and targets; passing tests can also establish compilation
+for the targets/features they actually built. Required lint and acceptance remain.
 
 ```bash
 cargo fmt --all -- --check                              # submission formatting
 cargo test -p <crate_name> <relevant_test>               # focused behavior
-cargo clippy -p <crate_name> --all-targets               # review new warnings
+cargo clippy -p <crate_name> --all-targets -- -D warnings # affected-package lint
 # Add relevant feature flags; PostgreSQL checks cover database semantics.
 
 # Authorization crate — capability lease contract tests (no DB required)
@@ -1138,7 +1312,7 @@ cargo test -p brassclaw_authorization
 BRASSCLAW_PG_URL=postgresql://brassclaw@127.0.0.1:5434/brassclaw \
   cargo test -p brassclaw_authorization --features integration
 
-# Build the Reborn binary for release/performance work only
+# Optimized local binary for required release/performance checks
 cargo build --release --bin brassclaw
 
 # Run with logging
@@ -1149,15 +1323,26 @@ BRASSCLAW_REBORN_LOG=brassclaw=debug cargo run
 
 `cargo build` on this workspace is slow. Capture output once and inspect it multiple times — do **not** rerun the build just to see different output:
 
-```bash
-# Capture and display simultaneously
-cargo build --release --bin brassclaw 2>&1 | tee build.log
+Use a fresh log path for a new validation batch; `build.log` below is illustrative.
+Keep earlier logs needed for evidence or diagnosis instead of overwriting them.
 
-# Analyse the saved log without rebuilding
-grep "^error" build.log
-grep -n "warning\|error" build.log | head -40
-cat build.log | less
+```bash
+# Run this as a separate shell invocation; leave the pipeline as its final command.
+# pipefail makes a Cargo or log-write failure fail this invocation.
+set -o pipefail
+cargo build -p brassclaw --bin brassclaw 2>&1 | tee build.log
 ```
+
+Record that invocation's exit status before inspecting logs. Run log inspection
+in a separate invocation so its status cannot replace the build result:
+
+```bash
+rg -n 'warning|error' build.log
+```
+
+`rg` exits with status 1 when it finds no matching lines; that is not the build
+status. Read complete relevant diagnostics from the saved log. Neither finding
+error text nor finding none substitutes for the recorded build result.
 
 Before repeating any build, test, check or lint, inspect the captured output and
 state what relevant edit or unresolved question requires another run. Reuse
@@ -1171,11 +1356,15 @@ E2E tests: see `tests/e2e/CLAUDE.md`.
 
 ### Automated Release Process
 
-This project uses GitHub Actions for automated releases. **Do not build binaries manually.**
+Release publication uses GitHub Actions. Do not manually build/upload replacement
+release assets. Local builds for development, acceptance or performance are allowed
+when required by the development policy.
 
 ### How to Create a Release
 
-Simply push a version tag:
+After required release acceptance and explicit release authorization, push the
+approved version tag. These commands illustrate the syntax; use the actual
+approved version, not the example version:
 
 ```bash
 git tag v1.3.0
@@ -1183,7 +1372,9 @@ git push origin v1.3.0
 ```
 
 GitHub Actions will automatically:
-1. Build binaries for all platforms (Linux x86_64, macOS ARM64, macOS x86_64)
+
+1. Build the application and Monty worker for the configured release targets
+   (currently Linux x86_64, macOS ARM64 and macOS x86_64)
 2. Generate SHA256 checksums for each binary
 3. Create a GitHub release with auto-generated release notes
 4. Upload all artifacts (binaries + checksums) to the release
@@ -1193,27 +1384,26 @@ GitHub Actions will automatically:
 - **Workflow runs**: https://github.com/chtugha/brassclaw/actions/workflows/release.yml
 - **All actions**: https://github.com/chtugha/brassclaw/actions
 
-### Supported Platforms
+### Current release targets
 
-- **Linux x86_64**: `x86_64-unknown-linux-musl` (statically linked)
+- **Linux x86_64**: `x86_64-unknown-linux-gnu` (current release workflow)
 - **macOS ARM64**: `aarch64-apple-darwin` (Apple Silicon)
 - **macOS x86_64**: `x86_64-apple-darwin` (Intel)
 
 ### Release Workflow Details
 
-See `CICD_SETUP_DOCUMENTATION.md` for comprehensive documentation on:
-- Workflow architecture
-- Build process details
-- Testing procedures
-- Troubleshooting guide
-- Maintenance instructions
+Use [.github/workflows/release.yml](.github/workflows/release.yml) for current
+targets, build commands and artifact publication. The
+[archived CI/CD guide](docs/archive/CICD_SETUP_DOCUMENTATION.md) provides historical
+background only; verify its commands against the current workflow before reuse.
 
 ### Important Notes
 
 - **Never manually build and upload binaries** - always use the automated workflow
 - **Tag format**: Use semantic versioning with `v` prefix (e.g., `v1.2.9`, `v1.3.0`)
-- **Build time**: Expect 10-15 minutes for all platforms to build
-- **Artifacts**: Each release includes 6 files (3 binaries + 3 checksums)
+- **Build time**: Depends on runner capacity and caches; inspect the actual run.
+- **Artifacts**: The current matrix publishes the application, Monty worker and
+  both checksums for each of three targets (12 files). The workflow is authoritative.
 
 ## Project Structure
 
@@ -1227,7 +1417,7 @@ crates/
 │   └── brassclaw_reborn_webui_ingress/  # WebUI v2 gateway adapter and ingress
 │
 ├── Persistence
-│   ├── brassclaw_pg/               # Postgres pool, migration runner, SQL migrations V000–V086
+│   ├── brassclaw_pg/               # Postgres pool, migration runner, versioned SQL migrations
 │   └── brassclaw_embedded_postgres/ # Self-managed embedded Postgres lifecycle
 │
 ├── Agent loops and engine
@@ -1279,17 +1469,20 @@ tests/
 
 ## Module Specs
 
-When modifying a module with a spec, read the spec first. Code follows spec; spec is the tiebreaker.
+When modifying a module with a spec, read it first and reuse that knowledge while
+it remains current. Binding v3 guides and the current implementation index take
+precedence over historical subsystem descriptions. The development policy governs
+iteration and check selection; required subsystem acceptance remains binding.
 
 | Module | Spec |
 |--------|------|
 | `crates/brassclaw_reborn_cli/` | `crates/brassclaw_reborn_cli/AGENTS.md` |
 | `crates/brassclaw_reborn/` | `crates/brassclaw_reborn/CLAUDE.md` |
 | `crates/brassclaw_reborn_composition/` | `crates/brassclaw_reborn_composition/CLAUDE.md` |
-| `crates/brassclaw_reborn_config/` | `crates/brassclaw_reborn_config/CLAUDE.md` |
+| `crates/brassclaw_reborn_config/` | `crates/brassclaw_reborn_config/AGENTS.md` |
 | `crates/brassclaw_agent_loop/` | `crates/brassclaw_agent_loop/CLAUDE.md` |
 | `crates/brassclaw_llm/` | `crates/brassclaw_llm/CLAUDE.md` |
-| `crates/brassclaw_safety/` | `crates/brassclaw_safety/CLAUDE.md` |
+| `crates/brassclaw_safety/` | `crates/brassclaw_safety/AGENTS.md` |
 | `crates/brassclaw_embeddings/` | `crates/brassclaw_embeddings/AGENTS.md` |
 | `crates/brassclaw_reborn_webui_ingress/` | `crates/brassclaw_reborn_webui_ingress/CLAUDE.md` |
 | `crates/brassclaw_engine/` | `crates/brassclaw_engine/CLAUDE.md` |
@@ -1297,15 +1490,13 @@ When modifying a module with a spec, read the spec first. Code follows spec; spe
 
 ## Token Budget
 
-BrassClaw Reborn targets 7B-14B LLMs within an 8,192-token context window.
-
-| Budget item | Tokens |
-|-------------|--------|
-| Total context | 8,192 |
-| Base prompt (prefix + injected components) | 2,048 |
-| Remaining for history, tools, response | ~6,144 |
-
-Compaction is triggered when the in-context history would exceed the budget. Workspace memory (persistent, chunked, searchable) is the mechanism for retaining information across compaction boundaries.
+Discretionary token budgets default off. When disabled, do not impose fixed
+retrieval, history, assembly or task quotas. Accounting remains enabled; actual
+provider/model context and output limits remain technical constraints.
+Use the canonical provider/model policy and prefix owner for request sizing;
+do not introduce an independent 8,192-token application budget or promise that
+historical large-prefix experiments fit the current model. Required final request
+guards and remaining consumer migration are tracked in the implementation index.
 
 ## Skills
 
@@ -1327,7 +1518,7 @@ representation must not be described as a prose-only architectural definition.
 | 2 | skill_monty | Same Skill definition; not a domain-level Skill. |
 | 3 | skill_llm | Same Skill definition; consumer classification, not a broader hierarchy. |
 | 10 | Orchestrator | Separate component kind sharing `reborn_skills`. |
-| 50 | Scaffold | Separate component kind sharing `reborn_skills`. |
+| 50 | Historical Scaffold | Legacy rows in `reborn_skills`; no new active target class or separate validator. |
 
 Domain context belongs to an Extension/ExtensionCatalogue. Recipes sequence
 the reusable usage units. ToolSkills remain Rust-side IBS binding descriptors.
@@ -1363,16 +1554,19 @@ entirely. Do not reference or recreate any part of it.
 
 ## Configuration
 
-See `.env.example` for all environment variables.
+See `.env.example` for documented environment examples. Check the actual config
+loader and relevant subsystem guide for supported variables, defaults and precedence.
 
 ### Key Reborn Variables
 
-**Bootstrap tier** (fixed set, read before the DB starts — safe as inline `Environment=` in the systemd unit):
+**Process/bootstrap inputs** (read by the relevant startup/configuration code;
+these are not all necessarily consumed before the DB starts). Non-secret values
+may be set in the service environment; keep secrets in the supported secret path.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BRASSCLAW_REBORN_HOME` | `~/.brassclaw/reborn` | Reborn state root |
-| `BRASSCLAW_RUNTIME_PROFILE` | `local_dev` | Per-invocation capability policy: `local_dev` (default), `local_safe`, `local_yolo`, `hosted_safe`, etc. — see `brassclaw runtime-profile list`. Controls the security resolver only; **Postgres is always the storage backend**. `BRASSCLAW_REBORN_PROFILE` (old composition-profile name) is a hard startup error — remove it from any systemd units or env files. |
+| `BRASSCLAW_RUNTIME_PROFILE` | Entry-point dependent | Compatibility runtime-policy selector. The ordinary local CLI builder defaults to `full`; serve preserves its supplied policy and uses `local_dev` only when its policy helper has none. Inspect the actual caller before changing defaults. Explicit values include `local_safe`, `local_dev`, `local_yolo` and `full`. It does not select storage. The old `BRASSCLAW_REBORN_PROFILE` is rejected at startup. Do not extend legacy profiles as v3 authorization requirements. |
 | `BRASSCLAW_REBORN_LOG` | — | Log filter (e.g., `brassclaw=debug`) |
 | `BRASSCLAW_PG_URL` | — | External Postgres URL; optional for single-host local deployments (embedded Postgres used when absent), required for hosted/production |
 | `BRASSCLAW_EMBEDDED_PG_PORT` | 5434 | Override embedded Postgres port |
@@ -1391,13 +1585,21 @@ LLM provider configuration is managed via `brassclaw config set` or the first-ru
 
 All persistence uses Postgres (`brassclaw_pg` crate + embedded Postgres via `brassclaw_embedded_postgres`). In-memory backends are acceptable for **unit tests only** — never in production code or integration paths.
 
-The `postgres` cargo feature in `brassclaw_reborn_composition` is set as a **required default** (`default = ["postgres"]`). Do not add `#[cfg(not(feature = "postgres"))]` fallback paths to production composition or factory code. If you need a non-postgres code path, it belongs only in test fixtures.
+The `brassclaw_reborn_composition` default features are `postgres` and
+`root-llm-provider`; `skills-db` additionally selects the ordinary retained
+catalogue/global execution path. Inspect the actual product manifest and feature
+propagation before choosing validation flags; a package-default build alone does
+not prove the product's `skills-db` path was compiled. Do not add
+`#[cfg(not(feature = "postgres"))]` production composition/factory fallbacks.
 
 The `RebornCompositionProfile` enum and all composition-level profile selection have been removed. There is no `local_dev` vs `hosted` composition split — Postgres is always the backend. `BRASSCLAW_RUNTIME_PROFILE` controls only the per-invocation capability policy (security resolver), never the storage backend. `BRASSCLAW_REBORN_PROFILE` is a hard startup error.
 
 - Treat bootstrap config, DB-backed settings, and encrypted secrets as distinct layers.
 - Do not break config precedence, bootstrap env loading, DB-backed config reload, or post-secrets LLM re-resolution.
-- All config lives in the `brassclaw_config` Postgres table; provider definitions in `brassclaw_llm_providers`.
+- General DB-backed settings use `brassclaw_config`; provider definitions use
+  `brassclaw_llm_providers`. Bootstrap environment and secret material remain
+  distinct, and specialized revisioned settings have their own existing owners.
+  Do not copy them into a competing universal configuration store.
 
 ## WebUI v2
 
@@ -1411,6 +1613,11 @@ WebUI v2 is a React SPA served at `/v2` from the `brassclaw` binary.
 - For non-loopback listeners, use `serve --host 0.0.0.0` only with a non-yolo profile; `local-dev-yolo` with `--confirm-host-access` refuses non-loopback binds
 
 ## Job State Machine
+
+This is a legacy job-status overview, not the global Monty run/attempt recovery
+contract. Moving a job back to `InProgress` does not authorize replaying a Recipe
+or completed effect. Use retained claims, effect reconciliation and the supported
+continuation path; generic durable recovery remains open in the status index.
 
 ```
 Pending -> InProgress -> Completed -> Submitted -> Accepted

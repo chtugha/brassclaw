@@ -195,6 +195,8 @@ pub enum RebornRuntimeError {
     OperationCancelled,
     #[error("invalid scope or identifier: {reason}")]
     InvalidArgument { reason: String },
+    #[error("prefix job request failed: {0}")]
+    PrefixJob(#[from] brassclaw_product_workflow::InterceptorConfigServiceError),
     #[cfg(feature = "root-llm-provider")]
     #[error("llm provider construction failed: {0}")]
     LlmProvider(String),
@@ -261,7 +263,15 @@ pub struct RebornRuntime {
     trigger_conversation_pairing:
         Option<Arc<dyn brassclaw_conversations::ConversationActorPairingService>>,
     budget_event_projection: Option<crate::budget_events::BudgetEventProjection>,
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(
+        test,
+        feature = "test-support",
+        all(
+            feature = "postgres",
+            feature = "root-llm-provider",
+            feature = "skills-db"
+        )
+    ))]
     resource_governor: Arc<dyn brassclaw_resources::ResourceGovernor>,
     #[cfg(any(test, feature = "test-support"))]
     budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore>,
@@ -294,6 +304,14 @@ pub struct RebornRuntime {
     /// Hot-swap handle for the live LLM provider, when one was wired at boot.
     #[cfg(feature = "root-llm-provider")]
     llm_reload: Option<RebornLlmReloadParts>,
+    /// One shared settings/auth publication owner for every WebUI mount.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    llm_configuration: std::sync::OnceLock<Option<Arc<crate::RebornLlmConfigService>>>,
+    /// The same source installed in the memory slot; retained privately for
+    /// reporting its actual client publication through the operator facade.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    memory_embedding_publication:
+        Option<Arc<crate::memory_embedding_source::PgMemoryEmbeddingSource>>,
     /// Shared interceptor mode flag.  Flipped by the settings service when the
     /// operator connects or disconnects a Sempai provider; consumed by
     /// `RebornLoopDriverHost` on every turn to decide routing vs rerouting.
@@ -735,6 +753,13 @@ impl RebornRuntime {
             .map(|parts| Arc::clone(&parts.session))
     }
 
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    pub(crate) fn webui_embedding_publication(
+        &self,
+    ) -> Option<Arc<crate::memory_embedding_source::PgMemoryEmbeddingSource>> {
+        self.memory_embedding_publication.clone()
+    }
+
     /// Shared NEAR AI login-state store. The authenticated start endpoint
     /// issues states and the public callback consumes them.
     #[cfg(feature = "root-llm-provider")]
@@ -752,12 +777,59 @@ impl RebornRuntime {
     /// `None` when no LLM seam or boot config was wired.
     #[cfg(feature = "root-llm-provider")]
     pub fn nearai_login_callback_mount(&self) -> Option<crate::webui_serve::PublicRouteMount> {
-        let session = self.webui_llm_session()?;
-        let reload = self.webui_llm_reload_trigger()?;
-        let states = self.webui_nearai_login_states()?;
-        Some(crate::nearai_login_serve::nearai_login_callback_mount(
-            session, reload, states,
-        ))
+        self.llm_reload.as_ref()?;
+        #[cfg(feature = "postgres")]
+        {
+            Some(crate::nearai_login_serve::nearai_login_callback_mount(
+                self.webui_llm_configuration()?,
+            ))
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            None
+        }
+    }
+
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    pub(crate) fn webui_llm_configuration(&self) -> Option<Arc<crate::RebornLlmConfigService>> {
+        self.llm_configuration
+            .get_or_init(|| {
+                let pool = self.services.pg_pool.clone()?;
+                let tenant = self.webui_tenant_id().to_string();
+                let repo = Arc::new(crate::PgProviderRepo::new(
+                    pool.as_ref().clone(),
+                    tenant.clone(),
+                ));
+                let mut configuration = crate::RebornLlmConfigService::new(
+                    self.services.llm_key_store(),
+                    pool,
+                    repo,
+                    tenant,
+                );
+                if let Some(source) = &self.services.memory_embedding_source {
+                    configuration = configuration.with_memory_embedding_source(source.clone());
+                }
+                if let Some(source) = self.webui_embedding_publication() {
+                    configuration = configuration.with_embedding_publication(source);
+                }
+                if let Some(reload) = self.webui_llm_reload_trigger() {
+                    configuration = configuration.with_reload_trigger(reload);
+                }
+                if let Some(session) = self.webui_llm_session() {
+                    configuration = configuration.with_nearai_session(session);
+                }
+                if let Some(states) = self.webui_nearai_login_states() {
+                    configuration = configuration.with_nearai_login_states(states);
+                }
+                if let Some(sempai) = self.sempai_swappable() {
+                    configuration = configuration.with_sempai_swappable(sempai);
+                }
+                if let Some(mode) = self.interceptor_mode() {
+                    configuration = configuration.with_interceptor_mode(mode);
+                }
+                Some(Arc::new(configuration))
+            })
+            .clone()
     }
 
     /// Live LLM-provider reload trigger for the settings service. Returns the
@@ -1997,28 +2069,36 @@ pub async fn build_reborn_runtime(
     // database snapshot before gateway construction or worker admission. CLI
     // file/environment resolution cannot supply an alternative provider.
     #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
-    let (llm, selected_context_window_tokens, selected_cache_retention) = {
+    let (llm, selected_context_window_tokens, selected_cache_retention, provider_boot_failure) = {
         drop(llm);
         match services.pg_pool.as_ref() {
-            Some(pool) => match crate::llm_catalog::resolve_provider_selection_db(
-                pool,
-                validated_identity.tenant_id.as_str(),
-                &services.llm_key_store(),
-            )
-            .await
-            .map_err(|_| {
-                RebornRuntimeError::LlmProvider(
-                    "stored primary selection could not be resolved before runtime startup".into(),
+            Some(pool) => {
+                let boot = crate::llm_catalog::resolve_boot_provider_selection_db(
+                    pool,
+                    validated_identity.tenant_id.as_str(),
+                    &services.llm_key_store(),
                 )
-            })? {
-                Some((config, definition)) => (
-                    Some(ResolvedRebornLlm::from_llm_config(config)),
-                    definition.context_window_tokens,
-                    definition.cache_retention,
-                ),
-                None => (None, None, None),
-            },
-            None => (None, None, None),
+                .await
+                .map_err(|_| {
+                    RebornRuntimeError::LlmProvider(
+                        "stored provider snapshot could not be read before runtime startup".into(),
+                    )
+                })?;
+                match boot.selection {
+                    Some(selected) => (
+                        Some(
+                            ResolvedRebornLlm::from_llm_config(selected.config)
+                                .with_publication(selected.revision)
+                                .with_dispatch_guard(selected.guard),
+                        ),
+                        selected.definition.context_window_tokens,
+                        selected.definition.cache_retention,
+                        boot.failure,
+                    ),
+                    None => (None, None, None, boot.failure),
+                }
+            }
+            None => (None, None, None, None),
         }
     };
 
@@ -2512,6 +2592,28 @@ pub async fn build_reborn_runtime(
     //    building a real gateway only to discard it wastes startup work (and, on
     //    the cold-boot path, an LLM session manager), which made
     //    timeout-sensitive tests flaky. When no override is set, build normally.
+    #[cfg(feature = "root-llm-provider")]
+    let task_provider_configuration = services.pg_pool.as_ref().map(|pool| {
+        let configuration = crate::task_model_provider::TaskProviderConfiguration::new(
+            pool.as_ref().clone(),
+            validated_identity.tenant_id.as_str(),
+            services.llm_key_store(),
+        );
+        #[cfg(feature = "skills-db")]
+        let configuration = configuration
+            .with_memory_source(services.memory_embedding_source.clone())
+            .with_final_encoding(
+                services.source_inspection.clone(),
+                resource_governor_for_accountant.clone(),
+            );
+        configuration
+    });
+    #[cfg(all(
+        feature = "postgres",
+        feature = "root-llm-provider",
+        feature = "skills-db"
+    ))]
+    let review_task_configuration = task_provider_configuration.clone();
     #[cfg(all(feature = "root-llm-provider", any(test, feature = "test-support")))]
     let (model_gateway, llm_cost_table, llm_reload) = match model_gateway_override {
         Some(override_gateway) => (override_gateway, None, None),
@@ -2521,6 +2623,8 @@ pub async fn build_reborn_runtime(
                 live_max_output.clone(),
                 live_total_input.clone(),
                 resolved_cache_retention_final.clone(),
+                task_provider_configuration,
+                provider_boot_failure,
             )
             .await?
         }
@@ -2534,6 +2638,8 @@ pub async fn build_reborn_runtime(
         live_max_output.clone(),
         live_total_input.clone(),
         resolved_cache_retention_final.clone(),
+        task_provider_configuration,
+        provider_boot_failure,
     )
     .await?;
     #[cfg(all(
@@ -2551,7 +2657,7 @@ pub async fn build_reborn_runtime(
     let (model_gateway, llm_cost_table) = build_production_model_gateway()?;
 
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-    if let (Some(pool), Some(slot)) = (
+    let memory_embedding_publication = if let (Some(pool), Some(slot)) = (
         services.pg_pool.as_ref(),
         services.memory_embedding_source.as_ref(),
     ) {
@@ -2559,20 +2665,23 @@ pub async fn build_reborn_runtime(
             .as_ref()
             .map(|parts| parts.session.clone())
             .unwrap_or_else(|| Arc::new(brassclaw_llm::SessionManager::new(Default::default())));
-        slot.attach(Arc::new(
+        let source = Arc::new(
             crate::memory_embedding_source::PgMemoryEmbeddingSource::new(
                 pool.as_ref().clone(),
                 validated_identity.tenant_id.to_string(),
                 services.llm_key_store(),
                 session,
             ),
-        ))
-        .map_err(|_| {
+        );
+        slot.attach(source.clone()).map_err(|_| {
             RebornRuntimeError::LlmProvider(
                 "memory embedding source could not be attached before startup".into(),
             )
         })?;
-    }
+        Some(source)
+    } else {
+        None
+    };
 
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
     let interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode> = services
@@ -2598,9 +2707,32 @@ pub async fn build_reborn_runtime(
         if let Some(mode) = &interceptor_mode {
             configuration = configuration.with_interceptor_mode(mode.clone());
         }
-        configuration.restore_sempai_from_db().await.map_err(|_| {
+        if configuration.restore_sempai_from_db().await.is_err() {
+            // The placeholder cannot dispatch. Keep the configured failure in
+            // the existing publication owner and allow operator repair. Task
+            // capture still requires this originally configured role; it never
+            // treats restoration failure as permission to omit interception.
+            tracing::warn!(
+                reason_kind = "sempai_startup_preparation_failed",
+                "stored Sempai usage is unavailable; administration remains available"
+            );
+        }
+        let sempai_source = configuration.into_sempai_preparation().map_err(|_| {
             RebornRuntimeError::LlmProvider(
-                "stored Sempai selection could not be restored before runtime startup".into(),
+                "Sempai configuration preparation could not be attached".into(),
+            )
+        })?;
+        crate::llm_reload::RebornLlmReloadAdapter::new(
+            parts.reload_handle.clone(),
+            parts.session.clone(),
+            services.llm_key_store(),
+            pool.clone(),
+            tenant,
+        )
+        .attach_preparation(Some(sempai_source))
+        .map_err(|_| {
+            RebornRuntimeError::LlmProvider(
+                "primary configuration preparation could not be attached".into(),
             )
         })?;
     }
@@ -2878,6 +3010,15 @@ pub async fn build_reborn_runtime(
                 resource_store_settings,
             )
             .await?;
+        catalogue
+            .bind_tool_credential_sources(services.tool_credential_sources.clone().ok_or_else(
+                || RebornRuntimeError::InvalidArgument {
+                    reason: "global Monty requires its original Tool credential sources".into(),
+                },
+            )?)
+            .map_err(|_| RebornRuntimeError::InvalidArgument {
+                reason: "global Tool credential sources were already bound".into(),
+            })?;
         let settings_owner = crate::live_monty_settings::MontySettingsOwner::start(
             pool.clone(),
             owner.client(),
@@ -3359,6 +3500,12 @@ pub async fn build_reborn_runtime(
         thread_service.clone(),
         thread_scope.clone(),
         crate::completed_turn_review::ReviewSource {
+            task_sources: review_task_configuration.and_then(|configuration| {
+                llm_reload
+                    .as_ref()
+                    .map(|reload| configuration.with_session(reload.session.clone()))
+            }),
+            max_output_tokens: live_max_output.clone(),
             preparation: installed_catalogue
                 .preparation_limits()
                 .await
@@ -3398,6 +3545,17 @@ pub async fn build_reborn_runtime(
         )) as Arc<dyn brassclaw_turns::run_profile::SystemInferencePort>
     });
     let planned_turn_coordinator: Arc<dyn TurnCoordinator> = composition.coordinator.clone();
+    // The factory's substrate coordinator is replaced by the assembled runtime
+    // coordinator. Auth continuations must use that same final owner too; keeping
+    // the factory dispatcher strands a completed credential at the old store.
+    // Preserve all concrete auth/custody/provider ports and change only routing.
+    services.product_auth = services.product_auth.as_ref().map(|auth| {
+        Arc::new((**auth).clone().with_continuation_dispatcher(Arc::new(
+            brassclaw_product_workflow::ProductAuthTurnGateResumeDispatcher::new(Arc::clone(
+                &planned_turn_coordinator,
+            )),
+        )))
+    });
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     installed_catalogue
         .bind_child_runtime(
@@ -3664,7 +3822,15 @@ pub async fn build_reborn_runtime(
         #[cfg(any(test, feature = "test-support"))]
         trigger_conversation_pairing: trigger_conversation_pairing_value,
         budget_event_projection,
-        #[cfg(any(test, feature = "test-support"))]
+        #[cfg(any(
+            test,
+            feature = "test-support",
+            all(
+                feature = "postgres",
+                feature = "root-llm-provider",
+                feature = "skills-db"
+            )
+        ))]
         resource_governor: resource_governor_for_accountant,
         #[cfg(any(test, feature = "test-support"))]
         budget_gate_store: budget_gate_store_for_accountant,
@@ -3690,6 +3856,10 @@ pub async fn build_reborn_runtime(
         plan_state_slot,
         #[cfg(feature = "root-llm-provider")]
         llm_reload,
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        llm_configuration: std::sync::OnceLock::new(),
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        memory_embedding_publication,
         #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
         interceptor_mode,
     })
@@ -3854,6 +4024,8 @@ async fn build_production_model_gateway(
     max_output_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
     total_input_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
     cache_retention: Option<String>,
+    task_configuration: Option<crate::task_model_provider::TaskProviderConfiguration>,
+    mut boot_failure: Option<crate::llm_catalog::BootProviderFailure>,
 ) -> Result<
     (
         Arc<dyn brassclaw_loop_support::HostManagedModelGateway>,
@@ -3872,27 +4044,76 @@ async fn build_production_model_gateway(
     // handle. That way the FIRST configuration made through the settings UI
     // hot-swaps the placeholder into a working provider without a restart —
     // otherwise a cold boot would wire a dead stub with no reload seam.
-    match llm {
+    let (bundle, configured) = match llm {
         Some(cfg) => {
-            let LlmGatewayBundle {
-                gateway,
-                policy,
-                reload,
-            } = build_llm_gateway(cfg, max_output_tokens, total_input_tokens, cache_retention)
-                .await?;
-            Ok((gateway, Some(policy.build_cost_table()), Some(reload)))
+            let target = cfg
+                .publication
+                .clone()
+                .map(|selection| brassclaw_llm::ProviderPublication::Configured { selection });
+            match build_llm_gateway(
+                cfg,
+                max_output_tokens.clone(),
+                total_input_tokens.clone(),
+                cache_retention,
+                task_configuration.clone(),
+            )
+            .await
+            {
+                Ok(bundle) => (bundle, true),
+                Err(_) => {
+                    boot_failure = Some(crate::llm_catalog::BootProviderFailure {
+                        target,
+                        reason_kind: "primary_client_startup_preparation_failed",
+                    });
+                    (
+                        build_placeholder_llm_gateway(
+                            max_output_tokens,
+                            total_input_tokens,
+                            task_configuration,
+                        )
+                        .await?,
+                        false,
+                    )
+                }
+            }
         }
-        None => {
-            let LlmGatewayBundle {
-                gateway, reload, ..
-            } = build_placeholder_llm_gateway().await?;
-            // No cost table for the placeholder: there is no real model to cost,
-            // and a synthetic table would gate budgets against a model that
-            // isn't actually in use. The budget cost table is (re)derived when a
-            // real provider is configured + the binary restarts.
-            Ok((gateway, None, Some(reload)))
+        None => (
+            build_placeholder_llm_gateway(
+                max_output_tokens,
+                total_input_tokens,
+                task_configuration,
+            )
+            .await?,
+            false,
+        ),
+    };
+    if let Some(failure) = boot_failure {
+        let reason_kind = failure.reason_kind;
+        let error = brassclaw_llm::LlmError::ConfigurationChanged {
+            provider: "stored primary provider".into(),
+        };
+        let failure = match failure.target {
+            Some(target) => brassclaw_llm::ProviderPreparationFailure::selected(error, target),
+            None => error.into(),
+        };
+        // Record the real failed capture under the same publication lock as
+        // reload. This closure cannot publish a client or mark uptake successful.
+        if bundle
+            .reload
+            .reload_handle
+            .publish_primary_from(|| async { Err(failure) })
+            .await
+            .is_ok()
+        {
+            return Err(RebornRuntimeError::LlmProvider(
+                "failed startup provider unexpectedly published a client".into(),
+            ));
         }
+        tracing::warn!(%reason_kind,
+            "stored primary usage is unavailable; administration remains available");
     }
+    let cost_table = configured.then(|| bundle.policy.build_cost_table());
+    Ok((bundle.gateway, cost_table, Some(bundle.reload)))
 }
 
 #[cfg(not(feature = "root-llm-provider"))]
@@ -3950,21 +4171,35 @@ async fn build_llm_gateway(
     max_output_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
     total_input_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
     cache_retention: Option<brassclaw_llm::CacheRetention>,
+    task_configuration: Option<crate::task_model_provider::TaskProviderConfiguration>,
 ) -> Result<LlmGatewayBundle, RebornRuntimeError> {
     let selection = (llm.provider_id().to_owned(), llm.model().to_owned());
     let session = brassclaw_llm::create_session_manager(llm.config.session.clone()).await;
-    let mut raw = brassclaw_llm::build_static_provider_chain(&llm.config, Arc::clone(&session))
-        .await
-        .map_err(|error| RebornRuntimeError::LlmProvider(error.to_string()))?;
+    let mut raw = match llm.dispatch_guard {
+        Some(guard) => {
+            brassclaw_llm::build_static_provider_chain_with_guard(
+                &llm.config,
+                Arc::clone(&session),
+                guard,
+            )
+            .await
+        }
+        None => brassclaw_llm::build_static_provider_chain(&llm.config, Arc::clone(&session)).await,
+    }
+    .map_err(|error| RebornRuntimeError::LlmProvider(error.to_string()))?;
     if let Some(retention) = cache_retention {
         raw = brassclaw_llm::apply_cache_retention(raw, retention);
     }
     wrap_swappable_gateway(
         raw,
         Some(selection),
+        llm.publication
+            .map(|selection| brassclaw_llm::ProviderPublication::Configured { selection })
+            .unwrap_or(brassclaw_llm::ProviderPublication::Untracked),
         session,
         max_output_tokens,
         total_input_tokens,
+        task_configuration,
     )
 }
 
@@ -3973,12 +4208,24 @@ async fn build_llm_gateway(
 /// start; the first configuration applied through the settings UI swaps the
 /// placeholder for a real provider chain with no restart.
 #[cfg(feature = "root-llm-provider")]
-async fn build_placeholder_llm_gateway() -> Result<LlmGatewayBundle, RebornRuntimeError> {
+async fn build_placeholder_llm_gateway(
+    max_output_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    total_input_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    task_configuration: Option<crate::task_model_provider::TaskProviderConfiguration>,
+) -> Result<LlmGatewayBundle, RebornRuntimeError> {
     let session =
         brassclaw_llm::create_session_manager(brassclaw_llm::SessionConfig::default()).await;
     let raw: Arc<dyn brassclaw_llm::LlmProvider> = Arc::new(PlaceholderLlmProvider);
-    // No max_output_tokens or total_input guard for the placeholder — it will error on every call anyway.
-    wrap_swappable_gateway(raw, None, session, None, None)
+    // Retain the same live limit slots for the first configured task too.
+    wrap_swappable_gateway(
+        raw,
+        None,
+        brassclaw_llm::ProviderPublication::Unconfigured,
+        session,
+        max_output_tokens,
+        total_input_tokens,
+        task_configuration,
+    )
 }
 
 /// Wrap a raw provider in a [`SwappableLlmProvider`] + reload handle and build
@@ -3992,9 +4239,11 @@ async fn build_placeholder_llm_gateway() -> Result<LlmGatewayBundle, RebornRunti
 fn wrap_swappable_gateway(
     raw: Arc<dyn brassclaw_llm::LlmProvider>,
     selection: Option<(String, String)>,
+    publication: brassclaw_llm::ProviderPublication,
     session: Arc<brassclaw_llm::SessionManager>,
     max_output_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
     total_input_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    task_configuration: Option<crate::task_model_provider::TaskProviderConfiguration>,
 ) -> Result<LlmGatewayBundle, RebornRuntimeError> {
     use brassclaw_llm::{LlmProvider, LlmReloadHandle, SwappableLlmProvider};
     use brassclaw_reborn::model_gateway::{LlmModelProfilePolicy, LlmProviderModelGateway};
@@ -4004,7 +4253,17 @@ fn wrap_swappable_gateway(
         .as_ref()
         .map(|(id, _)| id.as_str())
         .unwrap_or("unconfigured");
-    let swappable = Arc::new(SwappableLlmProvider::new_with_identity(raw, identity));
+    let swappable = Arc::new(SwappableLlmProvider::new_with_identity(
+        raw.clone(),
+        identity,
+    ));
+    swappable
+        .swap_with_publication(raw, publication)
+        .map_err(|_| {
+            RebornRuntimeError::LlmProvider(
+                "captured primary selection does not match its built client".into(),
+            )
+        })?;
     let reload_handle = Arc::new(LlmReloadHandle::new(Arc::clone(&swappable), None));
     let provider: Arc<dyn LlmProvider> = swappable;
 
@@ -4013,6 +4272,11 @@ fn wrap_swappable_gateway(
     // the operator connects a Sempai selection.
     let sempai_inner: Arc<dyn LlmProvider> = Arc::new(PlaceholderLlmProvider);
     let sempai_swappable = Arc::new(SwappableLlmProvider::new(sempai_inner));
+    let task_sources = task_configuration.map(|configuration| {
+        configuration
+            .with_published_clients(reload_handle.clone(), sempai_swappable.clone())
+            .with_session(session.clone())
+    });
 
     // Build the Sempai gateway using a dedicated "sempai_model" profile.
     // The gateway is backed by the swappable so a live-swap of the inner
@@ -4024,8 +4288,14 @@ fn wrap_swappable_gateway(
         LlmModelProfilePolicy::new().allow_model_profile(sempai_model_profile_id, None);
     let sempai_provider: Arc<dyn LlmProvider> =
         Arc::clone(&sempai_swappable) as Arc<dyn LlmProvider>;
+    let mut sempai_gateway = LlmProviderModelGateway::new(sempai_provider, sempai_policy)
+        .with_max_output_tokens(max_output_tokens.clone());
+    if let Some(sources) = &task_sources {
+        sempai_gateway =
+            sempai_gateway.with_task_source(sources.role(brassclaw_llm::ProviderRole::Sempai));
+    }
     let sempai_gateway: Arc<dyn brassclaw_loop_support::HostManagedModelGateway> =
-        Arc::new(LlmProviderModelGateway::new(sempai_provider, sempai_policy));
+        Arc::new(sempai_gateway);
 
     let model_profile_id = ModelProfileId::new("interactive_model").map_err(|reason| {
         RebornRuntimeError::LlmProvider(format!("invalid interactive model profile id: {reason}"))
@@ -4036,9 +4306,12 @@ fn wrap_swappable_gateway(
         LlmModelProfilePolicy::new().allow_model_profile(model_profile_id.clone(), None);
     let policy = LlmModelProfilePolicy::new()
         .allow_model_profile(model_profile_id, selection.map(|(_, model)| model));
-    let gateway = LlmProviderModelGateway::new(provider, live_policy)
+    let mut gateway = LlmProviderModelGateway::new(provider, live_policy)
         .with_max_output_tokens(max_output_tokens)
         .with_total_input_tokens(total_input_tokens);
+    if let Some(sources) = &task_sources {
+        gateway = gateway.with_task_source(sources.role(brassclaw_llm::ProviderRole::Kohai));
+    }
     Ok(LlmGatewayBundle {
         gateway: Arc::new(gateway),
         policy,
@@ -4141,6 +4414,16 @@ mod tests {
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "child_task_execution_tests.rs"]
     mod child_task_execution_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "extension_manual_browser.rs"]
+    mod extension_manual_browser;
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    #[path = "internal_model_admission_tests.rs"]
+    mod internal_model_admission_tests;
     #[cfg(all(
         feature = "postgres",
         feature = "skills-db",
@@ -4158,6 +4441,13 @@ mod tests {
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "model_encoding_tests.rs"]
     mod model_encoding_tests;
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    #[path = "model_host_compatibility.rs"]
+    mod model_host_compatibility;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "model_quote_settings_tests.rs"]
     mod model_quote_settings_tests;
@@ -4165,10 +4455,16 @@ mod tests {
     #[path = "model_response_usage_tests.rs"]
     mod model_response_usage_tests;
     #[path = "../../../tests/common/native_http.rs"]
-    mod native_http;
+    pub(super) mod native_http;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "native_result_custody_tests.rs"]
     mod native_result_custody_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "prefix_design_selection_execution_tests.rs"]
+    mod prefix_design_selection_execution_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "prefix_pair_case_execution_tests.rs"]
+    mod prefix_pair_case_execution_tests;
     #[cfg(all(
         feature = "postgres",
         feature = "skills-db",
@@ -4274,7 +4570,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[tracing_test::traced_test]
     async fn native_post_turn_review_uses_global_service_and_retains_unreviewed_candidates() {
-        native_review_reconciliation_case(false, false).await;
+        native_review_reconciliation_case(false, false, false).await;
     }
 
     #[cfg(all(
@@ -4286,7 +4582,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[tracing_test::traced_test]
     async fn native_review_reconciliation_retains_response_after_lost_write_without_replay() {
-        native_review_reconciliation_case(true, false).await;
+        native_review_reconciliation_case(true, false, false).await;
     }
 
     #[cfg(all(
@@ -4298,7 +4594,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[tracing_test::traced_test]
     async fn native_review_reconciliation_preserves_partial_batch_without_completion_or_replay() {
-        native_review_reconciliation_case(false, true).await;
+        native_review_reconciliation_case(false, true, false).await;
     }
 
     #[cfg(all(
@@ -4307,7 +4603,23 @@ mod tests {
         feature = "root-llm-provider",
         feature = "test-support"
     ))]
-    async fn native_review_reconciliation_case(lose_response_write: bool, partial_batch: bool) {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tracing_test::traced_test]
+    async fn native_post_turn_review_uses_qualified_prefix_and_retains_original_wire() {
+        native_review_reconciliation_case(false, false, true).await;
+    }
+
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider",
+        feature = "test-support"
+    ))]
+    async fn native_review_reconciliation_case(
+        lose_response_write: bool,
+        partial_batch: bool,
+        native_binding: bool,
+    ) {
         use brassclaw_llm::{
             CompletionRequest, CompletionResponse, FinishReason, LlmError, LlmProvider,
             ToolCompletionRequest, ToolCompletionResponse,
@@ -4468,6 +4780,98 @@ mod tests {
                 CREATE TRIGGER reject_review_proof_for_test BEFORE INSERT ON brassclaw_monty_review_reconciliations
                 FOR EACH ROW EXECUTE FUNCTION reject_review_proof_for_test();").await.unwrap();
         }
+        let native = if native_binding {
+            use axum::{Json, Router, extract::State, routing::post};
+            type Peer = Arc<(String, tokio::sync::Mutex<Vec<serde_json::Value>>)>;
+            async fn receive(
+                State(peer): State<Peer>,
+                Json(body): Json<serde_json::Value>,
+            ) -> Json<serde_json::Value> {
+                peer.1.lock().await.push(body.clone());
+                Json(
+                    json!({"id":"native-review-response","object":"chat.completion","created":1,"model":body["model"],
+                    "choices":[{"index":0,"message":{"role":"assistant","content":peer.0},"finish_reason":"stop"}],
+                    "usage":{"prompt_tokens":123,"completion_tokens":45,"total_tokens":168}}),
+                )
+            }
+            let peer: Peer = Arc::new((sempai.response.clone(), Default::default()));
+            let listener = native_http::bind_loopback().await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let cancel = tokio_util::sync::CancellationToken::new();
+            let cancelled = cancel.clone();
+            let server = tokio::spawn(native_http::serve(
+                listener,
+                Router::new()
+                    .route("/v1/chat/completions", post(receive))
+                    .with_state(peer.clone()),
+                cancelled.cancelled_owned(),
+            ));
+            let namespace = runtime.thread_scope.tenant_id.as_str();
+            let model = "review-provider-fixture";
+            let provider_id = "review-binding-fixture";
+            let definition=serde_json::from_value(json!({"id":provider_id,"protocol":"open_ai_completions",
+                "default_base_url":format!("http://{address}/v1"),"model_env":"UNUSED_REVIEW_BINDING_MODEL","default_model":model,
+                "description":"Native review binding protocol fixture","api_key_required":false,
+                "context_window_tokens":200000,"model_token_limits":{model:{"max_prefix_tokens":100000,"max_prompt_tokens":100000}},
+                "request_policy":brassclaw_llm::ProviderRequestPolicy {max_retries:0,..Default::default()}})).unwrap();
+            let retained = crate::PgProviderRepo::new(rig.pool.as_ref().clone(), namespace)
+                .replace_revision(definition, None)
+                .await
+                .unwrap();
+            crate::db_config::save_config_changes(
+                &rig.pool,
+                namespace,
+                &[
+                    ("llm.default.provider_id", Some(provider_id)),
+                    ("llm.default.model", Some(model)),
+                    ("llm.sempai.provider_id", Some(provider_id)),
+                    ("llm.sempai.model", Some(model)),
+                ],
+                crate::db_config::ConfigWriteContext::Operator,
+            )
+            .await
+            .unwrap();
+            let qualification = crate::prefix_acceptances::tests::qualify_for_existing_provider(
+                rig.pool.clone(),
+                brassclaw_host_api::ResourceScope {
+                    tenant_id: runtime.thread_scope.tenant_id.clone(),
+                    user_id: runtime.thread_scope.owner_user_id.clone().unwrap(),
+                    agent_id: Some(runtime.thread_scope.agent_id.clone()),
+                    project_id: runtime.thread_scope.project_id.clone(),
+                    thread_id: None,
+                    invocation_id: brassclaw_host_api::InvocationId::new(),
+                },
+                brassclaw_product_workflow::PrefixModelTarget {
+                    provider_id: provider_id.into(),
+                    provider_revision: retained.revision,
+                    model: model.into(),
+                    consumer: "native-review-fixture".into(),
+                    configured_context_window: Some(200000),
+                },
+                "sempai",
+            )
+            .await;
+            let keys = crate::LlmKeyStore::new_postgres(Arc::new(
+                brassclaw_secrets::PgSecretStore::new(
+                    rig.pool.as_ref().clone(),
+                    "native-review-binding-master-fixture".into(),
+                    namespace,
+                )
+                .unwrap(),
+            ));
+            let sources = crate::task_model_provider::TaskProviderConfiguration::new(
+                rig.pool.as_ref().clone(),
+                namespace,
+                keys,
+            )
+            .with_final_encoding(Some(qualification.worker), qualification.governor)
+            .with_session(Arc::new(brassclaw_llm::SessionManager::new(
+                Default::default(),
+            )));
+            Some((sources, qualification.reference, peer, cancel, server))
+        } else {
+            None
+        };
         let review = crate::completed_turn_review::ReviewOwner::start(
             rig.pool.clone(),
             runtime.services.monty_kernel.clone().unwrap(),
@@ -4476,6 +4880,8 @@ mod tests {
             runtime.thread_service.clone(),
             runtime.thread_scope.clone(),
             crate::completed_turn_review::ReviewSource {
+                task_sources: native.as_ref().map(|n| n.0.clone()),
+                max_output_tokens: None,
                 preparation: brassclaw_monty_host::utility::UtilityLimits::from_execution(
                     Default::default(),
                 )
@@ -4583,7 +4989,50 @@ mod tests {
             assert!(retry.reconciliation_recorded);
             assert!(!retry.retention_released);
         }
-        assert_eq!(sempai.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            sempai.calls.load(std::sync::atomic::Ordering::SeqCst),
+            if native_binding { 0 } else { 1 }
+        );
+        if let Some((_, reference, peer, _, _)) = &native {
+            let calls = peer.1.lock().await;
+            assert_eq!(
+                calls.len(),
+                1,
+                "actual review native SDK call must not replay"
+            );
+            let first = &calls[0]["messages"][0]["content"];
+            let text = first
+                .as_str()
+                .or_else(|| {
+                    first
+                        .as_array()
+                        .and_then(|a| a.first())
+                        .and_then(|p| p["text"].as_str())
+                })
+                .unwrap();
+            assert!(text.starts_with(reference));
+            assert_eq!(
+                text.matches(reference).count(),
+                1,
+                "reviewer reference is preserved once before SDK-joined dynamic instructions"
+            );
+            let work=client.query_one("SELECT model_binding_bytes,provider_wire_bytes FROM brassclaw_monty_review_work",&[]).await.unwrap();
+            let binding: serde_json::Value =
+                serde_json::from_str(&work.get::<_, String>(0)).unwrap();
+            assert_eq!(binding["format"], "brassclaw-task-provider-binding/2");
+            assert!(
+                binding["prefix_bindings"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|p| p["profile"] == "sempai")
+            );
+            let wire: serde_json::Value = serde_json::from_str(&work.get::<_, String>(1)).unwrap();
+            assert_eq!(wire["provider_id"], "review-binding-fixture");
+            assert_eq!(wire["model_id"], "review-provider-fixture");
+            assert_eq!(wire["format"], "provider-wire-observation/1");
+            assert!(client.execute("UPDATE brassclaw_monty_review_work SET provider_wire_bytes=NULL,provider_wire_checksum=NULL",&[]).await.is_err());
+        }
         assert_eq!(
             replacement.calls.load(std::sync::atomic::Ordering::SeqCst),
             0
@@ -4707,6 +5156,10 @@ mod tests {
         );
         review.request_shutdown();
         review.join().await.unwrap();
+        if let Some((_, _, _, cancel, server)) = native {
+            cancel.cancel();
+            server.await.unwrap().unwrap();
+        }
         drop(client);
         shutdown_shared_runtime(runtime).await.unwrap();
     }
@@ -6783,7 +7236,7 @@ mod tests {
         };
         let llm = crate::runtime_input::ResolvedRebornLlm::from_llm_config(config);
 
-        let bundle = super::build_llm_gateway(llm, None, None, None)
+        let bundle = super::build_llm_gateway(llm, None, None, None, None)
             .await
             .expect("gateway builds");
         let response = bundle
@@ -9800,7 +10253,7 @@ mod tests {
             interval: Duration::from_millis(10),
             max_total: Duration::from_secs(3),
         })
-        .with_model_gateway_override(gateway);
+        .with_model_gateway_override(gateway.clone());
 
         let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
         let bundle = build_webui_services(Arc::clone(&runtime), None)
@@ -9872,7 +10325,7 @@ mod tests {
                         scopes,
                         ..
                     } => (account_label.clone(), scopes.clone()),
-                    RebornExtensionCredentialSetup::ManualToken => {
+                    RebornExtensionCredentialSetup::ManualToken { .. } => {
                         panic!("Google setup secret should use OAuth")
                     }
                 }
@@ -9891,6 +10344,174 @@ mod tests {
         let google_setup_json =
             serde_json::to_value(&google_setup.secrets[0]).expect("serialize setup secret");
         assert_eq!(google_setup_json["setup"]["kind"], "oauth");
+
+        // Actual bundled manual requirement, real protected router, public
+        // facade and native Auth owner. No issuer/model request belongs here.
+        {
+            use axum::{
+                body::{Body, to_bytes},
+                http::{Request, StatusCode},
+            };
+            use tower::ServiceExt;
+            struct Operator(UserId);
+            #[async_trait]
+            impl crate::WebuiAuthenticator for Operator {
+                async fn authenticate(&self, token: &str) -> Option<UserId> {
+                    (token == "extension-original-operator").then(|| self.0.clone())
+                }
+            }
+            let manual = bundle
+                .api
+                .setup_extension(
+                    caller.clone(),
+                    LifecyclePackageRef::new(LifecyclePackageKind::Extension, "nearai").unwrap(),
+                    WebUiSetupExtensionRequest::default(),
+                )
+                .await
+                .unwrap();
+            let requirement = manual.secrets.first().expect("bundled manual credential");
+            let RebornExtensionCredentialSetup::ManualToken { invocation_id, .. } =
+                &requirement.setup
+            else {
+                panic!("NEAR AI credential must use the manual-token ingress");
+            };
+            let app = crate::webui_v2_app(
+                bundle.clone(),
+                crate::WebuiServeConfig::new(
+                    caller.tenant_id.clone(),
+                    Arc::new(Operator(caller.user_id.clone())),
+                    Vec::new(),
+                )
+                .with_default_agent_id(caller.agent_id.clone().unwrap()),
+            )
+            .unwrap();
+            async fn request(
+                app: &axum::Router,
+                path: &str,
+                authorized: bool,
+                value: serde_json::Value,
+            ) -> (StatusCode, serde_json::Value) {
+                let mut builder = Request::builder()
+                    .method("POST")
+                    .uri(path)
+                    .header("content-type", "application/json");
+                if authorized {
+                    builder = builder.header("authorization", "Bearer extension-original-operator");
+                }
+                let response = app
+                    .clone()
+                    .oneshot(builder.body(Body::from(value.to_string())).unwrap())
+                    .await
+                    .unwrap();
+                let status = response.status();
+                let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+                let value = serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+                (status, value)
+            }
+            let base = "/api/webchat/v2/extensions/nearai/setup/manual-token";
+            let identity = brassclaw_auth::ManualTokenSetupIdentity::default();
+            let reference = serde_json::json!({"requirement":requirement.name,"identity":identity,"invocation_id":invocation_id});
+            let mut prepare = reference.clone();
+            prepare["target"] = serde_json::json!({"kind":"new"});
+            assert_eq!(
+                request(&app, &format!("{base}/setup"), false, prepare.clone())
+                    .await
+                    .0,
+                StatusCode::UNAUTHORIZED
+            );
+            let private = "extension-native-private-token-ü";
+            let (code,body)=request(&app,"/api/webchat/v2/extensions/nearai/setup",true,
+                serde_json::json!({"action":"submit","payload":{"secrets":{requirement.name.clone():private}}})).await;
+            assert_eq!(code, StatusCode::BAD_REQUEST);
+            assert!(!body.to_string().contains(private));
+            let mut raw = reference.clone();
+            raw["token"] = private.into();
+            assert_eq!(
+                request(&app, &format!("{base}/secret-submit"), true, raw.clone())
+                    .await
+                    .0,
+                StatusCode::NOT_FOUND
+            );
+            let (code, first) =
+                request(&app, &format!("{base}/setup"), true, prepare.clone()).await;
+            assert_eq!(code, StatusCode::OK);
+            assert_eq!(first["identity"], reference["identity"]);
+            assert_eq!(first["invocation_id"], reference["invocation_id"]);
+            assert_eq!(
+                request(&app, &format!("{base}/setup"), true, prepare.clone())
+                    .await
+                    .1,
+                first
+            );
+            let mut foreign = prepare.clone();
+            foreign["invocation_id"] = uuid::Uuid::new_v4().to_string().into();
+            assert_eq!(
+                request(&app, &format!("{base}/setup"), true, foreign)
+                    .await
+                    .0,
+                StatusCode::BAD_REQUEST
+            );
+            let (code, published) =
+                request(&app, &format!("{base}/secret-submit"), true, raw.clone()).await;
+            assert_eq!(code, StatusCode::OK);
+            assert_eq!(published["identity"], reference["identity"]);
+            assert_eq!(published["continuation"]["type"], "setup_only");
+            let mut changed = raw.clone();
+            changed["token"] = "changed input".into();
+            assert_eq!(
+                request(&app, &format!("{base}/secret-submit"), true, changed)
+                    .await
+                    .0,
+                StatusCode::CONFLICT
+            );
+            assert_eq!(
+                request(&app, &format!("{base}/continue"), true, raw)
+                    .await
+                    .0,
+                StatusCode::BAD_REQUEST
+            );
+            assert_eq!(
+                request(&app, &format!("{base}/continue"), true, reference.clone()).await,
+                (StatusCode::OK, published.clone())
+            );
+            let (code, completed) = request(&app, &format!("{base}/setup"), true, prepare).await;
+            assert_eq!(code, StatusCode::OK);
+            assert_eq!(completed["status"], "completed");
+            assert_eq!(completed["expires_at"], first["expires_at"]);
+            let mut next = reference.clone();
+            next["identity"] =
+                serde_json::to_value(brassclaw_auth::ManualTokenSetupIdentity::default()).unwrap();
+            let mut bound = next.clone();
+            bound["target"] =
+                serde_json::json!({"kind":"existing","account_id":published["credential_ref"]});
+            assert_eq!(
+                request(&app, &format!("{base}/setup"), true, bound).await.0,
+                StatusCode::OK
+            );
+            let (code, canceled) =
+                request(&app, &format!("{base}/cancel"), true, next.clone()).await;
+            assert_eq!(code, StatusCode::OK);
+            assert_eq!(canceled["status"], "canceled");
+            next["token"] = private.into();
+            assert_eq!(
+                request(&app, &format!("{base}/secret-submit"), true, next)
+                    .await
+                    .0,
+                StatusCode::CONFLICT
+            );
+            assert!(
+                !serde_json::to_string(&(first, published, completed, canceled))
+                    .unwrap()
+                    .contains(private)
+            );
+        }
+
+        #[cfg(feature = "skills-db")]
+        extension_manual_browser::run_if_requested(runtime.clone(), bundle.clone()).await;
+        assert!(
+            gateway.requests.lock().unwrap().is_empty(),
+            "credential management performs no model dispatch"
+        );
 
         drop(bundle);
         shutdown_shared_runtime(runtime)
@@ -10400,6 +11021,13 @@ mod tests {
 #[path = "prefix_job_submission.rs"]
 mod prefix_job_submission;
 
+#[cfg(all(
+    feature = "postgres",
+    feature = "skills-db",
+    feature = "root-llm-provider"
+))]
+#[path = "prefix_acceptance_runtime.rs"]
+mod prefix_acceptance_runtime;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 #[path = "prefix_job_inspection.rs"]
 mod prefix_job_inspection;

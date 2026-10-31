@@ -1,23 +1,15 @@
-use std::collections::{BTreeMap, HashMap};
-
-use brassclaw_auth::{
-    AuthProductScope, AuthProviderId, CredentialAccountProjection, CredentialAccountUpdateBinding,
-    ProviderScope,
-};
+use brassclaw_auth::AuthProductScope;
 use brassclaw_host_api::ExtensionId;
-use secrecy::SecretString;
-use serde::Deserialize;
 
 use crate::{
     LifecycleExtensionCredentialRequirement, LifecycleExtensionCredentialSetup,
     LifecycleProductPayload, LifecycleProductResponse, RebornExtensionCredentialSetup,
-    RebornExtensionSetupSecret, RebornServicesError, RebornServicesErrorCode,
-    RebornServicesErrorKind, WebUiInboundValidationCode, WebUiSetupExtensionRequest,
+    RebornExtensionSetupSecret, RebornServicesError,
 };
 
 use super::{
     ExtensionCredentialSetupService, ExtensionCredentialStatusRequest,
-    ExtensionCredentialSubmitRequest, lifecycle_setup::validation_error,
+    extension_manual_tokens::manual_label,
 };
 
 pub(super) fn requirements(
@@ -49,25 +41,19 @@ pub(super) async fn project(
 ) -> Result<Vec<RebornExtensionSetupSecret>, RebornServicesError> {
     let mut secrets = Vec::with_capacity(requirements.len());
     for requirement in requirements {
-        let provider = AuthProviderId::new(requirement.provider.as_str())
-            .map_err(|_| RebornServicesError::internal_invariant())?;
-        let provider_scopes = provider_scopes_for_requirement(requirement)?;
-        let account = match extension_credentials {
-            Some(service) => {
-                credential_status_for_setup(
-                    service,
-                    ExtensionCredentialStatusRequest {
+        let account = match (
+            extension_credentials,
+            exact_requirement(requirement, extension_id)?,
+        ) {
+            (Some(service), Some(requirement)) => {
+                service
+                    .credential_status(ExtensionCredentialStatusRequest {
                         scope: scope.clone(),
-                        provider,
-                        provider_scopes,
-                        requester_extension: extension_id.clone(),
-                    },
-                    extension_id,
-                    requirement,
-                )
-                .await?
+                        requirement,
+                    })
+                    .await?
             }
-            None => None,
+            _ => None,
         };
         secrets.push(RebornExtensionSetupSecret {
             name: requirement.name.clone(),
@@ -83,145 +69,6 @@ pub(super) async fn project(
     Ok(secrets)
 }
 
-async fn credential_status_for_setup(
-    service: &dyn ExtensionCredentialSetupService,
-    request: ExtensionCredentialStatusRequest,
-    extension_id: &ExtensionId,
-    requirement: &LifecycleExtensionCredentialRequirement,
-) -> Result<Option<CredentialAccountProjection>, RebornServicesError> {
-    match service.credential_status(request).await {
-        Ok(account) => Ok(account),
-        Err(error) if is_retryable_setup_status_failure(&error) => {
-            tracing::warn!(
-                target: "brassclaw::reborn::extension_setup",
-                extension_id = %extension_id.as_str(),
-                provider = %requirement.provider,
-                requirement = %requirement.name,
-                code = ?error.code,
-                kind = ?error.kind,
-                status_code = error.status_code,
-                retryable = error.retryable,
-                "credential status unavailable during extension setup projection; treating credential as unconfigured"
-            );
-            Ok(None)
-        }
-        Err(error) => Err(error),
-    }
-}
-
-fn is_retryable_setup_status_failure(error: &RebornServicesError) -> bool {
-    error.retryable
-        && (error.code == RebornServicesErrorCode::Unavailable
-            || error.kind == RebornServicesErrorKind::ServiceUnavailable)
-}
-
-pub(super) async fn submit_manual_tokens(
-    extension_credentials: Option<&dyn ExtensionCredentialSetupService>,
-    scope: AuthProductScope,
-    extension_id: &ExtensionId,
-    requirements: &[LifecycleExtensionCredentialRequirement],
-    request: WebUiSetupExtensionRequest,
-) -> Result<(), RebornServicesError> {
-    let service =
-        extension_credentials.ok_or_else(|| RebornServicesError::service_unavailable(true))?;
-    let payload = request
-        .payload
-        .ok_or_else(|| validation_error("payload", WebUiInboundValidationCode::MissingField))?;
-    let submit = serde_json::from_value::<SetupSubmitPayload>(payload)
-        .map_err(|_| validation_error("payload", WebUiInboundValidationCode::InvalidValue))?;
-    let by_name = requirements
-        .iter()
-        .map(|requirement| (requirement.name.as_str(), requirement))
-        .collect::<HashMap<_, _>>();
-
-    for submitted_name in submit.secrets.keys() {
-        let Some(requirement) = by_name.get(submitted_name.as_str()) else {
-            return Err(validation_error(
-                "secrets",
-                WebUiInboundValidationCode::InvalidValue,
-            ));
-        };
-        if !matches!(
-            requirement.setup,
-            LifecycleExtensionCredentialSetup::ManualToken
-        ) {
-            return Err(validation_error(
-                "secrets",
-                WebUiInboundValidationCode::InvalidValue,
-            ));
-        }
-    }
-
-    for requirement in requirements.iter().filter(|requirement| {
-        matches!(
-            requirement.setup,
-            LifecycleExtensionCredentialSetup::ManualToken
-        )
-    }) {
-        submit_manual_token_requirement(
-            service,
-            scope.clone(),
-            extension_id,
-            requirement,
-            submit.secrets.get(&requirement.name),
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-async fn submit_manual_token_requirement(
-    service: &dyn ExtensionCredentialSetupService,
-    scope: AuthProductScope,
-    extension_id: &ExtensionId,
-    requirement: &LifecycleExtensionCredentialRequirement,
-    raw_secret: Option<&String>,
-) -> Result<(), RebornServicesError> {
-    let provider = AuthProviderId::new(requirement.provider.as_str())
-        .map_err(|_| RebornServicesError::internal_invariant())?;
-    let provider_scopes = provider_scopes_for_requirement(requirement)?;
-    let existing = service
-        .credential_status(ExtensionCredentialStatusRequest {
-            scope: scope.clone(),
-            provider: provider.clone(),
-            provider_scopes,
-            requester_extension: extension_id.clone(),
-        })
-        .await?;
-    let Some(raw_secret) = raw_secret else {
-        if requirement.required && existing.is_none() {
-            return Err(validation_error(
-                "secrets",
-                WebUiInboundValidationCode::MissingField,
-            ));
-        }
-        return Ok(());
-    };
-    let trimmed = raw_secret.trim();
-    if trimmed.is_empty() {
-        if requirement.required && existing.is_none() {
-            return Err(validation_error(
-                "secrets",
-                WebUiInboundValidationCode::Blank,
-            ));
-        }
-        return Ok(());
-    }
-    service
-        .submit_manual_token(ExtensionCredentialSubmitRequest {
-            scope,
-            provider,
-            label: credential_label(extension_id, requirement),
-            requester_extension: extension_id.clone(),
-            existing_account: existing
-                .as_ref()
-                .map(CredentialAccountUpdateBinding::from_projection),
-            secret: SecretString::from(trimmed.to_string()),
-        })
-        .await?;
-    Ok(())
-}
-
 fn setup_projection(
     scope: &AuthProductScope,
     extension_id: &ExtensionId,
@@ -229,7 +76,14 @@ fn setup_projection(
 ) -> RebornExtensionCredentialSetup {
     match &requirement.setup {
         LifecycleExtensionCredentialSetup::ManualToken => {
-            RebornExtensionCredentialSetup::ManualToken
+            RebornExtensionCredentialSetup::ManualToken {
+                account_label: manual_label(
+                    extension_id.as_str(),
+                    &requirement.provider,
+                    &requirement.name,
+                ),
+                invocation_id: scope.resource.invocation_id.to_string(),
+            }
         }
         LifecycleExtensionCredentialSetup::OAuth { scopes } => {
             RebornExtensionCredentialSetup::OAuth {
@@ -242,21 +96,57 @@ fn setup_projection(
 }
 
 fn credential_prompt(requirement: &LifecycleExtensionCredentialRequirement) -> String {
-    format!("{} credential", requirement.provider)
+    let Some(exact) = &requirement.runtime_requirement else {
+        return format!("{} credential", requirement.provider);
+    };
+    use brassclaw_host_api::RuntimeCredentialTarget;
+    let declaration = exact.requirement();
+    let target = match &declaration.target {
+        RuntimeCredentialTarget::Header { name, .. } => format!("header {name}"),
+        RuntimeCredentialTarget::QueryParam { name } => format!("query parameter {name}"),
+        RuntimeCredentialTarget::PathPlaceholder { placeholder } => format!("path {placeholder}"),
+    };
+    format!(
+        "{} credential for {} ({target})",
+        requirement.provider, declaration.audience.host_pattern
+    )
 }
 
-fn provider_scopes_for_requirement(
-    requirement: &LifecycleExtensionCredentialRequirement,
-) -> Result<Vec<ProviderScope>, RebornServicesError> {
-    let LifecycleExtensionCredentialSetup::OAuth { scopes } = &requirement.setup else {
-        return Ok(Vec::new());
+pub(super) fn exact_requirement(
+    summary: &LifecycleExtensionCredentialRequirement,
+    extension: &ExtensionId,
+) -> Result<Option<brassclaw_host_api::RuntimeCredentialAccountRequirement>, RebornServicesError> {
+    use brassclaw_host_api::{RuntimeCredentialAccountSetup, RuntimeCredentialRequirementSource};
+    let Some(requirement) = &summary.runtime_requirement else {
+        return Ok(None);
     };
-    scopes
-        .iter()
-        .map(|scope| {
-            ProviderScope::new(scope.clone()).map_err(|_| RebornServicesError::internal_invariant())
-        })
-        .collect()
+    if requirement.requester_extension() != extension {
+        return Err(RebornServicesError::internal_invariant());
+    }
+    let declaration = requirement.requirement();
+    let RuntimeCredentialRequirementSource::ProductAuthAccount { provider, setup } =
+        &declaration.source
+    else {
+        return Err(RebornServicesError::internal_invariant());
+    };
+    let compatible = match (&summary.setup, setup) {
+        (
+            LifecycleExtensionCredentialSetup::ManualToken,
+            RuntimeCredentialAccountSetup::ManualToken,
+        ) => true,
+        (
+            LifecycleExtensionCredentialSetup::OAuth { scopes: a },
+            RuntimeCredentialAccountSetup::OAuth { scopes: b },
+        ) => a == b,
+        _ => false,
+    };
+    if provider.as_str() != summary.provider
+        || declaration.required != summary.required
+        || !compatible
+    {
+        return Err(RebornServicesError::internal_invariant());
+    }
+    Ok(Some(requirement.clone()))
 }
 
 fn credential_label(
@@ -264,29 +154,30 @@ fn credential_label(
     requirement: &LifecycleExtensionCredentialRequirement,
 ) -> String {
     let base = format!("{} {}", extension_id.as_str(), requirement.provider);
-    if requirement.name.contains("__") {
+    if requirement.runtime_requirement.is_some() {
+        manual_label(
+            extension_id.as_str(),
+            &requirement.provider,
+            &requirement.name,
+        )
+    } else if requirement.name.contains("__") {
         format!("{base} {}", requirement.name)
     } else {
         base
     }
 }
 
-#[derive(Debug, Default, Deserialize)]
-struct SetupSubmitPayload {
-    #[serde(default)]
-    secrets: BTreeMap<String, String>,
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::{RebornServicesErrorCode, RebornServicesErrorKind, WebUiInboundValidationCode};
     use async_trait::async_trait;
-    use brassclaw_auth::{AuthSurface, CredentialAccountId};
+    use brassclaw_auth::{AuthSurface, CredentialAccountProjection};
     use brassclaw_host_api::{InvocationId, ResourceScope, UserId};
 
     use super::*;
 
     #[tokio::test]
-    async fn project_treats_retryable_unavailable_credential_status_as_unconfigured() {
+    async fn project_preserves_retryable_unavailable_credential_status() {
         let service = FailingCredentialSetupService {
             error: RebornServicesError {
                 code: RebornServicesErrorCode::Unavailable,
@@ -299,24 +190,17 @@ mod tests {
         };
         let extension_id = ExtensionId::new("google-docs").expect("extension id");
 
-        let secrets = project(
+        let error = project(
             Some(&service),
             test_scope(),
             &extension_id,
             &[oauth_requirement()],
         )
         .await
-        .expect("setup projection should render when credential status is unavailable");
-
-        assert_eq!(secrets.len(), 1);
-        assert_eq!(secrets[0].name, "google_oauth");
-        assert_eq!(secrets[0].provider, "google");
-        assert!(!secrets[0].provided);
-        assert!(secrets[0].credential_ref.is_none());
-        assert!(matches!(
-            secrets[0].setup,
-            RebornExtensionCredentialSetup::OAuth { .. }
-        ));
+        .expect_err("unavailable status is not an unconfigured credential");
+        assert_eq!(error.code, RebornServicesErrorCode::Unavailable);
+        assert_eq!(error.status_code, 503);
+        assert!(error.retryable);
     }
 
     #[tokio::test]
@@ -390,14 +274,90 @@ mod tests {
 
         async fn submit_manual_token(
             &self,
-            _request: ExtensionCredentialSubmitRequest,
-        ) -> Result<CredentialAccountId, RebornServicesError> {
-            Ok(CredentialAccountId::new())
+            _request: super::super::ExtensionCredentialSubmitRequest,
+        ) -> Result<super::super::ExtensionManualTokenCompletion, RebornServicesError> {
+            Err(RebornServicesError::service_unavailable(true))
         }
+    }
+
+    fn declared_test_requirement(
+        name: &str,
+        provider: &str,
+        extension: &str,
+        setup: &LifecycleExtensionCredentialSetup,
+        required: bool,
+    ) -> brassclaw_host_api::RuntimeCredentialAccountRequirement {
+        use brassclaw_host_api::*;
+        let (setup, scopes) = match setup {
+            LifecycleExtensionCredentialSetup::ManualToken => {
+                (RuntimeCredentialAccountSetup::ManualToken, vec![])
+            }
+            LifecycleExtensionCredentialSetup::OAuth { scopes } => (
+                RuntimeCredentialAccountSetup::OAuth {
+                    scopes: scopes.clone(),
+                },
+                scopes.clone(),
+            ),
+        };
+        RuntimeCredentialAccountRequirement::new(
+            ExtensionId::new(extension).unwrap(),
+            RuntimeCredentialRequirement {
+                handle: SecretHandle::new(name).unwrap(),
+                source: RuntimeCredentialRequirementSource::ProductAuthAccount {
+                    provider: RuntimeCredentialAccountProviderId::new(provider).unwrap(),
+                    setup,
+                },
+                provider_scopes: scopes,
+                audience: NetworkTargetPattern {
+                    scheme: None,
+                    host_pattern: "api.example.test".into(),
+                    port: None,
+                },
+                target: RuntimeCredentialTarget::Header {
+                    name: "Authorization".into(),
+                    prefix: Some("Bearer ".into()),
+                },
+                required,
+            },
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn legacy_summary_without_exact_usage_never_claims_a_configured_account() {
+        let mut legacy = oauth_requirement();
+        legacy.runtime_requirement = None;
+        let service = FailingCredentialSetupService {
+            error: RebornServicesError::internal_invariant(),
+        };
+        let projection = project(
+            Some(&service),
+            test_scope(),
+            &ExtensionId::new("google-docs").unwrap(),
+            std::slice::from_ref(&legacy),
+        )
+        .await
+        .unwrap();
+        assert!(!projection[0].provided);
+        assert!(projection[0].credential_ref.is_none());
+        let bytes = serde_json::to_value(&legacy).unwrap();
+        assert!(bytes.get("runtime_requirement").is_none());
+        let restored: LifecycleExtensionCredentialRequirement =
+            serde_json::from_value(bytes).unwrap();
+        assert!(restored.runtime_requirement.is_none());
     }
 
     fn oauth_requirement() -> LifecycleExtensionCredentialRequirement {
         LifecycleExtensionCredentialRequirement {
+            runtime_requirement: Some(declared_test_requirement(
+                "google_oauth",
+                "google",
+                "google-docs",
+                &LifecycleExtensionCredentialSetup::OAuth {
+                    scopes: vec!["https://www.googleapis.com/auth/documents".into()],
+                },
+                true,
+            )),
             name: "google_oauth".to_string(),
             provider: "google".to_string(),
             required: true,

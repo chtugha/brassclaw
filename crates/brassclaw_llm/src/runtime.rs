@@ -34,6 +34,66 @@ use crate::provider::{
     ToolCompletionResponse,
 };
 
+/// Exact database selection captured when its concrete client was prepared for
+/// publication, including compatible live-control updates on retained clients.
+/// The opaque configuration reference includes an authenticated encrypted-row
+/// identity; it never contains a plaintext credential or a hash of that value.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ProviderSelectionRevision {
+    pub provider_id: String,
+    pub definition_revision: u64,
+    pub model: String,
+    pub configuration_ref: String,
+}
+
+/// Actual client publication, distinct from desired configuration and authority.
+/// Legacy or custom clients without a captured selection remain explicitly
+/// untracked instead of receiving an invented effective revision.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum ProviderPublication {
+    Untracked,
+    Unconfigured,
+    Configured {
+        selection: ProviderSelectionRevision,
+    },
+}
+
+/// One atomic view of the loaded client and the last failed captured target.
+/// Failure of an unknown source never identifies a later desired configuration.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ProviderPublicationStatus {
+    pub effective: ProviderPublication,
+    pub failed: Option<ProviderPublication>,
+}
+
+/// Host preparation failure, carrying only the target actually captured before
+/// that preparation. Error text is returned to its owner, not status metadata.
+#[derive(Debug)]
+pub struct ProviderPreparationFailure {
+    error: LlmError,
+    selection: Option<Box<ProviderPublication>>,
+}
+
+impl ProviderPreparationFailure {
+    pub fn selected(error: LlmError, selection: ProviderPublication) -> Self {
+        Self {
+            error,
+            selection: Some(Box::new(selection)),
+        }
+    }
+}
+
+impl From<LlmError> for ProviderPreparationFailure {
+    fn from(error: LlmError) -> Self {
+        Self {
+            error,
+            selection: None,
+        }
+    }
+}
+
+#[derive(Clone)]
 struct ProviderSnapshot {
     inner: Arc<dyn LlmProvider>,
     provider_id: String,
@@ -42,6 +102,8 @@ struct ProviderSnapshot {
     cost_per_token: (Decimal, Decimal),
     cache_write_multiplier: Decimal,
     cache_read_discount: Decimal,
+    publication: ProviderPublication,
+    failed: Option<ProviderPublication>,
 }
 
 impl std::fmt::Debug for ProviderSnapshot {
@@ -73,7 +135,40 @@ impl ProviderSnapshot {
             cost_per_token,
             cache_write_multiplier,
             cache_read_discount,
+            publication: ProviderPublication::Untracked,
+            failed: None,
         }
+    }
+    fn capture_published(
+        provider: Arc<dyn LlmProvider>,
+        publication: ProviderPublication,
+        fallback_identity: String,
+    ) -> Result<Self, LlmError> {
+        let identity = match &publication {
+            ProviderPublication::Configured { selection } => selection.provider_id.clone(),
+            ProviderPublication::Unconfigured => "unconfigured".into(),
+            ProviderPublication::Untracked => fallback_identity,
+        };
+        let mut fresh = Self::capture_named(provider, identity);
+        if let ProviderPublication::Configured { selection } = &publication
+            && (selection.definition_revision == 0
+                || selection.provider_id.is_empty()
+                || selection.model.is_empty()
+                || selection.model.trim() != selection.model
+                || selection.model.chars().any(char::is_control)
+                || selection.model != fresh.active_model_name.as_ref()
+                || selection.configuration_ref.len() != 64
+                || !selection
+                    .configuration_ref
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit()))
+        {
+            return Err(LlmError::ConfigurationChanged {
+                provider: "selected provider".into(),
+            });
+        }
+        fresh.publication = publication;
+        Ok(fresh)
     }
 }
 
@@ -91,6 +186,8 @@ fn write<T>(lock: &RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
 /// See the module-level docs for the invariants this type guarantees.
 pub struct SwappableLlmProvider {
     state: RwLock<ProviderSnapshot>,
+    publication_lock: tokio::sync::Mutex<()>,
+    preparation: std::sync::OnceLock<Arc<dyn crate::provider::ProviderSelectionPreparer>>,
 }
 
 impl std::fmt::Debug for SwappableLlmProvider {
@@ -107,6 +204,8 @@ impl SwappableLlmProvider {
     pub fn new(inner: Arc<dyn LlmProvider>) -> Self {
         Self {
             state: RwLock::new(ProviderSnapshot::capture(inner)),
+            publication_lock: tokio::sync::Mutex::new(()),
+            preparation: std::sync::OnceLock::new(),
         }
     }
 
@@ -114,7 +213,94 @@ impl SwappableLlmProvider {
     pub fn new_with_identity(inner: Arc<dyn LlmProvider>, provider_id: impl Into<String>) -> Self {
         Self {
             state: RwLock::new(ProviderSnapshot::capture_named(inner, provider_id.into())),
+            publication_lock: tokio::sync::Mutex::new(()),
+            preparation: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Read metadata from the same snapshot as the actual selected backend.
+    pub fn publication(&self) -> ProviderPublication {
+        read(&self.state).publication.clone()
+    }
+
+    pub fn publication_status(&self) -> ProviderPublicationStatus {
+        let state = read(&self.state);
+        ProviderPublicationStatus {
+            effective: state.publication.clone(),
+            failed: state.failed.clone(),
+        }
+    }
+
+    fn preparation_failed(&self, failure: ProviderPreparationFailure) -> LlmError {
+        write(&self.state).failed = failure.selection.map(|selection| *selection);
+        failure.error
+    }
+
+    /// Attach the one owning source during composition. Replacing it silently
+    /// could change the authority/namespace of an already running role.
+    pub fn attach_preparation(
+        &self,
+        source: Arc<dyn crate::provider::ProviderSelectionPreparer>,
+    ) -> Result<(), LlmError> {
+        self.preparation
+            .set(source)
+            .map_err(|_| LlmError::ConfigurationChanged {
+                provider: "selected provider".into(),
+            })
+    }
+
+    /// Retain the backend and its publication from one read. Separate getters
+    /// could pair a tracked revision with an intervening legacy/volatile swap.
+    pub fn published_provider(&self) -> (Arc<dyn LlmProvider>, ProviderPublication) {
+        let snapshot = read(&self.state);
+        (snapshot.inner.clone(), snapshot.publication.clone())
+    }
+
+    /// Publish an already built client and its exact captured selection together.
+    pub fn swap_with_publication(
+        &self,
+        inner: Arc<dyn LlmProvider>,
+        publication: ProviderPublication,
+    ) -> Result<(), LlmError> {
+        let fresh = ProviderSnapshot::capture_published(
+            inner,
+            publication,
+            read(&self.state).provider_id.clone(),
+        )?;
+        *write(&self.state) = fresh;
+        Ok(())
+    }
+
+    /// Capture and build under the role's existing publication boundary. An
+    /// earlier capture cannot wait behind a newer publication and replace it.
+    pub async fn publish_from<F, Fut, A>(
+        &self,
+        prepare: F,
+        on_publication: A,
+    ) -> Result<ProviderPublication, LlmError>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<
+                Output = Result<
+                    (Arc<dyn LlmProvider>, ProviderPublication),
+                    ProviderPreparationFailure,
+                >,
+            >,
+        A: FnOnce(&ProviderPublication),
+    {
+        let _publication = self.publication_lock.lock().await;
+        let (provider, publication) = prepare()
+            .await
+            .map_err(|failure| self.preparation_failed(failure))?;
+        self.swap_with_publication(provider, publication.clone())
+            .map_err(|error| {
+                self.preparation_failed(ProviderPreparationFailure::selected(
+                    error,
+                    publication.clone(),
+                ))
+            })?;
+        on_publication(&publication);
+        Ok(publication)
     }
 
     /// Publish identity and backend/model metadata under the same snapshot lock.
@@ -129,6 +315,7 @@ impl SwappableLlmProvider {
             provider: snapshot.inner.clone(),
             provider_id: snapshot.provider_id.clone(),
             model: snapshot.active_model_name.to_string(),
+            publication: snapshot.publication.clone(),
         }
     }
 
@@ -141,6 +328,15 @@ impl SwappableLlmProvider {
 
     fn current(&self) -> Arc<dyn LlmProvider> {
         read(&self.state).inner.clone()
+    }
+
+    async fn prepared_current(&self) -> Result<Arc<dyn LlmProvider>, LlmError> {
+        self.prepare_retained_provider()
+            .await?
+            .map(|selection| selection.provider)
+            .ok_or_else(|| LlmError::ConfigurationChanged {
+                provider: "selected provider".into(),
+            })
     }
 
     /// Retain the actual provider object and model from one atomic snapshot.
@@ -161,6 +357,25 @@ impl LlmProvider for SwappableLlmProvider {
         Some(self.retained_selection())
     }
 
+    async fn prepare_retained_provider(
+        &self,
+    ) -> Result<Option<crate::RetainedLlmProvider>, LlmError> {
+        if let Some(source) = self.preparation.get() {
+            source.prepare().await?;
+            let selection = self.retained_selection();
+            if !matches!(
+                selection.publication,
+                ProviderPublication::Configured { .. }
+            ) {
+                return Err(LlmError::ConfigurationChanged {
+                    provider: "selected provider".into(),
+                });
+            }
+            return Ok(Some(selection));
+        }
+        Ok(Some(self.retained_selection()))
+    }
+
     fn model_name(&self) -> std::borrow::Cow<'_, str> {
         std::borrow::Cow::Owned(read(&self.state).model_name.to_string())
     }
@@ -170,22 +385,25 @@ impl LlmProvider for SwappableLlmProvider {
     }
 
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
-        self.current().complete(request).await
+        self.prepared_current().await?.complete(request).await
     }
 
     async fn complete_with_tools(
         &self,
         request: ToolCompletionRequest,
     ) -> Result<ToolCompletionResponse, LlmError> {
-        self.current().complete_with_tools(request).await
+        self.prepared_current()
+            .await?
+            .complete_with_tools(request)
+            .await
     }
 
     async fn list_models(&self) -> Result<Vec<String>, LlmError> {
-        self.current().list_models().await
+        self.prepared_current().await?.list_models().await
     }
 
     async fn model_metadata(&self) -> Result<ModelMetadata, LlmError> {
-        self.current().model_metadata().await
+        self.prepared_current().await?.model_metadata().await
     }
 
     fn effective_model_name(&self, requested_model: Option<&str>) -> String {
@@ -270,6 +488,64 @@ impl LlmReloadHandle {
         self.primary.clone() as Arc<dyn LlmProvider>
     }
 
+    pub fn primary_publication(&self) -> ProviderPublication {
+        self.primary.publication()
+    }
+
+    pub fn primary_publication_status(&self) -> ProviderPublicationStatus {
+        self.primary.publication_status()
+    }
+
+    pub fn published_primary_provider(&self) -> (Arc<dyn LlmProvider>, ProviderPublication) {
+        self.primary.published_provider()
+    }
+
+    pub fn attach_primary_preparation(
+        &self,
+        source: Arc<dyn crate::provider::ProviderSelectionPreparer>,
+    ) -> Result<(), LlmError> {
+        self.primary.attach_preparation(source)
+    }
+
+    /// Database-owned publication uses the same reload serialization, with
+    /// capture inside the lock and one concrete backend/metadata publication.
+    /// The v3 role has no independent cheap-model selection.
+    pub async fn publish_primary_from<F, Fut>(
+        &self,
+        prepare: F,
+    ) -> Result<ProviderPublication, LlmError>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<
+                Output = Result<
+                    (Arc<dyn LlmProvider>, ProviderPublication),
+                    ProviderPreparationFailure,
+                >,
+            >,
+    {
+        let _reload = self.reload_lock.lock().await;
+        let _publication = self.primary.publication_lock.lock().await;
+        let (provider, publication) = prepare()
+            .await
+            .map_err(|failure| self.primary.preparation_failed(failure))?;
+        let identity = read(&self.primary.state).provider_id.clone();
+        let fresh = ProviderSnapshot::capture_published(provider, publication.clone(), identity)
+            .map_err(|error| {
+                self.primary
+                    .preparation_failed(ProviderPreparationFailure::selected(
+                        error,
+                        publication.clone(),
+                    ))
+            })?;
+        // Validate once before changing either slot. Both receive the same
+        // concrete backend and metadata even for mutable custom adapters.
+        *write(&self.primary.state) = fresh.clone();
+        if let Some(cheap) = &self.cheap {
+            *write(&cheap.state) = fresh;
+        }
+        Ok(publication)
+    }
+
     pub fn cheap_provider(&self) -> Option<Arc<dyn LlmProvider>> {
         self.cheap
             .as_ref()
@@ -289,6 +565,7 @@ impl LlmReloadHandle {
     /// its independently selected backend.
     pub async fn replace_primary(&self, replacement: Arc<dyn LlmProvider>) {
         let _guard = self.reload_lock.lock().await;
+        let _publication = self.primary.publication_lock.lock().await;
         self.primary
             .swap_with_identity(Arc::clone(&replacement), "unconfigured");
         if let Some(cheap) = &self.cheap {
@@ -307,6 +584,7 @@ impl LlmReloadHandle {
         session: Arc<crate::SessionManager>,
     ) -> Result<(), LlmError> {
         let _guard = self.reload_lock.lock().await;
+        let _publication = self.primary.publication_lock.lock().await;
 
         let components = crate::build_provider_chain_components(config, session).await?;
 
@@ -446,6 +724,44 @@ mod tests {
         let b: Arc<dyn LlmProvider> = b;
         assert!(Arc::ptr_eq(&a, &retained.provider));
         assert!(Arc::ptr_eq(&b, &current.provider));
+        let selection = ProviderSelectionRevision {
+            provider_id: "catalogue-b".into(),
+            definition_revision: 2,
+            model: "active-b".into(),
+            configuration_ref: "ab".repeat(32),
+        };
+        let publication = ProviderPublication::Configured {
+            selection: selection.clone(),
+        };
+        wrapper
+            .swap_with_publication(b.clone(), publication.clone())
+            .unwrap();
+        assert_eq!(wrapper.publication(), publication);
+        let mut wrong = selection;
+        wrong.model = "another-model".into();
+        assert!(matches!(
+            wrapper.swap_with_publication(
+                a.clone(),
+                ProviderPublication::Configured { selection: wrong }
+            ),
+            Err(LlmError::ConfigurationChanged { .. })
+        ));
+        assert_eq!(wrapper.publication(), publication);
+        assert!(Arc::ptr_eq(&wrapper.retained_selection().provider, &b));
+        let (published, published_revision) = wrapper.published_provider();
+        wrapper.swap_with_identity(a.clone(), "catalogue-a");
+        assert!(Arc::ptr_eq(&published, &b));
+        assert_eq!(published_revision, publication);
+        assert_eq!(wrapper.publication(), ProviderPublication::Untracked);
+        wrapper
+            .swap_with_publication(b.clone(), publication)
+            .unwrap();
+        wrapper.set_model("volatile-model").unwrap();
+        assert_eq!(
+            wrapper.publication(),
+            ProviderPublication::Untracked,
+            "a volatile override cannot retain a database revision acknowledgement"
+        );
     }
 
     #[test]
@@ -476,6 +792,76 @@ mod tests {
         assert_eq!(
             wrapper.cost_per_token(),
             (Decimal::new(3, 0), Decimal::new(4, 0))
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_publication_retains_client_and_clears_only_with_actual_success() {
+        let provider: Arc<dyn LlmProvider> = Arc::new(TestProvider::new(
+            "catalogue",
+            "active",
+            (Decimal::ONE, Decimal::ONE),
+        ));
+        let slot = Arc::new(SwappableLlmProvider::new(provider.clone()));
+        let handle = LlmReloadHandle::new(slot.clone(), None);
+        let configured = |model: &str| ProviderPublication::Configured {
+            selection: ProviderSelectionRevision {
+                provider_id: "catalogue".into(),
+                definition_revision: 1,
+                model: model.into(),
+                configuration_ref: "ab".repeat(32),
+            },
+        };
+        let wrong = configured("wrong-model");
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            handle.publish_primary_from(|| async { Ok((provider.clone(), wrong.clone())) }),
+        )
+        .await
+        .unwrap();
+        assert!(matches!(result, Err(LlmError::ConfigurationChanged { .. })));
+        assert!(Arc::ptr_eq(&provider, &slot.pinned_provider().0));
+        assert_eq!(
+            slot.publication_status(),
+            ProviderPublicationStatus {
+                effective: ProviderPublication::Untracked,
+                failed: Some(wrong)
+            }
+        );
+        let actual = configured("active");
+        handle
+            .publish_primary_from(|| async { Ok((provider.clone(), actual.clone())) })
+            .await
+            .unwrap();
+        assert_eq!(
+            slot.publication_status(),
+            ProviderPublicationStatus {
+                effective: actual.clone(),
+                failed: None
+            }
+        );
+        let failure: Result<
+            (Arc<dyn LlmProvider>, ProviderPublication),
+            ProviderPreparationFailure,
+        > = Err(LlmError::ConfigurationChanged {
+            provider: "uncaptured-source".into(),
+        }
+        .into());
+        assert!(
+            slot.publish_from(
+                || async { failure },
+                |_| panic!("failure cannot acknowledge publication")
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(
+            slot.publication_status(),
+            ProviderPublicationStatus {
+                effective: actual,
+                failed: None
+            },
+            "unknown source error cannot identify a failed desired revision"
         );
     }
 

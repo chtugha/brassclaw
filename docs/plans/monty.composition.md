@@ -17,6 +17,13 @@ rather than early descriptions of an absent loader/activation path. The seven
 original failures were resolved in their recorded scope; full library migration
 and this plan's acceptance remain open.
 
+[BUILD-009](../validation/2026-10-31-model-host-compatibility.md) separately accepts
+the current model-host compatibility callers through actual Composition owners:
+coherent prepare/bind, retained named selections and shared admission/parser
+consumers,24 fresh cases/0ignored plus connected/isolated strict. All22 historical
+owned cases remain. This is caller compatibility, not general pure approval,
+library activation or the remaining family migration below.
+
 The 2026-10-23 independent-execution guard now rejects dependency-only approval
 coverage for an unbound pure step, per variant and again on retained restoration.
 The existing exact packaged generation exception remains narrow. R10 and other
@@ -61,7 +68,7 @@ writer, Human Q2 route or compiler exception.
    unsupported parameters or move a multi-Tool workflow into Rust.
 5. **Populate coherent public commands and retire legacy admission (§§6.7/25/35).**
    Reuse the existing activation/deployment and MCP discovery/chat bridge. Give
-   every real usage its canonical execution Recipe/command; qualify exact command
+   each usage intended for MCP exposure a qualified MCP-call Recipe/variant; qualify exact command
    grammar, captures, variants, expected reply/classified failure and ordinary
    chat lifecycle before advertising. Keep internal helpers private and preserve
    in-flight advertised generations. Replace new legacy admission only after
@@ -72,13 +79,111 @@ writer, Human Q2 route or compiler exception.
    effects. Include installed overrides/upgrades, platform behavior and ordinary
    UI/MCP output. Pure syntax/source probes alone do not close a component family.
 
-Implement shared work once: [validator](../../validator_v3.md#remaining-implementation--consolidated-2026-10-22)
-owns Q1/class routes, general pure approval and evidence/human-Q2 machinery;
-[simplified v3](../../simplified_v3.md#remaining-implementation--consolidated-2026-10-22)
-owns global runtime/authority/resources/recovery; [prefix](prefix_v3_upgrade.md#remaining-implementation-sequence--full-completion)
-owns compiler/profile/design/serving/model-budget work. Recipe-owned Sempai and
-dynamic occurrences use [v3.5](../../path_to_v3.5.md) V35-09–16/28 and V35-13/14;
-this plan consumes those contracts rather than creating a second implementation.
+### Open contract and reference successors from K4
+
+This open successor applies to future component conversions and consumers under
+remaining steps 1–6. Earlier implemented descriptions and receipts, including
+§§4/5/10/16 and §§27–35, remain unchanged. Use the four component guides and the
+current implementation index; old present-tense observations are not evidence
+that the singleton, retained loader or activation path must be implemented again.
+This delivers Exact D01/D02/D04–D06/D09/D10 contract clarification, not activation.
+
+For future work, the blanket `result` requirement in §§4/5 has four scopes:
+
+| Artifact | Required result behavior |
+| --- | --- |
+| Preload definition | Declare exports/private dependencies and recursive contracts; loading has no effects or module invocation |
+| Export implementation | Return the declared result from the function |
+| Retained invocation | Existing compiler selects the pinned export and captures its return in its fixed invocation boundary |
+| Historical/standalone body | Keep that caller's explicit top-level `result` contract; it is not a preload definition |
+
+Use `knowledge`, `stepnumber`, one component UUID per `include`, and actual
+`recipe-input-layout/1`/`invocations` records through the retained document owner.
+`step_id` inside a supported result reference is valid; it is not a new step field.
+Binding metadata executes nothing. Pure steps require no artificial ToolSkill.
+Use the [single example/reference source](monty.composition.implementation.md#open-definition-and-example-successors-from-k4)
+for the full source-inspection factory/closure and future preview/formatter graph.
+That successor governs new implementations instead of copying old top-level bodies.
+
+For the future Read → Filter → Reply example in §10.2, preserve read metadata and
+actual offset/limit alongside selection. `truncated_by_default=false` alone does
+not mean a whole file was selected. Empty preview/no match/read failure are distinct;
+no whole-file absence claim from partial coverage. Raw acquisition/R10 retains its
+separate exact-byte provenance contract; never strip numbered display to recover it.
+
+For §16's future command consumers, reject executable source payloads, not legitimate
+source text carried as declared data. Actual command grammar/escaping still applies.
+Reject unsupported raw Monty values before lossy conversion; literal marker strings
+remain strings. Advertisement retains the listed contract; it is not a task capture.
+A changed/withdrawn incompatible command rejects before capture through existing
+qualification/bridge checks. After capture the ordinary task retains its exact graph.
+No hidden old-Recipe selection, direct MCP executor or successful Tool fallback.
+Missing optional `mcp_call` is valid; a declared corrupt contract remains an error.
+
+Public commands use recipe.md's public intent coverage. Private trusted admission
+uses its real typed selection/provenance/result contract, not fabricated public
+messages or replies. Complete-Recipe deployment and exact usage review stay distinct;
+a reusable Skill needs no owning Recipe. Existing public reply/history, child and
+MCP callers remain their bounded accepted baseline. Only demonstrated new caller
+gaps create K4 work; future family/pure activation retains its existing gates.
+
+### Concurrent implementation with simplified-v3
+
+Implement composition and simplified-v3 concurrently under this allocation. It
+applies to the remaining steps, §§5–7/16/21–25 and all linked component, Recipe
+and Skill-execution appendices. Dated implementation reports remain evidence of
+their recorded scope, not instructions to rebuild those mechanisms. Missing
+shared support is implemented by its named owner, never by a composition-local
+substitute. Resolve the actual affected caller before changing a shared interface.
+
+| Boundary | Implementing owner | Composition contribution / retained responsibility |
+| --- | --- | --- |
+| Retained selection, export/dependency loading, typed edges, binding preparation and dispatch | [simplified Phase 0a](../../simplified_v3.md#phase-0a--ground-truth-komponentenverträge-implementieren) and [library integration contract](../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration) | Declare actual component identities, interfaces, fixed/computed arguments and consumer mappings; migrate bodies and test actual family graphs. No second loader, symbol registry, compiler manifest store or binding runner. |
+| Global lifetime, task isolation, budgets, continuation, live Tool policy and fatal recovery | [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) and [shared admission/recovery contract](../../simplified_v3.md#gemeinsamer-admission--und-recoveryvertrag-für-produktaufträge) | Supply graph/profile requirements and family acceptance cases, including caught host errors and native artifact compatibility. No composition VM, resource controller, invocation ledger or recovery loop. |
+| R09 parent/child admission, waits, cancellation and terminal result custody | [simplified library integration contract](../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration) / Phase 3a | Own finite recursive usage profiles, exact parent binding/export, five Tier-1 subagent Recipes and migrations. Reuse existing claim-fenced child admission; an authorization receipt is not completion. |
+| Ordinary chat create/send/observe/close and fair hosting for MCP | [simplified library integration contract](../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration) / Phase 3a | Own MCP protocol/request correlation, command qualification/list projection and consumer wiring. No MCP-only chat runner, direct execution bridge or duplicate chat lifecycle store. |
+| Instance boot/shutdown and generic provider revision/auth lifecycle | [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) / [§10.1](../../simplified_v3.md#101-umsetzung-und-entfernung) | Supply existing listener readiness/cleanup hooks and Kohai request-local MCP advertisement/connection adapter. Prefix owns final rendering/size guard; no composition provider registry, supervisor or second request guard. |
+| Instance-derived storage identity, physical migration and retained artifact backup/restore | [simplified Phase 2](../../simplified_v3.md#phase-2--autorisierungsscopes-entfernen-daten-ids-entkoppeln), [Phase 6](../../simplified_v3.md#phase-6--datenbank--dateisystem--und-secret-migration) and [Phase 8](../../simplified_v3.md#phase-8--cutover-und-entfernung-des-legacy-modells) | Supply installed UUID/alias/override/consumer ledger, source/derived linkage requirements, package manifests and mappings. Keep operation-specific primitive/usage semantics here or with their existing subsystem owner; no second data migration or generic component store. |
+| Packaged successor deployment and coherent catalogue publication | [simplified library integration contract](../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration) and [§8.2](../../simplified_v3.md#82-vorgeschlagene-webui-funktionen) | Supply exact qualified packages/closures and family retirement assertions. Reuse existing seed/deployment/activation owners; no name-based seed overwrite, alternative activator or Prefix built from an unpublished catalogue. |
+| Q1, class routes, general pure/combination approval and human Q2 | [validator Steps 3/8–10](../../validator_v3.md#concurrent-implementation-with-simplified-v3) | Own authored component contracts, behavior fixtures and migrated consumers; consume trusted evidence and independent pure coverage. No new evidence writer, approval exception or human-review route. |
+
+For model-facing usages, consume the Prefix owner's
+[pair-design and prefix-selection contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26).
+Same pair means a shared format/limit design with separate role content rules and
+finished prefixes. A specific Recipe/Orchestrator/role selection replaces implicit
+base; without one use base, including ordinary No-Match. Missing explicit selection
+readiness offers the [OK/Cancel generation dialog](../reborn/model-token-limits.md#generation-prompts-missing-selection-and-model-use)
+and blocks dispatch rather than substituting base. Use existing durable jobs/waits
+and preserve first-dispatch artifact pinning and no replay. Kohai receives the
+Orchestrator prompt and first formats only its dynamic part for the final target
+pair. A connected/enabled Sempai corrects that formatted prompt using its own
+generated reviewer prefix/target-pair design and returns the final dynamic prompt.
+Kohai then adds the intended fixed prefix unchanged exactly once before it,
+without formatting the return again, before the complete guard/send.
+Manual limits use the same provider endpoint/query in all views; do not create
+another workflow/registry/settings owner or change provider server configuration.
+Composition implements only its existing reusable typed handoffs/consumer adapters;
+Prefix owns generation/design/serving qualification. Metadata/transport acceptance
+alone does not implement these semantics.
+Reuse the [explicit handoff acceptance](../reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests):
+the final join consumes Sempai's returned dynamic prompt, or Kohai's initially
+formatted prompt without review. The reviewer prefix stays in Sempai's own call.
+
+Composition retains the component/usage/command inventory, reusable PythonCode,
+actual consumer/reference Recipes, optional MCP publications, missing narrow primitive profiles and their
+operation-specific adapters. A new primitive still needs the existing native
+registration/loading path; it cannot conceal a multi-Tool workflow. Prefix owns
+compiler/profile/design/serving semantics. Dynamic control/occurrences and
+Recipe-owned Sempai remain with [v3.5](../../path_to_v3.5.md) V35-13/14 and
+V35-09–16/28. These allocations do not delegate those workflows to simplified.
+
+Reuse qualified shared-owner evidence for an unchanged contract; add only the
+actual family/parent/MCP-consumer cases not already covered. Record the named
+owner and missing extension in the existing status/implementation record before
+concurrent source edits, not a new coordination service. Unsupported successors
+stay draft; a corrupt active workflow remains an explicit error, never a silent
+omission, downgrade or Tier-2 replay. Installation qualification is noncircular;
+ordinary invocation of an approved usage creates no component or new Q1/Q2.
 
 ## Reply/history migration review gate
 
@@ -316,7 +421,7 @@ The planned roles have an explicit Python/executable-usage requirement but often
 
 | Component | Purpose | What needs to be upgraded or changed |
 | --- | --- | --- |
-| 5. [Typed file-interval PythonCode and associated Skill — illustrative design](../../skills.md#9-complete-worked-design-read-a-specified-line-interval) | Read one inclusive bounded line interval from a permitted text file. | The guide contains a concrete typed Python example, not an installed replacement; its illustrative UUIDs must not be inserted as real identities. Resolve the actual code/Skill/ToolSkill/Tool combination, enforce integer-not-bool bounds before the arithmetic, compile unchanged source in the pinned Monty build and validate the real offset/limit result. Head is covered with fixed inputs; tail still needs metadata/bounds logic. **Old functionality exists:** `pc-exec-read-file`, `pc-exec-read-file-head`, `pc-exec-read-file-tail`. Review equivalence to avoid double components. |
+| 5. [Typed file-interval PythonCode and associated Skill — illustrative design](../../skills.md#9-worked-authoring-design-read-a-specified-line-interval) | Read one inclusive bounded line interval from a permitted text file. | The guide contains a concrete typed Python example, not an installed replacement; its illustrative UUIDs must not be inserted as real identities. Resolve the actual code/Skill/ToolSkill/Tool combination, enforce integer-not-bool bounds before the arithmetic, compile unchanged source in the pinned Monty build and validate the real offset/limit result. Head is covered with fixed inputs; tail still needs metadata/bounds logic. **Old functionality exists:** `pc-exec-read-file`, `pc-exec-read-file-head`, `pc-exec-read-file-tail`. Review equivalence to avoid double components. |
 | 6. [Typed JSON-parse PythonCode usage — target example](../../tools.md#b-json-operations-operation-selection-does-not-create-a-workflow-tool) | Parse supplied JSON text into one declared typed result profile through the existing JSON primitive. | The example assigns result = host.json(operation="parse", data=inputs["json_text"]). It still needs real component identity, explicit Skill association, binding and recursive result/error contracts before activation. Define duplicate-key/nonfinite and technical size/depth semantics at the actual host parser; parsing does not establish schema approval. It does not cover query or stringify. **Old functionality exists:** `pc-exec-json-stringify`, `pc-exec-json-query`, `pc-exec-json-validate`. The mixed parse/stringify body contains the parse overlap; query and syntax validation are related operations with different contracts and remain separate usages. |
 | 7. [Typed shared structural-check successor — planned validator code](../../validator_v3.md#step-4--repair-the-shared-seed-defect-without-mutating-approved-originals) | Restore the narrow nonempty metadata check while removing legacy source-slot preparation. | No successor body/UUID is supplied yet. Author direct inputs access, assign a recursive pass/diagnostics result and parse/run the exact retained body with hostile marker-looking data. Keep this compatibility repair explicitly narrower than final class-specific validation; review/install it through noncircular seed qualification or authored review as applicable. **Old functionality exists:** `pc-validator-class-0`, `pc-validator-class-1`, `pc-validator-class-2`, `pc-validator-class-3`, `pc-validator-class-13`, `pc-validator-class-21`, `pc-validator-class-22`, `pc-validator-class-23`. Review equivalence to avoid double components. |
 | 8. [Identity/metadata checks — planned shared PythonCode role](../../validator_v3.md#step-5--implement-reusable-facts-and-checking-components) | Check stable identity, class and required descriptive fields. | The plan explicitly calls for this reusable code, but gives no approved body/name/UUID. Separate strict UUID/class/name facts from editable validation policy; reject nil/wrong-class identities and incomplete proposed revisions. The old nonempty validators overlap only the narrow metadata portion. Assign result and verify supported Monty semantics and actual typed handoffs before use. **Old functionality exists:** `pc-validator-class-0`, `pc-validator-class-1`, `pc-validator-class-2`, `pc-validator-class-3`, `pc-validator-class-13`, `pc-validator-class-21`, `pc-validator-class-22`, `pc-validator-class-23`. Review equivalence to avoid double components. |
@@ -347,7 +452,7 @@ These are dispositions of PythonCode names and their applicable Skill companions
 | Old PythonCode | Status and destination | Reason |
 | --- | --- | --- |
 | `pc-host-assemble-prefix-bundle` | Already planned; [existing prefix upgrade plan](prefix_v3_upgrade.md#12-recipe-and-primitive-boundaries). | The existing prefix upgrade plan owns conversion of this combined sweep/store body into separate typed usages. Extend that work; do not commission a second prefix assembly component. **Duplicate review:** newer section-2 entries 17, 18, 19, 20 overlap this functionality. Compare purpose, inputs/results and identity before converting; reuse compatible code and preserve distinct contracts. |
-| `pc-exec-read-file-head` and `skill-read-file-head` / `skill-read-file-range` | Foreseen; [foreseen interval usage](../../skills.md#9-complete-worked-design-read-a-specified-line-interval). | The bounded interval usage in skills.md §9 can read lines 1–50 using typed constants. Reuse that entry point; retain the head intent/usage documentation without another fixed-range body. **Duplicate review:** newer section-2 entries 5 overlap this functionality. Compare purpose, inputs/results and identity before converting; reuse compatible code and preserve distinct contracts. |
+| `pc-exec-read-file-head` and `skill-read-file-head` / `skill-read-file-range` | Foreseen; [foreseen interval usage](../../skills.md#9-worked-authoring-design-read-a-specified-line-interval). | The bounded interval usage in skills.md §9 can read lines 1–50 using typed constants. Reuse that entry point; retain the head intent/usage documentation without another fixed-range body. **Duplicate review:** newer section-2 entries 5 overlap this functionality. Compare purpose, inputs/results and identity before converting; reuse compatible code and preserve distinct contracts. |
 | `pc-web-search-query-build` | Duplicate legacy code; [existing general seed library](../../crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs). | Its executable encoding algorithm and result shape duplicate pc-url-encode. Convert pc-url-encode once and reuse it for search queries; search URL construction remains separate typed logic. |
 | `pc-host-resolve-intent` | Implemented infrastructure; [current global root](../../crates/brassclaw_engine/orchestrator/global_mode.py). | The global root resolves intent through its task-bound root port and the retained catalogue. Do not add a placeholder-based matching wrapper to a child program. **Duplicate review:** newer section-2 entries 4 overlap this functionality. Compare purpose, inputs/results and identity before converting; reuse compatible code and preserve distinct contracts. |
 | `pc-host-compose-orchestrator` | Implemented infrastructure; [current global root](../../crates/brassclaw_engine/orchestrator/global_mode.py). | The global root and retained compiler compose and execute pinned program/step references. The old arbitrary-source loop and failure-to-No-Match behavior must retire. **Duplicate review:** newer section-2 entries 4 overlap this functionality. Compare purpose, inputs/results and identity before converting; reuse compatible code and preserve distinct contracts. |
@@ -397,7 +502,7 @@ Legacy bootstrap still seeds older rows. The [composer](../../crates/brassclaw_e
 
 The retained path preserves code separately from data and rejects unresolved source placeholders. [Retained source inspection](../../crates/brassclaw_engine/src/executor/retained_source.rs) checks every selected body, requires `result` assignment, checks allowed imports/intrinsics and currently accepts one direct matched host call or pure logic. Its dynamic-host and one-call restrictions are actual adapter limitations. The broader documented dependent-chain exception cannot be assumed available in this implementation.
 
-The remaining library, authored activation and prefix work belongs to the existing [simplified v3 implementation plan](simplified-v3-implementation.md) and [prefix upgrade plan](prefix_v3_upgrade.md). This conversion plan contributes to their acceptance gates; it does not replace them or mark them complete.
+Composition owns the remaining library migration under [the concurrent ownership allocation](#concurrent-implementation-with-simplified-v3). Simplified implements shared runtime/deployment support, validator implements review/evidence and prefix implements its product workflows. The [simplified implementation journal](simplified-v3-implementation.md) records scoped evidence; it is not a second owner of component conversion. No shared receipt alone closes this plan's family acceptance.
 
 ## 5. Conversion criteria
 
@@ -432,7 +537,7 @@ Enforce compute time, memory and structural limits through the shared service's 
 ## 6. Implementation sequence
 
 1. **Resolve identities and reuse destinations.** Produce a machine-readable ledger from the source inventory and installed catalogue: old name/UUID/revision/checksum, historical Skill companion, actual association status, canonical destination, dependencies and disposition. Resolve the illustrative interval usage and current reply/history packages before redirecting callers. Inspect overrides and retained tasks. Do not interpret a matching name, class or validated flag as an approved association.
-2. **Define usage contracts before rewriting bodies.** For each listed entry, reconcile prose, actual primitive parameters, fixed arguments and recursive input/result/failure contracts. Establish one-Tool usage boundaries and pure helpers. Split multi-call read/tail/filter, trigger removal and memory append only as needed by their actual semantics. Reuse one compatible dispatcher with multiple reviewed usage associations; do not create a duplicate executor for each fixed selector. Specify new host support only when an existing primitive/adapter truly cannot implement the operation.
+2. **Define usage contracts before rewriting bodies.** For each listed entry, reconcile prose, actual primitive parameters, fixed arguments and recursive input/result/failure contracts. Establish one-Tool usage boundaries and pure helpers. Split multi-call read/tail/filter, trigger removal and memory append only as needed by their actual semantics. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse one equivalent usage/export; represent different contracts with distinct reviewed entry points sharing compatible helpers. Verify the selected graph has neither duplicate implementation-symbol exports nor ambiguous code/binding/Tool/callable associations. Do not duplicate a Rust primitive for a fixed selector. Specify new host support only when an existing primitive/adapter truly cannot implement the operation.
 3. **Consume retained assembly and shared qualification support.** Existing retained selection, typed bindings, dependency/export loading and associations are the implementation baseline. Remaining runtime/lifecycle gaps are implemented by simplified Phase 0a/3a; general pure approval and review by validator Steps 3/8–10; dynamic occurrences by V35-13/14. This plan consumes and tests those results in its component families, without a second loader, store or review executor. Keep actual inspector restrictions and reject unsupported graphs before activation.
 4. **Convert and qualify in manageable families.** Start with zero-host lexical/encoding/formatting helpers and the canonical interval usage. Then convert read-only filesystem/time/JSON/HTTP retrieval and domain shaping. Follow with effectful memory/file/trigger/API writes, shell usages. The validator plan implements authoring-validator workflows; this plan supplies reusable components to that owner. Each family includes its Skill prose corrections and exact combination evidence; a parse-only batch is not complete. Prefix/bootstrap lifecycle wrappers excluded in section 3 remain with their existing owners.
 5. **Validate through real Monty and host bindings.** Compile exact successor bytes, execute representative valid/invalid inputs in the pinned interpreter, and then exercise retained assembly and actual registered adapters in a controlled environment. Verify input isolation, outputs, policy, effects, cancellation, waits and retained selection, including failures before dispatch. Reuse unchanged evidence only under the development policy's identity conditions.
@@ -441,10 +546,11 @@ Enforce compute time, memory and structural limits through the shared service's 
 
 ## 7. Required acceptance evidence
 
-These are implementation checks to perform later, **not tests run or passed by this planning task**. Follow [the development policy](../development-policy.md): choose targeted evidence after coherent changes, avoid repeated blanket builds, and expand only for unresolved failures or risks.
+Use the [concurrent ownership allocation](#concurrent-implementation-with-simplified-v3) for each row: shared mechanics are tested once by their owner, composition adds actual converted-family/command cases. These are implementation checks to perform later, **not tests run or passed by this planning task**. Follow [the development policy](../development-policy.md): choose targeted evidence after coherent changes, avoid repeated blanket builds, and expand only for unresolved failures or risks.
 
 | Area | Evidence required |
 | --- | --- |
+| Shared implementation handoff | Consume the actual simplified loader/child/chat/provider/deployment interfaces. Missing support remains with that owner; no second queue, VM, activator or provider store. Test exact family and MCP/parent consumers without duplicating unchanged shared evidence. |
 | Inventory and deduplication | Every audited PythonCode name is either a conversion entry or an explained reuse/retirement. Each companion has an explicit disposition and no second executable is added for the same compatible usage. Installed-only rows/overrides are reconciled separately. |
 | Source/data separation | Quotes, backslashes, newlines, braces, literal placeholder-looking text and injection strings remain exact data. Source checksum stays unchanged across different inputs. Unresolved source slots fail before dispatch. |
 | Recursive values | Missing/default/null, false/zero, nested lists/objects, unknown fields, malformed items, boolean-as-count, overflow and nonfinite values follow declared contracts. Invalid producers never acquire consumer defaults or become empty-success results. |
@@ -489,7 +595,7 @@ The component-by-component assessment is in section 11. [Concrete implementation
 
 Use the existing read usage, the proposed reusable literal-line filter and packaged reply. The source never changes when the path or substring changes. Read returns the actual numbered display content; this profile filters that display text. A raw-source search needs a qualified raw-content result or the canonical grep Tool instead. A default-capped read means the reply covers only those returned lines; a Recipe promising the whole file must obtain complete input and verify completeness first.
 
-The following is the exact persisted step **shape**, with symbolic UUID tokens to resolve before authoring. It is a design template, not insertable JSON with invented component identities. The Recipe's descriptions and intent variants must follow recipe.md, including its intent-example requirements.
+The following is a partial retained Recipe-document design with explicit binding records and symbolic UUID tokens to resolve before authoring. It is a design template, not insertable JSON with invented component identities. The Recipe's descriptions and intent variants must follow recipe.md, including its intent-example requirements.
 
 ```json
 {
@@ -498,11 +604,11 @@ The following is the exact persisted step **shape**, with symbolic UUID tokens t
   "step_descriptions": [{
     "desc_idx": 0, "label": "read and select literal lines", "yaml_source": "",
     "steps": [
-      {"stepnumber": 1, "knowledge": "rust", "goal": "Bind file read", "content": "", "type": "component", "include": ["<READ_TOOLSKILL_UUID>"]},
+      {"stepnumber": 1, "knowledge": "rust", "goal": "Bind file read", "content": "", "type": "component", "include": ["<READ_TOOLSKILL_UUID>"], "tool_bindings": [{"tool_id": "<READ_TOOL_UUID>", "tool_name": "read_file", "params": {}, "error_policy": {"policy": "fail"}}], "dependencies": null},
       {"stepnumber": 2, "knowledge": "orchestrator", "goal": "Read supplied file", "content": "", "type": "component", "include": ["<READ_CODE_UUID>"]},
       {"stepnumber": 3, "knowledge": "orchestrator", "goal": "Select literal lines", "content": "", "type": "component", "include": ["<LINE_FILTER_UUID>"]},
       {"stepnumber": 4, "knowledge": "orchestrator", "goal": "Format selected lines", "content": "", "type": "component", "include": ["<LINE_REPLY_FORMATTER_UUID>"]},
-      {"stepnumber": 5, "knowledge": "rust", "goal": "Bind reply publication", "content": "", "type": "component", "include": ["<REPLY_TOOLSKILL_UUID>"]},
+      {"stepnumber": 5, "knowledge": "rust", "goal": "Bind reply publication", "content": "", "type": "component", "include": ["<REPLY_TOOLSKILL_UUID>"], "tool_bindings": [{"tool_id": "<REPLY_TOOL_UUID>", "tool_name": "post_reply", "params": {}, "error_policy": {"policy": "fail"}}], "dependencies": null},
       {"stepnumber": 6, "knowledge": "orchestrator", "goal": "Publish answer", "content": "", "type": "component", "include": ["<REPLY_CODE_UUID>"]}
     ]
   }],
@@ -528,6 +634,38 @@ In the retained Recipe document, store the next layout under `input_layouts["lit
   }
 }
 ```
+
+The Rust records must agree with the selected ToolSkill's `tool-skill-binding/1`
+and Tool definition: stable Tool UUID, capability/callable, adapter and exact
+native implementation. `read_file` and `post_reply` here are verified callable
+aliases, not a rule for deriving names from capability IDs. Binding `params`
+remains `{}`; actual invocation arguments come from the typed code/input layout.
+Neither ToolSkill UUID presence nor these records alone proves loading/approval.
+
+Store the following under the retained Recipe document's `invocations`. Resolve
+the three symbolic export names to actual reviewed preload declarations; the
+packaged reply export is `publish_turn_reply`. These are export-name selections,
+not Python source or fields on the legacy Recipe SQL constructor.
+
+```json
+{
+  "literal-lines": {
+    "0:2": "<RESOLVED_READ_EXPORT>",
+    "0:3": "<RESOLVED_LINE_FILTER_EXPORT>",
+    "0:4": "<RESOLVED_LINE_FORMATTER_EXPORT>",
+    "0:6": "publish_turn_reply"
+  }
+}
+```
+
+Before qualification, replace all identity/export markers, retain the selected
+usage Skills and helper closure in the revision graph, and supply the complete
+revision envelope and approval evidence. The filter/formatter designs need actual
+preload definitions and independent pure approval; a parsed snippet is insufficient.
+Validate binding adjacency/cardinality, descriptor/native identity, complete
+input/result edges, export selection and one-dispatch-per-usage through the
+actual retained preparation/runner path. Include a missing/wrong binding negative
+case. This partial document remains a design, not activated or runnable evidence.
 
 Required composition yields read binding → unchanged read source with typed path → unchanged filter source with validated content/substring/invert → unchanged line formatter → reply binding → unchanged reply source with formatted answer. It must not join these into a source string containing the filename or file contents. Binding steps do not create user-visible results. The final reply reference remains task-owned; packaged history follows the supported finalization path. Read/filter failure causes zero reply publication and no Tier-2 replay.
 
@@ -747,8 +885,8 @@ See [active wiring versus legacy definitions](monty.composition.recipes.md#activ
 ## 16. MCP invokes Skill execution Recipes through intent matching
 
 MCP is a **normal-chat client**, not a direct Monty/IBS/Tool execution bridge.
-Each eligible Skill has a canonical execution Recipe or equivalent existing
-variant. tools/list gives its exact command sentence, variable positions, types,
+Each usage intended for MCP publication needs a qualified MCP-call Recipe or
+equivalent existing variant. Other complete Skills need no dedicated Recipe. tools/list gives its exact command sentence, variable positions, types,
 formatting/escaping rules and examples. The model returns only that completed
 command. MCP checks it against the listed command contract, creates a new normal
 chat and submits the command as its user message. The existing chat ingress,
@@ -769,8 +907,10 @@ yet advertised. These are purpose/association requirements, not proof that a
 name prefix or an invented database flag establishes eligibility. Reuse a
 compatible existing Recipe/variant; do not duplicate it merely for discovery.
 
-**Always-on server:** start and supervise one MCP server during ordinary
-BrassClaw startup, after supported chat/catalogue readiness. Build and atomically
+**Always-on server:** the simplified Phase 3a lifecycle owner starts and supervises
+the existing MCP listener through its readiness/cleanup hooks, after supported
+chat/catalogue readiness. Composition supplies the listener/protocol/listing adapter,
+not another startup supervisor. Build and atomically
 publish its initial listing before Kohai can advertise it. Keep the server
 running through provider disconnects and idle periods until instance shutdown
 or supervised server recovery. It serves metadata and ordinary chat operations;
@@ -919,8 +1059,12 @@ obsolete Skill-UUID -> empty-step_link composer caller. **Do not add a direct
 MCP-to-Monty/Rust Tool/IBS/global-child bridge or change the existing execution
 architecture for MCP.** Inspect actual chat lifecycle/auth/result interfaces
 before wiring the server; this plan invents no endpoints or request fields.
-Missing ordinary chat support is addressed in its existing product owner, not
-with another execution loop. Existing Skill/function/library qualification gaps
+Missing ordinary chat/closure/hosting support is implemented in its existing
+product/runtime owner through the [simplified library integration contract](../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration),
+not by composition with another execution loop. Composition supplies MCP-specific
+protocol/correlation and Kohai window wiring; generic boot/provider lifecycle
+remains simplified Phase 3a/§10.1. Reuse §§33–35's qualified supported path; the
+older absent-stub instructions below do not reopen completed transport work. Existing Skill/function/library qualification gaps
 remain their own migration work, not new MCP execution infrastructure.
 
 Acceptance must demonstrate list -> valid completed command -> fresh chat ->
@@ -930,7 +1074,9 @@ commands, concurrent chats, chat creation/send acknowledgement uncertainty,
 waits, cancellation, disconnects, response delivery and close failures. Preserve
 request/chat/message/run/attempt references and confirmed/unresolved effects;
 never resend an uncertain message or replay a completed write after a lost reply.
-The current listener/stub is not acceptance of this transport.
+Listener-only or fail-closed retirement tests do not establish this transport;
+reuse the actual qualified ordinary-chat/MCP scope recorded in §§33–35 and add
+only acceptance for changed or newly exposed consumers.
 
 See [the per-Skill execution Recipe instructions](monty.composition.skill-recipes.md).
 Plans only; no chat/runtime implementation or activation is performed here.
@@ -1318,7 +1464,7 @@ On the qualified typed path, invalid/null values must not be repaired by the leg
 | TS047. [ts-skill-list](../archive/builtin_stuff_v3.md#step-164--toolskill-ts-skill-list-class-13)<br>Archive-only proposal | Describe legacy installed-Skill enumeration binding. | Archive-only descriptor has no current class13 seed/loaded builtin.skill_list handler found. Reuse qualified catalogue discovery/approved Skill projection binding if compatible; remove scope-role and listing workflow instructions. A schema arm is not executable availability. Resolve actual stable identities before any replacement usage. **Review overlap to avoid duplicates:** `ts-host-sweep-validated-components`. Compare exact primitive, callable, typed operation/result and approval subject; reuse a compatible identity/profile rather than copying it. |
 | TS048. [ts-skill-install](../archive/builtin_stuff_v3.md#step-165--toolskill-ts-skill-install-class-13)<br>Archive-only proposal | Describe legacy imported-Skill installation binding. | Retire the monolithic binding proposal; fetch, validate source, admit immutable candidate and review/activate are separate Recipe steps. Reuse real HTTP/read and candidate-admission bindings where contracts fit. Associated Skill requires prose plus exact executable and reviewed dependencies; no automatic install from manifest text. **Review overlap to avoid duplicates:** `ts-http-fetch`, `ts-read-file`, `ts-host-validate-component`. Compare exact primitive, callable, typed operation/result and approval subject; reuse a compatible identity/profile rather than copying it. |
 | TS049. [ts-skill-remove](../archive/builtin_stuff_v3.md#step-166--toolskill-ts-skill-remove-class-13)<br>Archive-only proposal | Describe legacy Skill withdrawal/removal binding. | No current descriptor seed/registered removal Tool found. Resolve supported one-operation catalogue withdrawal contract if required; move dependency handling/workflow out. Preserve retained revisions/running selections and remove legacy scope grants/universal invocation confirmation. Do not execute or install this archived metadata. |
-| TS050. [ts-host-regex-match](../archive/builtin_stuff_v3.md#toolskill-class-13)<br>Archive-only proposal | Describe the archive regex wrapper binding. | Retire alongside archive host.regex_match when the existing pure pc-regex-match implements the qualified need. Pure matching has no artificial ToolSkill or zero-Tool Skill. Invalid regex/resource failure remains distinct from a negative match; do not infer an active binding from the legacy __regex_match__ helper. |
+| TS050. [ts-host-regex-match](../archive/builtin_stuff_v3.md#step-2781--hostregex_match-over-the-pc-regex-match-backing-step-20x2)<br>Archive-only proposal | Describe the archive regex wrapper binding. | Retire alongside archive host.regex_match when the existing pure pc-regex-match implements the qualified need. Pure matching has no artificial ToolSkill or zero-Tool Skill. Invalid regex/resource failure remains distinct from a negative match; do not infer an active binding from the legacy __regex_match__ helper. |
 | TS051. [packaged reply binding](../../crates/brassclaw_skills/src/global_bootstrap_components.rs#L325) | Prepare the retained owning-task reply usage. | Implemented narrow class13 successor record uses tool-skill-binding/1, existing post_reply Tool UUID and exact packaged code/Skill association. Review legacy ts-host-post-reply; reconcile canonical binding identity rather than seed a second reply usage. <!-- Withdrawn: No descriptor rewrite indicated here; wider authored catalogue and retained-version acceptance remain open. --> Independently review and migrate this binding with the reply Recipe and preload/export interface; current package status does not qualify unchanged reuse. Wider authored catalogue and retained-version acceptance remain open. **Another listed component/profile overlaps:** `ts-host-post-reply`. Compare exact primitive, callable, typed operation/result and approval subject; reuse a compatible identity/profile rather than copying it. |
 | TS052. [packaged history binding](../../crates/brassclaw_skills/src/global_bootstrap_components.rs#L325) | Prepare completed-turn daily-log appending. | Implemented narrow descriptor reuses memory_write and exact packaged history association. Review ts-memory-write; keep this fixed-target profile only if its narrower contract warrants it. Preserve finite result, trusted package/native retention and one history owner; it does not qualify arbitrary memory writes or grant policy. **Another listed component/profile overlaps:** `ts-memory-write`. Compare exact primitive, callable, typed operation/result and approval subject; reuse a compatible identity/profile rather than copying it. |
 | TS053. [typed interval binding profile N05 — guide design](../../toolskills.md#10-worked-example-bind-file-reading-execute-an-interval-usage) | Prepare file reading with computed inclusive interval arguments. | Reuse/revise ts-read-file for actual path/offset/limit. start_line/end_line are local Skill inputs, not Tool keywords; approved code computes bounded offset/limit. Complete exact association and real retained adapter acceptance. This design has no separate seeded ToolSkill UUID and warrants no new file-read Tool. **Another listed component/profile overlaps:** `ts-read-file`. Compare exact primitive, callable, typed operation/result and approval subject; reuse a compatible identity/profile rather than copying it. |
@@ -1365,7 +1511,7 @@ This audit rechecked the five composition plans against the four binding guides,
 3. **Model admission was overrestricted in prose.** MCP sends only the listed Skill's completed execution Recipe command through a new ordinary chat; matching and execution create no component and accept no Python source. Canonical approved code and existing exact associations are reused; dispatch checks current kernel policy. Model output cannot grant authority, change a pinned task graph, manufacture evidence or silently install/activate persistent components. Tier0 remains model-free execution of qualified associated code.
 4. **Catchable host errors need an authoritative outcome.** Monty can deliver host exceptions to Python; a catch block returning a dictionary cannot erase kernel denial, stale/cancelled dispatch, exhausted task budgets or a recorded unresolved/failed effect. Preserve those outcomes outside Python result interpretation and stop or follow only the explicitly qualified failure continuation. Ordinary declared recoverable errors may be handled only by the usage's approved contract. Never interpret an arbitrary success-shaped Python result as proof that the host operation succeeded. Current adapter enforcement must be demonstrated, not assumed. See [host functions](https://pydantic.dev/docs/monty/concepts/host-functions/) and [security](https://pydantic.dev/docs/monty/concepts/security/).
 5. **Host conversion and secrets remain boundary work.** Validate values before a lossy host conversion can stringify unsupported objects or truncate recursive/deep structures; reject values outside the finite approved profile rather than validating the transformed substitute. Supply only public nonsecret headers as task inputs; resolve credentials in the protected host auth boundary, excluding them from code, model context, results, evidence and snapshots. Opaque technical fencing handles are admitted by their trusted owner and checked against the owning task; they are not model-created grants. Every cached callable/alias still receives the same live policy check on dispatch. Upstream host-function proxies resolve by name against the current feed, so a reused name must resolve to the task's retained implementation rather than a newly installed handler. Validate raw Rust MontyNode kinds before lossy JSON conversion; upstream Python/JavaScript conversion examples do not establish local Rust behavior. See [host-value limitations](https://pydantic.dev/docs/monty/limitations/host-values/).
-6. **Retaining an image is insufficient to restore a native handler.** Capturing the current executable image/checksum is narrow implementation identity evidence. It is not a cross-version vtable loader. Before an upgrade/recovery can execute an old selection, prove the exact old artifact is actually loadable through a supported compatible ABI/runtime and qualified registration path. If that path is missing, block the upgrade/admission that would strand retained work; never substitute the newest native handler or silently drop the old task. Keep the single supervised global-service lifecycle and reconcile effects before recovery. Restoring an upstream suspension can announce its host call again; intercept that announcement using durable dispatch identity and confirmed/unresolved state. A confirmed effect returns its retained receipt without redispatch; an unresolved effect requires reconciliation, never automatic replay. This is implementation work required by [tools.md](../../tools.md#7-immutable-implementations-and-live-settings), not an additional external approval for bundled seeds.
+6. **Retaining an image is insufficient to restore a native handler.** Capturing the current executable image/checksum is narrow implementation identity evidence. It is not a cross-version vtable loader. Before an upgrade/recovery can execute an old selection, prove the exact old artifact is actually loadable through a supported compatible ABI/runtime and qualified registration path. If that path is missing, block the upgrade/admission that would strand retained work; never substitute the newest native handler or silently drop the old task. Keep the single supervised global-service lifecycle and reconcile effects before recovery. Restoring an upstream suspension can announce its host call again; intercept that announcement using durable dispatch identity and confirmed/unresolved state. A confirmed effect returns its retained receipt without redispatch; an unresolved effect requires reconciliation, never automatic replay. Missing retention/loading/recovery mechanics are implemented in simplified Phase 0a/3a under the [library integration contract](../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration); composition supplies the actual operation/profile cases. This satisfies [tools.md](../../tools.md#7-immutable-implementations-and-live-settings), not an additional external approval for bundled seeds.
 
 **Plan acceptance checks:** reconcile every role to one actual operation and compatible finite contract; verify binding adjacency/association/closure and exact artifacts; exercise invalid inputs, policy change between binding and dispatch, caught host denial, unknown effect, cancelled/stale dispatch, evidence-write failure after confirmed evaluation and old-version recovery on the real retained Monty path. Documentation/JSON/parser checks are preliminary evidence only. This audit changes plans; it neither implements these gates nor claims runtime acceptance.
 
@@ -1373,10 +1519,10 @@ This audit rechecked the five composition plans against the four binding guides,
 
 1. Rewrite every real Skill's immutable prose/interface with exported names/signatures, canonical code UUID/implementation symbols, exact parameter/result/failure contracts and private dependencies. Preserve the one-Tool scope and existing duplicate reviews; pure-only wrappers are retired as Skills, not fabricated exports.
 2. Convert selected class-22 Tool-usage bodies into preloadable function definitions with explicit inputs and returns. Retain small shared helpers as declared PythonCode dependencies; create no duplicate body merely for another compatible public alias. Specialize fixed selectors and incompatible operation profiles before exposing them.
-3. Implement and qualify the retained interface reader, dependency-first loader, collision-safe task export environment and transitive function-call inspection in their existing owners. Preloading must produce zero Tool/model/I/O effects, including defaults/initializers. Current top-level one-call/result inspection is narrow historical support, not proof of this new interface.
+3. Reuse the implemented retained interface reader, dependency-first loader, task export environment and function-aware inspector in their existing owners. Have the simplified Phase 0a/3a owner implement only demonstrated missing selection/isolation support under the [library integration contract](../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration), following the shared usage/export rules; qualify the affected graph without restarting completed loader work. Preloading must produce zero Tool/model/I/O effects, including defaults/initializers. Legacy top-level one-call/result inspection alone does not qualify the retained function interface.
 4. Assemble Recipe invocation steps referencing the canonical class-22 UUID and supported retained export/input selection. Rust ToolSkill binding remains immediately before the invocation. Keep unchanged persisted knowledge/stepnumber grammar and one UUID per step; no invented export/module fields or effectful load steps.
 5. Pin interface/source/dependency/association/approval/artifact and symbol resolution from one coherent approved generation. Keep old and new generations available without namespace overwrite; children, waits, retries and resumes retain exact original resolution. Sharing code must never share another task's inputs, arrays, results, closure state or host context.
-6. Provide a canonical execution Recipe for each real Skill, reusing an equivalent existing variant. MCP projects its matching command and typed parameters; the ordinary chat path runs matching/IBS and the Recipe's preloaded canonical function, posts its response in that chat and MCP forwards it before closing the chat. No Python source is accepted. It creates no component and triggers no per-call Q1/Q2. Existing inputs/results, live Tool policy and technical limits remain effective.
+6. For each intended MCP publication, qualify a MCP-call Recipe or reuse an equivalent existing variant. A complete Skill needs no dedicated Recipe; consuming and test workflows remain independent of MCP. MCP projects its matching command and typed parameters; the ordinary chat path runs matching/IBS and the Recipe's preloaded canonical function, posts its response in that chat and MCP forwards it before closing the chat. No Python source is accepted. It creates no component and triggers no per-call Q1/Q2. Existing inputs/results, live Tool policy and technical limits remain effective.
 7. Qualify migration through the actual global Monty path with effect-free load, dependency/collision rejection, repeated/concurrent call isolation, policy change after preload and old/new version coexistence/recovery. New authored interfaces/code need their exact combination review; shipped successors use verified noncircular system_seed qualification. Retain old task selections and report missing support honestly.
 
 Every Skill subsection in the component appendix now has concrete export/alias, implementation reuse or blocked disposition, dependency/load/pin/state instructions and acceptance cases. Every Recipe appendix entry specifies function preloading and invocation. Existing draft limitations are preserved: a preparation dictionary, pure helper, missing adapter or retired root port does not become an executable Skill because it is wrapped in a function.
@@ -2093,3 +2239,87 @@ generation unadvertised until those observations exist. This is acceptance of
 the supported activation path, not completion of the wider v3 conversion plan.
 The protected installation workflows and executable components without a
 supported standalone approval contract remain explicit support boundaries.
+
+## Open K3-2 follow-up from K4 — Provider setup and design bootstrap composition
+
+**New open follow-up; not implemented by this document patch.** Existing completed
+sections and original acceptance criteria remain unchanged. This section carries
+only the relevant future-consumer delta from [Exact K3-2](Exact_V3_definition_update_at_K3-2.md) and the
+[shared selection/lifecycle contract](../reborn/model-token-limits.md#open-k3-2-successor--retained-prefix-selection-and-prefix-free-construction-workflows).
+It does not reopen K0–K3, replace a current owner's work or create a parallel
+implementation. Original sections are read references; no code activation is claimed.
+
+- Compose Basic-Provider-Configuration-Values from actual discovery/read/model/
+  retention usages, one binding/executable pair per independent Tool call. Exact
+  B1/B2 prompt/data/response contracts belong to the existing model usage path.
+- Default, explicit Selected and intentional PrefixFreeWorkflow extend the existing
+  retained prefix binding. Carry the workflow standard through qualified recursive
+  child/review edges; each dispatch proves correct composition without choosing
+  the mode anew. Do not add model-visible skip flags or duplicate child Recipes.
+- Selected targets, exports, code, approvals and original inputs remain pinned.
+  Inline/FinalBoundary insertion mechanics and response/effect custody consume the
+  same selection; no catalogue fallback for intentional prefix-free work.
+- Pure strict-response/schema/evidence checks execute without LLM repair calls.
+  Missing primitives/runtime support stay with their existing owners, not a Rust
+  workflow Tool or another VM. Named helper drafts alone enable no serving route.
+
+
+## Open Exact-validation successor — own A functions, S qualification and workflow scope
+
+**Open text handoff, not implemented.** The sequencing prerequisite is terminal
+acceptance of Root's actually running bounded BUILD-014 review/model-selection
+repair, not completion of all earlier open steps or the obsolete general authored
+exact-closure approval design. Immediately afterward, these target rules replace
+contradictory still-open implementation instructions in the same existing owner
+steps. Retain accepted packages, original evidence and valid old /1 profiles;
+do not reopen K0–K3 or alter BUILD-014's frozen inputs/contracts. New-profile
+publication still requires the connected successor readers/writers, not prior
+implementation of the superseded design. No second plan owner, queue or VM.
+
+Consume the binding target in [skills.md](../../skills.md#own-functional-approval-and-successor-compatibility): authored installed changes (A) have
+own Q1/behavior/human Q2; Skill and implementation code share one functional
+subject with distinct immutable IDs. S retains exact Skill-usage qualification
+after independently qualified Tool then ToolSkill, outside normal authored queue,
+with no additional installed Q2. Provenance belongs to each revision/usage; mixed
+graphs are allowed but do not transfer S exact evidence to changed partner bytes.
+Existing Single-root/exact-combination/Recipe-deployment APIs remain current
+support boundaries until the following connected successor is implemented.
+For new implementation immediately after BUILD-014, earlier blanket authored
+combination-review and class-10/50 protection instructions no longer govern the
+contradictory open work: only S exact usages retain the extra combination record,
+and only class10 retains root protection. Existing exact-profile readers keep
+their current checks until a qualified successor replaces them; preserving that
+support does not require completing an obsolete general A reapproval engine.
+
+### Existing Composition owner: directed readers, shared bindings and Recipe migration
+
+1. After bounded BUILD-014 acceptance, consume Validator's own A
+   function records without requiring fresh exact-combination approvals or
+   unchanged Recipe submissions on compatible updates. Current exact code/
+   association schema equality is a real gate: replace it only for qualified A
+   profiles with checked directed required/provided contracts, not a global JSON
+   relaxation. Keep checksum/identity equality and S exact usage checks.
+2. Existing tuple resolution is PythonCode UUID/ToolSkill UUID/Tool UUID/Callable.
+   Several compatible Skills can share a ToolSkill today when actual identities
+   are unambiguous. Export names are not lookup keys. For a proven shared-code
+   ambiguity qualify explicit usage/export selection end to end in this owner;
+   no First-Match, copied code, second selector registry or new Rust primitive.
+3. New/changed Recipe families consume complete own workflow coverage from the
+   Validator. Real binding/export/Handoff/Wait/Child/Completion observations are
+   required; they do not issue new dependency approvals. Supported variants must
+   be covered, unsupported dynamic profiles stay at their existing runtime owner.
+4. Inventory class50 rows, consumers and task references first. Reuse fitting
+   class21 Recipes or create normal Recipes only for real distinct workflows.
+   Close new class50 authoring/import/approval/publication/selection paths while
+   retaining historical decoders and valid old pins. No new table/alias/Scaffold
+   engine or UUID reclassification; class10/root stays protected.
+5. Use actual selected native child/parent-claim paths; a Recipe UUID in a
+   code-only step is not supported invocation. Preserve original catalogue/model
+   selection, typed inputs, results, waits and effects. Missing general invocation
+   goes to the existing runtime owner before activating affected flows.
+
+**Outgoing gate:** next open affected family/R10/deployment/MCP/restore successor
+consumes these qualified readers; Simplified remains the single catalogue
+publisher. Preparation, serialization, retained task, private review, child/wait/
+restore and affected Prefix/MCP readers must agree before new-profile publication.
+Old exact task selections and original S/authored records keep their meaning.

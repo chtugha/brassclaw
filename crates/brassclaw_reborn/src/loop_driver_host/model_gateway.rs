@@ -19,6 +19,8 @@ where
     pub(super) thread_service: Arc<S>,
     pub(super) thread_scope: ThreadScope,
     pub(super) host_gateway: Arc<G>,
+    pub(super) task_selection:
+        tokio::sync::OnceCell<Option<brassclaw_loop_support::HostManagedTaskModelSelection>>,
     pub(super) max_messages: usize,
     pub(super) identity_context_source: Option<Arc<dyn HostIdentityContextSource>>,
     pub(super) instruction_materialization_store: Option<Arc<dyn InstructionMaterializationStore>>,
@@ -32,7 +34,14 @@ where
     S: SessionThreadService + ?Sized + Send + Sync + 'static,
     G: HostManagedModelGateway + ?Sized + Send + Sync + 'static,
 {
-    fn port(&self, context: LoopRunContext) -> ThreadBackedLoopModelPort<S, G> {
+    fn port(
+        &self,
+        mut context: LoopRunContext,
+    ) -> Result<ThreadBackedLoopModelPort<S, G>, AgentLoopHostError> {
+        let selected = self.task_selection.get().and_then(Option::as_ref);
+        if let Some(selected) = selected {
+            context.resolved_model_route = Some(selected.binding.model_route()?);
+        }
         let mut model_port = ThreadBackedLoopModelPort::new(
             Arc::clone(&self.thread_service),
             self.thread_scope.clone(),
@@ -53,7 +62,10 @@ where
         if let Some(source) = self.tool_result_source.as_ref() {
             model_port = model_port.with_tool_result_source(Arc::clone(source));
         }
-        model_port
+        if let Some(selected) = selected {
+            model_port = model_port.with_task_gateway(selected.gateway.clone());
+        }
+        Ok(model_port)
     }
 }
 
@@ -63,12 +75,92 @@ where
     S: SessionThreadService + ?Sized + Send + Sync + 'static,
     G: HostManagedModelGateway + ?Sized + Send + Sync + 'static,
 {
+    async fn preflight_task_model_usage(
+        &self,
+        input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
+    ) -> Result<(), AgentLoopHostError> {
+        if input.is_some() && !matches!(self.task_selection.get(), Some(Some(_))) {
+            return Err(AgentLoopHostError::new(
+                brassclaw_turns::run_profile::AgentLoopHostErrorKind::Unavailable,
+                "original task model input selection is unavailable",
+            ));
+        }
+        if let Some(Some(selected)) = self.task_selection.get() {
+            selected
+                .gateway
+                .preflight_task_model_usage(input)
+                .await
+                .map_err(|_| {
+                    AgentLoopHostError::new(
+                        brassclaw_turns::run_profile::AgentLoopHostErrorKind::Unavailable,
+                        "selected task model usage is unavailable",
+                    )
+                })?;
+        }
+        Ok(())
+    }
+
+    async fn capture_task_model_selection(
+        &self,
+        parent: Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<
+        Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        AgentLoopHostError,
+    > {
+        let selected = self
+            .task_selection
+            .get_or_try_init(|| async {
+                self.host_gateway
+                    .capture_task_model_selection(parent.clone(), capture.clone())
+                    .await
+                    .map_err(|_| {
+                        AgentLoopHostError::new(
+                            brassclaw_turns::run_profile::AgentLoopHostErrorKind::Unavailable,
+                            "task model selection could not be captured",
+                        )
+                    })
+            })
+            .await?;
+        if let Some(capture) = capture.as_ref()
+            && selected
+                .as_ref()
+                .is_none_or(|selected| !selected.binding.matches_capture_context(capture.as_ref()))
+        {
+            return Err(AgentLoopHostError::new(
+                brassclaw_turns::run_profile::AgentLoopHostErrorKind::InvalidInvocation,
+                "task model capture declaration conflicts",
+            ));
+        }
+        if let Some(parent) = parent.as_ref()
+            && selected
+                .as_ref()
+                .is_none_or(|selected| !Arc::ptr_eq(&selected.binding, parent))
+        {
+            return Err(AgentLoopHostError::new(
+                brassclaw_turns::run_profile::AgentLoopHostErrorKind::InvalidInvocation,
+                "task model parent selection conflicts",
+            ));
+        }
+        Ok(selected.as_ref().map(|selected| selected.binding.clone()))
+    }
+
+    fn task_model_selection(
+        &self,
+    ) -> Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>> {
+        self.task_selection
+            .get()
+            .and_then(Option::as_ref)
+            .map(|selected| selected.binding.clone())
+    }
+
     async fn prepare_model_call_with_observation(
         &self,
         request: LoopModelGatewayRequest,
         custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
     ) -> Result<Box<dyn PreparedLoopModelCall>, LoopModelGatewayError> {
         self.port(request.context)
+            .map_err(host_error_to_model_gateway_error)?
             .prepare_model_call_with_observation(request.request, custodian)
             .await
             .map_err(host_error_to_model_gateway_error)
@@ -79,6 +171,7 @@ where
         request: LoopModelGatewayRequest,
     ) -> Result<Option<Box<dyn PreparedLoopModelCall>>, LoopModelGatewayError> {
         self.port(request.context)
+            .map_err(host_error_to_model_gateway_error)?
             .prepare_model_call(request.request)
             .await
             .map(Some)
@@ -90,13 +183,16 @@ where
         request: LoopModelGatewayRequest,
     ) -> Result<LoopModelResponse, LoopModelGatewayError> {
         self.port(request.context)
+            .map_err(host_error_to_model_gateway_error)?
             .stream_model(request.request)
             .await
             .map_err(host_error_to_model_gateway_error)
     }
 }
 
-fn host_error_to_model_gateway_error(error: AgentLoopHostError) -> LoopModelGatewayError {
+pub(super) fn host_error_to_model_gateway_error(
+    error: AgentLoopHostError,
+) -> LoopModelGatewayError {
     let diagnostic_ref = error.diagnostic_ref;
     let reason_kind = error.reason_kind;
     let mut converted = match LoopModelGatewayError::new(error.kind, error.safe_summary) {

@@ -27,7 +27,11 @@
 
 - Fast local check: `cargo test -p brassclaw_secrets`
 - Boundary check after dependency/API changes: `cargo test -p brassclaw_architecture`
-- If production persistence behavior changes, add/maintain PostgreSQL and libSQL parity tests.
+- Production persistence uses PostgreSQL: qualify actual native PgSecretStore and
+  persistent PostgreSQL-backed FilesystemSecretStore paths, including supported
+  failures/concurrency. RootFilesystem has no current libSQL backend; legacy
+  SQLite/libSQL import is migration support, not runtime parity or a fallback.
+  See [the status index](../../docs/implementation-status.md) and owning acceptance.
 
 ## Agent Notes
 

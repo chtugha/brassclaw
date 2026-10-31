@@ -125,7 +125,7 @@ impl GoogleCredentialResolver {
         account: CredentialAccount,
         required_scopes: &[ProviderScope],
     ) -> Result<GoogleCredential, GoogleCredentialError> {
-        if account.status != CredentialAccountStatus::Configured {
+        if account.effective_status() != CredentialAccountStatus::Configured {
             return self
                 .recovery_required(scope, requester_extension, provider)
                 .await;
@@ -158,7 +158,8 @@ impl GoogleCredentialResolver {
         account_scope: &AuthProductScope,
         requester_extension: &ExtensionId,
         account_id: CredentialAccountId,
-    ) -> Result<(), GoogleCredentialError> {
+        required_scopes: &[ProviderScope],
+    ) -> Result<GoogleCredential, GoogleCredentialError> {
         let provider = google_provider_id()?;
         let account = self
             .recoverable_lookup(
@@ -174,19 +175,69 @@ impl GoogleCredentialResolver {
                 &provider,
             )
             .await?;
-        self.recoverable_result(
-            self.accounts
-                .refresh_account(
-                    CredentialRefreshRequest::new(account.scope, provider.clone(), account_id)
+        // Storage scope stays with the account; action identity is the active
+        // operation, never the account's historical setup invocation.
+        let action_id =
+            brassclaw_auth::CredentialRefreshId::from_uuid(scope.invocation_id.as_uuid());
+        let report = self
+            .recoverable_result(
+                self.accounts
+                    .refresh_account(
+                        CredentialRefreshRequest::new(
+                            account.scope.clone(),
+                            provider.clone(),
+                            account_id,
+                        )
+                        .with_id(action_id)
                         .for_extension(requester_extension.clone()),
+                    )
+                    .await,
+                scope,
+                requester_extension,
+                &provider,
+            )
+            .await?;
+        let original = report
+            .original
+            .ok_or(AuthProductError::BackendUnavailable)?;
+        if !report.refreshed
+            || !original.confirmed_refresh()
+            || original.id != action_id
+            || original.account_id != account_id
+            || original.provider != provider
+        {
+            return Err(AuthProductError::BackendUnavailable.into());
+        }
+        let reference = original
+            .published_account_ref
+            .ok_or(AuthProductError::BackendUnavailable)?;
+        let current = self
+            .recoverable_lookup(
+                self.account_by_id(
+                    account_scope,
+                    provider.clone(),
+                    requester_extension.clone(),
+                    account_id,
                 )
                 .await,
+                scope,
+                requester_extension,
+                &provider,
+            )
+            .await?;
+        if current.snapshot_ref()? != reference {
+            return Err(AuthProductError::BackendConflict.into());
+        }
+        // Capture this exact returned credential; the handler does not perform
+        // another latest-account lookup after checking the original receipt.
+        self.credential_from_account(
             scope,
             requester_extension,
-            &provider,
+            provider,
+            current,
+            required_scopes,
         )
         .await
-        .map(|_| ())
     }
 
     async fn account_by_id(
@@ -384,6 +435,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resolve_projects_issuer_expiry_even_when_raw_account_stays_configured() {
+        let scope =
+            ResourceScope::local_default(UserId::new("alice").unwrap(), InvocationId::new())
+                .unwrap();
+        let auth_scope = AuthProductScope::new(scope.clone(), AuthSurface::Api);
+        let auth = Arc::new(InMemoryAuthProductServices::new());
+        let mut request = new_credential_account(auth_scope, CredentialAccountStatus::Configured);
+        request.access_expires_at = Some(brassclaw_auth::Timestamp::from(
+            std::time::SystemTime::UNIX_EPOCH,
+        ));
+        let original = auth.create_account(request).await.unwrap();
+        assert_eq!(original.status, CredentialAccountStatus::Configured);
+        let resolver = GoogleCredentialResolver::new(auth.clone(), auth);
+        let error = resolver
+            .resolve(&scope, &ExtensionId::new("gmail").unwrap(), &[])
+            .await
+            .unwrap_err();
+        let GoogleCredentialError::Recovery(recovery) = error else {
+            panic!("expected expired account recovery")
+        };
+        assert_eq!(recovery.kind(), CredentialRecoveryKind::ReauthorizeRequired);
+        assert_eq!(recovery.reason, CredentialRecoveryReason::AccountExpired);
+    }
+
+    #[tokio::test]
     async fn resolve_returns_recovery_when_selected_account_disappears() {
         let scope =
             ResourceScope::local_default(UserId::new("alice").unwrap(), InvocationId::new())
@@ -561,6 +637,7 @@ mod tests {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("google-access-token").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![ProviderScope::new("https://www.googleapis.com/auth/gmail.send").unwrap()],
         }

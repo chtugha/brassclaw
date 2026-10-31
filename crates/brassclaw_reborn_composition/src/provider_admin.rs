@@ -7,7 +7,12 @@ use std::fmt;
 use brassclaw_pg::PgPool;
 use brassclaw_reborn_config::{LlmSlotSelection, RebornConfigFile};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+#[path = "task_provider_selection.rs"]
+mod task_selection;
+pub(crate) use task_selection::{TaskCredentialSnapshot, TaskProviderSelections};
 
 #[derive(Clone)]
 pub struct RebornProviderAdmin {
@@ -26,6 +31,90 @@ pub(crate) struct CapturedProviderSelection {
     pub selection: LlmSlotSelection,
     pub definition: brassclaw_llm::registry::ProviderDefinition,
     pub credential: Option<secrecy::SecretString>,
+    pub revision: brassclaw_llm::ProviderSelectionRevision,
+    pub credential_ref: Option<String>,
+}
+
+/// Shared selection grammar for capture and administration snapshots. This does
+/// not resolve clients, consume credentials or select a fallback role.
+pub(crate) fn stored_role_selection(
+    config: &RebornConfigFile,
+    role: brassclaw_llm::ProviderRole,
+) -> Option<LlmSlotSelection> {
+    match role {
+        brassclaw_llm::ProviderRole::Kohai => config.default_llm_slot().cloned(),
+        brassclaw_llm::ProviderRole::Sempai => config
+            .llm
+            .as_ref()
+            .and_then(|roles| roles.get("sempai"))
+            .cloned(),
+        brassclaw_llm::ProviderRole::Embedding => {
+            config.embedding.as_ref().map(|embedding| LlmSlotSelection {
+                provider_id: embedding.provider_id.clone(),
+                model: embedding.model.clone(),
+                api_key_env: None,
+                base_url: None,
+            })
+        }
+    }
+}
+
+/// The same opaque desired identity is captured with the published client. An
+/// authenticated ciphertext reference detects key replacement without exposing
+/// a credential or a reusable plaintext fingerprint.
+pub(crate) fn selection_revision(
+    tenant: &str,
+    selection: &LlmSlotSelection,
+    definition: &brassclaw_llm::ProviderDefinition,
+    definition_revision: u64,
+    credential_ref: Option<&str>,
+) -> Result<brassclaw_llm::ProviderSelectionRevision, serde_json::Error> {
+    let material = serde_json::to_vec(&serde_json::json!([
+        "brassclaw-provider-selection/1",
+        tenant,
+        definition.id,
+        definition_revision,
+        selection.model,
+        selection.base_url,
+        selection.api_key_env,
+        credential_ref,
+    ]))?;
+    Ok(brassclaw_llm::ProviderSelectionRevision {
+        provider_id: definition.id.clone(),
+        definition_revision,
+        model: selection
+            .model
+            .as_deref()
+            .filter(|model| !model.is_empty())
+            .unwrap_or(&definition.default_model)
+            .to_owned(),
+        configuration_ref: format!("{:x}", Sha256::digest(material)),
+    })
+}
+
+/// One catalogue identity rule for ordinary capture and task metadata capture.
+fn validated_registry(
+    definitions: Vec<brassclaw_llm::ProviderDefinition>,
+) -> Result<brassclaw_llm::ProviderRegistry, RebornProviderAdminError> {
+    // An alias cannot shadow another provider's canonical identity or alias.
+    let mut identities = std::collections::HashMap::new();
+    for definition in &definitions {
+        for name in std::iter::once(&definition.id).chain(&definition.aliases) {
+            if name.trim().is_empty() {
+                return Err(RebornProviderAdminError::LoadRegistry {
+                    reason: "active provider contains an empty identity or alias".into(),
+                });
+            }
+            if let Some(previous) = identities.insert(name.to_lowercase(), &definition.id)
+                && previous != &definition.id
+            {
+                return Err(RebornProviderAdminError::LoadRegistry {
+                    reason: "active provider identities or aliases conflict".into(),
+                });
+            }
+        }
+    }
+    Ok(brassclaw_llm::ProviderRegistry::new(definitions))
 }
 
 impl RebornProviderAdmin {
@@ -87,33 +176,14 @@ impl RebornProviderAdmin {
                 reason: error.to_string(),
             }
         })?;
-        // Registry lookup accepts aliases, but cannot silently let one active
-        // provider hide another provider's canonical identity or alias.
-        let mut identities = std::collections::HashMap::new();
-        for (definition, _) in &definitions {
-            for name in std::iter::once(&definition.id).chain(&definition.aliases) {
-                if name.trim().is_empty() {
-                    return Err(RebornProviderAdminError::LoadRegistry {
-                        reason: "active provider contains an empty identity or alias".into(),
-                    });
-                }
-                if let Some(previous) = identities.insert(name.to_lowercase(), &definition.id)
-                    && previous != &definition.id
-                {
-                    return Err(RebornProviderAdminError::LoadRegistry {
-                        reason: "active provider identities or aliases conflict".into(),
-                    });
-                }
-            }
-        }
         Ok((
             config,
-            brassclaw_llm::ProviderRegistry::new(
+            validated_registry(
                 definitions
                     .into_iter()
                     .map(|(definition, _)| definition)
                     .collect(),
-            ),
+            )?,
         ))
     }
 
@@ -148,22 +218,7 @@ impl RebornProviderAdmin {
         let (config, registry) = self.snapshot_from_client(&transaction).await?;
         let selection = match source {
             ProviderSelectionSource::Explicit(selection) => Some(selection),
-            ProviderSelectionSource::Role(brassclaw_llm::ProviderRole::Kohai) => {
-                config.default_llm_slot().cloned()
-            }
-            ProviderSelectionSource::Role(brassclaw_llm::ProviderRole::Sempai) => config
-                .llm
-                .as_ref()
-                .and_then(|roles| roles.get("sempai"))
-                .cloned(),
-            ProviderSelectionSource::Role(brassclaw_llm::ProviderRole::Embedding) => {
-                config.embedding.map(|embedding| LlmSlotSelection {
-                    provider_id: embedding.provider_id,
-                    model: embedding.model,
-                    api_key_env: None,
-                    base_url: None,
-                })
-            }
+            ProviderSelectionSource::Role(role) => stored_role_selection(&config, role),
         };
         let captured = match selection.filter(|selection| {
             selection
@@ -192,10 +247,37 @@ impl RebornProviderAdmin {
                         reason: "provider credential snapshot is unavailable".into(),
                     })?;
                 selection.provider_id = Some(definition.id.clone());
+                let stored = crate::PgProviderRepo::new(self.pool.clone(), &self.tenant_id)
+                    .get_revision_from_client(&transaction, &definition.id, false)
+                    .await
+                    .map_err(|_| RebornProviderAdminError::LoadDatabase {
+                        reason: "provider revision snapshot is unavailable".into(),
+                    })?
+                    .ok_or_else(|| RebornProviderAdminError::LoadDatabase {
+                        reason: "selected provider revision is unavailable".into(),
+                    })?;
+                let credential_ref = keys
+                    .record_reference_in_transaction(&transaction, &definition.id)
+                    .await
+                    .map_err(|_| RebornProviderAdminError::LoadDatabase {
+                        reason: "provider credential reference is unavailable".into(),
+                    })?;
+                let revision = selection_revision(
+                    &self.tenant_id,
+                    &selection,
+                    &definition,
+                    stored.revision,
+                    credential_ref.as_deref(),
+                )
+                .map_err(|_| RebornProviderAdminError::LoadDatabase {
+                    reason: "provider selection reference is unavailable".into(),
+                })?;
                 Some(CapturedProviderSelection {
                     selection,
                     definition,
                     credential,
+                    revision,
+                    credential_ref,
                 })
             }
         };

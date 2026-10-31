@@ -1,0 +1,153 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-007",
+  "status": "passed",
+  "package": "/private/tmp/brassclaw-strict-json-usage-root-review-20261030-e179kgx0",
+  "sources": {
+    "crates/brassclaw_skills/src/strict_json_components.rs": "8dfc92ed54d6d25bc8d68d75b041d70bd06aa7405b1d5e133282fa346042cd74",
+    "crates/brassclaw_skills/src/lib.rs": "e2ad6e50d1854c1dfe499c6fc79af05083249a329e633786a05c916787ca0806",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/model_response_usage_tests.rs": "1f3e18e2773ac3e0a4e9b58203d5fbb608838c9a6dc9c93d44804e4050e12f28"
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-strict-json-usage-validation-20261030/run-1/source.json",
+    "sha256": "a88caa8767f1ce8fa7cd6eb052026563c44562a3c00eb34d6f906adb997d7638",
+    "paths": 7968,
+    "reviewed_root": "/private/tmp/brassclaw-strict-json-usage-root-review-20261030-e179kgx0/current-root-inputs-strict-json-usage.json",
+    "reviewed_root_sha256": "da3492de95e5dbf29e445ed31d9a461b23a05ed3ebdc82281830d7558e36d043",
+    "reviewed_root_paths": 227
+  },
+  "proposal": {
+    "original_patch_sha256": "13afd114ac982c3da7deaef650268bac262e145b147e32173af90184e23da14c",
+    "root_rebase_sha256": "a72f4946906f12f18e79add284f4604207cc08c389fde84c0f18720dfd2216cf",
+    "scope": "Central reviewed three-path rebase; original proposal preserved."
+  },
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-strict-json-usage-validation-20261030/run-1",
+      "progress_sha256": "5f3a63fd7f6f42b8999e69a3087620b832772cdd925a3bab835e7dddd8b9fe1d",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.20211800001561642,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "worker-build",
+          "exit_code": 0,
+          "seconds": 4.69501725002192,
+          "log_sha256": "ff95e82a3ad014dac91d4b562068598ffcf176039339d84b6bd3fab0121929a7"
+        },
+        {
+          "stage": "connected-images",
+          "exit_code": 0,
+          "seconds": 234.2436170000583,
+          "log_sha256": "a29e11ed4aef781f3fe8705483c0e0698c7562e57e95b302b7d00fd5c61fa9d1"
+        },
+        {
+          "stage": "standalone-usage-contract",
+          "exit_code": 0,
+          "seconds": 0.1927357919048518,
+          "log_sha256": "c8ed9cbd9b713a6b9c31e38220c553d0cfb6e909cfb97fe659964a62d060ba5e",
+          "passed": 1
+        },
+        {
+          "stage": "native-standalone-usage",
+          "exit_code": 0,
+          "seconds": 39.65669958293438,
+          "log_sha256": "89172557ce7f1c01bfd7fab57b97dd2f8fddb930e380d4eecb995731b8aacc1c",
+          "passed": 1
+        },
+        {
+          "stage": "current-global-model-result",
+          "exit_code": 0,
+          "seconds": 37.68216854194179,
+          "log_sha256": "e707e72169a64cc7a1e41ae3bcbe7af82251cefd323d3b03552b0d2143377402",
+          "passed": 1
+        },
+        {
+          "stage": "existing-parser",
+          "exit_code": 0,
+          "seconds": 37.46378616709262,
+          "log_sha256": "6ed82a4b85940ecbdbb2f00180a796db164888cc66a3d13fe0beab007c1c629a",
+          "passed": 1
+        },
+        {
+          "stage": "worker-service-image",
+          "exit_code": 0,
+          "seconds": 2.7605403747875243,
+          "log_sha256": "bbad4dc55d03272ce61d993f3f77006a64634bfb078290f10edd65a9d9939550"
+        },
+        {
+          "stage": "worker-service",
+          "exit_code": 0,
+          "seconds": 2.779877084074542,
+          "log_sha256": "acbdf5e57cdd9aa1186b08b81bf52537b23c099bbb4fe612adb9e3aedfd9528d",
+          "passed": 34
+        },
+        {
+          "stage": "connected-strict",
+          "exit_code": 0,
+          "seconds": 90.09096591710113,
+          "log_sha256": "2489ae2cd23121e3d2474f602d77a8902664b77597afffb2ba583c46db07a166"
+        },
+        {
+          "stage": "default-strict",
+          "exit_code": 0,
+          "seconds": 20.557315916987136,
+          "log_sha256": "bd24cfd10abbda19aa816f905fe1b5baf211521396c37b93ae6ff0096bb3b1ff"
+        }
+      ],
+      "images": {
+        "brassclaw_skills": {
+          "path": "/private/tmp/brassclaw-strict-json-usage-validation-20261030/run-1/brassclaw_skills-tests",
+          "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_skills-deb9cb2f89f72f52",
+          "sha256": "7799b3c216e49aa58374c7b5e5c983f83c0476ae14a1e5a624a297cd32d335f8",
+          "features": [
+            "db-store",
+            "default",
+            "v1-types",
+            "v2-compat"
+          ]
+        },
+        "brassclaw_reborn_composition": {
+          "path": "/private/tmp/brassclaw-strict-json-usage-validation-20261030/run-1/brassclaw_reborn_composition-tests",
+          "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-afa5c0ef79b92c5a",
+          "sha256": "de37fe59f49d21550637b6f077336d28e59d4d47d046711190b911c0f0916fd3",
+          "features": [
+            "default",
+            "postgres",
+            "root-llm-provider",
+            "skills-db",
+            "test-support"
+          ]
+        },
+        "service_host": {
+          "path": "/private/tmp/brassclaw-strict-json-usage-validation-20261030/run-1/service_host-tests",
+          "original": "/Users/ollama/brassclaw-target/debug/deps/service_host-032a2eb49af17c23",
+          "sha256": "6906a5b5753479d2492602c4f41a6e51863efc3b2b4114ea319b3a7f468a256d",
+          "features": []
+        }
+      }
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-strict-json-usage-validation-20261030/run-1/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+    "previous_sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+    "reason": "Fresh canonical worker build for transitive PG V191; preserve the actual prior worker and never relabel its earlier receipts."
+  },
+  "distinct_fresh_passed": 38,
+  "ignored": 0,
+  "native_usage_cases": 8,
+  "scope": "Standalone one-Tool strict JSON usage over existing builtin.json, canonical string export separated from raw input/native payload, actual retained PG/global/SDK/service execution and strict/default checks.",
+  "limitations": [
+    "Unapproved reusable component drafts and contained test consumer; no ordinary catalogue activation, association/Q1/Q2/pure/workflow approval, MCP publication or Free proof.",
+    "Canonical text means the documented json.dumps algorithm; original lexical data is retained separately, not canonicalized for archival storage.",
+    "SDK loopback protocol fixture, not real inference or production serving/design qualification.",
+    "Contained capture/metadata/native-binding handoff and required independent mid-turn Sempai custody/I2 are still open.",
+    "Standalone old model_host adapters, legacy DocType suppression/bridge migration, remaining K3-K7/validator/library/recovery/upgrade/platform/release and the full plans remain open."
+  ]
+}

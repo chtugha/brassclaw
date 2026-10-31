@@ -14,7 +14,9 @@ use reborn_support::model_replay::RebornTraceReplayModelGateway;
 
 #[tokio::test]
 async fn reborn_tenant_binding_scope_isolation_parity() {
-    let shared_storage = RebornHarnessSharedStorage::new().expect("shared storage");
+    let shared_storage = RebornHarnessSharedStorage::new()
+        .await
+        .expect("shared storage");
     let tenant_a_scope = test_product_scope(
         "tenant-alpha-e2e",
         "host-user",

@@ -347,6 +347,7 @@ async fn runtime_capability_suspension_outcomes_do_not_emit_terminal_lifecycle_m
             reason: RuntimeBlockedReason::ApprovalRequired,
         }),
         RuntimeCapabilityOutcome::AuthRequired(RuntimeAuthGate {
+            boundary: brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
             gate_id: RuntimeGateId::new(),
             capability_id: capability_id.clone(),
             reason: RuntimeBlockedReason::AuthRequired,
@@ -402,10 +403,63 @@ async fn runtime_capability_suspension_outcomes_do_not_emit_terminal_lifecycle_m
 }
 
 #[tokio::test]
+async fn runtime_dispatched_and_unproven_auth_are_terminal_and_do_not_redispatch() {
+    for boundary in [
+        brassclaw_host_api::AuthDispatchBoundary::DispatchAttempted,
+        brassclaw_host_api::AuthDispatchBoundary::Unproven,
+    ] {
+        let capability_id = CapabilityId::new("demo.echo").unwrap();
+        let provider_id = ExtensionId::new("demo").unwrap();
+        let runtime = Arc::new(QueuedHostRuntime::new(
+            vec![visible_capability(
+                capability_id.clone(),
+                provider_id.clone(),
+            )],
+            vec![Ok(RuntimeCapabilityOutcome::AuthRequired(
+                RuntimeAuthGate {
+                    boundary,
+                    gate_id: RuntimeGateId::new(),
+                    capability_id: capability_id.clone(),
+                    reason: RuntimeBlockedReason::AuthRequired,
+                    required_secrets: Vec::new(),
+                    credential_requirements: Vec::new(),
+                },
+            ))],
+        ));
+        let milestones =
+            Arc::new(brassclaw_turns::run_profile::InMemoryLoopHostMilestoneSink::default());
+        let writer = Arc::new(RecordingResultWriter::default());
+        let port = runtime_capability_port(
+            &capability_id,
+            &provider_id,
+            runtime.clone(),
+            writer.clone(),
+            milestones.clone(),
+            "thread-unresolved-auth",
+        )
+        .await;
+        let invocation = visible_runtime_invocation(&port).await;
+        let first = port.invoke_capability(invocation.clone()).await.unwrap();
+        assert!(matches!(&first, CapabilityOutcome::Failed(failure)
+            if failure.error_kind == CapabilityFailureKind::EffectOutcomeUnresolved));
+        // Only one native outcome is queued: another dispatch would panic.
+        assert_eq!(port.invoke_capability(invocation).await.unwrap(), first);
+        assert!(runtime.outcomes.lock().unwrap().is_empty());
+        assert!(writer.records().is_empty());
+        let events = milestones.milestones();
+        assert_eq!(events.len(), 2);
+        assert!(matches!(&events[1].kind,
+            brassclaw_turns::run_profile::LoopHostMilestoneKind::CapabilityFailed { reason_kind, .. }
+            if reason_kind == &CapabilityFailureKind::EffectOutcomeUnresolved));
+    }
+}
+
+#[tokio::test]
 async fn runtime_auth_gate_forwards_credential_requirements() {
     let capability_id = CapabilityId::new("demo.echo").expect("capability id");
     let provider_id = ExtensionId::new("demo").expect("provider id");
     let requirement = RuntimeCredentialAuthRequirement {
+        requirement: None,
         provider: RuntimeCredentialAccountProviderId::new("github").unwrap(),
         requester_extension: provider_id.clone(),
         provider_scopes: Vec::new(),
@@ -420,6 +474,7 @@ async fn runtime_auth_gate_forwards_credential_requirements() {
             )],
             vec![Ok(RuntimeCapabilityOutcome::AuthRequired(
                 RuntimeAuthGate {
+                    boundary: brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
                     gate_id: RuntimeGateId::new(),
                     capability_id: capability_id.clone(),
                     reason: RuntimeBlockedReason::AuthRequired,

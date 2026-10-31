@@ -10,13 +10,22 @@ use aes_gcm::{
 };
 use hkdf::Hkdf;
 use secrecy::{ExposeSecret, SecretString};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 
 use brassclaw_host_api::{ResourceScope, SecretHandle};
 
 use crate::SecretError;
 use crate::legacy_store::DecryptedSecret;
 use crate::{CredentialAccountId, CredentialSessionId};
+
+/// Compare fixed-size in-memory digests after owned authenticated decrypt.
+/// Neither digest is stored or returned; this is never an authorization grant.
+pub(crate) fn secret_values_match(left: &str, right: &str) -> bool {
+    let left = Sha256::digest(left.as_bytes());
+    let right = Sha256::digest(right.as_bytes());
+    left[..].ct_eq(&right[..]).into()
+}
 
 const KEY_SIZE: usize = 32;
 const NONCE_SIZE: usize = 12;

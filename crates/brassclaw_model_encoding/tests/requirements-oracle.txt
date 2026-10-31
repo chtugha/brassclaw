@@ -1,0 +1,6 @@
+# Independent offline test oracle only; never a production model dependency.
+# Retained Ornith originals declare Transformers 5.12.1/Qwen 3.5, unsupported by 5.1.
+transformers==5.22.1
+Jinja2==3.1.6
+# CPU execution is sufficient; no model weights or CUDA are required.
+torch==2.15.0

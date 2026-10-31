@@ -118,8 +118,12 @@ pub(super) async fn admit(
     pool: Arc<PgPool>,
     identity: &str,
     answer: &str,
+    host_factory: Option<&dyn brassclaw_reborn::turn_runner::HostFactory>,
 ) -> Result<Admitted, RebornBuildError> {
-    prepare_admission(pool, identity, answer, AdmissionMode::Contained).await
+    let mode = host_factory
+        .map(AdmissionMode::ModelContained)
+        .unwrap_or(AdmissionMode::Contained);
+    prepare_admission(pool, identity, answer, mode).await
 }
 
 /// Reserve a real installation-review parent without starting VM execution.
@@ -136,8 +140,12 @@ pub(super) async fn reserve_child_review_parent(
 }
 
 #[derive(Clone, Copy)]
-enum AdmissionMode {
+enum AdmissionMode<'a> {
     Contained,
+    /// The closed installation owner supplies the existing host factory. It
+    /// must expose the real model/accounting/custody ports for this subject;
+    /// unavailable support fails instead of falling back to the reply host.
+    ModelContained(&'a dyn brassclaw_reborn::turn_runner::HostFactory),
     #[cfg(test)]
     RetainedParent,
 }
@@ -146,18 +154,22 @@ async fn prepare_admission(
     pool: Arc<PgPool>,
     identity: &str,
     answer: &str,
-    mode: AdmissionMode,
+    mode: AdmissionMode<'_>,
 ) -> Result<Admitted, RebornBuildError> {
     let tenant = TenantId::new(NAMESPACE).map_err(invalid)?;
     let agent = AgentId::new(identity).map_err(invalid)?;
     let actor = UserId::new("installation-owner").map_err(invalid)?;
     let (project, owner) = match mode {
         AdmissionMode::Contained => (Some(ProjectId::new("contained").map_err(invalid)?), None),
+        AdmissionMode::ModelContained(_) => (None, Some(actor.clone())),
         #[cfg(test)]
         AdmissionMode::RetainedParent => (None, Some(actor.clone())),
     };
     let source_binding = match mode {
         AdmissionMode::Contained => "bootstrap-internal",
+        AdmissionMode::ModelContained(_) => {
+            brassclaw_turns::run_profile::INTERNAL_MODEL_SOURCE_BINDING
+        }
         #[cfg(test)]
         AdmissionMode::RetainedParent => {
             brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING
@@ -197,6 +209,13 @@ async fn prepare_admission(
         AdmissionMode::Contained => {
             TurnScope::new(tenant.clone(), Some(agent), project, conversation.clone())
         }
+        AdmissionMode::ModelContained(_) => TurnScope::new_with_owner(
+            tenant.clone(),
+            Some(agent),
+            project,
+            conversation.clone(),
+            scope.owner_user_id.clone(),
+        ),
         #[cfg(test)]
         AdmissionMode::RetainedParent => TurnScope::new_with_owner(
             tenant.clone(),
@@ -208,9 +227,13 @@ async fn prepare_admission(
     };
     let state = Arc::new(PgTurnStateStore::new(pool.clone(), tenant.as_str()));
     let coordinator = DefaultTurnCoordinator::new(state.clone());
-    #[cfg(test)]
     let coordinator = match mode {
         AdmissionMode::Contained => coordinator,
+        AdmissionMode::ModelContained(_) => coordinator.with_run_profile_resolver(Arc::new(
+            brassclaw_reborn::planned_driver_factory::default_planned_run_profile_resolver()
+                .map_err(invalid)?,
+        )),
+        #[cfg(test)]
         AdmissionMode::RetainedParent => coordinator.with_run_profile_resolver(Arc::new(
             brassclaw_reborn::planned_driver_factory::default_planned_run_profile_resolver()
                 .map_err(invalid)?,
@@ -270,7 +293,7 @@ async fn prepare_admission(
     .with_accepted_message_ref(claimed.state.accepted_message_ref.clone());
     #[cfg(test)]
     let context = match mode {
-        AdmissionMode::Contained => context,
+        AdmissionMode::Contained | AdmissionMode::ModelContained(_) => context,
         AdmissionMode::RetainedParent => context.with_trusted_internal_turn(),
     };
     let attempt = MontyTaskAttempt {
@@ -278,37 +301,86 @@ async fn prepare_admission(
         runner_id: claimed.runner_id,
         lease_token: claimed.lease_token,
     };
-    let admission = Arc::new(PgMontyAdmission::prepare(pool, &context, attempt).map_err(invalid)?);
+    let original_source = claimed.state.source_binding_ref.clone();
+    let handoff = async {
+        let host: Arc<dyn brassclaw_turns::run_profile::AgentLoopDriverHost + Send + Sync> =
+            match mode {
+                AdmissionMode::ModelContained(factory) => {
+                    Arc::from(factory.create_host(&claimed).await.map_err(invalid)?)
+                }
+                _ => {
+                    let cancellation_owner =
+                        Arc::new(TurnStateRunCancellationFactory::new(state.clone()));
+                    let cancellation = RunStateLoopCancellationPort::new(
+                        cancellation_owner
+                            .handle_for_run(&context.scope, context.run_id)
+                            .await
+                            .map_err(invalid)?,
+                    );
+                    Arc::new(host::BootstrapReplyHost {
+                        transcript: ThreadBackedLoopTranscriptPort::new(
+                            threads,
+                            scope,
+                            context.clone(),
+                        ),
+                        cancellation,
+                        _cancellation_owner: cancellation_owner,
+                    })
+                }
+            };
+        let request = AgentLoopDriverRunRequest {
+            turn_id: context.turn_id,
+            run_id: context.run_id,
+            resolved_run_profile: context.resolved_run_profile.clone(),
+        };
+        match mode {
+            AdmissionMode::Contained => MontyTaskHandoff::new(request, attempt, host),
+            AdmissionMode::ModelContained(_) => {
+                MontyTaskHandoff::new_claimed(request, Arc::new(claimed), host)
+            }
+            #[cfg(test)]
+            AdmissionMode::RetainedParent => {
+                MontyTaskHandoff::new_claimed(request, Arc::new(claimed), host)
+            }
+        }
+        .map_err(invalid)
+    }
+    .await;
+    let handoff = match handoff {
+        Ok(handoff) => handoff,
+        Err(error) => {
+            // Port construction is effect-free and no admission was reserved.
+            // Close this original claimed run rather than leaking Running work
+            // or replacing it with a restricted host. A failed close remains
+            // visible; it must not be reported as successful cleanup.
+            state
+                .fail_run(brassclaw_turns::runner::FailRunRequest {
+                    run_id: attempt.run_id,
+                    runner_id: attempt.runner_id,
+                    lease_token: attempt.lease_token,
+                    failure: brassclaw_turns::SanitizedFailure::new(
+                        "bootstrap_host_preparation_failed",
+                    )
+                    .map_err(invalid)?,
+                })
+                .await
+                .map_err(invalid)?;
+            return Err(error);
+        }
+    };
+    let host = Arc::new(MontyTaskHost::new(handoff));
+    // Construct and identity-check the real ports before retaining an admission
+    // address. A failed model-host preparation cannot lose a reserved address or
+    // silently substitute the restricted reply-only host. Factories execute no
+    // task effects; the first operation still requires the durable admission.
+    let admission = Arc::new(
+        PgMontyAdmission::prepare(pool, &context, attempt, Some(&original_source))
+            .map_err(invalid)?,
+    );
     admission.persist_reservation().await.map_err(invalid)?;
     if matches!(mode, AdmissionMode::Contained) {
         admission.check_and_start().await.map_err(invalid)?;
     }
-    let cancellation_owner = Arc::new(TurnStateRunCancellationFactory::new(state.clone()));
-    let cancellation = RunStateLoopCancellationPort::new(
-        cancellation_owner
-            .handle_for_run(&context.scope, context.run_id)
-            .await
-            .map_err(invalid)?,
-    );
-    let host = Arc::new(host::BootstrapReplyHost {
-        transcript: ThreadBackedLoopTranscriptPort::new(threads, scope, context.clone()),
-        cancellation,
-        _cancellation_owner: cancellation_owner,
-    });
-    let request = AgentLoopDriverRunRequest {
-        turn_id: context.turn_id,
-        run_id: context.run_id,
-        resolved_run_profile: context.resolved_run_profile.clone(),
-    };
-    let handoff = match mode {
-        AdmissionMode::Contained => MontyTaskHandoff::new(request, attempt, host),
-        #[cfg(test)]
-        AdmissionMode::RetainedParent => {
-            MontyTaskHandoff::new_claimed(request, Arc::new(claimed), host)
-        }
-    }
-    .map_err(invalid)?;
-    let host = Arc::new(MontyTaskHost::new(handoff));
     Ok(Admitted {
         host,
         admission,

@@ -37,6 +37,8 @@ use brassclaw_product_workflow::{
 use crate::db_config::{ConfigWriteContext, save_config_key};
 #[cfg(feature = "postgres")]
 use crate::pg_basic_prompt_store::PgBasicPromptStore;
+#[cfg(test)]
+use crate::pg_prefix_bundle_backends::class_label;
 use crate::runtime::{InternalTurnOptions, RebornRuntime};
 
 /// Minimum interval between `regenerate_prefix` calls per caller.
@@ -145,38 +147,6 @@ pub(crate) const COMPONENT_TABLES: &[(&str, u16, &str)] = &[
         "COALESCE(NULLIF(prior_knowledge_content,''), overview_doc)",
     ), // Phase C
 ];
-
-/// Class code → human-readable type label for bundle headers.
-pub(crate) fn class_label(class_code: u16) -> &'static str {
-    match class_code {
-        0 => "Tool",
-        1 => "Skill",
-        2 => "DomainSkill",
-        3 => "ScaffoldSkill",
-        4 => "RustyExtension",
-        5 => "MontyExtension",
-        6 => "McpServer",
-        7 => "McpClient",
-        8 => "LlmExtension",
-        9 => "Extension",
-        10 => "Orchestrator",
-        11 => "Component", // reserved; no table
-        12 => "Spec",
-        13 => "ToolSkill",
-        14 => "Plan",
-        15 => "Summary",
-        16 => "Action",
-        17 => "Docu",
-        18 => "Lesson",
-        19 => "Issue",
-        20 => "Note",
-        21 => "Recipe",
-        22 => "PythonCode",
-        23 => "Catalogue",
-        50 => "Scaffold",
-        _ => "Component",
-    }
-}
 
 /// Per-caller rate-limit state.
 type RateLimitState = Arc<tokio::sync::Mutex<HashMap<String, Instant>>>;
@@ -362,8 +332,61 @@ impl RebornInterceptorConfigService {
     }
 }
 
+fn prefix_job_id(job: &str) -> Result<uuid::Uuid, InterceptorConfigServiceError> {
+    uuid::Uuid::parse_str(job)
+        .ok()
+        .filter(|id| !id.is_nil() && id.to_string() == job)
+        .ok_or_else(|| InterceptorConfigServiceError::InvalidRequest {
+            reason: "canonical non-nil prefix job UUID required".into(),
+        })
+}
+
 #[async_trait]
 impl InterceptorConfigService for RebornInterceptorConfigService {
+    async fn check_pair_cases(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        proposal: &str,
+        job: &str,
+    ) -> Result<brassclaw_product_workflow::PrefixJobDetail, InterceptorConfigServiceError> {
+        let id = prefix_job_id(job)?;
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        if let Some(runtime) = self.runtime.as_ref().and_then(std::sync::Weak::upgrade) {
+            runtime
+                .submit_prefix_pair_cases(id, specification, proposal, caller)
+                .await
+                .map_err(|error| match error {
+                    crate::RebornRuntimeError::PrefixJob(error) => error,
+                    crate::RebornRuntimeError::InvalidArgument { reason } => {
+                        InterceptorConfigServiceError::InvalidRequest { reason }
+                    }
+                    _ => InterceptorConfigServiceError::Unavailable,
+                })?;
+            return runtime
+                .inspect_prefix_pair_job(specification, proposal, id)
+                .await;
+        }
+        let _ = (caller, specification, proposal, id);
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+    async fn get_pair_job(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        proposal: &str,
+        job: &str,
+    ) -> Result<brassclaw_product_workflow::PrefixJobDetail, InterceptorConfigServiceError> {
+        let id = prefix_job_id(job)?;
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        if let Some(runtime) = self.runtime.as_ref().and_then(std::sync::Weak::upgrade) {
+            return runtime
+                .inspect_prefix_pair_job(specification, proposal, id)
+                .await;
+        }
+        let _ = (specification, proposal, id);
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
     async fn measure(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -371,18 +394,14 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
         job: &str,
         request: brassclaw_product_workflow::MeasurePrefixRequest,
     ) -> Result<brassclaw_product_workflow::PrefixJobDetail, InterceptorConfigServiceError> {
-        let id = uuid::Uuid::parse_str(job)
-            .ok()
-            .filter(|id| !id.is_nil() && id.to_string() == job)
-            .ok_or_else(|| InterceptorConfigServiceError::InvalidRequest {
-                reason: "canonical non-nil prefix job UUID required".into(),
-            })?;
+        let id = prefix_job_id(job)?;
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         if let Some(runtime) = self.runtime.as_ref().and_then(std::sync::Weak::upgrade) {
             runtime
                 .submit_prefix_measurement(id, profile, request, caller)
                 .await
                 .map_err(|error| match error {
+                    crate::RebornRuntimeError::PrefixJob(error) => error,
                     crate::RebornRuntimeError::InvalidArgument { reason } => {
                         InterceptorConfigServiceError::InvalidRequest { reason }
                     }
@@ -399,18 +418,67 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
         profile: &str,
         job: &str,
     ) -> Result<brassclaw_product_workflow::PrefixJobDetail, InterceptorConfigServiceError> {
-        let id = uuid::Uuid::parse_str(job)
-            .ok()
-            .filter(|id| !id.is_nil() && id.to_string() == job)
-            .ok_or_else(|| InterceptorConfigServiceError::InvalidRequest {
-                reason: "canonical non-nil prefix job UUID required".into(),
-            })?;
+        let id = prefix_job_id(job)?;
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         if let Some(runtime) = self.runtime.as_ref().and_then(std::sync::Weak::upgrade) {
             return runtime.inspect_prefix_job(profile, id).await;
         }
         let _ = (profile, id);
         Err(InterceptorConfigServiceError::Unavailable)
+    }
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    async fn prepare_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        selection: brassclaw_product_workflow::PrefixAcceptanceSelection,
+    ) -> Result<brassclaw_product_workflow::PrefixAcceptanceView, InterceptorConfigServiceError>
+    {
+        self.runtime
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+            .ok_or(InterceptorConfigServiceError::Unavailable)?
+            .prepare_prefix_acceptance(caller, selection)
+            .await
+    }
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    async fn activate_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: brassclaw_product_workflow::ActivatePrefixAcceptanceRequest,
+    ) -> Result<brassclaw_product_workflow::PrefixTargetBindingReceipt, InterceptorConfigServiceError>
+    {
+        self.runtime
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+            .ok_or(InterceptorConfigServiceError::Unavailable)?
+            .activate_prefix_acceptance(caller, request)
+            .await
+    }
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    async fn approve_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        decision: brassclaw_product_workflow::PrefixAcceptanceDecision,
+    ) -> Result<brassclaw_product_workflow::PrefixAcceptanceReceipt, InterceptorConfigServiceError>
+    {
+        self.runtime
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+            .ok_or(InterceptorConfigServiceError::Unavailable)?
+            .approve_prefix_acceptance(caller, decision)
+            .await
     }
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     async fn model_design_catalogue(
@@ -442,6 +510,36 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
         .await
     }
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn model_setup_draft(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        revision: Option<u64>,
+    ) -> Result<brassclaw_product_workflow::PrefixModelSetupDraft, InterceptorConfigServiceError>
+    {
+        crate::prefix_model_designs::PgPrefixModelDesigns::new(
+            self.pool.clone(),
+            self.tenant_id.clone(),
+        )
+        .setup_draft(specification, revision)
+        .await
+    }
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn update_model_setup_draft(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        request: brassclaw_product_workflow::UpdatePrefixModelSetupDraftRequest,
+    ) -> Result<brassclaw_product_workflow::PrefixModelSetupDraft, InterceptorConfigServiceError>
+    {
+        crate::prefix_model_designs::PgPrefixModelDesigns::new(
+            self.pool.clone(),
+            self.tenant_id.clone(),
+        )
+        .update_setup_draft(specification, request)
+        .await
+    }
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
     async fn get_model_artifacts(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -468,6 +566,37 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
             self.tenant_id.clone(),
         )
         .retain(request, &caller)
+        .await
+    }
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn get_pair_case_packet(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        proposal: &str,
+    ) -> Result<brassclaw_product_workflow::PrefixPairCasePacket, InterceptorConfigServiceError>
+    {
+        crate::prefix_model_designs::PgPrefixModelDesigns::new(
+            self.pool.clone(),
+            self.tenant_id.clone(),
+        )
+        .case_packet(specification, proposal)
+        .await
+    }
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn retain_pair_construction_proposal(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        request: brassclaw_product_workflow::RetainPrefixDesignProposalRequest,
+    ) -> Result<
+        brassclaw_product_workflow::PrefixPairConstructionProposal,
+        InterceptorConfigServiceError,
+    > {
+        crate::prefix_model_designs::PgPrefixModelDesigns::new(
+            self.pool.clone(),
+            self.tenant_id.clone(),
+        )
+        .retain_pair_proposal(request)
         .await
     }
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
@@ -861,8 +990,9 @@ mod tests {
 
     #[test]
     fn class_label_previously_missing_arms() {
-        assert_eq!(class_label(2), "DomainSkill");
-        assert_eq!(class_label(3), "ScaffoldSkill");
+        assert_eq!(class_label(1), "Skill");
+        assert_eq!(class_label(2), "Skill");
+        assert_eq!(class_label(3), "Skill");
         assert_eq!(class_label(4), "RustyExtension");
         assert_eq!(class_label(5), "MontyExtension");
         assert_eq!(class_label(6), "McpServer");

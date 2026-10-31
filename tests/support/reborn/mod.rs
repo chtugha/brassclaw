@@ -10,3 +10,7 @@ pub mod network;
 pub mod product_workflow;
 pub mod session_thread;
 pub mod test_adapter;
+
+// Reuse the actual lifecycle owner; do not duplicate database startup/cleanup.
+#[path = "../../../crates/brassclaw_reborn_composition/tests/common/native_pg.rs"]
+mod native_pg;

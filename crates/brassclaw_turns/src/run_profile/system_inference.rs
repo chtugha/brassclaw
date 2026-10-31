@@ -195,7 +195,7 @@ pub trait SystemInferencePort: Send + Sync {
     /// not dispatch inference, connect tools or grant authority. A replacement
     /// retains the exact typed request and wrapper enforcement; immutable or
     /// legacy ports may return None. Live technical limits still apply.
-    fn retain_model_selection(
+    async fn retain_model_selection(
         &self,
         _request: &SystemInferenceRequest,
     ) -> Result<Option<Arc<dyn SystemInferencePort>>, SystemInferenceError> {

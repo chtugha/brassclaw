@@ -261,16 +261,23 @@ fn cache_unavailable(request_bytes: u64) -> NetworkHttpError {
 }
 
 fn build_reqwest_client(key: &ReqwestClientKey) -> Result<reqwest::Client, reqwest::Error> {
+    reqwest_client_builder(key).build()
+}
+
+fn reqwest_client_builder(key: &ReqwestClientKey) -> reqwest::ClientBuilder {
     let mut builder = reqwest::Client::builder()
         // Ambient proxies would receive the request instead of the vetted DNS
         // addresses and can expose injected credentials to another endpoint.
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
+        // A protocol NACK must not create another submitted HTTP request.
+        // Retry eligibility and effect accounting belong to the caller.
+        .retry(reqwest::retry::never())
         .timeout(key.timeout);
     if !key.resolved_addrs.is_empty() {
         builder = builder.resolve_to_addrs(&key.host, &key.resolved_addrs);
     }
-    builder.build()
+    builder
 }
 
 /// Parses the URL while scrubbing only the source request carrier copy.
@@ -774,3 +781,7 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "transport/single_submission_tests.rs"]
+mod single_submission_tests;

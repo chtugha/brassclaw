@@ -136,6 +136,7 @@ struct RunRecord {
     subagent_depth: u32,
     spawn_tree_root_run_id: Option<TurnRunId>,
     claimed_child_reservation_released: Option<bool>,
+    native_auth_wait: Option<crate::runner::native_auth::NativeAuthWait>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -668,6 +669,7 @@ impl TurnStateStore for InMemoryTurnStateStore {
             subagent_depth: 0,
             spawn_tree_root_run_id: None,
             claimed_child_reservation_released: None,
+            native_auth_wait: None,
         };
         inner.turns.insert(turn_id, turn_record);
         inner.active_locks.insert(
@@ -716,10 +718,41 @@ impl TurnStateStore for InMemoryTurnStateStore {
             key: request.idempotency_key.clone(),
         };
         if let Some(result) = inner.resume_idempotency.get(&idempotency_key) {
+            let original = inner
+                .idempotency_records
+                .get(&persisted_run_key(
+                    TurnIdempotencyOperationKind::Resume,
+                    &idempotency_key,
+                ))
+                .and_then(TurnIdempotencyRecord::native_resume_request);
+            if let Some(original) = original {
+                if original != &request {
+                    return Err(TurnError::Conflict {
+                        reason: "native auth resume identity has different original inputs".into(),
+                    });
+                }
+            } else if inner
+                .records
+                .get(&request.run_id)
+                .is_some_and(|record| record.native_auth_wait.is_some())
+            {
+                return Err(TurnError::Unavailable {
+                    reason: "native auth resume original is unproven".into(),
+                });
+            }
             return result.clone();
         }
+        let native = inner
+            .records
+            .get(&request.run_id)
+            .is_some_and(|record| record.native_auth_wait.is_some());
         let result = inner.resume_turn_once(&request);
-        inner.remember_resume_idempotency(idempotency_key, result.clone(), Utc::now());
+        inner.remember_resume_idempotency(
+            idempotency_key,
+            result.clone(),
+            Utc::now(),
+            native.then_some(&request),
+        );
         result
     }
 
@@ -1193,6 +1226,7 @@ impl InMemoryTurnStateStore {
             subagent_depth,
             spawn_tree_root_run_id: Some(root_run_id),
             claimed_child_reservation_released: tracked_reservation.then_some(false),
+            native_auth_wait: None,
         };
         inner.turns.insert(turn_id, turn_record);
         inner.active_locks.insert(
@@ -1550,7 +1584,12 @@ impl TurnRunTransitionPort for InMemoryTurnStateStore {
         let result = (|| {
             let now = Utc::now();
             ensure_active_lease(&record, request.runner_id, request.lease_token, now)?;
-            if record.status != TurnStatus::Running {
+            let native_waiting = record
+                .native_auth_wait
+                .as_ref()
+                .is_some_and(|wait| wait.is_waiting());
+            let native_suspended = native_waiting && record.status == TurnStatus::BlockedAuth;
+            if !(record.status == TurnStatus::Running || native_suspended) {
                 return Err(TurnError::InvalidTransition {
                     from: record.status,
                     to: TurnStatus::Running,
@@ -1558,9 +1597,14 @@ impl TurnRunTransitionPort for InMemoryTurnStateStore {
             }
             record.last_heartbeat_at = Some(now);
             record.lease_expires_at = Some(inner.next_lease_expiry(now));
-            record.event_cursor = inner.next_cursor();
             inner.touch_active_lock(&record, now);
-            inner.push_event(&record, TurnEventKind::RunnerHeartbeat, None);
+            // Renew custody without invalidating an undelivered auth
+            // event. The projection compares its cursor with the current run;
+            // a heartbeat must not make the original pending prompt stale.
+            if !native_suspended {
+                record.event_cursor = inner.next_cursor();
+                inner.push_event(&record, TurnEventKind::RunnerHeartbeat, None);
+            }
             Ok(record.event_cursor)
         })();
         inner.records.insert(record.run_id, record);
@@ -1610,12 +1654,76 @@ impl TurnRunTransitionPort for InMemoryTurnStateStore {
         result
     }
 
+    async fn block_native_auth(
+        &self,
+        request: crate::runner::native_auth::BlockNativeAuthRequest,
+    ) -> Result<TurnRunState, TurnError> {
+        if request.boundary != brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch {
+            return Err(TurnError::InvalidRequest {
+                reason: "native auth waiting requires host-proven preflight".into(),
+            });
+        }
+        let wait = crate::runner::native_auth::NativeAuthWait::new(request.invocation_id)?;
+        let gate = wait.gate_ref()?;
+        let mut inner = self.lock_inner()?;
+        let mut record = inner.take_record(request.run_id)?;
+        let result = (|| {
+            if record.scope != request.scope {
+                return Err(TurnError::ScopeNotFound);
+            }
+            let now = Utc::now();
+            ensure_active_lease(&record, request.runner_id, request.lease_token, now)?;
+            if let Some(original) = &record.native_auth_wait {
+                if original.invocation_id() == wait.invocation_id() {
+                    if original.is_waiting()
+                        && record.status == TurnStatus::BlockedAuth
+                        && record.gate_ref.as_ref() == Some(&gate)
+                        && record.credential_requirements == request.credential_requirements
+                    {
+                        return Ok(record.state());
+                    }
+                    return Err(TurnError::InvalidRequest {
+                        reason:
+                            "original native authentication wait cannot be replaced or replayed"
+                                .into(),
+                    });
+                }
+                if original.is_waiting() {
+                    return Err(TurnError::InvalidRequest {
+                        reason: "another native authentication wait remains unresolved".into(),
+                    });
+                }
+            }
+            if record.status != TurnStatus::Running || record.checkpoint_id.is_some() {
+                return Err(TurnError::InvalidTransition {
+                    from: record.status,
+                    to: TurnStatus::BlockedAuth,
+                });
+            }
+            record.status = TurnStatus::BlockedAuth;
+            record.gate_ref = Some(gate);
+            record.credential_requirements = request.credential_requirements;
+            record.native_auth_wait = Some(wait);
+            record.event_cursor = inner.next_cursor();
+            inner.update_active_lock(&record, now);
+            inner.push_event(&record, TurnEventKind::Blocked, None);
+            Ok(record.state())
+        })();
+        inner.records.insert(record.run_id, record);
+        result
+    }
+
     async fn block_run(&self, request: BlockRunRequest) -> Result<TurnRunState, TurnError> {
         let mut inner = self.lock_inner()?;
         let mut record = inner.take_record(request.run_id)?;
         let result = (|| {
             let now = Utc::now();
             ensure_active_lease(&record, request.runner_id, request.lease_token, now)?;
+            if record.native_auth_wait.is_some() {
+                return Err(TurnError::Unavailable {
+                    reason: "native authentication custody cannot become a loop checkpoint".into(),
+                });
+            }
             if !matches!(record.status, TurnStatus::Running) {
                 return Err(TurnError::InvalidTransition {
                     from: record.status,
@@ -1772,6 +1880,31 @@ impl Inner {
         let mut queued_runs = VecDeque::new();
         let mut terminal_runs = VecDeque::new();
         for run in snapshot.runs {
+            if let Some(wait) = &run.native_auth_wait {
+                let owns_claim = run.runner_id.is_some()
+                    && run.lease_token.is_some()
+                    && run.lease_expires_at.is_some();
+                let valid_live = if wait.is_waiting() {
+                    matches!(
+                        run.status,
+                        TurnStatus::BlockedAuth | TurnStatus::CancelRequested
+                    ) && run.gate_ref.as_ref() == Some(&wait.gate_ref()?)
+                } else {
+                    matches!(
+                        run.status,
+                        TurnStatus::Running | TurnStatus::CancelRequested
+                    ) && run.gate_ref.is_none()
+                        && run.credential_requirements.is_empty()
+                };
+                if run.status == TurnStatus::Queued
+                    || (!run.status.is_terminal()
+                        && (!owns_claim || !valid_live || run.checkpoint_id.is_some()))
+                {
+                    return Err(TurnError::Unavailable {
+                        reason: "stored native authentication custody is invalid".into(),
+                    });
+                }
+            }
             if run.claimed_child_reservation_released.is_some()
                 && (run.parent_run_id.is_none()
                     || run.subagent_depth == 0
@@ -1822,6 +1955,7 @@ impl Inner {
                     subagent_depth: run.subagent_depth,
                     spawn_tree_root_run_id: run.spawn_tree_root_run_id,
                     claimed_child_reservation_released: run.claimed_child_reservation_released,
+                    native_auth_wait: run.native_auth_wait,
                 },
             );
         }
@@ -1842,6 +1976,11 @@ impl Inner {
         let mut ordered_idempotency_records = snapshot.idempotency_records;
         ordered_idempotency_records.sort_by(compare_idempotency_records);
         for record in ordered_idempotency_records {
+            if !record.native_resume_record_is_valid() {
+                return Err(TurnError::Unavailable {
+                    reason: "stored native auth resume identity is invalid".into(),
+                });
+            }
             let persisted_key = persisted_key_for_record(&record);
             idempotency_record_order.push_back(persisted_key.clone());
             idempotency_records.insert(persisted_key, record.clone());
@@ -2081,10 +2220,16 @@ impl Inner {
             .records
             .iter()
             .filter_map(|(run_id, record)| {
-                if !matches!(
+                let native_waiting = record.status == TurnStatus::BlockedAuth
+                    && record
+                        .native_auth_wait
+                        .as_ref()
+                        .is_some_and(|wait| wait.is_waiting());
+                if !(matches!(
                     record.status,
                     TurnStatus::Running | TurnStatus::CancelRequested
-                ) {
+                ) || native_waiting)
+                {
                     return None;
                 }
                 if request
@@ -2109,7 +2254,8 @@ impl Inner {
             let Some(mut record) = self.records.remove(&run_id) else {
                 continue;
             };
-            let outcome = expired_lease_terminal_outcome(record.status);
+            let outcome =
+                expired_lease_terminal_outcome(record.status, record.native_auth_wait.is_some());
             record.status = outcome.status;
             record.failure = outcome.failure;
             record.runner_id = None;
@@ -2156,11 +2302,12 @@ impl Inner {
         key: RunIdempotencyKey,
         result: Result<ResumeTurnResponse, TurnError>,
         created_at: crate::TurnTimestamp,
+        original: Option<&ResumeTurnRequest>,
     ) {
         if !self.resume_idempotency.contains_key(&key) {
             self.resume_idempotency_order.push_back(key.clone());
         }
-        let record = resume_idempotency_record(&key, &result, created_at);
+        let record = resume_idempotency_record(&key, &result, created_at, original);
         self.remember_persisted_idempotency(record);
         self.resume_idempotency.insert(key, result);
         let removed = prune_ordered_map(
@@ -2286,6 +2433,49 @@ impl Inner {
                 });
             }
             let now = Utc::now();
+            if record.native_auth_wait.is_some() {
+                let wait =
+                    record
+                        .native_auth_wait
+                        .as_ref()
+                        .ok_or_else(|| TurnError::Unavailable {
+                            reason: "native auth wait custody is missing".into(),
+                        })?;
+                if request.precondition != crate::ResumeTurnPrecondition::BlockedAuthGate
+                    || !wait.is_waiting()
+                    || record.status != TurnStatus::BlockedAuth
+                    || wait.gate_ref()? != request.gate_resolution_ref
+                    || record.source_binding_ref != request.source_binding_ref
+                    || record.reply_target_binding_ref != request.reply_target_binding_ref
+                {
+                    return Err(TurnError::InvalidRequest {
+                        reason:
+                            "native authentication continuation conflicts with the original wait"
+                                .into(),
+                    });
+                }
+                let runner = record.runner_id.ok_or_else(|| TurnError::Unavailable {
+                    reason: "native auth runner is missing".into(),
+                })?;
+                let lease = record.lease_token.ok_or_else(|| TurnError::Unavailable {
+                    reason: "native auth lease is missing".into(),
+                })?;
+                ensure_active_lease(&record, runner, lease, now)?;
+                if let Some(wait) = record.native_auth_wait.as_mut() {
+                    wait.resolve();
+                }
+                record.status = TurnStatus::Running;
+                record.gate_ref = None;
+                record.credential_requirements.clear();
+                record.event_cursor = self.next_cursor();
+                self.update_active_lock(&record, now);
+                self.push_event(&record, TurnEventKind::Resumed, None);
+                return Ok(ResumeTurnResponse {
+                    run_id: record.run_id,
+                    status: record.status,
+                    event_cursor: record.event_cursor,
+                });
+            }
             record.status = TurnStatus::Queued;
             record.gate_ref = None;
             record.credential_requirements = Vec::new();
@@ -2329,6 +2519,14 @@ impl Inner {
                 });
             }
             let (next_status, event_kind) = match record.status {
+                TurnStatus::BlockedAuth
+                    if record
+                        .native_auth_wait
+                        .as_ref()
+                        .is_some_and(|wait| wait.is_waiting()) =>
+                {
+                    (TurnStatus::CancelRequested, TurnEventKind::CancelRequested)
+                }
                 TurnStatus::Queued
                 | TurnStatus::BlockedApproval
                 | TurnStatus::BlockedAuth
@@ -2580,6 +2778,14 @@ impl Inner {
         state_ref: crate::run_profile::LoopCheckpointStateRef,
         reason: BlockedReason,
     ) -> AppliedLoopTransition {
+        if record.native_auth_wait.is_some() {
+            return AppliedLoopTransition::Rejected {
+                record: Box::new(record),
+                error: TurnError::Unavailable {
+                    reason: "native authentication custody cannot become a loop checkpoint".into(),
+                },
+            };
+        }
         if record.status != TurnStatus::Running {
             let from = record.status;
             return AppliedLoopTransition::Rejected {
@@ -2621,7 +2827,14 @@ impl Inner {
         mut record: RunRecord,
         failure: SanitizedFailure,
     ) -> AppliedLoopTransition {
-        if record.status != TurnStatus::Running {
+        let native_waiting = record.status == TurnStatus::BlockedAuth
+            && record
+                .native_auth_wait
+                .as_ref()
+                .is_some_and(|wait| wait.is_waiting());
+        let native_cancel =
+            record.status == TurnStatus::CancelRequested && record.native_auth_wait.is_some();
+        if !(record.status == TurnStatus::Running || native_waiting || native_cancel) {
             let from = record.status;
             return AppliedLoopTransition::Rejected {
                 record: Box::new(record),
@@ -2661,6 +2874,18 @@ impl Inner {
         let from = record.status;
         match from {
             TurnStatus::Running => self.fail_claimed_record(record, failure),
+            TurnStatus::BlockedAuth
+                if record
+                    .native_auth_wait
+                    .as_ref()
+                    .is_some_and(|wait| wait.is_waiting()) =>
+            {
+                self.fail_claimed_record(record, failure)
+            }
+            TurnStatus::CancelRequested if record.native_auth_wait.is_some() => {
+                // A runner failure is not acknowledgement by the native VM.
+                self.fail_claimed_record(record, failure)
+            }
             TurnStatus::CancelRequested => self.cancel_claimed_record(record),
             _ => AppliedLoopTransition::Rejected {
                 record: Box::new(record),
@@ -2703,6 +2928,11 @@ impl Inner {
         let mut requeue = false;
         let result = (|| {
             ensure_active_lease(&record, runner_id, lease_token, now)?;
+            if record.native_auth_wait.is_some() {
+                return Err(TurnError::Unavailable {
+                    reason: "native authentication custody requires supervised settlement".into(),
+                });
+            }
             if !matches!(
                 record.status,
                 TurnStatus::Running | TurnStatus::CancelRequested
@@ -2983,6 +3213,7 @@ impl RunRecord {
             subagent_depth: self.subagent_depth,
             spawn_tree_root_run_id: self.spawn_tree_root_run_id,
             claimed_child_reservation_released: self.claimed_child_reservation_released,
+            native_auth_wait: self.native_auth_wait.clone(),
         }
     }
 
@@ -3096,6 +3327,7 @@ fn resume_idempotency_record(
     key: &RunIdempotencyKey,
     result: &Result<ResumeTurnResponse, TurnError>,
     created_at: crate::TurnTimestamp,
+    original: Option<&ResumeTurnRequest>,
 ) -> TurnIdempotencyRecord {
     let (outcome, replay) = match result {
         Ok(response) => (
@@ -3106,6 +3338,17 @@ fn resume_idempotency_record(
             TurnIdempotencyOutcomeKind::from_error(error),
             TurnIdempotencyReplay::Error(TurnIdempotencyErrorReplay::from_error(error)),
         ),
+    };
+    let replay = match (original, result) {
+        (Some(request), Ok(response)) => TurnIdempotencyReplay::NativeAuthResumeSucceeded {
+            request: request.clone(),
+            response: response.clone(),
+        },
+        (Some(request), Err(error)) => TurnIdempotencyReplay::NativeAuthResumeRejected {
+            request: request.clone(),
+            error: TurnIdempotencyErrorReplay::from_error(error),
+        },
+        (None, _) => replay,
     };
     TurnIdempotencyRecord {
         scope: key.scope.clone(),
@@ -3175,16 +3418,22 @@ struct LeaseExpiredOutcome {
     event_detail: Option<String>,
 }
 
-fn expired_lease_terminal_outcome(status: TurnStatus) -> LeaseExpiredOutcome {
+fn expired_lease_terminal_outcome(status: TurnStatus, native_custody: bool) -> LeaseExpiredOutcome {
     match status {
-        TurnStatus::CancelRequested => LeaseExpiredOutcome {
+        TurnStatus::CancelRequested if !native_custody => LeaseExpiredOutcome {
             status: TurnStatus::Cancelled,
             failure: None,
             event_kind: TurnEventKind::Cancelled,
             event_detail: None,
         },
         _ => {
-            let failure = SanitizedFailure::from_trusted_static("lease_expired");
+            let failure = SanitizedFailure::from_trusted_static(
+                if native_custody && status == TurnStatus::CancelRequested {
+                    "native_cancel_ack_expired"
+                } else {
+                    "lease_expired"
+                },
+            );
             LeaseExpiredOutcome {
                 status: TurnStatus::Failed,
                 failure: Some(failure.clone()),

@@ -14,6 +14,10 @@ function integer(text, minimum) {
   if (!Number.isSafeInteger(value) || value < minimum) throw Error("prefix.measureInvalidLimits");
   return value;
 }
+function completeReferenceProposal(value) {
+  try { return JSON.parse(value.proposal_bytes).format === "brassclaw-prefix-design-proposal/1"; }
+  catch { return false; }
+}
 function remembered(key) {
   try { return sessionStorage.getItem(key) || ""; } catch { return ""; }
 }
@@ -61,7 +65,8 @@ export function PrefixMeasurementPanel({ entry, generation, t }) {
     timer = setTimeout(poll, 2000);
     return () => { stopped = true; clearTimeout(timer); };
   }, [open, entry.name, trackingId, job?.run_status]);
-  const proposals = (catalogue?.proposals || []).filter(value => value.profile === entry.name);
+  const profileProposals = (catalogue?.proposals || []).filter(value => value.profile === entry.name);
+  const proposals = profileProposals.filter(completeReferenceProposal);
   const proposal = proposals.find(value => value.id === proposalId);
   const artifacts = (catalogue?.artifact_sets || []).filter(value => value.specification === proposal?.specification);
   function selectProposal(id) {
@@ -111,6 +116,7 @@ export function PrefixMeasurementPanel({ entry, generation, t }) {
     ${open && html`<div className="space-y-3 rounded border border-[var(--v2-panel-border)] p-3">
       <p className="text-[var(--v2-text-muted)]">${t("prefix.measureNotice")}</p>
       ${error && html`<p role="alert" className="text-red-300">${error}</p>`}
+      ${profileProposals.length > proposals.length && html`<p role="status">${t("prefix.measureRuleDesignNotice")}</p>`}
       <label className="block">${t("prefix.measureProposal")}
         <select value=${proposalId} disabled=${busy || !!pending} onChange=${event => selectProposal(event.target.value)} className="block w-full">
           <option value="">${t("prefix.measureSelectInputs")}</option>

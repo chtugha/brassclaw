@@ -37,7 +37,7 @@ manager authority, and V1 secret stores are inventory evidence only.
 | --- | --- | --- |
 | `AuthFlowManager` | scoped flow records, callback consumption, terminal state | provider HTTP, extension activation, turn replay |
 | `AuthInteractionService` | redacted auth-required projections and secure manual-token submit | secret persistence internals or model-visible token transport |
-| `CredentialSetupService` | create/update account records from OAuth/manual setup results | durable encryption or runtime injection |
+| `CredentialSetupService` | create/update accounts and own original refresh intent/result/publication through the selected durable backend | raw token encryption, provider HTTP or runtime injection |
 | `CredentialAccountService` | account metadata, ownership, grants, status, redacted projections | raw access/refresh token material |
 | `AuthProviderClient` | one-shot OAuth provider exchange/refresh vocabulary over host egress | product workflow or route state |
 | `SecretCleanupService` | ownership-aware uninstall/deactivate cleanup reports | deleting reusable/shared accounts by default |
@@ -121,14 +121,14 @@ V1 pending maps.
 
 ## Durable Production Slice (#4175)
 
-Production product-auth records use the `brassclaw_auth` contract types and are
-stored by the `brassclaw_reborn_composition` filesystem adapter under the normal
-Reborn scoped filesystem substrate, rooted at the caller's
-`/secrets/product-auth/{surface}` tree. The production factory constructs
-`FilesystemAuthProductServices` over the same libSQL/PostgreSQL-backed
-`ScopedFilesystem` and `SecretStore` used by the rest of Reborn; callers no
-longer need to inject `InMemoryAuthProductServices` or an external product-auth
-facade for production.
+Filesystem-backed product-auth records use the `brassclaw_auth` contract types
+under the normal Reborn scoped filesystem substrate, rooted at the caller's
+`/secrets/product-auth/{surface}` tree. Persistent filesystem composition uses
+PostgreSQL-backed `ScopedFilesystem` and the existing `SecretStore`; it does not
+use a libSQL runtime backend. SQLite/libSQL support is legacy import only.
+Ordinary skills-db startup instead constructs the native `PgAuthProductServices`
+with the factory's concrete PostgreSQL secret owner, as described by the current
+implementation status. Neither path needs an injected in-memory fake or V1 facade.
 
 The storage-home decision is deliberately **not** to make
 `brassclaw_secrets::CredentialAccountStore` own product-auth UX records. Runtime
@@ -154,11 +154,13 @@ record volume is still small. If product-auth account volume grows, add
 filesystem record indexes for provider/status/owner/grants without indexing
 secret handles or raw token material.
 
-OAuth callback de-duplication is flow-id based. Callback-created accounts use
-a deterministic account id derived from the flow id; bound reauthorization
-updates the pre-authorized account id captured in the flow. Completed flows
-return their stored credential account id on callback retry/replay, so provider
-code is not re-exchanged after a completed durable claim.
+OAuth callback custody is scoped by the original flow and complete explicit
+request proof; see the original-callback section below. Callback-created accounts
+use a deterministic account id derived from the flow id. A collision with an
+unrelated existing account is a conflict, never implicit update authorization.
+Bound reauthorization retains the exact account snapshot captured at flow creation.
+Only an acknowledged new Dispatch may submit the code; Submitted/unknown and
+already completed originals never authorize another exchange.
 
 Google OAuth production config is resolved by host composition before provider
 client construction. Injected `OAuthClientConfig` is the canonical production
@@ -168,11 +170,14 @@ older v1/v2 tool paths only until a Reborn settings-config resolver explicitly
 adopts and documents them. Production startup rejects malformed OAuth config at
 construction time through the typed `OAuthClientConfig` validators.
 
-The HA-safe PKCE decision for this slice is documented sticky callback routing:
-the mounted WebUI OAuth route keeps raw PKCE verifiers in process-local bounded
-state while durable flow records store only hashes. Single-instance or sticky
-callback deployments are supported. Multi-replica/restart-surviving deployments
-must add a host-owned encrypted verifier store before claiming HA safety.
+Before the first owned exchange, the mounted WebUI OAuth route still needs
+its raw verifier from the process-local bounded cache or existing provider gate
+store. General restart/replica-safe setup before that point requires the planned
+host-owned encrypted verifier integration. After original admission/result custody,
+reference-only read/reconciliation selects neither a verifier nor a current
+provider: an empty route cache or removed client cannot authorize re-exchange or
+hide an already retained result. This distinction does not certify general HA,
+durable task recovery or the complete dedicated-auth setup cutover.
 
 ---
 
@@ -232,6 +237,7 @@ ownership
 owner_extension?
 granted_extensions[]
 access_secret?
+access_expires_at?
 refresh_secret?
 ProviderScope[]
 ```
@@ -289,6 +295,34 @@ Rules:
   state. They must not expose raw provider error text, response bodies, host
   paths, access-token handles, refresh-token handles, or secret values.
 
+### Issuer access lifetime
+
+`access_expires_at` belongs to the exact access credential, not its refresh
+token, setup flow, VM compute account or staging cleanup budget. Preserve a
+supplied OAuth `expires_in` using checked arithmetic from a conservative
+pre-request timestamp. Zero is expired; omission remains unknown. A supplied
+null, wrong type or unrepresentable lifetime fails before secret publication.
+[OAuth 2.0 section 5.1](https://www.rfc-editor.org/rfc/rfc6749#section-5.1)
+defines the lifetime in seconds and numerical response values as JSON numbers;
+the earlier pre-request origin is BrassClaw's conservative policy.
+
+Raw account equality/snapshot references retain the stored deadline and status.
+Clock passage never writes a fake account revision. Projections, recovery,
+account choice, runtime selection and GSuite derive effective expiry when read;
+revoked/inactive states keep their precedence. A legitimate refresh can renew an
+expired access credential while its separate refresh authority remains valid.
+New access-token output with omitted lifetime clears the old access deadline;
+an omitted refresh-token rotation preserves the original refresh token.
+
+The encrypted Secret owner authenticates each finite deadline with its exact
+generation and checks it on lease issuance and consumption, including awaited
+storage acknowledgements. Runtime staging carries that selected deadline through
+final use alongside its independent original monotonic cleanup deadline. Cache
+reuse and failed-injection restoration cannot restart either lifetime or replace
+a later staged selection. Unknown historical records stay readable; a copied
+account field or raw JSON token never becomes authenticated expiry or authority.
+Technical expiry remains effective independently of discretionary token budgets.
+
 ### Runtime Credential Consumers
 
 Product-auth accounts are the account-selection and recovery authority for
@@ -344,12 +378,14 @@ request_secret_input -> AuthChallenge::manual_token_required
 submit_manual_token  -> SecretSubmitResult { account_id, status, continuation }
 ```
 
-Host-owned routes should call
-`RebornProductAuthServices::request_manual_token_setup` to mint the typed
-challenge and `RebornProductAuthServices::submit_manual_token` with a
-non-serializable `RebornManualTokenSubmitRequest` after reading the dedicated
-secret-submit body. Routes must not pass manual-token material through chat
-commands, model-visible messages, product projections, route DTOs, or logs.
+Host-owned manual routes call
+`RebornProductAuthServices::request_original_manual_token_setup` with the explicit
+caller-retained interaction/flow identity, `submit_original_manual_token` for
+every supplied raw token, and `continue_original_manual_token` for a separate
+confirmed-reference action. The raw request is a non-serializable
+`RebornManualTokenSubmitRequest` constructed after reading the dedicated secret
+body. Routes must not pass manual-token material through chat commands,
+model-visible messages, product projections, generic product DTOs or logs.
 The setup request is also not a route DTO: host routes must construct its
 `AuthProductScope` from authenticated caller/session context, and may attach a
 pre-authorized `CredentialAccountUpdateBinding` when the secret submit is
@@ -368,6 +404,124 @@ Rules:
 
 ---
 
+### Caller-retained original setup and confirmed continuation
+
+The high-level manual-flow owner now exposes `request_original_manual_token_flow`,
+`submit_original_manual_token_flow` and `continue_original_manual_token_flow`.
+`ManualTokenSetupIdentity` carries independent interaction/flow IDs chosen before
+the first transport or write. These IDs are correlation, not secret proof or
+authority. The facade exposes the corresponding original setup/submit/continue
+operations and a redacted receipt with the actual retained status.
+
+Native PostgreSQL creates the interaction/flow pair atomically; filesystem storage
+retains the original interaction and reconciles its CAS-protected flow projection.
+Both retain the first accepted expiry and prechallenge bound account snapshot.
+Repeated setup verifies the full original scope/provider/label/continuation/binding
+and returns the original pending or terminal state; it never extends expiry,
+reselects a current account or resurrects cancellation. A mismatched pair fails
+before credential publication. Independent arbitrary lower ports cannot claim
+shared custody: their original-operation defaults remain unavailable.
+
+Raw submission still proves the supplied original input. Reference continuation
+accepts no token and requires an actual confirmed original publication and matching
+completed flow; intent or selected metadata alone is insufficient. It resumes the
+existing continuation without changing current account state. The native reader
+requires a whole-flow original; this does not upgrade a lower account-only result.
+
+The manual HTTP routes require strict nested
+`identity: {interaction_id, flow_id}` and `invocation_id` before any setup write.
+Optional thread/session fields are re-derived with the authenticated caller's
+host scope; the caller cannot supply a tenant/user. Setup returns the original
+pair, invocation, first expiry and actual state. Combined submit retains its
+dedicated raw body but requires these same original identifiers. Secret-submit
+always proves supplied raw data; `/continue` has a distinct token-free schema.
+Unknown fields/malformed JSON produce sanitized errors rather than raw serde
+diagnostics. Unknown replies/timeouts never trigger abandonment or replacement.
+
+Chat stores only redacted original identity, invocation, provider/label and the
+first acknowledged expiry in sessionStorage before transport. It retains these
+across reload and unknown replies, fails before transport when storage cannot
+retain the original, and fences late completion on gate/thread/cancel/unmount.
+Raw entry and Continue saved setup are separate actions; a changed supplied token
+cannot be skipped in favour of a cached account. Known terminal setup states are
+displayed distinctly and disable raw/reference submission while leaving Cancel
+available. Token text is passed unchanged or rejected by the existing ingress
+validator, never silently trimmed. This does not claim raw secret persistence in
+browser storage, general restart recovery or extension migration.
+
+The extension setup consumer still needs original per-requirement transport and
+prechallenge account selection through this owner. Its legacy setup operation
+described below retains the narrower acknowledgement contract until migrated.
+Native/browser acceptance applies only to its exact recorded source and fixtures;
+the optional native read-model test without its explicit browser invocation is
+not browser evidence.
+
+Runtime assembly rebinds this same Auth facade's continuation dispatcher to its
+final TurnCoordinator before exposing ingress. The standalone factory's earlier
+substrate coordinator is not the runtime's run store. All Auth stores, original
+custody, provider ports and registry references are preserved; completion resumes
+the existing runtime run rather than seeking it in the earlier factory store.
+
+### Original setup-flow creation acknowledgement
+
+After the existing interaction port returns its original challenge, the setup
+owner chooses one independent Flow ID before creating that flow. A failed
+creation acknowledgement reads that exact ID and full original scope, kind,
+provider, challenge/expiry, continuation, binding and hash layout. It neither
+creates a replacement nor abandons the interaction while the write/read remains
+unconfirmed. A foreign definition conflicts. Canceled, terminal or expired
+readback cannot be presented as a new awaiting challenge. Native PG and generic
+filesystem/port-backed callers use the same bounded coordinator; successful
+creation needs no additional database read. Existing flow/interaction IDs are
+never rewritten.
+
+This is original readback within that setup operation, not transport-idempotent
+creation before the first interaction acknowledgement or complete shared manual
+publication custody. HTTP/coordinator errors and timeouts already preserve the
+original interaction; they are not automatic abandonment requests. Missing/failed
+readback stays an error with the original records available for their existing
+reconciliation and cleanup owners; a missing row does not authorize deletion
+after an uncertain write.
+
+### Secret-owner snapshot/CAS prerequisite
+
+All selected scoped SecretStore adapters expose authenticated encrypted-generation
+reference, owner-side boolean material comparison and exact-generation conditional
+write. An expected `None` guards absence; mismatched references produce no secret write and
+uncertain errors still require original readback. PG uses its existing native
+transaction owner; FS atomically checks the captured version and encrypted body,
+including delete/recreate, rather than relying on a process-local lock.
+Reference/comparison reads do not migrate legacy secret bytes or grant runtime
+use. Existing expiry, scope and kernel checks remain independent.
+
+This prerequisite does not turn mutable names into protected original input,
+complete manual publication/retention, or pin a lease's generation through a wait.
+Those remain in existing K3 step2/step4 and cannot be inferred from a nonempty
+reference or a successful material comparison.
+
+### Auth-record snapshot fences
+
+Filesystem AuthProduct captures the record version and exact entry-body checksum
+in the same read for account, flow, interaction and refresh-action records. Every
+conditional writer carries that original snapshot to the existing atomic
+`VersionAndBody` precondition. Re-reading a current version does not replace the
+captured body identity; a physical delete/recreate can reuse a version. New
+records still use absence. `Any` and version-only writes are rejected, body/version
+mismatch is a conflict and unsupported backends remain unavailable without a
+weaker retry. No extra read or new store is needed for the final backend check.
+
+CAS-only callback decisions additionally retain the selected account body identity.
+Their final account write commits the existing receipt in the same entry. A
+historical decision without that body identity can finish from an already present
+matching account receipt, without rewriting the account. Without that receipt its
+publication stays visibly unresolved/conflicting; do not infer an old snapshot
+from the current account or silently downgrade to version-only CAS. The existing
+controlled-upgrade owner must drain/reconcile such old pending decisions before
+cutover, preserving unresolved evidence for its documented recovery procedure.
+This compatibility boundary does not certify the complete upgrade/recovery plan.
+See the current status index for actual qualification; source declarations alone
+are not runtime acceptance or full manual-token/browser publication.
+
 ## OAuth Provider Exchange
 
 Provider exchange uses `AuthProviderClient` and one-shot request types:
@@ -384,6 +538,8 @@ OAuthProviderCallbackRequest {
 }
 
 OAuthProviderRefreshRequest {
+  refresh_id,
+  scope,
   provider,
   account_id,
   refresh_secret,
@@ -395,9 +551,37 @@ The request types are intentionally not serializable. Exchange/refresh results
 are safe to store because they contain only hashes, handles, ids, scopes, and
 redacted metadata.
 
-Production implementations must route provider HTTP through Reborn
-network/egress policy, use bounded retry/backoff and per-account/provider rate
-limits, and return sanitized errors. Refresh implementations must never log raw
+`AuthProviderClient::prepare_refresh` separately returns
+`OAuthProviderRefreshPreparation`: deterministic token destinations plus
+`OAuthRefreshSource { scope, handle, record_reference }`. The reference identifies
+one authenticated encrypted source generation; preparation issues no lease and
+contacts no issuer. It is neither a raw token nor an authorization grant.
+
+The existing durable `CredentialRefreshAction` retains this exact source alongside
+its original account/destinations, and source equality belongs to `same_intent`.
+The winning admission reconstructs provider input and preparation from its stored
+action, never today's handle value. Native PG/record-filesystem owners authenticate
+the offered source before a new dispatch intent. That check does not make separate
+CAS records atomic: the Host still uses `lease_once_if_record_reference` and the
+store's consume-time generation/revocation/expiry validation before issuer HTTP.
+A replacement, including equal plaintext written as a new encrypted generation,
+cannot silently substitute for the selected input.
+
+Legacy actions without the optional source stay readable and reconcilable. They
+cannot acquire new dispatch input from current configuration or material. Original
+readback after loss of an acknowledgement uses the same intent/result; unavailable
+or deleted current material does not create another issuer request. Provider errors
+remain unresolved unless the actual outcome has a separate valid classification;
+a missing/stale-source error is not a general no-effect proof or retry permission.
+Current kernel/technical checks remain independent of this retained metadata.
+
+Production implementations route provider HTTP through Reborn network/egress
+policy and return sanitized errors. One provider dispatch makes one submitted
+request; the shared HTTP transport disables protocol-NACK resends. Any later
+eligible retry belongs to the explicitly accounted caller under the failure
+contract. A timeout, HTTP failure, parse error or cancellation does not prove no
+issuer effect and cannot silently repeat a refresh. Existing route rate policy
+is independent of original outcome custody. Refresh implementations must never log raw
 refresh tokens, access tokens, provider response bodies, authorization codes,
 PKCE verifiers, or backend secret handles; provider diagnostics must be mapped
 to stable categories before they reach route responses, projections, traces, or
@@ -409,6 +593,107 @@ equivalent compare-and-swap guard so a late refresh response cannot overwrite
 newer credentials. Similarly, a failed refresh should mark an account
 `refresh_failed` only if the account is still in the same pre-refresh
 generation that initiated the provider call.
+
+### Original callback intent, result and account publication
+
+`AuthProviderClient::prepare_callback` purely selects the actual token destinations.
+`OAuthCallbackOriginal` binds scope, flow/provider, state/code/PKCE hashes, label
+and requested scopes. The facade and actual provider validate raw code/verifier
+against those hashes before effects. A reference-only retry contains explicit
+metadata and code/state hashes; it does not reload the automatically selected
+raw verifier. Changed explicit payload conflicts before another dispatch.
+
+The existing `AuthFlowManager` owns coherent original reads, the single admitted
+Dispatch, retained outcome and original reconciliation. A private backward-readable
+flow envelope keeps initial bound account metadata and callback custody; public
+`AuthFlowRecord` stays hash-only. Bound account selection is never repaired by
+reading latest after flow creation. Legacy missing proof remains missing, without
+implicit success, account substitution or issuer replay; controlled compatibility
+and upgrades retain their separate K6 ownership.
+
+Returned metadata is durable before account publication. Validate exact provider,
+hashes, label, destination handles, optional returned account ID and coverage of
+requested scopes. Unusable/unknown returns retain accountable metadata but cannot
+publish success. PG finalizes account/flow/receipt in one existing transaction.
+The actual filesystem backends provide single-record CAS, not multi-key StorageTxn.
+Their flow CAS selects an irreversible local publication decision; the account
+CAS commits the matching final receipt alongside the account and existing refresh
+journals. All account writers preserve both journals. Original reconciliation
+finishes that same decision and flow; uncertain writes never cause a new issuer
+call or blind token deletion. Reauthorization retains old outputs for their
+existing retention/cleanup owners.
+
+Cancellation wins before the filesystem publication decision. After that commit
+point, cancellation first reconciles it and reports terminal or pending/error;
+it cannot acknowledge Canceled while the selected account write may still occur.
+Expiry is checked at that original decision, not restarted on recovery. Ordinary
+status/failure/denial writers cannot overwrite the decision. A later account edit
+fences the original account CAS; a matching retained receipt still proves a prior
+publication without overwriting that edit.
+
+Malformed, foreign-state or pre-effect callback errors preserve the verifier of
+an otherwise pending flow. Error cleanup first reads the same durable flow,
+checks full scope/ID, the constant-time state hash and OAuth challenge kind, and
+removes the cached verifier only for a terminal status. A read failure stays a
+visible error; it never grants cleanup authority. Verified success still releases
+its cached verifier, and original success readback needs neither cache nor provider.
+
+Only verified Completed callback state may dispatch a success continuation or
+render completion HTML. Denied/failed/unknown outcomes cannot broadcast completion
+or close the browser window as success. Actual continuation delivery retains its
+existing flow-ID idempotency contract. Safe facade errors preserve a conflict
+disposition (`conflict: true`, nonretryable, HTTP409), without exposing backend
+reasons or the original payload. Old serialized errors default to no conflict;
+ordinary error JSON remains unchanged. A technical unavailability stays distinct.
+
+This describes the connected implementation boundary, not a release, real issuer,
+cross-platform, full recovery or complete K3 acceptance. Use the current index and
+its exact scoped validation records for observed support.
+
+### Original refresh intent, result and account publication
+
+A deliberate `CredentialRefreshRequest` has a typed UUID `id`; a transport retry
+keeps that original. The public accounts/refresh DTO requires `refresh_id` in
+addition to its existing explicit invocation/account/provider context. Reusing
+one scoped original with a changed account, provider or requester conflicts.
+`AuthProviderClient::prepare_refresh` computes actual action-specific token
+storage destinations without issuer I/O; execute uses those same destinations.
+
+The existing `CredentialSetupService` owns four refresh boundaries: read original,
+begin once, complete the returned outcome and reconcile the original. Admission
+persists original scope/request/account snapshot and prepared destinations before
+any possible issuer submission. Independent coordinators cannot claim a second
+dispatch; a new action id cannot bypass an unresolved effect on the same refresh
+credential. A differently authorized credential remains a distinct grant.
+
+Completion first durably retains the exact normalized returned metadata. Account
+publication then checks the original snapshot and atomically retains the final
+account plus its applied/superseded receipt. A failed final write leaves the
+returned outcome available to original-only reconciliation after restart; it
+never requires another issuer call. PG uses the existing AuthProduct owner with
+normalized refresh records and final transactional account/receipt publication.
+CAS filesystem storage uses original intent/result records plus a backward-readable
+account envelope. The result record alone never certifies account publication;
+the final account/receipt shares one record CAS, preserved by every account writer.
+These extend existing owners, not the provider catalogue or a second auth runner.
+
+`CredentialRefreshReport.original` exposes only safe original IDs, outcome and
+publication categories, optional stable error and an exact published-account
+metadata reference. It contains no secret handles or raw provider response. That
+reference is not an auth grant. `refreshed` requires the confirmed original and
+current account to match; a later edit remains visible without rewriting the old
+receipt. Unknown submission, malformed returned handles and stale completion
+cannot publish a foreign credential. Omitted refresh rotation preserves the old
+refresh handle. Recovery lookup errors propagate without replaying the issuer.
+GSuite binds refresh to its active operation, keeps the account's storage scope
+and validates the exact confirmed receipt/snapshot before retrying resource egress.
+
+Manual-token secret/account/interaction/flow custody, remaining owned partial-
+artifact cleanup disposition, issuer expiry through final staged injection,
+typed DB-owned dedicated setup/original grant and actual Codex rotating-session
+migration remain separate remaining K3 steps. The callback boundary above and
+scoped refresh acceptance do not establish full auth/deployment completion; use
+[the implementation index](../../implementation-status.md).
 
 The composition root may expose an in-memory product-auth bundle only for
 local-dev/testing. Production profiles must receive durable Reborn-native auth
@@ -448,11 +733,12 @@ tenant/user fields.
 | --- | --- | --- |
 | `POST` | `/api/reborn/product-auth/oauth/start` | Open an OAuth setup flow; returns redacted authorization URL + invocation scope. |
 | `GET`  | `/api/reborn/product-auth/oauth/callback/{flow_id}` | Public OAuth callback; validates scope/state hash before any product effect. |
-| `POST` | `/api/reborn/product-auth/oauth/google/start` | Open a Google product-auth setup flow from configured Reborn Google OAuth client metadata; returns a Google authorization URL with PKCE/offline consent and invocation scope. |
+| `POST` | `/api/reborn/product-auth/oauth/google/start` | Create/read the original Google setup with explicit flow/invocation IDs; returns original metadata and an eligible PKCE/offline-consent URL, or a null URL for terminal/elapsed originals. |
 | `GET`  | `/api/reborn/product-auth/oauth/google/callback` | Public static Google OAuth callback; resolves flow/scope from auth-owned encoded state, validates the durable state hash/PKCE claim, and completes through `RebornProductAuthServices`. |
-| `POST` | `/api/reborn/product-auth/manual-token/submit` | One-shot manual-token setup + secret-submit (legacy WebUI shape, compatibility). |
-| `POST` | `/api/reborn/product-auth/manual-token/setup` | Mint a manual-token interaction challenge; returns `interaction_id` + `invocation_id`. |
-| `POST` | `/api/reborn/product-auth/manual-token/secret-submit` | Submit the raw token for an existing `interaction_id`; model transcript, tool arguments, logs, and durable events only ever see the redacted `credential_submitted` / `auth_failed` projection. |
+| `POST` | `/api/reborn/product-auth/manual-token/submit` | Combined dedicated raw setup/submit; explicit original pair and invocation required. |
+| `POST` | `/api/reborn/product-auth/manual-token/setup` | Create/read the original pair; returns identity, invocation, first expiry and actual status. |
+| `POST` | `/api/reborn/product-auth/manual-token/secret-submit` | Prove supplied raw token against the exact original pair/invocation; return redacted completion. |
+| `POST` | `/api/reborn/product-auth/manual-token/continue` | Confirm and resume the original completed publication by pair/invocation; accepts no token. |
 | `POST` | `/api/reborn/product-auth/accounts/list` | List redacted credential account projections for a provider. |
 | `POST` | `/api/reborn/product-auth/accounts/select` | Select a single configured account by id; returns its redacted projection. |
 | `POST` | `/api/reborn/product-auth/accounts/recovery` | Project the stable recovery state for a provider (configured / setup_required / reauthorize_required / account_selection_required). |
@@ -461,13 +747,13 @@ tenant/user fields.
 
 Rules:
 
-- `secret-submit` is the only product-facing entry point for raw manual-token
-  material. The raw token never enters tool arguments, model transcript,
-  durable chat history, projections, debug output, or errors; only redacted
-  `credential_submitted` / `auth_failed` projections cross the boundary.
-- Manual-token setup and secret-submit are linked by `interaction_id` plus an
-  `invocation_id` round-tripped through the browser, matching the OAuth
-  start/callback pattern.
+- Raw manual-token material crosses only the dedicated `secret-submit` or
+  combined `submit` body. Setup/reference continuation accepts none. The raw token
+  never enters tool arguments, model transcript, durable chat history, projections,
+  debug output or errors; only redacted completion/failure crosses the boundary.
+- All manual operations retain the same independent interaction/flow pair and
+  invocation chosen before the first request. Reference continuation is not an
+  implicit fallback for changed/missing raw proof or an unavailable original.
 - Google OAuth setup is configured in the Reborn host process from env-only
   values: `BRASSCLAW_REBORN_GOOGLE_CLIENT_ID`,
   `BRASSCLAW_REBORN_GOOGLE_OAUTH_REDIRECT_URI`, optional
@@ -479,6 +765,22 @@ Rules:
   authorization parameter; product-auth setup does not treat it as a server-side
   domain allowlist. The redirect URI must match the static Google callback route
   exposed by the WebUI listener.
+- The dedicated Google start requires the independent `flow_id` and
+  `invocation_id` selected before the first request, plus the original explicit
+  label, scopes and expiry. A transport repeat reads that same original;
+  changed explicit input conflicts. The native original retains the first
+  complete client configuration and PKCE in the encrypted host owner. Public
+  route metadata alone is insufficient; recovery/callback never substitute a
+  later client configuration or require the process-local verifier cache.
+  Generic raw `oauth/start` rejects Google; its non-Google compatibility path
+  still uses the bounded local cache and is not restart qualification.
+- Google start projects `terminal` and `expired` separately from the actual
+  persisted `status`. For a completed, canceled, failed or elapsed original,
+  `authorization_url` is null. An elapsed projection does not rewrite the stored
+  status to Expired. Return original IDs/expiry rather than inventing a challenge
+  or silently creating a replacement flow. Deliberate new authorization uses new
+  original IDs. Historical metadata lacking private client bytes remains readable
+  but cannot dispatch with today's client.
 - All routes project only adapter-safe DTOs (`CredentialAccountProjection`,
   `CredentialAccountListPage`, `CredentialRecoveryProjection`,
   `CredentialRefreshReport`, `SecretCleanupReport`). Raw secret handles,
@@ -492,6 +794,37 @@ Rules:
   and enter `RebornProductAuthServices`.
 
 ---
+
+### Extension manual originals — connected implementation under validation
+
+Extension credential management uses the same high manual-input owner through
+`RebornServicesApi`, not generic lifecycle JSON or a new credential registry.
+The projection exposes the canonical Web invocation and a distinct label for
+each manual requirement. Retain the independent interaction/flow pair before the
+first transport. Dedicated protected routes under
+`/api/webchat/v2/extensions/{package_id}/setup/manual-token/` provide `setup`,
+`secret-submit`, `continue` and `cancel`. Only `secret-submit` accepts raw input;
+its body and product handoff have no serializable/debug-visible raw field.
+The generic setup payload accepts only typed nonsecret fields and rejects old
+`secrets` payloads; unimplemented fields cannot report a successful write.
+
+The first setup explicitly selects New or an existing account ID. Existing
+accounts must pass current scope/provider/requester checks before creation.
+Repeated setup recovers the exact original prechallenge binding and first expiry,
+not today's selected account. Recovery creates no original; the filesystem owner
+may repair a proven retained interaction's flow projection. Metadata can report
+expiration without granting raw acceptance; existing dispatch/publication expiry
+checks remain binding. Raw proof, confirmed-reference continuation and explicit
+cancellation stay separate. A cancellation racing publication reports the actual
+state rather than claiming a completed effect was canceled.
+
+The Extension dialog stores only redacted correlation/target metadata in the same
+browser persistence algorithm used by Chat. It keeps each requirement separate,
+fences late/context-switched responses, does not cache raw mutation variables,
+and permits replacing a terminal original pointer only through an explicit new
+setup action. Closing the dialog does not cancel the original. Current source
+and focused controller checks are not native HTTP/browser acceptance; consult
+the implementation index for the remaining K3 acceptance scope.
 
 ## V1 Behavior Inventory
 
@@ -595,3 +928,76 @@ covers:
 - `challenge_for_gate` returns `None` for mismatched owner/scope/run/gate refs
   or terminal flows.
 - `as_auth_challenge_provider` returns `None` when no flow record source.
+
+### Manual submission: error and timeout custody
+
+The HTTP combined/split submit routes preserve the existing interaction on invalid
+input, backend error and timeout. An absent acknowledgement is not a cancellation
+request. The legacy shared completion coordinator propagates an unconfirmed flow completion
+without canceling the flow or revoking its acknowledged account. Explicit operator abandonment remains a separate action.
+The ordinary PostgreSQL manual-flow implementation now uses the existing concrete
+secret owner and one native transaction for encrypted original input, immutable
+output, account, consumed interaction and completed flow. Same original/raw input
+reads its stored result; changed or retired input conflicts. Complete originals
+never substitute the current account or wait on its publication lock. The lower
+interaction port preserves its distinct account/interaction operation; the native
+flow port owns atomic workflow completion. Both use original input proof.
+
+Existing bound setups keep their first account snapshot. Older supported
+interactions may recover that snapshot only from their original retained flow;
+unproven legacy state fails closed. Unbound native setup keeps its original
+interaction-derived account, without implicit updates to another account. Failed
+or unknown commits never authorize deleting new or preceding material. Native
+validation of this source change is tracked separately in the implementation
+index; this paragraph is not a complete product acceptance claim.
+
+The ordinary filesystem manual owner now retains encrypted original input and
+selection through the same secret ports. Its existing interaction row selects
+one irreversible publication decision. Account CAS stores the exact manual receipt
+beside the account and preserves every refresh/callback/manual journal; only then
+is the interaction marked published and its correlated flow completed. An original
+intent alone is not success. Rejected/uncertain writes never delete or replace
+material; exact same-input readback resumes the selected decision, while changed
+input and unproven legacy completed flows conflict before the legacy facade can
+substitute a current account. Already published results do not reread current
+account status or overwrite a later account edit.
+
+The lower interaction operation publishes only its declared account/interaction;
+the owning high-level flow service completes its workflow. Cancellation closes an
+undecided interaction with a snapshot CAS, or settles its already chosen result
+before replying; it cannot acknowledge cancellation while that decision can still
+publish an account. A chosen whole-flow decision finishes its original flow; a
+lower account-only result permits the separate flow completion/cancellation race.
+All record writes retain their original body/version preconditions. This is CAS
+coordination, not a filesystem multi-record transaction.
+
+Both ordinary owners create a new interaction-derived account for an unbound
+setup. Existing accounts may only be updated with the validated binding captured
+before challenge creation; the historical FS latest-reusable-account lookup at
+submit is removed. Legacy bound snapshots come only from the original flow.
+Source and declared tests do not establish acceptance; use the current index.
+
+The facade's raw-submit path now requires its selected original-input owner to
+return the result. It does not recover success from completed-flow metadata or a
+current account when raw proof is absent. The in-memory test adapter models
+same-input result retention, changed-input conflict and prechallenge bound-account
+snapshots in protected nonserializable SecretString memory, with no token digest
+or claim of durable encrypted persistence. Its unbound setup creates a new account.
+The generic coordinator preserves lower-port semantics and reports abandonment
+only for an actually canceled flow; unrelated trait objects do not acquire atomic
+multi-record publication by being composed.
+
+The native abandon owner preserves consumed interactions and never reports a
+completed/failed/expired flow as a newly successful cancellation. Pending inputs
+retain a canceled timestamp through an exact-body/version native transaction;
+matching committed disposition reconciles a lost commit acknowledgement. The raw
+publication path rejects canceled inputs before effects. Repeated cancellation
+cannot delete proof or recreate an input. This is cancellation disposition, not
+transport-idempotent setup creation or the complete browser/reference workflow.
+
+Caller-retained setup identity and explicit reference continuation now have
+connected manual routes and Chat consumers as described above. Extension setup
+still needs its same per-requirement migration and acceptance before this K3 step
+closes. Ordinary lease-generation/final use fences, expiry and reconciled artifact
+cleanup remain separate requirements; no full K3 or platform/release acceptance
+follows from this manual browser slice.

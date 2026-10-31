@@ -211,7 +211,7 @@ where
             secret_mode = ?plan.secret_mode,
             "first-party runtime adapter policy plan resolved"
         );
-        let services = self
+        let mut services = self
             .invocation_services
             .resolve(InvocationServicesResolutionRequest {
                 plan: &plan,
@@ -231,6 +231,13 @@ where
                     safe_summary: None,
                 }
             })?;
+        if matches!(
+            request.capability_id.as_str(),
+            crate::MEMORY_SEARCH_CAPABILITY_ID | crate::MEMORY_WRITE_CAPABILITY_ID
+        ) && let Some(embeddings) = crate::memory_embedding_port::selected()
+        {
+            services.memory_embeddings = Some(embeddings);
+        }
         tracing::debug!("first-party runtime adapter services resolved");
 
         let used_prepared_reservation = request.resource_reservation.is_some();

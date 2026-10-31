@@ -181,6 +181,7 @@ async fn first_party_adapter_forwards_required_secrets_from_auth_required_handle
 #[tokio::test]
 async fn first_party_adapter_forwards_credential_requirements_from_auth_required_handler() {
     let requirement = RuntimeCredentialAuthRequirement {
+        requirement: None,
         provider: RuntimeCredentialAccountProviderId::new("google").unwrap(),
         requester_extension: ExtensionId::new("gmail").unwrap(),
         provider_scopes: vec!["https://www.googleapis.com/auth/gmail.readonly".to_string()],

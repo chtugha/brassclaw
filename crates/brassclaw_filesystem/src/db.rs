@@ -138,37 +138,20 @@ pub(crate) fn infrastructure_pg_error(
     infrastructure_error(operation, error.to_string())
 }
 
-/// Build a deterministic SQL index identifier from a mount prefix + spec
-/// name. `IndexKey`/`IndexName` are validated to `[A-Za-z_][A-Za-z0-9_]*`,
-/// so the only non-identifier characters we strip are the prefix's slashes.
-/// Length capped at 62 to fit Postgres' 63-char identifier cap so libsql
-/// and postgres share one naming convention.
+/// Build a deterministic SQL identifier from the complete prefix/name identity.
+/// Sanitizing slashes/punctuation or hashing only after truncation aliases distinct
+/// declarations (including short paths). Hash before any lossy transformation.
+/// Existing legacy indexes can remain as query accelerators; declarations will
+/// ensure their own exact index without dropping another prefix's index.
 #[cfg(feature = "postgres")]
 pub(crate) fn sql_index_name(prefix: &str, name: &str) -> String {
-    let prefix_clean: String = prefix
-        .trim_matches('/')
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect();
-    let raw = format!("idx_rfs_{prefix_clean}_{name}");
-    if raw.len() <= PG_MAX_IDENTIFIER_LEN {
-        return raw;
-    }
-    // PR #3679 review fix: distinct long inputs must map to distinct
-    // identifiers. Append a stable blake3 suffix before truncating so
-    // `CREATE ... IF NOT EXISTS` cannot silently reuse the wrong index.
-    let hash = blake3::hash(raw.as_bytes());
+    // Both validated identifiers exclude NUL, so this separates the pair exactly.
+    let hash = blake3::hash(format!("{prefix}\0{name}").as_bytes());
     let hash_hex = hash.to_hex();
-    let suffix = format!("_{}", &hash_hex.as_str()[..8]);
-    let keep = PG_MAX_IDENTIFIER_LEN.saturating_sub(suffix.len());
-    let cutoff = raw
-        .char_indices()
-        .nth(keep)
-        .map(|(i, _)| i)
-        .unwrap_or(raw.len());
-    let mut out = raw[..cutoff].to_string();
-    out.push_str(&suffix);
-    out
+    format!(
+        "idx_rfs_{}",
+        &hash_hex.as_str()[..PG_MAX_IDENTIFIER_LEN - 8]
+    )
 }
 
 /// Escape a LIKE pattern that already contains a trailing `%` wildcard

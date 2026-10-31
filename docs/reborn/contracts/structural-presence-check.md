@@ -19,4 +19,21 @@ typed input bindings, the other required rules, complete collection/aggregation
 and trusted review evidence. The component alone cannot establish Q1, behavioral
 qualification, class validation or an active validator route. Installation-owned
 qualification and authored Q1/behavior/human-Q2 requirements apply to the actual
-workflow and dependency combination before activation.
+reviewed functions/workflow before activation. A checks its own changed function;
+S retains its separate exact-usage qualification and prerequisite evidence.
+
+## Approval and successor scope
+
+This pure helper needs its own supported approval before production use; valid
+presence results cannot supply behavior, meaning, successor compatibility or a
+whole-class pass. A compatible helper successor is checked against still-needed
+consumer contracts through the existing Validator owner. Unchanged validators or
+Recipes keep their own approvals; testing old consumer fixtures is successor
+evidence, not consumer Q1/Q2. Source-only execution and a retained draft still
+create no approval. S qualification remains installation-owned/noncircular,
+without normal authored queue or additional installed human Q2.
+
+Use the existing own-function and Recipe-workflow owners; do not add a presence-
+check approval service, new hardcoded test quota or fake ToolSkill. The new A
+subject/reader cutover after bounded BUILD-014 acceptance remains an explicit
+open owner task, not implemented support inferred from this helper.

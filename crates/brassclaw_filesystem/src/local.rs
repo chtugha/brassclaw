@@ -178,7 +178,7 @@ impl LocalFilesystem {
 #[async_trait]
 impl RootFilesystem for LocalFilesystem {
     fn capabilities(&self) -> crate::BackendCapabilities {
-        crate::BackendCapabilities::empty().with(crate::Capability::OpaqueWrite)
+        crate::BackendCapabilities::bytes_only().with(crate::Capability::OpaqueWrite)
     }
 
     async fn put_opaque(
@@ -211,7 +211,10 @@ impl RootFilesystem for LocalFilesystem {
                 operation: FilesystemOperation::WriteFile,
             });
         }
-        if matches!(cas, CasExpectation::Version(_)) {
+        if matches!(
+            cas,
+            CasExpectation::Version(_) | CasExpectation::VersionAndBody { .. }
+        ) {
             return Err(FilesystemError::Unsupported {
                 path: path.clone(),
                 operation: FilesystemOperation::WriteFile,
@@ -460,10 +463,12 @@ async fn atomic_write_file(
                 ))
             }
         },
-        CasExpectation::Version(_) => Err(FilesystemError::Unsupported {
-            path: virtual_path.clone(),
-            operation: FilesystemOperation::WriteFile,
-        }),
+        CasExpectation::Version(_) | CasExpectation::VersionAndBody { .. } => {
+            Err(FilesystemError::Unsupported {
+                path: virtual_path.clone(),
+                operation: FilesystemOperation::WriteFile,
+            })
+        }
     };
 
     install_result?;

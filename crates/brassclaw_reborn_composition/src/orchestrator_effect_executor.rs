@@ -556,8 +556,11 @@ fn map_capability_outcome(
         RuntimeCapabilityOutcome::ApprovalRequired(_) => Err(EngineError::Effect {
             reason: "tier-zero action requires approval; selected Recipe stopped".into(),
         }),
-        RuntimeCapabilityOutcome::AuthRequired(_) => Err(EngineError::Effect {
-            reason: "tier-zero action requires authentication; selected Recipe stopped".into(),
+        RuntimeCapabilityOutcome::AuthRequired(gate) => Err(EngineError::Effect {
+            reason: match gate.boundary {
+                brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch => "tier-zero action requires authentication; selected Recipe stopped",
+                _ => "tier-zero action has an unresolved authentication outcome after possible dispatch; selected Recipe stopped",
+            }.into(),
         }),
         RuntimeCapabilityOutcome::ResourceBlocked(_) => Err(EngineError::Effect {
             reason: "tier-zero action blocked by resource limits; selected Recipe stopped".into(),
@@ -879,6 +882,7 @@ mod tests {
 
     fn auth_outcome() -> RuntimeCapabilityOutcome {
         RuntimeCapabilityOutcome::AuthRequired(RuntimeAuthGate {
+            boundary: brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
             gate_id: RuntimeGateId::new(),
             capability_id: CapabilityId::new("memory.write").unwrap(),
             reason: RuntimeBlockedReason::AuthRequired,

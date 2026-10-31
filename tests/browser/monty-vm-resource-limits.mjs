@@ -115,6 +115,16 @@ try {
   await fillObserved("Maximum requested Memory tree depth","12");
   assert((await browser("get", "text", "#monty-default_memory_tree_depth-help")).includes("omits depth"));
   assert((await browser("get", "text", "#monty-max_memory_tree_depth-help")).includes("silently clamped"));
+  await fillObserved("OAuth metadata cache lifetime (s)","0");
+  assert((await browser("get", "text", "#monty-oauth_dcr_metadata_cache_ttl_secs-help")).includes("0 disables reuse"));
+  await fillObserved("OAuth registration HTTP timeout (ms)","49000");
+  await fillObserved("OAuth registration HTTP body limit (bytes)","131079");
+  assert((await browser("get", "text", "#monty-oauth_dcr_timeout_millis-help")).includes("discovery"));
+  assert((await browser("get", "text", "#monty-oauth_dcr_response_body_bytes-help")).includes("without truncation"));
+  await fillObserved("OAuth token timeout (ms)","47000");
+  await fillObserved("OAuth token response limit (bytes)","32769");
+  assert((await browser("get", "text", "#monty-oauth_token_timeout_millis-help")).includes("acknowledged revision"));
+  assert((await browser("get", "text", "#monty-oauth_token_response_body_bytes-help")).includes("without truncation"));
   await fillObserved("MCP request bytes","2097153");
   await fillObserved("MCP response bytes","3145729");
   const actualRequest=await browser("get","value",request);
@@ -134,6 +144,11 @@ try {
   assert(requests.some(value=>value.method==="PUT"),"The form did not submit: "+view);
   await browser("wait", "--text", "Saved");
   const changed = await settings();
+  assert.equal(changed.execution_limits.oauth_dcr_metadata_cache_ttl_secs,0);
+  assert.equal(changed.execution_limits.oauth_dcr_timeout_millis,49000);
+  assert.equal(changed.execution_limits.oauth_dcr_response_body_bytes,131079);
+  assert.equal(changed.execution_limits.oauth_token_timeout_millis,47000);
+  assert.equal(changed.execution_limits.oauth_token_response_body_bytes,32769);
   assert.equal(changed.execution_limits.default_memory_tree_depth,2);
   assert.equal(changed.execution_limits.max_memory_tree_depth,12);
   assert.equal(changed.execution_limits.max_mcp_request_bytes,2097153);
@@ -141,6 +156,11 @@ try {
   assert.equal(changed.revision,initial.revision+1);
   const effective = (await status()).execution_limits;
   assert.equal(effective.effective_revision,changed.revision);
+  assert.equal(effective.limits.oauth_dcr_metadata_cache_ttl_secs,0);
+  assert.equal(effective.limits.oauth_dcr_timeout_millis,49000);
+  assert.equal(effective.limits.oauth_dcr_response_body_bytes,131079);
+  assert.equal(effective.limits.oauth_token_timeout_millis,47000);
+  assert.equal(effective.limits.oauth_token_response_body_bytes,32769);
   assert.equal(effective.limits.default_memory_tree_depth,2);
   assert.equal(effective.limits.max_memory_tree_depth,12);
   assert.equal(effective.limits.max_mcp_request_bytes,2097153);
@@ -151,6 +171,11 @@ try {
   await browser("scrollintoview", "summary");
   await browser("click", "summary");
   // Read localized help directly; no browser/API response is fabricated.
+  assert((await browser("get", "text", "#monty-oauth_dcr_metadata_cache_ttl_secs-help")).includes("0 deaktiviert"));
+  assert((await browser("get", "text", "#monty-oauth_dcr_timeout_millis-help")).includes("keine automatische Wiederholung"));
+  assert((await browser("get", "text", "#monty-oauth_dcr_response_body_bytes-help")).includes("bestätigte Revision"));
+  assert((await browser("get", "text", "#monty-oauth_token_timeout_millis-help")).includes("bestätigte Revision"));
+  assert((await browser("get", "text", "#monty-oauth_token_response_body_bytes-help")).includes("erneutes Senden"));
   assert((await browser("get", "text", "#monty-default_memory_tree_depth-help")).includes("keine Tiefe"));
   assert((await browser("get", "text", "#monty-max_memory_tree_depth-help")).includes("stiller Begrenzung"));
   assert((await browser("get", "text", request+"-help")).includes("bestätigte Grenze"));
@@ -159,6 +184,15 @@ try {
   await browser("wait", "--load", "networkidle");
   await browser("scrollintoview", "summary");
   await browser("click", "summary");
+  for (const field of ["oauth_token_timeout_millis","oauth_token_response_body_bytes","oauth_dcr_timeout_millis","oauth_dcr_response_body_bytes","oauth_dcr_metadata_cache_ttl_secs"]) {
+    const snapshot=await browser("snapshot","-i");
+    const label={oauth_token_timeout_millis:"OAuth token timeout (ms)",oauth_token_response_body_bytes:"OAuth token response limit (bytes)",oauth_dcr_timeout_millis:"OAuth registration HTTP timeout (ms)",oauth_dcr_response_body_bytes:"OAuth registration HTTP body limit (bytes)",oauth_dcr_metadata_cache_ttl_secs:"OAuth metadata cache lifetime (s)"}[field];
+    const row=snapshot.split("\n").find(line=>line.includes('spinbutton "'+label+'"'));
+    const ref=row?.match(/\[ref=(e[0-9]+)\]/)?.[1];
+    assert(ref,"visible restore field missing: "+label);
+    await browser("scrollintoview","@"+ref);
+    await browser("fill","@"+ref,String(initial.execution_limits[field]));
+  }
   await browser("scrollintoview", "#monty-default_memory_tree_depth");
   await browser("fill", "#monty-default_memory_tree_depth", String(initial.execution_limits.default_memory_tree_depth));
   await browser("scrollintoview", "#monty-max_memory_tree_depth");
@@ -184,8 +218,10 @@ try {
   try {
     if (initial) {
       const current = await settings();
-      if (current.execution_limits.max_mcp_request_bytes!==initial.execution_limits.max_mcp_request_bytes || current.execution_limits.max_mcp_response_bytes!==initial.execution_limits.max_mcp_response_bytes) {
-        const limits={...current.execution_limits,max_mcp_request_bytes:initial.execution_limits.max_mcp_request_bytes,max_mcp_response_bytes:initial.execution_limits.max_mcp_response_bytes};
+      const edited=["max_mcp_request_bytes","max_mcp_response_bytes","default_memory_tree_depth","max_memory_tree_depth","oauth_token_timeout_millis","oauth_token_response_body_bytes","oauth_dcr_timeout_millis","oauth_dcr_response_body_bytes","oauth_dcr_metadata_cache_ttl_secs"];
+      if (edited.some(field=>current.execution_limits[field]!==initial.execution_limits[field])) {
+        const limits={...current.execution_limits};
+        for (const field of edited) limits[field]=initial.execution_limits[field];
         const response=await fetch(upstream+"/api/settings/monty-vm",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({expected_revision:current.revision,execution_limits:limits})});
         assert.equal(response.status,200);
       }

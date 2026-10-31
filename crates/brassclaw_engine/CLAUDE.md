@@ -23,7 +23,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -58,7 +60,12 @@ source-substitution or fresh-step descriptions below are implementation/legacy
 notes, not permission to extend those paths as the v3 target. These requirements
 remain subject to the documented runtime implementation gaps.
 
-Unified thread-capability-CodeAct execution model. Replaces ~10 separate abstractions (Session, Job, Routine, Channel, Tool, Skill, Hook, Observer, Extension, LoopDelegate) with 5 primitives.
+Historical engine-v2 inventory: the thread/capability/CodeAct model below described
+an earlier five-primitive consolidation. Its claim to replace Tool/Skill/Extension
+is not the v3 component definition. Use the four binding component guides and
+Current Monty runtime section for new work; preserve legacy consumers until their
+own migration. Capability leases and scoped profiles here are compatibility
+mechanisms, not new per-invocation v3 Tool grants.
 
 ## Full Architecture Plan
 

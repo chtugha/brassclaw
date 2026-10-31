@@ -1020,7 +1020,12 @@ impl VersionRacingBackend {
 #[async_trait]
 impl RootFilesystem for VersionRacingBackend {
     fn capabilities(&self) -> BackendCapabilities {
-        self.inner.capabilities()
+        self.inner
+            .capabilities()
+            .without(brassclaw_filesystem::Capability::OpaqueWrite)
+            .without(brassclaw_filesystem::Capability::Events)
+            .without(brassclaw_filesystem::Capability::Append)
+            .without(brassclaw_filesystem::Capability::ConditionalEntryDelete)
     }
 
     async fn get_metadata(

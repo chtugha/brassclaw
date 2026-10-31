@@ -4,13 +4,14 @@ import test from "node:test";
 import vm from "node:vm";
 function fixture({ failId = false, standalone = false, conflict = false } = {}) {
   const state = []; let cursor = 0; let ids = 0; let failed = true;
-  const calls = [], preparations = [];
+  const calls = [], preparations = [], reconciliations = [];
   const context = {
     React: { useRef(initial) { const i = cursor++; state[i] ??= { current: initial }; return state[i]; },
       useState(initial) { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], v => { state[i] = v; }]; } },
-    html: (strings, ...values) => ({ strings: [...strings], values }), Card: "Card", useT: () => key => key,
+    html: (strings, ...values) => ({ strings: [...strings], values }), Card: "Card", CataloguePublicationStatus: "CataloguePublicationStatus", useT: () => key => key,
     TextEncoder, clientActionId: () => { ids++; if (failId) throw Error("randomness unavailable"); return "stable-action"; },
-    fetchCatalogueActivationStatus: async () => ({ generation: "inspected-generation", recipes: ["existing"] }),
+    fetchCatalogueActivationStatus: async () => ({ generation: "inspected-generation", recipes: ["existing"], publication: { desired_generation: "stored-target", effective_generation: "stored-target", prefix_invalidation_id: "stored-activation", pending: true } }),
+    reconcileCataloguePublication: async id => { reconciliations.push(id); return { activation_id: id, generation: "stored-target", catalogue_activated: true }; },
     fetchComponentReviewSubmission: async id => ({ receipt: { submission_id: id, subject_checksum: "exact-subject", candidate: { class_code: standalone ? 22 : 21 }, dependencies: [{ class_code: 1, uuid: "skill" }] } }),
     prepareComponentDeployment: async request => {
       preparations.push(request);
@@ -24,7 +25,7 @@ function fixture({ failId = false, standalone = false, conflict = false } = {}) 
   };
   const source = readFileSync(new URL("./component-deployment-panel.js", import.meta.url), "utf8").split("\n").filter(line => !line.startsWith("import ")).join("\n").replace("export function", "function");
   vm.createContext(context); vm.runInContext(source + "\nglobalThis.render = ComponentDeploymentPanel;", context);
-  return { render: () => { cursor = 0; return context.render(); }, calls, preparations, ids: () => ids };
+  return { render: () => { cursor = 0; return context.render(); }, calls, preparations, reconciliations, ids: () => ids };
 }
 function nodes(root) { const result = []; const visit = v => { if (Array.isArray(v)) { v.forEach(visit); return; } if (!v?.strings) return; result.push(v); v.values.forEach(visit); }; visit(root); return result; }
 function prop(node, name) { const index = node.strings.findIndex(p => p.endsWith(`${name}=`)); assert.notEqual(index, -1, name); return node.values[index]; }
@@ -71,4 +72,18 @@ test("duplicate subjects and unused approval entries fail before preparation", a
   const f = fixture(); field(f, "componentDeployment.ids", "same same"); await prop(button(f.render(), "componentDeployment.prepare"), "onClick")();
   assert.equal(f.preparations.length, 0);
   field(f, "componentDeployment.approvals", '{"unknown-skill":"approval"}'); await prepare(f); assert.equal(f.preparations.length, 0);
+});
+
+test("publication reconnect uses the committed reference and preserves the prepared exact deployment", async () => {
+  const f = fixture(); await prepare(f);
+  await prop(button(f.render(), "componentDeployment.activate"), "onClick")();
+  const publication = () => nodes(f.render()).find(n => n.values.includes("CataloguePublicationStatus"));
+  await prop(publication(), "onRefresh")();
+  await prop(publication(), "onReconcile")();
+  assert.deepEqual(f.reconciliations, ["stored-activation"]);
+  assert.equal(f.preparations.length, 1); assert.equal(f.calls.length, 1); assert.equal(f.ids(), 1);
+  assert.equal(prop(button(f.render(), "componentDeployment.another"), "disabled"), true);
+  await prop(button(f.render(), "componentDeployment.retry"), "onClick")();
+  assert.strictEqual(f.calls[0], f.calls[1]);
+  assert.equal(f.calls[1].expected_generation, "inspected-generation");
 });

@@ -20,8 +20,8 @@ use std::{
 
 use async_trait::async_trait;
 use brassclaw_filesystem::{
-    CasExpectation, ContentType, Entry, FilesystemError, FilesystemOperation, RecordVersion,
-    RootFilesystem, ScopedFilesystem,
+    CasExpectation, ContentType, Entry, FilesystemError, RecordVersion, RootFilesystem,
+    ScopedFilesystem,
 };
 use brassclaw_host_api::{
     AgentId, ApprovalRequest, ApprovalRequestId, CapabilityId, HostApiError, InvocationId,
@@ -590,10 +590,8 @@ where
     /// Read-modify-write a run record with optimistic CAS and bounded retry.
     ///
     /// `mutate` projects the staged record onto its new shape. The loop
-    /// re-reads on `VersionMismatch` (cross-process contention) and on
-    /// `Unsupported` falls back to `CasExpectation::Any` so the byte-only
-    /// `LocalFilesystem` path stays serializable through the in-process
-    /// lock map. (Audit finding F2.)
+    /// re-reads on `VersionMismatch` (cross-process contention). Unsupported
+    /// conditional writes remain errors without an unconditional retry.
     async fn apply_update<M>(
         &self,
         scope: &ResourceScope,
@@ -1140,20 +1138,9 @@ enum PutError {
     Other(RunStateError),
 }
 
-/// Issue a `put` honoring the requested CAS expectation.
-///
-/// Falls back to `CasExpectation::Any` when the backend reports `Unsupported`
-/// for the request — `LocalFilesystem` is byte-only and only accepts `Any`.
-/// On a byte-only backend the in-process record-lock map provides
-/// intra-process serialization; cross-process safety on those backends is
-/// documented as a process-local limitation
-/// (`crates/brassclaw_run_state/CLAUDE.md`).
-///
-/// On the byte-only fallback path, `CasExpectation::Absent` is emulated via
-/// a `get` precheck so callers still see `PutError::VersionMismatch` when
-/// the record already exists. The check-then-write race is closed by the
-/// in-process lock map; cross-process callers fall back to the documented
-/// process-local limitation.
+/// Preserve the caller's exact CAS precondition at the storage owner.
+/// Unsupported conditional writes fail before mutation; a process-local lock
+/// cannot replace atomic absent/version checks across independent writers.
 async fn put_with_cas<F>(
     filesystem: &ScopedFilesystem<F>,
     scope: &ResourceScope,
@@ -1164,29 +1151,9 @@ async fn put_with_cas<F>(
 where
     F: RootFilesystem,
 {
-    let fallback_entry = entry.clone();
     match filesystem.put(scope, path, entry, cas).await {
         Ok(_) => Ok(()),
         Err(FilesystemError::VersionMismatch { .. }) => Err(PutError::VersionMismatch),
-        Err(FilesystemError::Unsupported {
-            operation: FilesystemOperation::WriteFile,
-            ..
-        }) => {
-            if matches!(cas, CasExpectation::Absent) {
-                let existing = filesystem
-                    .get(scope, path)
-                    .await
-                    .map_err(|error| PutError::Other(error.into()))?;
-                if existing.is_some() {
-                    return Err(PutError::VersionMismatch);
-                }
-            }
-            filesystem
-                .put(scope, path, fallback_entry, CasExpectation::Any)
-                .await
-                .map(|_| ())
-                .map_err(|error| PutError::Other(error.into()))
-        }
         Err(error) => Err(PutError::Other(error.into())),
     }
 }

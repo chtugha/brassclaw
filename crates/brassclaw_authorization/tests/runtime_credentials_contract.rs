@@ -236,6 +236,13 @@ async fn capability_access_resolves_product_auth_account_runtime_credentials() {
     assert_eq!(
         obligations.as_slice(),
         &[Obligation::InjectCredentialAccountOnce {
+            requirement: Some(Box::new(
+                brassclaw_host_api::RuntimeCredentialAccountRequirement::new(
+                    descriptor.provider.clone(),
+                    descriptor.runtime_credentials[0].clone(),
+                )
+                .unwrap()
+            )),
             handle: slot,
             provider: RuntimeCredentialAccountProviderId::new("github").unwrap(),
             provider_scopes: vec!["repo".to_string()],

@@ -271,6 +271,7 @@ for path in \
   crates/brassclaw_monty_host/src/service.rs \
   vendor/monty-control/crates/monty-alloc/src/lib.rs \
   tests/monty_control/tests/model_host.rs \
+  crates/brassclaw_reborn_composition/src/runtime/tests/model_host_compatibility.rs \
   tests/monty_legacy_tracker/tests/task_budget.rs; do
   assert_scope "contained Monty gate: $path" "$path" \
     "docs_only=false

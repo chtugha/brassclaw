@@ -10,6 +10,34 @@
 > not current acceptance evidence. Reuse existing implementations.
 
 
+## Current prefix ownership and selection — 2026-10-26
+
+Follow the [shared selection/pair-design contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26)
+and [Prefix implementation owner](../plans/prefix_v3_upgrade.md). A Recipe,
+Orchestrator or role selects a specific prefix; without one, base-prompt is the
+regular default, including normal No-Match, not a Tier-2-only restriction.
+Unavailable explicit selections/conflicts block rather than silently becoming
+base. Shared knowledge/composites require an explicit content contract.
+
+Design for formats/limits belongs to the provider/model pair; role content rules
+and finished role prefixes are distinct. Same-pair Kohai/Sempai use the same
+accepted design as the generator. Generate the fixed prefix specifically for
+that pair. Kohai first formats only the dynamic Orchestrator prompt for the final
+target pair. A connected/enabled Sempai corrects that already formatted prompt,
+using its own generated reviewer prefix/target-pair design, and returns the final
+dynamic prompt. Kohai then inserts the intended finished prefix unchanged exactly
+once before it, without reformatting the return, and checks the complete request.
+Every manual limit editor links to the existing provider revision/CAS endpoint
+and shared query. Historical snapshots are not current mutable settings.
+Provider facts may be retrieved through supported APIs/documentation or supplied
+manually with provenance; no provider host/template/service edits are an option.
+
+The old store, placeholder, server-template and prewarm walkthrough below describes
+historical implementation/evidence where it differs. It is not current serving
+qualification. Generation and prefill are separate; cached tokens are not promised
+free, permanently resident or reusable without current backend-specific evidence.
+Runtime cutover/remaining acceptance stays open in the implementation index.
+
 ## Binding Recipe architecture (v3)
 
 Read [recipe.md](../../recipe.md) before authoring or changing components. This contract

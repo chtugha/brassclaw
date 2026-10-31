@@ -35,6 +35,18 @@ use uuid::Uuid;
 use crate::RebornBuildError;
 
 pub(crate) trait MontyKernelSnapshot: Send + Sync {
+    fn native_descriptor(
+        &self,
+        id: &CapabilityId,
+        expected: NativeImplementationRef,
+    ) -> Result<CapabilityDescriptor, RetainedCapabilityError>;
+    fn builtin_with_credential_sources(
+        &self,
+        id: &CapabilityId,
+        expected: NativeImplementationRef,
+        policy: Arc<dyn InstanceToolPolicySource>,
+        services: crate::task_tool_credentials::BoundCredentialServices,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError>;
     fn bind_task_budget_settings(
         &self,
         settings: brassclaw_resources::LiveMontyTaskSettings,
@@ -146,9 +158,9 @@ pub(crate) fn model_package() -> Result<ExtensionPackage, RebornBuildError> {
     let capability = &mut manifest.capabilities[0];
     capability.id = CapabilityId::new(KOHAI_COMPLETE_CAPABILITY_ID)?;
     capability.description =
-        "Call the selected model with a retained prefix and complete typed prompt".into();
+        "Call the selected model with its original retained input and complete typed prompt".into();
     capability.input_schema_ref =
-        CapabilityProfileSchemaRef::new("schemas/kohai-complete.input.v2.json")?;
+        CapabilityProfileSchemaRef::new("schemas/kohai-complete.input.v3.json")?;
     capability.output_schema_ref =
         CapabilityProfileSchemaRef::new("schemas/kohai-complete.output.v2.json")?;
     ExtensionPackage::from_manifest(manifest, VirtualPath::new("/system/extensions/host")?)
@@ -158,6 +170,29 @@ pub(crate) fn model_package() -> Result<ExtensionPackage, RebornBuildError> {
 impl<F: RootFilesystem + 'static, G: ResourceGovernor + 'static> MontyKernelSnapshot
     for FirstPartyCapabilitySnapshot<F, G>
 {
+    fn native_descriptor(
+        &self,
+        id: &CapabilityId,
+        expected: NativeImplementationRef,
+    ) -> Result<CapabilityDescriptor, RetainedCapabilityError> {
+        FirstPartyCapabilitySnapshot::native_descriptor(self, id, expected)
+    }
+
+    fn builtin_with_credential_sources(
+        &self,
+        id: &CapabilityId,
+        expected: NativeImplementationRef,
+        policy: Arc<dyn InstanceToolPolicySource>,
+        services: crate::task_tool_credentials::BoundCredentialServices,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError> {
+        self.with_bound_credential_services(services.secrets, services.accounts, services.guard)
+            .with_bound_raw_secret_source(services.raw)
+            .retain_native_with_authorizer(
+                id,
+                expected,
+                Arc::new(InstanceToolAuthorizer::new(policy)),
+            )
+    }
     fn bind_task_budget_settings(
         &self,
         settings: brassclaw_resources::LiveMontyTaskSettings,

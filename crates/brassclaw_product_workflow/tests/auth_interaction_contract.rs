@@ -95,6 +95,107 @@ impl RecordingFlowManager {
 
 #[async_trait]
 impl AuthFlowManager for RecordingFlowManager {
+    async fn claim_dcr_cleanup(
+        &self,
+        _prepared: brassclaw_auth::DcrCleanupPrepared,
+    ) -> Result<brassclaw_auth::DcrCleanupAdmission, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn record_dcr_cleanup(
+        &self,
+        _scope: &brassclaw_auth::AuthProductScope,
+        _completion: brassclaw_auth::DcrCleanupCompletion,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn update_dcr_retirement(
+        &self,
+        _original: &brassclaw_auth::DcrRegistrationOriginal,
+        _update: brassclaw_auth::DcrRetirementUpdate,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn retain_legacy_dcr(
+        &self,
+        _selection: brassclaw_auth::DcrLegacySelection,
+    ) -> Result<brassclaw_auth::DcrLegacyState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn mark_dcr_cleanup_unavailable(
+        &self,
+        _original: &brassclaw_auth::DcrRegistrationOriginal,
+        _issue: brassclaw_auth::DcrCleanupUnavailable,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn prepare_oauth_setup(
+        &self,
+        _original: brassclaw_auth::OAuthSetupOriginal,
+        _retirement: Option<brassclaw_auth::OAuthSetupRetirement>,
+    ) -> Result<brassclaw_auth::OAuthSetupState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn read_oauth_setup(
+        &self,
+        _scope: &brassclaw_auth::AuthProductScope,
+        _flow_id: brassclaw_auth::AuthFlowId,
+    ) -> Result<Option<brassclaw_auth::OAuthSetupState>, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn prepare_dcr_registration(
+        &self,
+        _original: brassclaw_auth::DcrRegistrationOriginal,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn retire_dcr_preparation(
+        &self,
+        _original: brassclaw_auth::DcrRegistrationOriginal,
+        _reason: brassclaw_auth::DcrCleanupReason,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn read_dcr_registration(
+        &self,
+        _scope: &brassclaw_auth::AuthProductScope,
+        _id: brassclaw_auth::AuthFlowId,
+    ) -> Result<Option<brassclaw_auth::DcrRegistrationState>, brassclaw_auth::AuthProductError>
+    {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn claim_dcr_registration(
+        &self,
+        _original: &brassclaw_auth::DcrRegistrationOriginal,
+    ) -> Result<brassclaw_auth::DcrRegistrationAdmission, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn record_dcr_registration(
+        &self,
+        _scope: &brassclaw_auth::AuthProductScope,
+        _completion: brassclaw_auth::DcrRegistrationCompletion,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
+    async fn publish_dcr_challenge(
+        &self,
+        _original: &brassclaw_auth::DcrRegistrationOriginal,
+        _challenge: brassclaw_auth::DcrRegistrationChallenge,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    }
+
     async fn create_flow(&self, _request: NewAuthFlow) -> Result<AuthFlowRecord, AuthProductError> {
         Err(AuthProductError::BackendUnavailable)
     }
@@ -121,7 +222,23 @@ impl AuthFlowManager for RecordingFlowManager {
         &self,
         _scope: &AuthProductScope,
         _request: OAuthCallbackClaimRequest,
-    ) -> Result<AuthFlowRecord, AuthProductError> {
+    ) -> Result<brassclaw_auth::OAuthCallbackAdmission, AuthProductError> {
+        Err(AuthProductError::BackendUnavailable)
+    }
+
+    async fn read_oauth_callback_original(
+        &self,
+        _scope: &AuthProductScope,
+        _reference: &brassclaw_auth::OAuthCallbackReference,
+    ) -> Result<Option<brassclaw_auth::OAuthCallbackState>, AuthProductError> {
+        Err(AuthProductError::BackendUnavailable)
+    }
+
+    async fn reconcile_oauth_callback(
+        &self,
+        _scope: &AuthProductScope,
+        _reference: &brassclaw_auth::OAuthCallbackReference,
+    ) -> Result<brassclaw_auth::OAuthCallbackState, AuthProductError> {
         Err(AuthProductError::BackendUnavailable)
     }
 
@@ -437,6 +554,7 @@ async fn list_pending_auth_projects_challenges_to_minimal_safe_views() {
                     provider: provider(),
                     label: CredentialAccountLabel::new("alice@example.test").expect("label"),
                     status: CredentialAccountStatus::Configured,
+                    access_expires_at: None,
                     ownership: CredentialOwnership::UserReusable,
                     owner_extension: Some(ExtensionId::new("private.extension").unwrap()),
                     granted_extensions: vec![ExtensionId::new("granted.extension").unwrap()],
@@ -554,6 +672,7 @@ async fn credential_selection_completes_pending_auth_gate_before_resume() {
                 provider: provider(),
                 label: CredentialAccountLabel::new("alice@example.test").expect("label"),
                 status: CredentialAccountStatus::Configured,
+                access_expires_at: None,
                 ownership: CredentialOwnership::UserReusable,
                 owner_extension: None,
                 granted_extensions: vec![],

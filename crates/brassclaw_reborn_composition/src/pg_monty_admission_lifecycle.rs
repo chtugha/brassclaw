@@ -2,6 +2,71 @@
 // pg_monty_admission_core.rs. Included in the same module to retain private
 // admission-key custody without exposing fields to sibling adapters.
 impl PgMontyAdmission {
+    /// Missing capture and captured absence are distinct. This is only a
+    /// construction-order invariant; it grants no model or prefix permission.
+    pub(crate) fn task_models_captured(&self) -> bool {
+        self.task_models.get().is_some()
+    }
+
+    /// Check the exact original unstarted model-contained host. This read-only
+    /// fence grants no Tool/model authority and cannot reopen started work.
+    pub(crate) async fn check_model_preparation(
+        &self,
+        host: &brassclaw_reborn::monty_task_host::MontyTaskHost,
+    ) -> Result<(), AgentLoopDriverError> {
+        let invalid = || failed("monty_model_preparation_invalid");
+        let context = host.run_context();
+        let claimed = host.claimed_run().ok_or_else(invalid)?;
+        if host.attempt() != self.attempt
+            || context.scope != self.scope
+            || context.actor != self.actor
+            || context.turn_id != self.turn_id
+            || context.accepted_message_ref.as_ref() != Some(&self.accepted)
+            || context.trusted_internal_turn
+            || self.trusted_internal_turn
+            || self.source_binding_ref.as_ref() != Some(&claimed.state.source_binding_ref)
+            || claimed.state.source_binding_ref.as_str()
+                != brassclaw_turns::run_profile::INTERNAL_MODEL_SOURCE_BINDING
+        {
+            return Err(invalid());
+        }
+        let mut client = self
+            .pool
+            .get()
+            .await
+            .map_err(|_| failed("monty_admission_database_failed"))?;
+        let transaction = client
+            .transaction()
+            .await
+            .map_err(|_| failed("monty_admission_database_failed"))?;
+        if self.inspect_claim(&transaction, true).await?.is_some() {
+            return Err(invalid());
+        }
+        let prepared: bool = transaction
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM brassclaw_monty_task_admissions
+                WHERE run_id=$1 AND admission_key=$2 AND claim_checksum=$3
+                    AND phase='reserved' AND started_at IS NULL AND result_only_completion
+                    AND source_binding_ref=$4)",
+                &[
+                    &self.attempt.run_id.as_uuid(),
+                    &&self.key[..],
+                    &&self.checksum[..],
+                    &brassclaw_turns::run_profile::INTERNAL_MODEL_SOURCE_BINDING,
+                ],
+            )
+            .await
+            .map_err(|_| failed("monty_admission_database_failed"))?
+            .get(0);
+        if !prepared {
+            return Err(invalid());
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(|_| failed("monty_admission_database_failed"))
+    }
+
     /// Read-only parent admission/claim verification for dependent scheduling.
     /// It starts no operation and cannot restore a fenced or expired attempt.
     pub(crate) async fn check_live_dependency(&self) -> Result<(), AgentLoopDriverError> {

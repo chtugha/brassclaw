@@ -92,7 +92,7 @@ pub(crate) const MAX_RETRY_AFTER_SECS: u64 = 3600;
 /// `SessionRenewalFailed`, `Http`, `Io`.
 ///
 /// Non-retryable: `AuthFailed`, `SessionExpired`, `ContextLengthExceeded`,
-/// `ModelNotAvailable`, `Json`.
+/// `ModelNotAvailable`, `ConfigurationChanged`, `Json`.
 /// - `SessionExpired` — handled by session renewal layer, not by retry
 /// - `ModelNotAvailable` — the model won't appear between attempts
 /// - `Json` — a serde parse bug, not a transient failure
@@ -306,6 +306,10 @@ impl RetryProvider {
 
 #[async_trait]
 impl LlmProvider for RetryProvider {
+    fn supports_final_request_guard(&self) -> bool {
+        self.inner.supports_final_request_guard()
+    }
+
     fn model_name(&self) -> std::borrow::Cow<'_, str> {
         self.inner.model_name()
     }
@@ -490,6 +494,9 @@ mod tests {
 
     #[test]
     fn test_is_retryable_classification() {
+        assert!(!is_retryable(&LlmError::ConfigurationChanged {
+            provider: "selected provider".into(),
+        }));
         // Retryable
         assert!(is_retryable(&LlmError::RequestFailed {
             provider: "p".into(),

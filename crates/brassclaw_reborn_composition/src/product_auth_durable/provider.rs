@@ -13,6 +13,21 @@ pub(crate) struct UnavailableAuthProviderClient;
 
 #[async_trait]
 impl AuthProviderClient for UnavailableAuthProviderClient {
+    async fn prepare_callback(
+        &self,
+        _context: &brassclaw_auth::OAuthProviderExchangeContext,
+        _request: &brassclaw_auth::OAuthProviderCallbackRequest,
+    ) -> Result<brassclaw_auth::OAuthTokenDestinations, AuthProductError> {
+        Err(AuthProductError::BackendUnavailable)
+    }
+
+    async fn prepare_refresh(
+        &self,
+        _request: &OAuthProviderRefreshRequest,
+    ) -> Result<brassclaw_auth::OAuthProviderRefreshPreparation, AuthProductError> {
+        Err(AuthProductError::BackendUnavailable)
+    }
+
     async fn exchange_callback(
         &self,
         _context: OAuthProviderExchangeContext,
@@ -25,6 +40,7 @@ impl AuthProviderClient for UnavailableAuthProviderClient {
     async fn refresh_token(
         &self,
         _request: OAuthProviderRefreshRequest,
+        _preparation: brassclaw_auth::OAuthProviderRefreshPreparation,
     ) -> Result<OAuthProviderRefresh, AuthProductError> {
         Err(AuthProductError::BackendUnavailable)
     }

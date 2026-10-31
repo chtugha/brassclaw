@@ -6,9 +6,21 @@
 //! credential mutation, and continuation dispatch to [`RebornProductAuthServices`].
 
 mod accounts;
+mod extension_manual_token;
+mod extension_oauth_requirement;
 mod lifecycle;
 mod manual_token;
 mod oauth;
+#[cfg(test)]
+#[path = "oauth_original_tests.rs"]
+mod oauth_original_tests;
+#[cfg(all(test, feature = "postgres"))]
+pub(crate) use oauth_original_tests::{DcrPreparationBackend, verify_dcr_preparation_handoff};
+
+#[cfg(all(test, feature = "postgres"))]
+pub(crate) use oauth_original_tests::verify_dcr_oauth_usage;
+#[cfg(all(test, feature = "postgres"))]
+pub(crate) use oauth_original_tests::verify_google_original_lifecycle;
 
 use std::{
     hash::Hash,
@@ -29,15 +41,13 @@ use brassclaw_auth::{
     AuthInteractionId, AuthProductError, AuthProductScope, AuthProviderId, AuthSessionId,
     AuthSurface, AuthorizationCodeHash, CredentialAccountChoiceRequest, CredentialAccountId,
     CredentialAccountLabel, CredentialAccountListPage, CredentialAccountListRequest,
-    CredentialAccountProjection, CredentialAccountSelectionRequest, CredentialAccountStatus,
-    CredentialAccountUpdateBinding, CredentialRecoveryProjection, CredentialRecoveryRequest,
-    CredentialRefreshReport, CredentialRefreshRequest, GOOGLE_PROVIDER_ID,
-    GoogleOAuthCallbackState, GoogleOAuthRouteConfig, OAuthAuthorizationCode,
-    OAuthAuthorizationUrl, OAuthProviderCallbackRequest, OpaqueStateHash, PkceVerifierHash,
-    PkceVerifierSecret, ProviderScope, SecretCleanupAction, SecretCleanupReport,
-    SecretCleanupRequest, Timestamp, TurnRunRef, build_google_authorization_url,
-    parse_google_callback_scopes, parse_google_requested_scopes, pkce_s256_challenge,
-    scope_matches,
+    CredentialAccountProjection, CredentialAccountStatus, CredentialAccountUpdateBinding,
+    CredentialRecoveryProjection, CredentialRecoveryRequest, CredentialRefreshReport,
+    CredentialRefreshRequest, GOOGLE_PROVIDER_ID, GoogleOAuthCallbackState, GoogleOAuthRouteConfig,
+    OAuthAuthorizationCode, OAuthAuthorizationUrl, OAuthProviderCallbackRequest, OpaqueStateHash,
+    PkceVerifierHash, PkceVerifierSecret, ProviderScope, SecretCleanupAction, SecretCleanupReport,
+    SecretCleanupRequest, Timestamp, TurnRunRef, parse_google_callback_scopes,
+    parse_google_requested_scopes,
 };
 use brassclaw_host_api::NetworkMethod;
 use brassclaw_host_api::ingress::{
@@ -62,7 +72,6 @@ use crate::{
     RebornManualTokenSetupRequest, RebornManualTokenSubmitRequest, RebornManualTokenSubmitResponse,
     RebornOAuthCallbackError, RebornOAuthCallbackOutcome, RebornOAuthCallbackRequest,
     RebornOAuthCallbackResponse, RebornProductAuthServices,
-    product_auth_runtime_credentials::RuntimeCredentialAccountSelectionRequest,
 };
 
 pub(crate) const OAUTH_START_PATH: &str = "/api/reborn/product-auth/oauth/start";
@@ -72,10 +81,20 @@ pub(crate) const GOOGLE_OAUTH_CALLBACK_PATH: &str =
     "/api/reborn/product-auth/oauth/google/callback";
 pub(crate) const EXTENSION_OAUTH_START_PATH: &str =
     "/api/webchat/v2/extensions/{package_id}/setup/oauth/start";
+pub(crate) const EXTENSION_MANUAL_SETUP_PATH: &str =
+    "/api/webchat/v2/extensions/{package_id}/setup/manual-token/setup";
+pub(crate) const EXTENSION_MANUAL_SECRET_PATH: &str =
+    "/api/webchat/v2/extensions/{package_id}/setup/manual-token/secret-submit";
+pub(crate) const EXTENSION_MANUAL_CONTINUE_PATH: &str =
+    "/api/webchat/v2/extensions/{package_id}/setup/manual-token/continue";
+pub(crate) const EXTENSION_MANUAL_CANCEL_PATH: &str =
+    "/api/webchat/v2/extensions/{package_id}/setup/manual-token/cancel";
 pub(crate) const MANUAL_TOKEN_SUBMIT_PATH: &str = "/api/reborn/product-auth/manual-token/submit";
 pub(crate) const MANUAL_TOKEN_SETUP_PATH: &str = "/api/reborn/product-auth/manual-token/setup";
 pub(crate) const MANUAL_TOKEN_SECRET_SUBMIT_PATH: &str =
     "/api/reborn/product-auth/manual-token/secret-submit";
+pub(crate) const MANUAL_TOKEN_CONTINUE_PATH: &str =
+    "/api/reborn/product-auth/manual-token/continue";
 pub(crate) const ACCOUNTS_LIST_PATH: &str = "/api/reborn/product-auth/accounts/list";
 pub(crate) const ACCOUNTS_SELECT_PATH: &str = "/api/reborn/product-auth/accounts/select";
 pub(crate) const ACCOUNTS_RECOVERY_PATH: &str = "/api/reborn/product-auth/accounts/recovery";
@@ -90,6 +109,7 @@ const EXTENSION_OAUTH_START_ROUTE_ID: &str = "webui_v2.extensions.oauth.start";
 const MANUAL_TOKEN_SUBMIT_ROUTE_ID: &str = "product_auth.manual_token.submit";
 const MANUAL_TOKEN_SETUP_ROUTE_ID: &str = "product_auth.manual_token.setup";
 const MANUAL_TOKEN_SECRET_SUBMIT_ROUTE_ID: &str = "product_auth.manual_token.secret_submit";
+const MANUAL_TOKEN_CONTINUE_ROUTE_ID: &str = "product_auth.manual_token.continue";
 const ACCOUNTS_LIST_ROUTE_ID: &str = "product_auth.accounts.list";
 const ACCOUNTS_SELECT_ROUTE_ID: &str = "product_auth.accounts.select";
 const ACCOUNTS_RECOVERY_ROUTE_ID: &str = "product_auth.accounts.recovery";
@@ -110,8 +130,8 @@ const PRODUCT_AUTH_MUTATION_MAX_REQUESTS: NonZeroU32 = match NonZeroU32::new(20)
     // SAFETY: 20 is a non-zero literal rate limit.
     None => unreachable!(),
 };
-// accounts/refresh triggers an external provider token-refresh call per request.
-// Use a tighter rate limit so one caller cannot fan out 20 provider calls per minute.
+// A newly admitted original refresh may call the issuer; readback does not.
+// Retain the existing tighter request rate limit for this mutation surface.
 const ACCOUNTS_REFRESH_MAX_REQUESTS: NonZeroU32 = match NonZeroU32::new(5) {
     Some(value) => value,
     // SAFETY: 5 is a non-zero literal rate limit.
@@ -137,6 +157,7 @@ const RAW_OAUTH_VALUE_MAX_BYTES: usize = 4 * 1024;
 #[derive(Clone)]
 pub(crate) struct ProductAuthRouteState {
     product_auth: Arc<RebornProductAuthServices>,
+    services: Option<Arc<dyn brassclaw_product_workflow::RebornServicesApi>>,
     tenant_id: TenantId,
     default_agent_id: Option<AgentId>,
     default_project_id: Option<ProjectId>,
@@ -157,6 +178,7 @@ impl ProductAuthRouteState {
     ) -> Self {
         Self {
             product_auth,
+            services: None,
             tenant_id,
             default_agent_id,
             default_project_id,
@@ -166,6 +188,30 @@ impl ProductAuthRouteState {
                 StoredPkceVerifier::expires_at,
             ),
         }
+    }
+
+    pub(crate) fn with_services(
+        mut self,
+        services: Arc<dyn brassclaw_product_workflow::RebornServicesApi>,
+    ) -> Self {
+        self.services = Some(services);
+        self
+    }
+
+    fn services(
+        &self,
+    ) -> Result<
+        &dyn brassclaw_product_workflow::RebornServicesApi,
+        brassclaw_webui_v2::WebUiV2HttpError,
+    > {
+        self.services.as_deref().ok_or_else(|| {
+            brassclaw_product_workflow::RebornServicesError::from_status(
+                brassclaw_product_workflow::RebornServicesErrorCode::Unavailable,
+                503,
+                true,
+            )
+            .into()
+        })
     }
 
     pub(crate) fn with_google_oauth(mut self, config: GoogleOAuthRouteConfig) -> Self {
@@ -328,6 +374,26 @@ pub(crate) fn product_auth_route_mount(state: ProductAuthRouteState) -> ProductA
                 MANUAL_TOKEN_SECRET_SUBMIT_PATH,
                 post(manual_token::manual_token_secret_submit_handler),
             )
+            .route(
+                MANUAL_TOKEN_CONTINUE_PATH,
+                post(manual_token::manual_token_continue_handler),
+            )
+            .route(
+                EXTENSION_MANUAL_SETUP_PATH,
+                post(extension_manual_token::setup),
+            )
+            .route(
+                EXTENSION_MANUAL_SECRET_PATH,
+                post(extension_manual_token::submit),
+            )
+            .route(
+                EXTENSION_MANUAL_CONTINUE_PATH,
+                post(extension_manual_token::continue_saved),
+            )
+            .route(
+                EXTENSION_MANUAL_CANCEL_PATH,
+                post(extension_manual_token::cancel),
+            )
             .route(ACCOUNTS_LIST_PATH, post(accounts::accounts_list_handler))
             .route(
                 ACCOUNTS_SELECT_PATH,
@@ -371,6 +437,23 @@ pub(crate) fn product_auth_route_descriptors() -> Vec<IngressRouteDescriptor> {
             MANUAL_TOKEN_SECRET_SUBMIT_ROUTE_ID,
             MANUAL_TOKEN_SECRET_SUBMIT_PATH,
         ),
+        (MANUAL_TOKEN_CONTINUE_ROUTE_ID, MANUAL_TOKEN_CONTINUE_PATH),
+        (
+            "webui_v2.extensions.manual_token.setup",
+            EXTENSION_MANUAL_SETUP_PATH,
+        ),
+        (
+            "webui_v2.extensions.manual_token.secret_submit",
+            EXTENSION_MANUAL_SECRET_PATH,
+        ),
+        (
+            "webui_v2.extensions.manual_token.continue",
+            EXTENSION_MANUAL_CONTINUE_PATH,
+        ),
+        (
+            "webui_v2.extensions.manual_token.cancel",
+            EXTENSION_MANUAL_CANCEL_PATH,
+        ),
         (ACCOUNTS_LIST_ROUTE_ID, ACCOUNTS_LIST_PATH),
         (ACCOUNTS_SELECT_ROUTE_ID, ACCOUNTS_SELECT_PATH),
         (ACCOUNTS_RECOVERY_ROUTE_ID, ACCOUNTS_RECOVERY_PATH),
@@ -388,8 +471,8 @@ pub(crate) fn product_auth_route_descriptors() -> Vec<IngressRouteDescriptor> {
             )
         })
         .collect();
-    // accounts/refresh triggers a provider-side token-refresh call per request;
-    // give it a tighter per-caller rate limit than stateless mutation routes.
+    // New refresh originals can call the issuer; repeats read their original.
+    // Retain the existing tighter per-caller policy, including readback requests.
     descriptors.push(descriptor(
         ACCOUNTS_REFRESH_ROUTE_ID,
         NetworkMethod::Post,
@@ -504,6 +587,7 @@ pub(super) struct OAuthStartRequest {
 
 #[derive(Deserialize)]
 pub(super) struct GoogleOAuthStartRequest {
+    flow_id: AuthFlowId,
     account_label: String,
     scopes: Vec<String>,
     expires_at: Timestamp,
@@ -512,8 +596,24 @@ pub(super) struct GoogleOAuthStartRequest {
     invocation_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ExtensionOAuthAction {
+    #[default]
+    Start,
+    Recover,
+    Cancel,
+}
+
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct ExtensionOAuthStartRequest {
+    // Missing fields identify historical recovery only; new setup requires both.
+    requirement: Option<String>,
+    target: Option<brassclaw_product_workflow::ExtensionCredentialTarget>,
+    flow_id: Option<String>,
+    #[serde(default)]
+    action: ExtensionOAuthAction,
     provider: String,
     account_label: String,
     scopes: Vec<String>,
@@ -522,7 +622,27 @@ pub(super) struct ExtensionOAuthStartRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ManualTokenIdentityInput {
+    interaction_id: String,
+    flow_id: String,
+}
+impl ManualTokenIdentityInput {
+    fn parse(&self) -> Result<brassclaw_auth::ManualTokenSetupIdentity, ProductAuthRouteFailure> {
+        let flow = Uuid::parse_str(&self.flow_id)
+            .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
+        Ok(brassclaw_auth::ManualTokenSetupIdentity {
+            interaction_id: parse_interaction_id(&self.interaction_id)?,
+            flow_id: AuthFlowId::from_uuid(flow),
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct ManualTokenSubmitRequest {
+    identity: ManualTokenIdentityInput,
+    invocation_id: String,
     provider: String,
     account_label: String,
     token: UnvalidatedRawSecretValue,
@@ -548,14 +668,37 @@ pub(crate) struct ProductOAuthStartResponse {
     pub(crate) flow_id: AuthFlowId,
     pub(crate) status: AuthFlowStatus,
     pub(crate) provider: AuthProviderId,
-    pub(crate) authorization_url: OAuthAuthorizationUrl,
+    pub(crate) authorization_url: Option<OAuthAuthorizationUrl>,
+    pub(crate) terminal: bool,
+    pub(crate) expired: bool,
     pub(crate) expires_at: Timestamp,
     pub(crate) continuation: AuthContinuationRef,
     pub(crate) callback_scope: OAuthCallbackScopeHint,
 }
 
+/// Extension-specific original receipt. Pending/terminal metadata has no URL;
+/// a failed/unconfirmed start carries its stable error, never fake readiness.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct ExtensionOAuthResponse {
+    flow_id: AuthFlowId,
+    status: AuthFlowStatus,
+    provider: AuthProviderId,
+    account_label: CredentialAccountLabel,
+    scopes: Vec<ProviderScope>,
+    authorization_url: Option<OAuthAuthorizationUrl>,
+    expires_at: Timestamp,
+    continuation: AuthContinuationRef,
+    callback_scope: OAuthCallbackScopeHint,
+    error: Option<RebornOAuthCallbackError>,
+    terminal: bool,
+    expired: bool,
+    cleanup: Option<brassclaw_auth::DcrCleanupProjection>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ManualTokenSubmitResponse {
+    pub(crate) identity: brassclaw_auth::ManualTokenSetupIdentity,
+    pub(crate) invocation_id: InvocationId,
     pub(crate) credential_ref: CredentialAccountId,
     pub(crate) status: CredentialAccountStatus,
     pub(crate) continuation: AuthContinuationRef,
@@ -577,17 +720,22 @@ pub(super) struct ScopeFields {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct ManualTokenSetupRequest {
+    identity: ManualTokenIdentityInput,
+    invocation_id: String,
     provider: String,
     account_label: String,
     run_id: Option<String>,
     gate_ref: Option<String>,
-    #[serde(flatten)]
-    scope: ScopeFields,
+    session_id: Option<String>,
+    thread_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ManualTokenSetupResponse {
+    pub(crate) identity: brassclaw_auth::ManualTokenSetupIdentity,
+    pub(crate) status: AuthFlowStatus,
     pub(crate) interaction_id: AuthInteractionId,
     pub(crate) provider: AuthProviderId,
     pub(crate) label: CredentialAccountLabel,
@@ -600,11 +748,23 @@ pub(crate) struct ManualTokenSetupResponse {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct ManualTokenSecretSubmitRequest {
-    interaction_id: String,
+    identity: ManualTokenIdentityInput,
+    invocation_id: String,
     token: UnvalidatedRawSecretValue,
-    #[serde(flatten)]
-    scope: ScopeFields,
+    session_id: Option<String>,
+    thread_id: Option<String>,
+}
+
+/// Reference-only continuation rejects any raw token or unknown input field.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ManualTokenContinueRequest {
+    identity: ManualTokenIdentityInput,
+    invocation_id: String,
+    session_id: Option<String>,
+    thread_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -636,6 +796,7 @@ pub(super) struct AccountsRecoveryRequest {
 
 #[derive(Deserialize)]
 pub(super) struct AccountsRefreshRequest {
+    refresh_id: String,
     provider: String,
     account_id: String,
     requester_extension: Option<String>,
@@ -704,6 +865,7 @@ impl ProductAuthRouteFailure {
             body: RebornOAuthCallbackError {
                 code,
                 retryable: matches!(code, AuthErrorCode::BackendUnavailable),
+                conflict: false,
             },
         }
     }
@@ -763,20 +925,26 @@ impl From<RebornOAuthCallbackError> for ProductAuthRouteFailure {
 pub(super) fn route_failure_from_callback_error(
     error: RebornOAuthCallbackError,
 ) -> ProductAuthRouteFailure {
-    let status = match error.code {
-        AuthErrorCode::MalformedCallback | AuthErrorCode::InvalidRequest => StatusCode::BAD_REQUEST,
-        AuthErrorCode::UnknownOrExpiredFlow => StatusCode::NOT_FOUND,
-        AuthErrorCode::CrossScopeDenied => StatusCode::FORBIDDEN,
-        AuthErrorCode::ProviderDenied | AuthErrorCode::Canceled => StatusCode::BAD_REQUEST,
-        AuthErrorCode::FlowAlreadyTerminal => StatusCode::CONFLICT,
-        AuthErrorCode::BackendUnavailable | AuthErrorCode::MalformedConfig => {
-            StatusCode::SERVICE_UNAVAILABLE
-        }
-        AuthErrorCode::TokenExchangeFailed | AuthErrorCode::RefreshFailed => {
-            StatusCode::BAD_GATEWAY
-        }
-        AuthErrorCode::CredentialMissing | AuthErrorCode::AccountSelectionRequired => {
-            StatusCode::CONFLICT
+    let status = if error.conflict {
+        StatusCode::CONFLICT
+    } else {
+        match error.code {
+            AuthErrorCode::MalformedCallback | AuthErrorCode::InvalidRequest => {
+                StatusCode::BAD_REQUEST
+            }
+            AuthErrorCode::UnknownOrExpiredFlow => StatusCode::NOT_FOUND,
+            AuthErrorCode::CrossScopeDenied => StatusCode::FORBIDDEN,
+            AuthErrorCode::ProviderDenied | AuthErrorCode::Canceled => StatusCode::BAD_REQUEST,
+            AuthErrorCode::FlowAlreadyTerminal => StatusCode::CONFLICT,
+            AuthErrorCode::BackendUnavailable | AuthErrorCode::MalformedConfig => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
+            AuthErrorCode::TokenExchangeFailed | AuthErrorCode::RefreshFailed => {
+                StatusCode::BAD_GATEWAY
+            }
+            AuthErrorCode::CredentialMissing | AuthErrorCode::AccountSelectionRequired => {
+                StatusCode::CONFLICT
+            }
         }
     };
     ProductAuthRouteFailure {
@@ -862,47 +1030,6 @@ pub(super) fn scope_from_authenticated_caller_parts_requiring_invocation(
         return Err(ProductAuthRouteFailure::invalid_request());
     }
     scope_from_authenticated_caller_parts(caller, fields)
-}
-
-pub(super) async fn scoped_update_binding_for_requester(
-    state: &ProductAuthRouteState,
-    scope: AuthProductScope,
-    provider: AuthProviderId,
-    provider_scopes: Vec<ProviderScope>,
-    requester_extension: Option<&ExtensionId>,
-) -> Result<Option<CredentialAccountUpdateBinding>, ProductAuthRouteFailure> {
-    let Some(requester_extension) = requester_extension else {
-        return Ok(None);
-    };
-    let account = state
-        .product_auth
-        .runtime_credential_account_selection_service()
-        .select_unique_configured_runtime_account(RuntimeCredentialAccountSelectionRequest::new(
-            CredentialAccountSelectionRequest::new(scope.clone(), provider.clone())
-                .for_extension(requester_extension.clone()),
-            scope.clone(),
-            provider_scopes,
-        ))
-        .await;
-    match account {
-        Ok(account) if scope_matches(&scope, &account.scope) => Ok(Some(
-            CredentialAccountUpdateBinding::from_projection(&account.projection()),
-        )),
-        Ok(_) => Ok(None),
-        Err(AuthProductError::CredentialMissing) => Ok(None),
-        Err(AuthProductError::CrossScopeDenied) => Ok(None),
-        Err(AuthProductError::AccountSelectionRequired) => Ok(None),
-        Err(AuthProductError::BackendUnavailable) => {
-            tracing::warn!(
-                target: "brassclaw_reborn_composition::product_auth::oauth",
-                provider = %provider.as_str(),
-                requester_extension = %requester_extension.as_str(),
-                "credential account status unavailable during extension OAuth start; starting setup without update binding"
-            );
-            Ok(None)
-        }
-        Err(error) => Err(ProductAuthRouteFailure::from(error)),
-    }
 }
 
 pub(super) fn scope_from_callback_query(
@@ -1338,7 +1465,7 @@ mod tests {
     use brassclaw_turns::{TurnRunId, TurnScope};
     use tower::ServiceExt;
 
-    struct NoopDispatcher;
+    pub(super) struct NoopDispatcher;
 
     #[async_trait]
     impl RebornAuthContinuationDispatcher for NoopDispatcher {
@@ -1400,7 +1527,7 @@ mod tests {
         }
     }
 
-    fn test_caller() -> WebUiAuthenticatedCaller {
+    pub(super) fn test_caller() -> WebUiAuthenticatedCaller {
         WebUiAuthenticatedCaller::new(
             TenantId::new("tenant-alpha").expect("tenant"),
             UserId::new("user-alpha").expect("user"),
@@ -1450,6 +1577,7 @@ mod tests {
 
     #[tokio::test]
     async fn extension_oauth_start_handler_starts_dcr_setup_flow_for_notion() {
+        let input = extension_oauth_requirement::test_request("notion").await;
         let secret_store = Arc::new(InMemorySecretStore::new());
         let dcr_provider = Arc::new(
             OAuthDcrProvider::new(
@@ -1474,6 +1602,7 @@ mod tests {
             None,
             None,
         );
+        let state = state.with_services(extension_oauth_requirement::test_services("notion"));
         let app = product_auth_route_mount(state)
             .protected
             .layer(axum::Extension(test_caller()));
@@ -1484,16 +1613,7 @@ mod tests {
                     .method(Method::POST)
                     .uri("/api/webchat/v2/extensions/notion/setup/oauth/start")
                     .header(header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "provider": "notion",
-                            "account_label": "work notion",
-                            "scopes": [],
-                            "expires_at": (Utc::now() + ChronoDuration::minutes(5)).to_rfc3339(),
-                            "invocation_id": InvocationId::new().to_string(),
-                        })
-                        .to_string(),
-                    ))
+                    .body(Body::from(input.to_string()))
                     .expect("request"),
             )
             .await
@@ -1520,12 +1640,13 @@ mod tests {
             redirect
                 .query_pairs()
                 .find_map(|(name, value)| (name == "account_label").then(|| value.into_owned())),
-            Some("work notion".to_string())
+            input["account_label"].as_str().map(str::to_owned)
         );
     }
 
     #[tokio::test]
     async fn extension_oauth_start_handler_does_not_bind_reconnect_accounts_outside_exact_scope() {
+        let input = extension_oauth_requirement::test_request("notion").await;
         let secret_store = Arc::new(InMemorySecretStore::new());
         let dcr_provider = Arc::new(
             OAuthDcrProvider::new(
@@ -1554,6 +1675,7 @@ mod tests {
             None,
             None,
         );
+        let state = state.with_services(extension_oauth_requirement::test_services("notion"));
         let app = product_auth_route_mount(state)
             .protected
             .layer(axum::Extension(test_caller()));
@@ -1568,6 +1690,7 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(SecretHandle::new("stale-notion-access").expect("secret")),
+                access_expires_at: None,
                 refresh_secret: Some(SecretHandle::new("stale-notion-refresh").expect("secret")),
                 scopes: Vec::new(),
             })
@@ -1583,12 +1706,14 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(SecretHandle::new("other-notion-access").expect("secret")),
+                access_expires_at: None,
                 refresh_secret: Some(SecretHandle::new("other-notion-refresh").expect("secret")),
                 scopes: Vec::new(),
             })
             .await
             .expect("seed second stale account");
-        let flow_invocation_id = InvocationId::new();
+        let flow_invocation_id =
+            InvocationId::parse(input["invocation_id"].as_str().unwrap()).unwrap();
 
         let response = app
             .oneshot(
@@ -1596,16 +1721,7 @@ mod tests {
                     .method(Method::POST)
                     .uri("/api/webchat/v2/extensions/notion/setup/oauth/start")
                     .header(header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "provider": "notion",
-                            "account_label": "work notion",
-                            "scopes": [],
-                            "expires_at": (Utc::now() + ChronoDuration::minutes(5)).to_rfc3339(),
-                            "invocation_id": flow_invocation_id.to_string(),
-                        })
-                        .to_string(),
-                    ))
+                    .body(Body::from(input.to_string()))
                     .expect("request"),
             )
             .await
@@ -1631,7 +1747,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn extension_google_oauth_start_continues_when_update_binding_lookup_is_unavailable() {
+    async fn extension_google_oauth_start_rejects_unavailable_original_requirement_lookup() {
+        let input = extension_oauth_requirement::test_request("google-drive").await;
         let shared = Arc::new(brassclaw_auth::InMemoryAuthProductServices::new());
         let flow_manager: Arc<dyn AuthFlowManager> = shared.clone();
         let interaction_service: Arc<dyn AuthInteractionService> = shared.clone();
@@ -1661,10 +1778,10 @@ mod tests {
             )
             .expect("google oauth route config"),
         );
-        let app = product_auth_route_mount(state.clone())
+        let state = state.with_services(extension_oauth_requirement::test_services("google-drive"));
+        let app = product_auth_route_mount(state)
             .protected
             .layer(axum::Extension(test_caller()));
-        let flow_invocation_id = InvocationId::new();
 
         let response = app
             .oneshot(
@@ -1672,93 +1789,130 @@ mod tests {
                     .method(Method::POST)
                     .uri("/api/webchat/v2/extensions/google-drive/setup/oauth/start")
                     .header(header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "provider": GOOGLE_PROVIDER_ID,
-                            "account_label": "google-drive google",
-                            "scopes": ["https://www.googleapis.com/auth/drive"],
-                            "expires_at": (Utc::now() + ChronoDuration::minutes(5)).to_rfc3339(),
-                            "invocation_id": flow_invocation_id.to_string(),
-                        })
-                        .to_string(),
-                    ))
+                    .body(Body::from(input.to_string()))
                     .expect("request"),
             )
             .await
             .expect("route response");
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("response body");
-        let json: serde_json::Value = serde_json::from_slice(&body).expect("start json");
-        let flow_id = AuthFlowId::from_uuid(
-            Uuid::parse_str(json["flow_id"].as_str().expect("flow id")).expect("flow uuid"),
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("error json");
+        assert_eq!(json["code"], "backend_unavailable");
+        assert!(json.get("flow_id").is_none());
+        assert!(
+            shared.flow_records_snapshot().is_empty(),
+            "an unconfirmed requirement lookup cannot authorize starting a new original"
         );
-        let mut flow_resource = test_resource_scope();
-        flow_resource.invocation_id = flow_invocation_id;
-        let flow_scope = AuthProductScope::new(flow_resource, AuthSurface::Callback);
-        let flow = shared
-            .get_flow(&flow_scope, flow_id)
+    }
+
+    #[tokio::test]
+    async fn extension_google_oauth_explicit_new_does_not_reuse_same_provider_accounts() {
+        let input = extension_oauth_requirement::test_request("google-drive").await;
+        let shared = Arc::new(brassclaw_auth::InMemoryAuthProductServices::new());
+        let scope = scope_from_authenticated_caller_parts_requiring_invocation(
+            &test_caller(),
+            &ScopeFields {
+                session_id: None,
+                thread_id: None,
+                invocation_id: Some(input["invocation_id"].as_str().unwrap().into()),
+            },
+        )
+        .unwrap();
+        let requested_scope = "https://www.googleapis.com/auth/drive";
+        let mut originals = Vec::new();
+        for label in ["personal google", "work google"] {
+            let handle = SecretHandle::new(format!("{}-access", originals.len())).unwrap();
+            originals.push(
+                shared
+                    .create_account(NewCredentialAccount {
+                        scope: scope.clone(),
+                        provider: AuthProviderId::new(GOOGLE_PROVIDER_ID).unwrap(),
+                        label: CredentialAccountLabel::new(label).unwrap(),
+                        status: CredentialAccountStatus::Configured,
+                        ownership: CredentialOwnership::UserReusable,
+                        owner_extension: None,
+                        granted_extensions: Vec::new(),
+                        access_secret: Some(handle),
+                        access_expires_at: None,
+                        refresh_secret: None,
+                        scopes: vec![ProviderScope::new(requested_scope).unwrap()],
+                    })
+                    .await
+                    .unwrap(),
+            );
+        }
+        let state = ProductAuthRouteState::new(
+            Arc::new(
+                RebornProductAuthServices::from_shared(shared.clone(), Arc::new(NoopDispatcher))
+                    .with_oauth_gate_registry(Arc::new(
+                        crate::oauth_gate::GoogleOAuthGateProviderRegistry::new(vec![
+                Arc::new(crate::oauth_gate::GoogleOAuthGateProvider::new(
+                    crate::input::OAuthClientConfig::new(
+                        "google-client.apps.googleusercontent.com",
+                        "http://127.0.0.1:3000/api/reborn/product-auth/oauth/google/callback", None,
+                    ).unwrap(), Arc::new(brassclaw_secrets::InMemorySecretStore::new()),
+                )),
+            ]),
+                    )),
+            ),
+            TenantId::new("tenant-alpha").unwrap(),
+            None,
+            None,
+        )
+        .with_google_oauth(
+            GoogleOAuthRouteConfig::new(
+                "google-client.apps.googleusercontent.com",
+                "http://127.0.0.1:3000/api/reborn/product-auth/oauth/google/callback",
+            )
+            .unwrap(),
+        );
+        let state = state.with_services(extension_oauth_requirement::test_services("google-drive"));
+        let app = product_auth_route_mount(state)
+            .protected
+            .layer(axum::Extension(test_caller()));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/webchat/v2/extensions/google-drive/setup/oauth/start")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(input.to_string()))
+                    .unwrap(),
+            )
             .await
-            .expect("flow lookup")
-            .expect("flow");
-        assert!(flow.update_binding.is_none());
-
-        let authorization_url = json["authorization_url"]
-            .as_str()
-            .expect("authorization url");
-        let state_value = Url::parse(authorization_url)
-            .expect("authorization url")
-            .query_pairs()
-            .find_map(|(name, value)| (name == "state").then(|| value.into_owned()))
-            .expect("oauth state");
-        let encoded_state =
-            url::form_urlencoded::byte_serialize(state_value.as_bytes()).collect::<String>();
-        let encoded_scope = url::form_urlencoded::byte_serialize(
-            "https://www.googleapis.com/auth/drive".as_bytes(),
-        )
-        .collect::<String>();
-        let uri = format!(
-            "{GOOGLE_OAUTH_CALLBACK_PATH}?state={encoded_state}&code=google-auth-code&scope={encoded_scope}"
-        )
-        .parse::<Uri>()
-        .expect("callback uri");
-
-        let response = oauth::google_oauth_callback_handler(
-            State(state),
-            RawQuery(uri.query().map(str::to_string)),
-            uri,
-            HeaderMap::new(),
-        )
-        .await
-        .expect("extension google callback should complete");
-
+            .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-        let completed_flow = shared
-            .get_flow(&flow_scope, flow_id)
-            .await
-            .expect("completed flow lookup")
-            .expect("completed flow");
-        let account_id = completed_flow
-            .credential_account_id
-            .expect("callback should persist account id");
-        let account = shared
-            .get_account(CredentialAccountLookupRequest {
-                scope: flow_scope,
-                account_id,
-                requester_extension: Some(ExtensionId::new("google-drive").expect("extension")),
-            })
-            .await
-            .expect("account lookup")
-            .expect("account");
-
-        assert_eq!(account.status, CredentialAccountStatus::Configured);
-        assert_eq!(account.provider.as_str(), GOOGLE_PROVIDER_ID);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id = AuthFlowId::from_uuid(Uuid::parse_str(json["flow_id"].as_str().unwrap()).unwrap());
+        let selected = shared.get_flow(&scope, id).await.unwrap().unwrap();
+        assert!(selected.update_binding.is_none());
+        let setup = shared.requirement_setup(&scope, id).await.unwrap().unwrap();
+        assert_eq!(
+            setup.requirement(),
+            &extension_oauth_requirement::test_requirement("google-drive")
+        );
+        for original in originals {
+            assert_eq!(
+                shared
+                    .get_account(CredentialAccountLookupRequest::new(
+                        scope.clone(),
+                        original.id,
+                    ))
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                original
+            );
+        }
     }
 
     #[tokio::test]
     async fn extension_oauth_start_handler_returns_config_error_when_dcr_registry_is_missing() {
+        let input = extension_oauth_requirement::test_request("notion").await;
         let state = ProductAuthRouteState::new(
             Arc::new(RebornProductAuthServices::local_dev_in_memory(Arc::new(
                 NoopDispatcher,
@@ -1767,6 +1921,7 @@ mod tests {
             None,
             None,
         );
+        let state = state.with_services(extension_oauth_requirement::test_services("notion"));
         let app = product_auth_route_mount(state)
             .protected
             .layer(axum::Extension(test_caller()));
@@ -1777,16 +1932,7 @@ mod tests {
                     .method(Method::POST)
                     .uri("/api/webchat/v2/extensions/notion/setup/oauth/start")
                     .header(header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "provider": "notion",
-                            "account_label": "work notion",
-                            "scopes": [],
-                            "expires_at": (Utc::now() + ChronoDuration::minutes(5)).to_rfc3339(),
-                            "invocation_id": InvocationId::new().to_string(),
-                        })
-                        .to_string(),
-                    ))
+                    .body(Body::from(input.to_string()))
                     .expect("request"),
             )
             .await
@@ -1801,7 +1947,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dcr_oauth_callback_retrieves_pkce_from_registry_when_route_cache_misses() {
+    async fn dcr_oauth_callback_rejects_bare_pkce_without_a_registered_flow() {
         let secret_store = Arc::new(InMemorySecretStore::new());
         let secret_store_for_provider: Arc<dyn SecretStore> = secret_store.clone();
         let dcr_provider = Arc::new(
@@ -1857,7 +2003,7 @@ mod tests {
             scopes: None,
         };
 
-        let outcome = oauth::callback_outcome_from_query(
+        let failure = oauth::callback_outcome_from_query(
             &state,
             flow_id,
             &scope,
@@ -1866,14 +2012,111 @@ mod tests {
             &query,
         )
         .await
-        .expect("callback outcome");
+        .expect_err("a bare PKCE value cannot establish a registered original flow");
 
+        assert_eq!(failure.status, StatusCode::NOT_FOUND);
+        assert_eq!(failure.body.code, AuthErrorCode::UnknownOrExpiredFlow);
+    }
+
+    #[tokio::test]
+    async fn dcr_oauth_callback_retrieves_pkce_from_registry_when_route_cache_misses() {
+        let egress = Arc::new(SetupOnlyDcrEgress::default());
+        let dcr_provider = Arc::new(
+            OAuthDcrProvider::new(
+                OAuthDcrProviderConfig {
+                    spec: notion_provider_spec(),
+                    callback_origin: "http://127.0.0.1:3000".into(),
+                    client_name: "BrassClaw".into(),
+                    account_label: CredentialAccountLabel::new("notion").unwrap(),
+                    scopes: Vec::new(),
+                },
+                egress.clone(),
+                Arc::new(InMemorySecretStore::new()),
+                Arc::new(NoopObligationHandler),
+            )
+            .unwrap(),
+        );
+        let product_auth = Arc::new(
+            RebornProductAuthServices::local_dev_in_memory(Arc::new(NoopDispatcher))
+                .with_dcr_oauth_registry(Arc::new(OAuthDcrProviderRegistry::new(vec![
+                    dcr_provider,
+                ]))),
+        );
+        let scope = AuthProductScope::new(test_resource_scope(), AuthSurface::Callback);
+        let provider = AuthProviderId::new("notion").unwrap();
+        let flow = product_auth
+            .start_dcr_setup_oauth_flow(RebornDcrOAuthStartFlowRequest {
+                requirement_setup: None,
+                flow_id: AuthFlowId::new(),
+                scope: scope.clone(),
+                provider: provider.clone(),
+                account_label: CredentialAccountLabel::new("notion").unwrap(),
+                provider_scopes: Vec::new(),
+                update_binding: None,
+                expires_at: Utc::now() + ChronoDuration::minutes(5),
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(flow.status, AuthFlowStatus::AwaitingUser);
+        let expected_hash = flow.pkce_verifier_hash.clone().unwrap();
+        let Some(brassclaw_auth::AuthChallenge::OAuthUrl {
+            authorization_url, ..
+        }) = &flow.challenge
+        else {
+            panic!("the actual admitted original must provide its authorization URL");
+        };
+        let state_value = Url::parse(authorization_url.as_str())
+            .unwrap()
+            .query_pairs()
+            .find_map(|(key, value)| (key == "state").then(|| value.into_owned()))
+            .unwrap();
+        egress
+            .setup_complete
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        // This new route state has never received a PKCE cache entry. Only the
+        // already admitted registry original can supply the exact verifier.
+        let state = ProductAuthRouteState::new(
+            product_auth,
+            TenantId::new("tenant-alpha").unwrap(),
+            None,
+            None,
+        );
+        assert!(state.pkce_verifier_for_callback(flow.id).is_err());
+        let query = OAuthCallbackQuery {
+            user_id: Some(scope.resource.user_id.to_string()),
+            invocation_id: Some(scope.resource.invocation_id.to_string()),
+            state: Some(RawCallbackValue::new(state_value).unwrap()),
+            provider: Some(provider.to_string()),
+            account_label: Some("notion".into()),
+            code: Some(RawSecretValue::new("original-oauth-code".into()).unwrap()),
+            error: None,
+            agent_id: None,
+            project_id: None,
+            thread_id: None,
+            session_id: None,
+            scopes: None,
+        };
+        let outcome = oauth::callback_outcome_from_query(
+            &state,
+            flow.id,
+            &scope,
+            Some(&provider),
+            None,
+            &query,
+        )
+        .await
+        .unwrap();
         let RebornOAuthCallbackOutcome::Authorized { provider_request } = outcome else {
-            panic!("expected authorized callback outcome");
+            panic!("expected the admitted original's authorized callback input");
         };
         assert_eq!(provider_request.provider, provider);
         assert_eq!(provider_request.account_label.as_str(), "notion");
-        assert_eq!(provider_request.pkce_verifier.expose_secret(), verifier);
+        assert_eq!(provider_request.pkce_verifier_hash, expected_hash);
+        assert_eq!(
+            pkce_verifier_hash(provider_request.pkce_verifier.expose_secret()).unwrap(),
+            expected_hash
+        );
     }
 
     #[tokio::test]
@@ -1920,6 +2163,7 @@ mod tests {
         let run_id = TurnRunId::new();
         let gate_ref = "gate:notion-auth";
         let requirements = vec![RuntimeCredentialAuthRequirement {
+            requirement: None,
             provider: RuntimeCredentialAccountProviderId::new("notion").expect("provider"),
             requester_extension: ExtensionId::new("notion").expect("extension"),
             provider_scopes: Vec::new(),
@@ -1985,6 +2229,27 @@ mod tests {
     #[derive(Debug)]
     struct PanickingDcrEgress;
 
+    #[derive(Debug, Default)]
+    struct SetupOnlyDcrEgress {
+        setup_complete: std::sync::atomic::AtomicBool,
+    }
+
+    #[async_trait]
+    impl RuntimeHttpEgress for SetupOnlyDcrEgress {
+        async fn execute(
+            &self,
+            request: RuntimeHttpEgressRequest,
+        ) -> Result<RuntimeHttpEgressResponse, brassclaw_host_api::RuntimeHttpEgressError> {
+            assert!(
+                !self
+                    .setup_complete
+                    .load(std::sync::atomic::Ordering::SeqCst),
+                "reading an admitted PKCE original must not repeat provider HTTP work"
+            );
+            RouteDcrSetupEgress.execute(request).await
+        }
+    }
+
     #[async_trait]
     impl RuntimeHttpEgress for PanickingDcrEgress {
         async fn execute(
@@ -1996,7 +2261,7 @@ mod tests {
     }
 
     #[derive(Debug)]
-    struct RouteDcrSetupEgress;
+    pub(super) struct RouteDcrSetupEgress;
 
     #[async_trait]
     impl RuntimeHttpEgress for RouteDcrSetupEgress {
@@ -2012,6 +2277,7 @@ mod tests {
                     br#"{"authorization_endpoint":"https://oauth.notion.com/authorize","token_endpoint":"https://oauth.notion.com/token","registration_endpoint":"https://oauth.notion.com/register"}"#.to_vec()
                 }
                 "https://oauth.notion.com/register" => br#"{"client_id":"dcr-client","registration_client_uri":"https://oauth.notion.com/register/dcr-client","registration_access_token":"registration-token"}"#.to_vec(),
+                "https://oauth.notion.com/token" => br#"{"access_token":"usage-access","refresh_token":"usage-refresh","expires_in":3600,"token_type":"Bearer"}"#.to_vec(),
                 "https://oauth.notion.com/register/dcr-client"
                     if request.method == NetworkMethod::Delete =>
                 {
@@ -2032,7 +2298,7 @@ mod tests {
     }
 
     #[derive(Debug)]
-    struct NoopObligationHandler;
+    pub(super) struct NoopObligationHandler;
 
     #[async_trait]
     impl CapabilityObligationHandler for NoopObligationHandler {
@@ -2044,3 +2310,9 @@ mod tests {
         }
     }
 }
+
+// Caller-level WebUI fixtures need the private host original owner. Keep every
+// case in default library tests without exporting a lower-store production seam.
+#[cfg(test)]
+#[path = "caller_contract_tests.rs"]
+mod caller_contract_tests;

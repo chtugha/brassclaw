@@ -103,13 +103,49 @@ mistake raw reference-token counts for rendered request capacity. A large high
 quality prefix is preferred where the complete envelope fits; there is no universal
 small-prefix or universal 100k-token target.
 
-Check the shared leading token sequence over supported thinking modes, system
-content variants, history and tool envelopes. For the registered Ornith/Qwen adapter,
-put the static reference before changing tool definitions inside the system opening;
-do not infer this layout for other templates. Server-owned injection and client-owned
-injection are mutually exclusive choices for a generation: the actual serving path
-must inject the selected reference exactly once. An exact compatible token prefix
-is necessary for reuse, but it does not prove restored attention/recurrent state.
+Keep the pair-owned format/limit design separate from each role's knowledge
+selection rules. Generator, Kohai and Sempai use the same accepted design revision
+when targeting the same provider/model pair. Generate creates the complete fixed
+model-specific prefix before publication. Kohai receives the Orchestrator prompt,
+first formats only that dynamic part under the final target's same accepted pair
+design. If Sempai is connected/enabled, it optimizes/corrects that already formatted
+prompt using its own finished reviewer prefix and its target-pair design for its
+own call, then returns the final dynamic prompt to Kohai. Kohai adds the intended
+fixed prefix unchanged exactly once before it, without formatting the return again. Validate the complete
+transmitted request including history, Tool metadata and output allowance. Do not
+introduce server-side prefix injection, template/service edits or runtime prefix
+rewriting to make a case pass. Base is the ordinary default when no explicit
+Recipe, Orchestrator or role prefix is selected; an explicitly selected missing or
+incompatible prefix must remain visibly blocked until its confirmed generation
+succeeds. It must not silently become Base.
+
+Fill the formatting parts with executable-consumer-supported declarative construction
+instructions, not labels such as ChatML or a list of token limits. Retrieve provider
+facts through supported discovery and research exact official model/tokenizer,
+default-template and backend documentation. Preserve originals, immutable revisions,
+source pointers and hashes. Distinguish a template's source-file hash from the hash
+of its decoded template text. Preserve every named alternative without guessing a
+default; record the selected effective branch only when target-specific evidence
+supports it. Public upstream defaults do not prove a quantized derivative's files
+or the running endpoint's template.
+
+For each supported request mode specify literal role delimiters, reference framing,
+escaping, separators, BOS/EOS ownership, canonical prefix edges, assistant generation
+headers and the exact dynamic-prompt/prefix join. Cover thinking, histories, tools,
+multimodal inputs and empty/missing values only where the actual adapter supports
+them. Default-template trimming or a tool preamble before system text can break raw
+byte preservation or prefix-first composition. Derive and test the supported
+construction before freezing the prefix; never repair its bytes later in Kohai.
+Unsupported branches remain explicit and blocked without provider server changes.
+Do not replace an actual template with a convenient invented one.
+
+Check exact prefix bytes and leading token IDs across independently varied dynamic
+messages and all supported modes using pinned artifacts and the complete envelope.
+A positive tokenizer construction test does not prove the effective API-to-model
+mapping, memory layout, cache residency, attention/recurrent restore or answer quality.
+Reference canonical provider/model limits by their owning revision; never create
+editable copies in role/design/profile records. Both prefix and dynamic-input hard
+limits remain enforced when discretionary token budgeting is disabled.
 
 Capacity failure preserves all artifacts and the last-good selection. Report the
 required rendered tokens and reserve against the effective context. A separately
@@ -170,15 +206,15 @@ uses its own `required` syntax. Unknown/misplaced fields are errors, not hints.
 These are current implementation constraints; consult the component guides for
 the binding architecture and verify support before proposing a successor.
 
-Reuse the shared `prefix_template.py` adapter and `prefix_capacity.py` comparison
-rather than generating a second injection implementation or moving workflow
-logic into Rust. The candidate measurement Recipe explicitly prepares the
-supported template, hashes its effective/original bytes with the canonical JSON
-usage, measures frozen complete provider contexts, verifies both template
-identities and calculates headroom. Its definitions still need the applicable
-bootstrap/workflow acceptance before installation can expose them as Generate.
-A pending Tool registration, a draft Recipe and a successful tokenizer probe do
-not supply that evidence.
+Reuse the shared template/capacity primitives only for their explicitly qualified
+adapters; do not create a second rendering pipeline or move design workflow into
+Rust. Historical `prefix_template.py` experiments with an adjusted template are
+not proof for the target's unchanged default template. The candidate measurement
+Recipe must bind the exact original template and the supported construction,
+measure frozen complete requests, verify identities and calculate headroom. Its
+actual compiler and Kohai consumers still need their applicable bootstrap/workflow
+acceptance before installation can expose them as Generate or serving. A pending
+Tool registration, draft Recipe or tokenizer-only probe does not supply that evidence.
 
 Preserve all reference bytes in the real rendered leading content. Compare the
 complete framed requests and their token-ID hashes across the actual tools,
@@ -206,3 +242,64 @@ runtime's recurrent-state dtype or caching flags. Record deployment/backend,
 attention KV dtype, recurrent/checkpoint layout, object/group separation and
 cache-salt semantics from their own versioned runtime evidence. Preserve Unknown
 when that evidence is absent. Cache and source quality are independent gates.
+
+## Retained shared pair proposal contract (structural stage)
+
+The shared draft format is `brassclaw-prefix-pair-construction-proposal/1`, separate
+from the old per-profile reference/content proposals. Its exact fields are
+`format`, `specification`, `artifact_set`, `rationale`, `evidence`, `template`,
+`construction`, `sample_reference` and `worked_cases`. It has no profile and no
+editable token limits. Bind original evidence IDs to exact files/hashes/pointers.
+An optional retained `README.md` can supply complete model-documentation evidence
+with its exact file hash and a null pointer. Preserve its literal bytes; do not
+execute its examples, interpret it as JSON or select it as the chat template.
+Operator retention alone does not verify the publisher, version, license or
+claims. Review those facts independently, and distinguish documented architecture
+from the running provider's actual KV/recurrent-state configuration. Missing
+documentation stays explicit; never invent supporting facts to fill the design.
+Select the retained template source by its decoded-text hash, without inferring
+which default the running provider uses.
+
+Fill construction's separate `prefix`, `dynamic_prompt`, `special_tokens` and
+`memory` instructions with source references. Prefix adds exact `leading_literal`,
+`trailing_literal` and `edge_requirement` (`preserve-exact` or
+`non-whitespace-edges`). Declare supported modes and reasons for unsupported ones.
+Use only `join=prepend-fixed-prefix` and
+`hard_limits_owner=provider-definition-revision`. This source-bound draft format
+requires explicit `runtime_cache=null`; do not turn architecture declarations
+into effective runtime cache facts.
+
+Each case carries its ID/mode, original ordered `render_context_json`, exact
+`expected_fixed_prefix`, `formatted_prompt`, `expected_request` and evidence IDs.
+Use the same fixed sample across dynamic variations. The fixed prefix must equal
+leading literal + sample reference + trailing literal, and the expected request
+must equal that prefix + formatted prompt. Cover every declared supported mode.
+These exact consistency checks and retained source bindings are not tokenizer,
+provider-envelope, cache or behavioral qualification. The result remains an
+unaccepted proposal; no supplied status or approval field can activate it.
+The full field contract is in `docs/reborn/prefix-model-artifacts.md`; unsupported
+fields/code/options must not be invented to imply missing consumer support.
+
+
+## Verify worked cases against the unchanged template
+
+The same pair owner exports every retained case as a canonical
+`brassclaw-prefix-pair-case-packet/1`: proposal/specification/artifact/template
+identities, original complete context JSON and expected literal prefix/full render.
+Supply the full intended context, including fixed sample content; structural
+prefix+prompt equality alone does not establish that the template produces it.
+
+Reuse the candidate `compare-prefix-pair-default-template-cases` Recipe and the
+existing original-template encoding/digest usages. It pairs a leading-prefix chat
+probe with a literal expected-text probe per case, then compares full bytes/token
+identities and directly measured prefix token sequences. Do not substitute a
+supplied template or quietly remove tool/history/thinking cases that fail. A wrong
+literal is a mismatch; a non-leading prefix is a native rendering failure. Existing
+single-batch/resource limits remain effective, without silent omission.
+
+The constructors/stages are not approved/admitted workflows or ordinary available
+commands. They need their exact workflow qualification and admission integration.
+Even a positive retained-template comparison does not qualify the current provider
+wire mapping, a deterministic serving formatter, full-context capacity, cache/state
+restoration or model reasoning. Use actual pinned primitive journals when a later
+qualified workflow consumes the result; a model's report or pure JSON is no proof.

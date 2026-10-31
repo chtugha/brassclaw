@@ -193,6 +193,19 @@ the same current authority rules without an extra operation approval layer.
 
 ### Phase D — unify transport ownership, reconnect and event replay
 
+- [ ] Reuse the [pair-design/selection/assembly contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26)
+  from the Prefix owner. Same pair shares the accepted design, not role content;
+  a specific Recipe/Orchestrator/role prefix replaces implicit base selection.
+  Preserve Kohai's dynamic-only target formatting → optional connected Sempai
+  optimization/correction of that already formatted prompt → final dynamic prompt
+  returned to Kohai → intended finished prefix joined unchanged exactly once →
+  complete guard/send. Kohai does not format the return again. Sempai's own call
+  uses its own prefix generated for its target-pair design; generator/Kohai/Sempai
+  share the saved accepted design revision for the same pair. Resolve manual
+  limits from the same provider revision/CAS endpoint/query in all views, without independent
+  role/transport copies, a new registry/loop or provider configuration edits.
+  Existing connection support alone is not acceptance of this serving contract.
+
 - [ ] Route Monty exchanges through the existing actor. Reuse its correlation,
   completion inbox, receipts, frame requirements, capacity credits, control lane
   and owned stop deadline. Remove parallel pipe readers and caller-local credit
@@ -216,6 +229,13 @@ the same current authority rules without an extra operation approval layer.
   its correlated result and closes that chat. No direct Python/Monty/IBS dispatch,
   per-call component creation or duplicate execution path is introduced.
 
+- [ ] Keep library usage and MCP publication separate. A complete Skill and its
+  qualified ordinary/private consumers need no dedicated MCP-call Recipe. Missing
+  exposure is valid; malformed explicit declarations remain publication errors.
+  Declaration changes use immutable Recipe revisions and existing catalogue CAS,
+  not a new mutable exposure registry. Captured tasks retain their selection;
+  changed/withdrawn commands before capture fail without replacement or replay.
+
 Exit: each communication channel has one owner; reconnect preserves operation
 identity and observer replay cannot create new effects.
 
@@ -225,9 +245,13 @@ identity and observer replay cannot create new effects.
   common primitives such as guarded reservation, exact answer retention,
   compare-and-set settlement and immutable readback. Keep domain tables and
   release predicates where their semantics differ; no mandatory universal ledger.
-- [ ] Before adding an interface, prove at least two real consumers need the
-  same contract. Reuse existing traits/stores first. Document missing support
-  explicitly; there is no assumed built-in universal recovery API.
+- [ ] Before introducing a shared abstraction to consolidate existing operations,
+  prove at least two real consumers need the same relevant semantics. Reuse
+  existing traits/stores first. A genuinely missing primitive/technical interface
+  may initially have one consumer: justify the missing operation and owning layer
+  after checking composition/reuse. Do not create a second consumer just to count,
+  a second primitive for another selector, or merge incompatible custody predicates.
+  There is no assumed built-in universal recovery API.
 - [ ] Retain logical invocation identity separately from execution attempt and
   service generation. Persist intent/count before effects, original arguments
   and deduplication key, exact pinned workflow selection, outcome evidence and
@@ -262,7 +286,11 @@ remains explicit. Unknown outcomes cannot become “safe to retry” by abstract
   Independent Tool effects remain separate steps.
 - [ ] Resolve one coherent active approved catalogue at task start and retain
   exact Recipe/variant/step/input/dependency/association/artifact selections.
-  Existing tasks and advertised MCP calls keep them through waits and recovery.
+  Captured tasks keep that selection through supported waits/recovery. An MCP
+  advertisement pins its listed command contract, not an already captured task.
+  Before chat capture, changed/withdrawn or incompatible command contracts reject;
+  after capture, the ordinary retained task owns execution. Never secretly select
+  an old Recipe or treat a routing failure as successful MCP execution.
 - [ ] Qualify shipped successor components through reviewed `system_seed`
   bootstrap with integrity, Q1 and behavioral evidence, without extra installed-
   instance human Q2. Installed authored changes retain their Q1/behavior/human-Q2
@@ -303,6 +331,7 @@ tests and skipped integration tests do not establish production support.
 | Successful effect followed by malformed output/reply failure | Effect retained; validation/posting failure never repeats it. |
 | Fatal worker failure | Old generation fenced; supervised recovery only; no hidden executor or whole-Recipe/Tier-2 replay. |
 | Catalogue/provider/settings edit during work | Pinned workflow stays fixed; current Tool policy remains live; provider lifecycle follows its defined contract; acknowledged settings apply coherently. |
+| Optional MCP publication and independent consumers | No MCP declaration leaves qualified ordinary consumers usable; changing/removing publication through a reviewed successor preserves other valid consumers and captured tasks. Stale pre-capture commands reject; declared corruption remains an error. |
 | MCP provider request lifecycle | Correct advertisement/connection timing and ordinary-chat command ingress; discovery change does not alter in-flight contracts. |
 | Historical and unresolved records after upgrade/rollback | Original identities/evidence readable; no reset of counts, invented completion or destruction of retained owners. |
 | Review native-accounting reconciliation | Shared mechanics retain exact existing proof and release predicates; unsupported/lost evidence remains unresolved. |
@@ -332,11 +361,83 @@ where their paths differ; one helper or webhook test does not certify all produc
 Completion requires a caller-to-owner map showing one common implementation for
 each consolidated responsibility, removal of the unnecessary duplicate paths,
 and production-path evidence that the original safety/lifecycle guarantees hold.
-New shared effect primitives must have at least two real consumers. Similar
-record names alone are not a reason to merge distinct operations.
+Claims of a shared effect abstraction require at least two real consumers with
+the same relevant contract. This is not an existence requirement for every new
+primitive or interface; Phase E permits a justified missing single-consumer
+operation. For example, a missing atomic storage operation may be necessary for
+one caller; two similarly named settlement operations with different release
+predicates must remain distinct. Similar record names alone justify no merge.
 
 Measure reduced policy/builder implementations and duplicated ownership logic,
 not the number of Recipe steps. Record latency, reconnect or resource improvements
 only after representative measurements. Do not claim exactly-once external
 execution, automatic crash resume, full-v3 completion or improved performance
 from this plan or from source inspection alone.
+
+## Open K3-2 successor — provider receipt and capture
+
+Consume the [shared K3-2 contract](../reborn/model-token-limits.md#open-k3-2-successor--retained-prefix-selection-and-prefix-free-construction-workflows)
+and the relevant [Exact implementation mapping](Exact_V3_definition_update_at_K3-2.md).
+This is an open consumer delta, not completion or a new implementation owner.
+The existing receipt, task capture, Recipe, native child/review and response owners
+remain authoritative. Extend their retained prefix binding with Default, Selected
+and PrefixFreeWorkflow, rather than a separate prefixless flag/queue.
+
+Required construction child/review workflows inherit prefix-free operation and
+keep their original model/auth/catalogue references. General independent chats and
+reviews are unchanged. Bootstrap values use supported technical reads first and
+optional B1/B2 source interpretation with strict non-LLM response checks. All
+generation-specific Q1 steps belong to the original generation Recipe; no second
+validation workflow is introduced merely to rename existing checks. Match the
+actual existing usages before adding new components. Prefix-Maker-prefix usage
+is only the future optional seam in Exact §5.1.
+
+
+## Open Exact-validation successor — own A functions, S qualification and workflow scope
+
+**Open text handoff, not implemented.** The sequencing prerequisite is terminal
+acceptance of Root's actually running bounded BUILD-014 review/model-selection
+repair, not completion of all earlier open steps or the obsolete general authored
+exact-closure approval design. Immediately afterward, these target rules replace
+contradictory still-open implementation instructions in the same existing owner
+steps. Retain accepted packages, original evidence and valid old /1 profiles;
+do not reopen K0–K3 or alter BUILD-014's frozen inputs/contracts. New-profile
+publication still requires the connected successor readers/writers, not prior
+implementation of the superseded design. No second plan owner, queue or VM.
+
+Consume the binding target in [skills.md](../../skills.md#own-functional-approval-and-successor-compatibility): authored installed changes (A) have
+own Q1/behavior/human Q2; Skill and implementation code share one functional
+subject with distinct immutable IDs. S retains exact Skill-usage qualification
+after independently qualified Tool then ToolSkill, outside normal authored queue,
+with no additional installed Q2. Provenance belongs to each revision/usage; mixed
+graphs are allowed but do not transfer S exact evidence to changed partner bytes.
+Existing Single-root/exact-combination/Recipe-deployment APIs remain current
+support boundaries until the following connected successor is implemented.
+For new implementation immediately after BUILD-014, earlier blanket authored
+combination-review and class-10/50 protection instructions no longer govern the
+contradictory open work: only S exact usages retain the extra combination record,
+and only class10 retains root protection. Existing exact-profile readers keep
+their current checks until a qualified successor replaces them; preserving that
+support does not require completing an obsolete general A reapproval engine.
+
+### Existing Connections PhaseF successor
+
+After bounded BUILD-014 acceptance, apply this target to the remaining open
+PhaseF work without first completing superseded A approval work. Consume the existing Validator/
+Composition/Simplified cutover: own A function approvals, joint Skill/code subjects,
+complete own Recipe workflow evidence, compatible successors without reapproval
+of unchanged consumers and original task pins. S shipped integrations retain
+exact Skill usage with independently qualified Tool/ToolSkill prerequisites and
+noncircular integrity/behavior qualification, without normal authored queue or
+additional installed human Q2. Preserve per-revision provenance and overrides.
+
+Share existing connection/transport/durable-operation mechanisms. ToolSkills may
+serve multiple Skills when actual invocation bindings are unique; no extra
+connection-owned review service, combinationengine, selectorregistry or VM.
+Class50 migration stays with Composition and normal Recipes; class10 protection
+and live technical authority remain.
+
+**Outgoing gate:** next open PhaseF integration/upgrade/production successor
+consumes qualified writer/reader contracts from those owners. Existing A/S APIs
+remain their actual supported scope until that gate passes; no activation from
+source prose or a successful transport check.

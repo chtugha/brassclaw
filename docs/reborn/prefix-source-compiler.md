@@ -24,6 +24,36 @@ Tool usage, and `prefix_generation_components` for immutable retention. The
 source compilation Recipe orders those components; Rust performs hashing,
 storage, transport, integrity and kernel checks.
 
+## Source-only output versus finished target prefix
+
+This document describes the retained source-only workflow, not finished serving.
+The [shared prefix contract](model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26)
+requires generation-time formatting of the selected profile for a provider/model
+pair, using the same accepted pair design as Kohai/Sempai. Profile content rules
+remain separate. Base is the default only without a specific Recipe/Orchestrator/
+role selection; composites require an explicit content contract. Kohai first
+formats only the dynamic Orchestrator prompt for its target pair. A connected/
+enabled Sempai corrects that formatted prompt using its own generated reviewer
+prefix/design and returns the final dynamic prompt. Kohai then inserts the intended
+finished prefix unchanged exactly once before it, without formatting it again,
+before final checking/send. Current source-only output supplies
+neither that serving artifact nor qualification of the actual request mapping.
+The finished-generation consumer must satisfy the
+[explicit handoff acceptance](model-token-limits.md#explicit-handoff-between-the-two-model-requests),
+including the returned final dynamic value and the same accepted design revision
+for generator, Kohai and Sempai when using the same provider/model pair.
+Canonical mutable limits stay with the provider owner and all editors link there.
+No provider host/config/template installation is part of compilation.
+
+Finished target generation requires the saved pair design's
+[concrete construction rules](model-token-limits.md#formatting-design-must-contain-construction-instructions)
+from provider facts and model/template/cache research. The source-only segmentation
+and rendering below are not a substitute. Consumer qualification must show the
+compiler actually uses the accepted instructions and Kohai uses their dynamic
+prompt/join counterpart, with exact cases and preserved artifact bytes. Research
+is separate preparation; deterministic Generate cannot browse or synthesize a new
+format on demand. Cache facts constrain supported layout, not the server allocator.
+
 ## Input and provenance
 
 The `brassclaw-prefix-source-snapshot/1` input contains `profile`, `release`,
@@ -279,9 +309,12 @@ need their closed bootstrap behavior/approval evidence and Recipe execution;
 model/design acceptance, serving/cache checks and normal Generate remain open.
 
 
-### Reusable template and capacity components
+<a id="reusable-template-and-capacity-components"></a>
 
-`prefix_template.py` is the single offline/Recipe injection implementation;
+### Historical supplied-template measurement components (diagnostic scope)
+
+`prefix_template.py` is the shared supplied-template diagnostic implementation;
+it is not the current production server-template installation contract.
 `prefix_evidence.py` re-exports it. Move the complete compiler directory, not a
 single script. Procedure snapshots and base-compiler provenance retain the
 adapter source with a dynamic hash. Its class-22 export and

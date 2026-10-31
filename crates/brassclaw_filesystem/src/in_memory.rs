@@ -7,7 +7,9 @@
 //!   each consumer used to maintain alongside their SQL backends.
 //!
 //! Semantics:
-//! - Per-path monotonic versions. Each successful [`put`](RootFilesystem::put)
+//! - Per-path versions are monotonic until deletion; recreating a path starts
+//!   a new sequence. Use VersionAndBody when the selected body must survive
+//!   version reuse. Each successful [`put`](RootFilesystem::put)
 //!   increments the path's version; CAS rejects writes whose
 //!   [`CasExpectation`] doesn't match the current version.
 //! - Indexed projection is stored alongside the entry and used by
@@ -29,9 +31,9 @@ use tokio::sync::Mutex;
 use crate::backend::{EventRecord, StorageTxn};
 use crate::vector::{cosine_similarity, decode_embedding_blob};
 use crate::{
-    BackendCapabilities, CasExpectation, DirEntry, Entry, EntryIndexMetadata, EntryMetadata,
-    FileStat, FileType, FilesystemError, FilesystemOperation, Filter, IndexKey, IndexKind,
-    IndexSpec, IndexValue, Page, RecordVersion, RootFilesystem, SeqNo, VersionedEntry,
+    BackendCapabilities, CasExpectation, DirEntry, Entry, EntryBodyChecksum, EntryIndexMetadata,
+    EntryMetadata, FileStat, FileType, FilesystemError, FilesystemOperation, Filter, IndexKey,
+    IndexKind, IndexSpec, IndexValue, Page, RecordVersion, RootFilesystem, SeqNo, VersionedEntry,
 };
 
 #[derive(Clone)]
@@ -80,7 +82,7 @@ impl InMemoryBackend {
         }
         validate_file_namespace(&state, path, FilesystemOperation::WriteFile)?;
         let current_version = state.entries.get(path).map(|stored| stored.version);
-        check_cas(path, cas, current_version)?;
+        check_cas(path, cas, state.entries.get(path))?;
 
         let next_version = current_version
             .unwrap_or_else(|| RecordVersion::from_backend(0))
@@ -121,7 +123,10 @@ impl Default for InMemoryBackend {
 #[async_trait]
 impl RootFilesystem for InMemoryBackend {
     fn capabilities(&self) -> BackendCapabilities {
-        BackendCapabilities::in_memory_full().with(crate::Capability::OpaqueWrite)
+        BackendCapabilities::in_memory_full()
+            .with(crate::Capability::OpaqueWrite)
+            .with(crate::Capability::EntryBodyCas)
+            .with(crate::Capability::ConditionalEntryDelete)
     }
 
     async fn put(
@@ -223,6 +228,29 @@ impl RootFilesystem for InMemoryBackend {
             entry: stored.entry.clone(),
             version: stored.version,
         }))
+    }
+
+    async fn delete_if_snapshot(
+        &self,
+        path: &VirtualPath,
+        version: RecordVersion,
+        body_checksum: EntryBodyChecksum,
+    ) -> Result<bool, FilesystemError> {
+        let mut state = self.state.lock().await;
+        match check_cas(
+            path,
+            CasExpectation::VersionAndBody {
+                version,
+                body_checksum,
+            },
+            state.entries.get(path),
+        ) {
+            Ok(()) => Ok(state.entries.remove(path).is_some()),
+            Err(
+                FilesystemError::VersionMismatch { .. } | FilesystemError::SnapshotMismatch { .. },
+            ) => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 
     async fn delete(&self, path: &VirtualPath) -> Result<(), FilesystemError> {
@@ -623,22 +651,46 @@ fn validate_file_namespace(
 fn check_cas(
     path: &VirtualPath,
     cas: CasExpectation,
-    current: Option<RecordVersion>,
+    record: Option<&StoredEntry>,
 ) -> Result<(), FilesystemError> {
-    match (cas, current) {
-        (CasExpectation::Any, _) => Ok(()),
-        (CasExpectation::Absent, None) => Ok(()),
-        (CasExpectation::Absent, found @ Some(_)) => Err(FilesystemError::VersionMismatch {
+    let current = record.map(|value| value.version);
+    match cas {
+        CasExpectation::Any => Ok(()),
+        CasExpectation::Absent if current.is_none() => Ok(()),
+        CasExpectation::Absent => Err(FilesystemError::VersionMismatch {
             path: path.clone(),
             expected: None,
-            found,
+            found: current,
         }),
-        (CasExpectation::Version(expected), Some(found)) if expected == found => Ok(()),
-        (CasExpectation::Version(expected), found) => Err(FilesystemError::VersionMismatch {
-            path: path.clone(),
-            expected: Some(expected),
-            found,
-        }),
+        CasExpectation::Version(expected)
+        | CasExpectation::VersionAndBody {
+            version: expected, ..
+        } => {
+            if current != Some(expected) {
+                return Err(FilesystemError::VersionMismatch {
+                    path: path.clone(),
+                    expected: Some(expected),
+                    found: current,
+                });
+            }
+            if let CasExpectation::VersionAndBody { body_checksum, .. } = cas {
+                // This check and the subsequent write hold the SAME state lock.
+                let Some(record) = record else {
+                    return Err(FilesystemError::VersionMismatch {
+                        path: path.clone(),
+                        expected: Some(expected),
+                        found: current,
+                    });
+                };
+                if !body_checksum.matches_body(&record.entry.body) {
+                    return Err(FilesystemError::SnapshotMismatch {
+                        path: path.clone(),
+                        operation: FilesystemOperation::WriteFile,
+                    });
+                }
+            }
+            Ok(())
+        }
     }
 }
 

@@ -250,6 +250,10 @@ fn is_transient(err: &LlmError) -> bool {
 
 #[async_trait]
 impl LlmProvider for CircuitBreakerProvider {
+    fn supports_final_request_guard(&self) -> bool {
+        self.inner.supports_final_request_guard()
+    }
+
     fn model_name(&self) -> std::borrow::Cow<'_, str> {
         self.inner.model_name()
     }
@@ -560,6 +564,9 @@ mod tests {
         ))));
 
         // NOT transient
+        assert!(!is_transient(&LlmError::ConfigurationChanged {
+            provider: "selected provider".into(),
+        }));
         assert!(!is_transient(&LlmError::AuthFailed {
             provider: "p".into(),
         }));

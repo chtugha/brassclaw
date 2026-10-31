@@ -3,9 +3,9 @@ use brassclaw_host_api::VirtualPath;
 
 use crate::backend::{EventRecord, StorageTxn};
 use crate::{
-    BackendCapabilities, CasExpectation, DirEntry, Entry, EntryIndexMetadata, EntryMetadata,
-    FileStat, FilesystemError, FilesystemOperation, Filter, IndexKey, IndexSpec, Page,
-    RecordVersion, SeqNo, VersionedEntry,
+    BackendCapabilities, CasExpectation, DirEntry, Entry, EntryBodyChecksum, EntryIndexMetadata,
+    EntryMetadata, FileStat, FilesystemError, FilesystemOperation, Filter, IndexKey, IndexSpec,
+    Page, RecordVersion, SeqNo, VersionedEntry,
 };
 
 /// Unified filesystem interface over canonical virtual paths.
@@ -228,6 +228,19 @@ pub trait RootFilesystem: Send + Sync {
             operation: FilesystemOperation::Delete,
             reason: "delete is not supported by this backend".to_string(),
         })
+    }
+
+    /// Delete exactly one leaf only if its version and actual body still match
+    /// the same selected read. No subtree deletion. Missing/directory/mismatched
+    /// targets return false without effects; backend failures remain errors.
+    /// Requires native ConditionalEntryDelete; there is no read+delete fallback.
+    async fn delete_if_snapshot(
+        &self,
+        path: &VirtualPath,
+        _version: RecordVersion,
+        _body_checksum: EntryBodyChecksum,
+    ) -> Result<bool, FilesystemError> {
+        unsupported(path, FilesystemOperation::Delete)
     }
 
     // ─── Atomicity ────────────────────────────────────────────────────────

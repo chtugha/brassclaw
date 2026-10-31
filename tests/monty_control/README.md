@@ -2,6 +2,23 @@
 
 Current extension: control.7 / dump ABI 0xBC05, private root-worker protocol 7.
 
+Native model-host compatibility now uses the actual Composition library owners,
+not a standalone model_host target. Its22 original cases plus one extracted native
+reply-boundary case remain covered. The independent interpreter/control tests
+below stay in this workspace. The designated Root build chat owns all Cargo;
+submit requests through [the central queue](../../docs/development-build-queue.md).
+For the model-host gate it runs, serially from the repository root:
+
+```sh
+cargo build -p brassclaw_monty_host --bin monty_worker --locked
+cargo test -p brassclaw_reborn_composition --locked --features skills-db,test-support --lib model_host_compatibility:: -- --test-threads=1 --nocapture
+```
+
+Reuse an already verified unchanged worker instead of rebuilding it. The exact
+[BUILD-009 acceptance](../../docs/validation/2026-10-31-model-host-compatibility.md)
+also covers persisted model metadata and affected strict checks; recording model
+fixtures do not establish live inference, approval or full-plan/platform support.
+
 `flow_host.rs` runs the actual class-10 pure prepared-flow helpers in the contained
 utility worker. Four cases cover whole-tree preflight failures, branch dominance,
 iteration-local results, explicit repeat carry, actual list collection and runtime

@@ -10,6 +10,11 @@ use reborn_support::harness::RebornBinaryE2EHarness;
 
 #[tokio::test]
 async fn reborn_minimal_dispatch_parity() {
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .finish();
+    let _subscriber = tracing::subscriber::set_default(subscriber);
     let mut harness =
         RebornBinaryE2EHarness::reply_only("room-minimal-dispatch", "minimal dispatch complete")
             .await

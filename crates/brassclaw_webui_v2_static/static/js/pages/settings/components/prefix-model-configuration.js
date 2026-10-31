@@ -1,7 +1,7 @@
 import { React, html } from "../../../lib/html.js";
 import { Button } from "../../../design-system/button.js";
 import { fetchPrefixModelArtifacts } from "../lib/settings-api.js";
-import { parseModelConfigurationObservation } from "../lib/prefix-model-configuration.js";
+import { parseModelConfigurationObservation, parseModelFormatObservation } from "../lib/prefix-model-configuration.js";
 
 export function PrefixModelConfiguration({ specification, artifactSet, t }) {
   const [report, setReport] = React.useState(null);
@@ -24,7 +24,8 @@ export function PrefixModelConfiguration({ specification, artifactSet, t }) {
     try {
       const detail = await fetchPrefixModelArtifacts(specification, artifactSet.id);
       const value = parseModelConfigurationObservation(detail, specification, artifactSet);
-      if (version === active.current) setReport(value);
+      const format = parseModelFormatObservation(detail, specification, artifactSet);
+      if (version === active.current) setReport({ ...value, format });
     } catch (err) {
       if (version === active.current) setError(err.message?.startsWith("prefix.") ? t(err.message) : err.message || String(err));
     } finally {
@@ -40,6 +41,8 @@ export function PrefixModelConfiguration({ specification, artifactSet, t }) {
       ${report && html`<div>
         <p role="status">${t(`prefix.modelConfigStatus.${report.status}`)}</p>
         <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all">${report.text}</pre>
+        <h4>${t("prefix.modelFormatSources")}</h4>
+        ${report.format ? html`<pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all">${report.format.text}</pre>` : html`<p>${t("prefix.modelFormatUnavailable")}</p>`}
       </div>`}
     </div>`}
   </div>`;

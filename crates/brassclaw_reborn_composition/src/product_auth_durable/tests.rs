@@ -25,8 +25,8 @@ use brassclaw_auth::{
     CredentialAccountListRequest, CredentialAccountLookupRequest, CredentialAccountRecordSource,
     CredentialAccountSelectionRequest, CredentialAccountService, CredentialAccountStatus,
     CredentialOwnership, ManualTokenCompletionInput, ManualTokenSetupRequest, NewAuthFlow,
-    NewCredentialAccount, OAuthAuthorizationUrl, OAuthCallbackClaimRequest, OAuthCallbackInput,
-    OAuthProviderExchange, OpaqueStateHash, PkceVerifierHash, ProviderScope, SecretSubmitRequest,
+    NewCredentialAccount, OAuthAuthorizationUrl, OAuthCallbackInput, OAuthProviderExchange,
+    OpaqueStateHash, PkceVerifierHash, ProviderScope, SecretSubmitRequest,
 };
 
 fn test_scope() -> AuthProductScope {
@@ -63,6 +63,87 @@ fn account_label() -> CredentialAccountLabel {
     CredentialAccountLabel::new("Alice Google").unwrap()
 }
 
+async fn fs_callback_flow<F: RootFilesystem + 'static>(
+    service: &FilesystemAuthProductServices<F>,
+    scope: &AuthProductScope,
+    binding: Option<brassclaw_auth::CredentialAccountUpdateBinding>,
+    marker: &str,
+) -> AuthFlowRecord {
+    service
+        .create_flow(NewAuthFlow {
+            requirement_setup: None,
+            id: None,
+            scope: scope.clone(),
+            kind: AuthFlowKind::IntegrationCredential,
+            provider: google_provider(),
+            challenge: AuthChallenge::OAuthUrl {
+                authorization_url: OAuthAuthorizationUrl::new("https://provider.example/oauth")
+                    .unwrap(),
+                expires_at: Utc::now() + Duration::minutes(5),
+            },
+            continuation: AuthContinuationRef::SetupOnly,
+            update_binding: binding,
+            opaque_state_hash: Some(state_hash(&format!("{marker}-state"))),
+            pkce_verifier_hash: Some(pkce_hash(&format!("{marker}-pkce"))),
+            expires_at: Utc::now() + Duration::minutes(5),
+        })
+        .await
+        .unwrap()
+}
+
+fn fs_callback_prepared(
+    flow: &AuthFlowRecord,
+    marker: &str,
+) -> brassclaw_auth::OAuthCallbackPrepared {
+    brassclaw_auth::OAuthCallbackPrepared {
+        original: brassclaw_auth::OAuthCallbackOriginal {
+            scope: flow.scope.clone(),
+            flow_id: flow.id,
+            provider: flow.provider.clone(),
+            opaque_state_hash: flow.opaque_state_hash.clone().unwrap(),
+            authorization_code_hash: code_hash(&format!("{marker}-code")),
+            pkce_verifier_hash: flow.pkce_verifier_hash.clone().unwrap(),
+            account_label: account_label(),
+            requested_scopes: vec![ProviderScope::new("gmail.readonly").unwrap()],
+        },
+        destinations: brassclaw_auth::OAuthTokenDestinations {
+            access_secret: SecretHandle::new(format!("{marker}-access")).unwrap(),
+            refresh_secret: SecretHandle::new(format!("{marker}-refresh")).unwrap(),
+        },
+    }
+}
+
+fn fs_callback_dispatch(
+    admission: brassclaw_auth::OAuthCallbackAdmission,
+) -> brassclaw_auth::OAuthCallbackAction {
+    match admission {
+        brassclaw_auth::OAuthCallbackAdmission::Dispatch(state) => state.action,
+        other => panic!("one original must own the dispatch: {other:?}"),
+    }
+}
+
+/// Side-effect-free backend fixture result, constructed AFTER real admission.
+fn fs_callback_completion(action: &brassclaw_auth::OAuthCallbackAction) -> OAuthCallbackInput {
+    OAuthCallbackInput {
+        dispatched: Some(action.clone()),
+        flow_id: action.original.flow_id,
+        opaque_state_hash: action.original.opaque_state_hash.clone(),
+        outcome: brassclaw_auth::ProviderCallbackOutcome::Authorized {
+            exchange: OAuthProviderExchange {
+                provider: action.original.provider.clone(),
+                account_label: action.original.account_label.clone(),
+                authorization_code_hash: action.original.authorization_code_hash.clone(),
+                pkce_verifier_hash: action.original.pkce_verifier_hash.clone(),
+                access_secret: action.destinations.access_secret.clone(),
+                access_expires_at: None,
+                refresh_secret: Some(action.destinations.refresh_secret.clone()),
+                scopes: action.original.requested_scopes.clone(),
+                account_id: None,
+            },
+        },
+    }
+}
+
 fn fake_digest(value: &str) -> String {
     format!(
         "{:064x}",
@@ -91,6 +172,7 @@ async fn create_manual_token_flow(
 ) -> AuthInteractionId {
     let challenge = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -111,6 +193,7 @@ async fn create_manual_token_flow(
     };
     service
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: scope.clone(),
             kind: AuthFlowKind::IntegrationCredential,
@@ -149,6 +232,7 @@ async fn filesystem_accounts_survive_service_recreation() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("google-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("google-refresh").unwrap()),
             scopes: vec![ProviderScope::new("gmail.readonly").unwrap()],
         })
@@ -197,6 +281,7 @@ async fn filesystem_runtime_account_selection_matches_setup_invocation_account()
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(access_secret.clone()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![ProviderScope::new("gmail.readonly").unwrap()],
         })
@@ -227,7 +312,7 @@ async fn filesystem_runtime_account_selection_matches_new_thread_reusable_accoun
     let mut runtime_scope = AuthProductScope::new(setup_scope.resource.clone(), AuthSurface::Api);
     runtime_scope.resource.thread_id = Some(ThreadId::new("thread-auth-2").unwrap());
     runtime_scope.resource.invocation_id = InvocationId::new();
-    let service = Arc::new(test_service(filesystem, secret_store));
+    let service = Arc::new(test_service(filesystem, secret_store.clone()));
     let access_secret = SecretHandle::new("google-access").unwrap();
 
     let created = service
@@ -240,17 +325,28 @@ async fn filesystem_runtime_account_selection_matches_new_thread_reusable_accoun
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(access_secret.clone()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![ProviderScope::new("gmail.readonly").unwrap()],
         })
         .await
         .unwrap();
 
-    let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-        ProductAuthRuntimeCredentialAccountSelector::new(service),
-    ));
+    secret_store
+        .put(
+            created.scope.resource.clone(),
+            access_secret.clone(),
+            "selected runtime fixture".into(),
+        )
+        .await
+        .unwrap();
+    let resolver = ProductAuthRuntimeCredentialResolver::new(
+        Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(service)),
+        secret_store,
+    );
     let resolved = resolver
         .resolve_access_secret(RuntimeCredentialAccountRequest {
+            requirement: None,
             scope: &runtime_scope.resource,
             provider: &RuntimeCredentialAccountProviderId::new("google").unwrap(),
             provider_scopes: &[],
@@ -274,6 +370,7 @@ async fn filesystem_manual_token_submit_stores_secret_and_dedupes_replay() {
 
     let challenge = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -325,12 +422,23 @@ async fn filesystem_manual_token_submit_stores_secret_and_dedupes_replay() {
             },
         )
         .await
-        .expect_err("manual token submit should be one-shot");
-    assert_eq!(replay, AuthProductError::UnknownOrExpiredFlow);
+        .expect("same raw input must recover its original result");
+    assert_eq!(replay, result);
+    let changed = service
+        .submit_manual_token(
+            &scope,
+            SecretSubmitRequest {
+                interaction_id,
+                secret: SecretString::from("different-manual-token-value"),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(changed, AuthProductError::BackendConflict);
 }
 
 #[tokio::test]
-async fn filesystem_manual_token_submit_rotates_existing_reusable_account() {
+async fn filesystem_manual_token_unbound_setup_never_overwrites_another_account() {
     let filesystem = test_filesystem();
     let concrete_secret_store = Arc::new(InMemorySecretStore::new());
     let secret_store: Arc<dyn SecretStore> = concrete_secret_store.clone();
@@ -339,6 +447,7 @@ async fn filesystem_manual_token_submit_rotates_existing_reusable_account() {
 
     let first_challenge = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -375,6 +484,7 @@ async fn filesystem_manual_token_submit_rotates_existing_reusable_account() {
 
     let second_challenge = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -402,10 +512,13 @@ async fn filesystem_manual_token_submit_rotates_existing_reusable_account() {
         .await
         .unwrap();
 
-    assert_eq!(second.account_id, first.account_id);
+    assert_ne!(second.account_id, first.account_id);
     let accounts = service.accounts_for_owner(&scope).await.unwrap();
-    assert_eq!(accounts.len(), 1);
-    let updated = accounts.into_iter().next().unwrap();
+    assert_eq!(accounts.len(), 2);
+    let updated = accounts
+        .into_iter()
+        .find(|account| account.id == second.account_id)
+        .unwrap();
     let second_handle = updated.access_secret.expect("second secret handle");
     assert_ne!(second_handle, first_handle);
     assert!(
@@ -420,7 +533,7 @@ async fn filesystem_manual_token_submit_rotates_existing_reusable_account() {
             .metadata(&scope.resource, &first_handle)
             .await
             .unwrap()
-            .is_none()
+            .is_some()
     );
 }
 
@@ -434,6 +547,7 @@ async fn filesystem_manual_token_completion_persists_auth_flow_account() {
 
     let challenge = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -455,6 +569,7 @@ async fn filesystem_manual_token_completion_persists_auth_flow_account() {
 
     let flow = service
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: scope.clone(),
             kind: AuthFlowKind::IntegrationCredential,
@@ -532,6 +647,7 @@ async fn filesystem_manual_token_completion_rejects_invalid_completed_account() 
             owner_extension: None,
             granted_extensions: vec![],
             access_secret: None,
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![],
         })
@@ -561,6 +677,7 @@ async fn filesystem_manual_token_completion_rejects_invalid_completed_account() 
             owner_extension: None,
             granted_extensions: vec![],
             access_secret: Some(SecretHandle::new("foreign-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![],
         })
@@ -657,6 +774,7 @@ async fn filesystem_flow_record_source_projects_session_scoped_manual_flows() {
 
     let challenge = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -677,6 +795,7 @@ async fn filesystem_flow_record_source_projects_session_scoped_manual_flows() {
     };
     let flow = service
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: scope.clone(),
             kind: AuthFlowKind::IntegrationCredential,
@@ -758,6 +877,7 @@ async fn filesystem_account_record_source_projects_session_scoped_accounts_for_r
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("session-scoped-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -793,6 +913,7 @@ async fn filesystem_account_record_source_rejects_malformed_scan_records() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("valid-account-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -831,7 +952,7 @@ async fn filesystem_account_record_source_rejects_malformed_scan_records() {
 }
 
 #[tokio::test]
-async fn filesystem_runtime_account_selection_tolerates_many_session_account_roots() {
+async fn filesystem_runtime_account_selection_keeps_complete_session_roots_ambiguous() {
     let filesystem = test_filesystem();
     let secret_store: Arc<dyn SecretStore> = Arc::new(InMemorySecretStore::new());
     let service = Arc::new(test_service(filesystem, secret_store));
@@ -856,6 +977,7 @@ async fn filesystem_runtime_account_selection_tolerates_many_session_account_roo
                 access_secret: Some(
                     SecretHandle::new(format!("many-session-access-{index}")).unwrap(),
                 ),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![ProviderScope::new("drive.readonly").unwrap()],
             })
@@ -863,21 +985,29 @@ async fn filesystem_runtime_account_selection_tolerates_many_session_account_roo
             .unwrap();
     }
 
+    assert_eq!(
+        service
+            .accounts_for_owner(&runtime_scope)
+            .await
+            .unwrap()
+            .len(),
+        70
+    );
     let selector = ProductAuthRuntimeCredentialAccountSelector::new(service);
-    let selected = selector
+    let error = selector
         .select_unique_configured_runtime_account(RuntimeCredentialAccountSelectionRequest::new(
             CredentialAccountSelectionRequest::new(runtime_scope.clone(), google_provider()),
             runtime_scope,
             vec![ProviderScope::new("drive.readonly").unwrap()],
         ))
         .await
-        .expect("session-root fanout must not make credential selection unavailable");
+        .expect_err("complete same-provider session roots require an explicit selection");
 
-    assert_eq!(selected.provider, google_provider());
+    assert!(matches!(error, AuthProductError::AccountSelectionRequired));
 }
 
 #[tokio::test]
-async fn filesystem_runtime_account_selection_tolerates_many_account_records_per_root() {
+async fn filesystem_runtime_account_selection_keeps_complete_account_records_ambiguous() {
     let filesystem = test_filesystem();
     let secret_store: Arc<dyn SecretStore> = Arc::new(InMemorySecretStore::new());
     let service = Arc::new(test_service(filesystem, secret_store));
@@ -900,6 +1030,7 @@ async fn filesystem_runtime_account_selection_tolerates_many_account_records_per
                 access_secret: Some(
                     SecretHandle::new(format!("many-account-access-{index}")).unwrap(),
                 ),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![ProviderScope::new("drive.readonly").unwrap()],
             })
@@ -907,17 +1038,25 @@ async fn filesystem_runtime_account_selection_tolerates_many_account_records_per
             .unwrap();
     }
 
+    assert_eq!(
+        service
+            .accounts_for_owner(&runtime_scope)
+            .await
+            .unwrap()
+            .len(),
+        70
+    );
     let selector = ProductAuthRuntimeCredentialAccountSelector::new(service);
-    let selected = selector
+    let error = selector
         .select_unique_configured_runtime_account(RuntimeCredentialAccountSelectionRequest::new(
             CredentialAccountSelectionRequest::new(runtime_scope.clone(), google_provider()),
             runtime_scope,
             vec![ProviderScope::new("drive.readonly").unwrap()],
         ))
         .await
-        .expect("account-record fanout must not make credential selection unavailable");
+        .expect_err("complete same-provider account records require an explicit selection");
 
-    assert_eq!(selected.provider, google_provider());
+    assert!(matches!(error, AuthProductError::AccountSelectionRequired));
 }
 
 #[tokio::test]
@@ -925,92 +1064,73 @@ async fn filesystem_oauth_callback_claim_is_one_shot_and_completion_persists() {
     let filesystem = test_filesystem();
     let secret_store: Arc<dyn SecretStore> = Arc::new(InMemorySecretStore::new());
     let scope = test_scope();
-    let service = test_service(Arc::clone(&filesystem), Arc::clone(&secret_store));
-
-    let flow = service
-        .create_flow(NewAuthFlow {
-            id: None,
-            scope: scope.clone(),
-            kind: AuthFlowKind::IntegrationCredential,
-            provider: google_provider(),
-            challenge: AuthChallenge::OAuthUrl {
-                authorization_url: OAuthAuthorizationUrl::new("https://provider.example/oauth")
-                    .unwrap(),
-                expires_at: Utc::now() + Duration::minutes(5),
-            },
-            continuation: AuthContinuationRef::SetupOnly,
-            update_binding: None,
-            opaque_state_hash: Some(state_hash("state")),
-            pkce_verifier_hash: Some(pkce_hash("pkce")),
-            expires_at: Utc::now() + Duration::minutes(5),
-        })
+    let service = test_service(filesystem.clone(), secret_store.clone());
+    let flow = fs_callback_flow(&service, &scope, None, "one-shot").await;
+    let prepared = fs_callback_prepared(&flow, "one-shot");
+    let action = fs_callback_dispatch(
+        service
+            .claim_oauth_callback(&scope, prepared.clone())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        service
+            .get_flow(&scope, flow.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        AuthFlowStatus::CallbackReceived
+    );
+    match service
+        .claim_oauth_callback(&scope, prepared.clone())
         .await
-        .unwrap();
-    let claim = OAuthCallbackClaimRequest {
-        flow_id: flow.id,
-        opaque_state_hash: state_hash("state"),
-        provider: google_provider(),
-        pkce_verifier_hash: pkce_hash("pkce"),
-    };
-
-    let claimed = service
-        .claim_oauth_callback(&scope, claim.clone())
-        .await
-        .unwrap();
-    assert_eq!(claimed.status, AuthFlowStatus::CallbackReceived);
-
-    let second_claim = service
-        .claim_oauth_callback(&scope, claim.clone())
-        .await
-        .expect_err("in-flight callback claim must be one-shot");
-    assert_eq!(second_claim, AuthProductError::FlowAlreadyTerminal);
-
+        .unwrap()
+    {
+        brassclaw_auth::OAuthCallbackAdmission::Original(state) => assert_eq!(state.action, action),
+        other => panic!("second claim cannot dispatch again: {other:?}"),
+    }
+    let mut changed = prepared.clone();
+    changed.original.authorization_code_hash = code_hash("different-code");
+    assert!(matches!(
+        service.claim_oauth_callback(&scope, changed).await,
+        Err(AuthProductError::BackendConflict)
+    ));
     let completed = service
-        .complete_oauth_callback(
-            &scope,
-            OAuthCallbackInput {
-                flow_id: flow.id,
-                opaque_state_hash: state_hash("state"),
-                outcome: brassclaw_auth::ProviderCallbackOutcome::Authorized {
-                    exchange: OAuthProviderExchange {
-                        provider: google_provider(),
-                        account_label: account_label(),
-                        authorization_code_hash: code_hash("code"),
-                        pkce_verifier_hash: pkce_hash("pkce"),
-                        access_secret: SecretHandle::new("oauth-access").unwrap(),
-                        refresh_secret: Some(SecretHandle::new("oauth-refresh").unwrap()),
-                        scopes: vec![ProviderScope::new("gmail.readonly").unwrap()],
-                        account_id: None,
-                    },
-                },
-            },
-        )
+        .complete_oauth_callback(&scope, fs_callback_completion(&action))
         .await
         .unwrap();
     assert_eq!(completed.status, AuthFlowStatus::Completed);
-    assert!(completed.credential_account_id.is_some());
-
-    let emitted_at = Utc::now();
-    service
-        .mark_continuation_dispatched(&scope, flow.id, emitted_at)
-        .await
-        .unwrap();
-
-    let recreated = test_service(Arc::clone(&filesystem), secret_store);
-    let stored = recreated
-        .get_flow(&scope, flow.id)
+    let restarted = test_service(filesystem, secret_store);
+    let original = restarted
+        .read_oauth_callback_original(&scope, &action.original.reference())
         .await
         .unwrap()
-        .expect("completed flow should be durable");
-    assert_eq!(stored.status, AuthFlowStatus::Completed);
-    assert_eq!(stored.continuation_emitted_at, Some(emitted_at));
-
-    let completed_replay = recreated
-        .claim_oauth_callback(&scope, claim)
+        .unwrap();
+    assert_eq!(original.flow, completed);
+    assert_eq!(
+        original.action.publication,
+        brassclaw_auth::OAuthCallbackPublication::Applied
+    );
+    assert_eq!(
+        restarted
+            .complete_oauth_callback(&scope, fs_callback_completion(&action))
+            .await
+            .unwrap(),
+        completed
+    );
+    let account = restarted
+        .get_account(CredentialAccountLookupRequest::new(
+            scope,
+            completed.credential_account_id.unwrap(),
+        ))
         .await
-        .expect("completed callback replay should not reclaim provider exchange");
-    assert_eq!(completed_replay.status, AuthFlowStatus::Completed);
-    assert_eq!(completed_replay.continuation_emitted_at, Some(emitted_at));
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        account.access_secret,
+        Some(action.destinations.access_secret)
+    );
 }
 
 #[tokio::test]
@@ -1022,6 +1142,7 @@ async fn filesystem_manual_token_submit_allows_only_one_concurrent_consumer() {
 
     let challenge = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -1053,17 +1174,17 @@ async fn filesystem_manual_token_submit_allows_only_one_concurrent_consumer() {
     }
 
     let mut successes = 0;
-    let mut consumed_rejections = 0;
+    let mut conflicting_inputs = 0;
     while let Some(result) = tasks.join_next().await {
         match result.unwrap() {
             Ok(_) => successes += 1,
-            Err(AuthProductError::UnknownOrExpiredFlow) => consumed_rejections += 1,
+            Err(AuthProductError::BackendConflict) => conflicting_inputs += 1,
             Err(error) => panic!("unexpected submit error: {error:?}"),
         }
     }
 
     assert_eq!(successes, 1);
-    assert_eq!(consumed_rejections, 1);
+    assert_eq!(conflicting_inputs, 1);
 }
 
 // ─── fix: fs_error maps VersionMismatch to BackendConflict ───────────────────
@@ -1101,94 +1222,49 @@ fn fs_error_maps_version_mismatch_to_backend_conflict() {
 
 #[tokio::test]
 async fn filesystem_oauth_continuation_marker_is_idempotent() {
-    let filesystem = test_filesystem();
-    let secret_store: Arc<dyn SecretStore> = Arc::new(InMemorySecretStore::new());
     let scope = test_scope();
-    let service = test_service(Arc::clone(&filesystem), Arc::clone(&secret_store));
-
-    let flow = service
-        .create_flow(NewAuthFlow {
-            id: None,
-            scope: scope.clone(),
-            kind: AuthFlowKind::IntegrationCredential,
-            provider: google_provider(),
-            challenge: AuthChallenge::OAuthUrl {
-                authorization_url: OAuthAuthorizationUrl::new("https://provider.example/oauth")
-                    .unwrap(),
-                expires_at: Utc::now() + Duration::minutes(5),
-            },
-            continuation: AuthContinuationRef::SetupOnly,
-            update_binding: None,
-            opaque_state_hash: Some(state_hash("s")),
-            pkce_verifier_hash: Some(pkce_hash("p")),
-            expires_at: Utc::now() + Duration::minutes(5),
-        })
-        .await
-        .unwrap();
-
-    // Complete the flow so mark_continuation_dispatched is valid.
+    let service = test_service(test_filesystem(), Arc::new(InMemorySecretStore::new()));
+    let flow = fs_callback_flow(&service, &scope, None, "marker").await;
+    let action = fs_callback_dispatch(
+        service
+            .claim_oauth_callback(&scope, fs_callback_prepared(&flow, "marker"))
+            .await
+            .unwrap(),
+    );
     service
-        .claim_oauth_callback(
-            &scope,
-            OAuthCallbackClaimRequest {
-                flow_id: flow.id,
-                opaque_state_hash: state_hash("s"),
-                provider: google_provider(),
-                pkce_verifier_hash: pkce_hash("p"),
-            },
-        )
+        .complete_oauth_callback(&scope, fs_callback_completion(&action))
         .await
         .unwrap();
-    service
-        .complete_oauth_callback(
-            &scope,
-            OAuthCallbackInput {
-                flow_id: flow.id,
-                opaque_state_hash: state_hash("s"),
-                outcome: brassclaw_auth::ProviderCallbackOutcome::Authorized {
-                    exchange: OAuthProviderExchange {
-                        provider: google_provider(),
-                        account_label: account_label(),
-                        authorization_code_hash: code_hash("c"),
-                        pkce_verifier_hash: pkce_hash("p"),
-                        access_secret: SecretHandle::new("access").unwrap(),
-                        refresh_secret: None,
-                        scopes: vec![],
-                        account_id: None,
-                    },
-                },
-            },
-        )
-        .await
-        .unwrap();
-
     let first_at = Utc::now();
     let first = service
         .mark_continuation_dispatched(&scope, flow.id, first_at)
         .await
         .unwrap();
     assert_eq!(first.continuation_emitted_at, Some(first_at));
-
-    // Second call with a different timestamp must NOT overwrite.
-    let second_at = first_at + Duration::seconds(1);
     let second = service
-        .mark_continuation_dispatched(&scope, flow.id, second_at)
+        .mark_continuation_dispatched(&scope, flow.id, first_at + Duration::seconds(1))
         .await
         .unwrap();
+    assert_eq!(second.continuation_emitted_at, Some(first_at));
+    let original = service
+        .read_oauth_callback_original(&scope, &action.original.reference())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(original.flow, second);
     assert_eq!(
-        second.continuation_emitted_at,
-        Some(first_at),
-        "idempotent: second call must not overwrite the first emitted_at"
+        original.action.publication,
+        brassclaw_auth::OAuthCallbackPublication::Applied
     );
 }
 
-// ─── fix: manual-token submit cleans up secret on write failure ───────────────
+// Bound rotation preserves original references instead of blind cleanup.
 
 #[tokio::test]
-async fn filesystem_manual_token_rotation_removes_previous_secret() {
-    // Tests the update_binding path in create_or_update_manual_token_account:
-    // after a successful token rotation the OLD access secret must be purged
-    // from SecretStore so it does not accumulate orphaned material.
+async fn filesystem_manual_token_bound_rotation_preserves_original_secret_references() {
+    // Exercise the preauthorized update_binding path:
+    // Original outputs remain retained while original receipts/references need
+    // them. Rotation cannot authorize blind cleanup of a previous generation.
     use brassclaw_auth::{
         CredentialAccountUpdateBinding, ManualTokenSetupRequest, SecretSubmitRequest,
     };
@@ -1202,6 +1278,7 @@ async fn filesystem_manual_token_rotation_removes_previous_secret() {
     // --- First submit: create the account via the no-binding path. ---
     let challenge1 = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -1255,6 +1332,7 @@ async fn filesystem_manual_token_rotation_removes_previous_secret() {
     // --- Second submit: rotate via update_binding to the same account. ---
     let challenge2 = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -1287,14 +1365,14 @@ async fn filesystem_manual_token_rotation_removes_previous_secret() {
         .await
         .unwrap();
 
-    // The old handle must have been purged from SecretStore after the rotation.
+    // The original output remains reachable for its recorded original result.
     assert!(
         concrete_secret_store
             .metadata(&scope.resource, &old_handle)
             .await
             .unwrap()
-            .is_none(),
-        "v1 secret must be purged from SecretStore after rotation"
+            .is_some(),
+        "original generation must be retained for its existing references"
     );
 
     // The new handle must be present.
@@ -1364,6 +1442,7 @@ async fn filesystem_cleanup_for_lifecycle_deactivates_owner_and_revokes_on_unins
             owner_extension: Some(ext_id.clone()),
             granted_extensions: vec![],
             access_secret: Some(access.clone()),
+            access_expires_at: None,
             refresh_secret: Some(refresh.clone()),
             scopes: vec![],
         })
@@ -1457,6 +1536,7 @@ async fn filesystem_manual_token_submit_rejects_expired_interaction() {
     // Create an interaction that is already past its expiry.
     let challenge = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -1512,10 +1592,16 @@ async fn unavailable_auth_provider_client_validates_before_returning_backend_una
         provider: google_provider(),
         account_label: account_label(),
         authorization_code: OAuthAuthorizationCode::new(SecretString::from("real-code")).unwrap(),
-        authorization_code_hash: code_hash("c"),
+        authorization_code_hash: AuthorizationCodeHash::new(brassclaw_common::hashing::sha256_hex(
+            b"real-code",
+        ))
+        .unwrap(),
         pkce_verifier: brassclaw_auth::PkceVerifierSecret::new(SecretString::from("real-verifier"))
             .unwrap(),
-        pkce_verifier_hash: pkce_hash("p"),
+        pkce_verifier_hash: PkceVerifierHash::new(brassclaw_common::hashing::sha256_hex(
+            b"real-verifier",
+        ))
+        .unwrap(),
         scopes: vec![],
     };
     let err = client.exchange_callback(ctx, valid).await.unwrap_err();
@@ -1526,14 +1612,19 @@ async fn unavailable_auth_provider_client_validates_before_returning_backend_una
     );
 
     // 3. refresh_token always BackendUnavailable.
+    let request = OAuthProviderRefreshRequest {
+        refresh_id: brassclaw_auth::CredentialRefreshId::new(),
+        scope: test_scope(),
+        account_id: CredentialAccountId::new(),
+        provider: google_provider(),
+        refresh_secret: SecretHandle::new("r").unwrap(),
+        scopes: vec![],
+    };
+    let preparation =
+        brassclaw_auth::InMemoryAuthProductServices::refresh_preparation_for_tests(&request)
+            .unwrap();
     let refresh_err = client
-        .refresh_token(OAuthProviderRefreshRequest {
-            scope: test_scope(),
-            account_id: CredentialAccountId::new(),
-            provider: google_provider(),
-            refresh_secret: SecretHandle::new("r").unwrap(),
-            scopes: vec![],
-        })
+        .refresh_token(request, preparation)
         .await
         .unwrap_err();
     assert_eq!(refresh_err, AuthProductError::BackendUnavailable);
@@ -1579,6 +1670,7 @@ async fn filesystem_list_accounts_rejects_zero_and_oversized_limit() {
                 owner_extension: None,
                 granted_extensions: vec![],
                 access_secret: None,
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![],
             })
@@ -1601,251 +1693,136 @@ async fn filesystem_list_accounts_rejects_zero_and_oversized_limit() {
 // ─── zmanian follow-up #1: OAuth re-auth must purge previous secret handles ──
 
 #[tokio::test]
-async fn filesystem_oauth_reauth_purges_previous_provider_secrets() {
-    // After a successful OAuth re-auth through a bound flow, the OLD access
-    // and refresh secret handles must be deleted from SecretStore so repeated
-    // re-auths do not accumulate dead handles. Host OAuth provider clients
-    // return exchange.account_id == None, so the durable flow must use the
-    // update_binding account id rather than rejecting the callback.
-    use brassclaw_auth::{CredentialAccountUpdateBinding, ProviderCallbackOutcome};
+async fn filesystem_oauth_reauth_retains_outputs_and_original_receipts() {
     use brassclaw_secrets::SecretMaterial;
-
     let filesystem = test_filesystem();
-    let concrete_secret_store = Arc::new(InMemorySecretStore::new());
-    let secret_store: Arc<dyn SecretStore> = concrete_secret_store.clone();
+    let secret_store = Arc::new(InMemorySecretStore::new());
+    let service = test_service(filesystem.clone(), secret_store.clone());
     let scope = test_scope();
-    let service = test_service(Arc::clone(&filesystem), Arc::clone(&secret_store));
-
-    // ── Step 1: initial OAuth flow creates a new account ─────────────────────
-    let flow1 = service
-        .create_flow(NewAuthFlow {
-            id: None,
-            scope: scope.clone(),
-            kind: AuthFlowKind::IntegrationCredential,
-            provider: google_provider(),
-            challenge: AuthChallenge::OAuthUrl {
-                authorization_url: OAuthAuthorizationUrl::new("https://provider.example/oauth")
-                    .unwrap(),
-                expires_at: Utc::now() + Duration::minutes(5),
-            },
-            continuation: AuthContinuationRef::SetupOnly,
-            update_binding: None,
-            opaque_state_hash: Some(state_hash("state1")),
-            pkce_verifier_hash: Some(pkce_hash("pkce1")),
-            expires_at: Utc::now() + Duration::minutes(5),
-        })
-        .await
-        .unwrap();
-
-    service
-        .claim_oauth_callback(
-            &scope,
-            OAuthCallbackClaimRequest {
-                flow_id: flow1.id,
-                opaque_state_hash: state_hash("state1"),
-                provider: google_provider(),
-                pkce_verifier_hash: pkce_hash("pkce1"),
-            },
-        )
-        .await
-        .unwrap();
-
-    let access_v1 = SecretHandle::new("oauth-access-v1").unwrap();
-    let refresh_v1 = SecretHandle::new("oauth-refresh-v1").unwrap();
-    // Pre-populate SecretStore to simulate provider client having stored these
-    // handles; this lets us verify they are purged on re-auth.
-    concrete_secret_store
-        .put(
-            scope.resource.clone(),
-            access_v1.clone(),
-            SecretMaterial::from("access-token-v1"),
-        )
-        .await
-        .unwrap();
-    concrete_secret_store
-        .put(
-            scope.resource.clone(),
-            refresh_v1.clone(),
-            SecretMaterial::from("refresh-token-v1"),
-        )
-        .await
-        .unwrap();
-
-    let completed1 = service
-        .complete_oauth_callback(
-            &scope,
-            OAuthCallbackInput {
-                flow_id: flow1.id,
-                opaque_state_hash: state_hash("state1"),
-                outcome: ProviderCallbackOutcome::Authorized {
-                    exchange: OAuthProviderExchange {
-                        provider: google_provider(),
-                        account_label: account_label(),
-                        authorization_code_hash: code_hash("code1"),
-                        pkce_verifier_hash: pkce_hash("pkce1"),
-                        access_secret: access_v1.clone(),
-                        refresh_secret: Some(refresh_v1.clone()),
-                        scopes: vec![ProviderScope::new("gmail.readonly").unwrap()],
-                        account_id: None,
-                    },
-                },
-            },
-        )
-        .await
-        .unwrap();
-    let account_id = completed1
-        .credential_account_id
-        .expect("first OAuth flow must produce a credential account");
-
-    // v1 handles must be present before re-auth.
-    assert!(
-        concrete_secret_store
-            .metadata(&scope.resource, &access_v1)
+    let first_flow = fs_callback_flow(&service, &scope, None, "retained-first").await;
+    let first = fs_callback_dispatch(
+        service
+            .claim_oauth_callback(&scope, fs_callback_prepared(&first_flow, "retained-first"))
             .await
-            .unwrap()
-            .is_some(),
-        "v1 access handle must exist before re-auth"
+            .unwrap(),
     );
-    assert!(
-        concrete_secret_store
-            .metadata(&scope.resource, &refresh_v1)
+    for handle in [
+        &first.destinations.access_secret,
+        &first.destinations.refresh_secret,
+    ] {
+        secret_store
+            .put(
+                scope.resource.clone(),
+                handle.clone(),
+                SecretMaterial::from("retained-first-token"),
+            )
             .await
-            .unwrap()
-            .is_some(),
-        "v1 refresh handle must exist before re-auth"
+            .unwrap();
+    }
+    let completed_first = service
+        .complete_oauth_callback(&scope, fs_callback_completion(&first))
+        .await
+        .unwrap();
+    let account_id = completed_first.credential_account_id.unwrap();
+    let original_account = service
+        .get_account(CredentialAccountLookupRequest::new(
+            scope.clone(),
+            account_id,
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let second_flow = fs_callback_flow(
+        &service,
+        &scope,
+        Some(
+            brassclaw_auth::CredentialAccountUpdateBinding::from_projection(
+                &original_account.projection(),
+            ),
+        ),
+        "retained-second",
+    )
+    .await;
+    let second = fs_callback_dispatch(
+        service
+            .claim_oauth_callback(
+                &scope,
+                fs_callback_prepared(&second_flow, "retained-second"),
+            )
+            .await
+            .unwrap(),
     );
-
-    // ── Step 2: re-auth flow bound to the existing account ───────────────────
-    let flow2 = service
-        .create_flow(NewAuthFlow {
-            id: None,
-            scope: scope.clone(),
-            kind: AuthFlowKind::IntegrationCredential,
-            provider: google_provider(),
-            challenge: AuthChallenge::OAuthUrl {
-                authorization_url: OAuthAuthorizationUrl::new("https://provider.example/oauth")
-                    .unwrap(),
-                expires_at: Utc::now() + Duration::minutes(5),
-            },
-            continuation: AuthContinuationRef::SetupOnly,
-            update_binding: Some(CredentialAccountUpdateBinding {
-                account_id,
-                ownership: CredentialOwnership::UserReusable,
-                owner_extension: None,
-                granted_extensions: vec![],
-            }),
-            opaque_state_hash: Some(state_hash("state2")),
-            pkce_verifier_hash: Some(pkce_hash("pkce2")),
-            expires_at: Utc::now() + Duration::minutes(5),
-        })
-        .await
-        .unwrap();
-
-    service
-        .claim_oauth_callback(
-            &scope,
-            OAuthCallbackClaimRequest {
-                flow_id: flow2.id,
-                opaque_state_hash: state_hash("state2"),
-                provider: google_provider(),
-                pkce_verifier_hash: pkce_hash("pkce2"),
-            },
-        )
-        .await
-        .unwrap();
-
-    let access_v2 = SecretHandle::new("oauth-access-v2").unwrap();
-    let refresh_v2 = SecretHandle::new("oauth-refresh-v2").unwrap();
-    concrete_secret_store
-        .put(
-            scope.resource.clone(),
-            access_v2.clone(),
-            SecretMaterial::from("access-token-v2"),
-        )
-        .await
-        .unwrap();
-    concrete_secret_store
-        .put(
-            scope.resource.clone(),
-            refresh_v2.clone(),
-            SecretMaterial::from("refresh-token-v2"),
-        )
-        .await
-        .unwrap();
-
-    service
-        .complete_oauth_callback(
-            &scope,
-            OAuthCallbackInput {
-                flow_id: flow2.id,
-                opaque_state_hash: state_hash("state2"),
-                outcome: ProviderCallbackOutcome::Authorized {
-                    exchange: OAuthProviderExchange {
-                        provider: google_provider(),
-                        account_label: account_label(),
-                        authorization_code_hash: code_hash("code2"),
-                        pkce_verifier_hash: pkce_hash("pkce2"),
-                        access_secret: access_v2.clone(),
-                        refresh_secret: Some(refresh_v2.clone()),
-                        scopes: vec![ProviderScope::new("gmail.readonly").unwrap()],
-                        account_id: None,
-                    },
-                },
-            },
-        )
-        .await
-        .unwrap();
-
-    // Old handles must have been purged from SecretStore.
-    assert!(
-        concrete_secret_store
-            .metadata(&scope.resource, &access_v1)
+    for handle in [
+        &second.destinations.access_secret,
+        &second.destinations.refresh_secret,
+    ] {
+        secret_store
+            .put(
+                scope.resource.clone(),
+                handle.clone(),
+                SecretMaterial::from("retained-second-token"),
+            )
             .await
-            .unwrap()
-            .is_none(),
-        "v1 access handle must be purged from SecretStore after re-auth"
+            .unwrap();
+    }
+    let completed_second = service
+        .complete_oauth_callback(&scope, fs_callback_completion(&second))
+        .await
+        .unwrap();
+    assert_eq!(completed_second.credential_account_id, Some(account_id));
+    for handle in [
+        &first.destinations.access_secret,
+        &first.destinations.refresh_secret,
+        &second.destinations.access_secret,
+        &second.destinations.refresh_secret,
+    ] {
+        assert!(
+            secret_store
+                .metadata(&scope.resource, handle)
+                .await
+                .unwrap()
+                .is_some(),
+            "retained outputs are not blind cleanup authority"
+        );
+    }
+    let (document, _) = service
+        .read_account_document(&scope, account_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(document.account.created_at, original_account.created_at);
+    assert_eq!(
+        document.account.access_secret.as_ref(),
+        Some(&second.destinations.access_secret)
     );
-    assert!(
-        concrete_secret_store
-            .metadata(&scope.resource, &refresh_v1)
-            .await
-            .unwrap()
-            .is_none(),
-        "v1 refresh handle must be purged from SecretStore after re-auth"
+    assert_eq!(document.auth_callback_actions.len(), 2);
+    assert_eq!(
+        document.auth_callback_actions[&first_flow.id]
+            .published_account
+            .as_ref(),
+        Some(&original_account)
     );
-
-    // New handles must remain.
-    assert!(
-        concrete_secret_store
-            .metadata(&scope.resource, &access_v2)
+    let restarted = test_service(filesystem, secret_store);
+    let replay = restarted
+        .read_oauth_callback_original(&scope, &first.original.reference())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(replay.completed_flow().unwrap(), completed_first);
+    assert_eq!(
+        restarted
+            .get_account(CredentialAccountLookupRequest::new(scope, account_id))
             .await
             .unwrap()
-            .is_some(),
-        "v2 access handle must be present in SecretStore after re-auth"
-    );
-    assert!(
-        concrete_secret_store
-            .metadata(&scope.resource, &refresh_v2)
-            .await
-            .unwrap()
-            .is_some(),
-        "v2 refresh handle must be present in SecretStore after re-auth"
+            .unwrap(),
+        document.account
     );
 }
 
-// ─── [High · tests] manual-token submit cleans up secret on account write fail
-
+// An occupied target cannot authorize output creation or original deletion.
 #[tokio::test]
-async fn filesystem_manual_token_submit_cleans_up_secret_when_account_write_fails() {
-    // create_or_update_manual_token_account (None path) stores the secret first,
-    // then calls create_account_with_id(CasExpectation::Absent). If the write
-    // fails the newly-stored secret must be deleted from SecretStore so it does
-    // not orphan in the store.
-    //
-    // Failure injection: derive the account ID that submit_manual_token will use
-    // (CredentialAccountId::from_uuid(interaction_id.as_uuid())) and write a
-    // dummy record at that path before submitting, causing CasExpectation::Absent
-    // to return VersionMismatch → BackendConflict.
+async fn filesystem_manual_token_submit_preserves_original_and_rejects_occupied_account_before_output()
+ {
     use brassclaw_auth::CredentialAccountId;
     use brassclaw_filesystem::CasExpectation;
 
@@ -1858,6 +1835,7 @@ async fn filesystem_manual_token_submit_cleans_up_secret_when_account_write_fail
     // Request an interaction so we know its ID (and can derive the account path).
     let challenge = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -1885,6 +1863,7 @@ async fn filesystem_manual_token_submit_cleans_up_secret_when_account_write_fail
         owner_extension: None,
         granted_extensions: vec![],
         access_secret: None,
+        access_expires_at: None,
         refresh_secret: None,
         scopes: vec![],
         created_at: Utc::now(),
@@ -1899,7 +1878,7 @@ async fn filesystem_manual_token_submit_cleans_up_secret_when_account_write_fail
         .await
         .expect("pre-create dummy account must succeed");
 
-    // Submit the token — account write will fail; cleanup must run.
+    // The occupied target rejects publication before any output is created.
     let result = service
         .submit_manual_token(
             &scope,
@@ -1911,7 +1890,7 @@ async fn filesystem_manual_token_submit_cleans_up_secret_when_account_write_fail
         .await;
     assert!(result.is_err(), "submit must fail when account write fails");
 
-    // The secret stored before the failing write must have been purged.
+    // No retained output was created; the encrypted original remains accountable.
     let access_handle = super::paths::manual_token_secret_handle(account_id, interaction_id)
         .expect("handle derivation must succeed");
     assert!(
@@ -1920,48 +1899,38 @@ async fn filesystem_manual_token_submit_cleans_up_secret_when_account_write_fail
             .await
             .unwrap()
             .is_none(),
-        "orphaned secret must be purged from SecretStore after failed account write"
+        "occupied account must not cause output creation"
+    );
+    let original_handle =
+        SecretHandle::new(format!("product-auth-manual-original-{interaction_id}")).unwrap();
+    assert!(matches!(
+        concrete_secret_store
+            .custody(&scope.resource, &original_handle)
+            .await
+            .unwrap()
+            .unwrap()
+            .state,
+        brassclaw_secrets::SecretCustodyState::Original { .. }
+    ));
+    assert!(
+        concrete_secret_store
+            .matches(&scope.resource, &original_handle, &"token-value".into())
+            .await
+            .unwrap()
     );
 }
 
 // ─── fix: OAuth callback CAS-conflict re-read branch ─────────────────────────
 
 #[tokio::test]
-async fn filesystem_oauth_callback_cas_conflict_reuses_concurrent_account() {
-    // Pre-create an account with the deterministic id that complete_oauth_callback
-    // derives from flow_id (CredentialAccountId::from_uuid(flow_id.as_uuid())).
-    // This simulates a concurrent callback that already created the account.
-    // The CAS-conflict branch should re-read, validate, update, and succeed.
-    let filesystem = test_filesystem();
-    let secret_store: Arc<dyn SecretStore> = Arc::new(InMemorySecretStore::new());
+async fn filesystem_oauth_unbound_collision_is_rejected_before_dispatch() {
     let scope = test_scope();
-    let service = test_service(Arc::clone(&filesystem), Arc::clone(&secret_store));
-
-    let flow = service
-        .create_flow(NewAuthFlow {
-            id: None,
-            scope: scope.clone(),
-            kind: AuthFlowKind::IntegrationCredential,
-            provider: google_provider(),
-            challenge: AuthChallenge::OAuthUrl {
-                authorization_url: OAuthAuthorizationUrl::new("https://provider.example/oauth")
-                    .unwrap(),
-                expires_at: Utc::now() + Duration::minutes(5),
-            },
-            continuation: AuthContinuationRef::SetupOnly,
-            update_binding: None,
-            opaque_state_hash: Some(state_hash("s2")),
-            pkce_verifier_hash: Some(pkce_hash("p2")),
-            expires_at: Utc::now() + Duration::minutes(5),
-        })
-        .await
-        .unwrap();
-
-    // Pre-seed the account with the deterministic id.
-    let preseeded_id = CredentialAccountId::from_uuid(flow.id.as_uuid());
-    service
+    let service = test_service(test_filesystem(), Arc::new(InMemorySecretStore::new()));
+    let flow = fs_callback_flow(&service, &scope, None, "collision").await;
+    let account_id = CredentialAccountId::from_uuid(flow.id.as_uuid());
+    let existing = service
         .create_account_with_id(
-            preseeded_id,
+            account_id,
             NewCredentialAccount {
                 scope: scope.clone(),
                 provider: google_provider(),
@@ -1970,7 +1939,8 @@ async fn filesystem_oauth_callback_cas_conflict_reuses_concurrent_account() {
                 ownership: CredentialOwnership::UserReusable,
                 owner_extension: None,
                 granted_extensions: vec![],
-                access_secret: Some(SecretHandle::new("pre-seeded-access").unwrap()),
+                access_secret: Some(SecretHandle::new("preexisting-original-access").unwrap()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![],
             },
@@ -1978,49 +1948,30 @@ async fn filesystem_oauth_callback_cas_conflict_reuses_concurrent_account() {
         )
         .await
         .unwrap();
-
-    service
-        .claim_oauth_callback(
-            &scope,
-            OAuthCallbackClaimRequest {
-                flow_id: flow.id,
-                opaque_state_hash: state_hash("s2"),
-                provider: google_provider(),
-                pkce_verifier_hash: pkce_hash("p2"),
-            },
-        )
-        .await
-        .unwrap();
-
-    let completed = service
-        .complete_oauth_callback(
-            &scope,
-            OAuthCallbackInput {
-                flow_id: flow.id,
-                opaque_state_hash: state_hash("s2"),
-                outcome: brassclaw_auth::ProviderCallbackOutcome::Authorized {
-                    exchange: OAuthProviderExchange {
-                        provider: google_provider(),
-                        account_label: account_label(),
-                        authorization_code_hash: code_hash("c2"),
-                        pkce_verifier_hash: pkce_hash("p2"),
-                        access_secret: SecretHandle::new("new-access").unwrap(),
-                        refresh_secret: Some(SecretHandle::new("new-refresh").unwrap()),
-                        scopes: vec![ProviderScope::new("gmail.readonly").unwrap()],
-                        account_id: None,
-                    },
-                },
-            },
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(
-        completed.credential_account_id,
-        Some(preseeded_id),
-        "CAS-conflict branch must reuse the pre-seeded account id"
+    let prepared = fs_callback_prepared(&flow, "collision");
+    let reference = prepared.original.reference();
+    assert!(matches!(
+        service.claim_oauth_callback(&scope, prepared).await,
+        Err(AuthProductError::BackendConflict)
+    ));
+    assert!(
+        service
+            .read_oauth_callback_original(&scope, &reference)
+            .await
+            .unwrap()
+            .is_none()
     );
-    assert_eq!(completed.status, AuthFlowStatus::Completed);
+    assert_eq!(
+        service.get_flow(&scope, flow.id).await.unwrap().unwrap(),
+        flow
+    );
+    assert_eq!(
+        service
+            .get_account(CredentialAccountLookupRequest::new(scope, account_id))
+            .await
+            .unwrap(),
+        Some(existing)
+    );
 }
 
 // ─── fix: grant-removal on non-owner account in cleanup_for_lifecycle ─────────
@@ -2048,6 +1999,7 @@ async fn filesystem_cleanup_removes_grant_from_non_owner_account() {
             owner_extension: None,
             granted_extensions: vec![ext_id.clone()],
             access_secret: None,
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![],
         })
@@ -2121,6 +2073,7 @@ async fn filesystem_select_unique_configured_account_single_and_multi() {
             owner_extension: None,
             granted_extensions: vec![],
             access_secret: None,
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![],
         })
@@ -2148,6 +2101,7 @@ async fn filesystem_select_unique_configured_account_single_and_multi() {
             owner_extension: None,
             granted_extensions: vec![],
             access_secret: None,
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![],
         })
@@ -2181,6 +2135,7 @@ async fn filesystem_select_configured_account_validates_provider_and_rejects_mis
             owner_extension: None,
             granted_extensions: vec![],
             access_secret: None,
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![],
         })
@@ -2233,6 +2188,7 @@ async fn filesystem_cancel_flow_and_terminal_state_rejection() {
 
     let flow = service
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: scope.clone(),
             kind: AuthFlowKind::IntegrationCredential,
@@ -2265,57 +2221,42 @@ async fn filesystem_cancel_flow_and_terminal_state_rejection() {
 #[tokio::test]
 async fn filesystem_fail_oauth_callback_marks_flow_failed() {
     use brassclaw_auth::{AuthErrorCode, OAuthCallbackFailureInput};
-    let filesystem = test_filesystem();
-    let secret_store: Arc<dyn SecretStore> = Arc::new(InMemorySecretStore::new());
     let scope = test_scope();
-    let service = test_service(filesystem, secret_store);
-
-    let flow = service
-        .create_flow(NewAuthFlow {
-            id: None,
-            scope: scope.clone(),
-            kind: AuthFlowKind::IntegrationCredential,
-            provider: google_provider(),
-            challenge: AuthChallenge::OAuthUrl {
-                authorization_url: OAuthAuthorizationUrl::new("https://provider.example/oauth")
-                    .unwrap(),
-                expires_at: Utc::now() + Duration::minutes(5),
-            },
-            continuation: AuthContinuationRef::SetupOnly,
-            update_binding: None,
-            opaque_state_hash: Some(state_hash("fail-s")),
-            pkce_verifier_hash: Some(pkce_hash("fail-p")),
-            expires_at: Utc::now() + Duration::minutes(5),
-        })
-        .await
-        .unwrap();
-
-    service
-        .claim_oauth_callback(
-            &scope,
-            OAuthCallbackClaimRequest {
-                flow_id: flow.id,
-                opaque_state_hash: state_hash("fail-s"),
-                provider: google_provider(),
-                pkce_verifier_hash: pkce_hash("fail-p"),
-            },
-        )
-        .await
-        .unwrap();
-
+    let service = test_service(test_filesystem(), Arc::new(InMemorySecretStore::new()));
+    let flow = fs_callback_flow(&service, &scope, None, "owned-failure").await;
+    let action = fs_callback_dispatch(
+        service
+            .claim_oauth_callback(&scope, fs_callback_prepared(&flow, "owned-failure"))
+            .await
+            .unwrap(),
+    );
+    let input = OAuthCallbackFailureInput {
+        dispatched: Some(action.clone()),
+        flow_id: flow.id,
+        opaque_state_hash: action.original.opaque_state_hash.clone(),
+        error: AuthErrorCode::TokenExchangeFailed,
+    };
     let failed = service
-        .fail_oauth_callback(
-            &scope,
-            OAuthCallbackFailureInput {
-                flow_id: flow.id,
-                opaque_state_hash: state_hash("fail-s"),
-                error: AuthErrorCode::ProviderDenied,
-            },
-        )
+        .fail_oauth_callback(&scope, input.clone())
         .await
         .unwrap();
     assert_eq!(failed.status, AuthFlowStatus::Failed);
-    assert_eq!(failed.error, Some(AuthErrorCode::ProviderDenied));
+    assert_eq!(failed.error, Some(AuthErrorCode::TokenExchangeFailed));
+    assert_eq!(
+        service.fail_oauth_callback(&scope, input).await.unwrap(),
+        failed
+    );
+    let original = service
+        .read_oauth_callback_original(&scope, &action.original.reference())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        original.action.outcome,
+        brassclaw_auth::OAuthCallbackOutcome::Unknown(AuthErrorCode::TokenExchangeFailed)
+    ));
+    assert!(original.action.published_account.is_none());
+    assert!(service.accounts_for_scope(&scope).await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -2336,6 +2277,7 @@ async fn filesystem_complete_credential_selection_completes_flow() {
             owner_extension: None,
             granted_extensions: vec![],
             access_secret: None,
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![],
         })
@@ -2344,6 +2286,7 @@ async fn filesystem_complete_credential_selection_completes_flow() {
 
     let flow = service
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: scope.clone(),
             kind: AuthFlowKind::IntegrationCredential,
@@ -2388,6 +2331,7 @@ async fn filesystem_create_flow_rejects_invalid_update_binding() {
     // Non-existent account in update_binding → CredentialMissing.
     let err = service
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: scope.clone(),
             kind: AuthFlowKind::IntegrationCredential,
@@ -2432,6 +2376,7 @@ async fn filesystem_update_status_and_cross_scope_rejection() {
             owner_extension: None,
             granted_extensions: vec![],
             access_secret: None,
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![],
         })
@@ -2492,6 +2437,7 @@ async fn filesystem_project_credential_recovery_returns_setup_required_when_empt
             owner_extension: None,
             granted_extensions: vec![],
             access_secret: None,
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![],
         })
@@ -2534,6 +2480,7 @@ async fn filesystem_credential_setup_service_update_path() {
             owner_extension: None,
             granted_extensions: vec![],
             access_secret: Some(SecretHandle::new("old-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![],
         })
@@ -2553,6 +2500,7 @@ async fn filesystem_credential_setup_service_update_path() {
                 owner_extension: None,
                 granted_extensions: vec![],
                 access_secret: Some(new_handle.clone()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![],
             },
@@ -2582,6 +2530,7 @@ async fn filesystem_get_account_cross_scope_returns_cross_scope_denied() {
             owner_extension: None,
             granted_extensions: vec![],
             access_secret: None,
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![],
         })
@@ -2612,6 +2561,7 @@ async fn filesystem_validate_secret_rejects_control_characters() {
 
     let challenge = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -2665,8 +2615,7 @@ async fn filesystem_expired_flow_status_persisted_before_returning_error() {
     // encounter an expired flow, the Expired status must be written to disk
     // before returning UnknownOrExpiredFlow so durable state matches the contract.
     use brassclaw_auth::{
-        AuthErrorCode, OAuthCallbackClaimRequest, OAuthCallbackFailureInput, OAuthCallbackInput,
-        ProviderCallbackOutcome,
+        AuthErrorCode, OAuthCallbackFailureInput, OAuthCallbackInput, ProviderCallbackOutcome,
     };
 
     let filesystem = test_filesystem();
@@ -2676,6 +2625,7 @@ async fn filesystem_expired_flow_status_persisted_before_returning_error() {
 
     let flow = service
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: scope.clone(),
             kind: AuthFlowKind::IntegrationCredential,
@@ -2696,15 +2646,7 @@ async fn filesystem_expired_flow_status_persisted_before_returning_error() {
 
     // claim_oauth_callback must persist Expired before returning error.
     let err = service
-        .claim_oauth_callback(
-            &scope,
-            OAuthCallbackClaimRequest {
-                flow_id: flow.id,
-                opaque_state_hash: state_hash("exp-s"),
-                provider: google_provider(),
-                pkce_verifier_hash: pkce_hash("exp-p"),
-            },
-        )
+        .claim_oauth_callback(&scope, fs_callback_prepared(&flow, "expired"))
         .await
         .expect_err("expired flow must be rejected");
     assert_eq!(err, AuthProductError::UnknownOrExpiredFlow);
@@ -2724,6 +2666,7 @@ async fn filesystem_expired_flow_status_persisted_before_returning_error() {
         .fail_oauth_callback(
             &scope,
             OAuthCallbackFailureInput {
+                dispatched: None,
                 flow_id: flow.id,
                 opaque_state_hash: state_hash("exp-s"),
                 error: AuthErrorCode::ProviderDenied,
@@ -2749,6 +2692,7 @@ async fn filesystem_expired_flow_status_persisted_before_returning_error() {
     // persist the Expired status before returning error.
     let flow2 = service
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: scope.clone(),
             kind: AuthFlowKind::IntegrationCredential,
@@ -2771,6 +2715,7 @@ async fn filesystem_expired_flow_status_persisted_before_returning_error() {
         .complete_oauth_callback(
             &scope,
             OAuthCallbackInput {
+                dispatched: None,
                 flow_id: flow2.id,
                 opaque_state_hash: state_hash("exp2-s"),
                 outcome: ProviderCallbackOutcome::Denied,
@@ -2796,63 +2741,40 @@ async fn filesystem_expired_flow_status_persisted_before_returning_error() {
 // ─── fix: abbyshekit review — OAuth CAS-conflict branch purges old secrets ───
 
 #[tokio::test]
-async fn filesystem_oauth_cas_conflict_branch_purges_previous_secrets() {
-    // When the None-path CAS-conflict branch re-reads and overwrites an existing
-    // account, the previous access/refresh secret handles must be deleted from
-    // SecretStore so repeated re-auths do not accumulate dead handles.
-    use brassclaw_auth::ProviderCallbackOutcome;
+async fn filesystem_oauth_account_created_after_claim_is_not_overwritten_or_purged() {
+    use brassclaw_auth::{OAuthCallbackOutcome, OAuthCallbackPublication};
     use brassclaw_secrets::SecretMaterial;
-
-    let filesystem = test_filesystem();
-    let concrete_secret_store = Arc::new(InMemorySecretStore::new());
-    let secret_store: Arc<dyn SecretStore> = concrete_secret_store.clone();
     let scope = test_scope();
-    let service = test_service(Arc::clone(&filesystem), Arc::clone(&secret_store));
-
-    let flow = service
-        .create_flow(NewAuthFlow {
-            id: None,
-            scope: scope.clone(),
-            kind: AuthFlowKind::IntegrationCredential,
-            provider: google_provider(),
-            challenge: AuthChallenge::OAuthUrl {
-                authorization_url: OAuthAuthorizationUrl::new("https://provider.example/oauth")
-                    .unwrap(),
-                expires_at: Utc::now() + Duration::minutes(5),
-            },
-            continuation: AuthContinuationRef::SetupOnly,
-            update_binding: None,
-            opaque_state_hash: Some(state_hash("cas-s")),
-            pkce_verifier_hash: Some(pkce_hash("cas-p")),
-            expires_at: Utc::now() + Duration::minutes(5),
-        })
-        .await
-        .unwrap();
-
-    // Pre-seed the account with old secrets.
-    let preseeded_id = CredentialAccountId::from_uuid(flow.id.as_uuid());
-    let old_access = SecretHandle::new("old-access").unwrap();
-    let old_refresh = SecretHandle::new("old-refresh").unwrap();
-    concrete_secret_store
-        .put(
-            scope.resource.clone(),
-            old_access.clone(),
-            SecretMaterial::from("old-access-token"),
-        )
-        .await
-        .unwrap();
-    concrete_secret_store
-        .put(
-            scope.resource.clone(),
-            old_refresh.clone(),
-            SecretMaterial::from("old-refresh-token"),
-        )
-        .await
-        .unwrap();
-
-    service
+    let secret_store = Arc::new(InMemorySecretStore::new());
+    let service = test_service(test_filesystem(), secret_store.clone());
+    let flow = fs_callback_flow(&service, &scope, None, "late-collision").await;
+    let action = fs_callback_dispatch(
+        service
+            .claim_oauth_callback(&scope, fs_callback_prepared(&flow, "late-collision"))
+            .await
+            .unwrap(),
+    );
+    let old_access = SecretHandle::new("late-preexisting-access").unwrap();
+    let old_refresh = SecretHandle::new("late-preexisting-refresh").unwrap();
+    for handle in [
+        &old_access,
+        &old_refresh,
+        &action.destinations.access_secret,
+        &action.destinations.refresh_secret,
+    ] {
+        secret_store
+            .put(
+                scope.resource.clone(),
+                handle.clone(),
+                SecretMaterial::from("retained-accountable-output"),
+            )
+            .await
+            .unwrap();
+    }
+    let account_id = CredentialAccountId::from_uuid(flow.id.as_uuid());
+    let winner = service
         .create_account_with_id(
-            preseeded_id,
+            account_id,
             NewCredentialAccount {
                 scope: scope.clone(),
                 provider: google_provider(),
@@ -2862,6 +2784,7 @@ async fn filesystem_oauth_cas_conflict_branch_purges_previous_secrets() {
                 owner_extension: None,
                 granted_extensions: vec![],
                 access_secret: Some(old_access.clone()),
+                access_expires_at: None,
                 refresh_secret: Some(old_refresh.clone()),
                 scopes: vec![],
             },
@@ -2869,74 +2792,58 @@ async fn filesystem_oauth_cas_conflict_branch_purges_previous_secrets() {
         )
         .await
         .unwrap();
-
-    service
-        .claim_oauth_callback(
-            &scope,
-            OAuthCallbackClaimRequest {
-                flow_id: flow.id,
-                opaque_state_hash: state_hash("cas-s"),
-                provider: google_provider(),
-                pkce_verifier_hash: pkce_hash("cas-p"),
-            },
-        )
+    assert!(matches!(
+        service
+            .complete_oauth_callback(&scope, fs_callback_completion(&action))
+            .await,
+        Err(AuthProductError::FlowAlreadyTerminal)
+    ));
+    let original = service
+        .read_oauth_callback_original(&scope, &action.original.reference())
         .await
+        .unwrap()
         .unwrap();
-
-    let new_access = SecretHandle::new("new-access").unwrap();
-    let new_refresh = SecretHandle::new("new-refresh").unwrap();
-    let completed = service
-        .complete_oauth_callback(
-            &scope,
-            OAuthCallbackInput {
-                flow_id: flow.id,
-                opaque_state_hash: state_hash("cas-s"),
-                outcome: ProviderCallbackOutcome::Authorized {
-                    exchange: OAuthProviderExchange {
-                        provider: google_provider(),
-                        account_label: account_label(),
-                        authorization_code_hash: code_hash("cas-c"),
-                        pkce_verifier_hash: pkce_hash("cas-p"),
-                        access_secret: new_access.clone(),
-                        refresh_secret: Some(new_refresh.clone()),
-                        scopes: vec![ProviderScope::new("gmail.readonly").unwrap()],
-                        account_id: None,
-                    },
-                },
-            },
-        )
-        .await
-        .unwrap();
-
+    assert_eq!(original.flow.status, AuthFlowStatus::Failed);
     assert_eq!(
-        completed.credential_account_id,
-        Some(preseeded_id),
-        "CAS-conflict branch must reuse pre-seeded account"
+        original.action.publication,
+        OAuthCallbackPublication::Superseded
     );
-
-    // Old secrets must be purged from SecretStore.
-    assert!(
-        concrete_secret_store
-            .metadata(&scope.resource, &old_access)
+    assert!(matches!(
+        original.action.outcome,
+        OAuthCallbackOutcome::Returned(_)
+    ));
+    assert!(original.action.published_account.is_none());
+    assert_eq!(
+        service
+            .get_account(CredentialAccountLookupRequest::new(
+                scope.clone(),
+                account_id
+            ))
             .await
-            .unwrap()
-            .is_none(),
-        "old access secret must be purged after CAS-conflict update"
+            .unwrap(),
+        Some(winner)
     );
-    assert!(
-        concrete_secret_store
-            .metadata(&scope.resource, &old_refresh)
-            .await
-            .unwrap()
-            .is_none(),
-        "old refresh secret must be purged after CAS-conflict update"
-    );
+    for handle in [
+        &old_access,
+        &old_refresh,
+        &action.destinations.access_secret,
+        &action.destinations.refresh_secret,
+    ] {
+        assert!(
+            secret_store
+                .metadata(&scope.resource, handle)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
 }
 
 // ─── fix: abbyshekit review — manual-token consume only after success ────────
 
 #[tokio::test]
-async fn filesystem_manual_token_consume_only_after_successful_account_write() {
+async fn filesystem_manual_token_conflicted_original_cannot_change_input_or_reselect_after_collision()
+ {
     // If the account write fails, the interaction must NOT be marked consumed
     // so the user can retry without going through a full re-setup.
     use brassclaw_auth::CredentialAccountId;
@@ -2950,6 +2857,7 @@ async fn filesystem_manual_token_consume_only_after_successful_account_write() {
 
     let challenge = service
         .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: google_provider(),
             label: account_label(),
@@ -2975,6 +2883,7 @@ async fn filesystem_manual_token_consume_only_after_successful_account_write() {
         owner_extension: None,
         granted_extensions: vec![],
         access_secret: None,
+        access_expires_at: None,
         refresh_secret: None,
         scopes: vec![],
         created_at: Utc::now(),
@@ -3026,40 +2935,949 @@ async fn filesystem_manual_token_consume_only_after_successful_account_write() {
         "retry must still hit BackendConflict, not UnknownOrExpiredFlow"
     );
 
-    // Remove the dummy record so retry succeeds.
-    filesystem
-        .delete(&scope.resource, &path)
+    // Removing a conflicting row does not rewrite the known original failure
+    // or accept a different token under its consumed operation identity.
+    filesystem.delete(&scope.resource, &path).await.unwrap();
+    for raw in ["first-attempt", "changed-after-removal"] {
+        assert_eq!(
+            service
+                .submit_manual_token(
+                    &scope,
+                    SecretSubmitRequest {
+                        interaction_id,
+                        secret: SecretString::from(raw),
+                    }
+                )
+                .await
+                .unwrap_err(),
+            AuthProductError::BackendConflict
+        );
+    }
+    let replacement = service
+        .request_secret_input(ManualTokenSetupRequest {
+            requirement_setup: None,
+            scope: scope.clone(),
+            provider: google_provider(),
+            label: account_label(),
+            continuation: AuthContinuationRef::SetupOnly,
+            update_binding: None,
+            expires_at: Utc::now() + Duration::minutes(5),
+        })
         .await
-        .expect("delete dummy account must succeed");
-
-    let result = service
+        .unwrap();
+    let AuthChallenge::ManualTokenRequired {
+        interaction_id: replacement,
+        ..
+    } = replacement
+    else {
+        panic!("new explicit setup required")
+    };
+    assert_ne!(replacement, interaction_id);
+    let configured = service
         .submit_manual_token(
             &scope,
             SecretSubmitRequest {
-                interaction_id,
-                secret: SecretString::from("retry-token"),
-            },
-        )
-        .await;
-    assert!(
-        result.is_ok(),
-        "retry must succeed after removing the blocking dummy record"
-    );
-
-    // Third attempt must now fail with UnknownOrExpiredFlow because consumed_at is set.
-    let consumed_err = service
-        .submit_manual_token(
-            &scope,
-            SecretSubmitRequest {
-                interaction_id,
-                secret: SecretString::from("third-attempt"),
+                interaction_id: replacement,
+                secret: SecretString::from("explicit-new-setup-input"),
             },
         )
         .await
-        .expect_err("third submit must fail because interaction is consumed");
+        .unwrap();
+    assert_eq!(configured.status, CredentialAccountStatus::Configured);
+}
+
+#[tokio::test]
+async fn independent_durable_auth_owners_reject_stale_refresh_snapshot() {
+    use brassclaw_auth::CredentialSetupService;
+    let filesystem = test_filesystem();
+    let secrets = Arc::new(InMemorySecretStore::new());
+    let first = test_service(filesystem.clone(), secrets.clone());
+    let second = test_service(filesystem, secrets);
+    let owner = test_scope();
+    let request = NewCredentialAccount {
+        scope: owner.clone(),
+        provider: google_provider(),
+        label: account_label(),
+        status: CredentialAccountStatus::Configured,
+        ownership: CredentialOwnership::UserReusable,
+        owner_extension: None,
+        granted_extensions: vec![],
+        access_secret: Some(SecretHandle::new("original-access").unwrap()),
+        access_expires_at: None,
+        refresh_secret: None,
+        scopes: vec![],
+    };
+    let original = first.create_account(request.clone()).await.unwrap();
+    let mut successor = request.clone();
+    successor.access_secret = Some(SecretHandle::new("successor-access").unwrap());
+    let published = first
+        .compare_and_update_account(&original, successor)
+        .await
+        .unwrap();
+    assert!(matches!(
+        second.compare_and_update_account(&original, request).await,
+        Err(AuthProductError::BackendConflict)
+    ));
     assert_eq!(
-        consumed_err,
-        AuthProductError::UnknownOrExpiredFlow,
-        "interaction must be consumed after successful retry"
+        second
+            .get_account(CredentialAccountLookupRequest::new(owner, original.id))
+            .await
+            .unwrap(),
+        Some(published)
     );
+}
+
+#[cfg(feature = "skills-db")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_persistent_filesystem_refresh_uses_original_reservation_and_one_account_record() {
+    use brassclaw_auth::{
+        CredentialRefreshAdmission, CredentialRefreshCompletion, CredentialRefreshOriginal,
+        CredentialRefreshOutcome, CredentialRefreshPrepared, CredentialRefreshRequest,
+        CredentialSetupService, OAuthProviderRefresh, OAuthTokenDestinations,
+    };
+    use brassclaw_filesystem::PostgresRootFilesystem;
+    use brassclaw_secrets::{FilesystemSecretStore, SecretsCrypto};
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let root = Arc::new(PostgresRootFilesystem::new(rig.pool.as_ref().clone()));
+    root.run_migrations().await.unwrap();
+    let mounts = brassclaw_host_api::MountView::new(vec![MountGrant::new(
+        MountAlias::new("/secrets").unwrap(),
+        VirtualPath::new("/tenants/test/users/alice/secrets").unwrap(),
+        MountPermissions::read_write_list_delete(),
+    )])
+    .unwrap();
+    let filesystem = Arc::new(ScopedFilesystem::with_fixed_view(
+        root.clone(),
+        mounts.clone(),
+    ));
+    let crypto = Arc::new(
+        SecretsCrypto::new(SecretString::from(
+            "native-persistent-refresh-credential-master-key-2026",
+        ))
+        .unwrap(),
+    );
+    let secrets = Arc::new(FilesystemSecretStore::new(
+        filesystem.clone(),
+        crypto.clone(),
+    ));
+    let first = FilesystemAuthProductServices::new(filesystem.clone(), secrets);
+    let owner = test_scope();
+    let account = first
+        .create_account(NewCredentialAccount {
+            scope: owner.clone(),
+            provider: google_provider(),
+            label: account_label(),
+            status: CredentialAccountStatus::Expired,
+            ownership: CredentialOwnership::UserReusable,
+            owner_extension: None,
+            granted_extensions: vec![],
+            access_secret: Some(SecretHandle::new("native-fs-old-access").unwrap()),
+            access_expires_at: None,
+            refresh_secret: Some(SecretHandle::new("native-fs-old-refresh").unwrap()),
+            scopes: vec![],
+        })
+        .await
+        .unwrap();
+    // Reproduce the exact old bare JSON shape before the additive envelope upgrade.
+    let (_, version) = first
+        .read_account(&owner, account.id)
+        .await
+        .unwrap()
+        .unwrap();
+    first
+        .write_record(
+            &owner.resource,
+            &super::paths::account_path(&owner, account.id),
+            &account,
+            version.cas(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        first
+            .get_account(CredentialAccountLookupRequest::new(
+                owner.clone(),
+                account.id
+            ))
+            .await
+            .unwrap(),
+        Some(account.clone())
+    );
+    let request =
+        CredentialRefreshRequest::new(owner.clone(), account.provider.clone(), account.id);
+    let destinations = OAuthTokenDestinations {
+        access_secret: SecretHandle::new(format!("native-fs-access-{}", request.id)).unwrap(),
+        refresh_secret: SecretHandle::new(format!("native-fs-refresh-{}", request.id)).unwrap(),
+    };
+    let prepared = CredentialRefreshPrepared {
+        original: CredentialRefreshOriginal::from(&request),
+        expected_account: account.clone(),
+        preparation: Some(brassclaw_auth::OAuthProviderRefreshPreparation {
+            destinations: destinations.clone(),
+            source: selected_refresh_source(&first, &account).await,
+        }),
+    };
+    let second_fs = Arc::new(ScopedFilesystem::with_fixed_view(
+        root.clone(),
+        mounts.clone(),
+    ));
+    let second = FilesystemAuthProductServices::new(
+        second_fs.clone(),
+        Arc::new(FilesystemSecretStore::new(second_fs, crypto.clone())),
+    );
+    let (a, b) = tokio::join!(
+        first.begin_refresh(prepared.clone()),
+        second.begin_refresh(prepared.clone())
+    );
+    let action = match (a.unwrap(), b.unwrap()) {
+        (CredentialRefreshAdmission::Dispatch(a), CredentialRefreshAdmission::Original(_)) => a,
+        (CredentialRefreshAdmission::Original(_), CredentialRefreshAdmission::Dispatch(b)) => b,
+        other => {
+            panic!("independent persistent owners must produce exactly one dispatch: {other:?}")
+        }
+    };
+    drop(first);
+    drop(second);
+    drop(filesystem);
+    let reopened = Arc::new(PostgresRootFilesystem::new(rig.pool.as_ref().clone()));
+    let reopened = Arc::new(ScopedFilesystem::with_fixed_view(reopened, mounts.clone()));
+    let restarted = FilesystemAuthProductServices::new(
+        reopened.clone(),
+        Arc::new(FilesystemSecretStore::new(reopened, crypto.clone())),
+    );
+    assert_eq!(
+        restarted.refresh_action(&request).await.unwrap(),
+        Some(action.clone())
+    );
+    let mut replacement = prepared.clone();
+    replacement.original.id = brassclaw_auth::CredentialRefreshId::new();
+    replacement.preparation.as_mut().unwrap().destinations = OAuthTokenDestinations {
+        access_secret: SecretHandle::new("native-fs-replacement-access").unwrap(),
+        refresh_secret: SecretHandle::new("native-fs-replacement-refresh").unwrap(),
+    };
+    assert!(matches!(
+        restarted.begin_refresh(replacement).await,
+        Err(AuthProductError::BackendConflict)
+    ));
+    let completion = CredentialRefreshCompletion {
+        dispatched: action,
+        outcome: CredentialRefreshOutcome::Returned(OAuthProviderRefresh {
+            provider: account.provider.clone(),
+            access_secret: destinations.access_secret,
+            access_expires_at: None,
+            refresh_secret: None,
+            scopes: account.scopes.clone(),
+        }),
+    };
+    let client = rig.pool.get().await.unwrap();
+    client.batch_execute("CREATE FUNCTION reject_fs_account_publication() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.path LIKE '%/accounts/%' THEN RAISE EXCEPTION 'controlled FS account publication rejection'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_fs_account_publication BEFORE UPDATE ON root_filesystem_entries FOR EACH ROW EXECUTE FUNCTION reject_fs_account_publication();").await.unwrap();
+    assert!(matches!(
+        restarted.complete_refresh(completion.clone()).await,
+        Err(AuthProductError::BackendUnavailable)
+    ));
+    let retained = restarted.refresh_action(&request).await.unwrap().unwrap();
+    assert!(matches!(
+        retained.outcome,
+        CredentialRefreshOutcome::Returned(_)
+    ));
+    assert_eq!(
+        retained.publication,
+        brassclaw_auth::CredentialRefreshPublication::Pending
+    );
+    assert_eq!(
+        restarted
+            .get_account(CredentialAccountLookupRequest::new(
+                owner.clone(),
+                account.id
+            ))
+            .await
+            .unwrap(),
+        Some(account.clone())
+    );
+    client.batch_execute("DROP TRIGGER reject_fs_account_publication ON root_filesystem_entries; DROP FUNCTION reject_fs_account_publication();").await.unwrap();
+    drop(client);
+    drop(restarted);
+    let reopened = Arc::new(PostgresRootFilesystem::new(rig.pool.as_ref().clone()));
+    let reopened = Arc::new(ScopedFilesystem::with_fixed_view(reopened, mounts.clone()));
+    let restarted = FilesystemAuthProductServices::new(
+        reopened.clone(),
+        Arc::new(FilesystemSecretStore::new(reopened, crypto.clone())),
+    );
+    // Recovery receives only the original identity; no response is supplied again.
+    let parallel_fs = Arc::new(ScopedFilesystem::with_fixed_view(
+        Arc::new(PostgresRootFilesystem::new(rig.pool.as_ref().clone())),
+        mounts.clone(),
+    ));
+    let parallel = FilesystemAuthProductServices::new(
+        parallel_fs.clone(),
+        Arc::new(FilesystemSecretStore::new(parallel_fs, crypto.clone())),
+    );
+    let (a, b) = tokio::join!(
+        restarted.reconcile_refresh(&request),
+        parallel.reconcile_refresh(&request)
+    );
+    let mut confirmations = 0;
+    for result in [a, b] {
+        match result {
+            Ok(Some(action)) => {
+                assert!(action.receipt().unwrap().confirmed_refresh());
+                confirmations += 1;
+            }
+            Err(AuthProductError::BackendConflict) => {}
+            unexpected => {
+                panic!("only a final original or a genuine CAS race is eligible: {unexpected:?}")
+            }
+        }
+    }
+    assert!(confirmations > 0);
+    let published = restarted.refresh_action(&request).await.unwrap().unwrap();
+    assert!(published.receipt().unwrap().confirmed_refresh());
+    let (stored, before) = restarted
+        .read_account(&owner, account.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.refresh_secret, account.refresh_secret);
+    assert_eq!(published.published_account, Some(stored.clone()));
+    assert_eq!(
+        restarted.complete_refresh(completion).await.unwrap(),
+        published
+    );
+    let (_, after) = restarted
+        .read_account(&owner, account.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        before, after,
+        "original readback does not write the account again"
+    );
+    let inactive = restarted
+        .update_status(&owner, account.id, CredentialAccountStatus::Inactive)
+        .await
+        .unwrap();
+    assert_eq!(
+        restarted.refresh_action(&request).await.unwrap(),
+        Some(published.clone())
+    );
+    let update = NewCredentialAccount {
+        scope: owner.clone(),
+        provider: account.provider.clone(),
+        label: account_label(),
+        status: CredentialAccountStatus::Configured,
+        ownership: CredentialOwnership::UserReusable,
+        owner_extension: None,
+        granted_extensions: vec![],
+        access_secret: inactive.access_secret.clone(),
+        access_expires_at: None,
+        refresh_secret: inactive.refresh_secret.clone(),
+        scopes: inactive.scopes.clone(),
+    };
+    let updated = restarted
+        .compare_and_update_account(&inactive, update.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        restarted.refresh_action(&request).await.unwrap(),
+        Some(published.clone())
+    );
+    restarted
+        .create_or_update_account(brassclaw_auth::CredentialAccountMutation::Update(
+            brassclaw_auth::CredentialAccountUpdate {
+                account_id: updated.id,
+                account: update,
+            },
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        restarted.refresh_action(&request).await.unwrap(),
+        Some(published)
+    );
+    let mut changed = request;
+    changed.requester_extension = Some(ExtensionId::new("different-requester").unwrap());
+    assert!(matches!(
+        restarted.refresh_action(&changed).await,
+        Err(AuthProductError::BackendConflict)
+    ));
+}
+
+#[tokio::test]
+async fn filesystem_original_refresh_readback_bypasses_held_local_publication_mutex() {
+    use brassclaw_auth::{
+        CredentialRefreshAdmission, CredentialRefreshCompletion, CredentialRefreshOriginal,
+        CredentialRefreshOutcome, CredentialRefreshPrepared, CredentialRefreshRequest,
+        CredentialSetupService, OAuthProviderRefresh, OAuthTokenDestinations,
+        ProviderBackedCredentialAccountService,
+    };
+    use std::time::Duration;
+    let backend = Arc::new(test_service(
+        test_filesystem(),
+        Arc::new(InMemorySecretStore::new()),
+    ));
+    let owner = test_scope();
+    let account = backend
+        .create_account(NewCredentialAccount {
+            scope: owner.clone(),
+            provider: google_provider(),
+            label: account_label(),
+            status: CredentialAccountStatus::Configured,
+            ownership: CredentialOwnership::UserReusable,
+            owner_extension: None,
+            granted_extensions: vec![],
+            access_secret: Some(SecretHandle::new("readback-fs-old-access").unwrap()),
+            access_expires_at: None,
+            refresh_secret: Some(SecretHandle::new("readback-fs-old-refresh").unwrap()),
+            scopes: vec![],
+        })
+        .await
+        .unwrap();
+    let request =
+        CredentialRefreshRequest::new(owner.clone(), account.provider.clone(), account.id);
+    let destinations = OAuthTokenDestinations {
+        access_secret: SecretHandle::new("readback-fs-new-access").unwrap(),
+        refresh_secret: SecretHandle::new("readback-fs-new-refresh").unwrap(),
+    };
+    let prepared = CredentialRefreshPrepared {
+        original: CredentialRefreshOriginal::from(&request),
+        expected_account: account.clone(),
+        preparation: Some(brassclaw_auth::OAuthProviderRefreshPreparation {
+            destinations: destinations.clone(),
+            source: selected_refresh_source(&backend, &account).await,
+        }),
+    };
+    let original = match backend.begin_refresh(prepared.clone()).await.unwrap() {
+        CredentialRefreshAdmission::Dispatch(action) => action,
+        other => panic!("first original must own the only dispatch: {other:?}"),
+    };
+    let coordinator = ProviderBackedCredentialAccountService::new(
+        backend.clone(),
+        backend.clone(),
+        Arc::new(UnavailableAuthProviderClient),
+    );
+    let mut expected = original.clone();
+    for confirmed in [false, true] {
+        let lock = backend.lock_for(format!("account:{}", account.id));
+        let guard = lock.lock().await;
+        tokio::time::timeout(Duration::from_secs(3), async {
+            let missing =
+                CredentialRefreshRequest::new(owner.clone(), account.provider.clone(), account.id);
+            assert!(backend.reconcile_refresh(&missing).await.unwrap().is_none());
+            assert_eq!(
+                backend.reconcile_refresh(&request).await.unwrap(),
+                Some(expected.clone())
+            );
+            match backend.begin_refresh(prepared.clone()).await.unwrap() {
+                CredentialRefreshAdmission::Original(action) => assert_eq!(action, expected),
+                other => panic!("readback must not claim another dispatch: {other:?}"),
+            }
+            let report = coordinator.refresh_account(request.clone()).await.unwrap();
+            assert_eq!(report.original.as_ref(), Some(&expected.receipt().unwrap()));
+            assert_eq!(report.refreshed, confirmed);
+        })
+        .await
+        .expect("read-only original must bypass the local publication mutex");
+        drop(guard);
+        if !confirmed {
+            expected = backend
+                .complete_refresh(CredentialRefreshCompletion {
+                    dispatched: original.clone(),
+                    outcome: CredentialRefreshOutcome::Returned(OAuthProviderRefresh {
+                        provider: account.provider.clone(),
+                        access_secret: destinations.access_secret.clone(),
+                        access_expires_at: None,
+                        refresh_secret: Some(destinations.refresh_secret.clone()),
+                        scopes: vec![],
+                    }),
+                })
+                .await
+                .unwrap();
+        }
+    }
+    assert_eq!(
+        backend.refresh_action(&request).await.unwrap(),
+        Some(expected)
+    );
+}
+
+#[cfg(feature = "skills-db")]
+mod native_callback_publication {
+    use super::*;
+    use brassclaw_auth::{OAuthCallbackOutcome, OAuthCallbackPublication};
+    use brassclaw_filesystem::{
+        BackendCapabilities, Capability, PostgresRootFilesystem, TxnCapability,
+    };
+    use brassclaw_secrets::{FilesystemSecretStore, SecretMaterial, SecretsCrypto};
+
+    #[derive(Clone, Copy)]
+    enum AckStage {
+        Admission,
+        StoredResult,
+        Decision,
+        Account,
+        FinalFlow,
+    }
+
+    /// Limited exercised record ports delegate to actual PostgreSQL. Only an
+    /// acknowledgement AFTER its real committed mutation can be dropped; no
+    /// synthetic success, publication bypass or production fault hook exists.
+    struct LostCallbackAck {
+        inner: Arc<PostgresRootFilesystem>,
+        fault: std::sync::Mutex<Option<(AuthFlowId, AckStage)>>,
+    }
+
+    #[async_trait::async_trait]
+    impl RootFilesystem for LostCallbackAck {
+        fn capabilities(&self) -> BackendCapabilities {
+            BackendCapabilities::empty()
+                .with(Capability::Read)
+                .with(Capability::Write)
+                .with(Capability::List)
+                .with(Capability::Stat)
+                .with(Capability::EntryBodyCas)
+                .with_txn(TxnCapability::Cas)
+        }
+        async fn get(
+            &self,
+            path: &VirtualPath,
+        ) -> Result<Option<brassclaw_filesystem::VersionedEntry>, FilesystemError> {
+            self.inner.get(path).await
+        }
+        async fn put(
+            &self,
+            path: &VirtualPath,
+            entry: Entry,
+            cas: CasExpectation,
+        ) -> Result<RecordVersion, FilesystemError> {
+            let fault = *self.fault.lock().unwrap();
+            let should_drop = fault.is_some_and(|(flow_id, stage)| {
+                if matches!(stage, AckStage::Account) {
+                    return serde_json::from_slice::<
+                            super::super::refresh::StoredCredentialAccount,
+                        >(&entry.body)
+                        .is_ok_and(|doc| doc.auth_callback_actions.contains_key(&flow_id));
+                }
+                serde_json::from_slice::<crate::auth_flow_custody::StoredAuthFlow>(&entry.body)
+                    .is_ok_and(|doc| {
+                        doc.flow.id == flow_id
+                            && match stage {
+                                AckStage::Admission => {
+                                    doc.flow.status == AuthFlowStatus::CallbackReceived
+                                        && doc.auth_custody.oauth_callback.as_ref().is_some_and(
+                                            |action| {
+                                                matches!(
+                                                    action.outcome,
+                                                    OAuthCallbackOutcome::Submitted
+                                                )
+                                            },
+                                        )
+                                }
+                                AckStage::StoredResult => {
+                                    doc.fs_callback_publication.is_none()
+                                        && doc.auth_custody.oauth_callback.as_ref().is_some_and(
+                                            |action| {
+                                                matches!(
+                                                    action.outcome,
+                                                    OAuthCallbackOutcome::Returned(_)
+                                                ) && action.publication
+                                                    == OAuthCallbackPublication::Pending
+                                            },
+                                        )
+                                }
+                                AckStage::Decision => doc.fs_callback_publication.is_some(),
+                                AckStage::FinalFlow => doc.flow.status == AuthFlowStatus::Completed,
+                                AckStage::Account => false,
+                            }
+                    })
+            });
+            let version = self.inner.put(path, entry, cas).await?;
+            if should_drop && self.fault.lock().unwrap().take().is_some() {
+                return Err(FilesystemError::Backend {
+                    path: path.clone(),
+                    operation: brassclaw_filesystem::FilesystemOperation::WriteFile,
+                    reason: "controlled callback acknowledgement loss after committed write".into(),
+                });
+            }
+            Ok(version)
+        }
+        async fn list_dir(
+            &self,
+            path: &VirtualPath,
+        ) -> Result<Vec<brassclaw_filesystem::DirEntry>, FilesystemError> {
+            self.inner.list_dir(path).await
+        }
+        async fn list_dir_bounded(
+            &self,
+            path: &VirtualPath,
+            maximum: usize,
+        ) -> Result<Vec<brassclaw_filesystem::DirEntry>, FilesystemError> {
+            self.inner.list_dir_bounded(path, maximum).await
+        }
+        async fn stat(
+            &self,
+            path: &VirtualPath,
+        ) -> Result<brassclaw_filesystem::FileStat, FilesystemError> {
+            self.inner.stat(path).await
+        }
+    }
+
+    fn mounts() -> brassclaw_host_api::MountView {
+        brassclaw_host_api::MountView::new(vec![MountGrant::new(
+            MountAlias::new("/secrets").unwrap(),
+            VirtualPath::new("/tenants/test/users/alice/secrets").unwrap(),
+            MountPermissions::read_write_list_delete(),
+        )])
+        .unwrap()
+    }
+    fn crypto() -> Arc<SecretsCrypto> {
+        Arc::new(
+            SecretsCrypto::new(SecretString::from(
+                "callback-native-persistent-secret-master-key-2026",
+            ))
+            .unwrap(),
+        )
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn native_fs_callback_lost_admission_ack_never_authorizes_another_dispatch() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let root = Arc::new(PostgresRootFilesystem::new(rig.pool.as_ref().clone()));
+        root.run_migrations().await.unwrap();
+        let observed = Arc::new(LostCallbackAck {
+            inner: root,
+            fault: std::sync::Mutex::new(None),
+        });
+        let filesystem = Arc::new(ScopedFilesystem::with_fixed_view(
+            observed.clone(),
+            mounts(),
+        ));
+        let secrets = Arc::new(FilesystemSecretStore::new(filesystem.clone(), crypto()));
+        let backend = FilesystemAuthProductServices::new(filesystem.clone(), secrets.clone());
+        let scope = test_scope();
+        let flow = fs_callback_flow(&backend, &scope, None, "lost-claim").await;
+        let prepared = fs_callback_prepared(&flow, "lost-claim");
+        *observed.fault.lock().unwrap() = Some((flow.id, AckStage::Admission));
+        let original = match backend
+            .claim_oauth_callback(&scope, prepared.clone())
+            .await
+            .unwrap()
+        {
+            brassclaw_auth::OAuthCallbackAdmission::Original(state) => state,
+            other => panic!("an unacknowledged claim cannot return Dispatch: {other:?}"),
+        };
+        assert!(observed.fault.lock().unwrap().is_none());
+        assert!(matches!(
+            original.action.outcome,
+            OAuthCallbackOutcome::Submitted
+        ));
+        assert!(original.action.published_account.is_none());
+        let restarted = FilesystemAuthProductServices::new(filesystem, secrets.clone());
+        match restarted
+            .claim_oauth_callback(&scope, prepared.clone())
+            .await
+            .unwrap()
+        {
+            brassclaw_auth::OAuthCallbackAdmission::Original(state) => {
+                assert_eq!(state.action, original.action)
+            }
+            other => panic!("a retry cannot replace unknown dispatch ownership: {other:?}"),
+        }
+        let read = restarted
+            .reconcile_oauth_callback(&scope, &prepared.original.reference())
+            .await
+            .unwrap();
+        assert_eq!(read.action, original.action);
+        assert_eq!(read.flow.status, AuthFlowStatus::CallbackReceived);
+        assert!(
+            restarted
+                .read_account(&scope, original.action.target_account_id())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        for handle in [
+            &prepared.destinations.access_secret,
+            &prepared.destinations.refresh_secret,
+        ] {
+            assert!(
+                secrets
+                    .metadata(&scope.resource, handle)
+                    .await
+                    .unwrap()
+                    .is_none(),
+                "no provider output was fabricated without acknowledged dispatch ownership"
+            );
+        }
+        let mut changed = prepared;
+        changed.original.authorization_code_hash = code_hash("changed-lost-claim-code");
+        assert!(matches!(
+            restarted.claim_oauth_callback(&scope, changed).await,
+            Err(AuthProductError::BackendConflict)
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn native_fs_callback_reconciles_each_lost_commit_ack_without_replacing_original() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let root = Arc::new(PostgresRootFilesystem::new(rig.pool.as_ref().clone()));
+        root.run_migrations().await.unwrap();
+        for (index, stage) in [
+            AckStage::StoredResult,
+            AckStage::Decision,
+            AckStage::Account,
+            AckStage::FinalFlow,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let observed = Arc::new(LostCallbackAck {
+                inner: root.clone(),
+                fault: std::sync::Mutex::new(None),
+            });
+            let filesystem = Arc::new(ScopedFilesystem::with_fixed_view(
+                observed.clone(),
+                mounts(),
+            ));
+            let secrets = Arc::new(FilesystemSecretStore::new(filesystem.clone(), crypto()));
+            let backend = FilesystemAuthProductServices::new(filesystem.clone(), secrets.clone());
+            let scope = test_scope();
+            let marker = format!("native-lost-ack-{index}");
+            let flow = fs_callback_flow(&backend, &scope, None, &marker).await;
+            let action = fs_callback_dispatch(
+                backend
+                    .claim_oauth_callback(&scope, fs_callback_prepared(&flow, &marker))
+                    .await
+                    .unwrap(),
+            );
+            *observed.fault.lock().unwrap() = Some((flow.id, stage));
+            for handle in [
+                &action.destinations.access_secret,
+                &action.destinations.refresh_secret,
+            ] {
+                secrets
+                    .put(
+                        scope.resource.clone(),
+                        handle.clone(),
+                        SecretMaterial::from("native-original-callback-token"),
+                    )
+                    .await
+                    .unwrap();
+            }
+            let completed = backend
+                .complete_oauth_callback(&scope, fs_callback_completion(&action))
+                .await
+                .unwrap();
+            assert!(
+                observed.fault.lock().unwrap().is_none(),
+                "the selected real commit acknowledgement must actually be dropped"
+            );
+            assert_eq!(completed.status, AuthFlowStatus::Completed);
+            let restarted = FilesystemAuthProductServices::new(filesystem, secrets.clone());
+            let original = restarted
+                .read_oauth_callback_original(&scope, &action.original.reference())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(original.clone().completed_flow().unwrap(), completed);
+            assert_eq!(
+                original.action.publication,
+                OAuthCallbackPublication::Applied
+            );
+            let id = completed.credential_account_id.unwrap();
+            let (document, version) = restarted
+                .read_account_document(&scope, id)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                document.auth_callback_actions.get(&flow.id),
+                Some(&original.action)
+            );
+            assert_eq!(
+                restarted
+                    .complete_oauth_callback(&scope, fs_callback_completion(&action))
+                    .await
+                    .unwrap(),
+                completed
+            );
+            assert_eq!(
+                restarted
+                    .read_account_document(&scope, id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .1,
+                version,
+                "an original repeat cannot write the account again"
+            );
+            restarted
+                .update_status(&scope, id, CredentialAccountStatus::Inactive)
+                .await
+                .unwrap();
+            let (changed, _) = restarted
+                .read_account_document(&scope, id)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                changed.auth_callback_actions.get(&flow.id),
+                Some(&original.action)
+            );
+            for handle in [
+                &action.destinations.access_secret,
+                &action.destinations.refresh_secret,
+            ] {
+                assert!(
+                    secrets
+                        .metadata(&scope.resource, handle)
+                        .await
+                        .unwrap()
+                        .is_some()
+                );
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn native_fs_callback_keeps_decision_after_rejection_and_never_false_cancels_publication()
+    {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let root = Arc::new(PostgresRootFilesystem::new(rig.pool.as_ref().clone()));
+        root.run_migrations().await.unwrap();
+        let filesystem = Arc::new(ScopedFilesystem::with_fixed_view(root, mounts()));
+        let secrets = Arc::new(FilesystemSecretStore::new(filesystem.clone(), crypto()));
+        let backend = FilesystemAuthProductServices::new(filesystem.clone(), secrets.clone());
+        let scope = test_scope();
+        let flow = fs_callback_flow(&backend, &scope, None, "rejected-publication").await;
+        let action = fs_callback_dispatch(
+            backend
+                .claim_oauth_callback(&scope, fs_callback_prepared(&flow, "rejected-publication"))
+                .await
+                .unwrap(),
+        );
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute("CREATE FUNCTION reject_fs_callback_account() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.path LIKE '%/accounts/%' THEN RAISE EXCEPTION 'controlled filesystem callback account rejection'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_fs_callback_account BEFORE INSERT OR UPDATE ON root_filesystem_entries FOR EACH ROW EXECUTE FUNCTION reject_fs_callback_account();").await.unwrap();
+        assert!(matches!(
+            backend
+                .complete_oauth_callback(&scope, fs_callback_completion(&action))
+                .await,
+            Err(AuthProductError::BackendUnavailable)
+        ));
+        let (pending, _) = backend
+            .read_flow_document(&scope, flow.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(pending.fs_callback_publication.is_some());
+        assert_eq!(pending.flow.status, AuthFlowStatus::Completing);
+        assert!(matches!(
+            pending
+                .auth_custody
+                .oauth_callback
+                .as_ref()
+                .unwrap()
+                .outcome,
+            OAuthCallbackOutcome::Returned(_)
+        ));
+        assert!(
+            backend
+                .read_account(&scope, action.target_account_id())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(matches!(
+            backend.cancel_flow(&scope, flow.id).await,
+            Err(AuthProductError::BackendUnavailable)
+        ));
+        assert_eq!(
+            backend
+                .get_flow(&scope, flow.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            AuthFlowStatus::Completing,
+            "cancellation cannot acknowledge Canceled while a chosen publication may still occur"
+        );
+        client.batch_execute("DROP TRIGGER reject_fs_callback_account ON root_filesystem_entries; DROP FUNCTION reject_fs_callback_account();").await.unwrap();
+        let first = FilesystemAuthProductServices::new(filesystem.clone(), secrets.clone());
+        let second = FilesystemAuthProductServices::new(filesystem, secrets);
+        let reference = action.original.reference();
+        let (a, b) = tokio::join!(
+            first.reconcile_oauth_callback(&scope, &reference),
+            second.reconcile_oauth_callback(&scope, &reference)
+        );
+        let a = a.unwrap();
+        let b = b.unwrap();
+        assert_eq!(a.flow, b.flow);
+        assert_eq!(a.action, b.action);
+        assert_eq!(
+            a.completed_flow().unwrap().status,
+            AuthFlowStatus::Completed
+        );
+        let (account, _) = first
+            .read_account_document(&scope, action.target_account_id())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(account.auth_callback_actions.len(), 1);
+        assert_eq!(account.auth_callback_actions.get(&flow.id), Some(&b.action));
+        assert!(matches!(
+            first.cancel_flow(&scope, flow.id).await,
+            Err(AuthProductError::FlowAlreadyTerminal)
+        ));
+    }
+}
+
+#[path = "record_snapshot_tests.rs"]
+mod record_snapshot_tests;
+
+#[path = "requirement_publication_tests.rs"]
+mod requirement_publication_tests;
+
+#[path = "manual_publication_tests.rs"]
+mod manual_publication_tests;
+
+// Existing storage/receipt fixtures now retain a real authenticated source
+// generation. No fabricated checksum is accepted by the native intent owner.
+async fn selected_refresh_source<F: brassclaw_filesystem::RootFilesystem>(
+    backend: &FilesystemAuthProductServices<F>,
+    account: &brassclaw_auth::CredentialAccount,
+) -> brassclaw_auth::OAuthRefreshSource {
+    let handle = account.refresh_secret.as_ref().unwrap();
+    let store = &backend.secret_store;
+    if store
+        .record_reference(&account.scope.resource, handle)
+        .await
+        .unwrap()
+        .is_none()
+    {
+        assert!(
+            store
+                .put_if_record_reference(
+                    account.scope.resource.clone(),
+                    handle.clone(),
+                    "native filesystem refresh fixture material".into(),
+                    None,
+                )
+                .await
+                .unwrap()
+                .is_some()
+                || store
+                    .record_reference(&account.scope.resource, handle)
+                    .await
+                    .unwrap()
+                    .is_some()
+        );
+    }
+    brassclaw_auth::OAuthRefreshSource {
+        scope: account.scope.resource.clone(),
+        handle: handle.clone(),
+        record_reference: store
+            .record_reference(&account.scope.resource, handle)
+            .await
+            .unwrap()
+            .unwrap(),
+    }
 }

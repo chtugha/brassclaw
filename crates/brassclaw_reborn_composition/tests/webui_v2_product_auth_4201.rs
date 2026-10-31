@@ -252,6 +252,11 @@ fn build_fixture() -> AppFixture {
         shared.clone(),
         Arc::new(NoopAuthDispatcher::default()),
     ));
+    let app = app_for_product_auth(product_auth);
+    AppFixture { app, shared }
+}
+
+fn app_for_product_auth(product_auth: Arc<RebornProductAuthServices>) -> axum::Router {
     let bundle = RebornWebuiBundle {
         api: Arc::new(UnusedServices),
         product_auth: Some(product_auth),
@@ -264,8 +269,7 @@ fn build_fixture() -> AppFixture {
     )
     .with_default_agent_id(AgentId::new(AGENT).expect("agent"))
     .with_default_project_id(ProjectId::new(PROJECT).expect("project"));
-    let app = webui_v2_app(bundle, config).expect("webui v2 app");
-    AppFixture { app, shared }
+    webui_v2_app(bundle, config).expect("webui v2 app")
 }
 
 fn caller_scope_with_invocation(invocation_id: InvocationId) -> AuthProductScope {
@@ -316,6 +320,7 @@ async fn seed_account_with_status(
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: None,
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -384,9 +389,26 @@ async fn post_unauthenticated(
         .expect("oneshot")
 }
 
+/// A deliberate NEW setup body, chosen before its first HTTP call. Repeated
+/// calls must reuse that retained body; never call this builder to repair a lost reply.
+fn new_manual_original_body(mut fields: Value) -> Value {
+    let body = fields.as_object_mut().expect("manual setup fields");
+    assert!(!body.contains_key("identity") && !body.contains_key("invocation_id"));
+    body.insert(
+        "identity".into(),
+        serde_json::to_value(brassclaw_auth::ManualTokenSetupIdentity::default()).unwrap(),
+    );
+    body.insert(
+        "invocation_id".into(),
+        json!(InvocationId::new().to_string()),
+    );
+    fields
+}
+
 const PATHS: &[&str] = &[
     "/api/reborn/product-auth/manual-token/setup",
     "/api/reborn/product-auth/manual-token/secret-submit",
+    "/api/reborn/product-auth/manual-token/continue",
     "/api/reborn/product-auth/accounts/list",
     "/api/reborn/product-auth/accounts/select",
     "/api/reborn/product-auth/accounts/recovery",
@@ -411,11 +433,15 @@ async fn product_auth_new_routes_require_bearer_auth() {
 async fn manual_token_setup_then_secret_submit_returns_redacted_projection() {
     let fixture = build_fixture();
     let raw_token = "ghp_routing_through_4201_secret";
+    let identity = brassclaw_auth::ManualTokenSetupIdentity::default();
+    let original_invocation = InvocationId::new();
 
     let setup_response = post_authenticated(
         &fixture.app,
         "/api/reborn/product-auth/manual-token/setup",
         json!({
+            "identity": identity,
+            "invocation_id": original_invocation.to_string(),
             "provider": "github",
             "account_label": "work github 4201",
             "run_id": "22222222-2222-2222-2222-222222222222",
@@ -427,6 +453,14 @@ async fn manual_token_setup_then_secret_submit_returns_redacted_projection() {
     assert_eq!(setup_response.status(), StatusCode::OK);
     let setup_body = read_body_string(setup_response).await;
     let setup_json: Value = serde_json::from_str(&setup_body).expect("setup json");
+    assert_eq!(
+        setup_json["identity"],
+        serde_json::to_value(identity).unwrap()
+    );
+    assert_eq!(
+        setup_json["invocation_id"],
+        json!(original_invocation.to_string())
+    );
     let interaction_id = setup_json["interaction_id"]
         .as_str()
         .expect("interaction id")
@@ -442,7 +476,7 @@ async fn manual_token_setup_then_secret_submit_returns_redacted_projection() {
         &fixture.app,
         "/api/reborn/product-auth/manual-token/secret-submit",
         json!({
-            "interaction_id": interaction_id,
+            "identity": setup_json["identity"],
             "token": raw_token,
             "thread_id": "thread-auth-4201",
             "invocation_id": invocation_id
@@ -455,11 +489,13 @@ async fn manual_token_setup_then_secret_submit_returns_redacted_projection() {
         !submit_body.contains(raw_token),
         "secret-submit response must not echo raw token: {submit_body}"
     );
-    assert!(
-        !submit_body.contains("interaction_id"),
-        "secret-submit response must not echo interaction_id: {submit_body}"
-    );
     let submit_json: Value = serde_json::from_str(&submit_body).expect("submit json");
+    assert_eq!(submit_json["identity"], setup_json["identity"]);
+    assert_eq!(
+        submit_json["identity"]["interaction_id"],
+        json!(interaction_id)
+    );
+    assert_eq!(submit_json["invocation_id"], setup_json["invocation_id"]);
     assert!(submit_json["credential_ref"].as_str().is_some());
     assert_eq!(submit_json["status"].as_str(), Some("configured"));
     assert_eq!(
@@ -488,6 +524,7 @@ async fn manual_token_setup_rejects_partial_continuation_inputs() {
         }),
     ];
     for body in invalid_bodies {
+        let body = new_manual_original_body(body);
         let response = post_authenticated(
             &fixture.app,
             "/api/reborn/product-auth/manual-token/setup",
@@ -509,7 +546,8 @@ async fn manual_token_secret_submit_invalid_interaction_is_sanitized() {
         &fixture.app,
         "/api/reborn/product-auth/manual-token/secret-submit",
         json!({
-            "interaction_id": "not-a-uuid",
+            "identity": {"interaction_id":"not-a-uuid", "flow_id":brassclaw_auth::AuthFlowId::new()},
+            "invocation_id": InvocationId::new().to_string(),
             "token": raw_token
         }),
     )
@@ -756,7 +794,7 @@ async fn accounts_refresh_returns_report_for_seeded_account() {
     let response = post_authenticated(
         &fixture.app,
         "/api/reborn/product-auth/accounts/refresh",
-        json!({
+        json!({ "refresh_id": brassclaw_auth::CredentialRefreshId::new().to_string(),
             "provider": "github",
             "account_id": account_id.to_string(),
             "invocation_id": invocation_id.to_string()
@@ -784,6 +822,7 @@ async fn accounts_refresh_enforces_tighter_per_caller_rate_limit() {
     let account_id =
         seed_configured_account(&fixture.shared, invocation_id, "github", "refresh-limit").await;
     let body = json!({
+        "refresh_id": brassclaw_auth::CredentialRefreshId::new().to_string(),
         "provider": "github",
         "account_id": account_id.to_string(),
         "invocation_id": invocation_id.to_string()
@@ -828,7 +867,7 @@ async fn manual_token_secret_submit_requires_invocation_id() {
         &fixture.app,
         "/api/reborn/product-auth/manual-token/secret-submit",
         json!({
-            "interaction_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "identity": brassclaw_auth::ManualTokenSetupIdentity::default(),
             "token": raw_token
             // invocation_id intentionally absent
         }),
@@ -869,7 +908,7 @@ async fn new_routes_reject_malformed_invocation_id() {
         (
             "/api/reborn/product-auth/manual-token/secret-submit",
             json!({
-                "interaction_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                "identity": brassclaw_auth::ManualTokenSetupIdentity::default(),
                 "token": "tok",
                 "invocation_id": "not-a-uuid"
             }),
@@ -892,7 +931,7 @@ async fn new_routes_reject_malformed_invocation_id() {
         ),
         (
             "/api/reborn/product-auth/accounts/refresh",
-            json!({
+            json!({ "refresh_id": brassclaw_auth::CredentialRefreshId::new().to_string(),
                 "provider": "github",
                 "account_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                 "invocation_id": "not-a-uuid"
@@ -1026,7 +1065,7 @@ async fn accounts_refresh_returns_error_for_unknown_account_id() {
     let response = post_authenticated(
         &fixture.app,
         "/api/reborn/product-auth/accounts/refresh",
-        json!({
+        json!({ "refresh_id": brassclaw_auth::CredentialRefreshId::new().to_string(),
             "provider": "github",
             "account_id": unknown_id.to_string(),
             "invocation_id": invocation_id.to_string()
@@ -1086,6 +1125,7 @@ async fn manual_token_setup_rejects_empty_provider_and_label() {
     ];
 
     for body in cases {
+        let body = new_manual_original_body(body);
         let response = post_authenticated(
             &fixture.app,
             "/api/reborn/product-auth/manual-token/setup",
@@ -1105,7 +1145,7 @@ async fn accounts_refresh_rejects_malformed_account_id() {
     let response = post_authenticated(
         &fixture.app,
         "/api/reborn/product-auth/accounts/refresh",
-        json!({
+        json!({ "refresh_id": brassclaw_auth::CredentialRefreshId::new().to_string(),
             "provider": "github",
             "account_id": "not-a-uuid",
             "invocation_id": InvocationId::new().to_string()
@@ -1135,7 +1175,7 @@ async fn follow_up_routes_require_invocation_id() {
         ),
         (
             "/api/reborn/product-auth/accounts/refresh",
-            json!({ "provider": "github", "account_id": account_id.to_string() }),
+            json!({ "refresh_id": brassclaw_auth::CredentialRefreshId::new().to_string(),  "provider": "github", "account_id": account_id.to_string() }),
         ),
     ];
     for (path, body) in cases {
@@ -1282,6 +1322,7 @@ async fn challenge_for_gate_returns_oauth_url_view_for_seeded_flow() {
 
     shared
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             // Flow must carry the same thread_id as the TurnScope — thread_id matching
             // is fail-closed: a flow with None thread_id does not match any scoped request.
@@ -1410,6 +1451,7 @@ async fn challenge_for_gate_cancelled_flow_returns_none() {
 
     let flow = shared
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: scope.clone(),
             kind: AuthFlowKind::IntegrationCredential,
@@ -1485,6 +1527,7 @@ async fn challenge_for_gate_threadless_flow_returns_none_for_thread_scope() {
     let turn_run_id = TurnRunId::new();
     shared
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: caller_scope_with_invocation(InvocationId::new()),
             kind: AuthFlowKind::IntegrationCredential,
@@ -1564,6 +1607,7 @@ async fn challenge_for_gate_wrong_tenant_returns_none() {
     // Create the flow under TENANT (the test tenant).
     shared
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: caller_scope_with_invocation(InvocationId::new()),
             kind: AuthFlowKind::IntegrationCredential,
@@ -1640,6 +1684,7 @@ async fn challenge_for_gate_returns_manual_token_view_for_seeded_flow() {
 
     shared
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: caller_scope_with_invocation_and_thread(InvocationId::new(), thread_id.clone()),
             kind: AuthFlowKind::IntegrationCredential,
@@ -1720,6 +1765,7 @@ async fn challenge_for_gate_returns_other_kind_view_for_setup_required_flow() {
 
     shared
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: caller_scope_with_invocation_and_thread(InvocationId::new(), thread_id.clone()),
             kind: AuthFlowKind::IntegrationCredential,
@@ -1810,4 +1856,388 @@ async fn accounts_recovery_requires_invocation_id() {
     );
     let body = read_body_string(response).await;
     assert!(body.contains("\"code\":\"invalid_request\""));
+}
+
+#[tokio::test]
+async fn accounts_refresh_requires_valid_original_identity_before_account_mutation() {
+    let fixture = build_fixture();
+    let invocation = InvocationId::new();
+    let account =
+        seed_configured_account(&fixture.shared, invocation, "github", "identity-validation").await;
+    let missing = json!({"provider":"github","account_id":account.to_string(),"invocation_id":invocation.to_string()});
+    let response = post_authenticated(
+        &fixture.app,
+        "/api/reborn/product-auth/accounts/refresh",
+        missing.clone(),
+    )
+    .await;
+    assert_eq!(
+        response.status(),
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "missing required typed request field is rejected by JSON extraction"
+    );
+    let mut malformed = missing;
+    malformed["refresh_id"] = json!("invalid-uuid");
+    let response = post_authenticated(
+        &fixture.app,
+        "/api/reborn/product-auth/accounts/refresh",
+        malformed,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = read_body_string(response).await;
+    assert!(body.contains("\"code\":\"invalid_request\""));
+    let current = fixture
+        .shared
+        .get_account(brassclaw_auth::CredentialAccountLookupRequest::new(
+            caller_scope_with_invocation(invocation),
+            account,
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.status, CredentialAccountStatus::Configured);
+}
+
+#[tokio::test]
+async fn accounts_refresh_reads_exact_original_and_rejects_changed_explicit_account() {
+    let fixture = build_fixture();
+    let invocation = InvocationId::new();
+    let account =
+        seed_configured_account(&fixture.shared, invocation, "github", "same-original").await;
+    let other =
+        seed_configured_account(&fixture.shared, invocation, "github", "changed-account").await;
+    let id = brassclaw_auth::CredentialRefreshId::new();
+    let request = json!({"refresh_id":id.to_string(),"provider":"github","account_id":account.to_string(),"invocation_id":invocation.to_string()});
+    let response = post_authenticated(
+        &fixture.app,
+        "/api/reborn/product-auth/accounts/refresh",
+        request.clone(),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let original: Value = serde_json::from_str(&read_body_string(response).await).unwrap();
+    assert_eq!(original["original"]["id"], json!(id.to_string()));
+    assert_eq!(
+        original["original"]["account_id"],
+        json!(account.to_string())
+    );
+    assert_eq!(original["original"]["outcome"], json!("not_submitted"));
+    let response = post_authenticated(
+        &fixture.app,
+        "/api/reborn/product-auth/accounts/refresh",
+        request.clone(),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let repeated: Value = serde_json::from_str(&read_body_string(response).await).unwrap();
+    assert_eq!(repeated, original);
+    let mut changed = request;
+    changed["account_id"] = json!(other.to_string());
+    let response = post_authenticated(
+        &fixture.app,
+        "/api/reborn/product-auth/accounts/refresh",
+        changed,
+    )
+    .await;
+    // The safe category stays stable while exact-original conflict is
+    // explicitly nonretryable and distinct from technical unavailability.
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let conflict: Value = serde_json::from_str(&read_body_string(response).await).unwrap();
+    assert_eq!(conflict["code"], json!("backend_unavailable"));
+    assert_eq!(conflict["conflict"], json!(true));
+    assert_eq!(conflict["retryable"], json!(false));
+    let current = fixture
+        .shared
+        .get_account(brassclaw_auth::CredentialAccountLookupRequest::new(
+            caller_scope_with_invocation(invocation),
+            other,
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.status, CredentialAccountStatus::Configured);
+}
+
+#[tokio::test]
+async fn invalid_manual_input_preserves_the_actual_pending_setup_for_valid_submit() {
+    let fixture = build_fixture();
+    let identity = brassclaw_auth::ManualTokenSetupIdentity::default();
+    let invocation = InvocationId::new();
+    let response = post_authenticated(
+        &fixture.app,
+        "/api/reborn/product-auth/manual-token/setup",
+        json!({"identity":identity,"invocation_id":invocation.to_string(),"provider":"github", "account_label":"retained pending manual input"}),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let setup: Value = serde_json::from_str(&read_body_string(response).await).unwrap();
+    for invalid in ["", " padded-token ", "control\ntoken"] {
+        let response = post_authenticated(&fixture.app, "/api/reborn/product-auth/manual-token/secret-submit", json!({
+            "identity":setup["identity"], "invocation_id":setup["invocation_id"], "token":invalid,
+        })).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = read_body_string(response).await;
+        assert!(body.contains("invalid_request"));
+        assert!(!body.contains("credential_ref"));
+    }
+    let raw = "corrected-original-manual-token";
+    let response = post_authenticated(
+        &fixture.app,
+        "/api/reborn/product-auth/manual-token/secret-submit",
+        json!({
+            "identity":setup["identity"], "invocation_id":setup["invocation_id"], "token":raw,
+        }),
+    )
+    .await;
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "invalid input must not retire the actual interaction"
+    );
+    let body = read_body_string(response).await;
+    assert!(!body.contains(raw));
+    assert!(body.contains("credential_ref"));
+}
+
+#[cfg(feature = "postgres")]
+#[path = "common/native_pg.rs"]
+mod native_manual_pg;
+
+#[cfg(feature = "postgres")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_manual_http_original_setup_and_reference_use_the_actual_factory_owner() {
+    use brassclaw_auth::{
+        CredentialAccountListRequest, CredentialAccountLookupRequest, ManualTokenSetupIdentity,
+    };
+    use brassclaw_host_api::{
+        AuditMode, DeploymentMode, FilesystemBackendKind, NetworkMode, ProcessBackendKind,
+        RuntimeProfile, SecretMode,
+        runtime_policy::{ApprovalPolicy, EffectiveRuntimePolicy},
+    };
+    use brassclaw_reborn_composition::{RebornBuildInput, build_reborn_services};
+    let rig = native_manual_pg::NativePostgres::start().await;
+    let home = tempfile::tempdir().unwrap();
+    let input = RebornBuildInput::postgres(
+        USER,
+        rig.pool.as_ref().clone(),
+        rig.url.clone(),
+        "native-manual-http-fixture-master-key-2026".into(),
+        home.path().to_path_buf(),
+    )
+    .with_tenant_id(TENANT)
+    .with_runtime_policy(EffectiveRuntimePolicy {
+        deployment: DeploymentMode::LocalSingleUser,
+        requested_profile: RuntimeProfile::LocalDev,
+        resolved_profile: RuntimeProfile::LocalDev,
+        filesystem_backend: FilesystemBackendKind::HostWorkspace,
+        process_backend: ProcessBackendKind::LocalHost,
+        network_mode: NetworkMode::DirectLogged,
+        secret_mode: SecretMode::ScrubbedEnv,
+        approval_policy: ApprovalPolicy::AskDestructive,
+        audit_mode: AuditMode::LocalMinimal,
+    });
+    // Management does not require a model call. The real selected PostgreSQL
+    // auth/secret factory and actual protected HTTP mount are exercised here.
+    let services = build_reborn_services(input).await.unwrap();
+    let product_auth = services.product_auth.clone().unwrap();
+    let app = app_for_product_auth(product_auth.clone());
+    let identity = ManualTokenSetupIdentity::default();
+    let invocation = InvocationId::new();
+    let scope = caller_scope_with_invocation(invocation);
+    let original = json!({"identity":identity,"invocation_id":invocation.to_string(),
+        "provider":"github","account_label":"native original HTTP"});
+    let response = post_authenticated(
+        &app,
+        "/api/reborn/product-auth/manual-token/setup",
+        original.clone(),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let first: Value = serde_json::from_str(&read_body_string(response).await).unwrap();
+    assert_eq!(first["identity"], serde_json::to_value(identity).unwrap());
+    assert_eq!(first["invocation_id"], json!(invocation.to_string()));
+    assert_eq!(first["status"], json!("awaiting_user"));
+    let response = post_authenticated(
+        &app,
+        "/api/reborn/product-auth/manual-token/setup",
+        original.clone(),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        serde_json::from_str::<Value>(&read_body_string(response).await).unwrap(),
+        first
+    );
+    let raw = "native original raw HTTP sentinel";
+    let wrong = ManualTokenSetupIdentity {
+        flow_id: brassclaw_auth::AuthFlowId::new(),
+        ..identity
+    };
+    let response = post_authenticated(
+        &app,
+        "/api/reborn/product-auth/manual-token/secret-submit",
+        json!({
+            "identity":wrong,"invocation_id":invocation.to_string(),"token":raw,
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert!(
+        product_auth
+            .credential_account_service()
+            .list_accounts(CredentialAccountListRequest::new(
+                scope.clone(),
+                AuthProviderId::new("github").unwrap()
+            ))
+            .await
+            .unwrap()
+            .accounts
+            .is_empty()
+    );
+    let response = post_authenticated(
+        &app,
+        "/api/reborn/product-auth/manual-token/secret-submit",
+        json!({
+            "identity":identity,"invocation_id":invocation.to_string(),"token":raw,
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_body_string(response).await;
+    assert!(!body.contains(raw));
+    let accepted: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        accepted["identity"],
+        serde_json::to_value(identity).unwrap()
+    );
+    assert_eq!(accepted["invocation_id"], json!(invocation.to_string()));
+    let account_id: CredentialAccountId =
+        serde_json::from_value(accepted["credential_ref"].clone()).unwrap();
+    let response=post_authenticated(&app,"/api/reborn/product-auth/manual-token/secret-submit",json!({
+        "identity":identity,"invocation_id":invocation.to_string(),"token":"different raw after completion",
+    })).await;
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    product_auth
+        .credential_account_service()
+        .update_status(&scope, account_id, CredentialAccountStatus::Revoked)
+        .await
+        .unwrap();
+    let response = post_authenticated(
+        &app,
+        "/api/reborn/product-auth/manual-token/continue",
+        json!({
+            "identity":identity,"invocation_id":invocation.to_string(),"token":raw,
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(!read_body_string(response).await.contains(raw));
+    let response = post_authenticated(
+        &app,
+        "/api/reborn/product-auth/manual-token/continue",
+        json!({
+            "identity":identity,"invocation_id":invocation.to_string(),
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        serde_json::from_str::<Value>(&read_body_string(response).await).unwrap(),
+        accepted
+    );
+    assert_eq!(
+        product_auth
+            .credential_account_service()
+            .get_account(CredentialAccountLookupRequest::new(
+                scope.clone(),
+                account_id
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        CredentialAccountStatus::Revoked
+    );
+    let response = post_authenticated(
+        &app,
+        "/api/reborn/product-auth/manual-token/setup",
+        original,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let completed: Value = serde_json::from_str(&read_body_string(response).await).unwrap();
+    assert_eq!(completed["status"], json!("completed"));
+    assert_eq!(completed["expires_at"], first["expires_at"]);
+    assert_eq!(completed["identity"], first["identity"]);
+}
+
+#[tokio::test]
+async fn manual_original_http_schemas_reject_unknown_secret_and_missing_identity_before_effects() {
+    let fixture = build_fixture();
+    let identity = brassclaw_auth::ManualTokenSetupIdentity::default();
+    let invocation = InvocationId::new().to_string();
+    let raw = "schema rejection secret sentinel";
+    let cases = [
+        (
+            "setup",
+            json!({"identity":identity,"invocation_id":invocation,"provider":"github","account_label":"setup","token":raw}),
+        ),
+        (
+            "submit",
+            json!({"invocation_id":invocation,"provider":"github","account_label":"setup","run_id":"run","gate_ref":"gate","thread_id":"thread","token":raw}),
+        ),
+        (
+            "secret-submit",
+            json!({"identity":identity,"invocation_id":invocation,"token":raw,"unknown":true}),
+        ),
+        (
+            "continue",
+            json!({"identity":identity,"invocation_id":invocation,"token":raw}),
+        ),
+        (
+            "setup",
+            json!({"identity":{"interaction_id":identity.interaction_id,"flow_id":identity.flow_id,"unknown":raw},"invocation_id":invocation,"provider":"github","account_label":"setup"}),
+        ),
+    ];
+    for (suffix, body) in cases {
+        let response = post_authenticated(
+            &fixture.app,
+            &format!("/api/reborn/product-auth/manual-token/{suffix}"),
+            body,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let safe = read_body_string(response).await;
+        assert!(safe.contains("invalid_request"));
+        assert!(!safe.contains(raw));
+        assert!(fixture.shared.flow_records_snapshot().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn manual_original_http_malformed_json_returns_only_sanitized_failure() {
+    let fixture = build_fixture();
+    let raw = "malformed JSON secret sentinel";
+    for suffix in ["submit", "setup", "secret-submit", "continue"] {
+        let response = fixture
+            .app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/api/reborn/product-auth/manual-token/{suffix}"))
+                    .header(header::AUTHORIZATION, format!("Bearer {VALID_TOKEN}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(format!("{{\"token\":\"{raw}\",\"identity\":")))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let safe = read_body_string(response).await;
+        assert!(safe.contains("invalid_request"));
+        assert!(!safe.contains(raw));
+        assert!(fixture.shared.flow_records_snapshot().is_empty());
+    }
 }

@@ -358,10 +358,14 @@ where
     ) -> Result<ResumeTurnResponse, TurnError> {
         let scope = request.scope.clone();
         let response = self.store.resume_turn(request).await?;
-        notify_queued_run_best_effort(
-            self.wake_notifier.as_ref(),
-            resume_wake(scope.clone(), &response),
-        );
+        // A live native continuation keeps its original runner. Only a real
+        // queued resume should wake an ordinary worker to claim another run.
+        if response.status == TurnStatus::Queued {
+            notify_queued_run_best_effort(
+                self.wake_notifier.as_ref(),
+                resume_wake(scope.clone(), &response),
+            );
+        }
         deferred_publication_error(
             self.publication_error_port.as_ref(),
             &resume_wake(scope, &response),

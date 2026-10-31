@@ -46,14 +46,14 @@ pub(crate) struct AvailableExtensionPackage {
 }
 
 impl AvailableExtensionPackage {
-    pub(crate) fn summary(&self) -> LifecycleExtensionSummary {
+    pub(crate) fn summary(&self) -> Result<LifecycleExtensionSummary, ProductWorkflowError> {
         let visible_capability_ids = visible_capability_ids(self)
             .map(|id| id.as_str().to_string())
             .collect::<Vec<_>>();
         let visible_read_only_capability_ids = visible_read_only_capability_ids(self)
             .map(|id| id.as_str().to_string())
             .collect::<Vec<_>>();
-        LifecycleExtensionSummary {
+        Ok(LifecycleExtensionSummary {
             package_ref: self.package_ref.clone(),
             name: self.package.manifest.name.clone(),
             version: self.package.manifest.version.clone(),
@@ -62,9 +62,9 @@ impl AvailableExtensionPackage {
             runtime_kind: runtime_kind(&self.package.manifest.runtime),
             visible_capability_ids,
             visible_read_only_capability_ids,
-            credential_requirements: credential_requirements(self),
+            credential_requirements: credential_requirements(self)?,
             onboarding: onboarding(self.package_ref.id.as_str()),
-        }
+        })
     }
 }
 
@@ -128,7 +128,7 @@ fn runtime_kind(runtime: &ExtensionRuntime) -> LifecycleExtensionRuntimeKind {
 
 fn credential_requirements(
     package: &AvailableExtensionPackage,
-) -> Vec<LifecycleExtensionCredentialRequirement> {
+) -> Result<Vec<LifecycleExtensionCredentialRequirement>, ProductWorkflowError> {
     let mut groups: Vec<CredentialRequirementGroup> = Vec::new();
     for capability in &package.package.manifest.capabilities {
         for requirement in &capability.runtime_credentials {
@@ -139,88 +139,50 @@ fn credential_requirements(
             else {
                 continue;
             };
-            let handle = requirement.handle.as_str().to_string();
             let provider = provider.as_str().to_string();
             let setup = credential_setup(setup);
-            if let Some(seen) = groups.iter_mut().find(|seen| {
-                seen.handle == handle
-                    && seen.provider == provider
-                    && can_merge_credential_setup(&seen.setup, &setup)
-            }) {
-                seen.required |= requirement.required;
-                merge_credential_setup(&mut seen.setup, setup);
+            let exact = brassclaw_host_api::RuntimeCredentialAccountRequirement::new(
+                package.package.manifest.id.clone(),
+                requirement.clone(),
+            )
+            .map_err(|_| ProductWorkflowError::InvalidBindingRequest {
+                reason: "extension credential declaration is invalid".into(),
+            })?;
+            if groups.iter().any(|seen| seen.requirement == exact) {
                 continue;
             }
             groups.push(CredentialRequirementGroup {
-                handle,
                 provider,
                 required: requirement.required,
                 setup,
+                requirement: exact,
             });
         }
     }
     groups
-        .iter()
-        .enumerate()
-        .map(|(index, group)| {
-            let has_distinct_source = groups.iter().any(|other| {
-                other.handle == group.handle
-                    && (other.provider != group.provider || other.setup != group.setup)
-            });
-            LifecycleExtensionCredentialRequirement {
-                name: if has_distinct_source {
-                    credential_requirement_name(&groups[..=index], group)
-                } else {
-                    group.handle.clone()
-                },
-                provider: group.provider.clone(),
+        .into_iter()
+        .map(|group| {
+            let name = group.requirement.reference().map_err(|_| {
+                ProductWorkflowError::InvalidBindingRequest {
+                    reason: "extension credential declaration identity is unavailable".into(),
+                }
+            })?;
+            Ok(LifecycleExtensionCredentialRequirement {
+                name,
+                provider: group.provider,
                 required: group.required,
-                setup: group.setup.clone(),
-            }
+                setup: group.setup,
+                runtime_requirement: Some(group.requirement),
+            })
         })
         .collect()
 }
 
-fn can_merge_credential_setup(
-    existing: &LifecycleExtensionCredentialSetup,
-    candidate: &LifecycleExtensionCredentialSetup,
-) -> bool {
-    existing == candidate
-}
-
-fn merge_credential_setup(
-    existing: &mut LifecycleExtensionCredentialSetup,
-    candidate: LifecycleExtensionCredentialSetup,
-) {
-    if let (
-        LifecycleExtensionCredentialSetup::OAuth { scopes: existing },
-        LifecycleExtensionCredentialSetup::OAuth { scopes: candidate },
-    ) = (existing, candidate)
-    {
-        for scope in candidate {
-            if !existing.contains(&scope) {
-                existing.push(scope);
-            }
-        }
-    }
-}
-
 struct CredentialRequirementGroup {
-    handle: String,
     provider: String,
     required: bool,
     setup: LifecycleExtensionCredentialSetup,
-}
-
-fn credential_requirement_name(
-    seen_groups: &[CredentialRequirementGroup],
-    group: &CredentialRequirementGroup,
-) -> String {
-    let ordinal = seen_groups
-        .iter()
-        .filter(|seen| seen.handle == group.handle)
-        .count();
-    format!("{}__{}", group.handle, ordinal)
+    requirement: brassclaw_host_api::RuntimeCredentialAccountRequirement,
 }
 
 fn credential_setup(
@@ -1214,7 +1176,7 @@ mod tests {
         ] {
             let package_ref =
                 LifecyclePackageRef::new(LifecyclePackageKind::Extension, extension_id).unwrap();
-            let summary = catalog.resolve(&package_ref).unwrap().summary();
+            let summary = catalog.resolve(&package_ref).unwrap().summary().unwrap();
             let onboarding = summary
                 .onboarding
                 .as_ref()
@@ -1237,7 +1199,7 @@ mod tests {
         let catalog = AvailableExtensionCatalog::from_first_party_assets().unwrap();
         let package_ref =
             LifecyclePackageRef::new(LifecyclePackageKind::Extension, "notion").unwrap();
-        let summary = catalog.resolve(&package_ref).unwrap().summary();
+        let summary = catalog.resolve(&package_ref).unwrap().summary().unwrap();
 
         assert_eq!(summary.credential_requirements.len(), 1);
         let requirement = &summary.credential_requirements[0];
@@ -1249,14 +1211,14 @@ mod tests {
     }
 
     #[test]
-    fn bundled_google_credentials_project_oauth_setup_per_declared_scope_set() {
+    fn bundled_google_credentials_preserve_complete_declared_usages() {
         let catalog = AvailableExtensionCatalog::from_first_party_assets().unwrap();
 
         for extension_id in ["google-calendar", "gmail"] {
             let package_ref =
                 LifecyclePackageRef::new(LifecyclePackageKind::Extension, extension_id).unwrap();
             let package = catalog.resolve(&package_ref).unwrap();
-            let summary = package.summary();
+            let summary = package.summary().unwrap();
             let google_requirements = summary
                 .credential_requirements
                 .iter()
@@ -1264,7 +1226,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let mut credential_count = 0;
-            let mut expected_setup_scopes: Vec<String> = Vec::new();
+            let mut expected_declarations = Vec::new();
             for capability in &package.package.manifest.capabilities {
                 for credential in &capability.runtime_credentials {
                     let RuntimeCredentialRequirementSource::ProductAuthAccount { provider, setup } =
@@ -1288,10 +1250,8 @@ mod tests {
                         "{extension_id} capability {} OAuth setup scopes should match requested provider scopes",
                         capability.id
                     );
-                    for scope in scopes {
-                        if !expected_setup_scopes.contains(scope) {
-                            expected_setup_scopes.push(scope.clone());
-                        }
+                    if !expected_declarations.contains(credential) {
+                        expected_declarations.push(credential.clone());
                     }
                     credential_count += 1;
                 }
@@ -1299,25 +1259,59 @@ mod tests {
 
             assert_eq!(
                 google_requirements.len(),
-                expected_setup_scopes.len(),
-                "{extension_id} lifecycle setup should show one Google OAuth request per distinct scope set"
+                expected_declarations.len(),
+                "{extension_id} setup must retain each complete credential usage"
             );
-            for (requirement, expected_scope) in
-                google_requirements.iter().zip(expected_setup_scopes.iter())
-            {
-                let LifecycleExtensionCredentialSetup::OAuth { scopes } = &requirement.setup else {
-                    panic!("{extension_id} should expose Google OAuth setup");
-                };
-                assert_eq!(
-                    scopes.as_slice(),
-                    std::slice::from_ref(expected_scope),
-                    "{extension_id} lifecycle setup should preserve each capability OAuth scope set"
-                );
+            for (requirement, expected) in google_requirements.iter().zip(&expected_declarations) {
+                let exact = requirement.runtime_requirement.as_ref().unwrap();
+                assert_eq!(exact.requirement(), expected);
+                assert_eq!(exact.requester_extension().as_str(), extension_id);
+                assert_eq!(requirement.name, exact.reference().unwrap());
             }
             assert!(
                 credential_count > 0,
                 "{extension_id} should declare runtime credentials"
             );
+        }
+    }
+
+    #[test]
+    fn complete_credential_names_survive_reordering_and_distinguish_targets() {
+        let mut catalog = AvailableExtensionCatalog::from_first_party_assets().unwrap();
+        let package = catalog
+            .packages
+            .iter_mut()
+            .find(|p| p.package_ref.id.as_str() == "notion")
+            .unwrap();
+        let original = package.package.manifest.capabilities[0].runtime_credentials[0].clone();
+        let mut audience = original.clone();
+        audience.audience.host_pattern = "other.example.test".into();
+        let mut target = original.clone();
+        target.target = brassclaw_host_api::RuntimeCredentialTarget::Header {
+            name: "X-Other-Credential".into(),
+            prefix: None,
+        };
+        // Replace only this test catalogue's declarations; all three usages
+        // keep one handle/provider/setup while varying real security metadata.
+        for capability in &mut package.package.manifest.capabilities {
+            capability.runtime_credentials.clear();
+        }
+        package.package.manifest.capabilities[0].runtime_credentials =
+            vec![original, audience, target];
+        let first = package.summary().unwrap().credential_requirements;
+        assert_eq!(first.len(), 3);
+        let names = first
+            .iter()
+            .map(|r| r.name.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(names.len(), 3);
+        package.package.manifest.capabilities[0]
+            .runtime_credentials
+            .reverse();
+        let second = package.summary().unwrap().credential_requirements;
+        for one in &first {
+            let two = second.iter().find(|r| r.name == one.name).unwrap();
+            assert_eq!(one.runtime_requirement, two.runtime_requirement);
         }
     }
 

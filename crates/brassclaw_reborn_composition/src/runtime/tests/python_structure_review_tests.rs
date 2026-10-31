@@ -13,12 +13,13 @@ use brassclaw_skills::{
         PgReviewSubmissionStore, RetainedValidatorSubject, ReviewSubmissionDraft,
         selection::{self, RetainedValidatorSelection},
     },
-    validator_components::python_structure_drafts,
+    validator_components::{python_pure_structure_drafts, python_structure_drafts},
     value_contract::strict_json,
 };
 use tokio::sync::Mutex;
 
 struct StructureInvocation {
+    pure: bool,
     reference: String,
     inspected: Arc<InspectedRetainedProgram>,
     tools: Arc<dyn RetainedToolPort>,
@@ -75,9 +76,12 @@ impl InternalRecipeSource for StructureInvocation {
             .get("results")
             .and_then(Value::as_object)
             .filter(|v| {
-                v.keys()
-                    .map(String::as_str)
-                    .eq(["0:1", "0:3", "0:4", "0:5", "0:6", "0:7", "0:8"])
+                let expected: &[&str] = if self.pure {
+                    &["0:1", "0:3", "0:4", "0:5", "0:6", "0:7", "0:8", "0:9"]
+                } else {
+                    &["0:1", "0:3", "0:4", "0:5", "0:6", "0:7", "0:8"]
+                };
+                v.keys().map(String::as_str).eq(expected.iter().copied())
             })
             .ok_or_else(invalid)?;
         if !matches!(&execution.host_answers()[0].1,PortAnswer::Return {value}
@@ -94,7 +98,10 @@ impl InternalRecipeSource for StructureInvocation {
             .iter()
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
-        results.insert("0:9".into(), json!(receipt));
+        results.insert(
+            if self.pure { "0:10" } else { "0:9" }.into(),
+            json!(receipt),
+        );
         assert!(!self.receipt_seen.swap(true, Ordering::SeqCst));
         let observed = self
             .coverage
@@ -131,6 +138,15 @@ fn python(id: Uuid, dependencies: &[Uuid], content: &str, public: bool) -> Value
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_private_structure_recipe_joins_original_inventory_definitions_contracts_and_sealed_observer()
  {
+    check_private_structure_recipe(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_private_pure_structure_recipe_checks_all_exports_and_hidden_host_calls() {
+    check_private_structure_recipe(true).await;
+}
+
+async fn check_private_structure_recipe(pure: bool) {
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
@@ -151,11 +167,35 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
     .await
     .unwrap();
     let usage = usage_ids(tool, true);
-    let drafts = python_structure_drafts(
-        usage,
-        crate::builtin_bootstrap::VALIDATOR_STRUCTURE_RECEIPT_SEED,
-        serde_json::to_value(brassclaw_engine::executor::retained_profile::profile()).unwrap(),
-    )
+    let profile =
+        serde_json::to_value(brassclaw_engine::executor::retained_profile::profile()).unwrap();
+    if pure {
+        let conflicting = brassclaw_skills::global_bootstrap_components::UsageComponentIds {
+            tool: packaged_component_id("validator:python-pure-structure:recipe"),
+            ..usage
+        };
+        assert!(
+            python_pure_structure_drafts(
+                conflicting,
+                crate::builtin_bootstrap::VALIDATOR_PURE_STRUCTURE_RECEIPT_SEED,
+                profile.clone()
+            )
+            .is_err()
+        );
+    }
+    let drafts = if pure {
+        python_pure_structure_drafts(
+            usage,
+            crate::builtin_bootstrap::VALIDATOR_PURE_STRUCTURE_RECEIPT_SEED,
+            profile,
+        )
+    } else {
+        python_structure_drafts(
+            usage,
+            crate::builtin_bootstrap::VALIDATOR_STRUCTURE_RECEIPT_SEED,
+            profile,
+        )
+    }
     .unwrap();
     let recipe = drafts.iter().find(|d| d.class_code() == 21).unwrap();
     for draft in &drafts {
@@ -237,6 +277,21 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
                 .unwrap()
                 .components()
                 .len(),
+            3
+        );
+    }
+    let names: &[&str] = if pure {
+        &["validator:python-graph", "validator:python-pure-calls"]
+    } else {
+        &["validator:python-graph"]
+    };
+    for name in names {
+        assert_eq!(
+            inspected
+                .pure_component(packaged_component_id(name))
+                .unwrap()
+                .components()
+                .len(),
             2
         );
     }
@@ -259,7 +314,8 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
         .get::<_, i64>(0);
     let source = "def candidate(inputs):\n    return helper(inputs['text'])\n";
     let mut first_inputs = None;
-    for case in 0..17 {
+    let case_count = if pure { 30 } else { 17 };
+    for case in 0..case_count {
         let helper = Uuid::new_v4();
         let candidate = Uuid::new_v4();
         let mut helper_doc = python(helper, &[], "def helper(value):\n    return value\n", false);
@@ -313,6 +369,63 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
             16 => {
                 candidate_doc["document"]["content"] =
                     json!("def candidate(inputs):\n    return __execute_action__('not executed')\n")
+            }
+            17 => {
+                candidate_doc["document"]["content"] = json!(
+                    "def candidate(inputs):\n    return host.post_reply(text=inputs['text'])\n"
+                )
+            }
+            18 => {
+                candidate_doc["document"]["content"] =
+                    json!("def candidate(inputs):\n    return inputs['text']\n");
+                helper_doc["document"]["content"] =
+                    json!("def helper(value):\n    return host.post_reply(text=value)\n");
+            }
+            19 => {
+                candidate_doc["document"]["content"] =
+                    json!("def candidate(inputs):\n    return candidate(inputs)\n")
+            }
+            20 | 23 => {
+                helper_doc["document"]["content"] =
+                    json!("def helper(value):\n    return helper(value)\n");
+                if case == 23 {
+                    candidate_doc["document"]["content"] =
+                        json!("def candidate(inputs):\n    return inputs['text']\n");
+                }
+            }
+            21 | 22 | 26 => {
+                let extra = match case {
+                    21 => "def another(inputs):\n    return another(inputs)\n",
+                    22 => "def another(inputs):\n    return helper(inputs['text'])\n",
+                    _ => "def another(inputs):\n    return host.post_reply(text=inputs['text'])\n",
+                };
+                candidate_doc["document"]["content"] = json!(format!("{source}{extra}"));
+                candidate_doc["document"]["preload"]["exports"]["another"] =
+                    json!({"symbol":"another","parameters":["inputs"],"mapping":true});
+            }
+            24 => {
+                candidate_doc["document"]["content"] =
+                    json!("VALUE = 1\ndef candidate(inputs):\n    return VALUE(inputs['text'])\n");
+                candidate_doc["document"]["preload"]["constants"] = json!(["VALUE"]);
+            }
+            25 => {
+                candidate_doc["document"]["content"] = json!(
+                    "def candidate(inputs):\n    return ''.join(map(helper, inputs['text']))\n"
+                )
+            }
+            27 => {
+                helper_doc["document"]["content"] =
+                    json!("def helper(value):\n    return list(map(helper, value))\n")
+            }
+            28 => {
+                candidate_doc["document"]["preload"]["exports"] = json!({});
+                candidate_doc["document"]["preload"]["private_functions"] =
+                    json!({"candidate":["inputs"]});
+                candidate_doc["document"]["preload"]["default_export"] = Value::Null;
+            }
+            29 => {
+                candidate_doc["document"]["content"] =
+                    json!("def candidate(inputs):\n    return 'host.post_reply(text=inputs)'\n")
             }
             _ => {}
         }
@@ -418,6 +531,7 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
             rig.pool.clone(),
             "python-structure-review",
             &reference,
+            None,
         ))
         .await
         .unwrap();
@@ -430,6 +544,7 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
         )
         .unwrap();
         let invocation = Arc::new(StructureInvocation {
+            pure,
             reference,
             inspected: inspected.clone(),
             tools,
@@ -494,11 +609,11 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
             assert_eq!(report["semantic_approval"], false);
             assert_eq!(
                 report["aggregation"]["pass"],
-                case == 0 || case == 15,
+                case == 0 || case == 15 || (pure && matches!(case, 22 | 23 | 25 | 29)),
                 "case {case}: {report}"
             );
             let rules = report["rules"].as_array().unwrap();
-            assert_eq!(rules.len(), 3);
+            assert_eq!(rules.len(), if pure { 4 } else { 3 });
             assert_eq!(
                 rules
                     .iter()
@@ -518,7 +633,20 @@ async fn native_private_structure_recipe_joins_original_inventory_definitions_co
                     .iter()
                     .find(|r| r["rule_id"] == "python_graph")
                     .unwrap()["ok"],
-                case == 0 || case == 15,
+                case == 0 || case == 15 || (pure && case >= 17),
+                "case {case}: {report}"
+            );
+        }
+        if pure && case != 9 {
+            let report = invocation.report.lock().await.clone().unwrap();
+            assert_eq!(
+                report["rules"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|r| r["rule_id"] == "python_pure_calls")
+                    .unwrap()["ok"],
+                matches!(case, 0 | 15 | 22 | 23 | 25 | 29),
                 "case {case}: {report}"
             );
         }

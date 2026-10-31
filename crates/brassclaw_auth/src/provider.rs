@@ -89,13 +89,15 @@ pub struct OAuthProviderExchangeContext {
 }
 
 /// Provider-exchange result safe to store in auth-flow/account records.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OAuthProviderExchange {
     pub provider: AuthProviderId,
     pub account_label: CredentialAccountLabel,
     pub authorization_code_hash: AuthorizationCodeHash,
     pub pkce_verifier_hash: PkceVerifierHash,
     pub access_secret: SecretHandle,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_expires_at: Option<crate::Timestamp>,
     pub refresh_secret: Option<SecretHandle>,
     pub scopes: Vec<ProviderScope>,
     pub account_id: Option<CredentialAccountId>,
@@ -106,6 +108,7 @@ pub struct OAuthProviderExchange {
 /// credential/egress boundaries.
 #[derive(Clone, PartialEq, Eq)]
 pub struct OAuthProviderRefreshRequest {
+    pub refresh_id: crate::CredentialRefreshId,
     pub provider: AuthProviderId,
     pub scope: AuthProductScope,
     pub account_id: CredentialAccountId,
@@ -117,6 +120,7 @@ impl fmt::Debug for OAuthProviderRefreshRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("OAuthProviderRefreshRequest")
+            .field("refresh_id", &self.refresh_id)
             .field("provider", &self.provider)
             .field("scope", &self.scope)
             .field("account_id", &self.account_id)
@@ -126,17 +130,80 @@ impl fmt::Debug for OAuthProviderRefreshRequest {
     }
 }
 
-/// Provider refresh result safe to store back into credential-account records.
+/// Exact authenticated encrypted source selected before durable refresh admission.
+/// It is metadata, not a lease, secret value or dispatch/authorization grant.
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OAuthRefreshSource {
+    pub scope: brassclaw_host_api::ResourceScope,
+    pub handle: SecretHandle,
+    pub record_reference: String,
+}
+impl OAuthRefreshSource {
+    pub fn verify(&self, request: &OAuthProviderRefreshRequest) -> Result<(), AuthProductError> {
+        if self.scope != request.scope.resource
+            || self.handle != request.refresh_secret
+            || self.scope.is_system()
+        {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        // Backend-owned opaque identity: do not normalize or assume a hash
+        // encoding. Actual native/lease owners authenticate the exact value.
+        if self.record_reference.is_empty() {
+            return Err(AuthProductError::BackendConflict);
+        }
+        Ok(())
+    }
+}
+impl fmt::Debug for OAuthRefreshSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("OAuthRefreshSource([REDACTED])")
+    }
+}
+
+/// Read-only provider preparation: deterministic destinations and the actual
+/// encrypted input generation. Callback preparation has no refresh-source field.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OAuthProviderRefreshPreparation {
+    pub destinations: OAuthTokenDestinations,
+    pub source: OAuthRefreshSource,
+}
+
+/// Provider refresh result safe to store back into credential-account records.
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OAuthProviderRefresh {
     pub provider: AuthProviderId,
     pub access_secret: SecretHandle,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_expires_at: Option<crate::Timestamp>,
     pub refresh_secret: Option<SecretHandle>,
     pub scopes: Vec<ProviderScope>,
 }
 
+/// Actual provider-owned storage identities for one original refresh action.
+/// Preparing them performs no issuer request and grants no authority.
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OAuthTokenDestinations {
+    pub access_secret: SecretHandle,
+    pub refresh_secret: SecretHandle,
+}
+
 #[async_trait]
 pub trait AuthProviderClient: Send + Sync {
+    /// Actual deterministic destinations only; no issuer/storage side effects.
+    async fn prepare_callback(
+        &self,
+        context: &OAuthProviderExchangeContext,
+        request: &OAuthProviderCallbackRequest,
+    ) -> Result<OAuthTokenDestinations, AuthProductError>;
+
+    /// Capture the exact encrypted input generation without issuing a lease or
+    /// contacting the issuer. Native admission and use independently recheck it.
+    async fn prepare_refresh(
+        &self,
+        request: &OAuthProviderRefreshRequest,
+    ) -> Result<OAuthProviderRefreshPreparation, AuthProductError>;
+
     async fn exchange_callback(
         &self,
         context: OAuthProviderExchangeContext,
@@ -146,6 +213,7 @@ pub trait AuthProviderClient: Send + Sync {
     async fn refresh_token(
         &self,
         request: OAuthProviderRefreshRequest,
+        preparation: OAuthProviderRefreshPreparation,
     ) -> Result<OAuthProviderRefresh, AuthProductError>;
 
     async fn cleanup_exchange(
@@ -165,5 +233,54 @@ pub fn validate_provider_callback_request(
     {
         return Err(AuthProductError::MalformedCallback);
     }
+    let code = crate::authorization_code_hash(&request.authorization_code)?;
+    let verifier = crate::pkce_verifier_hash(&request.pkce_verifier)?;
+    if !code.constant_time_eq(&request.authorization_code_hash)
+        || !verifier.constant_time_eq(&request.pkce_verifier_hash)
+    {
+        return Err(AuthProductError::MalformedCallback);
+    }
     Ok(())
+}
+
+impl fmt::Debug for OAuthTokenDestinations {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OAuthTokenDestinations")
+            .field("access_secret", &"[REDACTED]")
+            .field("refresh_secret", &"[REDACTED]")
+            .finish()
+    }
+}
+impl fmt::Debug for OAuthProviderRefresh {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OAuthProviderRefresh")
+            .field("provider", &self.provider)
+            .field("access_secret", &"[REDACTED]")
+            .field(
+                "refresh_secret",
+                &self.refresh_secret.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("scopes", &self.scopes)
+            .finish()
+    }
+}
+impl fmt::Debug for OAuthProviderExchange {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OAuthProviderExchange")
+            .field("provider", &self.provider)
+            .field("account_label", &self.account_label)
+            .field("authorization_code_hash", &self.authorization_code_hash)
+            .field("pkce_verifier_hash", &self.pkce_verifier_hash)
+            .field("access_secret", &"[REDACTED]")
+            .field(
+                "refresh_secret",
+                &self.refresh_secret.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("scopes", &self.scopes)
+            .field("account_id", &self.account_id)
+            .finish()
+    }
 }

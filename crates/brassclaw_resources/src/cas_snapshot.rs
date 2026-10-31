@@ -26,8 +26,7 @@ use std::future::Future;
 use std::sync::{Arc, OnceLock, Weak, mpsc};
 
 use brassclaw_filesystem::{
-    CasExpectation, ContentType, Entry, FilesystemError, FilesystemOperation, RootFilesystem,
-    ScopedFilesystem,
+    CasExpectation, ContentType, Entry, FilesystemError, RootFilesystem, ScopedFilesystem,
 };
 use brassclaw_host_api::{ResourceScope, ScopedPath};
 use serde::{Serialize, de::DeserializeOwned};
@@ -117,9 +116,8 @@ where
     /// Concurrency: same-process writers serialize on a per-path async
     /// lock for the duration of the closure + write. Cross-process
     /// contention surfaces as `E::storage(...)` from the CAS-mismatch
-    /// branch. Byte-only backends (`LocalFilesystem`) that don't
-    /// support `CasExpectation::Version` fall back to
-    /// `CasExpectation::Any` under the same in-process lock.
+    /// branch. Backends unable to honor the exact precondition fail before
+    /// writing; a process-local lock cannot replace cross-process CAS.
     pub(crate) fn update<S, T, E, U>(&self, update: U) -> Result<T, E>
     where
         S: Snapshot,
@@ -224,31 +222,14 @@ where
     F: RootFilesystem,
     E: StorageError,
 {
-    let fallback_entry = entry.clone();
-    let cas_for_fallback = cas;
+    // A process-local lock cannot make an unconditional fallback safe across
+    // independent owners. Unsupported preconditions stay errors before work.
     match filesystem.put(scope, path, entry, cas).await {
         Ok(_) => Ok(()),
-        Err(FilesystemError::VersionMismatch { .. }) => Err(PutError::VersionMismatch),
-        Err(FilesystemError::Unsupported {
-            operation: FilesystemOperation::WriteFile,
-            ..
-        }) => {
-            if matches!(cas_for_fallback, CasExpectation::Absent) {
-                let existing = filesystem
-                    .get(scope, path)
-                    .await
-                    .map_err(|err| PutError::Other(E::storage_from(err)))?;
-                if existing.is_some() {
-                    return Err(PutError::VersionMismatch);
-                }
-            }
-            filesystem
-                .put(scope, path, fallback_entry, CasExpectation::Any)
-                .await
-                .map(|_| ())
-                .map_err(|err| PutError::Other(E::storage_from(err)))
+        Err(FilesystemError::VersionMismatch { .. } | FilesystemError::SnapshotMismatch { .. }) => {
+            Err(PutError::VersionMismatch)
         }
-        Err(err) => Err(PutError::Other(E::storage_from(err))),
+        Err(error) => Err(PutError::Other(E::storage_from(error))),
     }
 }
 

@@ -16,7 +16,9 @@ use reborn_support::model_replay::RebornTraceReplayModelGateway;
 async fn reborn_direct_chat_user_scope_isolation_parity() {
     const DIRECT_ROOM: &str = "room-direct-user-shared-id";
 
-    let shared_storage = RebornHarnessSharedStorage::new().expect("shared storage");
+    let shared_storage = RebornHarnessSharedStorage::new()
+        .await
+        .expect("shared storage");
     let scope = test_product_scope(
         "tenant-direct-user-e2e",
         "host-user",

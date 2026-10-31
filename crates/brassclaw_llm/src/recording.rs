@@ -1020,6 +1020,18 @@ impl RecordingLlm {
 
 #[async_trait]
 impl LlmProvider for RecordingLlm {
+    fn supports_final_request_guard(&self) -> bool {
+        self.inner.supports_final_request_guard()
+    }
+
+    async fn check_dispatch(
+        &self,
+        model: Option<&str>,
+        max_output_tokens: Option<u32>,
+    ) -> Result<(), LlmError> {
+        self.inner.check_dispatch(model, max_output_tokens).await
+    }
+
     fn model_name(&self) -> std::borrow::Cow<'_, str> {
         self.inner.model_name()
     }

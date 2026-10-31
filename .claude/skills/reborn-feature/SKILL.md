@@ -1,327 +1,252 @@
 ---
 name: reborn-feature
-description: Plan and implement Reborn capabilities and their WebUI, settings, API, facade, and runtime integration using the final-v3 architecture. Start with Recipe/component reuse, then trace the required product and infrastructure wiring. Use for Reborn feature work; ordinary component-only authoring follows the repository component guides.
+description: Plan, implement, or fix Reborn capabilities and their WebUI, API, settings, facade, and runtime integration under the final-v3 architecture. Start with Recipe/component reuse and trace the affected product path. Use for Reborn feature integration; component-only authoring follows the repository component guides.
 ---
 
 # Building a Reborn feature against final v3
 
-This is a Codex development skill. BrassClaw runtime Skills have their own
-preloadable function and association contracts; this file is development guidance.
-Inventory existing components and trace the affected production path before editing.
-Maintain this `.agents/skills/reborn-feature/SKILL.md` as the canonical source;
-keep `.claude/skills/reborn-feature/SKILL.md` byte-for-byte synchronized whenever
-this guidance changes. Relative repository links work from either location.
+This is a development skill, not a BrassClaw runtime Skill. It supplies repository
+routing and integration rules; the linked policies and component guides own the
+full contracts. Maintain this file as the canonical source and keep
+`.claude/skills/reborn-feature/SKILL.md` byte-for-byte synchronized. Repository
+links resolve from either skill directory.
 
-## Start with the Recipe and choose the owning layer
+## Establish the current gate, owner and bounded change
 
-Read the repository's `AGENTS.md`, [development policy](../../../docs/development-policy.md)
-and the relevant parts of [simplified_v3.md](../../../simplified_v3.md).
-Read affected crate `AGENTS.md` and `CLAUDE.md` files where present. The binding
-v3 contracts take precedence over legacy scoped authorization, operation
-approvals, per-chat VM descriptions and blanket validation commands.
+Read root `AGENTS.md`, the [development policy](../../../docs/development-policy.md)
+and the [current implementation status](../../../docs/implementation-status.md).
+Reuse current session knowledge; reread only affected changes or unresolved facts.
+Read the applicable crate `AGENTS.md`/`CLAUDE.md` and relevant plan sections, not
+all subsystem documents for every edit. Architecture targets are requirements;
+dated receipts establish only their exact observed scope.
 
-For a new or changed capability, first present the candidate Recipe: existing
-usages, ordered steps, typed inputs/results, completion and any missing primitive
-or runner support. Search Recipes, variants, Skills, PythonCode, ToolSkills,
-seeders and the supported catalogue before designing Rust services. Prefer an
-existing variant, a new variant, or a Recipe composed from reusable components.
+For ongoing v3 implementation, check the [priority conformity gate in simplified_v3](../../../simplified_v3.md#vorrang-konformität-des-bereits-implementierten-stands-herstellen)
+before continuing the ordinary remaining-work lists. Use its current completion
+record; do not cache K-step status in this skill or redo accepted steps. While the
+gate is open, implement the next authorized applicable correction in its named
+owner before regular plan continuation. Do not turn a separate authorized doc
+fix or bounded maintenance request into unsolicited implementation of every K-step.
+
+For a new or changed capability, first present its candidate Recipe: reusable
+usages, ordered steps, typed handoffs, completion and exact missing support.
+Search the affected component families, variants, seeders and supported catalogue
+before designing Rust services. Prefer a compatible existing usage/variant or an
+explicit Recipe of reusable components. For infrastructure or operator-management
+work, identify the affected Recipe/product path; do not invent a runtime Skill
+or Tool to represent a settings endpoint or an agent-documentation edit.
+
 Before creating or changing components, read all four ground-truth guides:
 [recipe.md](../../../recipe.md), [skills.md](../../../skills.md),
 [tools.md](../../../tools.md) and [toolskills.md](../../../toolskills.md).
+Choose the implementing owner before editing shared code:
 
-Read additional references only for the affected work:
-
-| Work | Required reference |
+| Responsibility | Implementing owner / contract |
 | --- | --- |
-| Component qualification, Q1/Q2 or activation | [validator_v3.md](../../../validator_v3.md); this checkout has no `validator.md`. |
-| Component migration, reuse and canonical execution Recipes | [monty.composition.md](../../../docs/plans/monty.composition.md) and its linked implementation/Skill-Recipe appendices. |
-| Prefix generation, profiles, model selection or Sempai knowledge | [prefix_v3_upgrade.md](../../../docs/plans/prefix_v3_upgrade.md). |
-| Monty hosting, live settings or recovery | [simplified-v3 implementation plan](../../../docs/plans/simplified-v3-implementation.md) and [vendor compatibility contract](../../../vendor/monty-control/BRASSCLAW.md). |
+| Task workflow, reusable components, bindings/exports, canonical commands and MCP protocol/consumer wiring | [composition ownership](../../../docs/plans/monty.composition.md#concurrent-implementation-with-simplified-v3) and only the relevant linked appendix entries. Recipes/PythonCode sequence tasks; narrow missing system primitives use existing native registration. |
+| Retained loading/typed transport, global hosting, child/chat lifecycle, live resources, provider revision handling and recovery | [simplified library integration](../../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration), [shared admission/recovery](../../../simplified_v3.md#gemeinsamer-admission--und-recoveryvertrag-für-produktaufträge) and applicable Phases 0a/3a/6/8/§10.1. Extend their existing owners. |
+| Review subjects, required checks, trusted Q1/Q2/behavior and general pure approval | [validator ownership](../../../validator_v3.md#concurrent-implementation-with-simplified-v3), using [shared review-runtime support](../../../simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung). Runtime completion is not approval. |
+| Prefix sources, compiler/design/generation/serving and the final model-request guard | [prefix remaining sequence](../../../docs/plans/prefix_v3_upgrade.md#remaining-implementation-sequence--full-completion). Consume shared admission/provider/upgrade support. |
+| Recipe-owned Sempai semantics, dynamic control/occurrences and shared facilities | [v3.5 handoffs](../../../path_to_v3.5.md#ongoing-plan-handoffs-not-parallel-implementations). Preserve existing native transport/accounting/effect custody. |
 
-Treat dated plan milestones as recorded evidence for their exact scope. Reinspect
-current source and consumers; a pending statement in an older milestone or a newer
-helper acceptance does not establish the current production status of every gate.
+These are implementing responsibilities, not separate services to create. Reuse
+qualified loaders, stores, supervisors, settings publishers and evidence writers.
+A missing adapter stays with its named owner; it cannot justify a second queue,
+VM, provider catalogue, approval path or specialized Rust workflow loop.
 
-Choose the implementation path from the responsibility:
+## Inspect the actual producer, handoffs and consumer
 
-- **Task behavior:** Recipes and associated PythonCode own workflow sequencing,
-  Tool calls, explicit LLM steps, replies and continuation. Add a Rust Tool only
-  for an exact missing system primitive after considering existing usages.
-- **Operator management:** settings, catalogue administration and control routes
-  use the product facade and composition services. They may need Rust/API/UI
-  changes without becoming a new workflow Tool. Task execution still enters the
-  ordinary ingress and orchestrator path.
-- **Infrastructure gaps:** repair binding, stores, lifecycle, resource accounting,
-  transport or kernel enforcement in their owning layers. A missing runner
-  contract does not justify hiding the task workflow in a specialized Rust Tool.
+Use bounded `rg`/`rg --files` searches for the requested behavior. The following
+are navigation hints, not a mandatory repository-wide search batch:
 
-## Inventory existing integration points
-
-Inspect actual signatures, adapters, feature gates and callers. A matching name
-does not establish a working binding or an approved component combination.
-Use task-specific searches of seeders and component stores as well as these
-product integration starting points:
-
-```bash
-rg -n 'trait .*ProductFacade|pub trait .*Service|async fn ' crates/brassclaw_product_workflow/src
-rg -n 'Reborn.*Admin|Reborn.*Facade|ProductCommandService|PgProviderRepo' crates/brassclaw_reborn_composition/src
-rg -n 'WEBUI_V2_PATTERN_|fn .*_descriptor' crates/brassclaw_webui_v2/src/descriptors.rs
-rg -n 'Swappable|Reload|SecretStore' crates/brassclaw_llm/src crates/brassclaw_reborn_config/src crates/brassclaw_secrets/src
-rg -n 'GlobalMontyOwner|global_monty_startup|MontySettingsOwner' crates/brassclaw_reborn_composition/src
-rg --files crates | rg '(builtin_bootstrap|seeder|seed|recipe|python_code|tool_skill)'
-```
-
-Reuse compatible ports and handles rather than introducing parallel traits.
-Historical code is evidence of current support, not the target design. In
-particular, final-v3 provider definitions, configuration and selection use
-PostgreSQL through `PgProviderRepo` or a neutral port; `config.toml`, embedded
-provider lists and file fallbacks are legacy paths to reconcile under v3 §10.
-Keep secrets behind the existing secret broker.
-
-For the affected subsystem, follow these current implementation seams rather
-than creating another loader, catalogue, review owner or settings publisher:
-
-| Subsystem | Source starting points |
+| Affected area | Source starting points under `crates/` |
 | --- | --- |
-| Retained workflow assembly | `brassclaw_engine/src/memory/retained_instruction.rs`, `retained_inputs.rs`, `retained_tools.rs`, `retained_reviews.rs`; `executor/retained_recipe.rs`. |
-| Preload/export qualification | [retained_preload.rs](../../../crates/brassclaw_engine/src/executor/retained_preload.rs), [retained_source.rs](../../../crates/brassclaw_engine/src/executor/retained_source.rs); actual `brassclaw_monty_host` source inspection and invocation callers. |
-| Catalogue capture and activation | [installed_monty_catalogue.rs](../../../crates/brassclaw_reborn_composition/src/installed_monty_catalogue.rs), [authored_monty_catalogue.rs](../../../crates/brassclaw_reborn_composition/src/authored_monty_catalogue.rs). |
-| Submission and trusted review | Composition `pg_review_submission.rs`, `pg_workflow_review.rs`, `pg_association_review.rs`; retained revision, review and association stores in `brassclaw_skills`. |
-| Live resource publication | [live_monty_settings.rs](../../../crates/brassclaw_reborn_composition/src/live_monty_settings.rs), `pg_monty_vm_settings.rs`; product settings DTOs, Monty service/transport owners and WebUI consumers. |
-| Completed-turn review | Composition `completed_turn_review/{mod,delivery,backend,ports,reconciliation}.rs`, `pg_review_inspection.rs`. |
-| MCP | Composition `mcp_recipe_catalogue.rs`, `mcp_command_qualification.rs`, `mcp_chat_bridge.rs`, `mcp_server_service.rs`, `mcp_provider_gateway.rs`; ingress listener wiring. |
+| Product contracts and WebUI | `brassclaw_product_workflow/src`, `brassclaw_webui_v2/src/descriptors.rs`, `brassclaw_webui_v2_static`. |
+| Runtime/facade attachment | `brassclaw_reborn_composition/src/{factory,runtime,runtime_input,webui}.rs`; `brassclaw_reborn_cli/src/commands/serve.rs`. |
+| Retained assembly and execution | `brassclaw_engine/src/memory/{retained_instruction,retained_inputs,retained_tools,retained_reviews}.rs`; `executor/{retained_preload,retained_source,retained_recipe}.rs`. |
+| Catalogue and activation | Composition `installed_monty_catalogue.rs`, `authored_monty_catalogue.rs`, `component_deployment.rs`. |
+| Submission and review | Composition `pg_review_submission.rs`, `pg_workflow_review.rs`, `pg_association_review.rs`; immutable revision/review/association stores in `brassclaw_skills`. |
+| Runtime and settings | Composition `global_monty_startup.rs`, `live_monty_settings.rs`, `pg_monty_vm_settings.rs`; actual `brassclaw_monty_host` callers. |
+| Provider and prefix jobs | Composition `pg_provider_repo.rs`, `llm_config_service.rs`, `prefix_job_submission.rs`, `prefix_job_definitions.rs`. |
+| Completed-turn and MCP | Composition `completed_turn_review/`, `pg_review_inspection.rs`, `mcp_recipe_catalogue.rs`, `mcp_command_qualification.rs`, `mcp_chat_bridge.rs`, `mcp_provider_gateway.rs`; actual ingress listener wiring. |
 
-These paths are source navigation, not an assertion that every final-v3 feature
-is implemented or deployed. Trace feature gates, concrete store APIs and ordinary
-callers before reusing any seam.
+Read the actual definition, selected feature/backend implementation and affected
+callers before changing an interface. Trace inputs/results, errors, ownership,
+transactions and side effects; find affected trait implementations. A similar
+name, seeded row or old example does not prove registration, support or approval.
+Resolve source-visible assumptions before compiling. Use a small experiment only
+for a concrete uncertainty source inspection cannot settle.
 
-## Trace the complete affected path
-
-For a management feature, trace one existing vertical before the first edit:
+For a management feature, follow the affected vertical:
 
 ```text
-browser (brassclaw_webui_v2_static)
-  -> apiFetch -> webui_v2 descriptor/handler
-  -> RebornServicesApi (brassclaw_product_workflow)
-  -> port -> composition adapter
-  -> supported store and live runtime/control handle
+browser -> apiFetch -> descriptor/handler -> RebornServicesApi
+        -> product port -> composition adapter -> store/live control owner
 ```
 
-The composition path supplying that adapter is:
+Use an existing comparable vertical to verify attachment. Read only affected
+portions of factory/runtime/serve/webui. Reuse `with_*` builders and compatible
+ports; expose facade-shaped handles. HTTP handlers use `state.services()`, not
+raw stores, kernel dispatchers or host-runtime access. Composition must not depend
+on the v1 `src/` tree or unextracted legacy crates.
 
-```text
-brassclaw_reborn_cli/src/commands/serve.rs
-  -> build_runtime_input_with_options -> RebornRuntimeInput
-  -> build_reborn_runtime -> RebornRuntime
-  -> build_webui_services(Arc<RebornRuntime>, ...) -> attached facades
-```
+For task work, follow ingress -> the already-running global Monty -> matching ->
+IBS -> pinned execution -> host/kernel -> reply/history. Internal ResultOnly work
+uses its qualified private admission and settlement contract, without fabricated
+public chat matching or an assistant reply. One supervised global service starts
+after migration/seeding/integrity and before producers/ingress; turns/children/waits
+retain isolated task contexts. No per-chat replacement VM or Rust fallback loop.
+For interpreter changes also read the [vendored compatibility contract](../../../vendor/monty-control/BRASSCLAW.md).
 
-Read the affected portions of `factory.rs`, `runtime.rs`, `runtime_input.rs`,
-`webui.rs` and `commands/serve.rs`. Determine which store/control handle is
-needed, who owns it, and whether it is already available. Thread required inputs
-through existing `with_*` builders; construct consuming services inside composition
-and expose facade-shaped handles rather than public raw substrate accessors.
+## Preserve the execution and approval boundaries
 
-For a task capability, trace ingress -> the already-running global Monty ->
-matching -> IBS/composition -> pinned execution -> host/kernel -> reply/history.
-Exactly one supervised global Monty service starts after migrations, component
-seeding and integrity checks, before workers/producers/ingress accept work. Turns,
-waits and cancellation retain isolated task contexts without replacing that VM.
-Rust hosts/transports work; it must not add a second workflow loop or a per-chat
-fallback. Inspect the ordinary caller; candidate tests alone do not prove uptake.
+Apply the four guides to the affected graph; do not restate their full schemas in
+new DTOs or invent fields for old constructors, Recipe JSON or association formats.
 
-## Apply the component execution contracts
+- A runtime Skill is one Tool usage: prose plus explicitly associated preloadable
+  PythonCode, declared exports/signatures and helper/constant dependencies. It
+  needs no dedicated Recipe; many consuming Recipes may reuse it. Only intended
+  MCP exposure requires a qualified MCP-call Recipe/variant. Current deployment
+  publishes complete Recipe graphs; do not claim standalone library activation.
+  Pure helpers remain
+  PythonCode and need no artificial zero-Tool Skill or ToolSkill.
+- Each component step references one stable UUID using persisted
+  `knowledge`/`stepnumber` and supported typed input mappings. A nonexecuting,
+  nonauthorizing ToolSkill binding normally immediately precedes its matching
+  PythonCode invocation. Loading definitions has no Tool/model/I/O effects.
+- Pin one coherent approved catalogue selection, exact interface/export/code/
+  association/approval/native artifact/ABI resolution, variant and input layout.
+  Children, retries and resumes keep it. Mutable inputs/defaults/closures/results
+  stay isolated per invocation; runtime values never become Python source.
+- Inspect the actual `python-preload/2` reader, retained inspector and selected
+  caller. The ordinary retained runner currently supports one bound Tool call per
+  execution step and `stop`/`max_attempts: 1`. A documented dependent-chain or
+  retry exception requires its real qualified binding/control/durable adapter;
+  binding coverage or read-only evidence alone does not enable it. Recheck source
+  and status before relying on a successor implementation.
+- Independent pure execution needs its own exact root/export/closure evidence;
+  membership in a usage dependency graph is insufficient. Consume validator's
+  [remaining pure-review contract](../../../docs/reborn/pure-component-review.md#exact-remaining-cutover-contract).
+  Source facts, private check Recipes and sealed observations are prerequisites,
+  not general Q1 or approval. Do not widen the closed compiler exception.
+- Current global Tool policy and technical constraints apply at every dispatch,
+  across retained versions/aliases. Claims/attempts fence execution, not Tool
+  permission. Host denial, cancellation, exhausted budgets and unresolved effects
+  remain authoritative even if Python catches an exception and returns success.
+- Only genuine No-Match enters Tier 2; DB/matching/assembly errors, ambiguity and
+  begun Recipe failures do not. Preserve original invocation/count/key/arguments
+  and confirmed/unresolved effects. Timeout is not no-effect evidence; never
+  replay a completed effect or whole Recipe to repair output/reply persistence.
+- Deterministic eligible usages may be Tier 0; shell and subagent Recipes are
+  Tier 1. Development reasoning is not restricted by product Tier-0 rules.
 
-Use the four guides for detailed schemas and acceptance. During feature design:
+Installed authored changes need trusted Q1/behavior and human Q2 for the exact
+reviewed subject/combination. Bundled successors use the installation owner's
+noncircular `system_seed` integrity/Q1/behavior path without extra instance Q2.
+A source/status label, development test or task manifest supplies neither approval
+nor authority. Submit immutable unreviewed revisions with exact predecessor and
+dependency references; preserve overrides and old task selections. Successful
+human evidence is written only through the authenticated exact-view review route.
 
-- A runtime Skill is one Tool usage with prose and explicitly associated
-  PythonCode exports/signatures, helpers/constants and dependencies. Load pinned
-  definitions in dependency order without effects; invoke exports with typed data.
-  Each real Skill needs a canonical execution Recipe and matching command.
-- Eligible deterministic usages may be Tier 0; shell and subagent Recipes are
-  always Tier 1. Keep creative reasoning in explicit LLM steps. Tier 2 is entered
-  only by actual No-Match, never to bypass a failed match or unsupported runner.
-- Recipe component steps reference one stable UUID each. A Rust ToolSkill binding
-  step executes nothing and grants no permission; its immediately following
-  matching PythonCode step invokes the usage. Pure logic needs no artificial
-  binding. Independent Tool calls stay in separate execution steps; use the
-  documented dependent-chain exception only with verified binding coverage.
-- Use persisted `knowledge`/`stepnumber` syntax and step-local
-  `inputs["local_name"]` bindings from recipe.md. Runtime values never become
-  Python source. Validate recursive contracts, missing/null/default semantics,
-  results and handoffs; isolate mutable state per task/attempt/invocation.
-- Match and assemble from one coherent active, approved catalogue snapshot. Pin
-  Recipe/variant/step links/input layout, exports, transitive dependencies, exact
-  revisions/checksums, association approvals and actual retained Tool artifacts.
-  Children, retries and resumed tasks keep that selection; do not read latest again.
-- Authored installed-instance changes require trusted Q1, behavioral evidence and
-  human Q2 for exact combinations. Bundled first-party components use the separate
-  integrity-qualified `system_seed` bootstrap path without installed-instance Q2.
-  Labels and manifests alone do not prove approval or grant dispatch authority.
-- Only an actual No-Match enters Tier 2. Matching/DB errors, ambiguity and begun
-  Recipe failures remain distinct. Preserve durable dispatch intent/counts,
-  idempotency and confirmed/unresolved effects through waits and recovery. A timeout
-  does not prove no effect; never replay completed effects or a whole Recipe after
-  a crash. Fence stale generations before supervised reconciled replacement.
-- If exposing Skill usages through MCP, follow skills.md's approved canonical
-  Recipe discovery and completed-command chat ingress contract. MCP must not
-  become a direct Python, IBS or Rust dispatch path.
+Activation consumes existing valid evidence and runtime support; it does not
+rerun effects or create per-invocation review. Follow [simplified §8.2](../../../simplified_v3.md#82-vorgeschlagene-webui-funktionen):
+commit the approved catalogue/routing and durable affected-prefix invalidation,
+then build the Prefix from that active snapshot. Qualified MCP discovery follows
+its existing publication/command gates. On lost commit/reload/publication replies,
+read back the original operation and show desired/effective/pending states; never
+create a replacement activation, silently downgrade or report false runtime uptake.
+Missing Prefix readiness blocks dependent model calls, not qualified model-free
+builds or unrelated safe work. Old tasks keep their compatible pinned selection.
 
-Inspect the actual `python-preload/2` declaration reader and retained source
-inspector before authoring exports. Use supported checksummed revision documents;
-do not invent legacy INSERT fields or extend association formats by assumption.
-Verify export signatures, fixed arguments, recursive contracts, declared imports,
-dependency order, collisions and effect-free loading. The current inspector
-conservatively rejects unsupported Tool-calling recursion, closures, first-class
-aliases and repeatable dispatch patterns. Repair an actual missing adapter in its
-owning layer before activating a usage; do not evade rejection with source rewriting.
+## Wire only the product layers the feature needs
 
-`PreparedReplSeed` is first-feed compiler reuse, not complete catalogue-prefix
-compilation or approval. Shared immutable bytecode must preserve fresh mutable
-arguments/defaults/closures, task-owned bindings and old export selections.
-
-## Authoring, review and coherent activation
-
-Trace the existing submission and activation facade methods through their
-composition/store implementations. Submit immutable unreviewed revisions with
-exact predecessor/dependency references; submission must not mutate live legacy
-rows, manufacture evidence or activate a catalogue. Keep structural Q1, behavioral
-evidence, human Q2 and exact association approval distinct and owned by their
-trusted writers. Model/Recipe authoring ports cannot write successful human Q2.
-
-Activation consumes applicable existing approvals and checks assembly/runner
-compatibility for a coherent generation; it must not rerun workflow effects or
-turn into per-invocation review. Preserve unchanged approval identifiers and old
-task generations. Publish routing, prefix and qualified MCP discovery coherently,
-with revision conflicts and unsupported combinations failing before effects.
-Use the installation owner's noncircular qualification path for bundled seeds;
-a `source: system` label cannot qualify an installed-instance edit.
-
-## Completed-turn Sempai review and MCP integration
-
-Reuse the installation-owned completed-turn review Recipe and existing global
-service delivery. Keep the completed prompt/response/effect bundle correlated
-with its conversation, run and attempt, and pin the review's model/prefix selection.
-Proposed components remain immutable and unreviewed until the separate authoring
-gates pass. Preserve uncertain attempts, retained answers and quarantine state.
-Inspection and reconciliation may settle only actual retained native observations;
-they must not resubmit a provider request, replay Tools, re-admit a review, finish
-a Recipe synthetically or activate a candidate. A reconciliation note is not proof
-of an external effect or settlement after restart.
-
-For MCP, declarations are not qualification or advertising. Reuse command
-qualification and immutable discovery snapshots from the active Recipe catalogue;
-do not expose raw Skill rows. Keep the server alive across requests. Kohai prepares
-the final selected prefix before advertising the request-local provider connection,
-then disconnects that exchange on complete answer or reconciled failure/cancellation.
-Retain each advertised contract and selected generation through streaming and
-concurrent calls. Calls enter new ordinary chats and return correlated terminal
-results; lost replies or chat closure must not resend a completed effect.
-
-## Prefix generation and serving features
-
-Follow the prefix upgrade plan rather than adding another compiler or source
-catalogue. Inventory complete authoritative originals and approved components,
-with source hashes, applicability and provenance. Preserve originals separately
-from model-facing teaching/compiler output; exclude private deployment data.
-Do not silently trim the catalogue with row caps or architecture-heading slices.
-
-Keep generation, validation, target/cache qualification and activation distinct.
-Use immutable generations and the supported durable Recipe/job path; pin the
-profile, model/design, source and compiler selections for each build and serving
-request. Preserve predecessor generations needed by existing consumers. The six
-planned profiles (`base-prompt`, `defensive`, `homeassistant`, `tomedo`, `sempai`,
-`prefix-maker`) are target scope, not proof that their current APIs/jobs are shipped.
-Inspect the current store, compiler and serving adapter before claiming uptake.
-
-## Product integration checklist
-
-Extend only the layers the feature actually needs:
-
-| Layer | Existing seam and required work |
+| Layer | Required integration when affected |
 | --- | --- |
-| Port | `brassclaw_product_workflow`: reuse or extend the feature port, DTOs and errors; re-export where required. |
-| Facade | Extend `RebornServicesApi` and the real facade. Use fail-closed unavailable defaults where appropriate; verify production attachment and affected implementations rather than relying on defaults to hide missing wiring. |
-| Adapter | `brassclaw_reborn_composition`: implement the supported port using existing stores/control handles; register under applicable current feature gates. |
-| HTTP | `brassclaw_webui_v2`: route/pattern/descriptor, thin handler over `state.services()`, router mounting, and affected `tests/webui_v2_descriptors_contract.rs` expectations. |
-| Wiring | Attach in `build_webui_services`; thread genuinely missing inputs through runtime/CLI composition. |
-| Frontend | `brassclaw_webui_v2_static`: existing `apiFetch`, API modules, hooks and UI states; verify behavior and syntax of changed JavaScript. |
+| Product port/facade | Reuse/extend DTOs, errors and facade methods; update actual implementations/re-exports. Unavailable defaults cannot hide a required missing service. |
+| Composition | Construct the adapter from existing stores/control handles and attach it in `build_webui_services`; thread only missing runtime/CLI inputs. |
+| HTTP | Add or adjust route/pattern/descriptor, thin handler and mounting; update affected descriptor-contract expectations. |
+| Frontend | Use existing `apiFetch`, API modules/hooks and explicit pending/error/effective states. Validate changed JavaScript syntax and affected UI behavior. |
 
-Feature gates describe current builds, not permission to invent final-v3 product
-editions. Required services must be wired in the supported full product.
-Composition must not depend on the v1 `src/` tree or unextracted legacy crates.
-HTTP handlers use only `RebornServicesApi`; keep raw stores, dispatchers and
-host-runtime handles inside composition rather than accessing them from handlers.
+Feature gates describe actual configurations, not extra final-v3 product editions.
+The authenticated instance-token operator administers all supported functions;
+external channel senders do not inherit that authority. Preserve token/CSRF/origin,
+sandbox/network/secret and resource enforcement. Remove legacy role/scope/grant
+checks only with their real replacement wired. Keep conversation/message/run/
+attempt/source identity for correlation, cancellation, custody and idempotency.
 
-## Operator authority and live settings
+Provider definitions/configuration/selection use PostgreSQL and the existing
+revisioned owner, without file/compiled-list fallback. Resolve secrets through
+protected host brokers, outside model inputs, results and snapshots. Settings
+persistence alone is not uptake: preserve desired/effective revisions, feasibility,
+acknowledgement, consumed task budgets and visible pending/failed publication.
+Keep the 600-second executing-time task default, 512 MiB startup/manual heap floor,
+finite physical backstop and independent host allocations. Preserve retired Monty
+allocation-count values as migration evidence. Disabled discretionary token budgets
+remove artificial retrieval/history/task quotas; technical model input/output and
+context bounds still apply. Implement a missing final request guard in the Prefix
+owner at the existing model boundary; do not add a parallel guard.
 
-- The valid instance-token operator administers all supported instance functions.
-  Do not add user/tenant/project/feature-role checks or a multi-tenant mode.
-  Preserve conversation/message/run/attempt identifiers for data relationships,
-  cancellation, replies and idempotency; they are not Tool permission scopes.
-  External channel senders do not inherit operator management authority.
-- Retain token authentication, CSRF/origin protection, input validation, auditing,
-  sandbox/network/secret enforcement and resource limits. Existing
-  `read_policy`/`mutation_policy` helpers require inspection against the target;
-  copying legacy scope metadata does not establish final-v3 authorization.
-- Kernel checks apply current instance-wide Tool allow/block settings and technical
-  constraints before every dispatch, including retries and running Recipes, across
-  retained versions/aliases. Approval or ToolSkill binding never replaces that
-  check. Run claims fence execution; they are not invocation approval leases.
-- Supported resource and Tool settings changes take effect live. Validate the
-  complete revisioned settings set, prevent lost updates, and coordinate store
-  publication with runtime feasibility/acknowledgement. Desired/effective revisions,
-  pending uptake and failures must be visible; UI save success proves persistence
-  only. Preserve consumed task budgets across changes and continuations. Reject
-  unsafe manual memory reductions; keep automatic reductions pending when required
-  by Phase 3a. Do not substitute restart-to-apply or merely log a reload failure.
+## Apply the relevant domain handoff
 
-For resource changes, inspect the complete product settings DTOs and live owner:
+- **Child work:** reuse claim-fenced explicit workflow/typed-input admission and
+  its captured parent catalogue. Declare a finite recursive profile. Admission or
+  `authorized:true` is not completion: consume the actual correlated terminal
+  reply/failure, including absent/null distinctions. Wait yields shared capacity;
+  unknown/cancelled results never cause an automatic replacement child.
+- **Completed-turn Sempai:** reuse existing global delivery and native evidence/
+  accounting custody. Review/proposal/iteration semantics remain Recipe-owned in
+  v3.5. Candidate components stay unreviewed; reconciliation cannot resubmit model
+  work, replay Tools, synthesize completion or activate a proposal.
+- **MCP:** derive immutable listing/commands from qualified approved execution
+  Recipes, not raw Skills. Calls send the listed completed command once through
+  a new ordinary chat and forward its correlated result before non-destructive
+  close. Recover lost send/delivery/close at the original chat without replay.
+  The server remains instance-owned and alive. Kohai connects/advertises after
+  final prefix addition immediately before model send, retaining the connection
+  through intermediate Tool rounds; complete answer or owned error/cancel cleanup
+  disconnects only that request. The final guard checks the actual transmitted
+  request including Tool/advertisement metadata. No direct MCP execution bridge.
+- **Prefix:** preserve complete authoritative originals/hashes/provenance separately
+  from model-facing output. No row/heading truncation or private deployment data
+  in model context. Profile metadata/source-only output/quarantine is not accepted
+  design, cache qualification or serving activation. Reuse immutable job definitions
+  and shared ResultOnly admission; identical IDs retain original explicit inputs/
+  compiler selection, changed payload conflicts, deliberate new work gets a new ID.
+  Provider-free qualified builds must not depend on an optional provider/prefix.
+- **Upgrade/recovery:** contribute source/derived, review, command, native artifact
+  and override references to the one migration/backup owner. Retaining an image or
+  checksum does not prove compatible old native loading. Block unsafe upgrades or
+  drain/reconcile first. Fence the old generation before supervised replacement;
+  RAM is not a durable checkpoint and no whole-task replay repairs a crash.
 
-- The default task limit is 600 seconds of executing VM time; distinguish
-  preparation observations from execution and exclude idle/queue/external waits.
-  It never becomes a deadline for the global orchestrator's lifetime.
-- Shared-heap startup/manual budgets have a 512 MiB floor. Keep the finite
-  physical worker backstop distinct from logical heap usage and host allocations.
-  Preserve desired/effective revisions and retained work during pending reductions.
-- Monty 1.0 removed allocation-count enforcement. Preserve retired configured
-  values through the supported migration and report unsupported status; never
-  reinterpret counts as bytes or pretend the retired setting still limits execution.
-- Token budgets default to disabled. When disabled, remove artificial retrieval,
-  assembly/history and task token caps while retaining accounting and actual model
-  context/output limits.
-- Coordinate heap, task, frame, queue, context and deadline policies through the
-  existing durable settings publication boundary. Preserve accepted exchange frame
-  contracts, completed answers, queued continuations and consumed budgets. Poll
-  accepted host I/O while publication holds VM execution; do not replay effects to
-  drain capacity or acknowledge a new policy merely because PostgreSQL saved it.
+## Complete one work package, then validate once sufficiently
 
-## Validate by the claim and report support honestly
+Use the [development policy's evidence table](../../../docs/development-policy.md#choose-evidence-by-the-claim).
+No extra planning document, permission round, subagent or reporting framework is
+required by this skill. Preserve the user's scope and existing authorization;
+component activation gates remain separate from authorization to develop a change.
 
-Follow the development policy rather than building each crate by habit. Review
-the complete change and affected consumers before compilation. Reuse passing
-evidence unless a relevant change invalidates it; keep Cargo target/features/profile
-stable and obey repository disk-space rules before executable checks.
+1. Define the bounded expected behavior, affected producer/handoffs/consumers,
+   existing applicable evidence and remaining uncertainty. Scale this to the fix.
+2. Complete the connected code/contracts/wiring together. Review types, ownership,
+   feature/backend variants and normal/missing/invalid/interrupted cases before
+   compiling. Correct source-visible defects as a group. Compile earlier only
+   when a concrete unresolved question or shared boundary warrants it.
+3. Run the smallest sufficient batch for the claim. Reuse evidence only when its
+   source/graph/artifact/configuration identity and scope still apply. Avoid stacking
+   check/build/test/lint/release builds for identical targets; a test build can
+   supply compilation evidence. Real DB/lifecycle/security claims need the actual
+   backend/worker/production caller and relevant failure cases. Read
+   `LOCAL_TEST_ENV.md` when present before remote tests or provider setup.
+4. Read complete diagnostics and fix the connected causes before rerunning failed
+   or invalidated checks. Verify selectors actually ran tests; skipped/zero-case
+   checks do not pass acceptance. Do not add helper tests that merely mirror code.
+5. Stop validation when required applicable checks pass and continue authorized
+   work. Broaden only for new failures, unresolved risks or binding integration/
+   release gates. Report actual exercised paths, limitations and unverified claims.
 
-- Prose-only changes: inspect consistency and links, then `git diff --check`.
-- Component changes: schema/reference/routing and exact-combination validation,
-  appropriate approval/bootstrap evidence, and behavior through the selected path.
-- Rust changes: focused behavioral regression and affected-package linting with
-  relevant features. API/dependency changes expand to affected consumers and
-  architecture checks. Check changed frontend syntax with `node --check` and
-  exercise the affected UI behavior.
-- Database, lifecycle, security and live settings changes: real integration and
-  ordinary production-caller acceptance, including the relevant failure cases.
-  Read `LOCAL_TEST_ENV.md` if present before remote tests or provider setup.
-
-Report implemented support, the path exercised and remaining gaps separately.
-For affected preload/catalogue/settings/MCP/review work, choose relevant real
-regressions proving retained generations, mutable-state isolation, live policy,
-single-VM identity and no-replay behavior. Include invalid inputs, revision conflicts
-and interrupted publication/settlement when those are the changed contracts. New
-test names or source presence are not acceptance; distinguish helper, retained
-worker, native database and ordinary authenticated product evidence.
-Markdown, successful compilation, a persisted setting or candidate worker tests
-do not establish activation, runtime uptake or full-v3 acceptance. Stop when the
-coherent change and required relevant checks pass; expand only for unresolved
-questions or binding acceptance requirements.
+For ordinary prose/development-skill edits, inspect links/consistency/diff and run
+`git diff --check`; validate skill metadata and mirror identity when updating this
+skill. Do not run Cargo solely for prose. Embedded runtime/seed/document inputs
+need their affected packaging/integrity checks before claiming product uptake,
+including recompilation when their real consumer requires it. Fix introduced
+warnings without suppression; unrelated baseline blockers remain visible.

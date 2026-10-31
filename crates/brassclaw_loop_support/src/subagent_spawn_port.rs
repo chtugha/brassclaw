@@ -756,11 +756,12 @@ impl SubagentSpawnCapabilityPort {
             .await
             .map_err(map_thread_error)?;
         compensation.thread_written = Some((child_scope.clone(), child_thread.thread_id.clone()));
-        let child_turn_scope = TurnScope::new(
+        let child_turn_scope = TurnScope::new_with_owner(
             child_scope.tenant_id.clone(),
             Some(child_scope.agent_id.clone()),
             child_scope.project_id.clone(),
             child_thread.thread_id.clone(),
+            child_scope.owner_user_id.clone(),
         );
         self.deps
             .goal_store

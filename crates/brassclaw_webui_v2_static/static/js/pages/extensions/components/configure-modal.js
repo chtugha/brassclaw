@@ -3,18 +3,17 @@ import { Icon } from "../../../design-system/icons.js";
 import { React, html } from "../../../lib/html.js";
 import {
   useExtensionSetup,
-  useOauthSetup,
   useSetupSubmit,
 } from "../hooks/useExtensions.js";
+import { OAuthOriginalSetup } from "./oauth-original-setup.js";
+import { ManualTokenSetup } from "./manual-token-setup.js";
 import { setupReadyForActivation } from "../lib/extension-actions.js";
 
 export function ConfigureModal({ extension, onActivate, onClose, onSaved }) {
   const extensionName = extension?.displayName || extension?.packageRef?.id || "Extension";
   const { secrets = [], fields = [], onboarding, isLoading, error } =
     useExtensionSetup(extension?.packageRef);
-  const [values, setValues] = React.useState({});
   const [fieldValues, setFieldValues] = React.useState({});
-  const oauthMutation = useOauthSetup(extension?.packageRef);
 
   const submitMutation = useSetupSubmit(extension?.packageRef, (res) => {
     if (res.success !== false) {
@@ -24,25 +23,9 @@ export function ConfigureModal({ extension, onActivate, onClose, onSaved }) {
   });
 
   const handleSubmit = React.useCallback(() => {
-    const secretPayload = {};
-    for (const [key, val] of Object.entries(values)) {
-      const trimmed = (val || "").trim();
-      if (trimmed) secretPayload[key] = trimmed;
-    }
-    submitMutation.mutate({ secrets: secretPayload, fields: fieldValues });
-  }, [values, fieldValues, submitMutation]);
-  const handleOauth = React.useCallback(
-    (secret) => {
-      const popup = window.open("about:blank", "_blank", "width=600,height=600");
-      if (popup) popup.opener = null;
-      oauthMutation.mutate({ secret, popup });
-    },
-    [oauthMutation]
-  );
-  const manualSecrets = secrets.filter(
-    (secret) => (secret.setup?.kind || "manual_token") === "manual_token"
-  );
-  const canSave = manualSecrets.length > 0 || fields.length > 0;
+    submitMutation.mutate({ fields: fieldValues });
+  }, [fieldValues, submitMutation]);
+  const canSave = fields.length > 0;
   const canActivate = setupReadyForActivation({ secrets, fields });
 
   if (isLoading) {
@@ -124,48 +107,14 @@ export function ConfigureModal({ extension, onActivate, onClose, onSaved }) {
                 `}
               </label>
               ${(secret.setup?.kind || "manual_token") === "oauth"
-                ? html`
-                    <div className="flex items-center justify-between gap-3 rounded-md border border-white/12 bg-white/[0.04] px-3 py-2">
-                      <span className="text-xs text-iron-300">
-                        ${secret.provided
-                          ? "Authorization is configured."
-                          : "Authorize this provider in a browser popup."}
-                      </span>
-                      <${Button}
-                        variant=${secret.provided ? "secondary" : "primary"}
-                        onClick=${() => handleOauth(secret)}
-                        disabled=${oauthMutation.isPending}
-                      >
-                        ${oauthMutation.isPending
-                          ? "Opening..."
-                          : secret.provided
-                            ? "Reconnect"
-                            : "Authorize"}
-                      <//>
-                    </div>
-                  `
+                ? html`<${OAuthOriginalSetup}
+                    key=${JSON.stringify([extension.packageRef.id,secret.name,secret.provider,secret.setup?.account_label,secret.setup?.invocation_id])}
+                    packageRef=${extension.packageRef} secret=${secret} />`
                 : html`
-              <input
-                type="password"
-                placeholder=${secret.provided
-                  ? "••••••• (leave blank to keep)"
-                  : ""}
-                value=${values[secret.name] || ""}
-                onChange=${(e) =>
-                  setValues((prev) => ({
-                    ...prev,
-                    [secret.name]: e.target.value,
-                  }))}
-                onKeyDown=${(e) => e.key === "Enter" && handleSubmit()}
-                className="h-10 w-full rounded-md border border-white/12 bg-white/[0.04] px-3 text-sm text-iron-100 outline-none placeholder:text-iron-700 focus:border-signal/45"
+              <${ManualTokenSetup}
+                key=${JSON.stringify([extension.packageRef.id, secret.name, secret.provider, secret.setup?.account_label, secret.setup?.invocation_id])}
+                packageRef=${extension.packageRef} secret=${secret}
               />
-              ${secret.auto_generate &&
-              !secret.provided &&
-              html`
-                <p className="mt-1 text-xs text-iron-700">
-                  Auto-generated if left blank
-                </p>
-              `}
                   `}
             </div>
           `
@@ -213,14 +162,6 @@ export function ConfigureModal({ extension, onActivate, onClose, onSaved }) {
           className="mt-4 rounded-md border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs text-red-200"
         >
           ${submitMutation.error.message}
-        </div>
-      `}
-      ${oauthMutation.error &&
-      html`
-        <div
-          className="mt-4 rounded-md border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs text-red-200"
-        >
-          ${oauthMutation.error.message}
         </div>
       `}
 

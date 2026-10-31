@@ -179,6 +179,7 @@ fn validate_https_authorization_url(value: &str) -> Result<(), AuthProductError>
 
 uuid_id!(AuthFlowId);
 uuid_id!(CredentialAccountId);
+uuid_id!(CredentialRefreshId);
 uuid_id!(AuthInteractionId);
 
 validated_string!(AuthProviderId, "auth provider id", 128);
@@ -192,3 +193,24 @@ validated_string!(AuthSessionId, "auth session id", 256);
 digest_string!(OpaqueStateHash, "opaque state hash");
 digest_string!(PkceVerifierHash, "pkce verifier hash");
 digest_string!(AuthorizationCodeHash, "authorization code hash");
+digest_string!(
+    CredentialAccountSnapshotRef,
+    "credential account snapshot reference"
+);
+
+digest_string!(CredentialRequirementKey, "credential requirement key");
+digest_string!(
+    CredentialRequirementSelectionRef,
+    "credential requirement selection reference"
+);
+
+// An opaque authenticated generation supplied by the actual secret owner.
+// It is neither material nor a grant, and may not be reinterpreted as a path.
+string_newtype!(CredentialSecretGenerationRef, |value: String| {
+    if value.is_empty() || value.trim() != value || value.chars().any(char::is_control) {
+        return Err(AuthProductError::invalid_request(
+            "invalid credential generation reference",
+        ));
+    }
+    Ok(value)
+});

@@ -1,8 +1,9 @@
+import { CataloguePublicationStatus } from "./catalogue-publication-status.js";
 import { React, html } from "../../../lib/html.js";
 import { Card } from "../../../design-system/card.js";
 import { useT } from "../../../lib/i18n.js";
 import { clientActionId } from "../../../lib/api.js";
-import { fetchComponentReviewSubmission, fetchCatalogueActivationStatus, prepareComponentDeployment, activateComponentDeployment } from "../lib/settings-api.js";
+import { fetchComponentReviewSubmission, fetchCatalogueActivationStatus, prepareComponentDeployment, activateComponentDeployment, reconcileCataloguePublication } from "../lib/settings-api.js";
 
 // Preparation reads immutable subjects and verified approvals. Only explicit
 // activation publishes. Unknown commits lock the exact request/ID for retry.
@@ -13,12 +14,31 @@ export function ComponentDeploymentPanel() {
   const [approvals, setApprovals] = React.useState("{}");
   const [plan, setPlan] = React.useState(null);
   const [status, setStatus] = React.useState(null);
+  const [publication, setPublication] = React.useState(null);
   const [receipt, setReceipt] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const pending = React.useRef(null);
   const inFlight = React.useRef(false);
   const uncertain = React.useRef(false);
+  const readPublication = async () => {
+    const current = await fetchCatalogueActivationStatus();
+    if (!current.publication) throw Error(t("cataloguePublication.unavailable"));
+    setPublication(current.publication);
+  };
+  const inspectPublication = async (reconcile = false) => {
+    if (inFlight.current) return;
+    inFlight.current = true; setBusy(true); setError("");
+    try {
+      if (reconcile) {
+        if (!publication?.prefix_invalidation_id) throw Error(t("cataloguePublication.unavailable"));
+        await reconcileCataloguePublication(publication.prefix_invalidation_id);
+      }
+      await readPublication();
+    } catch (err) { setPublication(null); setError(err.message); }
+    finally { inFlight.current = false; setBusy(false); }
+  };
+
   const prepare = async () => {
     if (inFlight.current || pending.current || receipt) return;
     inFlight.current = true; setBusy(true); setError(""); setPlan(null);
@@ -28,7 +48,7 @@ export function ComponentDeploymentPanel() {
       const usageApprovals = JSON.parse(approvals);
       if (!usageApprovals || Array.isArray(usageApprovals) || typeof usageApprovals !== "object" || Object.values(usageApprovals).some(value => typeof value !== "string")) throw Error(t("componentDeployment.approvalsInvalid"));
       const current = await fetchCatalogueActivationStatus();
-      setStatus(current);
+      setStatus(current); setPublication(current.publication || null);
       const subjects = [];
       const usedSkills = new Set();
       // Bounded sequential reads avoid flooding the operator gateway.
@@ -54,6 +74,10 @@ export function ComponentDeploymentPanel() {
     try {
       pending.current ??= JSON.parse(JSON.stringify(plan.activation));
       setReceipt(await activateComponentDeployment(pending.current));
+      setPublication(null);
+      // Status failure must not turn a confirmed write into an uncertain one.
+      try { await readPublication(); } catch (err) { setError(err.message); }
+
     } catch (err) {
       if (!uncertain.current && [400, 401, 403, 404, 409, 413, 422, 429].includes(err.status)) {
         pending.current = null;
@@ -65,7 +89,7 @@ export function ComponentDeploymentPanel() {
   const reset = () => {
     if (inFlight.current || (pending.current && !receipt)) return;
     pending.current = null; uncertain.current = false;
-    setPlan(null); setReceipt(null); setStatus(null); setError("");
+    setPlan(null); setReceipt(null); setStatus(null); setPublication(null); setError("");
   };
   const locked = busy || Boolean(pending.current) || Boolean(receipt);
   return html`
@@ -98,6 +122,8 @@ export function ComponentDeploymentPanel() {
           <button type="button" className="rounded border px-3 py-2 text-sm" disabled=${busy || Boolean(receipt)} onClick=${activate}>${t(pending.current ? "componentDeployment.retry" : "componentDeployment.activate")}</button>
         </div>`}
         ${receipt && html`<p role="status" className="break-all text-sm">${t(receipt.catalogue_activated ? "componentDeployment.active" : "componentDeployment.historical", { generation: receipt.generation })}</p>`}
+        <${CataloguePublicationStatus} publication=${publication} busy=${busy}
+          onRefresh=${() => inspectPublication()} onReconcile=${() => inspectPublication(true)} />
         ${error && html`<p role="alert" className="text-sm text-[var(--v2-danger-text)]">${error}</p>`}
         <button type="button" className="rounded border px-3 py-2 text-sm" disabled=${busy || (Boolean(pending.current) && !receipt)} onClick=${reset}>${t("componentDeployment.another")}</button>
       </div>

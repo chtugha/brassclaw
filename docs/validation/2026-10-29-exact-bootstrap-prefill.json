@@ -1,0 +1,152 @@
+{
+  "format": "brassclaw-exact-bootstrap-prefill/1",
+  "status": "scoped-pure-candidate-accepted-native-import-incomplete",
+  "root_and_exact_basis": [
+    {
+      "path": "/Volumes/SSDE/brassclaw/docs/validation/2026-10-29-legacy-raw-preflight.json",
+      "sha256": "d33edb04a2931a8fed99483a9990675c9f92d595cf96cd983fe1e3f5e45303d4",
+      "unchanged_after_hashes": 2
+    },
+    {
+      "path": "/Volumes/SSDE/brassclaw/docs/validation/2026-10-29-exact-prefix-free-capture.json",
+      "sha256": "ed9dcbad859c7c80fdd0c4434863ec03de58e91acb13f2b8d0b828a4b76e3e04",
+      "unchanged_after_hashes": 25
+    }
+  ],
+  "known_before_inventory": 6,
+  "changed_sources": {
+    "scripts/prefix/bootstrap_answer.py": {
+      "before": "30f07ff72d6c434c441fe13f18fef52342d38f77cfd68bf36577c3f0ddb5fb1b",
+      "after": "a0e5e9e3df96c25e5f0d5ba100c1c1702dfece2669a66380c491d6552b41f78a"
+    },
+    "scripts/prefix/test_bootstrap_answer.py": {
+      "before": "abbdc54f174289e6a48ed23a8984199390bf21215525c14a7f6e451fb37ddfb2",
+      "after": "d842b5ef787e629acdefe80830e13f40591696d95a80e1c257a5888b60ee5b96"
+    },
+    "crates/brassclaw_skills/src/prefix_bootstrap_components.rs": {
+      "before": "06accea14ce09edf6e477c7166153fa820990fde6291ad25e11a61bfe9fd6c04",
+      "after": "9da66805bb8b65b9693c983e655904aab0a09a0a7a317bafb1e6df367c436494"
+    },
+    "crates/brassclaw_engine/tests/retained_instruction.rs": {
+      "before": "804932fbba93722f5f3bbe13f138520a43441c0b9178e0bcabe1af8f6f010835",
+      "after": "8b62015e651f9ef323e45b499c68e6cb8e88677076cee453f6c3f00d14847f4a"
+    }
+  },
+  "tested_source_manifest": {
+    "path": "/private/tmp/brassclaw-exact-bootstrap-prefill-validation-20261029/run-2/source.json",
+    "sha256": "dfc82a9b4795699bd550f98d2ef661dd781c472d38ec501ed18cca0b9ded1ac2"
+  },
+  "final_source_manifest": {
+    "path": "/private/tmp/brassclaw-exact-bootstrap-prefill-20261029/final-source.json",
+    "sha256": "49b6e035e7ebca27895a2f7a5002320642483e72c7c29f5d06f324007fa82cb2",
+    "inputs": 7950
+  },
+  "format_projection": {
+    "path": "/private/tmp/brassclaw-exact-bootstrap-prefill-20261029/format-projection.json",
+    "sha256": "79fea2f37d2aeab9e61ffc9e3e03875773998afadb39203e6101e858ccc8f678"
+  },
+  "rust_validation": {
+    "progress": "/private/tmp/brassclaw-exact-bootstrap-prefill-validation-20261029/run-2/progress.json",
+    "sha256": "22b65f461198a42e12017ab78bd4ef4a5b5614b8fa09336b4e94bc9ad9131b0f",
+    "results": [
+      {
+        "stage": "skills-image",
+        "exit_code": 0,
+        "seconds": 2.4280810421332717,
+        "log_sha256": "ecc620e4c10df25013221a5c73c0a4893892a5d1be1e2e5de3b8c7f182a43121",
+        "reused_from": "/private/tmp/brassclaw-exact-bootstrap-prefill-validation-20261029/run-1/skills-image.log",
+        "applicability": "Only Engine test assertion changed after successful dependency source inspection; Skills sources/dependencies unchanged."
+      },
+      {
+        "stage": "bootstrap-constructors",
+        "exit_code": 0,
+        "seconds": 0.6349787081126124,
+        "log_sha256": "eef891ec5739e5ada368825832d0fd5420507cf831c1d9c6882e24d72c3c1b9a",
+        "passed": 2,
+        "reused_from": "/private/tmp/brassclaw-exact-bootstrap-prefill-validation-20261029/run-1/bootstrap-constructors.log",
+        "applicability": "Only Engine test assertion changed after successful dependency source inspection; Skills sources/dependencies unchanged."
+      },
+      {
+        "stage": "skills-strict",
+        "exit_code": 0,
+        "seconds": 1.8052011670079082,
+        "log_sha256": "e1a1dda7d3d7edc2d46047a6e73349d69c188ac3e1fdce925a43159042f9a0c8",
+        "reused_from": "/private/tmp/brassclaw-exact-bootstrap-prefill-validation-20261029/run-1/skills-strict.log",
+        "applicability": "Only Engine test assertion changed after successful dependency source inspection; Skills sources/dependencies unchanged."
+      },
+      {
+        "stage": "engine-image",
+        "exit_code": 0,
+        "seconds": 1.2052783749531955,
+        "log_sha256": "a3179b7ba9911d81593138309048aff2f7844c2b17af8b462a604a517aca4902"
+      },
+      {
+        "stage": "retained-bootstrap-dependency",
+        "exit_code": 0,
+        "seconds": 2.9289705001283437,
+        "log_sha256": "9942490899df25d0c1c0977674e786461a880184724156c90220a5393b9f609d",
+        "passed": 1
+      },
+      {
+        "stage": "engine-strict",
+        "exit_code": 0,
+        "seconds": 11.823827249929309,
+        "log_sha256": "a53a8568ffbe8502c2de0083a25542436efe2f866498e955ceee99d2cfd607f5"
+      }
+    ],
+    "images": {
+      "brassclaw_skills": {
+        "path": "/private/tmp/brassclaw-exact-bootstrap-prefill-validation-20261029/run-1/brassclaw_skills",
+        "sha256": "79b2263da70ea7ec0ce435703831c66e2601646654c7a526a4478458465ac565",
+        "features": [
+          "default"
+        ]
+      },
+      "retained_instruction": {
+        "path": "/private/tmp/brassclaw-exact-bootstrap-prefill-validation-20261029/run-2/retained_instruction",
+        "sha256": "e1a9afebc4978ffd114b612b6345ada46693b00bd1abbd182347ae65aa345424",
+        "features": [
+          "skills-db"
+        ]
+      }
+    },
+    "worker": {
+      "path": "/private/tmp/brassclaw-exact-bootstrap-prefill-validation-20261029/run-2/monty_worker",
+      "sha256": "91a2165fa396dfd9513d15e886eaba2ed692f1a5b9ac472ef3fb734391e47343"
+    }
+  },
+  "python_validation": {
+    "command": "python3.14 -m unittest discover -s scripts/prefix -p test_bootstrap_answer.py",
+    "passed": 23,
+    "failed": 0
+  },
+  "monty_validation": {
+    "path": "/private/tmp/brassclaw-exact-bootstrap-prefill-20261029/monty-result.json",
+    "sha256": "a5f997274cd7813c2cf431fc6452a3054ef6d6188a660ba082a4631afaae987d",
+    "cases": 23,
+    "evaluations": 93,
+    "expected_rejections": 61,
+    "worker_sha256": "91a2165fa396dfd9513d15e886eaba2ed692f1a5b9ac472ef3fb734391e47343",
+    "source_sha256": "99cd48822c377e5bab367096f36542b1c818a17db3f0bcd5b8c02a49221279a6"
+  },
+  "actual_distinct_cases": 26,
+  "case_count_rule": "23 Python cases mirrored in Monty, not double-counted; two Rust constructor cases plus one PG/IBS/source inspection case.",
+  "format_whitespace": {
+    "rust_paths": 2,
+    "source_paths": 4,
+    "rustfmt_exit_code": 0,
+    "tracked_affected_whitespace_exit_code": 0
+  },
+  "exact_plan_sha256": "7281e2d7c961b42ab857c0eed6d0cd3fa7c4299ca33f2302c3df18844e3592a9",
+  "failure_history": {
+    "run-1": "Skills2 and strict pass; actual PG/IBS/preload inspection succeeds but assertion expects export name instead of generated invocation source.",
+    "run-2": "Corrected real-API assertion; fresh Engine case/strict pass. Unchanged Skills proof reused with exact source delta verification.",
+    "final_format": "Only successful assertion wrapping changes, verified by exact rustfmt projection; no runtime logic change."
+  },
+  "limits": [
+    "Unseeded/unactivated pure candidate component; no model submission or workflow permission.",
+    "Native target/source/rule/provider/original-dispatch correlation and whole-readset CAS remain mandatory and unimplemented here. Echo/checked state grants no import/approval.",
+    "No bootstrap Use/discovery/import/draft store/UI or full I1-I7/Free child-review/Exact/deployment acceptance.",
+    "Original provider/model specifications, accepted designs and current Root/Auth/Free source contracts remain unchanged."
+  ]
+}

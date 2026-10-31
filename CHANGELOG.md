@@ -7,8 +7,213 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Add contained final SDK-body rendering/tokenization with original model assets,
+  one full token partition and canonical live input limits; require an explicit
+  native acceptance verifier. Remove duplicate model fields for unchanged selected
+  models and reject guarded overrides onto a different immutable client. Ordinary
+  pair/profile/generation acceptance and role attachment remain open.
+- Preserve the complete first Google OAuth client configuration and PKCE in one
+  encrypted original. Recover rejected/lost flow inserts and reopened owners
+  without replacing client material; callback and refresh/rotation retain the
+  original client and Extension requirement/account selection. Retire private
+  bindings through supported confirmed terminal/account cleanup. Older records
+  lacking private provenance cannot borrow current configuration. Broader grant/
+  family consumers and recovery/upgrade remain open.
+- Pin the actual encrypted refresh-token generation with its original durable
+  intent. Reconstruct input from the winning action and check native storage,
+  conditional leasing and consumption before issuer use. Retain legacy readback
+  without inventing a dispatch source; changed material or a lost acknowledgement
+  cannot silently substitute input or trigger another issuer request.
+- Return original metadata without an authorization link when a standalone Google
+  setup is completed, canceled or elapsed. Repeated requests retain the first IDs,
+  expiry and actual stored status. Keep all existing WebUI caller cases enabled
+  and retain public-facade ownership coverage.
+
+
+- Retain complete Extension credential requirements through lifecycle summaries,
+  manual setup and readiness. Stable content identities preserve distinct targets
+  across reordering; original metadata and raw/reference follow-ups survive removal
+  of the current declaration without rebinding or extending expiry. Authenticate
+  completed selection custody and current account eligibility instead of accepting
+  a same-provider account.365 distinct Rust/JS cases and strict checks pass through
+  exact evidence reuse; OAuth setup and task-family/material consumers remain open.
+
+- Align OAuth and explicit account selection in the Auth test service with exact
+  original/head publication. One pure precheck now serves all three setup paths;
+  stale selections cannot leak completion or account effects and old recovery
+  preserves later choices.100 fresh Auth cases and strict all-target lint pass.
+
+- Publish filesystem OAuth/account-choice requirement selections through the
+  existing shared CAS owner. Preserve chosen originals through lost replies,
+  cancellation, later choices and account revocation; retain OAuth partial effects
+  honestly on head conflicts and avoid grant backfill for legacy decisions.
+  126 fresh FS/native cases and strict affected/default checks pass.
+
+- Publish native OAuth and explicit account-choice requirement selections in the
+  existing account/flow transaction. Recover original outcomes after COMMIT loss,
+  later choices and revoked accounts; reject wrong-protocol completed retries.
+  R2 passes122 fresh native/FS cases with98 exact-reused Auth cases and strict
+  affected/default checks. FS/fake publishers and family consumers remain open.
+
+- Align manual credential selection in the in-memory Auth test service with the
+  real owners: check all original/head preconditions before account mutation,
+  retain exact selection custody and preserve original recovery after later
+  choices.98 fresh Auth cases and strict all-target lint pass.
+- Verify Prefix model snapshots against their exact historical provider revision;
+  retain Unknown for unrecorded old limits and reject substituted configuration
+  facts. The Prefix owner's seven native/structure/Pair regression cases pass.
+
+- Publish filesystem manual requirement/account selections through the existing
+  CAS-only owner, retaining exact original custody and completing the flow last.
+  Recover lost acknowledgements without replay, preserve later choices and
+  distinguish a losing selection's real partial effects from successful completion.
+  Versioned legacy results remain readable.119 fresh Auth cases pass; remaining
+  publishers and task-family credential consumers are still open.
+
+- Reject HTTP downloads to sensitive visible, resolved or actual local file/
+  parent targets before network and recheck before writing. Preserve safe
+  write-only saves, atomic record protection and actual usage on post-network
+  failure. Scoped acceptance covers266 fresh passing cases; three existing
+  Docker cases remain unexecuted.
+
+- Publish native manual requirement/account selections atomically with their
+  original credential, account and completed flow. Fence competing/stale heads,
+  preserve original recovery after later replacements and retain versioned
+  legacy scope/result semantics. Native/FS Auth regression covers116 passing
+  cases; other publishers and task-family credential consumers remain open.
+
+- Fix local host-only primitive settings without bypassing PostgreSQL's global
+  Monty acknowledgement. Preserve child transcript ownership and native atomic
+  admission in the connected Root fixtures; all23 programs/36 cases now pass.
+- Exercise real host HTTP policy, sanitization and file storage behind the test
+  recorder. Save downloads through atomic opaque writes, preserving structured
+  records, and advertise the actual local filesystem capabilities. Scoped
+  acceptance covers305 passing cases; full plans/platform acceptance remain open.
+
+- Correct the prefix architecture contract across plans and shipped teaching:
+  generation formats and immutably stores each prefix for its concrete
+  provider/model pair. The primary guides and No-Match diagram now state the
+  same handoff explicitly, and component migration appendices reuse that contract.
+  Kohai formats only the dynamic Orchestrator prompt first, optional connected
+  Sempai corrects it and returns the final dynamic prompt, then Kohai inserts the
+  intended finished prefix unchanged exactly once without formatting the return
+  again. Generator and same-pair Kohai/Sempai share the saved accepted design
+  revision; Sempai's own call uses its separately generated reviewer prefix.
+  Runtime integration and qualification remain open.
+
+- Preserve exact conditional writes in filesystem-backed run/approval, turn,
+  transcript, conversation, outbound and process stores. Unsupported CAS no
+  longer becomes an unconditional write; adapting unsupported index projections
+  retains the same precondition. Process creation also uses atomic absence,
+  preventing independent stores from replacing each other's original records.
+
+- Preserve exact issuer access-token expiry through OAuth callback/refresh,
+  retained-result recovery, account eligibility and authenticated Secret leases
+  to final runtime injection. Keep unknown lifetime distinct from zero/invalid
+  values; reject arithmetic overflow before token writes and expired material
+  after delayed storage acknowledgements. Failed injection cannot restart a
+  staged credential's lifetime or overwrite a newer selection.
+- Stop selecting different reusable credentials by account recency or labels.
+  Keep ambiguous readiness disconnected and require explicit account selection.
+  OAuth setup filters its exact update scope before resolving ambiguity and
+  returns lookup/selection failures instead of silently starting a new original.
+
+- Route Extension manual credentials through explicit original setup, dedicated
+  raw submission, token-free continuation and cancellation. Retain canonical
+  invocation, per-requirement identity, original target and first expiry across
+  retries/reload. Reject raw credentials in generic lifecycle payloads and expose
+  backend status failures instead of treating them as missing credentials.
+  Native/HTTP/browser qualification remains scoped in the implementation index.
+
+- Carry original manual setup pair/invocation through strict protected HTTP and
+  Chat transport. Preserve redacted metadata across unknown replies/reload;
+  always prove supplied raw tokens and expose confirmed token-free continuation
+  separately. Fence stale gate replies and show known terminal setup states.
+  Add actual native PostgreSQL/protected HTTP/Chromium acceptance for lost
+  acknowledgements and original gate resumption; extension migration remains open.
+- Bind Auth continuations to the assembled runtime's final TurnCoordinator;
+  keeping the factory dispatcher could store credentials successfully but fail
+  to find and resume the real runtime run.
+
+- Add caller-retained original manual setup identities with fixed first expiry,
+  exact scope/definition replay and terminal disposition in native and filesystem
+  owners. Separate pair-fenced raw submission from confirmed-reference
+  continuation; public HTTP/browser/extension migration remains in progress.
+
+- Preserve consumed manual-token interactions and durable cancellation disposition
+  in the native owner. Completed publication is not an abandonment success;
+  reconcile lost cancellation commit acknowledgements without deleting originals.
+- Limit the Composition build script to its actual fixed-stub input and preserve
+  unchanged output files, avoiding package-wide build-script reruns on test edits.
+
+- Require original raw-input proof on every manual-token facade submit; completed
+  metadata and a current account no longer substitute for it. Align the test
+  adapter with original-result retention, changed-input rejection, prechallenge
+  update snapshots and explicit new-account selection for unbound setups.
+
+- Retain exact filesystem manual-token input, account selection and result through
+  an interaction decision and same-account publication receipt. Recover rejected
+  or lost acknowledgements without blind deletion or account reselection; fence
+  cancellation against chosen writes. Unbound setup creates a new account and
+  bound updates keep their prechallenge snapshot, matching the native contract.
+
+- Correct the shipped Prefix-Maker reference to teach finished model-specific
+  prefixes and shared pair designs. Current teaching requires Kohai to format
+  the dynamic prompt first, optional Sempai to return its final correction, then
+  Kohai to insert the unchanged prefix once without reformatting that return.
+  Earlier native compiler/source-job evidence qualifies only the then-tested
+  teaching bytes; revised teaching, accepted construction rules, fitted content
+  and production serving require their applicable qualification.
+
+- Carry original entry version and body identity through filesystem AuthProduct
+  account, flow, interaction and refresh-action writes. Reused versions cannot
+  overwrite a later record; unsupported or weaker CAS never becomes an
+  unconditional write. Retain exact callback account receipts across recovery.
+
+- Expose complete retained model template/tokenizer sources and declared special
+  tokens/cache dtype facts through the existing Prefix artifact API and UI.
+  Exact hashes and named alternatives remain visible; these observations do not
+  select a default template, accept a design or activate serving.
+
+- Preserve the original manual-token input/result and publish the native
+  PostgreSQL credential, interaction and flow together. Changed repeated input
+  conflicts; lost commit acknowledgement keeps original material for recovery.
+  Existing bound setup snapshots remain authoritative. Generic/filesystem and
+  browser/setup transport custody and final credential-use fences remain open.
+
+- Allow configured provider defaults and models with stored limits to be selected
+  for Prefix preparation while their runtime roles stay unchanged. All model
+  views retain the existing canonical provider/model settings and revision API.
+
+- Retain the factory's same native PostgreSQL secret owner in AuthProduct with
+  or without RootLLM, enabling its existing transaction ports. Repair connected
+  feature boundaries, remove unused DTO fields/warning allowances and label all
+  three Skill classifications consistently. Correct obsolete libSQL backend
+  documentation. Full atomic manual-token publication remains in progress.
+
+- Retain encrypted immutable original inputs and exact-source runtime outputs
+  inside the existing secret owners. Normal writes and selected deletion cannot
+  repurpose them; retirement erases material while preserving original identity.
+  Real PG/FS race, corruption, owner and lost-COMMIT checks cover the storage
+  foundation; full manual/browser account publication remains in progress.
+
+- Add native snapshot-conditional deletion of one filesystem entry, preserving
+  replacement data, scope Delete permission and explicit backend support.
+  Unknown commit acknowledgements remain errors; no unconditional retry.
+
+- Fence filesystem secret replacement with an atomic version and encrypted-body
+  check, including delete/recreate races with a reused backend version. Unsupported
+  Secret/session and resource-snapshot CAS writes now fail without unconditional
+  fallback. Existing encrypted formats and generation references remain unchanged.
+
+- Preserve manual-token interactions after invalid input, HTTP errors/timeouts and
+  unconfirmed flow completion; the shared native/generic coordinator no longer
+  cancels or revokes possibly completed publication. Explicit cancellation remains
+  separate; complete original-input and publication custody is still in progress.
+
+
 This development checkpoint collects the parallel v3 implementation work through
-2026-10-24, including the prefix and runtime/resource workstreams. The qualified
+2026-10-25, including the prefix and runtime/resource workstreams. The qualified
 packaged reply has local MCP chat/provider acceptance; completed-turn review and
 its native effect/accounting custody are implemented in bounded scopes. Full v3
 acceptance, broader public Recipe population, reusable Sempai workflow conversion,
@@ -18,6 +223,226 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Added
 
+- Scoped secret stores expose authenticated encrypted-generation lookup, exact
+  generation CAS and owner-side material comparison through every adapter. PG
+  reads remain read-only; filesystem writes use actual backend version fences;
+  recording/runtime fixtures now exercise real encrypted storage and one-shot
+  behavior. These are prerequisites for manual input/publication custody and
+  final grant fencing, which remain separate K3 work.
+
+- Manual-token setup chooses its Flow ID before creation and reads that exact
+  original definition after an uncertain acknowledgement. It preserves the
+  pending interaction on missing/unavailable readback, rejects foreign or
+  terminal records and shares the same coordinator across native PG and generic
+  filesystem/port callers. Scoped validation is recorded separately; complete
+  manual-token input/publication custody remains K3 work.
+
+- OAuth callbacks now retain their complete original request, prepared token
+  destinations and returned metadata before final account/flow publication.
+  PostgreSQL uses its existing transaction owner; CAS filesystem storage retains
+  the exact publication decision and same-account receipt. Restart/readback does
+  not re-exchange the code, require consumed PKCE, overwrite a later account or
+  blindly delete retained outputs. Failed/denied/unknown callbacks cannot dispatch
+  success or render completion HTML; explicit original conflicts remain distinct.
+  Malformed or foreign-state callbacks preserve a valid pending PKCE verifier;
+  error cleanup verifies the exact durable terminal flow before removing it.
+  Scoped validation is recorded separately. Manual-token custody, remaining
+  partial artifact cleanup, expiry and full dedicated-auth/session cutover remain
+  K3 work.
+
+- Credential refresh now carries an explicit original action identity and prepares
+  its token destinations before issuer submission. The existing AuthProduct
+  owners retain returned metadata before publishing the account/final receipt;
+  original reconciliation after cancellation, unknown writes or restart never
+  issues a replacement refresh. Stale or foreign results cannot overwrite current
+  credentials. Public refresh requests carry `refresh_id`; GSuite validates its
+  exact confirmed result before retrying resource egress. Scoped acceptance covers
+  283 distinct Rust cases and current strict checks. Read-only original lookups
+  now avoid account/publication locks; only a known pending result is reconciled.
+  Callback/manual-token success, expiry and complete dedicated-auth/session
+  migration remain separate K3 work.
+
+- The shared host HTTP transport disables automatic protocol-NACK retries, so
+  a library policy cannot create another submitted request outside the original
+  dispatch accounting. Vetted-address connection fallback remains available.
+  A native HTTP/2 peer and default-policy resend control cover the real body
+  submission boundary. Scoped acceptance covers49 fresh Rust cases, existing
+  Network contracts, the native global caller and current strict checks.
+
+- PostgreSQL AuthProduct direct lookups and lists now retain the complete stored
+  scope while owner/gate queries preserve original invocations and bound sessions.
+  Absent inserts conflict, interaction deletion checks its original record, manual
+  cancellation targets its own flow and abandon surfaces transition failures.
+  Shared state/selection checks preserve valid completion and first acknowledgement.
+  Scoped acceptance covers34 fresh Rust cases and current strict checks.
+
+- OAuth refresh account writes now compare the exact original account snapshot
+  atomically through the existing PostgreSQL/filesystem owners. Success, issuer
+  failure and a missing refresh token cannot overwrite an intervening revocation
+  or credential edit. Durable original-action/unknown-effect custody remains
+  separate K3 work;96 fresh Rust cases and current strict checks pass.
+
+- OAuth refresh results now use separate token artifacts for every completion,
+  preventing a later result from overwriting credentials retained by another
+  account revision. Rotated DCR refresh tokens keep their original registered
+  client binding. Failed binding cleans only unpublished outputs and reports
+  cleanup failures; durable refresh intent and issuer-expiry propagation remain
+  separate K3 work. Scoped acceptance covers26 actual Rust cases and current
+  strict checks.
+
+- Fresh NEAR browser and wallet authentication retain an explicitly selected
+  model when reconnecting the same provider. A different provider's model is
+  excluded; the new provider uses its configured default. Original role checks
+  still fence intervening edits, and historical login receipts remain readable.
+  Scoped native login/settings/global tests and current strict checks pass.
+
+- NEAR wallet authentication now issues a server challenge bound to the original
+  provider/role/credential context. One matching response permits one external
+  exchange with the selected HTTP limits; redirects, automatic resubmission and
+  raw issuer errors are rejected. Encrypted provider credentials, selection and
+  original receipt publish atomically, replacing stale stored keys without writing
+  legacy session files. Start/complete ports, WebUI routes and API helpers carry
+  the original identity. Scoped acceptance covers113 distinct Rust,19 JS and five
+  Python cases through fresh/qualified results plus current strict checks; no
+  wallet signer UI, real issuer or full dedicated-auth completion is claimed.
+
+- NEAR browser login captures its original provider, credential and primary-role
+  context, then commits encrypted credentials, selection and original publication
+  receipt together. Callback retries authenticate and read their committed original;
+  later edits remain intact. Callback and WebUI share one settings publication owner.
+  The UI confirms this exact receipt and runtime reconciliation, rather than an
+  already active provider name. Session files remain untouched by this route;
+  Codex controller and full dedicated auth migration remain separate K3 work.
+  The wallet successor has its separate scoped acceptance described above.
+
+- Static Codex client construction leaves device login to the host. Host-managed
+  clients stop before model submission on refresh errors and never replay a model
+  exchange to repair authentication. OAuth expiry arithmetic is checked, refresh
+  responses preserve unrotated refresh tokens and original creation time, and
+  still-valid access-only tokens remain usable. Corrupt saved credentials fail
+  visibly, raw OAuth responses stay private, and credential requests reject HTTP
+  redirects. Scoped SDK acceptance covers55 actual Rust cases and strict affected
+  checks; revision-aware Codex login and encrypted-session migration remain K3.
+
+- Memory search/write now consume the original task-family embedding selection
+  at the existing native service boundary, for both retained Recipe calls and
+  model-requested No-Match Tools. Absent/invalid original selections never acquire
+  a later role; current credential/target/vector-contract checks remain effective.
+  Exact published clients can be reused, while private family caches retire on
+  release and native backends retain only weak task/client references. Scoped
+  caller acceptance covers native/generic Memory, task fencing and cache lifetime;
+  dedicated session/login and remaining K3 writers remain open.
+
+- Optional primary/Sempai selection and client-preparation failures keep the
+  instance control plane running with unavailable model adapters and original
+  failed-target status. Model-dependent tasks remain blocked; valid deterministic
+  Recipes keep the ordinary global Monty path. Existing WebUI role writers can
+  repair the clients without restarting the instance. Unreadable startup provider
+  snapshots remain startup errors; arbitrary corrupt catalogue/key projections
+  and the remaining dedicated auth/import migrations are separate K3 work.
+
+- Tasks now retain one original Kohai/Sempai model and provider-definition/key
+  selection through the existing host, hooks, global Monty and verified child
+  ports. V179 pins reference-only metadata with admission; later settings changes
+  cannot retarget a task, and live policy/credential/endpoint checks still apply.
+  Model-free children inherit explicit absence. Metadata capture preserves real
+  pre-submission cancellation acknowledgement. Native host/global/child and full
+  HTTP consumers pass 78 scoped Rust cases; task embedding, session/login,
+  optional-role startup and remaining K3 work stay open.
+
+- Provider runtime status now retains the exact captured target of a failed
+  primary, Sempai or embedding preparation. Old failures cannot label later edits
+  as failed; successful publication clears failure metadata with the actual
+  client/cache state. Existing clients or established embedding cache retirement
+  are preserved, and raw backend errors/credentials stay out of status. Actual
+  missing-credential, repair, Memory, global/model and HTTP consumers pass.
+
+- Provider settings now show desired and actually loaded primary/Sempai/embedding
+  identities separately, including key-only changes and pending/unconfirmed or
+  invalid selections, with English/German help. Desired metadata shares one
+  read-only PostgreSQL snapshot; authenticated key-reference inspection neither
+  upgrades legacy rows nor creates/consumes leases or exposes key material.
+  Invalid external selections stay visible for repair while dispatch fails closed.
+  Actual PostgreSQL, Memory, model and HTTP/Prefix consumers pass scoped checks.
+
+- Provider-role edits now compare the displayed selection and provider revision
+  under the existing PostgreSQL config owner. Deactivation uses the same lock
+  order; canonical choices clear legacy role endpoint/auth overrides. Original
+  committed and legacy requests remain readable before fresh precondition checks.
+  Provider dialogs retain their observed state and offer explicit atomic primary
+  activation with English/German help; onboarding uses one save-and-select
+  operation. Real concurrency, primary/Sempai inference and HTTP/Prefix consumers
+  pass in bounded scopes; full task bindings and remaining K3 writers stay open.
+
+- Embedding client publications now reach the existing settings map from the
+  same runtime source used by Memory Tools, including exact applied cache/control
+  revisions. Role-only primary selection no longer depends on an unrelated
+  broken embedding selection; definition changes attempt every role owner even
+  after another owner fails. Actual PG/WebUI tests retain original commit custody
+  through failed uptake and later reconciliation without inference or replay.
+
+- Native OpenAI Chat Completions submission now rechecks its original PostgreSQL
+  claim after preparation, immediately before HTTP dispatch. An explicit denied
+  barrier with no submission start records confirmed-unsubmitted evidence; lost
+  answers after a start remain unresolved. Actual row-contention/cancellation,
+  wire custody and real-model accounting checks pass without replay or a Rust
+  workflow fallback. Other protocol/session and remaining K3 gates remain open.
+
+- Retained embedding clients now check current PostgreSQL provider/authentication,
+  endpoint/transport and exact vector contracts before cache reuse or submission.
+  Cache capacity/revision changes fence late fills; retired source caches release
+  their entries permanently while compatible old operations keep their original
+  target. The memory source uses authenticated opaque credential references and
+  no ambient-key fallback. Database-bound text clients reject mutable model
+  retargeting; inference settings refresh canonical data on selection errors and
+  show query loading/failure. Full task-wide model/prefix binding and remaining
+  K3 takeover/session/recovery work remain open.
+- Captured provider-definition/model and authenticated encrypted-record references
+  travel with actual primary/Sempai client publications. Reload acknowledgement no
+  longer rereads a later desired selection; unchanged reconciliation retains its
+  backend/cache/circuit. Runtime snapshots distinguish untracked, unconfigured
+  and configured clients. Authoritative async preparation now precedes retention;
+  the common factory checks live PostgreSQL compatibility before cache use and
+  raw retry attempts. Retained caches consume current policy and fence late fills.
+  The WebUI separates canonical selection from last-published clients and explains
+  cache eligibility. Embedding/source, dedicated-session and remaining K3 takeover
+  integration are still in progress.
+- Immutable original provider-change receipts (V178) in the existing
+  definition/credential/role transaction, encrypted comparison of credential-bearing
+  requests and reference-only readback/reconciliation. Provider editors keep an
+  uncertain original request instead of silently replacing its identity or payload.
+  Role-only reconciliation preserves unrelated clients. Confirmed writes remain
+  visible after reload/read failures, and provider/prefix views refresh through
+  their canonical readers without publishing stale mutation snapshots.
+  These publication receipts are distinct from revision-aware client and prefix
+  uptake, whose K3 integration remains in progress.
+- Versioned per-model reference-rule proposals in the existing immutable design
+  store/API, with strict size-band/selector/dependency declarations and scalable
+  cycle checks. Historical proposals remain readable; the legacy complete-reference
+  diagnostic explicitly excludes rule proposals before job admission and explains
+  that restriction in the WebUI. Model hard limits retain their canonical owner;
+  proposal retention does not grant design acceptance or serving activation.
+- Budget-dependent whole-unit reference-selection PythonCode and a reusable
+  Recipe using existing digest/model-encoding usages. Designs declare validated
+  size bands, required dependency groups and stable optional priorities; exact
+  complete-candidate measurements select content without token-count estimates
+  or source truncation. Original identities and omission maps remain available.
+  Stable namespace/section rules automatically resolve added components while
+  retaining separate rule and concrete unit-plan identities; uncovered required
+  sources fail instead of silently dropping knowledge.
+  These candidate definitions do not approve designs or enable target Generate,
+  final request fit or serving activation.
+- Durable catalogue-linked prefix invalidation in the existing publication
+  transaction (V177), original-activation reconciliation and generation-specific
+  runtime/discovery uptake status. Routing and deployment editors can inspect
+  publication or resume it by its original reference without replacing an
+  uncertain request. Qualified retained inline context remains distinct from
+  the unfinished generated-prefix serving pipeline.
+- A distinct private pure-source review draft reusing the existing structural
+  Recipe and native inventory usage. Check hidden host calls throughout the
+  closure and every public root export's static call/function-value graph;
+  preserve generic Tool-using source review separately. Draft retention is not
+  behavioral qualification, successful Q1 or activation.
 - Read-only retained-preflight profile facts derived from the same native name
   declarations as enforcement, plus a private graph-checking draft and typed
   profile/prerequisite-result edges. These remain unreviewed Recipe data; current
@@ -214,6 +639,11 @@ not claim a full merged release qualification or a testmachine deployment.
 
 ### Fixed
 
+- Prefix job request identity now includes all explicitly supplied input in
+  existing-definition and concurrent insert-winner paths. Distinguish original
+  capture lookup from changed or empty submitted source; retain the first
+  compiler/run and compare the full derived transport scope. Storage uncertainty
+  remains unavailable, while request conflicts reach the operator API as conflicts.
 - Keep the installation-retained contract checker available to PostgreSQL
   bootstrap when the optional `skills-db` runner feature is disabled.
 - Keep the same retained worker image across source inspection, catalogue

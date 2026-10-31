@@ -12,6 +12,11 @@ use uuid::Uuid;
 #[path = "review_selection_store.rs"]
 pub mod selection;
 
+#[path = "review_function_subject.rs"]
+mod function;
+use function::FunctionPartner;
+pub use function::FunctionReviewPartnerDraft;
+
 use crate::{
     association_contract::ComponentRevisionRef,
     component_revision::{
@@ -110,6 +115,8 @@ struct Subject {
     dependencies: Vec<Reference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     expected_previous_version: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    function_partner: Option<FunctionPartner>,
 }
 
 /// Validated proposal, with all transitive dependency revisions selected by the
@@ -125,6 +132,7 @@ pub struct ReviewSubmissionDraft {
     bytes: String,
     checksum: String,
     expected_previous_version: u64,
+    function_partner: Option<FunctionPartner>,
 }
 impl ReviewSubmissionDraft {
     pub fn new(
@@ -134,7 +142,7 @@ impl ReviewSubmissionDraft {
         base: Option<ComponentRevisionRef>,
         dependencies: Vec<ComponentRevisionRef>,
     ) -> Result<Self, SubmissionStoreError> {
-        Self::build(id, actor, candidate, base, dependencies, None)
+        Self::build(id, actor, candidate, base, dependencies, None, None)
     }
 
     /// The review base is lineage, not the allocation counter. A package draft
@@ -155,6 +163,31 @@ impl ReviewSubmissionDraft {
             base,
             dependencies,
             Some(expected_previous_version),
+            None,
+        )
+    }
+
+    /// One function review, with either two changed roots or one changed root
+    /// and an exact unchanged partner. The latter is context, not reapproval.
+    /// No candidate partner must already be approved merely to retain a draft.
+    pub fn new_function(
+        id: Uuid,
+        actor: &str,
+        candidate: ComponentRevisionDraft,
+        base: Option<ComponentRevisionRef>,
+        dependencies: Vec<ComponentRevisionRef>,
+        expected_previous_version: u64,
+        partner: FunctionReviewPartnerDraft,
+    ) -> Result<Self, SubmissionStoreError> {
+        let partner = FunctionPartner::from_draft(partner)?;
+        Self::build(
+            id,
+            actor,
+            candidate,
+            base,
+            dependencies,
+            Some(expected_previous_version),
+            Some(partner),
         )
     }
 
@@ -165,46 +198,46 @@ impl ReviewSubmissionDraft {
         base: Option<ComponentRevisionRef>,
         mut dependencies: Vec<ComponentRevisionRef>,
         observed_head: Option<u64>,
+        function_partner: Option<FunctionPartner>,
     ) -> Result<Self, SubmissionStoreError> {
         if id.is_nil() || actor.trim().is_empty() || actor.len() > 2048 {
             return Err(SubmissionStoreError::Invalid);
         }
-        if dependencies.len() > MAX_DEPENDENCIES {
+        if dependencies.len() > MAX_DEPENDENCIES - usize::from(function_partner.is_some()) {
             return Err(SubmissionStoreError::Capacity);
-        }
-        if let Some(base) = base {
-            Reference::from(base).parsed()?;
-            if base.uuid != candidate.uuid() || base.class_code != candidate.class_code() {
-                return Err(SubmissionStoreError::Invalid);
-            }
         }
         let expected_previous_version =
             observed_head.unwrap_or_else(|| base.map_or(0, |base| base.version));
-        if base.is_none() && expected_previous_version != 0
-            || base.is_some_and(|base| base.version > expected_previous_version)
+        let reference = candidate_reference(&candidate, base, expected_previous_version)?;
+        let partner_ref = function_partner
+            .as_ref()
+            .map(FunctionPartner::reference)
+            .transpose()?;
+        if let Some(partner) = partner_ref
+            && (observed_head.is_none()
+                || partner.uuid == reference.uuid
+                || !matches!(
+                    (reference.class_code, partner.class_code),
+                    (1..=3, 22) | (22, 1..=3)
+                ))
         {
             return Err(SubmissionStoreError::Invalid);
         }
-        let version = expected_previous_version
-            .checked_add(1)
-            .filter(|version| *version <= i64::MAX as u64)
-            .ok_or(SubmissionStoreError::Invalid)?;
-        let reference = ComponentRevisionRef {
-            uuid: candidate.uuid(),
-            class_code: candidate.class_code(),
-            version,
-            checksum: candidate.checksum(),
-        };
         let mut unique = BTreeSet::new();
         for dependency in &dependencies {
             Reference::from(*dependency).parsed()?;
-            if dependency.uuid == reference.uuid || !unique.insert(dependency.uuid) {
+            if dependency.uuid == reference.uuid
+                || partner_ref.is_some_and(|partner| partner.uuid == dependency.uuid)
+                || !unique.insert(dependency.uuid)
+            {
                 return Err(SubmissionStoreError::Invalid);
             }
         }
         dependencies.sort();
         let subject = Subject {
-            format: if observed_head.is_some() {
+            format: if function_partner.is_some() {
+                "component-review-submission/3"
+            } else if observed_head.is_some() {
                 "component-review-submission/2"
             } else {
                 "component-review-submission/1"
@@ -217,6 +250,7 @@ impl ReviewSubmissionDraft {
             base: base.map(Into::into),
             dependencies: dependencies.iter().copied().map(Into::into).collect(),
             expected_previous_version: observed_head,
+            function_partner: function_partner.clone(),
         };
         let bytes = serde_json::to_string(&subject).map_err(|_| SubmissionStoreError::Invalid)?;
         if bytes.len() > MAX_SUBJECT_BYTES {
@@ -233,14 +267,52 @@ impl ReviewSubmissionDraft {
             bytes,
             checksum,
             expected_previous_version,
+            function_partner,
         })
     }
+}
+
+fn candidate_reference(
+    candidate: &ComponentRevisionDraft,
+    base: Option<ComponentRevisionRef>,
+    expected_previous_version: u64,
+) -> Result<ComponentRevisionRef, SubmissionStoreError> {
+    if let Some(base) = base {
+        Reference::from(base).parsed()?;
+        if base.uuid != candidate.uuid() || base.class_code != candidate.class_code() {
+            return Err(SubmissionStoreError::Invalid);
+        }
+    }
+    if base.is_none() && expected_previous_version != 0
+        || base.is_some_and(|base| base.version > expected_previous_version)
+    {
+        return Err(SubmissionStoreError::Invalid);
+    }
+    let version = expected_previous_version
+        .checked_add(1)
+        .filter(|version| *version <= i64::MAX as u64)
+        .ok_or(SubmissionStoreError::Invalid)?;
+    Ok(ComponentRevisionRef {
+        uuid: candidate.uuid(),
+        class_code: candidate.class_code(),
+        version,
+        checksum: candidate.checksum(),
+    })
+}
+
+/// Retained role and exact identity. Context does not assert prior approval.
+#[derive(Clone, Copy)]
+pub struct RetainedFunctionPartner {
+    pub reference: ComponentRevisionRef,
+    pub changed: bool,
+    pub base: Option<ComponentRevisionRef>,
 }
 
 pub struct RetainedReviewSubmission {
     pub id: Uuid,
     pub actor: String,
     pub candidate: ComponentRevisionRef,
+    pub function_partner: Option<RetainedFunctionPartner>,
     pub base: Option<ComponentRevisionRef>,
     pub dependencies: Vec<ComponentRevisionRef>,
     pub subject_bytes: String,
@@ -271,6 +343,7 @@ pub struct RetainedValidatorSubject {
     candidate: ComponentRevisionRef,
     submission_id: Uuid,
     subject_checksum: String,
+    function_review: bool,
 }
 impl RetainedValidatorSubject {
     pub fn value(&self) -> &serde_json::Value {
@@ -278,6 +351,10 @@ impl RetainedValidatorSubject {
     }
     pub fn candidate(&self) -> ComponentRevisionRef {
         self.candidate
+    }
+    /// Single-class coverage cannot establish complete joint function review.
+    pub fn is_function_review(&self) -> bool {
+        self.function_review
     }
     /// Original immutable submission identity, not a review or task approval.
     pub fn submission_id(&self) -> Uuid {
@@ -380,35 +457,67 @@ impl PgReviewSubmissionStore {
             }
             return Ok(existing);
         }
-        if let Some(base) = draft.base {
-            let version = base.version as i64;
-            let row = tx.query_opt("SELECT class_code,checksum FROM reborn_component_revisions WHERE component_id=$1 AND version=$2", &[&base.uuid, &version]).await.map_err(database)?
-                .ok_or(SubmissionStoreError::Conflict)?;
-            if i32::from(row.get::<_, i16>(0)) != base.class_code
-                || row.get::<_, String>(1) != hex(base.checksum)
-            {
-                return Err(SubmissionStoreError::Conflict);
+        let mut changes = vec![(
+            &draft.candidate,
+            draft.base,
+            draft.expected_previous_version,
+            draft.reference,
+        )];
+        let partner_draft = draft
+            .function_partner
+            .as_ref()
+            .map(FunctionPartner::to_draft)
+            .transpose()?;
+        if let Some(FunctionReviewPartnerDraft::Changed {
+            candidate,
+            base,
+            expected_previous_version,
+        }) = &partner_draft
+        {
+            changes.push((
+                candidate,
+                *base,
+                *expected_previous_version,
+                draft
+                    .function_partner
+                    .as_ref()
+                    .ok_or(SubmissionStoreError::Invalid)?
+                    .reference()?,
+            ));
+        }
+        // Consistent lock order for opposite primary/partner orderings. A failure
+        // rolls back both allocations; never acknowledge the first staged root.
+        changes.sort_by_key(|(candidate, _, _, _)| candidate.uuid());
+        for (candidate, base, head, expected) in changes {
+            if let Some(base) = base {
+                PgComponentRevisionStore::read_revision_in_transaction(tx, base)
+                    .await
+                    .map_err(|error| match error {
+                        // The operator's exact lineage selection conflicts with
+                        // retained identity/bytes. Preserve the original 409
+                        // contract for either changed root, before allocation.
+                        RevisionStoreError::Integrity => SubmissionStoreError::Conflict,
+                        other => SubmissionStoreError::Revisions(other),
+                    })?;
+            }
+            let actual = match retention {
+                CandidateRetention::Stage => {
+                    PgComponentRevisionStore::stage_in_transaction(tx, candidate, head).await?
+                }
+                CandidateRetention::Existing => {
+                    PgComponentRevisionStore::read_revision_in_transaction(tx, expected).await?;
+                    expected
+                }
+            };
+            if actual != expected {
+                return Err(SubmissionStoreError::Invalid);
             }
         }
-        let staged = match retention {
-            CandidateRetention::Stage => {
-                PgComponentRevisionStore::stage_in_transaction(
-                    tx,
-                    &draft.candidate,
-                    draft.expected_previous_version,
-                )
-                .await?
-            }
-            CandidateRetention::Existing => draft.reference,
-        };
-        if staged != draft.reference {
-            return Err(SubmissionStoreError::Invalid);
-        }
-        let mut references = draft.dependencies.clone();
-        references.push(staged);
+        let staged = draft.reference;
+        let (roots, references) = subject_references(draft)?;
         let snapshot =
-            PgComponentRevisionStore::read_exact_in_transaction(tx, &[staged.uuid], &references)
-                .await?;
+            PgComponentRevisionStore::read_exact_in_transaction(tx, &roots, &references).await?;
+        let function_partner = retained_partner(draft, &snapshot)?;
         let version = staged.version as i64;
         let base_version = draft.base.map(|base| base.version as i64);
         tx.execute("INSERT INTO reborn_component_review_submissions (submission_id,actor,component_id,candidate_version,base_version,subject_bytes,checksum) VALUES ($1,$2,$3,$4,$5,$6,$7)",
@@ -418,6 +527,7 @@ impl PgReviewSubmissionStore {
             id: draft.id,
             actor: draft.actor.clone(),
             candidate: staged,
+            function_partner,
             base: draft.base,
             dependencies: draft.dependencies.clone(),
             subject_bytes: draft.bytes.clone(),
@@ -495,6 +605,12 @@ impl PgReviewSubmissionStore {
             }
             None => None,
         };
+        let partner_base = match subject.function_partner.and_then(|partner| partner.base) {
+            Some(reference) => {
+                Some(PgComponentRevisionStore::read_revision_in_transaction(tx, reference).await?)
+            }
+            None => None,
+        };
         // Exact text is necessarily present in the eventual envelope. Reject
         // this lower bound before cloning/parsing all revisions for transport.
         subject
@@ -502,13 +618,20 @@ impl PgReviewSubmissionStore {
             .revisions()
             .values()
             .chain(base.iter())
+            .chain(partner_base.iter())
             .try_fold(subject.subject_bytes.len(), |bytes, revision| {
                 bytes.checked_add(revision.draft().exact_bytes().len())
             })
             .filter(|bytes| *bytes <= limits.max_bytes)
             .ok_or(SubmissionStoreError::Capacity)?;
         // Check borrowed documents before duplicating them into transport data.
-        for revision in subject.snapshot.revisions().values().chain(base.iter()) {
+        for revision in subject
+            .snapshot
+            .revisions()
+            .values()
+            .chain(base.iter())
+            .chain(partner_base.iter())
+        {
             validate_data_bounds(revision.draft().document(), limits)
                 .map_err(|_| SubmissionStoreError::Capacity)?;
         }
@@ -516,13 +639,18 @@ impl PgReviewSubmissionStore {
             .snapshot
             .revisions()
             .values()
-            .filter(|revision| revision.reference().uuid != subject.candidate.uuid)
+            .filter(|revision| {
+                revision.reference().uuid != subject.candidate.uuid
+                    && subject
+                        .function_partner
+                        .is_none_or(|partner| partner.reference.uuid != revision.reference().uuid)
+            })
             .map(|revision| revision_input(revision, limits))
             .collect::<Result<Vec<_>, _>>()?;
         let submission_id = subject.id;
         let subject_checksum = subject.checksum.clone();
-        let value = serde_json::json!({
-            "format": "component-validator-subject/1",
+        let mut value = serde_json::json!({
+            "format": if subject.function_partner.is_some() { "component-validator-subject/2" } else { "component-validator-subject/1" },
             "submission_id": subject.id,
             "actor": subject.actor,
             "subject_bytes": subject.subject_bytes,
@@ -531,12 +659,25 @@ impl PgReviewSubmissionStore {
             "dependencies": dependencies,
             "base_comparison": base.as_ref().map(|revision| revision_input(revision, limits)).transpose()?,
         });
+        if let Some(partner) = subject.function_partner {
+            let revision = subject
+                .snapshot
+                .revisions()
+                .get(&partner.reference.uuid)
+                .ok_or(SubmissionStoreError::Invalid)?;
+            value["function_partner"] = serde_json::json!({
+                "role": if partner.changed { "changed" } else { "context" },
+                "component": revision_input(revision, limits)?,
+                "base_comparison": partner_base.as_ref().map(|revision| revision_input(revision, limits)).transpose()?,
+            });
+        }
         validate_data_bounds(&value, limits).map_err(|_| SubmissionStoreError::Capacity)?;
         Ok(Some(RetainedValidatorSubject {
             value,
             candidate: subject.candidate,
             submission_id,
             subject_checksum,
+            function_review: subject.function_partner.is_some(),
         }))
     }
 
@@ -594,7 +735,9 @@ async fn read(
         serde_json::from_value(value).map_err(|_| SubmissionStoreError::Invalid)?;
     if !matches!(
         subject.format.as_str(),
-        "component-review-submission/1" | "component-review-submission/2"
+        "component-review-submission/1"
+            | "component-review-submission/2"
+            | "component-review-submission/3"
     ) || subject.submission_id != id
     {
         return Err(SubmissionStoreError::Invalid);
@@ -607,18 +750,35 @@ async fn read(
         .iter()
         .map(Reference::parsed)
         .collect::<Result<Vec<_>, _>>()?;
-    let draft = match (subject.format.as_str(), subject.expected_previous_version) {
-        ("component-review-submission/1", None) => {
+    let draft = match (
+        subject.format.as_str(),
+        subject.expected_previous_version,
+        &subject.function_partner,
+    ) {
+        ("component-review-submission/1", None, None) => {
             ReviewSubmissionDraft::new(id, &subject.actor, candidate, base, dependencies)?
         }
-        ("component-review-submission/2", Some(head)) => ReviewSubmissionDraft::new_after_head(
-            id,
-            &subject.actor,
-            candidate,
-            base,
-            dependencies,
-            head,
-        )?,
+        ("component-review-submission/2", Some(head), None) => {
+            ReviewSubmissionDraft::new_after_head(
+                id,
+                &subject.actor,
+                candidate,
+                base,
+                dependencies,
+                head,
+            )?
+        }
+        ("component-review-submission/3", Some(head), Some(partner)) => {
+            ReviewSubmissionDraft::new_function(
+                id,
+                &subject.actor,
+                candidate,
+                base,
+                dependencies,
+                head,
+                partner.to_draft()?,
+            )?
+        }
         _ => return Err(SubmissionStoreError::Invalid),
     };
     let actual = subject.candidate.parsed()?;
@@ -633,20 +793,66 @@ async fn read(
         return Err(SubmissionStoreError::Invalid);
     }
     verify_request(tx, id, &draft.checksum).await?;
-    let mut references = draft.dependencies.clone();
-    references.push(actual);
+    if draft.function_partner.is_some() {
+        if let Some(base) = draft.base {
+            PgComponentRevisionStore::read_revision_in_transaction(tx, base).await?;
+        }
+        if let Some(FunctionPartner::Changed {
+            base: Some(base), ..
+        }) = &draft.function_partner
+        {
+            PgComponentRevisionStore::read_revision_in_transaction(tx, base.parsed()?).await?;
+        }
+    }
+    let (roots, references) = subject_references(&draft)?;
     let snapshot =
-        PgComponentRevisionStore::read_exact_in_transaction(tx, &[actual.uuid], &references)
-            .await?;
+        PgComponentRevisionStore::read_exact_in_transaction(tx, &roots, &references).await?;
+    let function_partner = retained_partner(&draft, &snapshot)?;
     Ok(Some(RetainedReviewSubmission {
         id,
         actor: draft.actor,
         candidate: actual,
+        function_partner,
         base: draft.base,
         dependencies: draft.dependencies,
         subject_bytes: bytes,
         checksum: draft.checksum,
         snapshot,
+    }))
+}
+
+fn subject_references(
+    draft: &ReviewSubmissionDraft,
+) -> Result<(Vec<Uuid>, Vec<ComponentRevisionRef>), SubmissionStoreError> {
+    let mut roots = vec![draft.reference.uuid];
+    let mut references = draft.dependencies.clone();
+    references.push(draft.reference);
+    if let Some(partner) = &draft.function_partner {
+        let reference = partner.reference()?;
+        roots.push(reference.uuid);
+        references.push(reference);
+    }
+    Ok((roots, references))
+}
+
+fn retained_partner(
+    draft: &ReviewSubmissionDraft,
+    snapshot: &RetainedComponentSnapshot,
+) -> Result<Option<RetainedFunctionPartner>, SubmissionStoreError> {
+    let Some(partner) = &draft.function_partner else {
+        return Ok(None);
+    };
+    partner.require_pair(draft.reference, snapshot)?;
+    let base = match partner {
+        FunctionPartner::Changed { base, .. } => {
+            base.as_ref().map(Reference::parsed).transpose()?
+        }
+        FunctionPartner::Context { .. } => None,
+    };
+    Ok(Some(RetainedFunctionPartner {
+        reference: partner.reference()?,
+        changed: partner.is_changed(),
+        base,
     }))
 }
 

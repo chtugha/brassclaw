@@ -1,19 +1,59 @@
-//! Manual-token setup, submit, and secret-submit handlers.
-
+//! Manual token values use only the dedicated secret bodies. Original metadata
+//! and confirmed-reference continuation use separate explicit contracts.
 use super::*;
+use axum::extract::rejection::JsonRejection;
+use brassclaw_auth::ManualTokenSetupIdentity;
+
+fn manual_scope(
+    caller: &WebUiAuthenticatedCaller,
+    session: Option<String>,
+    thread: Option<String>,
+    invocation: String,
+) -> Result<AuthProductScope, ProductAuthRouteFailure> {
+    scope_from_authenticated_caller_parts_requiring_invocation(
+        caller,
+        &ScopeFields {
+            session_id: session,
+            thread_id: thread,
+            invocation_id: Some(invocation),
+        },
+    )
+}
+fn ready_for_raw(status: AuthFlowStatus) -> Result<(), ProductAuthRouteFailure> {
+    match status {
+        AuthFlowStatus::AwaitingUser | AuthFlowStatus::Completed => Ok(()),
+        AuthFlowStatus::Canceled => Err(AuthProductError::Canceled.into()),
+        AuthFlowStatus::Expired => Err(AuthProductError::UnknownOrExpiredFlow.into()),
+        AuthFlowStatus::Failed => Err(AuthProductError::FlowAlreadyTerminal.into()),
+        _ => Err(AuthProductError::BackendConflict.into()),
+    }
+}
+fn submit_response(
+    identity: ManualTokenSetupIdentity,
+    invocation_id: InvocationId,
+    submitted: RebornManualTokenSubmitResponse,
+) -> ManualTokenSubmitResponse {
+    ManualTokenSubmitResponse {
+        identity,
+        invocation_id,
+        credential_ref: submitted.account_id,
+        status: submitted.status,
+        continuation: submitted.continuation,
+    }
+}
 
 pub(super) async fn manual_token_submit_handler(
     State(state): State<ProductAuthRouteState>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-    Json(request): Json<ManualTokenSubmitRequest>,
+    payload: Result<Json<ManualTokenSubmitRequest>, JsonRejection>,
 ) -> Result<Json<ManualTokenSubmitResponse>, ProductAuthRouteFailure> {
-    let scope = scope_from_authenticated_caller_parts(
+    let Json(request) = payload.map_err(|_| ProductAuthRouteFailure::invalid_request())?;
+    let identity = request.identity.parse()?;
+    let scope = manual_scope(
         &caller,
-        &ScopeFields {
-            session_id: request.session_id.clone(),
-            thread_id: request.thread_id.clone(),
-            invocation_id: None,
-        },
+        request.session_id,
+        request.thread_id,
+        request.invocation_id,
     )?;
     let provider = AuthProviderId::new(request.provider)
         .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
@@ -23,120 +63,58 @@ pub(super) async fn manual_token_submit_handler(
         .token
         .into_validated()
         .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
-    // This legacy combined submit route creates a scoped credential and passes
-    // the completed turn-gate continuation to product-auth dispatch. New callers
-    // should prefer the setup + secret-submit split route, which binds
-    // submissions to the invocation returned by setup.
-    let continuation = AuthContinuationRef::TurnGateResume {
-        turn_run_ref: TurnRunRef::new(request.run_id)
-            .map_err(|_| ProductAuthRouteFailure::invalid_request())?,
-        gate_ref: AuthGateRef::new(request.gate_ref)
-            .map_err(|_| ProductAuthRouteFailure::invalid_request())?,
-    };
+    let continuation = manual_token_continuation(Some(&request.run_id), Some(&request.gate_ref))?;
     let expires_at = Utc::now() + ChronoDuration::seconds(PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS);
-
-    let challenge = run_with_backend_timeout(state.product_auth.request_manual_token_setup(
-        RebornManualTokenSetupRequest::new(
-            scope.clone(),
-            provider,
-            label,
-            continuation,
-            expires_at,
-        ),
-    ))
-    .await?;
-    let submitted = submit_manual_token_with_abandon(
-        &state,
-        &scope,
-        challenge.interaction_id,
-        token.into_secret(),
-    )
-    .await?;
-
-    Ok(Json(ManualTokenSubmitResponse {
-        credential_ref: submitted.account_id,
-        status: submitted.status,
-        continuation: submitted.continuation,
-    }))
+    let original =
+        run_with_backend_timeout(state.product_auth.request_original_manual_token_setup(
+            identity,
+            RebornManualTokenSetupRequest::new(
+                scope.clone(),
+                provider,
+                label,
+                continuation,
+                expires_at,
+            ),
+        ))
+        .await?;
+    ready_for_raw(original.status)?;
+    let submitted =
+        submit_original_manual_token_request(&state, &scope, identity, token.into_secret()).await?;
+    Ok(Json(submit_response(
+        identity,
+        scope.resource.invocation_id,
+        submitted,
+    )))
 }
 
-pub(super) async fn abandon_manual_token_after_submit_failure(
+/// Timeouts and errors preserve the original pending/completed state. They are
+/// never automatic abandonment or replacement-setup requests.
+pub(super) async fn submit_original_manual_token_request(
     state: &ProductAuthRouteState,
     scope: &AuthProductScope,
-    interaction_id: AuthInteractionId,
-    submit_error_code: AuthErrorCode,
-) {
-    match tokio::time::timeout(
-        PRODUCT_AUTH_BACKEND_TIMEOUT,
-        state
-            .product_auth
-            .abandon_manual_token(scope, interaction_id),
-    )
-    .await
-    {
-        Ok(Ok(_)) => {}
-        Ok(Err(cleanup_error)) => {
-            tracing::warn!(
-                error_code = ?submit_error_code,
-                cleanup_error_code = ?cleanup_error.code,
-                "manual-token submit failed and interaction cleanup failed — interaction may be orphaned until TTL"
-            );
-        }
-        Err(_) => {
-            tracing::warn!(
-                error_code = ?submit_error_code,
-                cleanup_error_code = ?AuthErrorCode::BackendUnavailable,
-                "manual-token submit failed and interaction cleanup timed out — interaction may be orphaned until TTL"
-            );
-        }
-    }
-}
-
-/// Submit a manual token and abandon the pending interaction on any submit
-/// failure so failed setup attempts do not leave an active challenge behind.
-pub(super) async fn submit_manual_token_with_abandon(
-    state: &ProductAuthRouteState,
-    scope: &AuthProductScope,
-    interaction_id: AuthInteractionId,
+    identity: ManualTokenSetupIdentity,
     secret: SecretString,
 ) -> Result<RebornManualTokenSubmitResponse, ProductAuthRouteFailure> {
-    match tokio::time::timeout(
-        PRODUCT_AUTH_BACKEND_TIMEOUT,
-        state
-            .product_auth
-            .submit_manual_token(RebornManualTokenSubmitRequest::new(
-                scope.clone(),
-                interaction_id,
-                secret,
-            )),
-    )
+    run_with_backend_timeout(state.product_auth.submit_original_manual_token(
+        identity,
+        RebornManualTokenSubmitRequest::new(scope.clone(), identity.interaction_id, secret),
+    ))
     .await
-    {
-        Ok(Ok(submitted)) => Ok(submitted),
-        Ok(Err(error)) => {
-            let code = error.code;
-            abandon_manual_token_after_submit_failure(state, scope, interaction_id, code).await;
-            Err(ProductAuthRouteFailure::from(error))
-        }
-        Err(_) => {
-            abandon_manual_token_after_submit_failure(
-                state,
-                scope,
-                interaction_id,
-                AuthErrorCode::BackendUnavailable,
-            )
-            .await;
-            Err(ProductAuthRouteFailure::backend_timeout())
-        }
-    }
 }
 
 pub(super) async fn manual_token_setup_handler(
     State(state): State<ProductAuthRouteState>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-    Json(request): Json<ManualTokenSetupRequest>,
+    payload: Result<Json<ManualTokenSetupRequest>, JsonRejection>,
 ) -> Result<Json<ManualTokenSetupResponse>, ProductAuthRouteFailure> {
-    let scope = scope_from_authenticated_caller_parts(&caller, &request.scope)?;
+    let Json(request) = payload.map_err(|_| ProductAuthRouteFailure::invalid_request())?;
+    let identity = request.identity.parse()?;
+    let scope = manual_scope(
+        &caller,
+        request.session_id,
+        request.thread_id,
+        request.invocation_id,
+    )?;
     let invocation_id = scope.resource.invocation_id;
     let provider = AuthProviderId::new(request.provider)
         .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
@@ -145,17 +123,18 @@ pub(super) async fn manual_token_setup_handler(
     let continuation =
         manual_token_continuation(request.run_id.as_deref(), request.gate_ref.as_deref())?;
     let expires_at = Utc::now() + ChronoDuration::seconds(PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS);
-
-    let challenge = run_with_backend_timeout(state.product_auth.request_manual_token_setup(
+    let receipt = run_with_backend_timeout(state.product_auth.request_original_manual_token_setup(
+        identity,
         RebornManualTokenSetupRequest::new(scope, provider, label, continuation, expires_at),
     ))
     .await?;
-
     Ok(Json(ManualTokenSetupResponse {
-        interaction_id: challenge.interaction_id,
-        provider: challenge.provider,
-        label: challenge.label,
-        expires_at: challenge.expires_at,
+        identity: receipt.identity,
+        status: receipt.status,
+        interaction_id: receipt.challenge.interaction_id,
+        provider: receipt.challenge.provider,
+        label: receipt.challenge.label,
+        expires_at: receipt.challenge.expires_at,
         invocation_id,
     }))
 }
@@ -163,42 +142,53 @@ pub(super) async fn manual_token_setup_handler(
 pub(super) async fn manual_token_secret_submit_handler(
     State(state): State<ProductAuthRouteState>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-    Json(request): Json<ManualTokenSecretSubmitRequest>,
+    payload: Result<Json<ManualTokenSecretSubmitRequest>, JsonRejection>,
 ) -> Result<Json<ManualTokenSubmitResponse>, ProductAuthRouteFailure> {
-    // Secret-submit is the secure out-of-band entry point: the raw token is
-    // read straight off the dedicated body, never echoed back, and never
-    // surfaced in model transcript or tool arguments. Only the redacted
-    // submit projection is returned.
-    // invocation_id is required: it must be the id returned by setup so the
-    // interaction service can match the pending scope.
-    let scope =
-        scope_from_authenticated_caller_parts_requiring_invocation(&caller, &request.scope)?;
-    let interaction_id = parse_interaction_id(&request.interaction_id)?;
-    // Validate the token before any async work. On validation failure, abandon
-    // the interaction so it does not remain active until its TTL expires.
-    let token = match request.token.into_validated() {
-        Ok(t) => t,
-        Err(_) => {
-            abandon_manual_token_after_submit_failure(
-                &state,
-                &scope,
-                interaction_id,
-                AuthErrorCode::InvalidRequest,
-            )
-            .await;
-            return Err(ProductAuthRouteFailure::invalid_request());
-        }
-    };
-
+    let Json(request) = payload.map_err(|_| ProductAuthRouteFailure::invalid_request())?;
+    let identity = request.identity.parse()?;
+    let scope = manual_scope(
+        &caller,
+        request.session_id,
+        request.thread_id,
+        request.invocation_id,
+    )?;
+    let token = request
+        .token
+        .into_validated()
+        .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
     let submitted =
-        submit_manual_token_with_abandon(&state, &scope, interaction_id, token.into_secret())
-            .await?;
+        submit_original_manual_token_request(&state, &scope, identity, token.into_secret()).await?;
+    Ok(Json(submit_response(
+        identity,
+        scope.resource.invocation_id,
+        submitted,
+    )))
+}
 
-    Ok(Json(ManualTokenSubmitResponse {
-        credential_ref: submitted.account_id,
-        status: submitted.status,
-        continuation: submitted.continuation,
-    }))
+pub(super) async fn manual_token_continue_handler(
+    State(state): State<ProductAuthRouteState>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    payload: Result<Json<ManualTokenContinueRequest>, JsonRejection>,
+) -> Result<Json<ManualTokenSubmitResponse>, ProductAuthRouteFailure> {
+    let Json(request) = payload.map_err(|_| ProductAuthRouteFailure::invalid_request())?;
+    let identity = request.identity.parse()?;
+    let scope = manual_scope(
+        &caller,
+        request.session_id,
+        request.thread_id,
+        request.invocation_id,
+    )?;
+    let submitted = run_with_backend_timeout(
+        state
+            .product_auth
+            .continue_original_manual_token(&scope, identity),
+    )
+    .await?;
+    Ok(Json(submit_response(
+        identity,
+        scope.resource.invocation_id,
+        submitted,
+    )))
 }
 
 pub(super) fn manual_token_continuation(

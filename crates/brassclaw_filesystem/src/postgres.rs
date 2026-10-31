@@ -13,9 +13,9 @@ use crate::db::{
 use crate::vector::{cosine_similarity, decode_embedding_blob};
 use crate::{
     BackendCapabilities, Capability, CasExpectation, ContentType, DirEntry, Entry,
-    EntryIndexMetadata, EntryMetadata, FileStat, FileType, FilesystemError, FilesystemOperation,
-    Filter, IndexKey, IndexKind, IndexSpec, IndexValue, Page, RecordKind, RecordVersion,
-    RootFilesystem, SeqNo, VersionedEntry,
+    EntryBodyChecksum, EntryIndexMetadata, EntryMetadata, FileStat, FileType, FilesystemError,
+    FilesystemOperation, Filter, IndexKey, IndexKind, IndexSpec, IndexValue, Page, RecordKind,
+    RecordVersion, RootFilesystem, SeqNo, VersionedEntry,
 };
 
 #[cfg(feature = "postgres")]
@@ -109,7 +109,38 @@ impl PostgresRootFilesystem {
                 }
                 Ok(RecordVersion::from_backend(1))
             }
-            CasExpectation::Version(expected) => {
+            CasExpectation::Version(expected)
+            | CasExpectation::VersionAndBody {
+                version: expected, ..
+            } => {
+                if let CasExpectation::VersionAndBody { body_checksum, .. } = cas {
+                    // Keep the actual selected row locked through the existing
+                    // UPDATE and commit. A pre-read outside this transaction
+                    // cannot protect against delete/reinsert reusing a version.
+                    let Some(row) = transaction.query_opt(
+                        "SELECT contents,version FROM root_filesystem_entries WHERE path=$1 AND is_dir=FALSE FOR UPDATE",
+                        &[&path_str],
+                    ).await.map_err(|error| db_error(path.clone(), FilesystemOperation::WriteFile, error))? else {
+                        return Err(FilesystemError::VersionMismatch { path: path.clone(), expected: Some(expected), found: None });
+                    };
+                    {
+                        let found = record_version_from_i64(path, row.get::<_, i64>(1))?;
+                        if found != expected {
+                            return Err(FilesystemError::VersionMismatch {
+                                path: path.clone(),
+                                expected: Some(expected),
+                                found: Some(found),
+                            });
+                        }
+                        let current: Vec<u8> = row.get(0);
+                        if !body_checksum.matches_body(&current) {
+                            return Err(FilesystemError::SnapshotMismatch {
+                                path: path.clone(),
+                                operation: FilesystemOperation::WriteFile,
+                            });
+                        }
+                    }
+                }
                 let expected_raw = record_version_to_i64(path, expected)?;
                 let rows = transaction
                     .execute(
@@ -244,6 +275,8 @@ impl RootFilesystem for PostgresRootFilesystem {
             .with(Capability::EntryMetadata)
             .with(Capability::EntryIndexMetadata)
             .with(Capability::OpaqueWrite)
+            .with(Capability::EntryBodyCas)
+            .with(Capability::ConditionalEntryDelete)
             .with(Capability::IndexFts)
             .with(Capability::IndexVector)
     }
@@ -328,13 +361,18 @@ impl RootFilesystem for PostgresRootFilesystem {
             operation: FilesystemOperation::EnsureIndex,
         })?;
 
-        let client = self.client().await?;
-        // PR #3661 reviewer fix: race-idempotent declaration. Single
-        // INSERT ... ON CONFLICT DO NOTHING followed by a read-back +
-        // canonical-spec equality check. Two concurrent declarers of the
-        // same spec both succeed; declarers of conflicting specs see
-        // IndexConflict deterministically.
-        client
+        let mut client = self.client().await?;
+        let transaction = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::ReadCommitted)
+            .start()
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::EnsureIndex, error))?;
+        // Keep declaration and DDL atomic across independent adapters/processes.
+        // IF NOT EXISTS alone does not serialize concurrent CREATE INDEX calls.
+        // Lock the existing declaration through DDL/commit; an initial inserter
+        // already owns its row and competing inserts wait for its transaction.
+        transaction
             .execute(
                 "INSERT INTO root_filesystem_index_specs (prefix, name, keys, kind) \
                  VALUES ($1, $2, $3, $4) \
@@ -344,9 +382,9 @@ impl RootFilesystem for PostgresRootFilesystem {
             .await
             .map_err(|error| db_error(path.clone(), FilesystemOperation::EnsureIndex, error))?;
 
-        let row = client
+        let row = transaction
             .query_opt(
-                "SELECT keys, kind FROM root_filesystem_index_specs WHERE prefix = $1 AND name = $2",
+                "SELECT keys, kind FROM root_filesystem_index_specs WHERE prefix = $1 AND name = $2 FOR UPDATE",
                 &[&path.as_str(), &spec.name.as_str()],
             )
             .await
@@ -377,7 +415,7 @@ impl RootFilesystem for PostgresRootFilesystem {
                     "CREATE INDEX IF NOT EXISTS {index_name} ON root_filesystem_entries ({})",
                     expressions.join(", ")
                 );
-                client.batch_execute(&ddl).await.map_err(|error| {
+                transaction.batch_execute(&ddl).await.map_err(|error| {
                     db_error(path.clone(), FilesystemOperation::EnsureIndex, error)
                 })?;
             }
@@ -418,7 +456,7 @@ impl RootFilesystem for PostgresRootFilesystem {
                      WHERE path = '{path_literal}' OR path LIKE '{prefix_literal}' ESCAPE '!'",
                     path_literal = path.as_str().replace('\'', "''"),
                 );
-                client.batch_execute(&ddl).await.map_err(|error| {
+                transaction.batch_execute(&ddl).await.map_err(|error| {
                     db_error(path.clone(), FilesystemOperation::EnsureIndex, error)
                 })?;
             }
@@ -438,7 +476,10 @@ impl RootFilesystem for PostgresRootFilesystem {
                 // without changing this trait surface.
             }
         }
-        Ok(())
+        transaction
+            .commit()
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::EnsureIndex, error))
     }
 
     async fn get_metadata(
@@ -821,6 +862,49 @@ impl RootFilesystem for PostgresRootFilesystem {
             });
         }
         Err(not_found(path.clone(), FilesystemOperation::Stat))
+    }
+
+    async fn delete_if_snapshot(
+        &self,
+        path: &VirtualPath,
+        version: RecordVersion,
+        body_checksum: EntryBodyChecksum,
+    ) -> Result<bool, FilesystemError> {
+        let mut client = self.client().await?;
+        let transaction = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::ReadCommitted)
+            .start()
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::Delete, error))?;
+        Self::lock_namespace(&transaction, path, FilesystemOperation::Delete).await?;
+        let row = transaction
+            .query_opt(
+                "SELECT contents,version FROM root_filesystem_entries WHERE path=$1 AND is_dir=FALSE FOR UPDATE",
+                &[&path.as_str()],
+            )
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::Delete, error))?;
+        let Some(row) = row else {
+            return Ok(false);
+        };
+        let found = record_version_from_i64(path, row.get::<_, i64>(1))?;
+        let body: Vec<u8> = row.get(0);
+        if found != version || !body_checksum.matches_body(&body) {
+            return Ok(false);
+        }
+        let deleted = transaction
+            .execute(
+                "DELETE FROM root_filesystem_entries WHERE path=$1 AND is_dir=FALSE",
+                &[&path.as_str()],
+            )
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::Delete, error))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::Delete, error))?;
+        Ok(deleted == 1)
     }
 
     async fn delete(&self, path: &VirtualPath) -> Result<(), FilesystemError> {

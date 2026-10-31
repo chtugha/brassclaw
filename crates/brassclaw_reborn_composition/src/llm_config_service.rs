@@ -17,13 +17,13 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use brassclaw_llm::ProviderRole;
 use brassclaw_llm::registry::{ProviderDefinition, ProviderProtocol, ProviderRegistry};
-use brassclaw_llm::{NearWalletSignedMessage, OpenAiCodexConfig, OpenAiCodexSessionManager};
+use brassclaw_llm::{OpenAiCodexConfig, OpenAiCodexSessionManager};
 use brassclaw_product_workflow::{
     CodexLoginStart, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
     LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, LlmProviderView,
     NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest, NearAiWalletLoginResult,
-    ProviderTokenBudgetView, SetActiveLlmRequest, UpsertLlmProviderRequest,
-    WebUiAuthenticatedCaller,
+    NearAiWalletLoginStart, NearAiWalletLoginStartRequest, ProviderTokenBudgetView,
+    SetActiveLlmRequest, UpsertLlmProviderRequest, WebUiAuthenticatedCaller,
 };
 use brassclaw_reborn_config::LlmSlotSelection;
 use secrecy::{ExposeSecret as _, SecretString};
@@ -34,12 +34,15 @@ use crate::llm_catalog::resolve_against_registry_with_credentials;
 const NEARAI_LOGIN_STATE_TTL: Duration = Duration::from_secs(15 * 60);
 const CODEX_LOGIN_ATTEMPT_TTL: Duration = Duration::from_secs(15 * 60);
 
-/// In-memory CSRF state for NEAR AI browser redirects. The login start endpoint
-/// issues a state token, and the public callback must consume it before any
-/// operator-wide credential write happens.
-#[derive(Debug, Default)]
+#[path = "provider_login.rs"]
+mod provider_login;
+use provider_login::NearAiLoginContext;
+
+/// One-use login state retains the exact original provider/auth/role context.
+/// A completed commit is independently recoverable through its mutation receipt.
+#[derive(Default)]
 pub(crate) struct NearAiLoginStateStore {
-    states: tokio::sync::Mutex<HashMap<String, Instant>>,
+    states: tokio::sync::Mutex<HashMap<String, (Instant, NearAiLoginContext)>>,
 }
 
 impl NearAiLoginStateStore {
@@ -47,21 +50,32 @@ impl NearAiLoginStateStore {
         Self::default()
     }
 
-    pub(crate) async fn issue(&self) -> String {
-        let state = uuid::Uuid::new_v4().to_string();
-        let mut states = self.states.lock().await;
-        prune_expired(&mut states, Instant::now());
-        states.insert(state.clone(), Instant::now() + NEARAI_LOGIN_STATE_TTL);
-        state
+    async fn issue(&self, context: NearAiLoginContext) {
+        self.issue_for(context, NEARAI_LOGIN_STATE_TTL).await;
     }
 
-    pub(crate) async fn consume(&self, state: &str) -> bool {
+    async fn issue_for(&self, context: NearAiLoginContext, lifetime: Duration) {
         let mut states = self.states.lock().await;
         let now = Instant::now();
-        prune_expired(&mut states, now);
-        states
-            .remove(state)
-            .is_some_and(|expires_at| expires_at > now)
+        states.retain(|_, (expires, _)| *expires > now);
+        states.insert(context.id.to_string(), (now + lifetime, context));
+    }
+
+    async fn consume_matching(
+        &self,
+        state: &str,
+        matches: impl FnOnce(&NearAiLoginContext) -> bool,
+    ) -> Option<NearAiLoginContext> {
+        let mut states = self.states.lock().await;
+        let now = Instant::now();
+        states.retain(|_, (expires, _)| *expires > now);
+        if !states
+            .get(state)
+            .is_some_and(|(_, context)| matches(context))
+        {
+            return None;
+        }
+        states.remove(state).map(|(_, context)| context)
     }
 }
 
@@ -73,10 +87,6 @@ struct CodexLoginAttempt {
     expires_at: Instant,
 }
 
-fn prune_expired(states: &mut HashMap<String, Instant>, now: Instant) {
-    states.retain(|_, expires_at| *expires_at > now);
-}
-
 /// Live-reload seam. The runtime supplies an impl that re-resolves the LLM
 /// config (including any stored key) and atomically swaps the running
 /// provider's inner backend; tests / unwired runtimes leave it absent.
@@ -84,13 +94,19 @@ fn prune_expired(states: &mut HashMap<String, Instant>, now: Instant) {
 pub trait LlmReloadTrigger: Send + Sync {
     /// Re-resolve and hot-swap the active provider. The error string is for
     /// logging only and must stay free of secrets / backend internals.
-    async fn reload(&self) -> Result<(), String>;
+    async fn reload(&self) -> Result<brassclaw_llm::ProviderPublication, String>;
 
-    /// Called by `refresh_running_provider` after a successful reload.
-    /// `new_provider_id` is the provider that is now active.
-    /// Implementations use this to refresh per-provider budget slots.
-    /// The default is a no-op so existing impls (tests, stubs) keep compiling.
-    async fn on_provider_changed(&self, _new_provider_id: &str) {}
+    /// Actual published metadata, never a later independent database read.
+    fn publication(&self) -> brassclaw_llm::ProviderPublication;
+
+    /// Same-owner effective/failure snapshot. Custom legacy adapters without a
+    /// captured failed target leave that target unknown.
+    fn publication_status(&self) -> brassclaw_llm::ProviderPublicationStatus {
+        brassclaw_llm::ProviderPublicationStatus {
+            effective: self.publication(),
+            failed: None,
+        }
+    }
 }
 
 struct CapturedProbe {
@@ -107,6 +123,7 @@ pub struct RebornLlmConfigService {
     keys: LlmKeyStore,
     reload: Option<Arc<dyn LlmReloadTrigger>>,
     memory_embedding_source: Option<Arc<dyn brassclaw_memory::EmbeddingProviderSource>>,
+    embedding_publication: Option<Arc<crate::memory_embedding_source::PgMemoryEmbeddingSource>>,
     /// The runtime's NEAR AI session manager — the same instance the live
     /// provider reads its token from, so a completed login takes effect on
     /// reload. Absent when the runtime has no LLM seam wired.
@@ -127,7 +144,85 @@ pub struct RebornLlmConfigService {
     interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode>,
 }
 
+struct PgSempaiPreparation {
+    provider: std::sync::Weak<brassclaw_llm::SwappableLlmProvider>,
+    configuration: RebornLlmConfigService,
+}
+
+#[async_trait]
+impl brassclaw_llm::ProviderSelectionPreparer for PgSempaiPreparation {
+    async fn prepare(&self) -> Result<(), brassclaw_llm::LlmError> {
+        let provider = self.provider.upgrade().ok_or_else(|| {
+            brassclaw_llm::LlmError::ConfigurationChanged {
+                provider: "stored Sempai provider".into(),
+            }
+        })?;
+        self.configuration
+            .publish_sempai_on(&provider)
+            .await
+            .map_err(|_| brassclaw_llm::LlmError::ConfigurationChanged {
+                provider: "stored Sempai provider".into(),
+            })
+    }
+}
+
 impl RebornLlmConfigService {
+    async fn lookup_provider_mutation(
+        &self,
+        mutation: &crate::provider_mutation::ProviderMutation,
+    ) -> Result<Option<brassclaw_product_workflow::ProviderMutationReceipt>, LlmConfigServiceError>
+    {
+        let mut client = self
+            .pg_pool
+            .get()
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        let transaction = client
+            .transaction()
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        mutation.lock(&transaction, &self.db_tenant_id).await?;
+        let original = mutation
+            .original(&transaction, &self.db_tenant_id, &self.keys)
+            .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        Ok(original)
+    }
+
+    async fn finish_provider_mutation(
+        &self,
+        receipt: brassclaw_product_workflow::ProviderMutationReceipt,
+    ) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
+        // Reconcile current desired configuration; never republish the old
+        // request's selection over a later writer. Its receipt stays original.
+        match receipt.selected_role {
+            Some(ProviderRole::Kohai) => self.refresh_running_provider().await?,
+            Some(ProviderRole::Sempai) => self.restore_sempai_from_db_locked().await?,
+            Some(ProviderRole::Embedding) => self.refresh_memory_embedding().await?,
+            None => {
+                // Definition/authentication edits can affect several roles.
+                // Attempt every existing owner even if another role fails;
+                // original mutation custody remains independently readable.
+                let sempai = if self.sempai_swappable.is_some() {
+                    self.restore_sempai_from_db_locked().await
+                } else {
+                    Ok(())
+                };
+                let primary = self.refresh_running_provider().await;
+                let embedding = self.refresh_memory_embedding().await;
+                sempai?;
+                primary?;
+                embedding?;
+            }
+        }
+        let mut snapshot = self.build_snapshot().await?;
+        snapshot.mutation_receipt = Some(receipt);
+        Ok(snapshot)
+    }
+
     pub fn new(
         keys: LlmKeyStore,
         pg_pool: Arc<brassclaw_pg::PgPool>,
@@ -139,6 +234,7 @@ impl RebornLlmConfigService {
             keys,
             reload: None,
             memory_embedding_source: None,
+            embedding_publication: None,
             nearai_session: None,
             nearai_login_states: Arc::new(NearAiLoginStateStore::new()),
             codex_login_attempts: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
@@ -163,6 +259,14 @@ impl RebornLlmConfigService {
         source: Arc<dyn brassclaw_memory::EmbeddingProviderSource>,
     ) -> Self {
         self.memory_embedding_source = Some(source);
+        self
+    }
+
+    pub(crate) fn with_embedding_publication(
+        mut self,
+        source: Arc<crate::memory_embedding_source::PgMemoryEmbeddingSource>,
+    ) -> Self {
+        self.embedding_publication = Some(source);
         self
     }
 
@@ -209,50 +313,10 @@ impl RebornLlmConfigService {
         self
     }
 
-    /// Write the complete role selection in one transaction. A failed write
-    /// leaves both keys unchanged and returns an error before runtime uptake.
-    async fn save_role_to_db(
-        &self,
-        provider_id_key: &str,
-        provider_id_value: &str,
-        model_key: &str,
-        model_value: &str,
-    ) -> Result<(), LlmConfigServiceError> {
-        use crate::db_config::{ConfigWriteContext, save_config_changes};
-        let provider = (!provider_id_value.is_empty()).then_some(provider_id_value);
-        // Clearing a role also removes its model override.
-        let model = (provider.is_some() && !model_value.is_empty()).then_some(model_value);
-        save_config_changes(
-            &self.pg_pool,
-            &self.db_tenant_id,
-            &[(provider_id_key, provider), (model_key, model)],
-            ConfigWriteContext::Operator,
-        )
-        .await
-        .map_err(|_| LlmConfigServiceError::Unavailable)
-    }
-
-    /// Retain database failures rather than interpreting an unavailable
-    /// configuration store as an unconfigured role.
-    async fn read_kohai_sel_from_db(
-        &self,
-    ) -> Result<Option<LlmActiveSelection>, LlmConfigServiceError> {
-        let keys = crate::db_config::list_config_keys(&self.pg_pool, &self.db_tenant_id)
-            .await
-            .map_err(|_| LlmConfigServiceError::Unavailable)?;
-        let keys: HashMap<String, String> = keys.into_iter().collect();
-        Ok(selection_from_keys(
-            &keys,
-            "llm.default.provider_id",
-            "llm.default.model",
-        ))
-    }
-
-    /// Reload failures are visible to the writer. Budget publication follows
-    /// an acknowledged reload, never a failed attempt with a different backend.
-    /// Complete model-profile/revision publication remains a separate cutover.
+    /// Reload failures are visible to the writer. The acknowledgement identifies
+    /// the actual published client; model-profile/budget coordination has its
+    /// separate owning contract and is not inferred from a no-op callback.
     async fn refresh_running_provider(&self) -> Result<(), LlmConfigServiceError> {
-        self.refresh_memory_embedding().await?;
         let reload = self
             .reload
             .as_ref()
@@ -261,22 +325,18 @@ impl RebornLlmConfigService {
             tracing::warn!(reason = %reason, "live LLM provider reload failed");
             LlmConfigServiceError::Unavailable
         })?;
-        if let Some(selection) = self.read_kohai_sel_from_db().await? {
-            reload.on_provider_changed(&selection.provider_id).await;
-        }
         Ok(())
     }
 
-    /// Build a live Sempai provider from the stored key + provider definition
-    /// using `build_static_provider_chain`, the same path as Kohai.
-    ///
-    /// Returns `Err(reason_string)` if the provider cannot be resolved or built.
+    /// Prepare a role from the actual DB/credential snapshot before changing
+    /// its selection. Reuse the normal factories; this performs no inference.
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-    async fn build_sempai_provider(
+    async fn prepare_provider_selection(
         &self,
         provider_id: &str,
         model: Option<&str>,
-    ) -> Result<Arc<dyn brassclaw_llm::LlmProvider>, String> {
+        role: ProviderRole,
+    ) -> Result<(), LlmConfigServiceError> {
         let captured =
             crate::RebornProviderAdmin::new(self.pg_pool.as_ref().clone(), &self.db_tenant_id)
                 .capture_selection(
@@ -289,15 +349,41 @@ impl RebornLlmConfigService {
                     &self.keys,
                 )
                 .await
-                .map_err(|_| "Sempai provider snapshot is unavailable".to_owned())?
-                .ok_or_else(|| "selected Sempai provider is unavailable".to_owned())?;
-        self.build_sempai_selection(captured).await
+                .map_err(|_| LlmConfigServiceError::Unavailable)?
+                .ok_or(LlmConfigServiceError::NotFound)?;
+        if role == ProviderRole::Embedding {
+            crate::factory::build_embeddings_config_from_provider(&captured.definition, captured.selection.model, captured.credential)
+                .map_err(|_| LlmConfigServiceError::InvalidRequest {
+                    field: Some("provider".into()),
+                    reason: "Complete the selected embedding adapter, endpoint, credentials and model dimension before selecting it.".into(),
+                })?;
+        } else {
+            drop(
+                self.build_sempai_selection(captured)
+                    .await
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?,
+            );
+        }
+        Ok(())
     }
 
     async fn build_sempai_selection(
         &self,
         captured: crate::provider_admin::CapturedProviderSelection,
-    ) -> Result<Arc<dyn brassclaw_llm::LlmProvider>, String> {
+    ) -> Result<
+        (
+            Arc<dyn brassclaw_llm::LlmProvider>,
+            brassclaw_llm::ProviderSelectionRevision,
+        ),
+        String,
+    > {
+        let guard = crate::provider_dispatch::PgProviderDispatchGuard::from_capture(
+            self.pg_pool.as_ref().clone(),
+            &self.db_tenant_id,
+            self.keys.clone(),
+            &captured,
+        )
+        .map_err(|_| "stored Sempai compatibility could not be captured".to_string())?;
         let registry = ProviderRegistry::new(vec![captured.definition]);
         let config = crate::llm_catalog::resolve_against_registry_with_credentials(
             &captured.selection,
@@ -305,10 +391,14 @@ impl RebornLlmConfigService {
             captured.credential,
         )
         .map_err(|_| "stored Sempai configuration is invalid".to_string())?;
+        let mut revision = captured.revision;
+        revision.model = config.active_model_name();
         let session = brassclaw_llm::create_session_manager(config.session.clone()).await;
-        brassclaw_llm::build_static_provider_chain(&config, session)
-            .await
-            .map_err(|_| "stored Sempai provider could not be constructed".to_string())
+        let provider =
+            brassclaw_llm::build_static_provider_chain_with_guard(&config, session, guard)
+                .await
+                .map_err(|_| "stored Sempai provider could not be constructed".to_string())?;
+        Ok((provider, revision))
     }
 
     /// Restore the stored role before workers, review delivery or ingress start.
@@ -324,38 +414,69 @@ impl RebornLlmConfigService {
             .sempai_swappable
             .as_ref()
             .ok_or(LlmConfigServiceError::Unavailable)?;
-        let captured =
-            crate::RebornProviderAdmin::new(self.pg_pool.as_ref().clone(), &self.db_tenant_id)
-                .capture_selection(
-                    crate::provider_admin::ProviderSelectionSource::Role(ProviderRole::Sempai),
-                    &self.keys,
-                )
-                .await
-                .map_err(|_| LlmConfigServiceError::Unavailable)?;
-        let selected = captured.is_some();
-        let (provider, provider_id): (Arc<dyn brassclaw_llm::LlmProvider>, String) = match captured
-        {
-            Some(captured) => {
-                let identity = captured.definition.id.clone();
-                let provider = self
-                    .build_sempai_selection(captured)
-                    .await
-                    .map_err(|_| LlmConfigServiceError::Unavailable)?;
-                (provider, identity)
+        self.publish_sempai_on(swappable).await
+    }
+
+    /// Transfer the startup owner to a weak preparation callback. Other role
+    /// handles are not retained by the callback, avoiding runtime ownership cycles.
+    pub(crate) fn into_sempai_preparation(
+        mut self,
+    ) -> Result<Arc<dyn brassclaw_llm::ProviderSelectionPreparer>, LlmConfigServiceError> {
+        let provider = self
+            .sempai_swappable
+            .take()
+            .ok_or(LlmConfigServiceError::Unavailable)?;
+        self.reload = None;
+        self.memory_embedding_source = None;
+        self.embedding_publication = None;
+        self.nearai_session = None;
+        let source: Arc<dyn brassclaw_llm::ProviderSelectionPreparer> =
+            Arc::new(PgSempaiPreparation {
+                provider: Arc::downgrade(&provider),
+                configuration: self,
+            });
+        provider
+            .attach_preparation(source.clone())
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        Ok(source)
+    }
+
+    async fn publish_sempai_on(
+        &self,
+        swappable: &brassclaw_llm::SwappableLlmProvider,
+    ) -> Result<(), LlmConfigServiceError> {
+        swappable.publish_from(|| async {
+            let captured = crate::RebornProviderAdmin::new(self.pg_pool.as_ref().clone(), &self.db_tenant_id)
+                .capture_selection(crate::provider_admin::ProviderSelectionSource::Role(ProviderRole::Sempai), &self.keys)
+                .await.map_err(|_| brassclaw_llm::LlmError::ConfigurationChanged {
+                    provider: "stored Sempai provider".into(),
+                })?;
+            let Some(captured) = captured else {
+                let provider: Arc<dyn brassclaw_llm::LlmProvider> = Arc::new(crate::runtime::PlaceholderLlmProvider);
+                return Ok((provider, brassclaw_llm::ProviderPublication::Unconfigured));
+            };
+            // The resolved model is checked again by the concrete publication.
+                    let (provider, current) = swappable.published_provider();
+            if matches!(&current, brassclaw_llm::ProviderPublication::Configured { selection }
+                if selection.configuration_ref == captured.revision.configuration_ref)
+            {
+                        return Ok((provider, current));
             }
-            None => (
-                Arc::new(crate::runtime::PlaceholderLlmProvider),
-                "unconfigured".into(),
-            ),
-        };
-        swappable.swap_with_identity(provider, provider_id);
-        if let Some(mode) = &self.interceptor_mode {
-            if selected {
-                mode.set_rerouting();
-            } else {
-                mode.set_routing();
+            let desired = brassclaw_llm::ProviderPublication::Configured { selection: captured.revision.clone() };
+            let (provider, selection) = self.build_sempai_selection(captured).await
+                .map_err(|_| brassclaw_llm::ProviderPreparationFailure::selected(
+                    brassclaw_llm::LlmError::ConfigurationChanged { provider: "stored Sempai provider".into() }, desired))?;
+            Ok((provider, brassclaw_llm::ProviderPublication::Configured { selection }))
+        }, |publication| {
+            // Keep mode and this role publication serialized across every facade.
+            if let Some(mode) = &self.interceptor_mode {
+                if matches!(publication, brassclaw_llm::ProviderPublication::Configured { .. }) {
+                    mode.set_rerouting();
+                } else {
+                    mode.set_routing();
+                }
             }
-        }
+        }).await.map_err(|_| LlmConfigServiceError::Unavailable)?;
         Ok(())
     }
 
@@ -382,13 +503,10 @@ impl RebornLlmConfigService {
             crate::db_config::load_config_snapshot_from_client(&transaction, &self.db_tenant_id)
                 .await
                 .map_err(|_| LlmConfigServiceError::Unavailable)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| LlmConfigServiceError::Unavailable)?;
-        // Release the connection before secret metadata checks acquire their
-        // own leases; this also works with a one-connection administration pool.
-        drop(client);
+        let role_selection_refs =
+            crate::db_config::model_selection_refs(&transaction, &self.db_tenant_id)
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable)?;
         let registry = brassclaw_llm::ProviderRegistry::new(
             all_defs
                 .iter()
@@ -398,69 +516,91 @@ impl RebornLlmConfigService {
         );
         crate::llm_catalog::validate_catalog(&registry)
             .map_err(|_| LlmConfigServiceError::Unavailable)?;
-        let canonical = |id: Option<&str>,
-                         model: Option<&str>|
-         -> Result<Option<LlmActiveSelection>, LlmConfigServiceError> {
-            let Some(id) = id.filter(|id| !id.is_empty()) else {
-                return Ok(None);
-            };
-            let definition = registry
-                .find(id)
-                .ok_or(LlmConfigServiceError::Unavailable)?;
-            Ok(Some(LlmActiveSelection {
-                provider_id: definition.id.clone(),
-                model: model.filter(|model| !model.is_empty()).map(str::to_owned),
-            }))
-        };
-        let role = |name: &str| config.llm.as_ref().and_then(|roles| roles.get(name));
-        let kohai = role("default");
-        let sempai = role("sempai");
-        let embedding = config.embedding.as_ref();
-        let kohai_sel = canonical(
-            kohai.and_then(|slot| slot.provider_id.as_deref()),
-            kohai.and_then(|slot| slot.model.as_deref()),
-        )?;
-        let sempai_sel = canonical(
-            sempai.and_then(|slot| slot.provider_id.as_deref()),
-            sempai.and_then(|slot| slot.model.as_deref()),
-        )?;
-        let embedding_sel = canonical(
-            embedding.and_then(|slot| slot.provider_id.as_deref()),
-            embedding.and_then(|slot| slot.model.as_deref()),
-        )?;
-
-        // Check key existence concurrently — was sequential before (N round-trips).
-        let key_checks = all_defs
-            .iter()
-            .map(|row| self.keys.exists(row.definition.id.as_str()))
-            .collect::<Vec<_>>();
-        let key_results: Vec<bool> = futures::future::join_all(key_checks)
+        // Authenticate reference metadata in this same READ ONLY snapshot.
+        // GET neither migrates legacy rows nor issues/consumes secret leases.
+        let key_checks = all_defs.iter().map(|row| {
+            self.keys
+                .inspect_record_reference_in_transaction(&transaction, &row.definition.id)
+        });
+        let key_refs = futures::future::join_all(key_checks)
             .await
             .into_iter()
             .collect::<Result<Vec<_>, _>>()
             .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        let mut desired_publications = std::collections::BTreeMap::new();
+        let mut selections = std::collections::BTreeMap::new();
+        for (name, role) in [
+            ("kohai", ProviderRole::Kohai),
+            ("sempai", ProviderRole::Sempai),
+            ("embedding", ProviderRole::Embedding),
+        ] {
+            let selected = crate::provider_admin::stored_role_selection(&config, role);
+            let selected = selected
+                .as_ref()
+                .filter(|slot| slot.provider_id.as_deref().is_some_and(|id| !id.is_empty()));
+            let (view, desired) = match selected {
+                None => (None, brassclaw_llm::ProviderPublication::Unconfigured),
+                Some(slot) => {
+                    let id = slot.provider_id.as_deref().unwrap_or_default();
+                    // Preserve an invalid external selection for operator repair.
+                    // It is not unconfiguration or authority to use the old client.
+                    let definition = registry.find(id);
+                    let view = Some(LlmActiveSelection {
+                        provider_id: definition
+                            .map_or(id, |definition| definition.id.as_str())
+                            .to_owned(),
+                        model: slot.model.clone().filter(|model| !model.is_empty()),
+                    });
+                    let desired = match definition {
+                        None => brassclaw_llm::ProviderPublication::Untracked,
+                        Some(definition) => {
+                            let index = all_defs
+                                .iter()
+                                .position(|row| row.definition.id == definition.id)
+                                .ok_or(LlmConfigServiceError::Unavailable)?;
+                            let revision = crate::provider_admin::selection_revision(
+                                &self.db_tenant_id,
+                                slot,
+                                definition,
+                                all_defs[index].revision,
+                                key_refs[index].as_deref(),
+                            )
+                            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+                            brassclaw_llm::ProviderPublication::Configured {
+                                selection: revision,
+                            }
+                        }
+                    };
+                    (view, desired)
+                }
+            };
+            selections.insert(name, view);
+            desired_publications.insert(name.to_owned(), desired);
+        }
+        let kohai_sel = selections.remove("kohai").flatten();
+        let sempai_sel = selections.remove("sempai").flatten();
+        let embedding_sel = selections.remove("embedding").flatten();
+        transaction
+            .commit()
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        drop(client);
 
         let mut providers = Vec::with_capacity(all_defs.len());
         let mut inactive_providers = Vec::new();
-        let mut active: Option<LlmActiveSelection> = None;
+        let active = kohai_sel.clone();
 
-        for (row, stored_key_set) in all_defs.into_iter().zip(key_results) {
+        for (row, key_ref) in all_defs.into_iter().zip(key_refs) {
             let inactive = row.inactive;
             let revision = row.revision;
             let is_builtin = row.is_builtin;
             let def = row.definition;
-            let api_key_set = stored_key_set;
+            let api_key_set = key_ref.is_some();
 
             let is_kohai = kohai_sel.as_ref().is_some_and(|s| s.provider_id == def.id);
             let active_model = is_kohai
                 .then(|| kohai_sel.as_ref().and_then(|s| s.model.clone()))
                 .flatten();
-            if is_kohai && active.is_none() {
-                active = Some(LlmActiveSelection {
-                    provider_id: def.id.clone(),
-                    model: active_model.clone(),
-                });
-            }
 
             let can_list_models = brassclaw_llm::model_discovery::supports_protocol(def.protocol);
             let accepts_api_key = def.api_key_required
@@ -521,7 +661,45 @@ impl RebornLlmConfigService {
             }
         }
 
+        let unknown = || brassclaw_llm::ProviderPublicationStatus {
+            effective: brassclaw_llm::ProviderPublication::Untracked,
+            failed: None,
+        };
+        let statuses = [
+            (
+                "kohai",
+                self.reload
+                    .as_ref()
+                    .map_or_else(unknown, |reload| reload.publication_status()),
+            ),
+            (
+                "sempai",
+                self.sempai_swappable
+                    .as_ref()
+                    .map_or_else(unknown, |provider| provider.publication_status()),
+            ),
+            (
+                "embedding",
+                match &self.embedding_publication {
+                    Some(source) => source.publication_status().await,
+                    None => unknown(),
+                },
+            ),
+        ];
+        let runtime_publications = statuses
+            .iter()
+            .map(|(role, status)| (role.to_string(), status.effective.clone()))
+            .collect();
+        let runtime_publication_failures = statuses
+            .into_iter()
+            .filter_map(|(role, status)| status.failed.map(|failed| (role.to_string(), failed)))
+            .collect();
         Ok(LlmConfigSnapshot {
+            desired_publications,
+            role_selection_refs,
+            runtime_publications,
+            runtime_publication_failures,
+            mutation_receipt: None,
             model_discovery_defaults: Default::default(),
             request_policy_defaults: Default::default(),
             providers,
@@ -627,58 +805,6 @@ impl RebornLlmConfigService {
             model_discovery: policy,
         })
     }
-
-    async fn set_provider_async(
-        &self,
-        id: String,
-        model: Option<String>,
-    ) -> Result<(), crate::RebornProviderAdminError> {
-        self.save_role_to_db(
-            "llm.default.provider_id",
-            &id,
-            "llm.default.model",
-            model.as_deref().unwrap_or(""),
-        )
-        .await
-        .map_err(|error| crate::RebornProviderAdminError::LoadDatabase {
-            reason: error.to_string(),
-        })
-    }
-
-    // ------------------------------------------------------------------
-    // Provider repo helpers (DB-exclusive — no file fallback)
-    // ------------------------------------------------------------------
-
-    /// Load a single active provider definition by id.
-    async fn load_provider_by_id(
-        &self,
-        id: &str,
-    ) -> Result<Option<ProviderDefinition>, LlmConfigServiceError> {
-        self.pg_provider_repo
-            .get(id)
-            .await
-            .map_err(|_| LlmConfigServiceError::Unavailable)
-    }
-
-    /// Soft-delete a provider definition by id.
-    ///
-    async fn delete_provider_definition(
-        &self,
-        id: &str,
-        expected_revision: u64,
-    ) -> Result<bool, LlmConfigServiceError> {
-        self.pg_provider_repo
-            .delete_revision(id, expected_revision)
-            .await
-            .map_err(|error| match error {
-                crate::pg_provider_repo::PgProviderRepoError::RevisionConflict => {
-                    LlmConfigServiceError::Conflict {
-                        reason: "Provider changed; reload its settings before removing it.".into(),
-                    }
-                }
-                _ => LlmConfigServiceError::Unavailable,
-            })
-    }
 }
 
 #[async_trait]
@@ -696,7 +822,585 @@ impl LlmConfigService for RebornLlmConfigService {
         request: UpsertLlmProviderRequest,
     ) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
         let _publication = self.publication.lock().await;
+        let mutation = crate::provider_mutation::ProviderMutation::upsert(&request)?;
+        let receipt = if let Some(original) = self.lookup_provider_mutation(&mutation).await? {
+            original
+        } else {
+            match self
+                .commit_provider_upsert(caller, request, &mutation)
+                .await
+            {
+                Ok(receipt) => receipt,
+                Err(error) => self
+                    .lookup_provider_mutation(&mutation)
+                    .await?
+                    .ok_or(error)?,
+            }
+        };
+        self.finish_provider_mutation(receipt).await
+    }
+
+    async fn delete_provider(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        provider_id: String,
+        expected_revision: u64,
+        mutation_id: uuid::Uuid,
+    ) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
+        let _publication = self.publication.lock().await;
+        let mutation = crate::provider_mutation::ProviderMutation::new(
+            mutation_id,
+            "deactivate",
+            serde_json::json!({"id":provider_id,"expected_revision":expected_revision}),
+            None,
+        )?;
+        let receipt = if let Some(original) = self.lookup_provider_mutation(&mutation).await? {
+            original
+        } else {
+            match self
+                .commit_provider_deactivation(&caller, &provider_id, expected_revision, &mutation)
+                .await
+            {
+                Ok(receipt) => receipt,
+                Err(error) => self
+                    .lookup_provider_mutation(&mutation)
+                    .await?
+                    .ok_or(error)?,
+            }
+        };
+        self.finish_provider_mutation(receipt).await
+    }
+
+    async fn provider_mutation(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        mutation_id: uuid::Uuid,
+    ) -> Result<brassclaw_product_workflow::ProviderMutationReceipt, LlmConfigServiceError> {
+        let client = self
+            .pg_pool
+            .get()
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        crate::provider_mutation::read_original(&**client, &self.db_tenant_id, mutation_id).await
+    }
+
+    async fn reconcile_provider_mutation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        mutation_id: uuid::Uuid,
+    ) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
+        let _publication = self.publication.lock().await;
+        let receipt = self.provider_mutation(caller, mutation_id).await?;
+        self.finish_provider_mutation(receipt).await
+    }
+
+    async fn set_active(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: SetActiveLlmRequest,
+    ) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
+        let _publication = self.publication.lock().await;
+        let role = request.role.unwrap_or(ProviderRole::Kohai);
+        let mut payload = serde_json::json!({"provider_id":request.provider_id,"model":request.model,"role":role,"expected_revision":request.expected_revision});
+        if let Some(reference) = &request.expected_selection_ref {
+            payload["expected_selection_ref"] = serde_json::json!(reference);
+        }
+        let mutation = crate::provider_mutation::ProviderMutation::new(
+            request.mutation_id,
+            "select",
+            payload,
+            None,
+        )?;
+        let receipt = if let Some(original) = self.lookup_provider_mutation(&mutation).await? {
+            original
+        } else {
+            match self
+                .commit_provider_selection(&caller, &request, role, &mutation)
+                .await
+            {
+                Ok(receipt) => receipt,
+                Err(error) => self
+                    .lookup_provider_mutation(&mutation)
+                    .await?
+                    .ok_or(error)?,
+            }
+        };
+        self.finish_provider_mutation(receipt).await
+    }
+
+    async fn test_connection(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: LlmProbeRequest,
+    ) -> Result<LlmProbeResult, LlmConfigServiceError> {
+        // Provider constructors and a default empty list_models implementation
+        // do not establish connectivity. Use the same explicit, bounded
+        // exchange as discovery and preserve its classified failures.
+        let result = self.list_models(caller, request).await?;
+        Ok(LlmProbeResult {
+            ok: result.ok,
+            message: if result.ok {
+                format!("connection ok — {} models available", result.models.len())
+            } else {
+                result.message
+            },
+        })
+    }
+
+    async fn list_models(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        request: LlmProbeRequest,
+    ) -> Result<LlmModelsResult, LlmConfigServiceError> {
+        let CapturedProbe {
+            protocol,
+            endpoint,
+            key,
+            model_discovery: policy,
+        } = self.capture_probe(&request).await?;
+        let pairs = match brassclaw_llm::model_discovery::fetch_models(
+            protocol,
+            &endpoint,
+            key.as_ref().map(|value| value.expose_secret()),
+            policy,
+        )
+        .await
+        {
+            Ok(models) => models,
+            Err(error) => {
+                return Ok(LlmModelsResult {
+                    ok: false,
+                    models: Vec::new(),
+                    message: error.to_string(),
+                });
+            }
+        };
+
+        if pairs.is_empty() {
+            Ok(LlmModelsResult {
+                ok: false,
+                models: Vec::new(),
+                message: "No models were returned by the provider endpoint.".to_string(),
+            })
+        } else {
+            Ok(LlmModelsResult {
+                ok: true,
+                models: pairs.into_iter().map(|(id, _label)| id).collect(),
+                message: String::new(),
+            })
+        }
+    }
+
+    async fn start_nearai_login(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: NearAiLoginRequest,
+    ) -> Result<NearAiLoginStart, LlmConfigServiceError> {
+        let session = self
+            .nearai_session
+            .as_ref()
+            .ok_or(LlmConfigServiceError::Unavailable)?;
+
+        // Point NEAR AI at the server's own public callback route (aligned with
+        // the SSO PublicRouteMount pattern, not a second loopback listener).
+        // NEAR AI redirects to `<frontend_callback>/auth/callback?token=...`, so
+        // `frontend_callback` is this server's NEAR AI route prefix on the
+        // browser's own origin (validated to a bare scheme://host[:port]).
+        let origin = sanitize_origin(&request.origin).ok_or_else(|| {
+            LlmConfigServiceError::InvalidRequest {
+                field: Some("origin".to_string()),
+                reason: "origin must be a bare http(s) origin".to_string(),
+            }
+        })?;
+        let context = self
+            .capture_nearai_login(&caller, &origin, request.provider.as_path())
+            .await?;
+        let mutation_id = context.id;
+        let state = context.id.to_string();
+        let frontend_callback = format!("{origin}{NEARAI_LOGIN_PREFIX}/{state}");
+        let mut auth_url = url::Url::parse(&format!(
+            "{}/v1/auth/{}",
+            session.auth_base_url(),
+            request.provider.as_path()
+        ))
+        .map_err(|_| LlmConfigServiceError::Internal)?;
+        auth_url
+            .query_pairs_mut()
+            .append_pair("frontend_callback", &frontend_callback);
+
+        self.nearai_login_states.issue(context).await;
+        Ok(NearAiLoginStart {
+            mutation_id,
+            auth_url: auth_url.to_string(),
+        })
+    }
+
+    async fn start_codex_login(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<CodexLoginStart, LlmConfigServiceError> {
+        let attempt_key = codex_login_attempt_key(&caller);
+        let now = Instant::now();
+        {
+            let mut attempts = self.codex_login_attempts.lock().await;
+            attempts.retain(|_, attempt| attempt.expires_at > now);
+            if let Some(attempt) = attempts.get(&attempt_key) {
+                return Ok(CodexLoginStart {
+                    user_code: attempt.user_code.clone(),
+                    verification_uri: attempt.verification_uri.clone(),
+                });
+            }
+        }
+
+        // Point the login manager at the same session file the live openai_codex
+        // provider reads on reload (mirror resolution.rs env precedence). The
+        // model is irrelevant to the device-code flow, so leave it defaulted.
+        let codex_config = OpenAiCodexConfig::build(
+            None,
+            nonempty_env("OPENAI_CODEX_AUTH_URL"),
+            nonempty_env("OPENAI_CODEX_API_URL"),
+            nonempty_env("OPENAI_CODEX_CLIENT_ID"),
+            nonempty_env("OPENAI_CODEX_SESSION_PATH").map(std::path::PathBuf::from),
+            None,
+        );
+        let manager = OpenAiCodexSessionManager::new(codex_config)
+            .map_err(|_| LlmConfigServiceError::Internal)?;
+        let start = manager
+            .initiate_device_code()
+            .await
+            .map_err(|_| LlmConfigServiceError::Internal)?;
+
+        let login = CodexLoginStart {
+            user_code: start.user_code.clone(),
+            verification_uri: start.verification_uri.clone(),
+        };
+        let attempt_id = uuid::Uuid::new_v4();
+        {
+            let mut attempts = self.codex_login_attempts.lock().await;
+            attempts.insert(
+                attempt_key.clone(),
+                CodexLoginAttempt {
+                    id: attempt_id,
+                    user_code: login.user_code.clone(),
+                    verification_uri: login.verification_uri.clone(),
+                    expires_at: Instant::now() + CODEX_LOGIN_ATTEMPT_TTL,
+                },
+            );
+        }
+
+        // Poll for authorization off-thread: persist the tokens, make Codex the
+        // active provider, and hot-swap the running provider. The frontend polls
+        // the snapshot until openai_codex is active. The DB config is the source
+        // of truth, so a reload failure still applies on restart.
+        let reload = self.reload.clone();
+        let attempts = Arc::clone(&self.codex_login_attempts);
+        let codex_pool = self.pg_pool.clone();
+        let codex_tenant = self.db_tenant_id.clone();
+        let publication = Arc::clone(&self.publication);
+        tokio::spawn(async move {
+            if let Err(error) = manager.complete_device_code(&start).await {
+                tracing::debug!(%error, "codex device login did not complete");
+                remove_codex_attempt_if_current(&attempts, &attempt_key, attempt_id).await;
+                return;
+            }
+            let _publication = publication.lock().await;
+            if !remove_codex_attempt_if_current(&attempts, &attempt_key, attempt_id).await {
+                tracing::debug!("codex login completed after a newer attempt superseded it");
+                return;
+            }
+            if let Err(error) =
+                write_kohai_selection_to_db(&codex_pool, &codex_tenant, "openai_codex", None).await
+            {
+                tracing::debug!(%error, "codex login: could not set active provider");
+                return;
+            }
+            if let Some(reload) = reload
+                && let Err(error) = reload.reload().await
+            {
+                tracing::debug!(%error, "codex login: live reload failed; applies on restart");
+            }
+        });
+
+        Ok(login)
+    }
+
+    async fn start_nearai_wallet_login(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: NearAiWalletLoginStartRequest,
+    ) -> Result<NearAiWalletLoginStart, LlmConfigServiceError> {
+        self.begin_nearai_wallet_login(&caller, request).await
+    }
+
+    async fn complete_nearai_wallet_login(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        request: NearAiWalletLoginRequest,
+    ) -> Result<NearAiWalletLoginResult, LlmConfigServiceError> {
+        self.finish_nearai_wallet_login(request).await
+    }
+}
+
+/// Read an env var, treating empty/whitespace as absent. Mirrors the precedence
+/// `brassclaw_llm::resolution` uses so the Codex login manager resolves the same
+/// session path / client id / auth URL as the live provider.
+fn nonempty_env(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn codex_login_attempt_key(caller: &WebUiAuthenticatedCaller) -> String {
+    format!("{}:{}", caller.tenant_id.as_str(), caller.user_id.as_str())
+}
+
+async fn remove_codex_attempt_if_current(
+    attempts: &tokio::sync::Mutex<HashMap<String, CodexLoginAttempt>>,
+    key: &str,
+    attempt_id: uuid::Uuid,
+) -> bool {
+    let mut attempts = attempts.lock().await;
+    let Some(attempt) = attempts.get(key) else {
+        return false;
+    };
+    if attempt.id != attempt_id {
+        return false;
+    }
+    attempts.remove(key);
+    true
+}
+
+/// Server route prefix handed to NEAR AI as `frontend_callback`, with an issued
+/// state segment appended per login flow. NEAR AI appends
+/// `/auth/callback?token=...`, so the public callback route is
+/// `{NEARAI_LOGIN_PREFIX}/{state}/auth/callback`.
+pub(crate) const NEARAI_LOGIN_PREFIX: &str = "/api/webchat/v2/llm/nearai";
+
+/// The public callback path NEAR AI redirects to (token in the query). The
+/// `{state}` segment must match an authenticated start request before the
+/// callback can write the operator-wide session.
+pub(crate) const NEARAI_LOGIN_CALLBACK_PATH: &str =
+    "/api/webchat/v2/llm/nearai/{state}/auth/callback";
+
+/// Reduce a browser-supplied origin to a bare `scheme://host[:port]`, rejecting
+/// anything with a path/query or a non-http scheme. NEAR AI redirects the token
+/// here, so it must be a clean same-machine origin.
+fn sanitize_origin(raw: &str) -> Option<String> {
+    let parsed = url::Url::parse(raw.trim()).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return None;
+    }
+    let host = parsed.host_str()?;
+    let mut origin = format!("{}://{host}", parsed.scheme());
+    if let Some(port) = parsed.port() {
+        origin.push_str(&format!(":{port}"));
+    }
+    Some(origin)
+}
+
+/// Write the Kohai provider + model to `brassclaw_config`.
+///
+/// Used from background tasks (Codex login, NEAR AI wallet login) that lack
+/// `self` access. Postgres is required — `pg_pool` is a mandatory field on
+/// `RebornLlmConfigService` after the V047/V048 migration.
+pub(crate) async fn write_kohai_selection_to_db(
+    pool: &Arc<brassclaw_pg::PgPool>,
+    tenant_id: &str,
+    provider_id: &str,
+    model: Option<&str>,
+) -> Result<(), String> {
+    use crate::db_config::{ConfigWriteContext, save_config_changes};
+    let provider = (!provider_id.is_empty()).then_some(provider_id);
+    let model = model.filter(|model| provider.is_some() && !model.is_empty());
+    save_config_changes(
+        pool,
+        tenant_id,
+        &[
+            ("llm.default.provider_id", provider),
+            ("llm.default.model", model),
+        ],
+        ConfigWriteContext::Operator,
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+/// Parse a wire adapter name (e.g. `open_ai_completions`) into a protocol.
+fn parse_adapter(adapter: &str) -> Option<ProviderProtocol> {
+    serde_json::from_value(serde_json::Value::String(adapter.to_string())).ok()
+}
+
+fn normalized_endpoint(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.trim_end_matches('/').to_string())
+}
+
+/// Resolve the overlay `ProviderDefinition` to write for an upsert.
+///
+/// When `builtin` is `Some` the id names a compiled-in provider: clone its
+/// definition (preserving protocol, setup hints, env-var names) and overlay
+/// only the operator's `base_url`/`model`, retaining authentication requirements.
+/// Stored credentials are supplied to resolution separately. When `builtin`
+/// is `None` it's a brand-new
+/// custom provider, which needs a valid `adapter`.
+fn build_overlay_definition(
+    id: &str,
+    builtin: Option<&ProviderDefinition>,
+    adapter: &str,
+    base_url: Option<String>,
+    model: Option<String>,
+    name: Option<&str>,
+) -> Result<ProviderDefinition, LlmConfigServiceError> {
+    if let Some(builtin) = builtin {
+        let mut def = builtin.clone();
+        if let Some(base_url) = base_url {
+            def.default_base_url = Some(base_url);
+        }
+        if let Some(model) = model {
+            def.default_model = model;
+        }
+        return Ok(def);
+    }
+
+    let protocol = parse_adapter(adapter).ok_or_else(|| LlmConfigServiceError::InvalidRequest {
+        field: Some("adapter".to_string()),
+        reason: format!("unknown adapter `{adapter}`"),
+    })?;
+    let mut def = custom_definition(id, protocol, base_url, model.unwrap_or_default());
+    def.description = name
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| id.to_string());
+    Ok(def)
+}
+
+/// Build a custom (operator-defined) provider definition. The API key is never
+/// stored in the catalogue. Custom endpoints may use optional credentials;
+/// localhost OpenAI-compatible endpoints need no artificial API key.
+fn custom_definition(
+    id: &str,
+    protocol: ProviderProtocol,
+    base_url: Option<String>,
+    default_model: String,
+) -> ProviderDefinition {
+    ProviderDefinition {
+        embedding_models: Default::default(),
+        model_token_limits: Default::default(),
+        model_discovery: Default::default(),
+        request_policy: Default::default(),
+        id: id.to_string(),
+        aliases: Vec::new(),
+        protocol,
+        default_base_url: base_url,
+        base_url_env: None,
+        base_url_required: false,
+        api_key_env: None,
+        api_key_required: false,
+        model_env: synthetic_model_env(id),
+        default_model,
+        description: id.to_string(),
+        extra_headers_env: None,
+        unsupported_params: Vec::new(),
+        setup: None,
+        token_budget: None,
+        context_window_tokens: None,
+        cache_retention: None,
+        response_cache: Default::default(),
+    }
+}
+
+fn synthetic_model_env(id: &str) -> String {
+    let upper: String = id
+        .chars()
+        .map(|c| {
+            if c == '-' {
+                '_'
+            } else {
+                c.to_ascii_uppercase()
+            }
+        })
+        .collect();
+    format!("LLM_CUSTOM_{upper}_MODEL")
+}
+
+/// The masked sentinel the UI sends for "key unchanged".
+pub(crate) fn is_masked_sentinel(value: &SecretString) -> bool {
+    value.expose_secret().chars().all(|c| c == '\u{2022}')
+}
+
+const PROVIDER_ID_MAX_LEN: usize = 64;
+
+fn validate_provider_id(id: &str) -> Result<String, LlmConfigServiceError> {
+    let trimmed = id.trim();
+    if trimmed.is_empty() {
+        return Err(LlmConfigServiceError::InvalidRequest {
+            field: Some("id".to_string()),
+            reason: "provider id cannot be empty".to_string(),
+        });
+    }
+    if trimmed.len() > PROVIDER_ID_MAX_LEN {
+        return Err(LlmConfigServiceError::InvalidRequest {
+            field: Some("id".to_string()),
+            reason: format!(
+                "provider id must be ≤ {} characters, got {}",
+                PROVIDER_ID_MAX_LEN,
+                trimmed.len()
+            ),
+        });
+    }
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+    {
+        return Err(LlmConfigServiceError::InvalidRequest {
+            field: Some("id".to_string()),
+            reason: "provider id may only contain lowercase letters, digits, '_' or '-'"
+                .to_string(),
+        });
+    }
+    Ok(trimmed.to_string())
+}
+
+fn required_selection_ref(reference: Option<&str>) -> Result<&str, LlmConfigServiceError> {
+    reference
+        .filter(|value| {
+            value.len() == 64
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+        .ok_or_else(|| LlmConfigServiceError::InvalidRequest {
+            field: Some("expected_selection_ref".into()),
+            reason: "Use the model selection reference from the displayed settings.".into(),
+        })
+}
+
+fn map_selection_edit(error: crate::db_config::ConfigError) -> LlmConfigServiceError {
+    match error {
+        crate::db_config::ConfigError::ModelSelectionConflict => LlmConfigServiceError::Conflict {
+            reason: "Model selection changed; reload its settings before saving.".into(),
+        },
+        _ => LlmConfigServiceError::Unavailable,
+    }
+}
+
+impl RebornLlmConfigService {
+    async fn commit_provider_upsert(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: UpsertLlmProviderRequest,
+        mutation: &crate::provider_mutation::ProviderMutation,
+    ) -> Result<brassclaw_product_workflow::ProviderMutationReceipt, LlmConfigServiceError> {
         let id = validate_provider_id(&request.id)?;
+        let expected_selection_ref = if request.set_active {
+            Some(required_selection_ref(request.expected_selection_ref.as_deref())?.to_owned())
+        } else {
+            None
+        };
 
         let base_url = request
             .base_url
@@ -879,7 +1583,19 @@ impl LlmConfigService for RebornLlmConfigService {
             .transaction()
             .await
             .map_err(|_| LlmConfigServiceError::Unavailable)?;
-        self.pg_provider_repo
+        mutation.lock(&transaction, &self.db_tenant_id).await?;
+        if let Some(original) = mutation
+            .original(&transaction, &self.db_tenant_id, &self.keys)
+            .await?
+        {
+            transaction
+                .commit()
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            return Ok(original);
+        }
+        let retained = self
+            .pg_provider_repo
             .replace_revision_in_transaction(&transaction, definition, request.expected_revision)
             .await
             .map_err(|error| match error {
@@ -890,666 +1606,233 @@ impl LlmConfigService for RebornLlmConfigService {
                 }
                 _ => LlmConfigServiceError::Unavailable,
             })?;
+        if let Some(expected) = expected_selection_ref.as_deref() {
+            crate::db_config::save_model_selection_in_transaction(
+                &transaction,
+                &self.db_tenant_id,
+                "kohai",
+                expected,
+                Some(id.as_str()),
+                request.model.as_deref().filter(|model| !model.is_empty()),
+            )
+            .await
+            .map_err(map_selection_edit)?;
+        }
         if has_new_key && let Some(key) = request.api_key {
             self.keys
                 .put_in_transaction(&transaction, &id, key)
                 .await
                 .map_err(|_| LlmConfigServiceError::Unavailable)?;
         }
-        if request.set_active {
-            crate::db_config::save_config_changes_in_transaction(
+        let receipt = mutation
+            .record(
                 &transaction,
                 &self.db_tenant_id,
-                &[
-                    ("llm.default.provider_id", Some(id.as_str())),
-                    (
-                        "llm.default.model",
-                        request.model.as_deref().filter(|model| !model.is_empty()),
-                    ),
-                ],
-                crate::db_config::ConfigWriteContext::Operator,
+                caller.user_id.as_str(),
+                Some((&id, retained.revision)),
+                &self.keys,
             )
-            .await
-            .map_err(|_| LlmConfigServiceError::Unavailable)?;
-        }
+            .await?;
         transaction
             .commit()
             .await
             .map_err(|_| LlmConfigServiceError::Unavailable)?;
         drop(client);
-        // A runtime uptake failure remains visible. Never overwrite a newer
-        // publication by compensating against independently read old values.
-        if self.sempai_swappable.is_some() {
-            self.restore_sempai_from_db_locked().await?;
-        }
-        self.refresh_running_provider().await?;
-        self.snapshot(caller).await
+        Ok(receipt)
     }
+}
 
-    async fn delete_provider(
+impl RebornLlmConfigService {
+    async fn commit_provider_deactivation(
         &self,
-        caller: WebUiAuthenticatedCaller,
-        provider_id: String,
+        caller: &WebUiAuthenticatedCaller,
+        provider_id: &str,
         expected_revision: u64,
-    ) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
-        let _publication = self.publication.lock().await;
-        let id = validate_provider_id(&provider_id)?;
-        // Delete via DB-backed repo.
+        mutation: &crate::provider_mutation::ProviderMutation,
+    ) -> Result<brassclaw_product_workflow::ProviderMutationReceipt, LlmConfigServiceError> {
+        let id = validate_provider_id(provider_id)?;
+        let expected = i64::try_from(expected_revision)
+            .ok()
+            .filter(|revision| *revision > 0)
+            .ok_or_else(|| LlmConfigServiceError::InvalidRequest {
+                field: Some("expected_revision".into()),
+                reason: "Use a positive stored provider revision.".into(),
+            })?;
+        let mut client = self
+            .pg_pool
+            .get()
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        let transaction = client
+            .transaction()
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        mutation.lock(&transaction, &self.db_tenant_id).await?;
+        if let Some(original) = mutation
+            .original(&transaction, &self.db_tenant_id, &self.keys)
+            .await?
+        {
+            transaction
+                .commit()
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            return Ok(original);
+        }
         let removed = self
-            .delete_provider_definition(&id, expected_revision)
-            .await?;
+            .pg_provider_repo
+            .deactivate_in_transaction(&transaction, &id, Some(expected))
+            .await
+            .map_err(|error| match error {
+                crate::pg_provider_repo::PgProviderRepoError::RevisionConflict => {
+                    LlmConfigServiceError::Conflict {
+                        reason: "Provider changed; reload its settings before removing it.".into(),
+                    }
+                }
+                _ => LlmConfigServiceError::Unavailable,
+            })?;
         if !removed {
             return Err(LlmConfigServiceError::NotFound);
         }
-        // Removing a catalogue entry is reversible. Keep its encrypted key;
-        // the repository cleared every affected role/model in the same commit.
-        self.restore_sempai_from_db_locked().await?;
-        self.refresh_running_provider().await?;
-        self.snapshot(caller).await
+        let retained = self
+            .pg_provider_repo
+            .get_revision_from_client(&*transaction, &id, true)
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?
+            .ok_or(LlmConfigServiceError::Unavailable)?;
+        let receipt = mutation
+            .record(
+                &transaction,
+                &self.db_tenant_id,
+                caller.user_id.as_str(),
+                Some((&id, retained.revision)),
+                &self.keys,
+            )
+            .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        Ok(receipt)
     }
+}
 
-    async fn set_active(
+impl RebornLlmConfigService {
+    async fn commit_provider_selection(
         &self,
-        caller: WebUiAuthenticatedCaller,
-        request: SetActiveLlmRequest,
-    ) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
-        let _publication = self.publication.lock().await;
-        let role = request.role.unwrap_or(ProviderRole::Kohai);
-
-        // Validate provider id (allow empty string to clear the slot).
-        let mut id = if request.provider_id.trim().is_empty() {
-            String::new()
+        caller: &WebUiAuthenticatedCaller,
+        request: &SetActiveLlmRequest,
+        role: ProviderRole,
+        mutation: &crate::provider_mutation::ProviderMutation,
+    ) -> Result<brassclaw_product_workflow::ProviderMutationReceipt, LlmConfigServiceError> {
+        let expected_selection_ref =
+            required_selection_ref(request.expected_selection_ref.as_deref())?;
+        if matches!(role, ProviderRole::Kohai) && self.reload.is_none()
+            || matches!(role, ProviderRole::Sempai) && self.sempai_swappable.is_none()
+        {
+            return Err(LlmConfigServiceError::Unavailable);
+        }
+        let selected = if request.provider_id.trim().is_empty() {
+            None
         } else {
-            validate_provider_id(&request.provider_id)?
+            let id = validate_provider_id(&request.provider_id)?;
+            let selected = self
+                .pg_provider_repo
+                .get_revision(&id, false)
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable)?
+                .ok_or(LlmConfigServiceError::NotFound)?;
+            let expected_revision =
+                request
+                    .expected_revision
+                    .ok_or_else(|| LlmConfigServiceError::InvalidRequest {
+                        field: Some("expected_revision".into()),
+                        reason: "Use the provider revision from the displayed settings.".into(),
+                    })?;
+            if expected_revision != selected.revision {
+                return Err(LlmConfigServiceError::Conflict {
+                    reason: "Provider changed; reload its settings before selecting it.".into(),
+                });
+            }
+            // Construct outside the DB transaction. The selected definition is
+            // fenced again under a row lock before recording this publication.
+            self.prepare_provider_selection(
+                &selected.definition.id,
+                request.model.as_deref(),
+                role,
+            )
+            .await?;
+            Some(selected)
         };
-
-        // Roles select independently. Sharing a provider or endpoint does not
-        // merge their prompts, model overrides, histories or task identities.
-        if !id.is_empty() {
-            id = self
-                .load_provider_by_id(&id)
-                .await?
-                .ok_or(LlmConfigServiceError::NotFound)?
-                .id;
+        let mut client = self
+            .pg_pool
+            .get()
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        let transaction = client
+            .transaction()
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        mutation.lock(&transaction, &self.db_tenant_id).await?;
+        if let Some(original) = mutation
+            .original(&transaction, &self.db_tenant_id, &self.keys)
+            .await?
+        {
+            transaction
+                .commit()
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            return Ok(original);
         }
-
-        match role {
-            ProviderRole::Kohai => {
-                if self.reload.is_none() {
-                    return Err(LlmConfigServiceError::Unavailable);
-                }
-                self.set_provider_async(id, request.model)
-                    .await
-                    .map_err(map_admin_error)?;
-                self.refresh_running_provider().await?;
-            }
-            ProviderRole::Sempai => {
-                let swappable = self
-                    .sempai_swappable
-                    .as_ref()
-                    .ok_or(LlmConfigServiceError::Unavailable)?;
-                let new_provider: Arc<dyn brassclaw_llm::LlmProvider> = if id.is_empty() {
-                    Arc::new(crate::runtime::PlaceholderLlmProvider)
-                } else {
-                    self.build_sempai_provider(&id, request.model.as_deref())
-                        .await
-                        .map_err(|_| LlmConfigServiceError::Unavailable)?
-                };
-                self.save_role_to_db(
-                    "llm.sempai.provider_id",
-                    &id,
-                    "llm.sempai.model",
-                    request.model.as_deref().unwrap_or(""),
-                )
-                .await?;
-                swappable.swap_with_identity(
-                    new_provider,
-                    if id.is_empty() { "unconfigured" } else { &id },
-                );
-                if let Some(mode) = &self.interceptor_mode {
-                    if id.is_empty() {
-                        mode.set_routing();
-                    } else {
-                        mode.set_rerouting();
-                    }
-                }
-            }
-            ProviderRole::Embedding => {
-                // DB is the sole write target — file write removed in V047/V048.
-                self.save_role_to_db(
-                    "embedding.provider_id",
-                    if id.is_empty() { "" } else { &id },
-                    "embedding.model",
-                    request.model.as_deref().unwrap_or(""),
-                )
-                .await?;
-                self.refresh_memory_embedding().await?;
+        if let Some(selected) = &selected {
+            let current = self
+                .pg_provider_repo
+                .lock_active_revision(&transaction, &selected.definition.id)
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable)?
+                .ok_or(LlmConfigServiceError::NotFound)?;
+            if current.revision != selected.revision {
+                return Err(LlmConfigServiceError::Conflict {
+                    reason:
+                        "Provider changed while preparing its selection; reload before retrying."
+                            .into(),
+                });
             }
         }
-
-        self.snapshot(caller).await
-    }
-
-    async fn test_connection(
-        &self,
-        caller: WebUiAuthenticatedCaller,
-        request: LlmProbeRequest,
-    ) -> Result<LlmProbeResult, LlmConfigServiceError> {
-        // Provider constructors and a default empty list_models implementation
-        // do not establish connectivity. Use the same explicit, bounded
-        // exchange as discovery and preserve its classified failures.
-        let result = self.list_models(caller, request).await?;
-        Ok(LlmProbeResult {
-            ok: result.ok,
-            message: if result.ok {
-                format!("connection ok — {} models available", result.models.len())
-            } else {
-                result.message
-            },
-        })
-    }
-
-    async fn list_models(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        request: LlmProbeRequest,
-    ) -> Result<LlmModelsResult, LlmConfigServiceError> {
-        let CapturedProbe {
-            protocol,
-            endpoint,
-            key,
-            model_discovery: policy,
-        } = self.capture_probe(&request).await?;
-        let pairs = match brassclaw_llm::model_discovery::fetch_models(
-            protocol,
-            &endpoint,
-            key.as_ref().map(|value| value.expose_secret()),
-            policy,
+        let role_name = match role {
+            ProviderRole::Kohai => "kohai",
+            ProviderRole::Sempai => "sempai",
+            ProviderRole::Embedding => "embedding",
+        };
+        let provider = selected.as_ref().map(|row| row.definition.id.as_str());
+        let model = provider
+            .and(request.model.as_deref())
+            .filter(|model| !model.is_empty());
+        crate::db_config::save_model_selection_in_transaction(
+            &transaction,
+            &self.db_tenant_id,
+            role_name,
+            expected_selection_ref,
+            provider,
+            model,
         )
         .await
-        {
-            Ok(models) => models,
-            Err(error) => {
-                return Ok(LlmModelsResult {
-                    ok: false,
-                    models: Vec::new(),
-                    message: error.to_string(),
-                });
-            }
-        };
-
-        if pairs.is_empty() {
-            Ok(LlmModelsResult {
-                ok: false,
-                models: Vec::new(),
-                message: "No models were returned by the provider endpoint.".to_string(),
-            })
-        } else {
-            Ok(LlmModelsResult {
-                ok: true,
-                models: pairs.into_iter().map(|(id, _label)| id).collect(),
-                message: String::new(),
-            })
-        }
-    }
-
-    async fn start_nearai_login(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        request: NearAiLoginRequest,
-    ) -> Result<NearAiLoginStart, LlmConfigServiceError> {
-        let session = self
-            .nearai_session
-            .as_ref()
-            .ok_or(LlmConfigServiceError::Unavailable)?;
-
-        // Point NEAR AI at the server's own public callback route (aligned with
-        // the SSO PublicRouteMount pattern, not a second loopback listener).
-        // NEAR AI redirects to `<frontend_callback>/auth/callback?token=...`, so
-        // `frontend_callback` is this server's NEAR AI route prefix on the
-        // browser's own origin (validated to a bare scheme://host[:port]).
-        let origin = sanitize_origin(&request.origin).ok_or_else(|| {
-            LlmConfigServiceError::InvalidRequest {
-                field: Some("origin".to_string()),
-                reason: "origin must be a bare http(s) origin".to_string(),
-            }
-        })?;
-        let state = self.nearai_login_states.issue().await;
-        let frontend_callback = format!("{origin}{NEARAI_LOGIN_PREFIX}/{state}");
-        let mut auth_url = url::Url::parse(&format!(
-            "{}/v1/auth/{}",
-            session.auth_base_url(),
-            request.provider.as_path()
-        ))
-        .map_err(|_| LlmConfigServiceError::Internal)?;
-        auth_url
-            .query_pairs_mut()
-            .append_pair("frontend_callback", &frontend_callback);
-
-        Ok(NearAiLoginStart {
-            auth_url: auth_url.to_string(),
-        })
-    }
-
-    async fn start_codex_login(
-        &self,
-        caller: WebUiAuthenticatedCaller,
-    ) -> Result<CodexLoginStart, LlmConfigServiceError> {
-        let attempt_key = codex_login_attempt_key(&caller);
-        let now = Instant::now();
-        {
-            let mut attempts = self.codex_login_attempts.lock().await;
-            attempts.retain(|_, attempt| attempt.expires_at > now);
-            if let Some(attempt) = attempts.get(&attempt_key) {
-                return Ok(CodexLoginStart {
-                    user_code: attempt.user_code.clone(),
-                    verification_uri: attempt.verification_uri.clone(),
-                });
-            }
-        }
-
-        // Point the login manager at the same session file the live openai_codex
-        // provider reads on reload (mirror resolution.rs env precedence). The
-        // model is irrelevant to the device-code flow, so leave it defaulted.
-        let codex_config = OpenAiCodexConfig::build(
-            None,
-            nonempty_env("OPENAI_CODEX_AUTH_URL"),
-            nonempty_env("OPENAI_CODEX_API_URL"),
-            nonempty_env("OPENAI_CODEX_CLIENT_ID"),
-            nonempty_env("OPENAI_CODEX_SESSION_PATH").map(std::path::PathBuf::from),
-            None,
-        );
-        let manager = OpenAiCodexSessionManager::new(codex_config)
-            .map_err(|_| LlmConfigServiceError::Internal)?;
-        let start = manager
-            .initiate_device_code()
+        .map_err(map_selection_edit)?;
+        let receipt = mutation
+            .record(
+                &transaction,
+                &self.db_tenant_id,
+                caller.user_id.as_str(),
+                selected
+                    .as_ref()
+                    .map(|row| (row.definition.id.as_str(), row.revision)),
+                &self.keys,
+            )
+            .await?;
+        transaction
+            .commit()
             .await
-            .map_err(|_| LlmConfigServiceError::Internal)?;
-
-        let login = CodexLoginStart {
-            user_code: start.user_code.clone(),
-            verification_uri: start.verification_uri.clone(),
-        };
-        let attempt_id = uuid::Uuid::new_v4();
-        {
-            let mut attempts = self.codex_login_attempts.lock().await;
-            attempts.insert(
-                attempt_key.clone(),
-                CodexLoginAttempt {
-                    id: attempt_id,
-                    user_code: login.user_code.clone(),
-                    verification_uri: login.verification_uri.clone(),
-                    expires_at: Instant::now() + CODEX_LOGIN_ATTEMPT_TTL,
-                },
-            );
-        }
-
-        // Poll for authorization off-thread: persist the tokens, make Codex the
-        // active provider, and hot-swap the running provider. The frontend polls
-        // the snapshot until openai_codex is active. The DB config is the source
-        // of truth, so a reload failure still applies on restart.
-        let reload = self.reload.clone();
-        let attempts = Arc::clone(&self.codex_login_attempts);
-        let codex_pool = self.pg_pool.clone();
-        let codex_tenant = self.db_tenant_id.clone();
-        let publication = Arc::clone(&self.publication);
-        tokio::spawn(async move {
-            if let Err(error) = manager.complete_device_code(&start).await {
-                tracing::debug!(%error, "codex device login did not complete");
-                remove_codex_attempt_if_current(&attempts, &attempt_key, attempt_id).await;
-                return;
-            }
-            let _publication = publication.lock().await;
-            if !remove_codex_attempt_if_current(&attempts, &attempt_key, attempt_id).await {
-                tracing::debug!("codex login completed after a newer attempt superseded it");
-                return;
-            }
-            if let Err(error) =
-                write_kohai_selection_to_db(&codex_pool, &codex_tenant, "openai_codex", None).await
-            {
-                tracing::debug!(%error, "codex login: could not set active provider");
-                return;
-            }
-            if let Some(reload) = reload
-                && let Err(error) = reload.reload().await
-            {
-                tracing::debug!(%error, "codex login: live reload failed; applies on restart");
-            }
-        });
-
-        Ok(login)
-    }
-
-    async fn complete_nearai_wallet_login(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        request: NearAiWalletLoginRequest,
-    ) -> Result<NearAiWalletLoginResult, LlmConfigServiceError> {
-        let session = self
-            .nearai_session
-            .as_ref()
-            .ok_or(LlmConfigServiceError::Unavailable)?;
-
-        // Exchange the browser-signed NEP-413 message for a NEAR AI session
-        // token. NEAR AI is the authority on the message/recipient/nonce
-        // constraints, so a bad signature comes back as an error here; surface a
-        // generic failure rather than leaking the provider's reason.
-        let signed = NearWalletSignedMessage {
-            account_id: request.account_id,
-            public_key: request.public_key,
-            signature: request.signature,
-            message: request.message,
-            recipient: request.recipient,
-            nonce: request.nonce,
-            callback_url: request.callback_url,
-        };
-        let token = session.near_wallet_login(&signed).await.map_err(|error| {
-            tracing::debug!(%error, "NEAR AI wallet login exchange failed");
-            LlmConfigServiceError::InvalidRequest {
-                field: None,
-                reason: "NEAR wallet sign-in failed".to_string(),
-            }
-        })?;
-
-        let _publication = self.publication.lock().await;
-        // Apply the token the same way the SSO callback does: persist it, make
-        // NEAR AI active, and hot-swap the running provider. Without a reload
-        // seam the selection still persists and applies on restart.
-        session
-            .save_session_for_renewer(&token, Some("nearai"))
-            .await
-            .map_err(|error| {
-                tracing::debug!(%error, "NEAR AI wallet login: token persist failed");
-                LlmConfigServiceError::Internal
-            })?;
-        write_kohai_selection_to_db(&self.pg_pool, &self.db_tenant_id, "nearai", None)
-            .await
-            .map_err(|error| {
-                tracing::debug!(%error, "NEAR AI wallet login: set active failed");
-                LlmConfigServiceError::Internal
-            })?;
-        let active = match &self.reload {
-            Some(reload) => {
-                reload.reload().await.map_err(|error| {
-                    tracing::debug!(%error, "NEAR AI wallet login: live reload failed");
-                    LlmConfigServiceError::Internal
-                })?;
-                true
-            }
-            None => false,
-        };
-        Ok(NearAiWalletLoginResult { active })
-    }
-}
-
-/// Read an env var, treating empty/whitespace as absent. Mirrors the precedence
-/// `brassclaw_llm::resolution` uses so the Codex login manager resolves the same
-/// session path / client id / auth URL as the live provider.
-fn nonempty_env(key: &str) -> Option<String> {
-    std::env::var(key)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn codex_login_attempt_key(caller: &WebUiAuthenticatedCaller) -> String {
-    format!("{}:{}", caller.tenant_id.as_str(), caller.user_id.as_str())
-}
-
-async fn remove_codex_attempt_if_current(
-    attempts: &tokio::sync::Mutex<HashMap<String, CodexLoginAttempt>>,
-    key: &str,
-    attempt_id: uuid::Uuid,
-) -> bool {
-    let mut attempts = attempts.lock().await;
-    let Some(attempt) = attempts.get(key) else {
-        return false;
-    };
-    if attempt.id != attempt_id {
-        return false;
-    }
-    attempts.remove(key);
-    true
-}
-
-/// Server route prefix handed to NEAR AI as `frontend_callback`, with an issued
-/// state segment appended per login flow. NEAR AI appends
-/// `/auth/callback?token=...`, so the public callback route is
-/// `{NEARAI_LOGIN_PREFIX}/{state}/auth/callback`.
-pub(crate) const NEARAI_LOGIN_PREFIX: &str = "/api/webchat/v2/llm/nearai";
-
-/// The public callback path NEAR AI redirects to (token in the query). The
-/// `{state}` segment must match an authenticated start request before the
-/// callback can write the operator-wide session.
-pub(crate) const NEARAI_LOGIN_CALLBACK_PATH: &str =
-    "/api/webchat/v2/llm/nearai/{state}/auth/callback";
-
-/// Reduce a browser-supplied origin to a bare `scheme://host[:port]`, rejecting
-/// anything with a path/query or a non-http scheme. NEAR AI redirects the token
-/// here, so it must be a clean same-machine origin.
-fn sanitize_origin(raw: &str) -> Option<String> {
-    let parsed = url::Url::parse(raw.trim()).ok()?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return None;
-    }
-    let host = parsed.host_str()?;
-    let mut origin = format!("{}://{host}", parsed.scheme());
-    if let Some(port) = parsed.port() {
-        origin.push_str(&format!(":{port}"));
-    }
-    Some(origin)
-}
-
-/// Apply a completed NEAR AI login: store the session token on the live
-/// session and hot-swap the running provider. Shared by the public callback
-/// route. Errors are log-only strings.
-///
-/// Note: the Kohai selection DB write (`llm.default.provider_id = "nearai"`)
-/// must be performed by the caller before invoking this function (via
-/// `set_active(Kohai)` or the new `write_kohai_selection_to_db` helper).
-pub(crate) async fn apply_nearai_login(
-    session: &brassclaw_llm::SessionManager,
-    reload: &dyn LlmReloadTrigger,
-    token: &str,
-) -> Result<(), String> {
-    session
-        .save_session_for_renewer(token, Some("nearai"))
-        .await
-        .map_err(|error| error.to_string())?;
-    reload.reload().await
-}
-
-/// Write the Kohai provider + model to `brassclaw_config`.
-///
-/// Used from background tasks (Codex login, NEAR AI wallet login) that lack
-/// `self` access. Postgres is required — `pg_pool` is a mandatory field on
-/// `RebornLlmConfigService` after the V047/V048 migration.
-pub(crate) async fn write_kohai_selection_to_db(
-    pool: &Arc<brassclaw_pg::PgPool>,
-    tenant_id: &str,
-    provider_id: &str,
-    model: Option<&str>,
-) -> Result<(), String> {
-    use crate::db_config::{ConfigWriteContext, save_config_changes};
-    let provider = (!provider_id.is_empty()).then_some(provider_id);
-    let model = model.filter(|model| provider.is_some() && !model.is_empty());
-    save_config_changes(
-        pool,
-        tenant_id,
-        &[
-            ("llm.default.provider_id", provider),
-            ("llm.default.model", model),
-        ],
-        ConfigWriteContext::Operator,
-    )
-    .await
-    .map_err(|error| error.to_string())
-}
-
-/// Parse a wire adapter name (e.g. `open_ai_completions`) into a protocol.
-fn parse_adapter(adapter: &str) -> Option<ProviderProtocol> {
-    serde_json::from_value(serde_json::Value::String(adapter.to_string())).ok()
-}
-
-fn normalized_endpoint(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.trim_end_matches('/').to_string())
-}
-
-/// Resolve the overlay `ProviderDefinition` to write for an upsert.
-///
-/// When `builtin` is `Some` the id names a compiled-in provider: clone its
-/// definition (preserving protocol, setup hints, env-var names) and overlay
-/// only the operator's `base_url`/`model`, retaining authentication requirements.
-/// Stored credentials are supplied to resolution separately. When `builtin`
-/// is `None` it's a brand-new
-/// custom provider, which needs a valid `adapter`.
-fn build_overlay_definition(
-    id: &str,
-    builtin: Option<&ProviderDefinition>,
-    adapter: &str,
-    base_url: Option<String>,
-    model: Option<String>,
-    name: Option<&str>,
-) -> Result<ProviderDefinition, LlmConfigServiceError> {
-    if let Some(builtin) = builtin {
-        let mut def = builtin.clone();
-        if let Some(base_url) = base_url {
-            def.default_base_url = Some(base_url);
-        }
-        if let Some(model) = model {
-            def.default_model = model;
-        }
-        return Ok(def);
-    }
-
-    let protocol = parse_adapter(adapter).ok_or_else(|| LlmConfigServiceError::InvalidRequest {
-        field: Some("adapter".to_string()),
-        reason: format!("unknown adapter `{adapter}`"),
-    })?;
-    let mut def = custom_definition(id, protocol, base_url, model.unwrap_or_default());
-    def.description = name
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| id.to_string());
-    Ok(def)
-}
-
-/// Build a custom (operator-defined) provider definition. The API key is never
-/// stored in the catalogue. Custom endpoints may use optional credentials;
-/// localhost OpenAI-compatible endpoints need no artificial API key.
-fn custom_definition(
-    id: &str,
-    protocol: ProviderProtocol,
-    base_url: Option<String>,
-    default_model: String,
-) -> ProviderDefinition {
-    ProviderDefinition {
-        embedding_models: Default::default(),
-        model_token_limits: Default::default(),
-        model_discovery: Default::default(),
-        request_policy: Default::default(),
-        id: id.to_string(),
-        aliases: Vec::new(),
-        protocol,
-        default_base_url: base_url,
-        base_url_env: None,
-        base_url_required: false,
-        api_key_env: None,
-        api_key_required: false,
-        model_env: synthetic_model_env(id),
-        default_model,
-        description: id.to_string(),
-        extra_headers_env: None,
-        unsupported_params: Vec::new(),
-        setup: None,
-        token_budget: None,
-        context_window_tokens: None,
-        cache_retention: None,
-        response_cache: Default::default(),
-    }
-}
-
-fn synthetic_model_env(id: &str) -> String {
-    let upper: String = id
-        .chars()
-        .map(|c| {
-            if c == '-' {
-                '_'
-            } else {
-                c.to_ascii_uppercase()
-            }
-        })
-        .collect();
-    format!("LLM_CUSTOM_{upper}_MODEL")
-}
-
-/// The masked sentinel the UI sends for "key unchanged".
-fn is_masked_sentinel(value: &SecretString) -> bool {
-    value.expose_secret().chars().all(|c| c == '\u{2022}')
-}
-
-const PROVIDER_ID_MAX_LEN: usize = 64;
-
-fn validate_provider_id(id: &str) -> Result<String, LlmConfigServiceError> {
-    let trimmed = id.trim();
-    if trimmed.is_empty() {
-        return Err(LlmConfigServiceError::InvalidRequest {
-            field: Some("id".to_string()),
-            reason: "provider id cannot be empty".to_string(),
-        });
-    }
-    if trimmed.len() > PROVIDER_ID_MAX_LEN {
-        return Err(LlmConfigServiceError::InvalidRequest {
-            field: Some("id".to_string()),
-            reason: format!(
-                "provider id must be ≤ {} characters, got {}",
-                PROVIDER_ID_MAX_LEN,
-                trimmed.len()
-            ),
-        });
-    }
-    if !trimmed
-        .chars()
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
-    {
-        return Err(LlmConfigServiceError::InvalidRequest {
-            field: Some("id".to_string()),
-            reason: "provider id may only contain lowercase letters, digits, '_' or '-'"
-                .to_string(),
-        });
-    }
-    Ok(trimmed.to_string())
-}
-
-fn selection_from_keys(
-    keys: &HashMap<String, String>,
-    provider_key: &str,
-    model_key: &str,
-) -> Option<LlmActiveSelection> {
-    let provider_id = keys
-        .get(provider_key)
-        .filter(|value| !value.is_empty())?
-        .clone();
-    let model = keys
-        .get(model_key)
-        .filter(|value| !value.is_empty())
-        .cloned();
-    Some(LlmActiveSelection { provider_id, model })
-}
-
-fn map_admin_error(error: crate::RebornProviderAdminError) -> LlmConfigServiceError {
-    use crate::RebornProviderAdminError as E;
-    match error {
-        E::UnknownProvider { .. } => LlmConfigServiceError::NotFound,
-        E::InvalidRequest { reason } => LlmConfigServiceError::InvalidRequest {
-            field: None,
-            reason,
-        },
-        E::LoadRegistry { .. } | E::LoadDatabase { .. } => LlmConfigServiceError::Unavailable,
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        Ok(receipt)
     }
 }
 
@@ -1584,7 +1867,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let keys = LlmKeyStore::new(Arc::new(
+        let keys = LlmKeyStore::new_postgres(Arc::new(
             brassclaw_secrets::PgSecretStore::new(
                 (*pool).clone(),
                 SecretString::from("native-configuration-test-master-key"),
@@ -1636,15 +1919,74 @@ mod tests {
             None,
             None,
         );
-        let request = |model: &str| SetActiveLlmRequest {
-            provider_id: "shared-provider".into(),
-            model: Some(model.into()),
-            role: Some(ProviderRole::Sempai),
-        };
+        let observed = service.snapshot(caller.clone()).await.unwrap();
+        let definition_revision = observed
+            .providers
+            .iter()
+            .find(|row| row.id == "shared-provider")
+            .unwrap()
+            .revision;
+        let request =
+            |model: &str, refs: &std::collections::BTreeMap<String, String>| SetActiveLlmRequest {
+                mutation_id: uuid::Uuid::new_v4(),
+                expected_revision: Some(definition_revision),
+                expected_selection_ref: Some(refs["sempai"].clone()),
+                provider_id: "shared-provider".into(),
+                model: Some(model.into()),
+                role: Some(ProviderRole::Sempai),
+            };
+        let admitted_primary = kohai.pinned_provider().0;
         let snapshot = service
-            .set_active(caller.clone(), request("sempai-model"))
+            .set_active(
+                caller.clone(),
+                request("sempai-model", &observed.role_selection_refs),
+            )
             .await
             .unwrap();
+        assert!(
+            Arc::ptr_eq(&admitted_primary, &kohai.pinned_provider().0),
+            "selecting Sempai must preserve the independent Kohai client/cache/circuit"
+        );
+        assert_eq!(
+            snapshot.mutation_receipt.as_ref().unwrap().selected_role,
+            Some(ProviderRole::Sempai)
+        );
+        let before_invalid_embedding = list_config_keys(&pool, "default").await.unwrap();
+        let invalid_embedding_id = uuid::Uuid::new_v4();
+        let admitted_sempai = swappable.pinned_provider().0;
+        assert!(matches!(
+            service
+                .set_active(
+                    caller.clone(),
+                    SetActiveLlmRequest {
+                        mutation_id: invalid_embedding_id,
+                        expected_revision: Some(definition_revision),
+                        expected_selection_ref: Some(
+                            snapshot.role_selection_refs["embedding"].clone()
+                        ),
+                        provider_id: "shared-provider".into(),
+                        model: Some("missing-embedding-contract".into()),
+                        role: Some(ProviderRole::Embedding),
+                    }
+                )
+                .await,
+            Err(LlmConfigServiceError::InvalidRequest { .. })
+        ));
+        assert!(matches!(
+            service
+                .provider_mutation(caller.clone(), invalid_embedding_id)
+                .await,
+            Err(LlmConfigServiceError::NotFound)
+        ));
+        assert_eq!(
+            before_invalid_embedding,
+            list_config_keys(&pool, "default").await.unwrap()
+        );
+        assert!(Arc::ptr_eq(&admitted_primary, &kohai.pinned_provider().0));
+        assert!(Arc::ptr_eq(
+            &admitted_sempai,
+            &swappable.pinned_provider().0
+        ));
         let restored = Arc::new(brassclaw_llm::SwappableLlmProvider::new(Arc::new(
             crate::runtime::PlaceholderLlmProvider,
         )));
@@ -1691,6 +2033,9 @@ mod tests {
             .set_active(
                 caller.clone(),
                 SetActiveLlmRequest {
+                    mutation_id: uuid::Uuid::new_v4(),
+                    expected_revision: None,
+                    expected_selection_ref: Some(snapshot.role_selection_refs["kohai"].clone()),
                     provider_id: String::new(),
                     model: Some("must-not-survive-clear".into()),
                     role: Some(ProviderRole::Kohai),
@@ -1707,6 +2052,11 @@ mod tests {
             .set_active(
                 caller.clone(),
                 SetActiveLlmRequest {
+                    mutation_id: uuid::Uuid::new_v4(),
+                    expected_revision: Some(definition_revision),
+                    expected_selection_ref: Some(
+                        cleared_kohai.role_selection_refs["kohai"].clone(),
+                    ),
                     provider_id: "shared-provider".into(),
                     model: Some("kohai-model".into()),
                     role: Some(ProviderRole::Kohai),
@@ -1739,7 +2089,10 @@ mod tests {
             FOR EACH ROW EXECUTE FUNCTION reject_role_provider()").await.unwrap();
         assert!(matches!(
             service
-                .set_active(caller.clone(), request("rejected-model"))
+                .set_active(
+                    caller.clone(),
+                    request("rejected-model", &snapshot.role_selection_refs)
+                )
                 .await,
             Err(LlmConfigServiceError::Unavailable)
         ));
@@ -1772,7 +2125,10 @@ mod tests {
             ALTER TABLE brassclaw_secrets RENAME TO unavailable_role_secrets").await.unwrap();
         assert!(matches!(
             service
-                .set_active(caller.clone(), request("unreadable-key-model"))
+                .set_active(
+                    caller.clone(),
+                    request("unreadable-key-model", &snapshot.role_selection_refs)
+                )
                 .await,
             Err(LlmConfigServiceError::Unavailable)
         ));
@@ -1809,6 +2165,9 @@ mod tests {
             .set_active(
                 caller.clone(),
                 SetActiveLlmRequest {
+                    mutation_id: uuid::Uuid::new_v4(),
+                    expected_revision: None,
+                    expected_selection_ref: Some(snapshot.role_selection_refs["sempai"].clone()),
                     provider_id: String::new(),
                     model: Some("must-not-survive-clear".into()),
                     role: Some(ProviderRole::Sempai),
@@ -1832,7 +2191,10 @@ mod tests {
         // Retained work still owns the actual preceding provider selection.
         assert_eq!(retained_provider.active_model_name(), retained_model);
         service
-            .set_active(caller.clone(), request("sempai-restored-model"))
+            .set_active(
+                caller.clone(),
+                request("sempai-restored-model", &cleared.role_selection_refs),
+            )
             .await
             .unwrap();
         save_config_changes(
@@ -1870,7 +2232,12 @@ mod tests {
             FOR EACH ROW EXECUTE FUNCTION reject_deactivation()").await.unwrap();
         assert!(matches!(
             service
-                .delete_provider(caller.clone(), "shared-provider".into(), selected_revision)
+                .delete_provider(
+                    caller.clone(),
+                    "shared-provider".into(),
+                    selected_revision,
+                    uuid::Uuid::new_v4()
+                )
                 .await,
             Err(LlmConfigServiceError::Unavailable)
         ));
@@ -1886,7 +2253,12 @@ mod tests {
         assert_eq!(swappable.pinned_provider().1, "sempai-restored-model");
         client.batch_execute("DROP TRIGGER reject_deactivation ON brassclaw_config; DROP FUNCTION reject_deactivation()").await.unwrap();
         let removed = service
-            .delete_provider(caller, "shared-provider".into(), selected_revision)
+            .delete_provider(
+                caller,
+                "shared-provider".into(),
+                selected_revision,
+                uuid::Uuid::new_v4(),
+            )
             .await
             .unwrap();
         assert!(removed.kohai_active.is_none());
@@ -1930,19 +2302,6 @@ mod tests {
                 .any(|key| key.starts_with("llm.") || key.starts_with("embedding."))
         );
         assert_eq!(retained_kohai.active_model_name(), "kohai-model");
-    }
-
-    #[tokio::test]
-    async fn nearai_login_state_is_single_use() {
-        let store = NearAiLoginStateStore::new();
-        let state = store.issue().await;
-
-        assert!(store.consume(&state).await);
-        assert!(
-            !store.consume(&state).await,
-            "state must not be reusable after a successful callback"
-        );
-        assert!(!store.consume("missing-state").await);
     }
 
     #[test]

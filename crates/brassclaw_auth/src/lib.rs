@@ -9,8 +9,13 @@
 //! stay Reborn-native: this crate does not depend on V1 route handlers, V1
 //! pending maps, V1 extension manager authority, or V1 secret stores.
 
+mod callback;
 mod cleanup;
 mod credential;
+mod dcr;
+mod dcr_cleanup;
+mod dcr_legacy;
+mod dcr_retirement;
 pub mod domain;
 mod error;
 mod fakes;
@@ -18,9 +23,29 @@ mod flow;
 mod ids;
 mod interaction;
 mod oauth;
+mod oauth_setup;
 mod provider;
+mod refresh;
+mod requirement;
+mod requirement_source;
+pub use refresh::{
+    CredentialRefreshAction, CredentialRefreshAdmission, CredentialRefreshCompletion,
+    CredentialRefreshOriginal, CredentialRefreshOutcome, CredentialRefreshOutcomeKind,
+    CredentialRefreshPrepared, CredentialRefreshPublication, CredentialRefreshReceipt,
+    CredentialRefreshStopReason,
+};
+pub use requirement::{
+    CredentialRequirementOwner, CredentialRequirementPublication, CredentialRequirementSelection,
+    CredentialRequirementSetup,
+};
+pub use requirement_source::CredentialRequirementSource;
 mod scope;
 
+pub use callback::{
+    AuthFlowCustody, OAuthCallbackAction, OAuthCallbackAdmission, OAuthCallbackCompletion,
+    OAuthCallbackOriginal, OAuthCallbackOutcome, OAuthCallbackOutcomeKind, OAuthCallbackPrepared,
+    OAuthCallbackPublication, OAuthCallbackReceipt, OAuthCallbackReference, OAuthCallbackState,
+};
 pub use cleanup::{
     SecretCleanupAction, SecretCleanupQuarantine, SecretCleanupQuarantineReason,
     SecretCleanupReport, SecretCleanupRequest, SecretCleanupService,
@@ -35,6 +60,21 @@ pub use credential::{
     CredentialRecoveryState, CredentialRefreshReport, CredentialRefreshRequest,
     CredentialSetupService, NewCredentialAccount, ProviderBackedCredentialAccountService,
 };
+pub use dcr::{
+    DcrChallengePublication, DcrMaterialReference, DcrRegistrationAction, DcrRegistrationAdmission,
+    DcrRegistrationChallenge, DcrRegistrationCompletion, DcrRegistrationOriginal,
+    DcrRegistrationOutcome, DcrRegistrationState,
+};
+pub use dcr_cleanup::{
+    DcrCleanupAdmission, DcrCleanupClaim, DcrCleanupCompletion, DcrCleanupOutcome,
+    DcrCleanupPrepared, DcrCleanupProjection, DcrCleanupReason, DcrCleanupState,
+    DcrCleanupUnavailable, DcrLocalCleanupStatus, DcrRemoteCleanupStatus,
+};
+pub use dcr_legacy::{DcrLegacyOriginal, DcrLegacySelection, DcrLegacyState};
+pub use dcr_retirement::{
+    DcrArtifactExpectation, DcrArtifactSlot, DcrRetirement, DcrRetirementEntry,
+    DcrRetirementOutcome, DcrRetirementProblem, DcrRetirementSelection, DcrRetirementUpdate,
+};
 pub use error::{AuthErrorCode, AuthProductError};
 pub use fakes::InMemoryAuthProductServices;
 pub use flow::{
@@ -47,12 +87,15 @@ pub use flow::{
 };
 pub use ids::{
     AuthFlowId, AuthGateRef, AuthInteractionId, AuthProviderId, AuthSessionId,
-    AuthorizationCodeHash, CredentialAccountId, CredentialAccountLabel, LifecyclePackageRef,
+    AuthorizationCodeHash, CredentialAccountId, CredentialAccountLabel,
+    CredentialAccountSnapshotRef, CredentialRefreshId, CredentialRequirementKey,
+    CredentialRequirementSelectionRef, CredentialSecretGenerationRef, LifecyclePackageRef,
     OAuthAuthorizationUrl, OpaqueStateHash, PkceVerifierHash, ProductActionRef, ProviderScope,
     TurnRunRef,
 };
 pub use interaction::{
-    AuthInteractionService, ManualTokenSetupRequest, SecretSubmitRequest, SecretSubmitResult,
+    AuthInteractionService, ManualTokenSetupIdentity, ManualTokenSetupRequest, SecretSubmitRequest,
+    SecretSubmitResult,
 };
 pub use oauth::{
     GOOGLE_AUTHORIZATION_ENDPOINT, GOOGLE_CALENDAR_EVENTS_SCOPE, GOOGLE_CALENDAR_READONLY_SCOPE,
@@ -64,10 +107,15 @@ pub use oauth::{
     opaque_state_hash, parse_google_callback_scopes, parse_google_requested_scopes,
     pkce_s256_challenge, pkce_verifier_hash, scope_text,
 };
+pub use oauth_setup::{
+    OAuthSetupDefinition, OAuthSetupMaterialReference, OAuthSetupOriginal, OAuthSetupRetirement,
+    OAuthSetupState,
+};
 pub use provider::{
     AuthProviderClient, OAuthAuthorizationCode, OAuthProviderCallbackRequest,
     OAuthProviderExchange, OAuthProviderExchangeContext, OAuthProviderRefresh,
-    OAuthProviderRefreshRequest, PkceVerifierSecret, validate_provider_callback_request,
+    OAuthProviderRefreshPreparation, OAuthProviderRefreshRequest, OAuthRefreshSource,
+    OAuthTokenDestinations, PkceVerifierSecret, validate_provider_callback_request,
 };
 pub use scope::{AuthProductScope, AuthSurface};
 

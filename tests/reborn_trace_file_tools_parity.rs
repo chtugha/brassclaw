@@ -18,6 +18,7 @@ const EXPECTED_CONTENT: &str = "Hello, E2E test!";
 
 #[tokio::test]
 async fn reborn_trace_file_tools_parity() {
+    let _dispatch_trace = reborn_support::harness::trace_fixture_runtime_dispatch();
     let write_file = CapabilityId::new(WRITE_FILE_CAPABILITY_ID).expect("valid capability id");
     let read_file = CapabilityId::new(READ_FILE_CAPABILITY_ID).expect("valid capability id");
     let model_gateway = RebornTraceReplayModelGateway::with_scripted_steps([

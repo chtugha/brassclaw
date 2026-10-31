@@ -1289,28 +1289,27 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 "catalogue owner unavailable".into(),
             )
         })?;
-        let view = owner.active.read().await;
-        Ok(brassclaw_product_workflow::CatalogueActivationStatus {
-            generation: view.generation.to_string(),
-            recipes: view.recipes.iter().map(|r| r.recipe_id.clone()).collect(),
-            selections: view.recipes.clone(),
-            disabled_recipe_ids: view
-                .disabled_recipes
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
-            packaged_recipe_ids: vec![
-                owner
-                    .reply
-                    .program()
-                    .inputs()
-                    .instruction()
-                    .recipe()
-                    .uuid
-                    .to_string(),
-            ],
-        })
+        owner.activation_status().await
     }
+    #[cfg(feature = "skills-db")]
+    async fn reconcile_catalogue(
+        &self,
+        activation_id: &str,
+    ) -> Result<
+        brassclaw_product_workflow::CatalogueActivationReceipt,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        self.catalogue
+            .as_ref()
+            .ok_or_else(|| {
+                brassclaw_product_workflow::RecipeStoreError::Unavailable(
+                    "catalogue owner unavailable".into(),
+                )
+            })?
+            .reconcile_activation(activation_id)
+            .await
+    }
+
     #[cfg(feature = "skills-db")]
     async fn activate_catalogue(
         &self,

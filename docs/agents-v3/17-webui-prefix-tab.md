@@ -1,5 +1,39 @@
 # 17 — WebUI v2 & the Prefix Tab
 
+## Current settings/serving target; historical walkthrough below — 2026-10-26
+
+Follow the [shared selection/pair-design contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26)
+and [Prefix implementation owner](../plans/prefix_v3_upgrade.md). A Recipe,
+Orchestrator or role selects a specific prefix; without one, base-prompt is the
+regular default, including normal No-Match, not a Tier-2-only restriction.
+Unavailable explicit selections/conflicts block rather than silently becoming
+base. Shared knowledge/composites require an explicit content contract.
+
+Design for formats/limits belongs to the provider/model pair; role content rules
+and finished role prefixes are distinct. Same-pair Kohai/Sempai use the same
+accepted design as the generator. Generate the fixed prefix specifically for
+that pair. Kohai first formats only the dynamic Orchestrator prompt for the final
+target pair. A connected/enabled Sempai corrects that already formatted prompt,
+using its own generated reviewer prefix/target-pair design, and returns the final
+dynamic prompt. Kohai then inserts the intended finished prefix unchanged exactly
+once before it, without reformatting the return, and checks the complete request.
+Every manual limit editor links to the existing provider revision/CAS endpoint
+and shared query. Historical snapshots are not current mutable settings.
+Provider facts may be retrieved through supported APIs/documentation or supplied
+manually with provenance; no provider host/template/service edits are an option.
+
+The old store, placeholder, server-template and prewarm walkthrough below describes
+historical implementation/evidence where it differs. It is not current serving
+qualification. Generation and prefill are separate; cached tokens are not promised
+free, permanently resident or reusable without current backend-specific evidence.
+Runtime cutover/remaining acceptance stays open in the implementation index.
+
+The [generation-dialog contract](../reborn/model-token-limits.md#generation-prompts-missing-selection-and-model-use)
+requires OK/Cancel on missing/incompatible selected prefixes and after every
+successful provider/model Use for base generation/regeneration. Use existing durable
+jobs/readiness and preserve selection on Cancel after Use; no silent fallback,
+provider call before readiness or automatic unreviewed activation.
+
 ## Binding Recipe architecture (v3)
 
 Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
@@ -198,7 +232,9 @@ Sidebar visibility (`SETTINGS_SUB_ROUTES` in `routes.js`) unhides only
 the tabs whose api libs call real endpoints; stubs stay hidden until
 their contract lands.
 
-### 3.3 The shipped base-prompt compile path (Prefix Tab)
+<a id="33-the-shipped-base-prompt-compile-path-prefix-tab"></a>
+
+### 3.3 Historical base-prompt assemble/prewarm path (Prefix Tab)
 
 > **Symbol note.** This section was first grounded against an older layout
 > where the compile flow lived under `interceptor/reassemble|prewarm` routes
@@ -251,7 +287,9 @@ Backend (`interceptor_config_service.rs`):
 + `bundle_json` JSONB + `is_stale` + `assembled_at`. The prior
 `brassclaw_config` key-value string layout was retired with the V063 shift.
 
-### 3.4 The Prefix Tab (shipped)
+<a id="34-the-prefix-tab-shipped"></a>
+
+### 3.4 Historical shipped Prefix Tab snapshot
 
 The dedicated store + the tab (user item 8) are both **shipped**:
 
@@ -296,7 +334,9 @@ assemble/regenerate actions, generalized from one prefix to a list:
   backed by `PgBasicPromptStore`. The Interceptor tab keeps the
   mode/persona/status surface but no longer owns the compile buttons.
 
-### 3.5 The base-prompt placeholder substitution (§0.13)
+<a id="35-the-base-prompt-placeholder-substitution-013"></a>
+
+### 3.5 Historical base-prompt placeholder substitution (§0.13; superseded target)
 
 The prefix is consumed at prompt-creation time, not at compile time. Per
 `saved_plan_to_v3.md:1487-1500` (§0.13 KV-Cache / LMCache-Aware Design):
@@ -311,7 +351,8 @@ The prefix is consumed at prompt-creation time, not at compile time. Per
   was not precompiled (and so is not in the KV cache), the Sempai-Kohai
   system emits a **short minimal-context prompt-part** with only the most
   necessary information instead — because the LLM can only compute ~200
-  tokens/s of *new* tokens, while prefix tokens are cached and free.
+  tokens/s of *new* tokens. That historical rationale does not establish current
+  cache hits, residency, pricing or latency; measure those separately.
 - `BuildInstruction` patch rules: the per-turn patch **must NOT repeat**
   content already in the stored base prompt. `basic_prompt_section_refs`
   carries navigation hints (pointers, not content), e.g.
@@ -462,36 +503,55 @@ Tab UI + `prefixes` routes, `do_assemble_bundle`/`regenerate_prefix`/
 placeholder substitution. **What is pending:** the SKILL.md export endpoint
 (item 5.1) and additional prefixes beyond `base-prompt`.
 
-## 7. LLM-summary (machine-convertible)
+<a id="7-llm-summary-machine-convertible"></a>
 
-- The WebUI v2 is a React SPA (`brassclaw_webui_v2_static`) + a Rust route
-  layer (`brassclaw_webui_v2`) + a host ingress
-  (`brassclaw_reborn_webui_ingress`). Routes are descriptor-driven;
-  handlers dispatch only to `RebornServicesApi`; the host runs
-  bearer/CORS/body/rate-limit middleware; all errors are redacted via
-  `WebUiV2HttpError`.
-- The settings page has 18 tabs (`SETTINGS_TABS`) incl. `prefix`; the
-  sidebar unhides only those with real endpoints.
-- The **Prefix Tab** (item 8) is shipped: `GET /api/webchat/v2/prefixes`
-  (`list_prefixes`) lists prefix-cache entries; `POST
-  /api/webchat/v2/prefixes/{name}/regenerate` (`regenerate_prefix`)
-  assembles the bundle from validated components (`do_assemble_bundle`) +
-  ships it to the Sempai LLM as a System message to warm its KV cache.
-  Backed by `reborn_basic_prompt_store` (V063: per-scope, fingerprinted,
-  `is_stale`, `bundle_json`) + `PgBasicPromptStore`
-  (`get_for_scope`/`store`/`mark_stale`/`compute_fingerprint`/
-  `minimal_base_prompt_fallback`). Any component Q2-graduation →
-  `mark_stale(scope)` → the regenerate button lights up. 1/min rate-limited.
-- At turn time the prompt carries a `base-prompt` placeholder line; the
-  Sempai-Kohai system substitutes the real prefix content at the very end
-  of prompt creation (§0.13) via per-turn `get_system_bundle`, or emits a
-  short minimal-context fallback (`minimal_base_prompt_fallback`) if the
-  prefix was never compiled (the LLM computes only ~200 new tokens/s;
-  prefix tokens are cached). The per-turn patch must not repeat base-prompt
-  content; `basic_prompt_section_refs` are pointers; patch target < 4k
-  tokens; orchestrator = PRIORITY 2, memory = PRIORITY 3, Rust context
-  delivered by `RecipeStage` (not in the bundle).
-- **SKILL.md export** (item 5.1): Classic skills are DB-stored parts with
-  no `SKILL.md` file; export-on-demand is pending (no endpoint yet).
-- Open work: add the SKILL.md export endpoint; additional prefixes beyond
-  `base-prompt`.
+## 7. Current LLM-facing summary
+
+This summary describes the binding target, not completed serving integration:
+
+- Recipe, Orchestrator or role specifies a prefix; otherwise select `base-prompt`
+  for the target provider/model pair. This applies beyond Tier 2; No-Match normally
+  selects base. An unavailable explicit prefix or unresolved conflict blocks the
+  affected call rather than substituting base.
+- Formats/limit references belong to one saved accepted provider/model design.
+  Same-pair Kohai/Sempai share that design; their knowledge/content rules and finished
+  role prefixes are separate. Share source knowledge explicitly, not by compulsory
+  insertion of the whole base prefix into every role.
+- Orchestrator → Kohai formats only the dynamic prompt for its target pair →
+  optional connected Sempai corrects it and returns the final dynamic prompt →
+  Kohai inserts the intended finished prefix unchanged once, without reformatting
+  the return → actual complete-request guard →
+  send. Reviewer output cannot change fixed prefix/design/limits. No second runtime
+  prefix render or provider server/template/service modification.
+- All manually editable prefix/prompt limits link to the canonical provider record,
+  endpoint and shared settings query. Historical immutable pins remain evidence;
+  they are not another mutable settings source. Hard limits survive disabled budgets.
+- Missing/incompatible selected prefix offers OK/Cancel for supported generation.
+  Successful provider/model Use also asks to generate/regenerate base. Cancel after
+  Use preserves the committed selection and exposes readiness. Existing durable
+  jobs, validation, activation and pre-dispatch waits apply; no duplicate call or
+  original-message replay and no unreviewed automatic activation.
+- Retain full source/effect/proposal evidence and current Q1/behavior/human-Q2 or
+  verified shipped-bootstrap contracts. Cache prefill is separate from generation;
+  cache residency, token price, quality and performance need their own evidence.
+- Older placeholder, minimal/stale fallback, server-template and fixed patch-cap
+  descriptions in the historical walkthrough are not current architecture.
+  Remaining runtime integration is owned by the [Prefix plan](../plans/prefix_v3_upgrade.md)
+  and [implementation index](../implementation-status.md); follow the
+  [shared contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26).
+
+## Open K3-2 consumer successor — prefix selection and construction requests
+
+For new affected consumers, use the operator-confirmed
+[shared K3-2 selection/lifecycle contract](../reborn/model-token-limits.md#open-k3-2-successor--retained-prefix-selection-and-prefix-free-construction-workflows)
+and [Exact §5.2](../plans/Exact_V3_definition_update_at_K3-2.md#52-bestehende-retained-prefixbindung-um-drei-auswahlzustände-erweitern).
+This explicit successor replaces earlier unconditional Use→Base and required
+Prefix-Maker-prefix instructions for construction workflows, without rewriting
+historical behavior or claiming current runtime uptake.
+
+Default follows declared role/Recipe rules; explicit Selected never silently
+falls back; PrefixFreeWorkflow intentionally omits generated prefixes throughout
+required child/review work. Independent ordinary chat/Sempai reviews keep their
+normal selection. FinalBoundary defers insertion and does not mean prefix-free.
+Generation includes all Prefix-Q1 checks; publication leaves human Q2 activation
+outstanding. A future v3.5 Prefix-Maker prefix is not a present dependency.

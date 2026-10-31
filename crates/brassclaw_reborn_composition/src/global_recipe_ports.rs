@@ -24,6 +24,19 @@ use uuid::Uuid;
 
 use crate::pg_monty_admission::{CatalogueReference, PgMontyAdmission};
 
+/// Runner capability, not approval or routing. Unsupported new declarations
+/// fail catalogue preparation/selection; they never become a hidden No-Match.
+pub(crate) fn model_input_supported(
+    instruction: &brassclaw_engine::memory::retained_instruction::RetainedRecipeInstruction,
+) -> bool {
+    use brassclaw_skills::recipe_model_input::RecipeModelInput;
+    match instruction.model_input() {
+        RecipeModelInput::Default => true,
+        RecipeModelInput::Selected { .. } => cfg!(feature = "root-llm-provider"),
+        RecipeModelInput::PrefixFreeWorkflow { .. } => false,
+    }
+}
+
 /// A catalogue-owned selection, not a caller-supplied approval flag. Production
 /// owners must establish exact activation/review/artifact provenance before
 /// returning it. Draft behavioral validation uses a separate owner.
@@ -66,11 +79,28 @@ pub(crate) trait MontyTaskCatalogue: Send + Sync {
 pub(crate) trait InternalRecipeSource: Send + Sync {
     fn name(&self) -> &str;
     fn reference(&self) -> &str;
+    /// Original inspected workflow, without constructing runtime bindings.
+    /// Ordinary installation sources supply it; closed observer sources keep
+    /// their existing separate construction/qualification path.
+    fn captured_program(&self) -> Option<Arc<InspectedRetainedProgram>> {
+        None
+    }
+    /// Bind captured native usages after the factory's one model/source
+    /// capture. Contained observer fixtures may already supply their own ports;
+    /// ordinary installation sources override this and cannot select unbound.
+    fn bind_native_runtimes(&self) -> Result<(), PortFailure> {
+        Ok(())
+    }
     /// An internal owner may retain an ordinary catalogue for explicit child
     /// handoffs. The reference comes from its captured immutable view, never
     /// from the request or a lookup of latest. It grants no approval or Tool use.
     fn catalogue_reference(&self) -> Option<CatalogueReference> {
         None
+    }
+    /// A trusted receipt owner can require bounded per-step fingerprints/order.
+    /// This records execution evidence only; it grants no approval or Tool use.
+    fn requires_step_observations(&self) -> bool {
+        false
     }
     async fn select(&self) -> Result<SelectedMontyRecipe, PortFailure>;
     /// Check actual retained native effects/answers and correlated durable rows.
@@ -182,6 +212,9 @@ impl GlobalRecipePorts {
         observe_behavior: bool,
         capacity: Arc<dyn RecipeCapacitySource>,
     ) -> Self {
+        // The requirement belongs to the validated source, never request data.
+        // Existing explicit bootstrap observation and live bounds stay intact.
+        let observe_behavior = observe_behavior || source.requires_step_observations();
         Self {
             host,
             admission,
@@ -399,6 +432,61 @@ impl GlobalRecipePorts {
         &self,
         selected: SelectedMontyRecipe,
     ) -> Result<(Uuid, String), PortFailure> {
+        if !model_input_supported(selected.inspected.program().inputs().instruction()) {
+            return Err(failure("recipe_model_input_unsupported"));
+        }
+        // The full selected workflow is known now. Prepare only real model
+        // usages, before any Recipe effect; invalid optional roles do not hold
+        // provider-free workflows. Preparation never submits model work.
+        if let brassclaw_engine::executor::retained_recipe::RetainedProgram::Tools(program) =
+            selected.inspected.program()
+            && program
+                .bindings()
+                .values()
+                .any(|binding| binding.capability_id() == "host.kohai_complete")
+        {
+            self.host
+                .check_dispatch_open()
+                .map_err(|_| failure("recipe_model_selection_unavailable"))?;
+            #[cfg(feature = "root-llm-provider")]
+            let input = match crate::task_model_provider::recipe_prefix_for_instruction(
+                &self.host,
+                brassclaw_llm::ProviderRole::Kohai,
+                program.inputs().instruction(),
+            )
+            .map_err(|_| failure("recipe_model_selection_unavailable"))?
+            {
+                Some(prefix) => Some(
+                    prefix
+                        .resolve()
+                        .await
+                        .map_err(|_| failure("recipe_model_selection_unavailable"))?
+                        .input_reference(),
+                ),
+                None => None,
+            };
+            #[cfg(not(feature = "root-llm-provider"))]
+            let input: Option<brassclaw_turns::run_profile::LoopModelInputReference> = None;
+            self.host
+                .preflight_task_model_usage(input.as_ref())
+                .await
+                .map_err(|_| failure("recipe_model_selection_unavailable"))?;
+        }
+        #[cfg(feature = "root-llm-provider")]
+        if let brassclaw_engine::executor::retained_recipe::RetainedProgram::Tools(program) =
+            selected.inspected.program()
+            && program.bindings().values().any(|binding| {
+                matches!(
+                    binding.capability_id(),
+                    brassclaw_host_runtime::MEMORY_SEARCH_CAPABILITY_ID
+                        | brassclaw_host_runtime::MEMORY_WRITE_CAPABILITY_ID
+                )
+            })
+        {
+            crate::task_model_provider::task_embedding_provider(&self.host)
+                .await
+                .map_err(|_| failure("recipe_embedding_selection_unavailable"))?;
+        }
         let mut state = self.state.lock().await;
         // The settings source waits for complete acknowledgement. No catalogue
         // read, child feed or effect occurs while choosing the current bound.

@@ -167,10 +167,30 @@ async fn native_complete_parent_recipe_delegates_on_the_instance_global_vm() {
         user_input: reference.clone(),
         history: vec![],
     };
-    let pinned = owner
-        .capture(host.clone(), admitted.admission.clone(), &input)
+    let prepared = owner
+        .prepare(host.clone(), admitted.admission.clone(), &input)
         .await
         .unwrap();
+    assert!(!admitted.admission.task_models_captured());
+    assert!(
+        prepared
+            .bind(host.clone(), admitted.admission.clone())
+            .await
+            .is_err(),
+        "consumer runtime construction must not infer absence from an unfinished model capture"
+    );
+    admitted.admission.bind_task_models(None).unwrap();
+    let pinned = prepared
+        .bind(host.clone(), admitted.admission.clone())
+        .await
+        .unwrap();
+    assert!(
+        prepared
+            .bind(host.clone(), admitted.admission.clone())
+            .await
+            .is_err(),
+        "the same captured selection cannot rebuild task runtimes"
+    );
     let captured = pinned.catalogue_reference().unwrap();
     let child = owner.reply.program().inputs().instruction();
     let literal = "parent hands over literal ' ü🙂 {{vars.goal}}\r\n```python\nraise RuntimeError('data')\n```";

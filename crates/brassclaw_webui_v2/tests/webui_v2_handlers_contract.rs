@@ -68,6 +68,10 @@ use brassclaw_product_workflow::{
     WebUiSendMessageRequest, WebUiSetAutomationStateRequest, WebUiSetupExtensionRequest,
     WebUiUpdateAutomationRequest,
 };
+use brassclaw_product_workflow::{
+    NearAiWalletLoginRequest, NearAiWalletLoginResult, NearAiWalletLoginStart,
+    NearAiWalletLoginStartRequest, ProviderMutationReceipt,
+};
 use brassclaw_threads::SessionThreadRecord;
 use brassclaw_turns::{
     EventCursor, ReplyTargetBindingRef, RunProfileId, RunProfileVersion, TurnRunId, TurnStatus,
@@ -127,14 +131,9 @@ struct StubServices {
     get_llm_config_calls: Mutex<usize>,
     upsert_llm_provider_calls: Mutex<Vec<String>>,
     delete_llm_provider_calls: Mutex<Vec<String>>,
-    #[allow(clippy::type_complexity)]
-    set_active_llm_calls: Mutex<
-        Vec<(
-            String,
-            Option<String>,
-            Option<brassclaw_product_workflow::ProviderRole>,
-        )>,
-    >,
+    set_active_llm_calls: Mutex<Vec<ActiveLlmSelectionCall>>,
+    start_wallet_calls: Mutex<Vec<WalletStartCall>>,
+    complete_wallet_calls: Mutex<Vec<WalletCompleteCall>>,
     test_llm_connection_calls: Mutex<Vec<String>>,
     list_llm_models_calls: Mutex<Vec<String>>,
     next_create_thread_error: Mutex<Option<RebornServicesError>>,
@@ -160,6 +159,13 @@ struct StubServices {
     update_component_validation_calls: Mutex<Vec<ComponentValidationCall>>,
 }
 
+type ActiveLlmSelectionCall = (
+    String,
+    Option<String>,
+    Option<brassclaw_product_workflow::ProviderRole>,
+);
+type WalletStartCall = (WebUiAuthenticatedCaller, Option<String>);
+type WalletCompleteCall = (WebUiAuthenticatedCaller, NearAiWalletLoginRequest);
 type ComponentValidationCall = (u16, String, String, Option<String>);
 
 impl StubServices {
@@ -539,6 +545,46 @@ impl RebornServicesApi for StubServices {
         })
     }
 
+    async fn start_nearai_wallet_login(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: NearAiWalletLoginStartRequest,
+    ) -> Result<NearAiWalletLoginStart, RebornServicesError> {
+        self.start_wallet_calls
+            .lock()
+            .unwrap()
+            .push((caller, request.callback_url.clone()));
+        Ok(NearAiWalletLoginStart {
+            mutation_id: uuid::Uuid::from_u128(1),
+            message: "Sign in to NEAR AI Cloud".into(),
+            recipient: "cloud.near.ai".into(),
+            nonce: vec![7; 32],
+            callback_url: request.callback_url,
+        })
+    }
+    async fn complete_nearai_wallet_login(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: NearAiWalletLoginRequest,
+    ) -> Result<NearAiWalletLoginResult, RebornServicesError> {
+        let id = request.mutation_id;
+        self.complete_wallet_calls
+            .lock()
+            .unwrap()
+            .push((caller, request));
+        Ok(NearAiWalletLoginResult {
+            active: true,
+            mutation_receipt: ProviderMutationReceipt {
+                mutation_id: id,
+                operation: "upsert".into(),
+                selected_role: None,
+                provider_id: Some("nearai".into()),
+                provider_revision: Some(7),
+                role_selections: Default::default(),
+            },
+        })
+    }
+
     async fn get_llm_config(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -564,6 +610,7 @@ impl RebornServicesApi for StubServices {
         _caller: WebUiAuthenticatedCaller,
         provider_id: String,
         expected_revision: u64,
+        _mutation_id: uuid::Uuid,
     ) -> Result<LlmConfigSnapshot, RebornServicesError> {
         assert_eq!(expected_revision, 1);
         self.delete_llm_provider_calls
@@ -1219,6 +1266,11 @@ fn llm_snapshot(provider_id: &str) -> LlmConfigSnapshot {
         model: Some("model-a".to_string()),
     };
     LlmConfigSnapshot {
+        desired_publications: Default::default(),
+        role_selection_refs: Default::default(),
+        runtime_publications: Default::default(),
+        runtime_publication_failures: Default::default(),
+        mutation_receipt: None,
         model_discovery_defaults: Default::default(),
         request_policy_defaults: Default::default(),
         inactive_providers: Vec::new(),
@@ -2044,7 +2096,7 @@ async fn llm_provider_routes_dispatch_to_facade_methods() {
                 .uri("/api/webchat/v2/llm/providers")
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    r#"{"id":"acme","adapter":"open_ai_completions","response_cache":null}"#,
+                    r#"{"mutation_id":"579bf426-a7dc-44ca-9ae9-cdc51f381a4c","id":"acme","adapter":"open_ai_completions","response_cache":null}"#,
                 ))
                 .unwrap(),
         )
@@ -2066,7 +2118,7 @@ async fn llm_provider_routes_dispatch_to_facade_methods() {
                 .uri("/api/webchat/v2/llm/providers")
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    r#"{"id":"acme","name":"Acme","adapter":"open_ai_completions","base_url":"https://api.acme.test/v1","default_model":"acme-1","api_key":"sk-test","set_active":true,"model":"acme-1"}"#,
+                    r#"{"mutation_id":"579bf426-a7dc-44ca-9ae9-cdc51f381a4c","id":"acme","name":"Acme","adapter":"open_ai_completions","base_url":"https://api.acme.test/v1","default_model":"acme-1","api_key":"sk-test","set_active":true,"model":"acme-1","expected_selection_ref":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}"#,
                 ))
                 .expect("request"),
         )
@@ -2101,7 +2153,7 @@ async fn llm_provider_routes_dispatch_to_facade_methods() {
                 .method(Method::POST)
                 .uri("/api/webchat/v2/llm/providers/acme/delete")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"expected_revision":1}"#))
+                .body(Body::from(r#"{"mutation_id":"579bf426-a7dc-44ca-9ae9-cdc51f381a4c","expected_revision":1}"#))
                 .expect("request"),
         )
         .await
@@ -2115,7 +2167,7 @@ async fn llm_provider_routes_dispatch_to_facade_methods() {
                 .method(Method::POST)
                 .uri("/api/webchat/v2/llm/active")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"provider_id":"openai","model":"gpt-5"}"#))
+                .body(Body::from(r#"{"mutation_id":"579bf426-a7dc-44ca-9ae9-cdc51f381a4c","provider_id":"openai","model":"gpt-5","expected_revision":1,"expected_selection_ref":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}"#))
                 .expect("request"),
         )
         .await
@@ -4111,4 +4163,75 @@ async fn put_chat_preference_persists_and_echoes_key_value() {
     let body = read_json(response).await;
     assert_eq!(body["key"], "ai_before_user");
     assert_eq!(body["value"], true);
+}
+
+#[tokio::test]
+async fn wallet_challenge_and_completion_preserve_server_identity_and_signed_payload() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/llm/nearai/wallet/start")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"callback_url":"http://localhost/wallet-callback"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let challenge = read_json(response).await;
+    assert_eq!(challenge["nonce"].as_array().unwrap().len(), 32);
+    let original = challenge["mutation_id"].as_str().unwrap();
+    let mut body = serde_json::json!({"mutation_id":original,"account_id":"alice.near","public_key":"ed25519:fixture","signature":"private-signed-payload",
+        "message":challenge["message"],"recipient":challenge["recipient"],"nonce":challenge["nonce"],"callback_url":challenge["callback_url"],"user_id":"foreign-user"});
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/llm/nearai/wallet")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let completed = read_json(response).await;
+    assert_eq!(completed["mutation_receipt"]["mutation_id"], original);
+    assert!(!completed.to_string().contains("private-signed-payload"));
+    {
+        let started = services.start_wallet_calls.lock().unwrap();
+        assert_eq!(started[0].0, caller());
+        assert_eq!(
+            started[0].1.as_deref(),
+            Some("http://localhost/wallet-callback")
+        );
+    }
+    {
+        let calls = services.complete_wallet_calls.lock().unwrap();
+        assert_eq!(calls[0].0, caller());
+        assert_eq!(calls[0].1.mutation_id.to_string(), original);
+        assert_eq!(calls[0].1.signature, "private-signed-payload");
+        assert!(!format!("{:?}", calls[0].1).contains("private-signed-payload"));
+    }
+    body.as_object_mut().unwrap().remove("mutation_id");
+    let rejected = router
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/llm/nearai/wallet")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rejected.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(services.complete_wallet_calls.lock().unwrap().len(), 1);
 }

@@ -1,5 +1,12 @@
 use serde_json::{Value, json};
 
+/// Current declaration/registration/normalization share one schema selection.
+/// Historical named schemas remain resolvable under their original contracts.
+pub(super) fn current_builtin_input_schema_ref(schema_name: &str) -> String {
+    let revision = if schema_name == "json" { 2 } else { 1 };
+    format!("schemas/builtin/{schema_name}.input.v{revision}.json")
+}
+
 pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value> {
     Some(match reference {
         "schemas/builtin/model_encoding.input.v1.json" => json!({
@@ -64,6 +71,16 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
                 "format_string": { "type": "string", "description": "Alias for format" }
             },
             "additionalProperties": false
+        }),
+        "schemas/builtin/json.input.v2.json" => json!({
+            "type":"object",
+            "oneOf":[
+                resolve_builtin_input_schema_ref("schemas/builtin/json.input.v1.json")?,
+                {"type":"object","properties":{
+                    "operation":{"type":"string","const":"parse_strict"},
+                    "data":{"type":"string","description":"One complete JSON text; duplicate keys are rejected at every object depth"}},
+                    "required":["operation","data"],"additionalProperties":false}
+            ]
         }),
         "schemas/builtin/json.input.v1.json" => json!({
             "type": "object",
@@ -641,4 +658,49 @@ fn http_schema(require_save_to: bool) -> Value {
 fn response_body_limit_schema(require_save_to: bool) -> Value {
     json!({"type":"integer","minimum":1,"maximum":isize::MAX as u64,
         "description":if require_save_to {"Exact maximum fetched response body bytes before sanitization and saving. Omission uses the acknowledged instance default; overflow fails."} else {"Exact maximum response bytes to fetch. Omission uses the acknowledged instance default; overflow fails. Complete sanitized text or binary output is returned without formatting truncation."}})
+}
+
+#[cfg(test)]
+mod strict_json_schema_tests {
+    use super::*;
+
+    #[test]
+    fn strict_json_uses_a_successor_schema_without_widening_the_original() {
+        let legacy =
+            resolve_builtin_input_schema_ref("schemas/builtin/json.input.v1.json").unwrap();
+        assert_eq!(
+            legacy,
+            json!({
+                "type":"object","properties":{
+                    "operation":{"type":"string","enum":["parse","stringify","query","validate","sha256_utf8"]},
+                    "data":{"description":"JSON string or JSON value to process"},
+                    "path":{"type":"string","description":"Dot/bracket path for query operation"}},
+                "required":["operation","data"],"additionalProperties":false
+            })
+        );
+        let original = jsonschema::validator_for(&legacy).unwrap();
+        let current =
+            resolve_builtin_input_schema_ref(&current_builtin_input_schema_ref("json")).unwrap();
+        let successor = jsonschema::validator_for(&current).unwrap();
+        let strict = json!({"operation":"parse_strict","data":"{\"x\":1}"});
+        assert!(!original.is_valid(&strict));
+        assert!(successor.is_valid(&strict));
+        for bad in [
+            json!({"operation":"parse_strict"}),
+            json!({"operation":"parse_strict","data":null}),
+            json!({"operation":"parse_strict","data":{"x":1}}),
+            json!({"operation":"parse_strict","data":"{}","path":"x"}),
+            json!({"operation":"parse_strict","data":"{}","extra":true}),
+        ] {
+            assert!(!successor.is_valid(&bad));
+        }
+        let old_query = json!({"operation":"query","data":{"x":1},"path":"x"});
+        assert!(original.is_valid(&old_query));
+        assert!(successor.is_valid(&old_query));
+        let manifest = super::super::json::manifest().unwrap();
+        assert_eq!(
+            manifest.input_schema_ref.as_str(),
+            current_builtin_input_schema_ref("json")
+        );
+    }
 }

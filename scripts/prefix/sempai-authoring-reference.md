@@ -15,7 +15,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -331,7 +333,7 @@ invocation body. Keep these contexts separate:
 | Context | Required shape |
 | --- | --- |
 | Monty embedding example | Host/session/pool setup outside BrassClaw component execution; reference only |
-| Skill preload definition | Declared export and explicit return contract; no effects or invocation at load |
+| Skill or pure PythonCode preload definition | Declared export, recursive contracts and dependency closure; explicit return, no effects or invocation at load; pure code needs no artificial Skill/ToolSkill |
 | Standalone invocation body | Step-local typed inputs, actual invocation and module-level result |
 | Recipe constructor | Supported persisted fields, exact component references, ordered usages and typed bindings |
 | Prompt review | Only authorized edits to the supplied messages; component drafting requires an explicit request |
@@ -410,13 +412,15 @@ response; no identity, approval or actual execution is implied):
 }
 ```
 
+This fragment is a standalone invocation example, not a preload definition. For
+new reusable exports, see the [checked source and future pure reference](../../docs/plans/monty.composition.implementation.md#open-definition-and-example-successors-from-k4).
 Decode that content once and it is executable Python with three lines. Do not
 serialize a second JSON string inside content, escape Python's single quotes or
 add another proposal-array entry containing a field name. The host owns the full
 reviewer envelope and its schema. Keep one actual payload per requested component.
 
 ```python
-# If a helper is used, the component must invoke it and assign its result.
+# Standalone invocation body only; preload definitions stop before this call.
 def format_status(value):
     return {"status": value}
 result = format_status("Waiting")

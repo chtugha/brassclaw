@@ -17,7 +17,9 @@ async fn reborn_project_scope_isolation_parity() {
     const ROOM: &str = "room-project-shared";
     const EVENT: &str = "event-project-shared";
 
-    let shared_storage = RebornHarnessSharedStorage::new().expect("shared storage");
+    let shared_storage = RebornHarnessSharedStorage::new()
+        .await
+        .expect("shared storage");
     let project_a_scope = test_product_scope(
         "tenant-project-e2e",
         "host-user",

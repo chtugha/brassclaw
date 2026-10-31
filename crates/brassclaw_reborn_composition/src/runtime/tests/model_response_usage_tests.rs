@@ -232,6 +232,7 @@ async fn native_model_response_parser_preserves_wire_data_and_stops_before_proje
             rig.pool.clone(),
             "response-parser",
             &reference,
+            None,
         ))
         .await
         .unwrap();
@@ -350,6 +351,253 @@ async fn native_model_response_parser_preserves_wire_data_and_stops_before_proje
     assert_eq!(
         evidence_before, evidence_after,
         "candidate execution never fabricates approval"
+    );
+    runtime.shutdown().await.unwrap();
+}
+
+/// Closed development observation of one standalone usage on the actual
+/// retained Monty/native/PG path. This is not association/workflow approval.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_standalone_strict_json_usage_preserves_raw_arguments_and_canonical_export_result() {
+    use brassclaw_skills::strict_json_components::{StrictJsonUsageIds, strict_json_usage_drafts};
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = Box::pin(build_reborn_runtime(RebornRuntimeInput::from_services(
+        rig.build_input("strict-json-usage-owner", directory.path())
+            .with_runtime_policy(local_dev_runtime_policy()),
+    )))
+    .await
+    .unwrap();
+    let catalogue = &runtime.installed_catalogue;
+    let RetainedProgram::Tools(json_program) = catalogue._measurement_candidate.program() else {
+        panic!("actual installed JSON Tool required");
+    };
+    let json_tool = json_program.bindings()["0:5"].tool();
+    let ids = StrictJsonUsageIds {
+        tool: json_tool.uuid,
+        tool_skill: Uuid::new_v4(),
+        python_code: Uuid::new_v4(),
+        skill: Uuid::new_v4(),
+    };
+    let root = Uuid::new_v4();
+    let input = json!({"type":"string","required":true,"checks":[]});
+    // This containing test workflow has its own identity. The reusable Skill
+    // constructor neither creates nor requires a dedicated reference Recipe.
+    let consumer = ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":root,"class_code":21,
+        "document":{"variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":["observe strict JSON %"],"variable_patterns":[{"name":"json_text","pattern":null,"description":null}]}],
+            "step_descriptions":[{"desc_idx":0,"label":"Standalone strict parse observation","yaml_source":"","steps":[
+                {"stepnumber":1,"knowledge":"rust","goal":"Bind one strict JSON usage","content":"","type":"component","include":[ids.tool_skill],"tool_bindings":[{"tool_id":ids.tool,"tool_name":"json","params":{},"error_policy":{"policy":"fail"}}]},
+                {"stepnumber":2,"knowledge":"orchestrator","goal":"Parse once and return canonical text","content":"","type":"component","include":[ids.python_code]}]}],
+            "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":{"json_text":input},"steps":{"0:2":{"json_text":{"kind":"task_input","reference":"{{vars.json_text}}"}}}}},
+            "invocations":{"selected":{"0:2":"parse_strict_json_text"}}},
+        "dependencies":[ids.skill,ids.tool_skill,ids.python_code],"association":null}).to_string()).unwrap();
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let mut refs = vec![json_tool];
+    let mut drafts = strict_json_usage_drafts(ids).unwrap();
+    drafts.push(consumer);
+    for draft in drafts {
+        refs.push(store.stage(&draft, 0).await.unwrap());
+    }
+    let snapshot = store.read_exact(&[root], &refs).await.unwrap();
+    let program = Arc::new(
+        prepare_retained_tool_program(
+            compile_retained_recipe(
+                Arc::new(snapshot),
+                root,
+                "selected",
+                WorkflowClass::Deterministic,
+            )
+            .unwrap(),
+        )
+        .unwrap(),
+    );
+    let inspected = Arc::new(
+        InspectedRetainedProgram::inspect(
+            RetainedProgram::Tools(program.clone()),
+            &catalogue.worker,
+        )
+        .await
+        .unwrap(),
+    );
+    let root_definition = crate::global_root_seed::retain_packaged_global_root(
+        rig.pool.clone(),
+        crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED,
+    )
+    .await
+    .unwrap();
+    let evidence_sql = "SELECT (SELECT count(*) FROM reborn_component_review_evidence), (SELECT count(*) FROM reborn_skill_association_approvals), (SELECT count(*) FROM reborn_workflow_review_evidence)";
+    let before = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(evidence_sql, &[])
+        .await
+        .unwrap();
+    let evidence_before = (
+        before.get::<_, i64>(0),
+        before.get::<_, i64>(1),
+        before.get::<_, i64>(2),
+    );
+    let literal = json!({"z":"{{vars.x}} host.forbidden()\n'ü🙂'","a":[{"same":1},{"same":2}]});
+    for (raw, expected, blocked) in [
+        (
+            format!("  {}\n", literal),
+            Some((
+                literal,
+                "{\"a\":[{\"same\":1},{\"same\":2}],\"z\":\"{{vars.x}} host.forbidden()\\n'ü🙂'\"}",
+            )),
+            false,
+        ),
+        (
+            "[null,true,7,0.5,\"ü🙂\"]".into(),
+            Some((
+                json!([null, true, 7, 0.5, "ü🙂"]),
+                "[null,true,7,0.5,\"ü🙂\"]",
+            )),
+            false,
+        ),
+        ("null".into(), Some((Value::Null, "null")), false),
+        (r#"{"outer":{"x":0,"x":1}}"#.into(), None, false),
+        (r#"{"x":0,"\u0078":1}"#.into(), None, false),
+        ("{} []".into(), None, false),
+        ("{\"x\":1,}".into(), None, false),
+        ("{\"ok\":true}".into(), None, true),
+    ] {
+        assert_eq!(rig.pool.get().await.unwrap().execute(
+            "UPDATE brassclaw_instance_tool_settings SET enabled=$2,revision=revision+1 WHERE tool_id=$1",
+            &[&ids.tool, &!blocked],
+        ).await.unwrap(), 1);
+        let reference = format!("development-strict-json:{}", Uuid::new_v4());
+        let admitted = Box::pin(bootstrap_validation::admit(
+            rig.pool.clone(),
+            "strict-json-usage",
+            &reference,
+            None,
+        ))
+        .await
+        .unwrap();
+        let tools = crate::installed_monty_catalogue::response_parser_candidate_tools(
+            rig.pool.clone(),
+            catalogue.kernel.clone(),
+            admitted.host.clone(),
+            admitted.admission.clone(),
+            program.clone(),
+        )
+        .unwrap();
+        // Invalid/blocked cases must fail at the actual parse invocation below,
+        // not merely at this source's later expected-receipt comparison.
+        let observed = bootstrap_recipe_flow::execute(
+            &admitted,
+            bootstrap_recipe_flow::Request::contained(
+                catalogue.worker.clone(),
+                inspected.preparation_limits(),
+                &root_definition,
+                Arc::new(Invocation {
+                    reference,
+                    inputs: json!({"json_text":raw}),
+                    expected: expected
+                        .as_ref()
+                        .map(|(value, _)| value.clone())
+                        .unwrap_or(Value::Null),
+                    inspected: inspected.clone(),
+                    tools,
+                }),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            matches!(
+                observed.receipt.outcome,
+                TaskOutcome::InternalCompleted { .. }
+            ),
+            expected.is_some()
+        );
+        assert_eq!(observed.report["model_exchange_count"], 0);
+        assert!(observed.report["reply"].is_null());
+        assert_eq!(observed.report["semantic_approval"], false);
+        observed.ports.observe_internal_execution(|execution| {
+            assert_eq!(execution.host_answers().len(), 1);
+            if let Some((value, canonical)) = &expected {
+                assert!(execution.is_complete());
+                assert!(execution.transport_failure().is_none());
+                assert_eq!(execution.completed_step_ids().collect::<Vec<_>>(), ["0:2"]);
+                let PortAnswer::Return { value: native } = &execution.host_answers()[0].1 else {
+                    panic!("actual successful strict primitive payload required");
+                };
+                assert_eq!(native.as_value(), value);
+                assert_eq!(execution.observations()["0:2"].result_checksum(), Some(
+                    brassclaw_engine::executor::retained_recipe::typed_value_checksum(&json!(canonical)).unwrap(),
+                ), "the completed export returns canonical text, separately from the primitive's JSON payload");
+            } else {
+                assert!(!execution.is_complete(), "a later receipt mismatch cannot hide an accepted malformed document");
+                assert_eq!(execution.failed_step_id(), Some("0:2"));
+                assert!(execution.completed_step_ids().next().is_none());
+                assert!(matches!(&execution.host_answers()[0].1, PortAnswer::TerminalError { .. }), "the actual native parse/policy boundary must reject before canonicalization");
+            }
+        }).await.unwrap();
+        assert!(admitted.host.finalized_reply_ref().is_none());
+        assert!(observed.exit.failure.is_none());
+        let exit = observed.exit.transport.unwrap();
+        assert!(
+            exit.exit_status.is_some()
+                && exit.containment_error.is_none()
+                && exit.reap_error.is_none()
+        );
+        bootstrap_validation::settle_closed(&admitted)
+            .await
+            .unwrap();
+        let rows = rig.pool.get().await.unwrap().query(
+            "SELECT step_id,attempt_count,phase,arguments_bytes,answer_bytes FROM brassclaw_monty_tool_invocations WHERE run_id=$1",
+            &[&admitted.attempt.run_id.as_uuid()],
+        ).await.unwrap();
+        assert_eq!(
+            rows.len(),
+            1,
+            "one original native invocation record, no repair/retry/model call"
+        );
+        assert_eq!(rows[0].get::<_, String>(0), "0:2");
+        assert_eq!(rows[0].get::<_, i16>(1), 1);
+        assert_eq!(rows[0].get::<_, String>(2), "answered");
+        assert_eq!(
+            serde_json::from_str::<Value>(&rows[0].get::<_, String>(3)).unwrap(),
+            json!({"operation":"parse_strict","data":raw})
+        );
+        let native: PortAnswer =
+            serde_json::from_str(&rows[0].get::<_, Option<String>>(4).unwrap()).unwrap();
+        if let Some((value, _)) = &expected {
+            assert!(
+                matches!(&native, PortAnswer::Return { value: parsed } if parsed.as_value()==value)
+            );
+        } else {
+            assert!(matches!(native, PortAnswer::TerminalError { .. }));
+        }
+    }
+    // Restore the fixture's live rule after observing the final denied call.
+    assert_eq!(rig.pool.get().await.unwrap().execute(
+        "UPDATE brassclaw_instance_tool_settings SET enabled=true,revision=revision+1 WHERE tool_id=$1", &[&ids.tool],
+    ).await.unwrap(), 1);
+    let after = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(evidence_sql, &[])
+        .await
+        .unwrap();
+    let evidence_after = (
+        after.get::<_, i64>(0),
+        after.get::<_, i64>(1),
+        after.get::<_, i64>(2),
+    );
+    assert_eq!(
+        evidence_before, evidence_after,
+        "candidate execution never manufactures approval"
     );
     runtime.shutdown().await.unwrap();
 }

@@ -32,7 +32,7 @@ impl MontyResultEvidence {
             reason: "internal completion evidence unavailable".into(),
         };
         let client = self.pool.get().await.map_err(|_| unavailable())?;
-        let row=client.query_opt("SELECT turn_id,scope,phase,trusted_internal_turn,outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",&[&request.run_id.as_uuid()]).await.map_err(|_| unavailable())?;
+        let row=client.query_opt("SELECT turn_id,scope,phase,result_only_completion,outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",&[&request.run_id.as_uuid()]).await.map_err(|_| unavailable())?;
         let Some(row) = row else {
             return Ok(false);
         };

@@ -17,7 +17,9 @@ async fn reborn_adapter_installation_scope_isolation_parity() {
     const ROOM: &str = "room-installation-shared";
     const EVENT: &str = "event-installation-shared";
 
-    let shared_storage = RebornHarnessSharedStorage::new().expect("shared storage");
+    let shared_storage = RebornHarnessSharedStorage::new()
+        .await
+        .expect("shared storage");
     let scope = test_product_scope(
         "tenant-install-e2e",
         "host-user",

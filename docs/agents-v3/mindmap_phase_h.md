@@ -8,6 +8,19 @@
 
 # Mindmap — Phase H (and overall v3 Plan)
 
+> **Prompt/prefix precedence — 2026-10-27:** this thinking aid retains historical
+> sequences, including the placeholder flow. For new work the
+> [four-rule contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26)
+> and [Prefix implementation plan](../plans/prefix_v3_upgrade.md) take precedence
+> over those entries: generate an immutable finished prefix for the concrete
+> provider/model pair, sharing its saved accepted design revision across the
+> generator, Kohai and same-pair Sempai. Kohai formats only the dynamic Orchestrator
+> prompt first. Connected/enabled Sempai corrects that already formatted prompt
+> with its own generated reviewer prefix and target-pair design and returns the
+> final dynamic prompt. Kohai inserts the intended finished prefix unchanged
+> exactly once before it; it does not format the return again. The complete-request
+> guard follows assembly.
+
 > **Living thinking aid.** Re-read before every step. Update after every
 > thinking pass (big picture → categorize → detail). Keeps reasoning shallow +
 > fast, prevents OOM, prevents re-deriving settled decisions. Add new thoughts

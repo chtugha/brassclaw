@@ -170,6 +170,7 @@ async fn gsuite_handler_refreshes_expired_google_token_once_and_retries() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("google-old-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("google-old-refresh").unwrap()),
             scopes: vec![provider_scope(GOOGLE_GMAIL_SEND_SCOPE)],
         },
@@ -223,6 +224,7 @@ async fn gsuite_handler_refresh_retries_with_the_same_account_after_account_sele
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("google-old-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("google-old-refresh").unwrap()),
             scopes: vec![provider_scope(GOOGLE_GMAIL_SEND_SCOPE)],
         },
@@ -240,6 +242,7 @@ async fn gsuite_handler_refresh_retries_with_the_same_account_after_account_sele
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("google-other-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("google-other-refresh").unwrap()),
             scopes: vec![provider_scope(GOOGLE_GMAIL_SEND_SCOPE)],
         },
@@ -302,6 +305,7 @@ async fn gsuite_handler_does_not_refresh_on_non_401_unauthenticated_response() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("google-old-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("google-old-refresh").unwrap()),
             scopes: vec![provider_scope(GOOGLE_GMAIL_SEND_SCOPE)],
         },
@@ -355,6 +359,7 @@ async fn gsuite_handler_errors_when_refresh_retry_is_still_auth_expired() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("google-old-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("google-old-refresh").unwrap()),
             scopes: vec![provider_scope(GOOGLE_GMAIL_SEND_SCOPE)],
         },
@@ -415,6 +420,7 @@ async fn gsuite_handler_stage_credential_failure_on_refresh_retry_returns_auth_r
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(access_handle.clone()),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("google-refresh-token").unwrap()),
             scopes: vec![provider_scope(GOOGLE_GMAIL_SEND_SCOPE)],
         },
@@ -458,11 +464,25 @@ struct AccountSwitchingAuthService {
     state: Mutex<AccountSwitchingAuthState>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum RefreshReceiptFault {
+    None,
+    Pending,
+    Unknown,
+    WrongId,
+    WrongAccount,
+    WrongProvider,
+    MissingReference,
+    ChangedSnapshot,
+}
+
 struct AccountSwitchingAuthState {
     initial_account: CredentialAccount,
     alternate_account: CredentialAccount,
     select_unique_calls: usize,
     refresh_calls: usize,
+    receipt_fault: RefreshReceiptFault,
+    last_refresh_id: Option<brassclaw_auth::CredentialRefreshId>,
 }
 
 impl AccountSwitchingAuthService {
@@ -473,6 +493,8 @@ impl AccountSwitchingAuthService {
                 alternate_account,
                 select_unique_calls: 0,
                 refresh_calls: 0,
+                receipt_fault: RefreshReceiptFault::None,
+                last_refresh_id: None,
             }),
         }
     }
@@ -593,20 +615,51 @@ impl brassclaw_auth::CredentialAccountService for AccountSwitchingAuthService {
     ) -> Result<CredentialRefreshReport, AuthProductError> {
         let mut state = self.state.lock().expect("auth state");
         state.refresh_calls += 1;
+        state.last_refresh_id = Some(request.id);
         if request.account_id != state.initial_account.id {
             return Err(AuthProductError::CredentialMissing);
         }
         state.initial_account.access_secret =
             Some(SecretHandle::new("google-refreshed-access").unwrap());
         let account = state.initial_account.clone();
-        Ok(CredentialRefreshReport {
+        let mut report = CredentialRefreshReport {
+            original: Some(brassclaw_auth::CredentialRefreshReceipt {
+                id: request.id,
+                account_id: account.id,
+                provider: account.provider.clone(),
+                outcome: brassclaw_auth::CredentialRefreshOutcomeKind::Returned,
+                publication: brassclaw_auth::CredentialRefreshPublication::Applied,
+                error: None,
+                published_account_ref: Some(account.snapshot_ref()?),
+            }),
             account: account.projection(),
             recovery: CredentialRecoveryProjection::configured(
                 google_provider_id().unwrap(),
                 account.projection(),
             ),
             refreshed: true,
-        })
+        };
+        let receipt = report.original.as_mut().unwrap();
+        match state.receipt_fault {
+            RefreshReceiptFault::None => {}
+            RefreshReceiptFault::Pending => {
+                receipt.publication = brassclaw_auth::CredentialRefreshPublication::Pending
+            }
+            RefreshReceiptFault::Unknown => {
+                receipt.outcome = brassclaw_auth::CredentialRefreshOutcomeKind::Unconfirmed
+            }
+            RefreshReceiptFault::WrongId => receipt.id = brassclaw_auth::CredentialRefreshId::new(),
+            RefreshReceiptFault::WrongAccount => receipt.account_id = state.alternate_account.id,
+            RefreshReceiptFault::WrongProvider => {
+                receipt.provider = AuthProviderId::new("other-provider").unwrap()
+            }
+            RefreshReceiptFault::MissingReference => receipt.published_account_ref = None,
+            RefreshReceiptFault::ChangedSnapshot => {
+                state.initial_account.access_secret =
+                    Some(SecretHandle::new("later-foreign-edit-access").unwrap())
+            }
+        }
+        Ok(report)
     }
 }
 
@@ -1072,6 +1125,7 @@ async fn gsuite_handler_fails_before_egress_when_google_account_is_missing_or_am
             owner_extension: Some(ExtensionId::new("other-extension").unwrap()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("hidden-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![provider_scope(GOOGLE_GMAIL_SEND_SCOPE)],
         },
@@ -1373,6 +1427,7 @@ async fn add_attendees_refreshes_expired_get_and_retries_patch() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("google-old-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("google-old-refresh").unwrap()),
             scopes: vec![provider_scope(brassclaw_auth::GOOGLE_CALENDAR_EVENTS_SCOPE)],
         },
@@ -1578,4 +1633,78 @@ async fn add_attendees_restages_credential_before_patch() {
         Some(50),
         "GET network bytes must be reported even when PATCH staging fails"
     );
+}
+
+#[tokio::test]
+async fn gsuite_refresh_requires_exact_confirmed_original_before_retrying_resource_request() {
+    for fault in [
+        RefreshReceiptFault::Pending,
+        RefreshReceiptFault::Unknown,
+        RefreshReceiptFault::WrongId,
+        RefreshReceiptFault::WrongAccount,
+        RefreshReceiptFault::WrongProvider,
+        RefreshReceiptFault::MissingReference,
+        RefreshReceiptFault::ChangedSnapshot,
+    ] {
+        let setup_scope = scope();
+        let seed = InMemoryAuthProductServices::new();
+        let initial = brassclaw_auth::CredentialAccountService::create_account(
+            &seed,
+            NewCredentialAccount {
+                scope: auth_scope(&setup_scope),
+                provider: google_provider_id().unwrap(),
+                label: CredentialAccountLabel::new("original Google").unwrap(),
+                status: CredentialAccountStatus::Configured,
+                ownership: CredentialOwnership::UserReusable,
+                owner_extension: None,
+                granted_extensions: vec![],
+                access_secret: Some(SecretHandle::new("original-google-access").unwrap()),
+                access_expires_at: None,
+                refresh_secret: Some(SecretHandle::new("original-google-refresh").unwrap()),
+                scopes: vec![provider_scope(GOOGLE_GMAIL_SEND_SCOPE)],
+            },
+        )
+        .await
+        .unwrap();
+        let mut alternate = initial.clone();
+        alternate.id = brassclaw_auth::CredentialAccountId::new();
+        let auth = Arc::new(AccountSwitchingAuthService::new(initial, alternate));
+        auth.state.lock().unwrap().receipt_fault = fault;
+        let mut operation_scope = setup_scope.clone();
+        operation_scope.invocation_id = brassclaw_host_api::InvocationId::new();
+        let egress = Arc::new(RecordingEgress::with_responses(vec![
+            RecordingEgress::json_status(
+                401,
+                json!({"error":{"status":"UNAUTHENTICATED","message":"expired"}}),
+            ),
+            RecordingEgress::json(json!({"id":"must-not-send"})),
+        ]));
+        let capability = capability_id(GMAIL_SEND_MESSAGE_CAPABILITY_ID);
+        let result = GsuiteExecutor::new(auth.clone(), auth.clone(), noop_credential_stager())
+            .dispatch(GsuiteDispatchRequest {
+                capability_id: &capability,
+                scope: &operation_scope,
+                input: &json!({"message":{"raw":"base64url-rfc822"}}),
+                runtime_http_egress: egress.clone(),
+            })
+            .await;
+        assert!(
+            result.is_err(),
+            "{fault:?} must not become a successful auth repair"
+        );
+        assert_eq!(
+            egress.requests().len(),
+            1,
+            "{fault:?} must not retry resource egress"
+        );
+        let state = auth.state.lock().unwrap();
+        assert_eq!(state.refresh_calls, 1);
+        assert_eq!(
+            state.last_refresh_id,
+            Some(brassclaw_auth::CredentialRefreshId::from_uuid(
+                operation_scope.invocation_id.as_uuid()
+            ))
+        );
+        assert_ne!(operation_scope.invocation_id, setup_scope.invocation_id);
+    }
 }

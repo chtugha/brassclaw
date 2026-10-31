@@ -128,6 +128,7 @@ pub(super) async fn execute_candidate(
         pool.clone(),
         "development-prefix-measurement",
         &reference,
+        None,
     ))
     .await
     .unwrap();

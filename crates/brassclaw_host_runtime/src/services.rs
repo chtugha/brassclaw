@@ -86,6 +86,7 @@ mod builder;
 mod production_services;
 mod production_wiring;
 mod retained_capability;
+mod retained_credentials;
 mod runtime_adapters;
 pub use retained_capability::{
     FirstPartyCapabilitySnapshot, RetainedCapabilityError, RetainedFirstPartyCapability,
@@ -225,8 +226,21 @@ impl ProductAuthProviderRuntimePorts {
             .await
             .map_err(stage_secret_error)?;
         self.secret_injection_store
-            .insert(target_scope, capability_id, handle, secret)
-            .map_err(|_| ProductAuthCredentialStageError::Backend)
+            .insert_with_expiry(
+                target_scope,
+                capability_id,
+                handle,
+                secret,
+                lease.secret_expires_at,
+            )
+            .map_err(|error| match error {
+                crate::obligations::RuntimeSecretInjectionStoreError::Expired => {
+                    ProductAuthCredentialStageError::AuthRequired
+                }
+                crate::obligations::RuntimeSecretInjectionStoreError::Unavailable => {
+                    ProductAuthCredentialStageError::Backend
+                }
+            })
     }
 }
 
@@ -465,6 +479,13 @@ where
     /// Builds the upper facade with the same dispatcher, process services,
     /// stores, cancellation registry, result store, and runtime health graph.
     fn build_host_runtime(&self) -> DefaultHostRuntime {
+        self.build_host_runtime_with_obligations(self.builtin_obligation_handler())
+    }
+
+    fn build_host_runtime_with_obligations(
+        &self,
+        obligations: BuiltinObligationHandler,
+    ) -> DefaultHostRuntime {
         let dispatcher: Arc<dyn CapabilityDispatcher> = Arc::new(self.runtime_dispatcher());
         let process_executor = Arc::new(HostProcessExecutor::new(
             Arc::new(RuntimeDispatchProcessExecutor::new(Arc::clone(&dispatcher))),
@@ -543,7 +564,7 @@ where
         if let Some(capability_leases) = &self.capability_leases {
             runtime = runtime.with_capability_leases(Arc::clone(capability_leases));
         }
-        runtime.with_obligation_handler(Arc::new(self.builtin_obligation_handler()))
+        runtime.with_obligation_handler(Arc::new(obligations))
     }
 
     fn builtin_obligation_handler(&self) -> BuiltinObligationHandler {

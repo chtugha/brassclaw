@@ -14,14 +14,18 @@ import {
   providerModelDiscoveryPolicy,
   providerRequestPolicy,
   providerEmbeddingModels,
+  modelSelectionRef,
+  providerPublicationRows,
 } from "../lib/llm-providers.js";
+
+const EMPTY_BUILTIN_OVERRIDES = Object.freeze({});
 
 // The v2 `/llm/providers` snapshot is the single source of truth: a unified
 // provider list (built-in + operator-defined) already annotated with the active
 // selection, `builtin`, and `api_key_set`. Overrides are no longer a separate
 // client-side merge — the backend resolves them — so `builtinOverrides` is kept
 // as an empty object purely for the shared helper signatures.
-export function useLlmProviders({ settings: _settings, gatewayStatus }) {
+export function useLlmProviders() {
   const queryClient = useQueryClient();
   const providersQuery = useQuery({
     queryKey: ["llm-providers"],
@@ -30,25 +34,23 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
   });
 
   const snapshot = providersQuery.data || { providers: [], active: null };
-  const builtinOverrides = {};
+  const builtinOverrides = EMPTY_BUILTIN_OVERRIDES;
   // Map the wire view onto the field names the components/helpers expect.
   const allProviders = (snapshot.providers || []).map((provider) => ({
     ...provider,
     name: provider.description,
     has_api_key: provider.api_key_set === true,
+    selection_refs: { ...snapshot.role_selection_refs },
   }));
   const inactiveProviders = (snapshot.inactive_providers || []).map((provider) => ({
     ...provider, name: provider.description, has_api_key: provider.api_key_set === true,
+    selection_refs: { ...snapshot.role_selection_refs },
   }));
-  // Whether the backend has a usable active provider. Prefer the persisted
-  // operator snapshot, but also honor runtime/env-configured LLMs surfaced by
-  // gateway status so first-run onboarding does not mask an already-live model.
-  const hasActiveProvider = Boolean(
-    snapshot.active?.provider_id || gatewayStatus?.llm_backend
-  );
-  const activeProviderId =
-    snapshot.active?.provider_id || gatewayStatus?.llm_backend || "";
-  const selectedModel = snapshot.active?.model || gatewayStatus?.llm_model || "";
+  // Desired selection is exclusively the canonical DB snapshot. Legacy
+  // gateway/settings metadata cannot resurrect an explicitly cleared role.
+  const activeProviderId = snapshot.active?.provider_id || "";
+  const selectedModel = snapshot.active?.model || "";
+  const hasActiveProvider = Boolean(activeProviderId);
   const builtinProviders = allProviders.filter((provider) => provider.builtin);
   const customProviders = allProviders.filter((provider) => !provider.builtin);
   const providers = [...allProviders].sort((a, b) => {
@@ -57,9 +59,7 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
     return (a.name || a.id).localeCompare(b.name || b.id);
   });
 
-  const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["llm-providers"] });
-  };
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["llm-providers"], exact: true });
 
   const setActiveMutation = useMutation({
     mutationFn: async (provider) => {
@@ -67,17 +67,19 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
         const reason = providerMissingReason(provider, builtinOverrides);
         throw new Error(reason === "base_url" ? "base_url" : "api_key");
       }
-      const model = providerDefaultModel(provider, builtinOverrides);
+      const model = provider.active_model || providerDefaultModel(provider, builtinOverrides);
       if (!model) throw new Error("model");
-      await setActiveLlm({ provider_id: provider.id, model });
+      await setActiveLlm({ provider_id: provider.id, expected_revision: provider.revision, model,
+        expected_selection_ref: modelSelectionRef(provider.selection_refs, "kohai") });
       return provider;
     },
     onSuccess: refresh,
+    onError: refresh,
   });
 
   // All origins edit the same DB definition with its displayed revision.
   const saveProviderMutation = useMutation({
-    mutationFn: async ({ provider, form, apiKey, editingProvider }) => {
+    mutationFn: async ({ provider, form, apiKey, editingProvider, activate = false, selectionRefs }) => {
       const editing = provider || editingProvider;
       const id = (editing?.id || form.id.trim()).trim();
       const payload = {
@@ -97,9 +99,12 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
       if (apiKey.trim()) {
         payload.api_key = apiKey.trim();
       }
-      if ((editingProvider || provider)?.id === activeProviderId && payload.default_model) {
+      // Editing a definition must not overwrite an explicit active model.
+      // Onboarding may request one atomic definition + role publication.
+      if (activate) {
         payload.set_active = true;
         payload.model = payload.default_model;
+        payload.expected_selection_ref = modelSelectionRef(selectionRefs, "kohai");
       }
       await upsertLlmProvider(payload);
       return payload;
@@ -118,29 +123,35 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
   });
 
   const deactivateMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (provider) => {
       // Deactivate by setting empty provider_id
-      await setActiveLlm({ provider_id: "", model: "" });
+      await setActiveLlm({ provider_id: "", model: "",
+        expected_selection_ref: modelSelectionRef(provider?.selection_refs, "kohai") });
     },
     onSuccess: refresh,
+    onError: refresh,
   });
 
   const setSempaiMutation = useMutation({
     mutationFn: async (provider) => {
       const model = providerDefaultModel(provider, builtinOverrides);
-      await setActiveLlm({ provider_id: provider.id, model, role: "sempai" });
+      await setActiveLlm({ provider_id: provider.id, expected_revision: provider.revision, model, role: "sempai",
+        expected_selection_ref: modelSelectionRef(provider.selection_refs, "sempai") });
       return provider;
     },
     onSuccess: refresh,
+    onError: refresh,
   });
 
   const setEmbeddingMutation = useMutation({
     mutationFn: async (provider) => {
       const model = providerDefaultModel(provider, builtinOverrides);
-      await setActiveLlm({ provider_id: provider.id, model, role: "embedding" });
+      await setActiveLlm({ provider_id: provider.id, expected_revision: provider.revision, model, role: "embedding",
+        expected_selection_ref: modelSelectionRef(provider.selection_refs, "embedding") });
       return provider;
     },
     onSuccess: refresh,
+    onError: refresh,
   });
 
   // Derived embedding state from snapshot
@@ -158,11 +169,14 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
     activeProviderId,
     selectedModel,
     hasActiveProvider,
+    runtimePublications: snapshot.runtime_publications || {},
+    providerPublications: providerPublicationRows(snapshot),
+    roleSelectionRefs: snapshot.role_selection_refs,
     embeddingProviderId,
     isLoading: providersQuery.isLoading,
     error: providersQuery.error,
     setActiveProvider: (provider) => setActiveMutation.mutateAsync(provider),
-    deactivateProvider: () => deactivateMutation.mutateAsync(),
+    deactivateProvider: (provider) => deactivateMutation.mutateAsync(provider),
     saveCustomProvider: (payload) => saveProviderMutation.mutateAsync(payload),
     saveBuiltinProvider: (payload) => saveProviderMutation.mutateAsync(payload),
     deleteCustomProvider: (provider) => deleteCustomMutation.mutateAsync(provider),

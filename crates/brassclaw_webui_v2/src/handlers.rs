@@ -49,6 +49,7 @@ use brassclaw_product_workflow::{
     WebUiListThreadsRequest, WebUiResolveGateRequest, WebUiSendMessageRequest,
     WebUiSetAutomationStateRequest, WebUiSetupExtensionRequest, WebUiUpdateAutomationRequest,
 };
+use brassclaw_product_workflow::{NearAiWalletLoginStart, NearAiWalletLoginStartRequest};
 use futures::SinkExt;
 use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
@@ -649,8 +650,9 @@ pub async fn setup_extension(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(ExtensionPackagePath { package_id }): Path<ExtensionPackagePath>,
-    Json(body): Json<WebUiSetupExtensionRequest>,
+    payload: Result<Json<WebUiSetupExtensionRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<RebornSetupExtensionResponse>, WebUiV2HttpError> {
+    let Json(body) = payload?;
     let package_ref = extension_package_ref_for_request(
         LifecyclePackageRef::new(LifecyclePackageKind::Extension, package_id),
         "package_id",
@@ -691,6 +693,7 @@ pub async fn upsert_llm_provider(
 #[serde(deny_unknown_fields)]
 pub struct LlmProviderRevisionRequest {
     pub expected_revision: u64,
+    pub mutation_id: uuid::Uuid,
 }
 
 /// `POST /api/webchat/v2/llm/providers/{provider_id}/delete`
@@ -702,9 +705,40 @@ pub async fn delete_llm_provider(
 ) -> Result<Json<LlmConfigSnapshot>, WebUiV2HttpError> {
     let response = state
         .services()
-        .delete_llm_provider(caller, provider_id, body.expected_revision)
+        .delete_llm_provider(
+            caller,
+            provider_id,
+            body.expected_revision,
+            body.mutation_id,
+        )
         .await?;
     Ok(Json(response))
+}
+
+pub async fn get_llm_provider_mutation(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(mutation_id): Path<uuid::Uuid>,
+) -> Result<Json<brassclaw_product_workflow::ProviderMutationReceipt>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .provider_mutation(caller, mutation_id)
+            .await?,
+    ))
+}
+
+pub async fn reconcile_llm_provider_mutation(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(mutation_id): Path<uuid::Uuid>,
+) -> Result<Json<LlmConfigSnapshot>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .reconcile_provider_mutation(caller, mutation_id)
+            .await?,
+    ))
 }
 
 /// `POST /api/webchat/v2/llm/active`
@@ -747,11 +781,25 @@ pub async fn start_nearai_login(
     Ok(Json(response))
 }
 
+/// Capture the original settings context and one-use signed wallet challenge.
+pub async fn start_nearai_wallet_login(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(body): Json<NearAiWalletLoginStartRequest>,
+) -> Result<Json<NearAiWalletLoginStart>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .start_nearai_wallet_login(caller, body)
+            .await?,
+    ))
+}
+
 /// `POST /api/webchat/v2/llm/nearai/wallet`
 ///
 /// Completes a NEAR AI wallet (NEP-413) login from a browser-signed message:
-/// relays the signature to NEAR AI, stores the session token, and makes NEAR AI
-/// active.
+/// consumes the original challenge before one exchange, then atomically publishes
+/// the encrypted credential, primary selection and original receipt.
 pub async fn complete_nearai_wallet_login(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
@@ -1366,6 +1414,18 @@ pub async fn catalogue_status(
 ) -> Result<Json<brassclaw_product_workflow::CatalogueActivationStatus>, WebUiV2HttpError> {
     Ok(Json(state.services().catalogue_status(caller).await?))
 }
+pub async fn reconcile_catalogue(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(activation_id): Path<String>,
+) -> Result<Json<brassclaw_product_workflow::CatalogueActivationReceipt>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .reconcile_catalogue(caller, &activation_id)
+            .await?,
+    ))
+}
 pub async fn activate_catalogue(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
@@ -1678,6 +1738,37 @@ pub async fn prefix_model_designs(
             .await?,
     ))
 }
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrefixModelSetupDraftQuery {
+    revision: Option<u64>,
+}
+pub async fn get_prefix_model_setup_draft(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(specification): Path<String>,
+    Query(query): Query<PrefixModelSetupDraftQuery>,
+) -> Result<Json<brassclaw_product_workflow::PrefixModelSetupDraft>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .prefix_model_setup_draft(caller, &specification, query.revision)
+            .await?,
+    ))
+}
+pub async fn update_prefix_model_setup_draft(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(specification): Path<String>,
+    Json(request): Json<brassclaw_product_workflow::UpdatePrefixModelSetupDraftRequest>,
+) -> Result<Json<brassclaw_product_workflow::PrefixModelSetupDraft>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .update_prefix_model_setup_draft(caller, &specification, request)
+            .await?,
+    ))
+}
 pub async fn capture_prefix_model(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
@@ -1712,6 +1803,94 @@ pub async fn retain_prefix_model_artifacts(
         state
             .services()
             .retain_prefix_model_artifacts(caller, request)
+            .await?,
+    ))
+}
+
+pub async fn get_prefix_pair_cases(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((specification, proposal)): Path<(String, String)>,
+) -> Result<Json<brassclaw_product_workflow::PrefixPairCasePacket>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .get_prefix_pair_case_packet(caller, &specification, &proposal)
+            .await?,
+    ))
+}
+
+pub async fn check_prefix_pair_cases(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((specification, proposal, job)): Path<(String, String, String)>,
+) -> Result<Json<brassclaw_product_workflow::PrefixJobDetail>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .check_prefix_pair_cases(caller, &specification, &proposal, &job)
+            .await?,
+    ))
+}
+
+pub async fn get_prefix_pair_job(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((specification, proposal, job)): Path<(String, String, String)>,
+) -> Result<Json<brassclaw_product_workflow::PrefixJobDetail>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .get_prefix_pair_job(caller, &specification, &proposal, &job)
+            .await?,
+    ))
+}
+
+pub async fn prepare_prefix_acceptance(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<brassclaw_product_workflow::PrefixAcceptanceSelection>,
+) -> Result<Json<brassclaw_product_workflow::PrefixAcceptanceView>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .prepare_prefix_acceptance(caller, request)
+            .await?,
+    ))
+}
+pub async fn approve_prefix_acceptance(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<brassclaw_product_workflow::PrefixAcceptanceDecision>,
+) -> Result<Json<brassclaw_product_workflow::PrefixAcceptanceReceipt>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .approve_prefix_acceptance(caller, request)
+            .await?,
+    ))
+}
+pub async fn activate_prefix_acceptance(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<brassclaw_product_workflow::ActivatePrefixAcceptanceRequest>,
+) -> Result<Json<brassclaw_product_workflow::PrefixTargetBindingReceipt>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .activate_prefix_acceptance(caller, request)
+            .await?,
+    ))
+}
+pub async fn retain_prefix_pair_construction(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<brassclaw_product_workflow::RetainPrefixDesignProposalRequest>,
+) -> Result<Json<brassclaw_product_workflow::PrefixPairConstructionProposal>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .retain_prefix_pair_construction_proposal(caller, request)
             .await?,
     ))
 }

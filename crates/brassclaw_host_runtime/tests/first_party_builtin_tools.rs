@@ -85,9 +85,42 @@ async fn retained_builtin_handle_still_obeys_each_live_instance_policy_revision(
     use brassclaw_host_runtime::FirstPartyCapabilityRegistry;
     use std::collections::HashMap;
 
+    #[derive(Debug)]
+    struct CapturedJsonSettings(MontyExecutionLimits);
+    #[async_trait::async_trait]
+    impl brassclaw_host_runtime::HostPrimitiveSettingsSource for CapturedJsonSettings {
+        async fn snapshot(
+            &self,
+        ) -> Result<
+            brassclaw_host_runtime::HostPrimitiveSettings,
+            brassclaw_host_runtime::FirstPartyCapabilityError,
+        > {
+            Ok(brassclaw_host_runtime::HostPrimitiveSettings {
+                revision: 1,
+                limits: self.0,
+            })
+        }
+    }
+    // Small explicit physical bounds for real dispatch tests, independent of
+    // discretionary model-token budgets or the process's global Monty lifetime.
+    let limits = MontyExecutionLimits {
+        max_value_depth: 8,
+        max_value_nodes: 32,
+        max_value_bytes: 4096,
+        ..Default::default()
+    };
+    limits.validate().unwrap();
     let id = capability_id(JSON_CAPABILITY_ID);
-    let registrations =
-        builtin_first_party_handlers(Arc::new(InMemoryTriggerRepository::default())).unwrap();
+    let registrations = brassclaw_host_runtime::builtin_native_first_party_handlers(
+        brassclaw_host_runtime::BuiltinFirstPartyTools::default()
+            .with_primitive_settings_source(Arc::new(CapturedJsonSettings(limits))),
+        limits.max_native_artifact_bytes,
+        brassclaw_host_runtime::NativeVerificationLimits::new(1024 * 1024, Duration::from_secs(10))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    let expected_native = registrations.native_identity(&id).unwrap();
     let tool_uuid = uuid::Uuid::from_u128(1);
     let policy_snapshot = |revision, enabled| StableToolPolicySnapshot {
         revision,
@@ -120,7 +153,12 @@ async fn retained_builtin_handle_still_obeys_each_live_instance_policy_revision(
     .with_trust_policy(Arc::new(trust_policy()))
     .with_runtime_policy(local_dev_policy());
     let snapshot = services.capture_first_party_capabilities().unwrap();
-    let retained = snapshot.retain(&id).unwrap();
+    let retained = snapshot.retain_native(&id, expected_native).unwrap();
+    retained.verify_native_artifact().await.unwrap();
+    assert_eq!(retained.native_identity(), Some(expected_native));
+    let schema = jsonschema::validator_for(retained.native_input_schema().unwrap()).unwrap();
+    assert!(schema.is_valid(&json!({"operation":"parse_strict","data":"{}"})));
+    assert!(!schema.is_valid(&json!({"operation":"parse_strict","data":{"x":1}})));
     let original_descriptor = retained.descriptor().clone();
     let registry = services.shared_extension_registry();
     registry.remove(&provider_id()).unwrap();
@@ -147,7 +185,7 @@ async fn retained_builtin_handle_still_obeys_each_live_instance_policy_revision(
             .await
             .is_err()
     );
-    let input = json!({"operation":"parse","data":"{\"value\":7}"});
+    let input = json!({"operation":"parse_strict","data":"{\"value\":7}"});
     // No legacy user/project/invocation grant is supplied by this instance-policy
     // fixture. The real CapabilityHost authorizer checks each current revision.
     for (revision, enabled) in [(1, true), (2, false), (3, true)] {
@@ -178,6 +216,78 @@ async fn retained_builtin_handle_still_obeys_each_live_instance_policy_revision(
             assert_eq!(failed.kind, RuntimeFailureKind::Authorization);
         }
     }
+
+    // These are real retained native calls under the re-enabled instance policy,
+    // after the mutable registry has been replaced. No parser callback is mocked.
+    let oversized = " ".repeat(usize::try_from(limits.max_value_bytes).unwrap() + 1);
+    let too_deep = format!(
+        "{}0{}",
+        "[".repeat(usize::try_from(limits.max_value_depth).unwrap() + 1),
+        "]".repeat(usize::try_from(limits.max_value_depth).unwrap() + 1)
+    );
+    for (input, expected) in [
+        (
+            json!({"operation":"parse_strict","data":r#"{"outer":[{"x":1},{"x":2}],"text":"ü🙂"}"#}),
+            Ok(json!({"outer":[{"x":1},{"x":2}],"text":"ü🙂"})),
+        ),
+        (
+            json!({"operation":"parse_strict","data":r#"{"outer":{"x":0,"x":1}}"#}),
+            Err(RuntimeFailureKind::InvalidInput),
+        ),
+        (
+            json!({"operation":"parse_strict","data":r#"{"x":0,"\u0078":1}"#}),
+            Err(RuntimeFailureKind::InvalidInput),
+        ),
+        (
+            json!({"operation":"parse_strict","data":"{\"x\":1,}"}),
+            Err(RuntimeFailureKind::InvalidInput),
+        ),
+        (
+            json!({"operation":"parse_strict","data":"{} []"}),
+            Err(RuntimeFailureKind::InvalidInput),
+        ),
+        (
+            json!({"operation":"parse_strict","data":{"x":1}}),
+            Err(RuntimeFailureKind::InvalidInput),
+        ),
+        (
+            json!({"operation":"parse_strict","data":"{}","path":"x"}),
+            Err(RuntimeFailureKind::InvalidInput),
+        ),
+        (
+            json!({"operation":"parse_strict","data":oversized}),
+            Err(RuntimeFailureKind::Resource),
+        ),
+        (
+            json!({"operation":"parse_strict","data":too_deep}),
+            Err(RuntimeFailureKind::Resource),
+        ),
+        (
+            json!({"operation":"parse","data":r#"{"outer":{"x":0,"x":1}}"#}),
+            Ok(json!({"outer":{"x":1}})),
+        ),
+        (
+            json!({"operation":"validate","data":r#"{"x":0,"x":1}"#}),
+            Ok(json!({"valid":true})),
+        ),
+    ] {
+        let outcome = retained
+            .invoke(RuntimeCapabilityRequest::new(
+                execution_context(std::iter::empty::<&str>()),
+                id.clone(),
+                ResourceEstimate::default(),
+                input,
+                trust_decision(),
+            ))
+            .await
+            .unwrap();
+        let actual = match outcome {
+            RuntimeCapabilityOutcome::Completed(done) => Ok(done.output),
+            RuntimeCapabilityOutcome::Failed(failure) => Err(failure.kind),
+            other => panic!("actual native strict JSON outcome required: {other:?}"),
+        };
+        assert_eq!(actual, expected);
+    }
 }
 
 #[tokio::test]
@@ -192,6 +302,49 @@ async fn retained_child_service_preserves_native_identity_and_kernel_block() {
         RuntimeChildTaskRequest, builtin_native_first_party_handlers,
     };
     use std::collections::HashMap;
+
+    #[derive(Debug)]
+    struct NeverResolved;
+    #[async_trait]
+    impl brassclaw_host_runtime::RuntimeCredentialAccountResolver for NeverResolved {
+        async fn resolve_access_secret(
+            &self,
+            _: brassclaw_host_runtime::RuntimeCredentialAccountRequest<'_>,
+        ) -> Result<brassclaw_host_runtime::RuntimeCredentialAccessSecret, CredentialStageError>
+        {
+            panic!("native policy block must not resolve credential material")
+        }
+    }
+
+    impl brassclaw_host_runtime::RuntimeCredentialUseGuard for NeverResolved {
+        fn check_source_use(
+            &self,
+            _: &brassclaw_host_runtime::RuntimeCredentialAccountRequest<'_>,
+            _: &brassclaw_host_runtime::RuntimeCredentialAccessSecret,
+        ) -> Result<(), CredentialStageError> {
+            panic!("native policy block must not prepare credential material")
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl brassclaw_host_runtime::RuntimeRawSecretSource for NeverResolved {
+        async fn resolve_source(
+            &self,
+            _: brassclaw_host_runtime::RuntimeRawSecretRequest<'_>,
+        ) -> Result<
+            brassclaw_host_runtime::RuntimeCredentialAccessSecret,
+            brassclaw_host_api::CredentialStageError,
+        > {
+            panic!("native policy block must not resolve or stage raw credentials")
+        }
+        fn check_source_use(
+            &self,
+            _: &brassclaw_host_runtime::RuntimeRawSecretRequest<'_>,
+            _: &brassclaw_host_runtime::RuntimeCredentialAccessSecret,
+        ) -> Result<(), brassclaw_host_api::CredentialStageError> {
+            panic!("native policy block must not resolve or stage raw credentials")
+        }
+    }
 
     struct NeverDelegated;
     #[async_trait]
@@ -255,12 +408,31 @@ async fn retained_child_service_preserves_native_identity_and_kernel_block() {
     .with_runtime_policy(local_dev_policy());
     let snapshot = services.capture_first_party_capabilities().unwrap();
     let ordinary = snapshot.retain_native(&id, expected).unwrap();
+    assert_eq!(
+        snapshot.native_descriptor(&id, expected).unwrap(),
+        *ordinary.descriptor()
+    );
+    assert!(matches!(
+        snapshot.native_descriptor(&id, different),
+        Err(RetainedCapabilityError::NativeIdentity)
+    ));
+    let credential_bound = snapshot
+        .with_bound_credential_services(
+            Arc::new(InMemorySecretStore::new()),
+            Arc::new(NeverResolved),
+            Arc::new(NeverResolved),
+        )
+        .with_bound_raw_secret_source(Arc::new(NeverResolved));
+    assert_eq!(
+        credential_bound.native_descriptor(&id, expected).unwrap(),
+        *ordinary.descriptor()
+    );
     let child: Arc<dyn RuntimeChildTaskPort> = Arc::new(NeverDelegated);
     assert!(matches!(
         snapshot.retain_native_with_child_tasks(different, child.clone(), authorizer.clone()),
         Err(RetainedCapabilityError::NativeIdentity)
     ));
-    let bound = snapshot
+    let bound = credential_bound
         .retain_native_with_child_tasks(expected, child, authorizer)
         .unwrap();
     assert_eq!(bound.native_identity(), ordinary.native_identity());

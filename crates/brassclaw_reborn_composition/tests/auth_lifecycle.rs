@@ -30,6 +30,27 @@ struct AccessOnlyRefreshProvider;
 
 #[async_trait]
 impl brassclaw_auth::AuthProviderClient for AccessOnlyRefreshProvider {
+    async fn prepare_callback(
+        &self,
+        context: &brassclaw_auth::OAuthProviderExchangeContext,
+        _request: &brassclaw_auth::OAuthProviderCallbackRequest,
+    ) -> Result<brassclaw_auth::OAuthTokenDestinations, AuthProductError> {
+        brassclaw_auth::InMemoryAuthProductServices::callback_destinations_for_tests(context)
+    }
+
+    async fn prepare_refresh(
+        &self,
+        request: &OAuthProviderRefreshRequest,
+    ) -> Result<brassclaw_auth::OAuthProviderRefreshPreparation, AuthProductError> {
+        let mut preparation =
+            brassclaw_auth::InMemoryAuthProductServices::refresh_preparation_for_tests(request)?;
+        preparation.destinations = brassclaw_auth::OAuthTokenDestinations {
+            access_secret: SecretHandle::new("google-new-access").unwrap(),
+            refresh_secret: SecretHandle::new("google-new-refresh").unwrap(),
+        };
+        Ok(preparation)
+    }
+
     async fn exchange_callback(
         &self,
         _context: OAuthProviderExchangeContext,
@@ -41,10 +62,12 @@ impl brassclaw_auth::AuthProviderClient for AccessOnlyRefreshProvider {
     async fn refresh_token(
         &self,
         request: OAuthProviderRefreshRequest,
+        _preparation: brassclaw_auth::OAuthProviderRefreshPreparation,
     ) -> Result<OAuthProviderRefresh, AuthProductError> {
         Ok(OAuthProviderRefresh {
             provider: request.provider,
             access_secret: SecretHandle::new("google-new-access").unwrap(),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: request.scopes,
         })
@@ -57,6 +80,27 @@ struct CountingRefreshProvider {
 
 #[async_trait]
 impl brassclaw_auth::AuthProviderClient for CountingRefreshProvider {
+    async fn prepare_callback(
+        &self,
+        context: &brassclaw_auth::OAuthProviderExchangeContext,
+        _request: &brassclaw_auth::OAuthProviderCallbackRequest,
+    ) -> Result<brassclaw_auth::OAuthTokenDestinations, AuthProductError> {
+        brassclaw_auth::InMemoryAuthProductServices::callback_destinations_for_tests(context)
+    }
+
+    async fn prepare_refresh(
+        &self,
+        request: &OAuthProviderRefreshRequest,
+    ) -> Result<brassclaw_auth::OAuthProviderRefreshPreparation, AuthProductError> {
+        let mut preparation =
+            brassclaw_auth::InMemoryAuthProductServices::refresh_preparation_for_tests(request)?;
+        preparation.destinations = brassclaw_auth::OAuthTokenDestinations {
+            access_secret: SecretHandle::new("google-counted-access").unwrap(),
+            refresh_secret: SecretHandle::new("google-counted-refresh").unwrap(),
+        };
+        Ok(preparation)
+    }
+
     async fn exchange_callback(
         &self,
         _context: OAuthProviderExchangeContext,
@@ -68,11 +112,13 @@ impl brassclaw_auth::AuthProviderClient for CountingRefreshProvider {
     async fn refresh_token(
         &self,
         request: OAuthProviderRefreshRequest,
+        _preparation: brassclaw_auth::OAuthProviderRefreshPreparation,
     ) -> Result<OAuthProviderRefresh, AuthProductError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(OAuthProviderRefresh {
             provider: request.provider,
             access_secret: SecretHandle::new("google-counted-access").unwrap(),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("google-counted-refresh").unwrap()),
             scopes: request.scopes,
         })
@@ -115,6 +161,7 @@ async fn refresh_credential_account_uses_product_auth_facade_and_redacts_respons
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(old_access.clone()),
+            access_expires_at: None,
             refresh_secret: Some(old_refresh.clone()),
             scopes: vec![provider_scope("repo")],
         })
@@ -166,6 +213,7 @@ async fn refresh_credential_account_maps_facade_errors_to_stable_codes() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-shared-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("github-shared-refresh").unwrap()),
             scopes: vec![provider_scope("repo")],
         })
@@ -199,6 +247,7 @@ async fn refresh_credential_account_rejects_system_owned_accounts_before_provide
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-system-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("github-system-refresh").unwrap()),
             scopes: vec![provider_scope("repo")],
         })
@@ -237,6 +286,7 @@ async fn refresh_credential_account_with_provider_keeps_existing_refresh_handle_
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("google-old-access").unwrap()),
+            access_expires_at: None,
             refresh_secret: Some(old_refresh.clone()),
             scopes: vec![provider_scope("repo")],
         })
@@ -283,6 +333,7 @@ async fn cleanup_credentials_for_lifecycle_uses_facade_and_quarantine_report() {
             owner_extension: Some(extension.clone()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-owned-facade").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -298,6 +349,7 @@ async fn cleanup_credentials_for_lifecycle_uses_facade_and_quarantine_report() {
             owner_extension: Some(extension.clone()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-quarantined-facade").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })

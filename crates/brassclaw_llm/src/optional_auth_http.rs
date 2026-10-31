@@ -178,6 +178,48 @@ async fn buffered_response<U: From<Bytes> + WasmCompatSend + 'static>(
     });
     Ok(Response::from_parts(parts, body))
 }
+// The exact SDK-serialized body is built once. Guard and response custody
+// share this original request; no DTO-based check precedes a later rewrite.
+async fn execute_prepared(
+    client: reqwest::Client,
+    request: reqwest::Request,
+    guard: Option<std::sync::Arc<crate::final_request_guard::FinalRequestGuard>>,
+    observer: Option<std::sync::Arc<dyn crate::provider_observation::ProviderWireObserver>>,
+) -> Result<reqwest::Response> {
+    if let Some(guard) = guard {
+        let checked = guard.prepare(request).await.map_err(|error| {
+            if let Some(observer) = &observer {
+                observer.submission_rejected();
+            }
+            Error::Instance(Box::new(error))
+        })?;
+        let transport =
+            crate::final_request_guard::FinalRequestTransport::from_registry_client(client);
+        return checked
+            .send_observed(&transport, observer)
+            .await
+            .map_err(|error| match error {
+                crate::final_request_guard::FinalRequestSendError::Rejected(error) => {
+                    Error::Instance(Box::new(error))
+                }
+                crate::final_request_guard::FinalRequestSendError::Transport(error) => {
+                    Error::Instance(Box::new(error))
+                }
+            });
+    }
+    if let Some(observer) = &observer {
+        observer
+            .before_submission()
+            .await
+            .map_err(|error| Error::Instance(Box::new(error)))?;
+        observer.submission_started();
+    }
+    client
+        .execute(request)
+        .await
+        .map_err(|error| Error::Instance(Box::new(error)))
+}
+
 impl HttpClientExt for OptionalAuthHttp {
     fn send<T, U>(
         &self,
@@ -191,18 +233,19 @@ impl HttpClientExt for OptionalAuthHttp {
             && request.uri().path().ends_with("/chat/completions"))
         .then(crate::provider_observation::current)
         .flatten();
+        let guard = crate::final_request_guard::current();
         let prepared = self.prepare(request.map(Into::<Bytes>::into));
         let client = self.client.clone();
         let limit = self.max_response_bytes;
         async move {
             let (parts, body) = prepared?.into_parts();
-            let response = client
+            let request = client
                 .request(parts.method, parts.uri.to_string())
                 .headers(parts.headers)
                 .body(body)
-                .send()
-                .await
+                .build()
                 .map_err(|error| Error::Instance(Box::new(error)))?;
+            let response = execute_prepared(client, request, guard, observer.clone()).await?;
             buffered_response(response, limit, observer).await
         }
     }
@@ -213,10 +256,16 @@ impl HttpClientExt for OptionalAuthHttp {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
+        let guarded = crate::final_request_guard::current().is_some();
         let prepared = self.prepare(request);
         let client = self.client.clone();
         let limit = self.max_response_bytes;
         async move {
+            if guarded {
+                return Err(Error::Instance(Box::new(
+                    crate::final_request_guard::FinalRequestError::UnsupportedTransport,
+                )));
+            }
             let (parts, body) = prepared?.into_parts();
             let response = client
                 .request(parts.method, parts.uri.to_string())
@@ -235,10 +284,16 @@ impl HttpClientExt for OptionalAuthHttp {
     where
         T: Into<Bytes>,
     {
+        let guard = crate::final_request_guard::current();
         let prepared = self.prepare(request.map(Into::<Bytes>::into));
         let client = self.client.clone();
         let limit = self.max_response_bytes;
         async move {
+            if guard.is_some() {
+                return Err(Error::Instance(Box::new(
+                    crate::final_request_guard::FinalRequestError::UnsupportedTransport,
+                )));
+            }
             let (parts, body) = prepared?.into_parts();
             let response = client
                 .request(parts.method, parts.uri.to_string())

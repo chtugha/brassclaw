@@ -2,27 +2,29 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
-function fixture() {
-  const state = [], captures = [], imports = [], effects = [], listeners = new Map(); let cursor = 0;
+function fixture({ inactive = false } = {}) {
+  const state = [], captures = [], imports = [], pairImports = [], effects = [], listeners = new Map(), fetches = []; let cursor = 0, deferred = false;
   const target = { provider_id: "registered", provider_revision: 3, model: "active-model", consumer: "kohai", configured_context_window: null };
   let catalogue = { targets: [target, { ...target, consumer: "sempai" }], specifications: [], proposals: [], design_generation_available: false, blocked_reason: "prefix.modelDesignPrerequisites" };
-  const context = { addEventListener: (name, listener) => listeners.set(name, listener), removeEventListener: name => listeners.delete(name), React: {
-    useState(initial) { const i=cursor++; if (!(i in state)) state[i]=initial; return [state[i], value => { state[i]=typeof value === "function" ? value(state[i]) : value; }]; },
+  if (inactive) catalogue.targets.push({ ...target, model: "configured-model", consumer: "configured" });
+  const context = { PrefixModelSetupDraft: "PrefixModelSetupDraft", TextDecoder, PrefixPairCases: "PrefixPairCases", addEventListener: (name, listener) => listeners.set(name, listener), removeEventListener: name => listeners.delete(name), React: {
+    useState(initial) { const i=cursor++; if (!(i in state)) state[i]=typeof initial === "function" ? initial() : initial; return [state[i], value => { state[i]=typeof value === "function" ? value(state[i]) : value; }]; },
     useRef(initial) { const i=cursor++; if (!(i in state)) state[i]={current:initial}; return state[i]; },
     useEffect(effect) { if (!effects.length) effects.push(effect); },
   }, html:(strings,...values)=>({strings:[...strings],values}), Button:"Button", PrefixModelConfiguration:"PrefixModelConfiguration", ModelTokenLimits:"ModelTokenLimits",
-    fetchPrefixModelDesigns: async () => catalogue,
+    fetchPrefixModelDesigns: () => deferred ? new Promise((resolve,reject)=>fetches.push({resolve,reject,snapshot:catalogue})) : Promise.resolve(catalogue),
     prepareModelArtifactImport: async files => { await Promise.resolve(); return JSON.stringify({files:files.map(file=>file.name)}); },
+    retainPrefixPairConstruction: async request => { pairImports.push(request); await Promise.resolve(); catalogue = {...catalogue,pair_proposals:[{id:"pair-draft",specification:request.specification,proposal_bytes:request.proposal_bytes,qualification:"unaccepted-pair-construction-proposal"}]}; },
     retainPrefixModelArtifacts: async request => { imports.push(request); await Promise.resolve(); catalogue = {...catalogue,artifact_sets:[{id:"asset-set",specification:request.specification,files:[],binding_bytes:"operator provenance",qualification:"unverified-model-artifacts"}]}; },
     capturePrefixModel: async request => { captures.push(request); await Promise.resolve(); catalogue = { ...catalogue, specifications: [{id:"retained",provider_id:request.provider_id,provider_revision:request.expected_provider_revision,model:request.model,specification_bytes:"<script>untrusted</script>",qualification:"unknown-model-artifacts"}] }; },
   };
-  const source=readFileSync(new URL("./prefix-model-designs.js",import.meta.url),"utf8").split("\n").filter(line=>!line.startsWith("import ")).join("\n").replace("export function","function");
+  const source=readFileSync(process.env.PREFIX_MODEL_DESIGNS_SOURCE || new URL("./prefix-model-designs.js",import.meta.url),"utf8").split("\n").filter(line=>!line.startsWith("import ")).join("\n").replace("export function","function");
   vm.createContext(context);vm.runInContext(source+"\nglobalThis.render=PrefixModelDesigns;",context);
   const render=()=>{cursor=0;return context.render({t:key=>key});}; render(); effects[0]();
-  return {captures,imports,render, advanceRevision: async revision => { catalogue = {...catalogue, targets: catalogue.targets.map(item => ({...item, provider_revision: revision}))}; await listeners.get("brassclaw-provider-settings-changed")(); }};
+  return {captures,imports,pairImports,render,fetches,deferReloads(){deferred=true;},resumeReloads(){deferred=false;}, advanceRevision: async revision => { catalogue = {...catalogue, targets: catalogue.targets.map(item => ({...item, provider_revision: revision}))}; await listeners.get("brassclaw-provider-settings-changed")(); }};
 }
 function nodes(root) { const out=[];function visit(v){if(Array.isArray(v)){v.forEach(visit);return;}if(!v?.strings)return;out.push(v);v.values.forEach(visit);}visit(root);return out; }
-function value(node,key) { const i=node.strings.findIndex(s=>s.endsWith(`${key}=`));assert.notEqual(i,-1,key);return node.values[i]; }
+function value(node,key,after="") { const start=after ? node.strings.findIndex(s=>s.includes(after)) : 0;assert.notEqual(start,-1,after);const i=node.strings.findIndex((s,index)=>index>=start && s.endsWith(`${key}=`));assert.notEqual(i,-1,key);return node.values[i]; }
 function button(root,label) { return nodes(root).find(node=>node.values.includes(label)); }
 test("selecting an active target is read-only; capture pins revision and deduplicates clicks",async()=>{
   const f=fixture(); await new Promise(setImmediate);
@@ -68,4 +70,75 @@ test("provider settings refresh retains the selected model and captures the new 
   assert.ok(nodes(root).some(node=>node.values.includes("ModelTokenLimits")),"shared editor remains mounted after the settings update");
   await value(button(root,"prefix.captureModel"),"onClick")();
   assert.equal(f.captures[0].expected_provider_revision,4);
+});
+
+
+test("an older catalogue response cannot replace the latest model revision before capture",async()=>{
+  const f=fixture();await new Promise(setImmediate);
+  const select=nodes(f.render()).find(node=>node.strings.some(s=>s.includes("<select")));
+  value(select,"onChange")({target:{value:JSON.stringify(["registered","active-model"])}});
+  f.deferReloads();const old=f.advanceRevision(4),latest=f.advanceRevision(5);
+  f.fetches[1].resolve(f.fetches[1].snapshot);await latest;
+  f.fetches[0].resolve(f.fetches[0].snapshot);await old;f.resumeReloads();
+  await value(button(f.render(),"prefix.captureModel"),"onClick")();
+  assert.equal(f.captures[0].expected_provider_revision,5);
+});
+test("an obsolete read failure cannot hide fresh model-design information",async()=>{
+  const f=fixture();await new Promise(setImmediate);
+  f.deferReloads();const old=f.advanceRevision(4),latest=f.advanceRevision(5);
+  f.fetches[1].resolve(f.fetches[1].snapshot);await latest;
+  f.fetches[0].reject(Error("obsolete request failed"));await old;
+  assert.ok(!nodes(f.render()).some(node=>node.values.includes("obsolete request failed")));
+});
+
+
+test("configured inactive models can be captured without selecting a runtime role", async () => {
+  const f = fixture({ inactive: true }); await new Promise(setImmediate);
+  const root = f.render();
+  const options = nodes(root).filter(node => node.strings[0].startsWith("<option key="));
+  assert.equal(options.length, 2);
+  const select = nodes(root).find(node => node.strings.some(s => s.includes("<select")));
+  value(select, "onChange")({ target: { value: JSON.stringify(["registered", "configured-model"]) } });
+  assert.equal(f.captures.length, 0, "selection alone is read-only");
+  await value(button(f.render(), "prefix.captureModel"), "onClick")();
+  assert.equal(JSON.stringify(f.captures), JSON.stringify([{
+    provider_id: "registered", expected_provider_revision: 3, model: "configured-model"
+  }]));
+  assert.equal(value(button(f.render(), "prefix.generateModelDesign"), "disabled"), true);
+});
+
+test("pair draft import is exact, scoped and coalesced without role generation or activation", async () => {
+  const f=fixture();await new Promise(setImmediate);
+  const select=nodes(f.render()).find(node=>node.strings.some(s=>s.includes("<select")));
+  value(select,"onChange")({target:{value:JSON.stringify(["registered","active-model"])}});
+  await value(button(f.render(),"prefix.captureModel"),"onClick")();
+  const raw=' {"format":"brassclaw-prefix-pair-construction-proposal/1","specification":"retained","data":"<script>literal</script>"}\n';
+  const file={size:raw.length,arrayBuffer:async()=>new TextEncoder().encode(raw).buffer};
+  const input=nodes(f.render()).find(node=>node.strings.some(s=>s.includes('accept=".json,application/json"')));
+  const change=value(input,"onChange",'accept=".json,application/json"');const event=()=>({target:{files:[file],value:"picked"}});
+  change(event());change(event());await new Promise(setImmediate);
+  assert.equal(f.pairImports.length,1);assert.equal(f.pairImports[0].specification,"retained");
+  assert.equal(f.pairImports[0].proposal_bytes,raw,"do not reserialize or normalize the draft");
+  assert.ok(nodes(f.render()).some(node=>node.values.includes(raw)),"raw proposal is escaped text");
+  const panel = nodes(f.render()).find(node=>node.values.includes("PrefixPairCases"));
+  assert.ok(panel, "the retained pair proposal exposes its comparison panel");
+  assert.equal(value(panel,"specification"), "retained");
+  assert.equal(value(panel,"proposal"), "pair-draft");
+  assert.equal(value(button(f.render(),"prefix.generateModelDesign"),"disabled"),true);
+  assert.equal(f.captures.length,1,"no role/provider recapture from importing a pair draft");
+});
+test("invalid or oversized pair files are rejected before dispatch and can be retried", async () => {
+  const f=fixture();await new Promise(setImmediate);
+  const select=nodes(f.render()).find(node=>node.strings.some(s=>s.includes("<select")));
+  value(select,"onChange")({target:{value:JSON.stringify(["registered","active-model"])}});
+  await value(button(f.render(),"prefix.captureModel"),"onClick")();
+  for (const file of [{size:1048577,arrayBuffer:async()=>{throw Error("must not read oversized source");}},
+    {size:1,arrayBuffer:async()=>new Uint8Array([255]).buffer},
+    {size:5,arrayBuffer:async()=>new Uint8Array([239,187,191,123,125]).buffer},
+    {size:2,arrayBuffer:async()=>new TextEncoder().encode("{}").buffer}]) {
+    const input=nodes(f.render()).find(node=>node.strings.some(s=>s.includes('accept=".json,application/json"')));
+    value(input,"onChange",'accept=".json,application/json"')({target:{files:[file],value:"picked"}});await new Promise(setImmediate);
+  }
+  assert.equal(f.pairImports.length,0);assert.equal(f.captures.length,1);
+  assert.ok(nodes(f.render()).some(node=>node.values.includes("prefix.pairProposalInvalid")));
 });

@@ -32,12 +32,18 @@ pub const WEBUI_V2_ROUTE_REMOVE_EXTENSION: &str = "webui.v2.remove_extension";
 pub const WEBUI_V2_ROUTE_GET_EXTENSION_SETUP: &str = "webui.v2.get_extension_setup";
 pub const WEBUI_V2_ROUTE_SETUP_EXTENSION: &str = "webui.v2.setup_extension";
 pub const WEBUI_V2_ROUTE_GET_LLM_CONFIG: &str = "webui.v2.get_llm_config";
+pub const WEBUI_V2_ROUTE_GET_LLM_MUTATION: &str = "webui.v2.get_llm_mutation";
+pub const WEBUI_V2_ROUTE_RECONCILE_LLM_MUTATION: &str = "webui.v2.reconcile_llm_mutation";
+pub const WEBUI_V2_PATTERN_GET_LLM_MUTATION: &str = "/api/webchat/v2/llm/mutations/{mutation_id}";
+pub const WEBUI_V2_PATTERN_RECONCILE_LLM_MUTATION: &str =
+    "/api/webchat/v2/llm/mutations/{mutation_id}/reconcile";
 pub const WEBUI_V2_ROUTE_UPSERT_LLM_PROVIDER: &str = "webui.v2.upsert_llm_provider";
 pub const WEBUI_V2_ROUTE_DELETE_LLM_PROVIDER: &str = "webui.v2.delete_llm_provider";
 pub const WEBUI_V2_ROUTE_SET_ACTIVE_LLM: &str = "webui.v2.set_active_llm";
 pub const WEBUI_V2_ROUTE_TEST_LLM_CONNECTION: &str = "webui.v2.test_llm_connection";
 pub const WEBUI_V2_ROUTE_LIST_LLM_MODELS: &str = "webui.v2.list_llm_models";
 pub const WEBUI_V2_ROUTE_START_NEARAI_LOGIN: &str = "webui.v2.start_nearai_login";
+pub const WEBUI_V2_ROUTE_START_NEARAI_WALLET_LOGIN: &str = "webui.v2.start_nearai_wallet_login";
 pub const WEBUI_V2_ROUTE_COMPLETE_NEARAI_WALLET_LOGIN: &str =
     "webui.v2.complete_nearai_wallet_login";
 pub const WEBUI_V2_ROUTE_START_CODEX_LOGIN: &str = "webui.v2.start_codex_login";
@@ -80,6 +86,9 @@ pub const WEBUI_V2_ROUTE_CATALOGUE_SOURCES: &str = "webui.v2.catalogue_sources";
 pub const WEBUI_V2_PATTERN_CATALOGUE_SOURCES: &str =
     "/api/webchat/v2/catalogue/{generation}/sources";
 pub const WEBUI_V2_ROUTE_CATALOGUE_STATUS: &str = "webui.v2.catalogue_status";
+pub const WEBUI_V2_ROUTE_RECONCILE_CATALOGUE: &str = "webui.v2.reconcile_catalogue";
+pub const WEBUI_V2_PATTERN_RECONCILE_CATALOGUE: &str =
+    "/api/webchat/v2/catalogue/{activation_id}/reconcile";
 pub const WEBUI_V2_ROUTE_ACTIVATE_CATALOGUE: &str = "webui.v2.activate_catalogue";
 pub const WEBUI_V2_ROUTE_PREPARE_COMPONENT_DEPLOYMENT: &str =
     "webui.v2.prepare_component_deployment";
@@ -117,6 +126,12 @@ pub const WEBUI_V2_PATTERN_APPROVE_ASSOCIATION: &str =
 pub const WEBUI_V2_ROUTE_GET_INTERCEPTOR_CONFIG: &str = "webui.v2.get_interceptor_config";
 pub const WEBUI_V2_ROUTE_UPDATE_INTERCEPTOR_CONFIG: &str = "webui.v2.update_interceptor_config";
 pub const WEBUI_V2_ROUTE_PREFIX_MODEL_DESIGNS: &str = "webui.v2.prefix_model_designs";
+pub const WEBUI_V2_ROUTE_GET_PREFIX_MODEL_SETUP_DRAFT: &str =
+    "webui.v2.get_prefix_model_setup_draft";
+pub const WEBUI_V2_ROUTE_UPDATE_PREFIX_MODEL_SETUP_DRAFT: &str =
+    "webui.v2.update_prefix_model_setup_draft";
+pub const WEBUI_V2_PATTERN_PREFIX_MODEL_SETUP_DRAFT: &str =
+    "/api/webchat/v2/prefix-model-specifications/{specification}/setup-draft";
 pub const WEBUI_V2_ROUTE_CAPTURE_PREFIX_MODEL: &str = "webui.v2.capture_prefix_model";
 pub const WEBUI_V2_ROUTE_RETAIN_PREFIX_MODEL_ARTIFACTS: &str =
     "webui.v2.retain_prefix_model_artifacts";
@@ -125,6 +140,26 @@ pub const WEBUI_V2_ROUTE_GET_PREFIX_MODEL_ARTIFACTS: &str = "webui.v2.get_prefix
 pub const WEBUI_V2_PATTERN_PREFIX_MODEL_ARTIFACT_DETAIL: &str =
     "/api/webchat/v2/prefix-model-artifacts/{specification}/{artifact_set}";
 pub const WEBUI_V2_ROUTE_RETAIN_PREFIX_DESIGN: &str = "webui.v2.retain_prefix_design";
+pub const WEBUI_V2_ROUTE_PREPARE_PREFIX_ACCEPTANCE: &str = "webui.v2.prepare_prefix_acceptance";
+pub const WEBUI_V2_ROUTE_APPROVE_PREFIX_ACCEPTANCE: &str = "webui.v2.approve_prefix_acceptance";
+pub const WEBUI_V2_ROUTE_ACTIVATE_PREFIX_ACCEPTANCE: &str = "webui.v2.activate_prefix_acceptance";
+pub const WEBUI_V2_PATTERN_PREPARE_PREFIX_ACCEPTANCE: &str =
+    "/api/webchat/v2/prefix-model-designs/acceptance/review";
+pub const WEBUI_V2_PATTERN_APPROVE_PREFIX_ACCEPTANCE: &str =
+    "/api/webchat/v2/prefix-model-designs/acceptance/approve";
+pub const WEBUI_V2_PATTERN_ACTIVATE_PREFIX_ACCEPTANCE: &str =
+    "/api/webchat/v2/prefix-model-designs/acceptance/activate";
+pub const WEBUI_V2_ROUTE_GET_PREFIX_PAIR_CASES: &str = "webui.v2.get_prefix_pair_cases";
+pub const WEBUI_V2_PATTERN_PREFIX_PAIR_CASES: &str =
+    "/api/webchat/v2/prefix-model-designs/proposals/{specification}/{proposal}/cases";
+pub const WEBUI_V2_ROUTE_CHECK_PREFIX_PAIR_CASES: &str = "webui.v2.check_prefix_pair_cases";
+pub const WEBUI_V2_ROUTE_GET_PREFIX_PAIR_JOB: &str = "webui.v2.get_prefix_pair_job";
+pub const WEBUI_V2_PATTERN_PREFIX_PAIR_JOB: &str =
+    "/api/webchat/v2/prefix-model-designs/proposals/{specification}/{proposal}/jobs/{job}";
+pub const WEBUI_V2_ROUTE_RETAIN_PREFIX_PAIR_CONSTRUCTION: &str =
+    "webui.v2.retain_prefix_pair_construction";
+pub const WEBUI_V2_PATTERN_PREFIX_PAIR_CONSTRUCTION: &str =
+    "/api/webchat/v2/prefix-model-designs/proposals";
 pub const WEBUI_V2_PATTERN_PREFIX_MODEL_DESIGNS: &str = "/api/webchat/v2/prefix-model-designs";
 pub const WEBUI_V2_PATTERN_PREFIX_MODEL_SPECIFICATIONS: &str =
     "/api/webchat/v2/prefix-model-specifications";
@@ -269,6 +304,8 @@ pub const WEBUI_V2_PATTERN_SET_ACTIVE_LLM: &str = "/api/webchat/v2/llm/active";
 pub const WEBUI_V2_PATTERN_TEST_LLM_CONNECTION: &str = "/api/webchat/v2/llm/test-connection";
 pub const WEBUI_V2_PATTERN_LIST_LLM_MODELS: &str = "/api/webchat/v2/llm/list-models";
 pub const WEBUI_V2_PATTERN_START_NEARAI_LOGIN: &str = "/api/webchat/v2/llm/nearai/login";
+pub const WEBUI_V2_PATTERN_START_NEARAI_WALLET_LOGIN: &str =
+    "/api/webchat/v2/llm/nearai/wallet/start";
 pub const WEBUI_V2_PATTERN_COMPLETE_NEARAI_WALLET_LOGIN: &str = "/api/webchat/v2/llm/nearai/wallet";
 pub const WEBUI_V2_PATTERN_START_CODEX_LOGIN: &str = "/api/webchat/v2/llm/codex/login";
 pub const WEBUI_V2_PATTERN_LIST_TOOLS: &str = "/api/webchat/v2/tools";
@@ -336,12 +373,35 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         get_extension_setup_descriptor(),
         setup_extension_descriptor(),
         get_llm_config_descriptor(),
+        descriptor(
+            WEBUI_V2_ROUTE_GET_LLM_MUTATION,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_GET_LLM_MUTATION,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_RECONCILE_LLM_MUTATION,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_RECONCILE_LLM_MUTATION,
+            mutation_policy(
+                BodyLimitPolicy::NoBody,
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
         upsert_llm_provider_descriptor(),
         delete_llm_provider_descriptor(),
         set_active_llm_descriptor(),
         test_llm_connection_descriptor(),
         list_llm_models_descriptor(),
         start_nearai_login_descriptor(),
+        start_nearai_wallet_login_descriptor(),
         complete_nearai_wallet_login_descriptor(),
         start_codex_login_descriptor(),
         list_tools_descriptor(),
@@ -397,6 +457,17 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
                 AuditTraceClass::UserAction,
                 AllowedEffectPath::ProjectionOnly,
                 StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_RECONCILE_CATALOGUE,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_RECONCILE_CATALOGUE,
+            mutation_policy(
+                BodyLimitPolicy::NoBody,
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
             ),
         ),
         descriptor(
@@ -549,6 +620,28 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
             ),
         ),
         descriptor(
+            WEBUI_V2_ROUTE_GET_PREFIX_MODEL_SETUP_DRAFT,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_PREFIX_MODEL_SETUP_DRAFT,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_UPDATE_PREFIX_MODEL_SETUP_DRAFT,
+            NetworkMethod::Put,
+            WEBUI_V2_PATTERN_PREFIX_MODEL_SETUP_DRAFT,
+            mutation_policy(
+                body_limit_kib(16),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
             WEBUI_V2_ROUTE_CAPTURE_PREFIX_MODEL,
             NetworkMethod::Post,
             WEBUI_V2_PATTERN_PREFIX_MODEL_SPECIFICATIONS,
@@ -557,6 +650,83 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
                 mutation_rate_limit(),
                 AuditTraceClass::UserAction,
                 AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_GET_PREFIX_PAIR_CASES,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_PREFIX_PAIR_CASES,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_RETAIN_PREFIX_PAIR_CONSTRUCTION,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_PREFIX_PAIR_CONSTRUCTION,
+            mutation_policy(
+                body_limit_kib(1024),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_PREPARE_PREFIX_ACCEPTANCE,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_PREPARE_PREFIX_ACCEPTANCE,
+            mutation_policy(
+                body_limit_kib(4),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_APPROVE_PREFIX_ACCEPTANCE,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_APPROVE_PREFIX_ACCEPTANCE,
+            mutation_policy(
+                body_limit_kib(64),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_ACTIVATE_PREFIX_ACCEPTANCE,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_ACTIVATE_PREFIX_ACCEPTANCE,
+            mutation_policy(
+                body_limit_kib(4),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_CHECK_PREFIX_PAIR_CASES,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_PREFIX_PAIR_JOB,
+            mutation_policy(
+                BodyLimitPolicy::NoBody,
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_GET_PREFIX_PAIR_JOB,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_PREFIX_PAIR_JOB,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
             ),
         ),
         descriptor(
@@ -628,6 +798,8 @@ pub fn is_webui_v2_llm_config_route_id(route_id: &str) -> bool {
     matches!(
         route_id,
         WEBUI_V2_ROUTE_GET_LLM_CONFIG
+            | WEBUI_V2_ROUTE_GET_LLM_MUTATION
+            | WEBUI_V2_ROUTE_RECONCILE_LLM_MUTATION
             | WEBUI_V2_ROUTE_UPSERT_LLM_PROVIDER
             | WEBUI_V2_ROUTE_DELETE_LLM_PROVIDER
             | WEBUI_V2_ROUTE_SET_ACTIVE_LLM
@@ -650,8 +822,17 @@ pub fn is_webui_v2_operator_route_id(route_id: &str) -> bool {
                 | WEBUI_V2_ROUTE_PREFIX_MODEL_DESIGNS
                 | WEBUI_V2_ROUTE_RETAIN_PREFIX_MODEL_ARTIFACTS
                 | WEBUI_V2_ROUTE_GET_PREFIX_MODEL_ARTIFACTS
+                | WEBUI_V2_ROUTE_GET_PREFIX_MODEL_SETUP_DRAFT
+                | WEBUI_V2_ROUTE_UPDATE_PREFIX_MODEL_SETUP_DRAFT
                 | WEBUI_V2_ROUTE_CAPTURE_PREFIX_MODEL
+                | WEBUI_V2_ROUTE_GET_PREFIX_PAIR_CASES
+                | WEBUI_V2_ROUTE_CHECK_PREFIX_PAIR_CASES
+                | WEBUI_V2_ROUTE_GET_PREFIX_PAIR_JOB
+                | WEBUI_V2_ROUTE_RETAIN_PREFIX_PAIR_CONSTRUCTION
                 | WEBUI_V2_ROUTE_RETAIN_PREFIX_DESIGN
+                | WEBUI_V2_ROUTE_PREPARE_PREFIX_ACCEPTANCE
+                | WEBUI_V2_ROUTE_APPROVE_PREFIX_ACCEPTANCE
+                | WEBUI_V2_ROUTE_ACTIVATE_PREFIX_ACCEPTANCE
                 | WEBUI_V2_ROUTE_LIST_PREFIX_SOURCES
                 | WEBUI_V2_ROUTE_REGISTER_PREFIX_SOURCE
                 | WEBUI_V2_ROUTE_LIST_PREFIX_GENERATIONS
@@ -663,6 +844,7 @@ pub fn is_webui_v2_operator_route_id(route_id: &str) -> bool {
                 | WEBUI_V2_ROUTE_CATALOGUE_STATUS
                 | WEBUI_V2_ROUTE_CATALOGUE_SOURCES
                 | WEBUI_V2_ROUTE_ACTIVATE_CATALOGUE
+                | WEBUI_V2_ROUTE_RECONCILE_CATALOGUE
                 | WEBUI_V2_ROUTE_PREPARE_ASSOCIATION_REVIEW
                 | WEBUI_V2_ROUTE_APPROVE_ASSOCIATION
                 | WEBUI_V2_ROUTE_LIST_POST_TURN_REVIEWS
@@ -1140,12 +1322,7 @@ fn start_nearai_login_descriptor() -> IngressRouteDescriptor {
         WEBUI_V2_ROUTE_START_NEARAI_LOGIN,
         NetworkMethod::Post,
         WEBUI_V2_PATTERN_START_NEARAI_LOGIN,
-        mutation_policy(
-            body_limit_kib(4),
-            mutation_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProductWorkflow,
-        ),
+        nearai_login_mutation_policy(),
     )
 }
 
@@ -1154,12 +1331,25 @@ fn complete_nearai_wallet_login_descriptor() -> IngressRouteDescriptor {
         WEBUI_V2_ROUTE_COMPLETE_NEARAI_WALLET_LOGIN,
         NetworkMethod::Post,
         WEBUI_V2_PATTERN_COMPLETE_NEARAI_WALLET_LOGIN,
-        mutation_policy(
-            body_limit_kib(4),
-            mutation_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProductWorkflow,
-        ),
+        nearai_login_mutation_policy(),
+    )
+}
+
+fn start_nearai_wallet_login_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_START_NEARAI_WALLET_LOGIN,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_START_NEARAI_WALLET_LOGIN,
+        nearai_login_mutation_policy(),
+    )
+}
+
+fn nearai_login_mutation_policy() -> IngressPolicy {
+    mutation_policy(
+        body_limit_kib(4),
+        mutation_rate_limit(),
+        AuditTraceClass::UserAction,
+        AllowedEffectPath::ProductWorkflow,
     )
 }
 

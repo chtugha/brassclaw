@@ -23,7 +23,7 @@ fn draft(
     )
     .unwrap()
 }
-pub(super) async fn program(
+pub(crate) async fn program(
     store: &PgComponentRevisionStore,
     invalid_output: bool,
 ) -> Arc<RetainedToolProgram> {

@@ -1759,6 +1759,7 @@ fn dispatch_error_auth_required_debug_redacts_required_secrets() {
         "zero redaction count must appear; got: {debug_empty}"
     );
     let requirement = RuntimeCredentialAuthRequirement {
+        requirement: None,
         provider: RuntimeCredentialAccountProviderId::new("google").unwrap(),
         requester_extension: ExtensionId::new("gmail").unwrap(),
         provider_scopes: vec!["https://www.googleapis.com/auth/gmail.readonly".to_string()],

@@ -103,8 +103,7 @@ where
         validate_credential_status_transition(account.status, status)?;
         account.status = status;
         account.updated_at = Utc::now();
-        self.write_account(&account, CasExpectation::Version(version))
-            .await?;
+        self.write_account(&account, version.cas()).await?;
         Ok(account)
     }
 
@@ -118,7 +117,7 @@ where
             .into_iter()
             .filter(|account| {
                 account.provider == request.provider
-                    && account.status == CredentialAccountStatus::Configured
+                    && account.effective_status() == CredentialAccountStatus::Configured
             })
             .collect::<Vec<_>>();
         if configured.is_empty() {
@@ -171,7 +170,7 @@ where
         let configured = authorized
             .iter()
             .copied()
-            .filter(|account| account.status == CredentialAccountStatus::Configured)
+            .filter(|account| account.effective_status() == CredentialAccountStatus::Configured)
             .collect::<Vec<_>>();
         match configured.as_slice() {
             [account] => {
@@ -218,7 +217,7 @@ where
         if account.provider != request.provider {
             return Err(AuthProductError::CredentialMissing);
         }
-        if account.status != CredentialAccountStatus::Configured {
+        if account.effective_status() != CredentialAccountStatus::Configured {
             return Err(AuthProductError::CredentialMissing);
         }
         if !account_is_authorized_for_requester(&account, request.requester_extension.as_ref()) {
@@ -240,6 +239,91 @@ impl<F> CredentialAccountRecordSource for FilesystemAuthProductServices<F>
 where
     F: RootFilesystem + 'static,
 {
+    async fn account_record(
+        &self,
+        scope: &brassclaw_auth::AuthProductScope,
+        account: CredentialAccountId,
+    ) -> Result<Option<CredentialAccount>, AuthProductError> {
+        self.read_account(scope, account)
+            .await
+            .map(|record| record.map(|(account, _)| account))
+    }
+
+    async fn requirement_selection(
+        &self,
+        scope: &brassclaw_auth::AuthProductScope,
+        requirement: &brassclaw_host_api::RuntimeCredentialAccountRequirement,
+    ) -> Result<Option<brassclaw_auth::CredentialRequirementSelection>, AuthProductError> {
+        let key = brassclaw_auth::CredentialRequirementOwner::from_scope(&scope.resource)
+            .key(requirement)?;
+        let path = super::paths::requirement_selection_path(scope, &key);
+        let selected: Option<(
+            brassclaw_auth::CredentialRequirementSelection,
+            super::AuthRecordSnapshot,
+        )> = self.read_record(&scope.resource, &path).await?;
+        let selected = selected.map(|(selected, _)| selected);
+        if let Some(selected) = &selected {
+            selected
+                .verify_requested(scope, requirement)
+                .map_err(|_| AuthProductError::BackendUnavailable)?;
+            let (origin, _) = self
+                .read_flow_document(selected.original_scope(), selected.original_flow())
+                .await?
+                .ok_or(AuthProductError::BackendUnavailable)?;
+            let setup = origin
+                .auth_custody
+                .requirement_setup
+                .as_deref()
+                .ok_or(AuthProductError::BackendUnavailable)?;
+            if origin.auth_custody.requirement_selection.as_deref() != Some(selected) {
+                return Err(AuthProductError::BackendUnavailable);
+            }
+            selected
+                .verify_receipt(&origin.flow, setup)
+                .map_err(|_| AuthProductError::BackendUnavailable)?;
+            if let Some(source) = &origin.auth_custody.requirement_source {
+                source
+                    .verify_selection(selected)
+                    .map_err(|_| AuthProductError::BackendUnavailable)?;
+            }
+        }
+        Ok(selected)
+    }
+
+    async fn requirement_selection_for_flow(
+        &self,
+        scope: &brassclaw_auth::AuthProductScope,
+        flow_id: brassclaw_auth::AuthFlowId,
+        requirement: &brassclaw_host_api::RuntimeCredentialAccountRequirement,
+    ) -> Result<Option<brassclaw_auth::CredentialRequirementSelection>, AuthProductError> {
+        let Some((document, _)) = self.read_flow_document(scope, flow_id).await? else {
+            return Ok(None);
+        };
+        document.auth_custody.original_requirement_selection(
+            scope,
+            flow_id,
+            &document.flow,
+            requirement,
+        )
+    }
+
+    async fn requirement_source_for_flow(
+        &self,
+        scope: &brassclaw_auth::AuthProductScope,
+        flow_id: brassclaw_auth::AuthFlowId,
+        requirement: &brassclaw_host_api::RuntimeCredentialAccountRequirement,
+    ) -> Result<Option<brassclaw_auth::CredentialRequirementSource>, AuthProductError> {
+        let Some((document, _)) = self.read_flow_document(scope, flow_id).await? else {
+            return Ok(None);
+        };
+        document.auth_custody.original_requirement_source(
+            scope,
+            flow_id,
+            &document.flow,
+            requirement,
+        )
+    }
+
     async fn accounts_for_owner(
         &self,
         scope: &brassclaw_auth::AuthProductScope,
@@ -261,6 +345,51 @@ impl<F> CredentialSetupService for FilesystemAuthProductServices<F>
 where
     F: RootFilesystem + 'static,
 {
+    async fn refresh_action(
+        &self,
+        request: &CredentialRefreshRequest,
+    ) -> Result<Option<brassclaw_auth::CredentialRefreshAction>, AuthProductError> {
+        self.read_refresh_action(request).await
+    }
+    async fn begin_refresh(
+        &self,
+        prepared: brassclaw_auth::CredentialRefreshPrepared,
+    ) -> Result<brassclaw_auth::CredentialRefreshAdmission, AuthProductError> {
+        self.begin_refresh_action(prepared).await
+    }
+    async fn reconcile_refresh(
+        &self,
+        request: &CredentialRefreshRequest,
+    ) -> Result<Option<brassclaw_auth::CredentialRefreshAction>, AuthProductError> {
+        self.reconcile_refresh_action(request).await
+    }
+
+    async fn complete_refresh(
+        &self,
+        completion: brassclaw_auth::CredentialRefreshCompletion,
+    ) -> Result<brassclaw_auth::CredentialRefreshAction, AuthProductError> {
+        self.complete_refresh_action(completion).await
+    }
+
+    async fn compare_and_update_account(
+        &self,
+        expected: &CredentialAccount,
+        request: NewCredentialAccount,
+    ) -> Result<CredentialAccount, AuthProductError> {
+        let lock = self.lock_for(format!("account:{}", expected.id));
+        let _guard = lock.lock().await;
+        let (mut current, version) = self
+            .read_account(&expected.scope, expected.id)
+            .await?
+            .ok_or(AuthProductError::CredentialMissing)?;
+        if &current != expected {
+            return Err(AuthProductError::BackendConflict);
+        }
+        update_account_from_request(&mut current, request, Utc::now())?;
+        self.write_account(&current, version.cas()).await?;
+        Ok(current)
+    }
+
     async fn create_or_update_account(
         &self,
         request: CredentialAccountMutation,
@@ -275,8 +404,7 @@ where
                     .await?
                     .ok_or(AuthProductError::CredentialMissing)?;
                 update_account_from_request(&mut account, update.account, Utc::now())?;
-                self.write_account(&account, CasExpectation::Version(version))
-                    .await?;
+                self.write_account(&account, version.cas()).await?;
                 Ok(account)
             }
         }

@@ -273,9 +273,9 @@ fn invalid_input_observation(issues: Vec<CapabilityInputIssue>) -> ModelVisibleT
 
 fn generic_failure_recovery(error_kind: &CapabilityFailureKind) -> ToolRecoveryObservation {
     let same_call_retry = match error_kind {
-        CapabilityFailureKind::Authorization | CapabilityFailureKind::PolicyDenied => {
-            SameCallRetryConstraint::Forbidden
-        }
+        CapabilityFailureKind::Authorization
+        | CapabilityFailureKind::PolicyDenied
+        | CapabilityFailureKind::EffectOutcomeUnresolved => SameCallRetryConstraint::Forbidden,
         CapabilityFailureKind::InvalidInput
         | CapabilityFailureKind::InvalidOutput
         | CapabilityFailureKind::OutputTooLarge => SameCallRetryConstraint::RequiresChangedInput,

@@ -155,12 +155,16 @@ mod admission;
 mod native_pg;
 #[path = "../../../crates/brassclaw_reborn_composition/src/pg_monty_admission_core.rs"]
 mod pg_monty_admission;
+
+// Same observation parser as Composition; never a native qualification source.
 #[path = "support/retained_kernel.rs"]
 mod retained_kernel;
 #[path = "support/retained_program.rs"]
 mod retained_program;
 #[path = "support/retained_program_variants.rs"]
 mod retained_program_variants;
+#[path = "../../../crates/brassclaw_reborn_composition/src/task_model_capture_record.rs"]
+mod task_model_capture_record;
 use retained_program_variants::{program_with_preload_source, program_with_source};
 
 #[path = "support/runtime.rs"]

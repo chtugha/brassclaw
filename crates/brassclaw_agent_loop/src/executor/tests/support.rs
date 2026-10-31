@@ -444,6 +444,33 @@ impl StopConditionStrategy for StopAfterObservedTurns {
     }
 }
 
+pub(super) struct AlwaysRetryCapabilityRecoveryStrategy;
+
+#[async_trait]
+impl RecoveryStrategy for AlwaysRetryCapabilityRecoveryStrategy {
+    async fn on_capability_error(
+        &self,
+        state: &LoopExecutionState,
+        _err: &CapabilityErrorSummary,
+    ) -> RecoveryOutcome {
+        RecoveryOutcome::Retry {
+            recovery: state.recovery_state.clone(),
+            scope: RetryScope::Call,
+            alter: None,
+        }
+    }
+    async fn on_model_error(
+        &self,
+        state: &LoopExecutionState,
+        _err: &ModelErrorSummary,
+    ) -> RecoveryOutcome {
+        RecoveryOutcome::Abort {
+            recovery: state.recovery_state.clone(),
+            failure_kind: LoopFailureKind::DriverBug,
+        }
+    }
+}
+
 pub(super) struct RetryPolicyDeniedRecoveryStrategy;
 
 #[async_trait]
@@ -1145,6 +1172,17 @@ pub(super) fn family_with_reply_admission_without_inline_context(
 
 pub(super) fn empty_gate_state() -> GateStrategyState {
     GateStrategyState::default()
+}
+
+pub(super) fn family_with_always_retry_capability_recovery() -> LoopFamily {
+    let planner = DefaultPlanner::compose_default()
+        .with_recovery(Arc::new(AlwaysRetryCapabilityRecoveryStrategy));
+    let id = LoopFamilyId::new("executor-unresolved-effect-test").expect("valid test family id");
+    let version = ComponentIdentity::from_static(
+        "executor-unresolved-effect-test",
+        ComponentDigest([10; 32]),
+    );
+    LoopFamily::new(id, version, Arc::new(planner))
 }
 
 pub(super) fn family_with_retry_policy_denied_recovery() -> LoopFamily {

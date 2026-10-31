@@ -1,5 +1,4 @@
 import { useNavigate, useOutletContext } from "react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { React, html } from "../../lib/html.js";
 import { useT } from "../../lib/i18n.js";
 import { Badge } from "../../design-system/badge.js";
@@ -11,7 +10,6 @@ import { ProviderLoginStatus } from "../settings/components/provider-login-statu
 import { useProviderManagementActions } from "../settings/hooks/useProviderManagementActions.js";
 import { useProviderLogin } from "../settings/hooks/useProviderLogin.js";
 import { isProviderConfigured } from "../settings/lib/llm-providers.js";
-import { setActiveLlm } from "../settings/lib/settings-api.js";
 import { ProviderLogo } from "./provider-logos.js";
 
 // First-run "choose your provider" list. Curated providers are surfaced in this
@@ -167,7 +165,6 @@ function FeaturedProviderRow({ entry, provider, configured, isBusy, login, t, on
 export function OnboardingPage() {
   const t = useT();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { gatewayStatus } = useOutletContext();
   const actions = useProviderManagementActions({
     settings: {},
@@ -192,12 +189,9 @@ export function OnboardingPage() {
   // the active selection and head to chat without opening the dialog.
   const handleUse = React.useCallback(
     async (provider) => {
-      const model = provider.active_model || provider.default_model || "";
-      await setActiveLlm({ provider_id: provider.id, model });
-      await queryClient.invalidateQueries({ queryKey: ["llm-providers"] });
-      navigate("/chat");
+      if (await actions.handleUse(provider)) navigate("/chat");
     },
-    [navigate, queryClient]
+    [navigate, actions]
   );
 
   const handleOnboardingSave = React.useCallback(
@@ -205,15 +199,11 @@ export function OnboardingPage() {
       // Persist the provider (+ any key) via the shared save path, then make it
       // the active selection and head to chat. The cold-boot reload swaps the
       // no-op placeholder for the real provider — no restart needed.
-      await actions.handleSave({ form, apiKey, provider });
-      const providerId = provider?.id || form.id.trim();
-      const model = form.model?.trim() || provider?.default_model || "";
-      await setActiveLlm({ provider_id: providerId, model });
-      await queryClient.invalidateQueries({ queryKey: ["llm-providers"] });
+      await actions.handleSave({ form, apiKey, provider, activate: true });
       actions.closeDialog();
       navigate("/chat");
     },
-    [actions, navigate, queryClient]
+    [actions, navigate]
   );
 
   if (state.isLoading) {
@@ -235,6 +225,7 @@ export function OnboardingPage() {
         </div>
 
         <div className="flex flex-col gap-3">
+          ${actions.message && html`<p role="status" className=${actions.message.tone === "error" ? "text-sm text-red-200" : "text-sm text-[var(--v2-text-muted)]"}>${actions.message.text}</p>`}
           ${featured.map(
             ({ entry, provider }) => html`
               <${FeaturedProviderRow}
@@ -267,10 +258,14 @@ export function OnboardingPage() {
       </div>
 
       <${ProviderDialog}
+        activateOnSave=${true}
         open=${actions.isDialogOpen}
         provider=${actions.dialogProvider}
         allProviderIds=${actions.allProviderIds}
         builtinOverrides=${state.builtinOverrides}
+        responseCacheDefaults=${actions.dialogDefaults?.responseCacheDefaults}
+        modelDiscoveryDefaults=${actions.dialogDefaults?.modelDiscoveryDefaults}
+        requestPolicyDefaults=${actions.dialogDefaults?.requestPolicyDefaults}
         onClose=${actions.closeDialog}
         onSave=${handleOnboardingSave}
         onTest=${state.testConnection}

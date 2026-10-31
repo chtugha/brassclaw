@@ -488,6 +488,7 @@ async fn webui_v2_gmail_oauth_setup_complete_allows_activation() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("google-access").expect("secret handle")),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: vec![
                 ProviderScope::new("https://www.googleapis.com/auth/gmail.modify")

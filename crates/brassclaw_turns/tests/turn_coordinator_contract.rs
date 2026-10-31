@@ -3116,7 +3116,7 @@ async fn model_route_snapshot_persists_across_snapshot_restore_and_recovery() {
         .unwrap();
     let snapshot = LoopModelRouteSnapshot::new(
         "openrouter",
-        "anthropic/claude-sonnet-4",
+        format!("modèle/模型/{}", "long_model_".repeat(25)),
         "config:v1",
         "auth:v1",
     );
@@ -8216,3 +8216,6 @@ async fn claimed_child_admission_rejects_expired_parent_without_mutating_state()
     ));
     assert_eq!(store.persistence_snapshot(), before);
 }
+
+#[path = "turn_coordinator_contract/native_auth_wait.rs"]
+mod native_auth_wait_contract;

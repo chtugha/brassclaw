@@ -1,8 +1,7 @@
 //! Closed first-party qualification of one exact packaged measurement workflow.
 //! Reuses existing leaf approvals and workflow evidence storage. This neither
 //! approves a target/model design nor activates a prefix or a catalogue route.
-#[path = "bootstrap_workflow_evidence.rs"]
-mod evidence;
+use crate::bootstrap_workflow_evidence as evidence;
 #[path = "bootstrap_measurement_fixture.rs"]
 mod fixture;
 #[path = "bootstrap_measurement_validation.rs"]

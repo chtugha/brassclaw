@@ -14,16 +14,17 @@ use std::sync::{Arc, Mutex, Weak};
 
 use async_trait::async_trait;
 use brassclaw_auth::domain::{
-    account_is_authorized_for_requester, recovery_projection_for_single_account,
-    recovery_projection_for_unconfigured_accounts, update_account_from_request,
-    validate_account_update_target, validate_callback_claim, validate_credential_status_transition,
-    validate_flow_update_binding, validate_manual_token_flow, validate_manual_token_update_binding,
-    validate_new_credential_account,
+    account_is_authorized_for_requester, prepare_callback_flow,
+    recovery_projection_for_single_account, recovery_projection_for_unconfigured_accounts,
+    update_account_from_request, validate_account_update_target,
+    validate_credential_status_transition, validate_flow_update_binding,
+    validate_manual_token_flow, validate_manual_token_update_binding,
+    validate_new_credential_account, validate_selection_flow,
 };
 use brassclaw_auth::{
-    AuthChallenge, AuthFlowId, AuthFlowKind, AuthFlowManager, AuthFlowOwnerScope, AuthFlowRecord,
+    AuthChallenge, AuthFlowId, AuthFlowManager, AuthFlowOwnerScope, AuthFlowRecord,
     AuthFlowRecordSource, AuthFlowStatus, AuthInteractionId, AuthInteractionService,
-    AuthProductError, AuthProductScope, AuthProviderId, AuthSurface, CredentialAccount,
+    AuthProductError, AuthProductScope, AuthProviderId, CredentialAccount,
     CredentialAccountChoiceRequest, CredentialAccountId, CredentialAccountLabel,
     CredentialAccountListPage, CredentialAccountListRequest, CredentialAccountLookupRequest,
     CredentialAccountMutation, CredentialAccountOwnerScope, CredentialAccountProjection,
@@ -31,14 +32,15 @@ use brassclaw_auth::{
     CredentialAccountStatus, CredentialAccountUpdateBinding, CredentialOwnership,
     CredentialRecoveryProjection, CredentialRecoveryReason, CredentialRecoveryRequest,
     CredentialRefreshReport, CredentialRefreshRequest, CredentialSetupService,
-    ManualTokenSetupRequest, NewAuthFlow, NewCredentialAccount, OAuthCallbackClaimRequest,
-    OAuthCallbackFailureInput, OAuthCallbackInput, ProviderCallbackOutcome, SecretCleanupAction,
-    SecretCleanupReport, SecretCleanupRequest, SecretCleanupService, SecretSubmitRequest,
-    SecretSubmitResult, TurnGateAuthFlowQuery, credential_status_for_completed_flow,
-    flow_matches_turn_gate_query, is_terminal_status, scope_matches,
+    ManualTokenSetupIdentity, ManualTokenSetupRequest, NewAuthFlow, NewCredentialAccount,
+    OAuthCallbackClaimRequest, OAuthCallbackFailureInput, OAuthCallbackInput,
+    ProviderCallbackOutcome, SecretCleanupReport, SecretCleanupRequest, SecretCleanupService,
+    SecretSubmitRequest, SecretSubmitResult, TurnGateAuthFlowQuery,
+    credential_status_for_completed_flow, flow_matches_turn_gate_query, is_terminal_status,
+    scope_matches,
 };
 use brassclaw_host_api::SecretHandle;
-use brassclaw_secrets::SecretStore;
+use brassclaw_secrets::{PgSecretStore, SecretStore};
 use chrono::Utc;
 use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -47,6 +49,25 @@ use tokio_postgres::types::ToSql;
 use crate::manual_token_flow::RebornManualTokenFlowService;
 
 type Pool = deadpool_postgres::Pool;
+
+#[path = "pg_auth_callback.rs"]
+mod callback;
+#[path = "pg_auth_cleanup.rs"]
+mod cleanup;
+#[path = "pg_auth_dcr.rs"]
+mod dcr;
+#[path = "pg_auth_manual.rs"]
+mod manual;
+#[path = "pg_auth_manual_setup.rs"]
+mod manual_setup;
+#[path = "pg_auth_oauth_setup.rs"]
+mod oauth_setup;
+#[path = "pg_auth_refresh.rs"]
+mod refresh;
+#[path = "pg_auth_requirement.rs"]
+mod requirement;
+#[path = "pg_auth_selection.rs"]
+mod selection;
 
 // ---------------------------------------------------------------------------
 // DDL
@@ -65,6 +86,32 @@ CREATE TABLE IF NOT EXISTS brassclaw_product_auth_accounts (
 );
 CREATE INDEX IF NOT EXISTS brassclaw_product_auth_accounts_tenant_user_idx
     ON brassclaw_product_auth_accounts (tenant_id, user_id);
+
+CREATE TABLE IF NOT EXISTS brassclaw_product_auth_refreshes (
+    tenant_id TEXT NOT NULL,
+    scope_ref TEXT NOT NULL,
+    id TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    refresh_handle TEXT,
+    blocks_refresh BOOLEAN NOT NULL,
+    revision BIGINT NOT NULL DEFAULT 0,
+    data JSONB NOT NULL,
+    PRIMARY KEY (tenant_id,scope_ref,id)
+);
+CREATE INDEX IF NOT EXISTS brassclaw_product_auth_refreshes_unconfirmed_idx
+    ON brassclaw_product_auth_refreshes (tenant_id,account_id,refresh_handle)
+    WHERE blocks_refresh;
+
+CREATE TABLE IF NOT EXISTS brassclaw_product_auth_requirement_selections (
+    id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    revision BIGINT NOT NULL DEFAULT 0,
+    data JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, id)
+);
 
 CREATE TABLE IF NOT EXISTS brassclaw_product_auth_flows (
     id          TEXT NOT NULL,
@@ -100,12 +147,15 @@ CREATE INDEX IF NOT EXISTS brassclaw_product_auth_interactions_tenant_user_idx
 /// PostgreSQL-backed implementation of the product-auth durable ports.
 pub(crate) struct PgAuthProductServices {
     pool: Arc<Pool>,
-    secret_store: Arc<dyn SecretStore>,
+    secret_store: Arc<PgSecretStore>,
     locks: Mutex<std::collections::HashMap<String, Weak<tokio::sync::Mutex<()>>>>,
 }
 
 impl PgAuthProductServices {
-    pub(crate) fn new(pool: Arc<Pool>, secret_store: Arc<dyn SecretStore>) -> Self {
+    // Keep the actual native owner so account/flow/secret writes can use one
+    // PostgreSQL transaction. Composition supplies its same pool/store; there
+    // is no downcast, separate store or active unsupported generic port.
+    pub(crate) fn new(pool: Arc<Pool>, secret_store: Arc<PgSecretStore>) -> Self {
         Self {
             pool,
             secret_store,
@@ -131,6 +181,7 @@ impl PgAuthProductServices {
 
     /// Tables that may be passed to the generic SQL helpers.
     const ALLOWED_TABLES: &'static [&'static str] = &[
+        "brassclaw_product_auth_requirement_selections",
         "brassclaw_product_auth_accounts",
         "brassclaw_product_auth_flows",
         "brassclaw_product_auth_interactions",
@@ -201,19 +252,12 @@ impl PgAuthProductServices {
 
         match expected_revision {
             None => {
-                let col_list: String = extra_names
-                    .iter()
-                    .enumerate()
-                    .map(|(i, name)| format!(", {name} = ${}", i + 4))
-                    .collect();
                 let mut params: Vec<&(dyn ToSql + Sync)> = vec![&tenant_id, &id, &json];
                 params.extend(extra_vals.iter());
                 let query = format!(
                     "INSERT INTO {table} (tenant_id, id, data{extra_insert}) \
                      VALUES ($1, $2, $3{extra_placeholders}) \
-                     ON CONFLICT (tenant_id, id) DO UPDATE \
-                     SET data = EXCLUDED.data, revision = {table}.revision + 1, \
-                     updated_at = NOW(){col_list}",
+                     ON CONFLICT (tenant_id, id) DO NOTHING",
                     extra_insert = extra_names
                         .iter()
                         .map(|n| format!(", {n}"))
@@ -222,7 +266,9 @@ impl PgAuthProductServices {
                         .map(|i| format!(", ${i}"))
                         .collect::<String>(),
                 );
-                client.execute(&query, &params).await.map_err(db_err)?;
+                if client.execute(&query, &params).await.map_err(db_err)? != 1 {
+                    return Err(AuthProductError::BackendConflict);
+                }
             }
             Some(rev) => {
                 let col_list: String = extra_names
@@ -233,8 +279,13 @@ impl PgAuthProductServices {
                 let mut params: Vec<&(dyn ToSql + Sync)> = vec![&tenant_id, &id, &json];
                 params.extend(extra_vals.iter());
                 let rev_param_idx = 4 + extra_names.len();
+                let data_expr = if table == "brassclaw_product_auth_accounts" {
+                    "jsonb_set($3::jsonb,'{auth_lifecycle_cleanup}',COALESCE(data->'auth_lifecycle_cleanup','[]'::jsonb),true)"
+                } else {
+                    "$3"
+                };
                 let query = format!(
-                    "UPDATE {table} SET data = $3, revision = revision + 1, \
+                    "UPDATE {table} SET data = {data_expr}, revision = revision + 1, \
                      updated_at = NOW(){col_list} \
                      WHERE tenant_id = $1 AND id = $2 AND revision = ${rev_param_idx}"
                 );
@@ -246,28 +297,6 @@ impl PgAuthProductServices {
             }
         }
         Ok(())
-    }
-
-    async fn delete_record(
-        &self,
-        table: &str,
-        tenant_id: &str,
-        id: &str,
-    ) -> Result<bool, AuthProductError> {
-        if !Self::ALLOWED_TABLES.contains(&table) {
-            tracing::debug!(
-                table,
-                "pg_auth_product_services: delete_record called with unknown table"
-            );
-            return Err(AuthProductError::BackendUnavailable);
-        }
-        let client = self.pool.get().await.map_err(pool_err)?;
-        let query = format!("DELETE FROM {table} WHERE tenant_id = $1 AND id = $2");
-        let n = client
-            .execute(&query, &[&tenant_id, &id])
-            .await
-            .map_err(db_err)?;
-        Ok(n > 0)
     }
 
     async fn list_records<T: DeserializeOwned>(
@@ -320,8 +349,15 @@ impl PgAuthProductServices {
     ) -> Result<Option<(CredentialAccount, i64)>, AuthProductError> {
         let tenant_id = scope.resource.tenant_id.as_str().to_string();
         let id = account_id.to_string();
-        self.get_record("brassclaw_product_auth_accounts", &tenant_id, &id)
-            .await
+        let record: Option<(CredentialAccount, i64)> = self
+            .get_record("brassclaw_product_auth_accounts", &tenant_id, &id)
+            .await?;
+        if let Some((record, _)) = &record
+            && !scope_matches(scope, &record.scope)
+        {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        Ok(record)
     }
 
     async fn write_account(
@@ -350,13 +386,18 @@ impl PgAuthProductServices {
     ) -> Result<Vec<CredentialAccount>, AuthProductError> {
         let tenant_id = scope.resource.tenant_id.as_str().to_string();
         let user_id = scope.resource.user_id.as_str().to_string();
-        self.list_records(
-            "brassclaw_product_auth_accounts",
-            &tenant_id,
-            "user_id",
-            &user_id,
-        )
-        .await
+        let records: Vec<CredentialAccount> = self
+            .list_records(
+                "brassclaw_product_auth_accounts",
+                &tenant_id,
+                "user_id",
+                &user_id,
+            )
+            .await?;
+        Ok(records
+            .into_iter()
+            .filter(|record| scope_matches(scope, &record.scope))
+            .collect())
     }
 
     async fn accounts_for_owner(
@@ -380,35 +421,78 @@ impl PgAuthProductServices {
 
     // ---- flow helpers ----
 
+    async fn read_flow_document(
+        &self,
+        scope: &AuthProductScope,
+        flow_id: AuthFlowId,
+    ) -> Result<Option<(crate::auth_flow_custody::StoredAuthFlow, i64)>, AuthProductError> {
+        let tenant = scope.resource.tenant_id.as_str().to_owned();
+        let id = flow_id.to_string();
+        let record: Option<(crate::auth_flow_custody::StoredAuthFlow, i64)> = self
+            .get_record("brassclaw_product_auth_flows", &tenant, &id)
+            .await?;
+        if let Some((document, _)) = &record
+            && (!scope_matches(scope, &document.flow.scope) || document.flow.id != flow_id)
+        {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        Ok(record)
+    }
     async fn read_flow(
         &self,
         scope: &AuthProductScope,
         flow_id: AuthFlowId,
     ) -> Result<Option<(AuthFlowRecord, i64)>, AuthProductError> {
-        let tenant_id = scope.resource.tenant_id.as_str().to_string();
-        let id = flow_id.to_string();
-        self.get_record("brassclaw_product_auth_flows", &tenant_id, &id)
-            .await
+        Ok(self
+            .read_flow_document(scope, flow_id)
+            .await?
+            .map(|(doc, revision)| (doc.flow, revision)))
     }
-
+    async fn write_flow_document(
+        &self,
+        document: &crate::auth_flow_custody::StoredAuthFlow,
+        expected_revision: Option<i64>,
+    ) -> Result<(), AuthProductError> {
+        let flow = &document.flow;
+        let tenant = flow.scope.resource.tenant_id.as_str().to_owned();
+        let user = flow.scope.resource.user_id.as_str().to_owned();
+        let id = flow.id.to_string();
+        let user_ref: &str = &user;
+        self.put_record(
+            "brassclaw_product_auth_flows",
+            &tenant,
+            &id,
+            &[("user_id", &user_ref as &(dyn ToSql + Sync))],
+            document,
+            expected_revision,
+        )
+        .await
+    }
+    async fn write_new_flow(
+        &self,
+        flow: &AuthFlowRecord,
+        snapshot: Option<CredentialAccount>,
+        setup: Option<Box<brassclaw_auth::CredentialRequirementSetup>>,
+    ) -> Result<(), AuthProductError> {
+        let document = crate::auth_flow_custody::StoredAuthFlow::new(flow.clone(), snapshot)?
+            .with_requirement_setup(setup)?;
+        self.write_flow_document(&document, None).await
+    }
     async fn write_flow(
         &self,
         flow: &AuthFlowRecord,
         expected_revision: Option<i64>,
     ) -> Result<(), AuthProductError> {
-        let tenant_id = flow.scope.resource.tenant_id.as_str().to_string();
-        let user_id = flow.scope.resource.user_id.as_str().to_string();
-        let id = flow.id.to_string();
-        let user_id_ref: &str = &user_id;
-        self.put_record(
-            "brassclaw_product_auth_flows",
-            &tenant_id,
-            &id,
-            &[("user_id", &user_id_ref as &(dyn ToSql + Sync))],
-            flow,
-            expected_revision,
-        )
-        .await
+        let expected = expected_revision.ok_or(AuthProductError::BackendConflict)?;
+        let (mut document, revision) = self
+            .read_flow_document(&flow.scope, flow.id)
+            .await?
+            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+        if revision != expected {
+            return Err(AuthProductError::BackendConflict);
+        }
+        document.flow = flow.clone();
+        self.write_flow_document(&document, Some(revision)).await
     }
 
     async fn flows_for_scope(
@@ -417,13 +501,18 @@ impl PgAuthProductServices {
     ) -> Result<Vec<AuthFlowRecord>, AuthProductError> {
         let tenant_id = scope.resource.tenant_id.as_str().to_string();
         let user_id = scope.resource.user_id.as_str().to_string();
-        self.list_records(
-            "brassclaw_product_auth_flows",
-            &tenant_id,
-            "user_id",
-            &user_id,
-        )
-        .await
+        let records: Vec<AuthFlowRecord> = self
+            .list_records(
+                "brassclaw_product_auth_flows",
+                &tenant_id,
+                "user_id",
+                &user_id,
+            )
+            .await?;
+        Ok(records
+            .into_iter()
+            .filter(|record| scope_matches(scope, &record.scope))
+            .collect())
     }
 
     // ---- interaction helpers ----
@@ -435,8 +524,15 @@ impl PgAuthProductServices {
     ) -> Result<Option<(StoredManualTokenInteraction, i64)>, AuthProductError> {
         let tenant_id = scope.resource.tenant_id.as_str().to_string();
         let id = interaction_id.to_string();
-        self.get_record("brassclaw_product_auth_interactions", &tenant_id, &id)
-            .await
+        let record: Option<(StoredManualTokenInteraction, i64)> = self
+            .get_record("brassclaw_product_auth_interactions", &tenant_id, &id)
+            .await?;
+        if let Some((record, _)) = &record
+            && !scope_matches(scope, &record.scope)
+        {
+            return Err(AuthProductError::CrossScopeDenied);
+        }
+        Ok(record)
     }
 
     async fn write_interaction(
@@ -459,27 +555,52 @@ impl PgAuthProductServices {
         .await
     }
 
-    async fn delete_interaction(
+    async fn abandon_manual_interaction_owned(
         &self,
         scope: &AuthProductScope,
         interaction_id: AuthInteractionId,
     ) -> Result<bool, AuthProductError> {
-        let tenant_id = scope.resource.tenant_id.as_str().to_string();
-        let id = interaction_id.to_string();
-        self.delete_record("brassclaw_product_auth_interactions", &tenant_id, &id)
-            .await
-    }
-
-    async fn cleanup_secret(
-        &self,
-        scope: &brassclaw_host_api::ResourceScope,
-        handle: &Option<SecretHandle>,
-    ) {
-        if let Some(h) = handle
-            && let Err(e) = self.secret_store.delete(scope, h).await
-        {
-            tracing::debug!(error = %e, "pg_auth_product_services: best-effort secret delete failed; orphaned handle is unreachable via account record");
+        let Some((mut record, revision)) = self.read_interaction(scope, interaction_id).await?
+        else {
+            return Ok(false);
+        };
+        if record.consumed_at.is_some() || record.canceled_at.is_some() {
+            return Ok(false);
         }
+        let before =
+            serde_json::to_value(&record).map_err(|_| AuthProductError::BackendUnavailable)?;
+        record.canceled_at = Some(Utc::now());
+        let after =
+            serde_json::to_value(&record).map_err(|_| AuthProductError::BackendUnavailable)?;
+        let write: Result<(), AuthProductError> = async {
+            let mut client = self.pool.get().await.map_err(pool_err)?;
+            let transaction = client.transaction().await.map_err(db_err)?;
+            let changed = transaction.execute(
+                "UPDATE brassclaw_product_auth_interactions SET data=$3,revision=revision+1,updated_at=NOW()
+                 WHERE tenant_id=$1 AND id=$2 AND revision=$4 AND data=$5",
+                &[&scope.resource.tenant_id.as_str(), &interaction_id.to_string(), &after, &revision, &before],
+            ).await.map_err(db_err)?;
+            if changed != 1 {return Err(AuthProductError::BackendConflict);}
+            transaction.commit().await.map_err(db_err)
+        }.await;
+        let error = match write {
+            Ok(()) => return Ok(true),
+            Err(error) => error,
+        };
+        // A missing acknowledgement does not authorize deleting this original.
+        // Read the actual disposition, including a concurrent completed writer.
+        let Some((mut current, _)) = self.read_interaction(scope, interaction_id).await? else {
+            return Err(error);
+        };
+        if current.consumed_at.is_some() {
+            return Ok(false);
+        }
+        let canceled = current.canceled_at.is_some();
+        current.canceled_at = record.canceled_at;
+        if canceled && current == record {
+            return Ok(true);
+        }
+        Err(error)
     }
 }
 
@@ -499,8 +620,10 @@ fn db_err(_e: tokio_postgres::Error) -> AuthProductError {
 // Stored interaction type
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct StoredManualTokenInteraction {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    requirement_setup: Option<Box<brassclaw_auth::CredentialRequirementSetup>>,
     id: AuthInteractionId,
     scope: AuthProductScope,
     provider: AuthProviderId,
@@ -508,7 +631,13 @@ struct StoredManualTokenInteraction {
     continuation: brassclaw_auth::AuthContinuationRef,
     update_binding: Option<CredentialAccountUpdateBinding>,
     expires_at: brassclaw_auth::Timestamp,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    update_account_snapshot: Option<CredentialAccount>,
     consumed_at: Option<brassclaw_auth::Timestamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    canceled_at: Option<brassclaw_auth::Timestamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    setup_flow_id: Option<AuthFlowId>,
 }
 
 // ---------------------------------------------------------------------------
@@ -517,17 +646,132 @@ struct StoredManualTokenInteraction {
 
 #[async_trait]
 impl AuthFlowManager for PgAuthProductServices {
+    async fn requirement_setup(
+        &self,
+        scope: &AuthProductScope,
+        flow: AuthFlowId,
+    ) -> Result<Option<brassclaw_auth::CredentialRequirementSetup>, AuthProductError> {
+        let (original, _) = self
+            .read_flow_document(scope, flow)
+            .await?
+            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+        let setup = original.auth_custody.requirement_setup.map(|setup| *setup);
+        if let Some(setup) = &setup {
+            setup
+                .verify_flow(&original.flow)
+                .map_err(|_| AuthProductError::BackendUnavailable)?;
+        }
+        Ok(setup)
+    }
+
+    async fn claim_dcr_cleanup(
+        &self,
+        prepared: brassclaw_auth::DcrCleanupPrepared,
+    ) -> Result<brassclaw_auth::DcrCleanupAdmission, AuthProductError> {
+        self.claim_dcr_cleanup_owned(prepared).await
+    }
+    async fn record_dcr_cleanup(
+        &self,
+        scope: &brassclaw_auth::AuthProductScope,
+        completion: brassclaw_auth::DcrCleanupCompletion,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, AuthProductError> {
+        self.record_dcr_cleanup_owned(scope, completion).await
+    }
+    async fn update_dcr_retirement(
+        &self,
+        original: &brassclaw_auth::DcrRegistrationOriginal,
+        update: brassclaw_auth::DcrRetirementUpdate,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        self.update_dcr_retirement_owned(original, update).await
+    }
+
+    async fn retain_legacy_dcr(
+        &self,
+        selection: brassclaw_auth::DcrLegacySelection,
+    ) -> Result<brassclaw_auth::DcrLegacyState, brassclaw_auth::AuthProductError> {
+        self.retain_legacy_dcr_owned(selection).await
+    }
+
+    async fn mark_dcr_cleanup_unavailable(
+        &self,
+        original: &brassclaw_auth::DcrRegistrationOriginal,
+        issue: brassclaw_auth::DcrCleanupUnavailable,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, AuthProductError> {
+        self.mark_dcr_cleanup_unavailable_owned(original, issue)
+            .await
+    }
+
+    async fn prepare_oauth_setup(
+        &self,
+        original: brassclaw_auth::OAuthSetupOriginal,
+        retirement: Option<brassclaw_auth::OAuthSetupRetirement>,
+    ) -> Result<brassclaw_auth::OAuthSetupState, brassclaw_auth::AuthProductError> {
+        self.prepare_oauth_setup_owned(original, retirement).await
+    }
+
+    async fn read_oauth_setup(
+        &self,
+        scope: &brassclaw_auth::AuthProductScope,
+        flow_id: brassclaw_auth::AuthFlowId,
+    ) -> Result<Option<brassclaw_auth::OAuthSetupState>, brassclaw_auth::AuthProductError> {
+        self.read_oauth_setup_owned(scope, flow_id).await
+    }
+
+    async fn prepare_dcr_registration(
+        &self,
+        original: brassclaw_auth::DcrRegistrationOriginal,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, AuthProductError> {
+        self.prepare_dcr_original(original).await
+    }
+
+    async fn retire_dcr_preparation(
+        &self,
+        original: brassclaw_auth::DcrRegistrationOriginal,
+        reason: brassclaw_auth::DcrCleanupReason,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, brassclaw_auth::AuthProductError> {
+        self.retire_dcr_preparation_owned(original, reason).await
+    }
+    async fn read_dcr_registration(
+        &self,
+        scope: &brassclaw_auth::AuthProductScope,
+        id: AuthFlowId,
+    ) -> Result<Option<brassclaw_auth::DcrRegistrationState>, AuthProductError> {
+        self.read_dcr_original(scope, id).await
+    }
+    async fn claim_dcr_registration(
+        &self,
+        original: &brassclaw_auth::DcrRegistrationOriginal,
+    ) -> Result<brassclaw_auth::DcrRegistrationAdmission, AuthProductError> {
+        self.claim_dcr_original(original).await
+    }
+    async fn record_dcr_registration(
+        &self,
+        scope: &brassclaw_auth::AuthProductScope,
+        completion: brassclaw_auth::DcrRegistrationCompletion,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, AuthProductError> {
+        self.record_dcr_original(scope, completion).await
+    }
+    async fn publish_dcr_challenge(
+        &self,
+        original: &brassclaw_auth::DcrRegistrationOriginal,
+        challenge: brassclaw_auth::DcrRegistrationChallenge,
+    ) -> Result<brassclaw_auth::DcrRegistrationState, AuthProductError> {
+        self.publish_dcr_original(original, challenge).await
+    }
+
     async fn create_flow(&self, request: NewAuthFlow) -> Result<AuthFlowRecord, AuthProductError> {
-        if let Some(binding) = &request.update_binding {
-            let scope =
-                AuthProductScope::new(request.scope.resource.clone(), request.scope.surface);
+        let snapshot = if let Some(binding) = &request.update_binding {
+            let scope = request.scope.clone();
             let account = self
                 .read_account(&scope, binding.account_id)
                 .await?
                 .map(|(account, _)| account)
                 .ok_or(AuthProductError::CredentialMissing)?;
             validate_flow_update_binding(&account, &request)?;
-        }
+            Some(account)
+        } else {
+            None
+        };
         let now = Utc::now();
         let record = AuthFlowRecord {
             id: request.id.unwrap_or_default(),
@@ -548,7 +792,8 @@ impl AuthFlowManager for PgAuthProductServices {
             updated_at: now,
             expires_at: request.expires_at,
         };
-        self.write_flow(&record, None).await?;
+        self.write_new_flow(&record, snapshot, request.requirement_setup)
+            .await?;
         Ok(record)
     }
 
@@ -564,116 +809,29 @@ impl AuthFlowManager for PgAuthProductServices {
         &self,
         scope: &AuthProductScope,
         request: OAuthCallbackClaimRequest,
-    ) -> Result<AuthFlowRecord, AuthProductError> {
-        let lock = self.lock_for(format!("flow:{}", request.flow_id));
-        let _guard = lock.lock().await;
-        let now = Utc::now();
-        let (mut record, rev) = self
-            .read_flow(scope, request.flow_id)
-            .await?
-            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-        match validate_callback_claim(&mut record, scope, &request, now) {
-            Ok(()) => {}
-            Err(AuthProductError::UnknownOrExpiredFlow) => {
-                self.write_flow(&record, Some(rev)).await?;
-                return Err(AuthProductError::UnknownOrExpiredFlow);
-            }
-            Err(error) => return Err(error),
-        }
-        if record.status == AuthFlowStatus::Completed {
-            return Ok(record);
-        }
-        record.status = AuthFlowStatus::CallbackReceived;
-        record.updated_at = now;
-        self.write_flow(&record, Some(rev)).await?;
-        Ok(record)
+    ) -> Result<brassclaw_auth::OAuthCallbackAdmission, AuthProductError> {
+        self.admit_callback(scope, request).await
     }
-
+    async fn read_oauth_callback_original(
+        &self,
+        scope: &AuthProductScope,
+        reference: &brassclaw_auth::OAuthCallbackReference,
+    ) -> Result<Option<brassclaw_auth::OAuthCallbackState>, AuthProductError> {
+        self.read_callback_original(scope, reference).await
+    }
+    async fn reconcile_oauth_callback(
+        &self,
+        scope: &AuthProductScope,
+        reference: &brassclaw_auth::OAuthCallbackReference,
+    ) -> Result<brassclaw_auth::OAuthCallbackState, AuthProductError> {
+        self.reconcile_callback_original(scope, reference).await
+    }
     async fn complete_oauth_callback(
         &self,
         scope: &AuthProductScope,
         input: OAuthCallbackInput,
     ) -> Result<AuthFlowRecord, AuthProductError> {
-        let lock = self.lock_for(format!("flow:{}", input.flow_id));
-        let _guard = lock.lock().await;
-        let now = Utc::now();
-        let (mut flow, flow_rev) = self
-            .read_flow(scope, input.flow_id)
-            .await?
-            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-        if is_terminal_status(flow.status) || flow.status != AuthFlowStatus::CallbackReceived {
-            return Err(AuthProductError::UnknownOrExpiredFlow);
-        }
-        let account = match &input.outcome {
-            ProviderCallbackOutcome::Authorized { exchange } => {
-                let account_id = flow
-                    .update_binding
-                    .as_ref()
-                    .map(|b| b.account_id)
-                    .or(exchange.account_id)
-                    .unwrap_or_else(CredentialAccountId::new);
-                let ownership = flow
-                    .update_binding
-                    .as_ref()
-                    .map(|b| b.ownership)
-                    .unwrap_or(CredentialOwnership::UserReusable);
-                let owner_extension = flow
-                    .update_binding
-                    .as_ref()
-                    .and_then(|b| b.owner_extension.clone());
-                let granted_extensions = flow
-                    .update_binding
-                    .as_ref()
-                    .map(|b| b.granted_extensions.clone())
-                    .unwrap_or_default();
-                let new_account = NewCredentialAccount {
-                    scope: flow.scope.clone(),
-                    provider: flow.provider.clone(),
-                    label: exchange.account_label.clone(),
-                    status: credential_status_for_completed_flow(),
-                    ownership,
-                    owner_extension,
-                    granted_extensions,
-                    access_secret: Some(exchange.access_secret.clone()),
-                    refresh_secret: exchange.refresh_secret.clone(),
-                    scopes: exchange.scopes.clone(),
-                };
-                validate_new_credential_account(&new_account)?;
-                let account = CredentialAccount {
-                    id: account_id,
-                    scope: new_account.scope,
-                    provider: new_account.provider,
-                    label: new_account.label,
-                    status: new_account.status,
-                    ownership: new_account.ownership,
-                    owner_extension: new_account.owner_extension,
-                    granted_extensions: new_account.granted_extensions,
-                    access_secret: new_account.access_secret,
-                    refresh_secret: new_account.refresh_secret,
-                    scopes: new_account.scopes,
-                    created_at: now,
-                    updated_at: now,
-                };
-                let existing_rev = self
-                    .read_account(scope, account.id)
-                    .await?
-                    .map(|(_, rev)| rev);
-                self.write_account(&account, existing_rev).await?;
-                flow.credential_account_id = Some(account.id);
-                account
-            }
-            ProviderCallbackOutcome::Denied => {
-                flow.status = AuthFlowStatus::Failed;
-                flow.updated_at = now;
-                self.write_flow(&flow, Some(flow_rev)).await?;
-                return Ok(flow);
-            }
-        };
-        flow.status = AuthFlowStatus::Completed;
-        flow.credential_account_id = Some(account.id);
-        flow.updated_at = now;
-        self.write_flow(&flow, Some(flow_rev)).await?;
-        Ok(flow)
+        self.complete_callback_owned(scope, input).await
     }
 
     async fn complete_credential_selection(
@@ -681,26 +839,7 @@ impl AuthFlowManager for PgAuthProductServices {
         scope: &AuthProductScope,
         input: brassclaw_auth::CredentialSelectionInput,
     ) -> Result<AuthFlowRecord, AuthProductError> {
-        let lock = self.lock_for(format!("flow:{}", input.flow_id));
-        let _guard = lock.lock().await;
-        let now = Utc::now();
-        let (mut flow, flow_rev) = self
-            .read_flow(scope, input.flow_id)
-            .await?
-            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-        if is_terminal_status(flow.status) {
-            return Err(AuthProductError::UnknownOrExpiredFlow);
-        }
-        if flow.kind != AuthFlowKind::IntegrationCredential {
-            return Err(AuthProductError::InvalidRequest {
-                reason: "flow is not a credential selection flow".to_string(),
-            });
-        }
-        flow.status = AuthFlowStatus::Completed;
-        flow.credential_account_id = Some(input.credential_account_id);
-        flow.updated_at = now;
-        self.write_flow(&flow, Some(flow_rev)).await?;
-        Ok(flow)
+        self.complete_selection_owned(scope, input).await
     }
 
     async fn complete_manual_token(
@@ -747,7 +886,7 @@ impl AuthFlowManager for PgAuthProductServices {
             .ok_or(AuthProductError::CredentialMissing)?;
         if !scope_matches(&record.scope, &account.scope)
             || account.provider != record.provider
-            || account.status != CredentialAccountStatus::Configured
+            || account.effective_status() != CredentialAccountStatus::Configured
         {
             return Err(AuthProductError::CrossScopeDenied);
         }
@@ -764,34 +903,26 @@ impl AuthFlowManager for PgAuthProductServices {
         scope: &AuthProductScope,
         interaction_id: AuthInteractionId,
     ) -> Result<Option<AuthFlowRecord>, AuthProductError> {
-        // Best-effort: find and cancel flows referencing this interaction.
-        let flows = self.flows_for_scope(scope).await?;
-        for mut flow in flows {
-            if is_terminal_status(flow.status) {
-                continue;
-            }
-            if flow.kind != AuthFlowKind::IntegrationCredential {
-                continue;
-            }
-            // There is no direct interaction_id field on AuthFlowRecord;
-            // the interaction is linked through the challenge. Cancel any
-            // active manual token flow for this scope.
-            let (_, rev) = match self.read_flow(scope, flow.id).await? {
-                Some(pair) => pair,
-                None => continue,
-            };
+        let Some(flow_id) = self.flows_for_scope(scope).await?.into_iter().find_map(|flow| {
+            matches!(&flow.challenge, Some(AuthChallenge::ManualTokenRequired {interaction_id:id,..}) if id == &interaction_id).then_some(flow.id)
+        }) else { return Ok(None); };
+        let lock = self.lock_for(format!("flow:{flow_id}"));
+        let _guard = lock.lock().await;
+        let (mut flow, revision) = self
+            .read_flow(scope, flow_id)
+            .await?
+            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+        if !matches!(&flow.challenge, Some(AuthChallenge::ManualTokenRequired {interaction_id:id,..}) if id == &interaction_id)
+        {
+            return Err(AuthProductError::BackendConflict);
+        }
+        if !is_terminal_status(flow.status) {
             flow.status = AuthFlowStatus::Canceled;
+            flow.error = Some(brassclaw_auth::AuthErrorCode::Canceled);
             flow.updated_at = Utc::now();
-            if let Err(e) = self.write_flow(&flow, Some(rev)).await {
-                tracing::debug!(error = %e, "pg_auth_product_services: best-effort canceled-flow write failed");
-            }
-            return Ok(Some(flow));
+            self.write_flow(&flow, Some(revision)).await?;
         }
-        // Also clean up the interaction record.
-        if let Err(e) = self.delete_interaction(scope, interaction_id).await {
-            tracing::debug!(error = %e, "pg_auth_product_services: best-effort interaction delete failed");
-        }
-        Ok(None)
+        Ok(Some(flow))
     }
 
     async fn fail_oauth_callback(
@@ -799,21 +930,7 @@ impl AuthFlowManager for PgAuthProductServices {
         scope: &AuthProductScope,
         input: OAuthCallbackFailureInput,
     ) -> Result<AuthFlowRecord, AuthProductError> {
-        let lock = self.lock_for(format!("flow:{}", input.flow_id));
-        let _guard = lock.lock().await;
-        let now = Utc::now();
-        let (mut flow, rev) = self
-            .read_flow(scope, input.flow_id)
-            .await?
-            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-        if is_terminal_status(flow.status) {
-            return Err(AuthProductError::UnknownOrExpiredFlow);
-        }
-        flow.status = AuthFlowStatus::Failed;
-        flow.error = Some(input.error);
-        flow.updated_at = now;
-        self.write_flow(&flow, Some(rev)).await?;
-        Ok(flow)
+        self.fail_callback_owned(scope, input).await
     }
 
     async fn mark_continuation_dispatched(
@@ -828,8 +945,14 @@ impl AuthFlowManager for PgAuthProductServices {
             .read_flow(scope, flow_id)
             .await?
             .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
+        if flow.status != AuthFlowStatus::Completed {
+            return Err(AuthProductError::FlowAlreadyTerminal);
+        }
+        if flow.continuation_emitted_at.is_some() {
+            return Ok(flow);
+        }
         flow.continuation_emitted_at = Some(emitted_at);
-        flow.updated_at = Utc::now();
+        flow.updated_at = emitted_at;
         self.write_flow(&flow, Some(rev)).await?;
         Ok(flow)
     }
@@ -841,17 +964,27 @@ impl AuthFlowManager for PgAuthProductServices {
     ) -> Result<AuthFlowRecord, AuthProductError> {
         let lock = self.lock_for(format!("flow:{flow_id}"));
         let _guard = lock.lock().await;
-        let (mut flow, rev) = self
-            .read_flow(scope, flow_id)
+        let (mut document, revision) = self
+            .read_flow_document(scope, flow_id)
             .await?
             .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-        if is_terminal_status(flow.status) {
-            return Ok(flow);
+        if is_terminal_status(document.flow.status) {
+            return Err(if document.flow.status == AuthFlowStatus::Canceled {
+                AuthProductError::Canceled
+            } else {
+                AuthProductError::FlowAlreadyTerminal
+            });
         }
-        flow.status = AuthFlowStatus::Canceled;
-        flow.updated_at = Utc::now();
-        self.write_flow(&flow, Some(rev)).await?;
-        Ok(flow)
+        let now = Utc::now();
+        document.flow.status = AuthFlowStatus::Canceled;
+        document.flow.error = Some(brassclaw_auth::AuthErrorCode::Canceled);
+        document.flow.updated_at = now;
+        document
+            .auth_custody
+            .require_dcr_cleanup(&mut document.flow, now)?;
+        // Cancellation and cleanup responsibility are the same real CAS.
+        self.write_flow_document(&document, Some(revision)).await?;
+        Ok(document.flow)
     }
 }
 
@@ -865,47 +998,27 @@ impl AuthFlowRecordSource for PgAuthProductServices {
         &self,
         query: TurnGateAuthFlowQuery,
     ) -> Result<Option<AuthFlowRecord>, AuthProductError> {
-        // Build a minimal scope from the owner to query flows.
-        let resource = brassclaw_host_api::ResourceScope {
-            tenant_id: query.owner.tenant_id.clone(),
-            user_id: query.owner.user_id.clone(),
-            agent_id: query.owner.agent_id.clone(),
-            project_id: query.owner.project_id.clone(),
-            thread_id: Some(query.owner.thread_id.clone()),
-            invocation_id: brassclaw_host_api::InvocationId::new(),
-        };
-        for surface in AuthSurface::ALL {
-            let scope = AuthProductScope::new(resource.clone(), surface);
-            let flows = self.flows_for_scope(&scope).await?;
-            for flow in flows {
-                if flow_matches_turn_gate_query(&flow, &query) {
-                    return Ok(Some(flow));
-                }
-            }
-        }
-        Ok(None)
+        Ok(self
+            .flows_for_owner(query.owner.clone())
+            .await?
+            .into_iter()
+            .find(|flow| flow_matches_turn_gate_query(flow, &query)))
     }
 
     async fn flows_for_owner(
         &self,
         owner: AuthFlowOwnerScope,
     ) -> Result<Vec<AuthFlowRecord>, AuthProductError> {
-        let resource = brassclaw_host_api::ResourceScope {
-            tenant_id: owner.tenant_id.clone(),
-            user_id: owner.user_id.clone(),
-            agent_id: owner.agent_id.clone(),
-            project_id: owner.project_id.clone(),
-            thread_id: Some(owner.thread_id.clone()),
-            invocation_id: brassclaw_host_api::InvocationId::new(),
-        };
-        let mut results = Vec::new();
-        for surface in AuthSurface::ALL {
-            let scope = AuthProductScope::new(resource.clone(), surface);
-            let flows = self.flows_for_scope(&scope).await?;
-            results.extend(flows.into_iter().filter(|flow| owner.matches(flow)));
-        }
+        let mut results: Vec<AuthFlowRecord> = self
+            .list_records(
+                "brassclaw_product_auth_flows",
+                owner.tenant_id.as_str(),
+                "user_id",
+                owner.user_id.as_str(),
+            )
+            .await?;
+        results.retain(|flow| owner.matches(flow));
         results.sort_by_key(|flow| flow.id);
-        results.dedup_by_key(|flow| flow.id);
         Ok(results)
     }
 }
@@ -920,17 +1033,23 @@ impl brassclaw_auth::AuthInteractionService for PgAuthProductServices {
         &self,
         request: ManualTokenSetupRequest,
     ) -> Result<AuthChallenge, AuthProductError> {
-        if let Some(binding) = &request.update_binding {
-            let scope =
-                AuthProductScope::new(request.scope.resource.clone(), request.scope.surface);
+        if let Some(setup) = &request.requirement_setup {
+            setup.verify_manual(&request.scope, &request.provider)?;
+        }
+        let update_account_snapshot = if let Some(binding) = &request.update_binding {
+            let scope = request.scope.clone();
             let account = self
                 .read_account(&scope, binding.account_id)
                 .await?
                 .map(|(account, _)| account)
                 .ok_or(AuthProductError::CredentialMissing)?;
             validate_manual_token_update_binding(&account, &request, binding)?;
-        }
+            Some(account)
+        } else {
+            None
+        };
         let interaction = StoredManualTokenInteraction {
+            requirement_setup: request.requirement_setup,
             id: AuthInteractionId::new(),
             scope: request.scope.clone(),
             provider: request.provider.clone(),
@@ -938,7 +1057,10 @@ impl brassclaw_auth::AuthInteractionService for PgAuthProductServices {
             continuation: request.continuation,
             update_binding: request.update_binding,
             expires_at: request.expires_at,
+            update_account_snapshot,
             consumed_at: None,
+            canceled_at: None,
+            setup_flow_id: None,
         };
         self.write_interaction(&interaction, None).await?;
         Ok(AuthChallenge::ManualTokenRequired {
@@ -954,117 +1076,9 @@ impl brassclaw_auth::AuthInteractionService for PgAuthProductServices {
         scope: &AuthProductScope,
         request: SecretSubmitRequest,
     ) -> Result<SecretSubmitResult, AuthProductError> {
-        validate_secret(&request)?;
-        let lock = self.lock_for(format!("interaction:{}", request.interaction_id));
-        let _guard = lock.lock().await;
-        let (mut pending, rev) = self
-            .read_interaction(scope, request.interaction_id)
-            .await?
-            .ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-        if !brassclaw_auth::scope_matches(scope, &pending.scope) {
-            return Err(AuthProductError::CrossScopeDenied);
-        }
-        let now = Utc::now();
-        if pending.consumed_at.is_some() || now > pending.expires_at {
-            return Err(AuthProductError::UnknownOrExpiredFlow);
-        }
-        let continuation = pending.continuation.clone();
-        // Build or update credential account.
-        let account_id = pending
-            .update_binding
-            .as_ref()
-            .map(|b| b.account_id)
-            .unwrap_or_else(|| CredentialAccountId::from_uuid(pending.id.as_uuid()));
-        let access_handle = SecretHandle::new(format!(
-            "product-auth-manual-{account_id}-{pending_id}",
-            pending_id = pending.id
-        ))
-        .map_err(|_| AuthProductError::BackendUnavailable)?;
-        let ownership = pending
-            .update_binding
-            .as_ref()
-            .map(|b| b.ownership)
-            .unwrap_or(CredentialOwnership::UserReusable);
-        let owner_extension = pending
-            .update_binding
-            .as_ref()
-            .and_then(|b| b.owner_extension.clone());
-        let granted_extensions = pending
-            .update_binding
-            .as_ref()
-            .map(|b| b.granted_extensions.clone())
-            .unwrap_or_default();
-        let account_scope = pending.scope.clone();
-        let new_account = NewCredentialAccount {
-            scope: account_scope,
-            provider: pending.provider.clone(),
-            label: pending.label.clone(),
-            status: credential_status_for_completed_flow(),
-            ownership,
-            owner_extension,
-            granted_extensions,
-            access_secret: Some(access_handle.clone()),
-            refresh_secret: None,
-            scopes: Vec::new(),
-        };
-        validate_new_credential_account(&new_account)?;
-        self.secret_store
-            .put(
-                pending.scope.resource.clone(),
-                access_handle.clone(),
-                request.secret,
-            )
+        self.submit_manual_native(scope, request, false, None)
             .await
-            .map_err(|_| AuthProductError::BackendUnavailable)?;
-        let (existing_rev, existing) = match self.read_account(scope, account_id).await? {
-            Some((existing, rev)) => (Some(rev), Some(existing)),
-            None => (None, None),
-        };
-        let account = if let (Some(mut existing), Some(existing_rev)) = (existing, existing_rev) {
-            validate_account_update_target(&existing, &new_account)?;
-            let previous_access = existing.access_secret.clone();
-            update_account_from_request(&mut existing, new_account, now)?;
-            if let Err(error) = self.write_account(&existing, Some(existing_rev)).await {
-                self.cleanup_secret(&pending.scope.resource, &Some(access_handle))
-                    .await;
-                return Err(error);
-            }
-            if previous_access.as_ref() != existing.access_secret.as_ref() {
-                self.cleanup_secret(&pending.scope.resource, &previous_access)
-                    .await;
-            }
-            existing
-        } else {
-            let account = CredentialAccount {
-                id: account_id,
-                scope: new_account.scope,
-                provider: new_account.provider,
-                label: new_account.label,
-                status: new_account.status,
-                ownership: new_account.ownership,
-                owner_extension: new_account.owner_extension,
-                granted_extensions: new_account.granted_extensions,
-                access_secret: new_account.access_secret,
-                refresh_secret: new_account.refresh_secret,
-                scopes: new_account.scopes,
-                created_at: now,
-                updated_at: now,
-            };
-            if let Err(error) = self.write_account(&account, None).await {
-                self.cleanup_secret(&pending.scope.resource, &account.access_secret)
-                    .await;
-                return Err(error);
-            }
-            account
-        };
-        // Mark interaction consumed.
-        pending.consumed_at = Some(now);
-        self.write_interaction(&pending, Some(rev)).await?;
-        Ok(SecretSubmitResult {
-            account_id: account.id,
-            status: account.status,
-            continuation,
-        })
+            .map(|(result, _)| result)
     }
 
     async fn abandon_manual_token(
@@ -1072,7 +1086,8 @@ impl brassclaw_auth::AuthInteractionService for PgAuthProductServices {
         scope: &AuthProductScope,
         interaction_id: AuthInteractionId,
     ) -> Result<bool, AuthProductError> {
-        self.delete_interaction(scope, interaction_id).await
+        self.abandon_manual_interaction_owned(scope, interaction_id)
+            .await
     }
 }
 
@@ -1098,6 +1113,7 @@ impl CredentialAccountService for PgAuthProductServices {
             owner_extension: request.owner_extension,
             granted_extensions: request.granted_extensions,
             access_secret: request.access_secret,
+            access_expires_at: request.access_expires_at,
             refresh_secret: request.refresh_secret,
             scopes: request.scopes,
             created_at: now,
@@ -1190,7 +1206,7 @@ impl CredentialAccountService for PgAuthProductServices {
             .into_iter()
             .filter(|account| {
                 account.provider == request.provider
-                    && account.status == CredentialAccountStatus::Configured
+                    && account.effective_status() == CredentialAccountStatus::Configured
             })
             .collect::<Vec<_>>();
         if configured.is_empty() {
@@ -1243,7 +1259,7 @@ impl CredentialAccountService for PgAuthProductServices {
         let configured = authorized
             .iter()
             .copied()
-            .filter(|account| account.status == CredentialAccountStatus::Configured)
+            .filter(|account| account.effective_status() == CredentialAccountStatus::Configured)
             .collect::<Vec<_>>();
         match configured.as_slice() {
             [account] => {
@@ -1287,7 +1303,7 @@ impl CredentialAccountService for PgAuthProductServices {
         if account.provider != request.provider {
             return Err(AuthProductError::CredentialMissing);
         }
-        if account.status != CredentialAccountStatus::Configured {
+        if account.effective_status() != CredentialAccountStatus::Configured {
             return Err(AuthProductError::CredentialMissing);
         }
         if !account_is_authorized_for_requester(&account, request.requester_extension.as_ref()) {
@@ -1313,6 +1329,93 @@ impl CredentialAccountService for PgAuthProductServices {
 
 #[async_trait]
 impl CredentialAccountRecordSource for PgAuthProductServices {
+    async fn account_record(
+        &self,
+        scope: &AuthProductScope,
+        account: CredentialAccountId,
+    ) -> Result<Option<CredentialAccount>, AuthProductError> {
+        self.read_account(scope, account)
+            .await
+            .map(|record| record.map(|(account, _)| account))
+    }
+
+    async fn requirement_selection(
+        &self,
+        scope: &AuthProductScope,
+        requirement: &brassclaw_host_api::RuntimeCredentialAccountRequirement,
+    ) -> Result<Option<brassclaw_auth::CredentialRequirementSelection>, AuthProductError> {
+        let key = brassclaw_auth::CredentialRequirementOwner::from_scope(&scope.resource)
+            .key(requirement)?;
+        let selected: Option<(brassclaw_auth::CredentialRequirementSelection, i64)> = self
+            .get_record(
+                "brassclaw_product_auth_requirement_selections",
+                scope.resource.tenant_id.as_str(),
+                key.as_str(),
+            )
+            .await?;
+        let selected = selected.map(|(selected, _)| selected);
+        if let Some(selected) = &selected {
+            selected
+                .verify_requested(scope, requirement)
+                .map_err(|_| AuthProductError::BackendUnavailable)?;
+            let (origin, _) = self
+                .read_flow_document(selected.original_scope(), selected.original_flow())
+                .await?
+                .ok_or(AuthProductError::BackendUnavailable)?;
+            let setup = origin
+                .auth_custody
+                .requirement_setup
+                .as_deref()
+                .ok_or(AuthProductError::BackendUnavailable)?;
+            if origin.auth_custody.requirement_selection.as_deref() != Some(selected) {
+                return Err(AuthProductError::BackendUnavailable);
+            }
+            selected
+                .verify_receipt(&origin.flow, setup)
+                .map_err(|_| AuthProductError::BackendUnavailable)?;
+            if let Some(source) = &origin.auth_custody.requirement_source {
+                source
+                    .verify_selection(selected)
+                    .map_err(|_| AuthProductError::BackendUnavailable)?;
+            }
+        }
+        Ok(selected)
+    }
+
+    async fn requirement_selection_for_flow(
+        &self,
+        scope: &brassclaw_auth::AuthProductScope,
+        flow_id: brassclaw_auth::AuthFlowId,
+        requirement: &brassclaw_host_api::RuntimeCredentialAccountRequirement,
+    ) -> Result<Option<brassclaw_auth::CredentialRequirementSelection>, AuthProductError> {
+        let Some((document, _)) = self.read_flow_document(scope, flow_id).await? else {
+            return Ok(None);
+        };
+        document.auth_custody.original_requirement_selection(
+            scope,
+            flow_id,
+            &document.flow,
+            requirement,
+        )
+    }
+
+    async fn requirement_source_for_flow(
+        &self,
+        scope: &brassclaw_auth::AuthProductScope,
+        flow_id: brassclaw_auth::AuthFlowId,
+        requirement: &brassclaw_host_api::RuntimeCredentialAccountRequirement,
+    ) -> Result<Option<brassclaw_auth::CredentialRequirementSource>, AuthProductError> {
+        let Some((document, _)) = self.read_flow_document(scope, flow_id).await? else {
+            return Ok(None);
+        };
+        document.auth_custody.original_requirement_source(
+            scope,
+            flow_id,
+            &document.flow,
+            requirement,
+        )
+    }
+
     async fn accounts_for_owner(
         &self,
         scope: &AuthProductScope,
@@ -1328,6 +1431,53 @@ impl CredentialAccountRecordSource for PgAuthProductServices {
 
 #[async_trait]
 impl CredentialSetupService for PgAuthProductServices {
+    async fn refresh_action(
+        &self,
+        request: &CredentialRefreshRequest,
+    ) -> Result<Option<brassclaw_auth::CredentialRefreshAction>, AuthProductError> {
+        self.read_refresh_action(request).await
+    }
+    async fn begin_refresh(
+        &self,
+        prepared: brassclaw_auth::CredentialRefreshPrepared,
+    ) -> Result<brassclaw_auth::CredentialRefreshAdmission, AuthProductError> {
+        self.begin_refresh_action(prepared).await
+    }
+    async fn reconcile_refresh(
+        &self,
+        request: &CredentialRefreshRequest,
+    ) -> Result<Option<brassclaw_auth::CredentialRefreshAction>, AuthProductError> {
+        self.reconcile_refresh_action(request).await
+    }
+
+    async fn complete_refresh(
+        &self,
+        completion: brassclaw_auth::CredentialRefreshCompletion,
+    ) -> Result<brassclaw_auth::CredentialRefreshAction, AuthProductError> {
+        self.complete_refresh_action(completion).await
+    }
+
+    async fn compare_and_update_account(
+        &self,
+        expected: &CredentialAccount,
+        request: NewCredentialAccount,
+    ) -> Result<CredentialAccount, AuthProductError> {
+        let lock = self.lock_for(format!("account:{}", expected.id));
+        let _guard = lock.lock().await;
+        let (mut current, revision) = self
+            .read_account(&expected.scope, expected.id)
+            .await?
+            .ok_or(AuthProductError::CredentialMissing)?;
+        if &current != expected {
+            return Err(AuthProductError::BackendConflict);
+        }
+        update_account_from_request(&mut current, request, Utc::now())?;
+        // The revision comes from the same read as the exact snapshot check.
+        // An independent writer between read and write is rejected by SQL CAS.
+        self.write_account(&current, Some(revision)).await?;
+        Ok(current)
+    }
+
     async fn create_or_update_account(
         &self,
         request: CredentialAccountMutation,
@@ -1358,76 +1508,6 @@ impl CredentialSetupService for PgAuthProductServices {
 // SecretCleanupService
 // ---------------------------------------------------------------------------
 
-#[async_trait]
-impl SecretCleanupService for PgAuthProductServices {
-    async fn cleanup_for_lifecycle(
-        &self,
-        request: SecretCleanupRequest,
-    ) -> Result<SecretCleanupReport, AuthProductError> {
-        let mut report = SecretCleanupReport::default();
-        for account in self.accounts_for_scope(&request.scope).await? {
-            let owns_extension_account = account.owner_extension.as_ref()
-                == Some(&request.extension_id)
-                && account.ownership == CredentialOwnership::ExtensionOwned;
-            let had_grant = account
-                .granted_extensions
-                .iter()
-                .any(|ext| ext == &request.extension_id);
-            if !(owns_extension_account || had_grant) {
-                continue;
-            }
-            let lock = self.lock_for(format!("account:{}", account.id));
-            let _guard = lock.lock().await;
-            let (mut current, rev) = self
-                .read_account(&request.scope, account.id)
-                .await?
-                .ok_or(AuthProductError::CredentialMissing)?;
-            current
-                .granted_extensions
-                .retain(|ext| ext != &request.extension_id);
-            if had_grant {
-                report.removed_grants.push(current.id);
-            }
-            let (purge_access, purge_refresh) = if owns_extension_account {
-                match request.action {
-                    SecretCleanupAction::Deactivate => {
-                        current.status = CredentialAccountStatus::Inactive;
-                        report.retained_accounts.push(current.id);
-                        (None, None)
-                    }
-                    SecretCleanupAction::Uninstall => {
-                        let access = current.access_secret.take();
-                        let refresh = current.refresh_secret.take();
-                        if current.status != CredentialAccountStatus::Revoked {
-                            current.status = CredentialAccountStatus::Revoked;
-                            report.revoked_accounts.push(current.id);
-                        }
-                        (access, refresh)
-                    }
-                }
-            } else {
-                if had_grant {
-                    report.retained_accounts.push(current.id);
-                }
-                (None, None)
-            };
-            current.updated_at = Utc::now();
-            self.write_account(&current, Some(rev)).await?;
-            if let Some(h) = &purge_access
-                && let Err(e) = self.secret_store.delete(&request.scope.resource, h).await
-            {
-                tracing::debug!(error = %e, "pg_auth_product_services: best-effort access-secret purge failed");
-            }
-            if let Some(h) = &purge_refresh
-                && let Err(e) = self.secret_store.delete(&request.scope.resource, h).await
-            {
-                tracing::debug!(error = %e, "pg_auth_product_services: best-effort refresh-secret purge failed");
-            }
-        }
-        Ok(report)
-    }
-}
-
 // ---------------------------------------------------------------------------
 // RebornManualTokenFlowService (inline — private helpers are not pub)
 // ---------------------------------------------------------------------------
@@ -1438,49 +1518,27 @@ impl RebornManualTokenFlowService for PgAuthProductServices {
         &self,
         request: ManualTokenSetupRequest,
     ) -> Result<AuthChallenge, AuthProductError> {
-        let flow_scope = request.scope.clone();
-        let flow_provider = request.provider.clone();
-        let flow_continuation = request.continuation.clone();
-        let flow_update_binding = request.update_binding.clone();
-        let flow_expires_at = request.expires_at;
-        let challenge = self.request_secret_input(request).await?;
-        let brassclaw_auth::AuthChallenge::ManualTokenRequired {
-            interaction_id,
-            provider,
-            label,
-            expires_at,
-        } = &challenge
-        else {
-            return Err(AuthProductError::InvalidRequest {
-                reason: "manual token setup returned an unexpected challenge".to_string(),
-            });
-        };
-        if let Err(error) = self
-            .create_flow(NewAuthFlow {
-                id: None,
-                scope: flow_scope.clone(),
-                kind: AuthFlowKind::IntegrationCredential,
-                provider: flow_provider,
-                challenge: brassclaw_auth::AuthChallenge::ManualTokenRequired {
-                    interaction_id: *interaction_id,
-                    provider: provider.clone(),
-                    label: label.clone(),
-                    expires_at: *expires_at,
+        crate::manual_token_flow::request_manual_token_flow_with(self, self, request).await
+    }
+
+    async fn submit_original_manual_token_flow(
+        &self,
+        scope: &AuthProductScope,
+        identity: ManualTokenSetupIdentity,
+        secret: secrecy::SecretString,
+    ) -> Result<(SecretSubmitResult, AuthFlowRecord), AuthProductError> {
+        let (result, flow) = self
+            .submit_manual_native(
+                scope,
+                SecretSubmitRequest {
+                    interaction_id: identity.interaction_id,
+                    secret,
                 },
-                continuation: flow_continuation,
-                update_binding: flow_update_binding,
-                opaque_state_hash: None,
-                pkce_verifier_hash: None,
-                expires_at: flow_expires_at,
-            })
-            .await
-        {
-            let _ = self
-                .abandon_manual_token(&flow_scope, *interaction_id)
-                .await;
-            return Err(error);
-        }
-        Ok(challenge)
+                true,
+                Some(identity.flow_id),
+            )
+            .await?;
+        Ok((result, flow.ok_or(AuthProductError::BackendConflict)?))
     }
 
     async fn submit_manual_token_flow(
@@ -1488,33 +1546,37 @@ impl RebornManualTokenFlowService for PgAuthProductServices {
         scope: &AuthProductScope,
         request: SecretSubmitRequest,
     ) -> Result<(SecretSubmitResult, AuthFlowRecord), AuthProductError> {
-        let interaction_id = request.interaction_id;
-        let result = self.submit_manual_token(scope, request).await?;
-        let completed = match self
-            .complete_manual_token(
-                scope,
-                brassclaw_auth::ManualTokenCompletionInput {
-                    interaction_id,
-                    credential_account_id: result.account_id,
-                },
-            )
+        let (result, flow) = self
+            .submit_manual_native(scope, request, true, None)
+            .await?;
+        let flow = flow.ok_or(AuthProductError::BackendConflict)?;
+        Ok((result, flow))
+    }
+
+    async fn recover_original_manual_token_flow(
+        &self,
+        scope: &AuthProductScope,
+        identity: ManualTokenSetupIdentity,
+    ) -> Result<Option<AuthFlowRecord>, AuthProductError> {
+        self.recover_native_manual_setup_original(scope, identity)
             .await
-        {
-            Ok(completed) => completed,
-            Err(error) => {
-                if let Err(e) = self.cancel_manual_token(scope, interaction_id).await {
-                    tracing::debug!(error = %e, "pg_auth_product_services: best-effort cancel_manual_token failed on error path");
-                }
-                if let Err(e) = self
-                    .update_status(scope, result.account_id, CredentialAccountStatus::Revoked)
-                    .await
-                {
-                    tracing::debug!(error = %e, "pg_auth_product_services: best-effort revoke-status update failed on error path");
-                }
-                return Err(error);
-            }
-        };
-        Ok((result, completed))
+    }
+
+    async fn request_original_manual_token_flow(
+        &self,
+        identity: ManualTokenSetupIdentity,
+        request: ManualTokenSetupRequest,
+    ) -> Result<AuthFlowRecord, AuthProductError> {
+        self.request_native_manual_setup_original(identity, request)
+            .await
+    }
+
+    async fn continue_original_manual_token_flow(
+        &self,
+        scope: &AuthProductScope,
+        identity: ManualTokenSetupIdentity,
+    ) -> Result<(SecretSubmitResult, AuthFlowRecord), AuthProductError> {
+        self.continue_native_manual_original(scope, identity).await
     }
 
     async fn abandon_manual_token_flow(
@@ -1522,9 +1584,14 @@ impl RebornManualTokenFlowService for PgAuthProductServices {
         scope: &AuthProductScope,
         interaction_id: AuthInteractionId,
     ) -> Result<bool, AuthProductError> {
-        let canceled = self.cancel_manual_token(scope, interaction_id).await.ok();
-        let deleted = self.abandon_manual_token(scope, interaction_id).await?;
-        Ok(deleted || canceled.flatten().is_some())
+        let canceled = self.cancel_manual_token(scope, interaction_id).await?;
+        if canceled.as_ref().is_some_and(|flow| {
+            is_terminal_status(flow.status) && flow.status != AuthFlowStatus::Canceled
+        }) {
+            return Ok(false);
+        }
+        let abandoned = self.abandon_manual_token(scope, interaction_id).await?;
+        Ok(abandoned || canceled.is_some_and(|flow| flow.status == AuthFlowStatus::Canceled))
     }
 }
 
@@ -1563,3 +1630,11 @@ pub(crate) async fn run_auth_migrations(
     let client = pool.get().await.map_err(pool_err)?;
     client.batch_execute(MIGRATIONS).await.map_err(db_err)
 }
+
+#[cfg(all(test, feature = "skills-db"))]
+#[path = "pg_auth_refresh_tests.rs"]
+mod refresh_tests;
+
+#[cfg(all(test, feature = "skills-db"))]
+#[path = "pg_auth_requirement_tests.rs"]
+mod requirement_tests;

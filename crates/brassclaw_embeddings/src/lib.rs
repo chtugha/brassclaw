@@ -28,7 +28,9 @@ pub mod url_check;
 pub use cache::{CachedEmbeddingProvider, EmbeddingCacheConfig};
 #[cfg(any(test, feature = "testing"))]
 pub use mock::MockEmbeddings;
-pub use provider::{EmbeddingError, EmbeddingProvider};
+pub use provider::{
+    EmbeddingDispatchGuard, EmbeddingDispatchState, EmbeddingError, EmbeddingProvider,
+};
 
 /// Default maximum number of cached embeddings.
 pub const DEFAULT_EMBEDDING_CACHE_SIZE: usize = 10_000;

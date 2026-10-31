@@ -39,9 +39,9 @@ mod pg_retained_q1;
 #[path = "../../../../crates/brassclaw_reborn_composition/src/pg_workflow_review.rs"]
 mod pg_workflow_review;
 #[path = "retained_kernel.rs"]
-mod retained_kernel;
+pub(crate) mod retained_kernel;
 #[path = "retained_program.rs"]
-mod retained_program;
+pub(crate) mod retained_program;
 #[path = "retained_program_variants.rs"]
 mod retained_program_variants;
 use retained_program_variants::{program_with_preload_source, program_with_source};

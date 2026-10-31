@@ -103,6 +103,7 @@ pub(super) async fn execute_cases(
             pool.clone(),
             "bootstrap-reply",
             answer,
+            None,
         ))
         .await?;
         let tools = crate::installed_monty_catalogue::bootstrap_reply_tools(

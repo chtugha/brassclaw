@@ -493,6 +493,11 @@ impl CapabilityStage {
                 if failure.error_kind == CapabilityFailureKind::Cancelled {
                     return self.cancelled_after_checkpoint(ctx, state).await;
                 }
+                if failure.error_kind == CapabilityFailureKind::EffectOutcomeUnresolved {
+                    return self
+                        .stop_unresolved_effect(ctx, state, &call, failure)
+                        .await;
+                }
                 state
                     .recent_failure_kinds
                     .push(capability_failure_kind(&failure.error_kind));
@@ -517,6 +522,39 @@ impl CapabilityStage {
                 .await
             }
         }
+    }
+
+    /// An unknown effect is terminal regardless of the configured recovery strategy.
+    /// Persist the failure before observing cancellation or writing the final checkpoint.
+    async fn stop_unresolved_effect(
+        &self,
+        ctx: StageContext<'_>,
+        mut state: LoopExecutionState,
+        call: &CapabilityCallCandidate,
+        failure: brassclaw_turns::run_profile::CapabilityFailure,
+    ) -> Result<BatchStep, AgentLoopExecutorError> {
+        state
+            .recent_failure_kinds
+            .push(LoopFailureKind::EffectOutcomeUnresolved);
+        let summary = CapabilityErrorSummary {
+            class: CapabilityErrorClass::Permanent,
+            safe_summary: capability_failed_summary(&failure.error_kind, failure.safe_summary)?,
+            diagnostic_ref: None,
+        };
+        append_capability_error_ref(ctx.host, &mut state, call, &summary, None).await?;
+        let state = match CheckpointStage.cancel_if_requested(ctx, state).await? {
+            CancelCheck::Continue(next) => *next,
+            CancelCheck::Exit(exit) => return Ok(BatchStep::Exit(exit)),
+        };
+        let checked = CheckpointStage
+            .write(ctx, state, CheckpointKind::Final)
+            .await?;
+        Ok(BatchStep::Exit(failed_exit(
+            ctx.host,
+            checked.state,
+            LoopFailureKind::EffectOutcomeUnresolved,
+            Some(checked.checkpoint_id),
+        )?))
     }
 
     async fn handle_capability_error(
@@ -610,6 +648,12 @@ impl CapabilityStage {
                         CapabilityOutcome::Failed(failure) => {
                             if failure.error_kind == CapabilityFailureKind::Cancelled {
                                 return self.cancelled_after_checkpoint(ctx, state).await;
+                            }
+                            if failure.error_kind == CapabilityFailureKind::EffectOutcomeUnresolved
+                            {
+                                return self
+                                    .stop_unresolved_effect(ctx, state, &call, failure)
+                                    .await;
                             }
                             model_observation =
                                 Some(model_visible_capability_failure_observation(&failure));

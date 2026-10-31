@@ -1786,6 +1786,7 @@ fn prepare_obligation_error_to_invocation(
             credential_requirements,
         } => CapabilityInvocationError::AuthorizationRequiresAuth {
             capability: capability_id.clone(),
+            boundary: brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
             required_secrets: Vec::new(),
             credential_requirements,
         },

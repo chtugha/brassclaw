@@ -7,11 +7,7 @@ def _validator_review_declaration_shape(value):
     if type(value["format"]) is not str or type(value["exports"]) is not dict or type(value["private_functions"]) is not dict:
         return False
     for name, entry in value["exports"].items():
-        if type(name) is not str or type(entry) is not dict or set(entry) != {"symbol", "parameters", "mapping"}:
-            return False
-        if type(entry["symbol"]) is not str or type(entry["mapping"]) is not bool or type(entry["parameters"]) is not list:
-            return False
-        if any(type(parameter) is not str for parameter in entry["parameters"]):
+        if type(name) is not str or not _validator_preload_export_shape(entry):
             return False
     for name, parameters in value["private_functions"].items():
         if type(name) is not str or type(parameters) is not list or any(type(parameter) is not str for parameter in parameters):
@@ -24,15 +20,11 @@ def _validator_review_declaration_shape(value):
 
 def check_review_python_definitions(inputs):
     import json
-    subject = json.loads(inputs["subject_json"])
+    subject, entries = _validator_review_subject(inputs)
     inventory = json.loads(inputs["inventory_json"])
-    if type(subject) is not dict or subject.get("format") != "component-validator-subject/1":
-        raise ValueError("complete retained validator subject required")
-    candidate = subject.get("candidate")
-    dependencies = subject.get("dependencies")
-    if type(candidate) is not dict or type(dependencies) is not list:
-        raise ValueError("complete retained validator subject required")
-    if type(candidate.get("reference")) is not dict or type(candidate["reference"].get("class_code")) is not int or candidate["reference"]["class_code"] != 22:
+    if subject["format"] == "component-validator-subject/1" and subject["candidate"]["reference"]["class_code"] != 22:
+        raise ValueError("PythonCode review subject required")
+    if not any(entry["reference"]["class_code"] == 22 for entry in entries):
         raise ValueError("PythonCode review subject required")
     if type(inventory) is not dict or set(inventory) != {"format", "preparation_revision", "worker_checksum", "sources"} or inventory["format"] != "python-source-inventory/1" or type(inventory["sources"]) is not dict:
         raise ValueError("complete native source inventory required")
@@ -41,7 +33,7 @@ def check_review_python_definitions(inputs):
     # caller JSON report, computes replacement facts or executes candidate code.
     records = []
     seen = set()
-    for index, entry in enumerate([candidate] + dependencies):
+    for index, entry in enumerate(entries):
         if type(entry) is not dict or type(entry.get("reference")) is not dict or type(entry.get("revision")) is not dict:
             raise ValueError("complete retained revision required")
         reference = entry["reference"]

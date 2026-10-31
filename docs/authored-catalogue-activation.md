@@ -1,5 +1,12 @@
 # Authored catalogue activation
 
+> **Current API versus binding successor target — 2026-10-31:** the API shapes,
+> complete-Recipe/exact-approval restrictions and dated acceptance below describe
+> current implementation. They are not a requirement to reapprove unchanged
+> consumers in the new A target. No new request fields/endpoints are introduced
+> by this documentation. See the open successor section below.
+
+
 The operator catalogue API activates already validated usages. It does not run
 Q1, ask an LLM to audit Recipe steps, create human-Q2 evidence or execute a
 behavioral test during activation. Existing exact usage approvals are reused.
@@ -152,3 +159,33 @@ last entry. Retained-store/parser/database constraints remain separate; larger
 catalogue settings do not by themselves certify that every underlying limit is
 adjustable. This adds no component approval, Tool permission or body-override
 support.
+
+## Open successor — own A approvals and coherent compatible updates
+
+The existing catalogue publisher remains the only activation owner. Validator
+owns strict joint Skill/code subjects, complete own A function/compatibility
+records, actual behavior custody and human Q2. S retains exact usage qualification
+with independent prerequisites; no aggregate approval of all closure members.
+These are future connected contracts, not support added to the API examples above.
+
+After the current implementation package, Composition/Simplified must prepare
+compatible component replacements from their own approvals and re-resolve affected
+valid consumer selections within one coherent generation/CAS. Unchanged Recipe
+UUIDs, authored bytes and approvals stay unchanged: no new Recipe submissions or
+Q1/Q2 solely for a compatible dependency update. Technical derived task manifests
+are not new historical tests. Confirm declared direct/transitive/relational
+requirements and concurrent consumer changes through existing stores, without
+semantic startup review or a second consumer registry. Breaches fail before effects;
+no downgrade, workflow omission or Tier-2 replay.
+
+Connect prepare/publication/restore/task/child/private-review and applicable
+MCP/prefix readers before publishing the new profile. Keep old valid exact
+profiles/records and original pins executable in their scope; preserve overrides.
+A missing historical own property is a concrete evidence gap, not approval by
+format conversion or automatic mass reapproval. No standalone component API or
+universal approval/retention support is presumed available.
+
+New/changed Recipes still require full own supported workflow/variant validation;
+command/MCP evidence remains separate. Root owns integration and any needed
+versioned schema/migration allocation. Next open existing deployment/catalogue
+cutover gate must consume this successor; no alteration of completed acceptance.

@@ -95,6 +95,18 @@ pub trait SystemBundleSource: Send + Sync {
     ) -> Result<String, AgentLoopHostError> {
         Ok(self.get_system_bundle(user_id, project_id).await)
     }
+    /// A model-specific Prefix owner may insert its immutable reference at the
+    /// final boundary instead of the legacy instruction-snippet location.
+    async fn get_context_bundle_for_run(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        run_id: &str,
+    ) -> Result<Option<String>, brassclaw_turns::run_profile::AgentLoopHostError> {
+        self.get_system_bundle_for_run(user_id, project_id, run_id)
+            .await
+            .map(Some)
+    }
 }
 
 pub use subagent_prompt_port::{
@@ -236,7 +248,7 @@ where
     /// Optional prefix-cache bundle source (§K.1.5).
     /// When `Some`, the bundle text is prepended as instruction snippet #0.
     system_bundle_source: Option<Arc<dyn SystemBundleSource>>,
-    selected_system_bundle: Arc<OnceCell<String>>,
+    selected_system_bundle: Arc<OnceCell<Option<String>>>,
     token_budget_mode: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
@@ -404,14 +416,17 @@ where
             let run_id = self.run_context.run_id.to_string();
             let bundle = self
                 .selected_system_bundle
-                .get_or_try_init(|| source.get_system_bundle_for_run(user_id, project_id, &run_id))
+                .get_or_try_init(|| source.get_context_bundle_for_run(user_id, project_id, &run_id))
                 .await?;
-            vec![brassclaw_turns::run_profile::LoopContextSnippet {
-                snippet_ref: "prefix:bundle:v1".to_string(),
-                model_content: bundle.clone(),
-                safe_summary: "Prefix cache bundle (operator-assembled)".to_string(),
-                metadata: None,
-            }]
+            bundle
+                .iter()
+                .map(|bundle| brassclaw_turns::run_profile::LoopContextSnippet {
+                    snippet_ref: "prefix:bundle:v1".to_string(),
+                    model_content: bundle.clone(),
+                    safe_summary: "Prefix cache bundle (operator-assembled)".to_string(),
+                    metadata: None,
+                })
+                .collect()
         } else {
             Vec::new()
         };
@@ -942,6 +957,7 @@ where
     thread_scope: ThreadScope,
     run_context: LoopRunContext,
     gateway: Arc<G>,
+    task_gateway: Option<Arc<dyn HostManagedModelGateway>>,
     capabilities: Option<Arc<dyn LoopCapabilityPort>>,
     max_messages: usize,
     prompt_authority: LoopPromptBundleAuthority,
@@ -968,6 +984,7 @@ where
             thread_scope,
             run_context,
             gateway,
+            task_gateway: None,
             capabilities: None,
             max_messages,
             prompt_authority: LoopPromptBundleAuthority::shared(),
@@ -991,6 +1008,7 @@ where
             thread_scope,
             run_context,
             gateway,
+            task_gateway: None,
             capabilities: None,
             max_messages,
             prompt_authority: LoopPromptBundleAuthority::shared(),
@@ -999,6 +1017,11 @@ where
             identity_context_source: None,
             tool_result_source: None,
         }
+    }
+
+    pub fn with_task_gateway(mut self, gateway: Arc<dyn HostManagedModelGateway>) -> Self {
+        self.task_gateway = Some(gateway);
+        self
     }
 
     pub fn with_prompt_bundle_authority(
@@ -1169,13 +1192,21 @@ where
             turn_id: self.run_context.turn_id,
         };
 
-        // Capture a mutable role's concrete backend/model before policy and
-        // reservation awaits. The next prepared operation may select a new role;
-        // this operation must not change backend during budget admission.
-        let selected_gateway = self
-            .gateway
-            .retain_model_selection(&host_request)
-            .map_err(model_gateway_error)?;
+        // Retain the task's exact concrete backend before accounting awaits.
+        // Explicit non-task callers keep their existing per-work selection;
+        // ordinary tasks use the admission's captured gateway throughout waits.
+        let selected_gateway = match &self.task_gateway {
+            Some(gateway) => gateway
+                .retain_model_selection(&host_request)
+                .await
+                .map_err(model_gateway_error)?
+                .or_else(|| Some(gateway.clone())),
+            None => self
+                .gateway
+                .retain_model_selection(&host_request)
+                .await
+                .map_err(model_gateway_error)?,
+        };
 
         let work = brassclaw_turns::run_profile::ModelWorkRequest {
             work_id: request.work_id,
@@ -1189,13 +1220,17 @@ where
                     total.saturating_add(estimate_tokens_from_chars(&message.content).as_u64())
                 })
                 .max(64),
-            estimated_output_tokens: None,
+            estimated_output_tokens: custodian
+                .as_ref()
+                .and_then(|owner| owner.requested_output_tokens())
+                .map(|tokens| u64::from(tokens.get())),
         };
         let owned = Self {
             thread_service: self.thread_service.clone(),
             thread_scope: self.thread_scope.clone(),
             run_context: self.run_context.clone(),
             gateway: self.gateway.clone(),
+            task_gateway: self.task_gateway.clone(),
             capabilities: self.capabilities.clone(),
             max_messages: self.max_messages,
             prompt_authority: self.prompt_authority.clone(),
@@ -1615,15 +1650,75 @@ where
 
 /// Host-managed text-only model gateway. Implementations own provider selection,
 /// profile policy, retry/circuit behavior, and sanitization.
+/// Exact host-side task selection and its existing guarded gateway. Neither
+/// value is serialized to Python; the task admission persists references only.
+pub struct HostManagedTaskModelSelection {
+    pub binding: Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>,
+    pub gateway: Arc<dyn HostManagedModelGateway>,
+}
+
+impl HostManagedTaskModelSelection {
+    /// Preserve the original lack of a model source. This carries less
+    /// capability and never replaces missing metadata with a current role.
+    pub fn inherited_unavailable(
+        binding: Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>,
+    ) -> Result<Self, HostManagedModelError> {
+        if !binding
+            .as_any()
+            .is::<brassclaw_turns::run_profile::InheritedUnavailableModelSelection>()
+        {
+            return Err(HostManagedModelError::safe(
+                HostManagedModelErrorKind::ConfigurationError,
+                "task model inheritance is unavailable",
+            ));
+        }
+        Ok(Self {
+            binding,
+            gateway: Arc::new(UnavailableTaskModelGateway),
+        })
+    }
+}
+
 #[async_trait]
 pub trait HostManagedModelGateway: Send + Sync {
+    async fn preflight_task_model_usage(
+        &self,
+        input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
+    ) -> Result<(), HostManagedModelError> {
+        if input.is_some() {
+            return Err(HostManagedModelError::safe(
+                HostManagedModelErrorKind::ConfigurationError,
+                "selected model input preflight is unavailable",
+            ));
+        }
+        Ok(())
+    }
+
+    async fn capture_task_model_selection(
+        &self,
+        parent: Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<Option<HostManagedTaskModelSelection>, HostManagedModelError> {
+        if capture.is_some() {
+            return Err(HostManagedModelError::safe(
+                HostManagedModelErrorKind::ConfigurationError,
+                "retained workflow model capture is unavailable",
+            ));
+        }
+        if let Some(parent) = parent {
+            return HostManagedTaskModelSelection::inherited_unavailable(parent).map(Some);
+        }
+        Ok(None)
+    }
+
     /// Retain a mutable role's concrete backend/model for one prepared work
-    /// item. This performs no provider I/O, reservation, prompt interception or
-    /// MCP connection and grants no authority. Wrappers must retain themselves
+    /// item. This may reconcile authoritative configuration, but performs no
+    /// inference submission, reservation, prompt interception or MCP connection
+    /// and grants no authority. Wrappers must retain themselves
     /// around the selected inner gateway so dispatch keeps their enforcement.
     /// Immutable or legacy gateways need no replacement. Live technical limits
     /// and kernel policy remain independently effective at actual dispatch.
-    fn retain_model_selection(
+    async fn retain_model_selection(
         &self,
         _request: &HostManagedModelRequest,
     ) -> Result<Option<Arc<dyn HostManagedModelGateway>>, HostManagedModelError> {
@@ -1668,6 +1763,33 @@ pub trait HostManagedModelGateway: Send + Sync {
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
         self.stream_model(request).await
     }
+}
+
+/// The original parent supplied no model source. This gateway implements no
+/// provider transport, preserving that constraint for an otherwise model-free
+/// child workflow, even if a model role is configured later.
+struct UnavailableTaskModelGateway;
+#[async_trait]
+impl HostManagedModelGateway for UnavailableTaskModelGateway {
+    async fn preflight_task_model_usage(
+        &self,
+        _input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
+    ) -> Result<(), HostManagedModelError> {
+        Err(unavailable_task_model())
+    }
+    async fn stream_model(
+        &self,
+        _request: HostManagedModelRequest,
+    ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        Err(unavailable_task_model())
+    }
+}
+fn unavailable_task_model() -> HostManagedModelError {
+    HostManagedModelError::safe(
+        HostManagedModelErrorKind::ConfigurationError,
+        "original parent has no model selection",
+    )
+    .before_provider_dispatch()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1850,7 +1972,8 @@ pub struct HostManagedModelError {
     pub safe_summary: String,
     pub reason_kind: Option<AgentLoopHostErrorReasonKind>,
     // Never deserialized or inferred from a provider/model error category.
-    // Only the native wrapper that has not entered its inner provider sets it.
+    // Only native pre-entry rejection or a denied transport barrier with no
+    // prior submission start establishes this evidence.
     confirmed_unsubmitted: bool,
 }
 
@@ -1878,12 +2001,19 @@ impl HostManagedModelError {
         self
     }
 
-    /// Native adapter evidence about this call only. Use solely before entering
-    /// its provider gateway; separate Sempai work may already have executed.
-    /// A timeout, provider failure or category alone must never call this.
+    /// Native adapter evidence about this call only: either pre-entry rejection
+    /// or an explicit transport barrier denial before any submission start.
+    /// Separate Sempai work may already have executed. A timeout, provider
+    /// failure or category alone must never call this.
     pub fn before_provider_dispatch(mut self) -> Self {
         self.confirmed_unsubmitted = true;
         self
+    }
+
+    /// Rust-owned submission evidence, never deserialized from an upstream
+    /// answer. Reading it grants no retry or Tool permission.
+    pub fn confirmed_unsubmitted(&self) -> bool {
+        self.confirmed_unsubmitted
     }
 }
 

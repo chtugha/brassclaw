@@ -23,7 +23,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -40,14 +42,22 @@ per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete i
 Selected retained loader/store/runner support is implemented; this contract
 does not certify every workflow or the complete migration. See
 [the current implementation status](docs/implementation-status.md).
-Current-source observations and historical step-body examples below must be
-migrated to this interface before being accepted as updated v3 implementations.
+Legacy step-body implementations must be migrated to this interface before
+being accepted as updated v3 implementations.
 
 
 This is the authoring checklist for BrassClaw Reborn Recipes. Follow it in order.
 MUST means required. A Recipe with an unresolved input, component reference,
 binding, result handoff or execution dependency is incomplete. Do not label it
 working, validated or Tier 0 without the corresponding evidence.
+
+The [development policy](docs/development-policy.md) governs development iteration:
+design one bounded workflow change, complete connected edits, review the relevant
+diff, then run the smallest sufficient validation batch. Reuse current source
+knowledge and applicable passing evidence. Early experiments are appropriate for
+concrete unresolved questions. This guide's authoring and activation requirements
+do not require repeating all checks after every edit or seeking human Q2 for a
+local draft. Required own A function/workflow review or exact S qualification and release acceptance still apply.
 
 Read [AGENTS.md](AGENTS.md), [simplified_v3.md](simplified_v3.md) and the
 [development policy](docs/development-policy.md). Their binding contracts take
@@ -136,16 +146,17 @@ and validated. This is separate from normal parameter binding: input values
 passed to its authoring/build Tools still travel as data, not as substitutions
 that modify an already approved PythonCode body.
 
-**Authoring rule:** decompose the behavior first. Add Rust only for a genuinely
-missing system-level primitive, never merely to collapse a Recipe's steps.
+**Authoring rule:** decompose the behavior first. Add a new Rust Tool only for a
+genuinely missing primitive, never merely to collapse a Recipe's steps. Required
+runtime, persistence, binding, lifecycle or kernel repairs belong in their owning
+Rust layers and do not justify embedding task sequencing in a Tool.
 Current executor limitations are runtime gaps to repair, not reasons to move
 otherwise expressible Recipe behavior into a dedicated Rust workflow Tool.
 
 A Recipe (class 21) is a **step-by-step instruction plus an explicit inventory
-of the components needed to assemble and execute those steps**. Think of the
-Recipe as RNA and the IBS/composition system as an assembly facility, similar
-to the endoplasmic reticulum. The analogy describes their roles; it is not a
-literal biological model.
+of the components needed to assemble and execute those steps**. It declares
+variants, typed inputs/results, component references, order and completion/failure
+behavior; IBS assembles the selected workflow and Monty executes it.
 
 The Recipe tells IBS **what to assemble, in which order, and what each step
 needs**. IBS/composition builds the executable Python chiefly by assembling
@@ -169,6 +180,55 @@ step inputs and how results become inputs to later steps.
 | Skill, classes 1–3 | One usage: prose **and an explicitly associated preloadable function interface** | Prose for explicit Tier-1 context; associated class-22 code for execution |
 | Recipe, class 21 | Orders and connects the components | Recipe store |
 | ExtensionCatalogue, class 23 | Domain overview and Recipe inventory | Extension catalogue store |
+
+### Ownership across the four guides
+
+The guides define complementary contracts. Use the owning guide below instead
+of introducing another schema, approval mechanism or execution owner.
+
+| Boundary | Owning guide and record | Required handoff |
+| --- | --- | --- |
+| Workflow | recipe.md: selected variant, `step_link`, ordered steps, `input_layouts` and `invocations` | Supplies each execution occurrence's typed inputs and selected export; declares subsequent steps, reply ownership and completion |
+| Reusable Tool usage | skills.md: Skill interface and `skill-association/1` | Links one Skill, PythonCode entry point, ToolSkill and Tool; declares usage input/result/failure contracts |
+| Executable definitions | skills.md: class-22 code and `python-preload/2` declaration | Defines public/private symbols and pure code dependencies; the runner invokes the pinned export without source substitution |
+| Binding descriptor | toolskills.md: class-13 `tool-skill-binding/1` | Resolves the declared Tool/capability/callable and compatible adapter; performs no dispatch |
+| Primitive and authority | tools.md: class-0 definition, retained native implementation and kernel boundary | Validates actual dispatch, enforces live policy/technical limits and preserves effect certainty |
+| Review and selection | skills.md's own A functional review or exact S usage evidence plus workflow/pure owners | Recipe approval covers its own supported workflow, not approval of every dependency; independent pure functions need their own applicable evidence |
+
+These records are parts of the existing immutable revision/selection path, not
+new fields on legacy SQL constructors. Approval records remain separate from the
+selected task manifest. Reusing a qualified usage neither reapproves it per call
+nor automatically approves the consuming workflow. Rust custody of effects and
+recovery supports Monty's sequencing; neither owner substitutes for the other.
+Independent pure approval's remaining work is specified in
+[the pure-component review contract](docs/reborn/pure-component-review.md#exact-remaining-cutover-contract),
+not supplied by a usage approval that merely includes that helper as a dependency.
+
+### Dependency edges and canonical Recipe links
+
+Keep the retained dependency graph acyclic. A Recipe retains its selected usage
+Skills, binding descriptors and executable components. A Skill depends on its
+associated code, ToolSkill and Tool; the ToolSkill depends on its Tool. Code's
+preload dependencies identify code libraries/helpers, not a reverse reference
+to the owning Skill or consuming Recipe. Retain the complete reachable closure,
+including dependencies not printed as separate Recipe steps.
+
+A Skill has no required owning or canonical invocation Recipe. Many consuming
+Recipes can reuse its same approved interface/code/binding combination. Existing
+"canonical Recipe" links identify a particular reference, test or command workflow;
+they are optional catalogue/authoring navigation, not Skill-completeness gates or
+mandatory reverse execution dependencies. Recipe -> Skill -> companion Recipe
+must not form an execution cycle. Compatible-usage inventories on Tools/ToolSkills
+likewise create no reverse edges. Retain/review each actual workflow separately;
+a navigation link is neither executable dependency nor approval evidence.
+
+Only intended MCP publications require a qualified MCP-call Recipe/variant with
+an exact command contract. Internal/test/ordinary workflows may exist without MCP
+exposure. The existing optional `mcp_call` declaration is owned by the Recipe
+revision; it adds no required field to `skill-association/1`. A public function
+export or a Recipe backlink alone does not establish MCP exposure. The current
+deployment path publishes complete Recipe graphs, not independently activated
+unused library entries; using that path needs no additional per-Skill Recipe.
 
 A code example in Skill prose is documentation. It is not an executable entry
 point. Tier-0 invocation references the associated PythonCode UUID and resolves its
@@ -215,21 +275,25 @@ reuse those owners rather than adding a second manifest store. The instruction r
 the task through the supported task snapshot/continuation mechanism, without
 introducing a separate persistent BuildInstruction table.
 
-`compose_orchestrator` resolves components and assembles `ComposedProgram`:
+The legacy `compose_orchestrator` path resolves components into `ComposedProgram`:
 ordered `steplist` entries with concrete `executable_code`, `skills`,
 `rust_directives`, `variables`, `assembled_program` and a tier hint.
-`host.run_program` submits Python to Monty, which parses the step before running
-it. Syntax acceptance is not behavioral correctness.
+Its `host.run_program` delegation is not the ordinary retained preload/invocation
+API. Do not author an unpinned top-level body for that compatibility path and
+claim v3 execution. Parsing alone does not prove behavior or activation.
 
 The required assembly outcome for **every executable step** is:
 
 1. Its canonical code/interface/export and dependency graph are resolved and
    preloaded without effects; typed invocation inputs are supplied safely.
-2. Its needed Skill usage and PythonCode association are identified; any prose
+2. For a Tool usage, its Skill/PythonCode association is identified; any prose
    needed by an explicit Tier-1 reasoning step is supplied as context.
-3. Its ToolSkill descriptors identify the existing Tools to bind, and the
-   actual runtime makes those callables available before the step runs.
+3. For actual Tool calls, its ToolSkill descriptors identify the Tools to bind;
+   the runtime makes those callables available before the step runs.
 4. Its result contract and handoff to subsequent steps are explicit.
+
+Pure PythonCode needs its own exact export/contracts and approval coverage, not
+an artificial ToolSkill, zero-Tool Skill or borrowed dependency-only approval.
 
 This is the authoring target. Merely returning Skill bodies or Rust directives
 does not establish that all preparation occurred; current wiring limits are
@@ -237,9 +301,12 @@ listed below and must be verified on the selected runtime path.
 
 ## 2. Reuse before creating anything
 
-Search [the built-in inventory](docs/archive/builtin_stuff_v3.md), the seeders
-and the available component store. Read the actual Tool signature and returned
-data, not just its name. Record the reused UUIDs, classes and revisions.
+Inspect the relevant component store, seed owners and actual consumers. Use
+[the built-in inventory](docs/archive/builtin_stuff_v3.md) as supplementary
+historical context, not proof of current signatures or support. Read the actual
+Tool signature and returned data; record the reused identities and exact selected
+revisions. Do not repeat a whole-library inventory when current relevant evidence
+already answers the reuse question.
 
 Choose the first sufficient option:
 
@@ -269,7 +336,9 @@ figures it out.”
 Recipe name:
 User-visible operation and completion condition:
 Variant key:
-Accepted requests (at least 10 examples):
+Entry kind (public intent matching or qualified private typed admission):
+Accepted public requests (at least 10 examples for a public Recipe; variant coverage):
+Private entry provenance, explicit Recipe/variant selection and typed inputs:
 Similar requests that must NOT match:
 Required inputs, types, source and validation:
 Optional inputs and explicit defaults:
@@ -279,27 +348,35 @@ Declared Skill exports/signatures and dependency preload order:
 Pinned invocation selection and mutable-state ownership:
 Result fields consumed by later steps:
 Failure, cancellation and retry behavior:
-Final reply and which step posts it:
+Completion: public reply owner, or private typed result/settlement owner:
 Tier and reason:
 Current execution path and unresolved runtime dependencies:
 Acceptance cases and expected effects:
 ```
 
 One variant MUST have one predictable input layout and workflow. Split different
-operations or incompatible slot layouts into separate variants. Supply at least
-10 intent examples per Recipe, covering command and natural-language forms;
-exercise every variant with its own positive and negative cases.
+operations or incompatible slot layouts into separate variants. Publicly matched
+Recipes require at least 10 intent examples, covering command and natural-language
+forms; exercise every public variant with its own positive and negative cases.
+Private workflows instead qualify their actual trusted typed admission, allowed
+origin, explicit Recipe/variant selection, input layout and terminal result. Do
+not fabricate public intents, chat messages or reply effects for private work.
+Any shared fields required by the actual parser still apply; prose does not waive
+constructor validation. MCP publication is a separate qualified public command
+contract using ordinary chat matching, not private admission or a direct Tool API.
 
 Choose Tier 0 for deterministic behavior with known, safely validated inputs.
-Tier 1 is required for content composition, user-supplied strings requiring LLM
+Tier 1 is required for creative content composition, user-supplied strings requiring LLM
 validation, ambiguous choices requiring reasoning and irreversible operations
 requiring confirmation. Recipes using `builtin.shell` or
 `builtin.spawn_subagent` are always Tier 1. Deterministic branching or passing a
-runtime result to another step does not by itself require an LLM.
+runtime result to another step does not by itself require an LLM. Deterministic
+storage of supplied/validated content does not itself force Tier 1. A model
+response does not supply a required operator confirmation.
 
-Do not obtain Tier 0 merely by setting a flag. Current composition callers
-derive eligibility from persisted tier, validation and confidence fields.
-Verify the result returned by the actual caller.
+Do not obtain Tier 0 merely by setting a flag. Legacy eligibility fields are not
+approval evidence for a retained workflow. Verify the actual selected caller,
+qualified component graph and behavior, including the absence of LLM calls.
 
 ## 4. Specify every input and its extraction
 
@@ -402,16 +479,18 @@ unmigrated seeds must be converted before they can use that path.
    earlier step result/field. This separates reusable component inputs from
    any particular user-message layout. Unmapped inputs, duplicate bindings,
    incompatible types and forward result references are errors.
-6. The target PythonCode input convention is `inputs["local_name"]`: a
-   runtime-provided mapping for that step. For example,
-   `result = host.some_tool(value=inputs["value"])` consumes data without
-   modifying source. The retained runner supplies this mapping for the selected invocation.
+6. The step-local input convention is `inputs["local_name"]`. A mapping export
+   can define `def use_value(inputs):` and return
+   `host.some_tool(value=inputs["value"])` from inside that function. This is
+   invocation code, not a top-level call executed while loading definitions.
+   Declare the actual export signature/mapping; the retained runner supplies
+   the selected invocation's typed arguments without modifying source.
    Do not assume the legacy executor provides the same contract.
 7. Pure-logic components perform transformations and formatting explicitly.
    To construct a message or URL, use component code over typed inputs; do not
    embed expressions in placeholders or interpolate values into Python source.
-8. A successful step publishes its assigned `result` under its stable step ID
-   in the task execution context. Later bindings select that result or a
+8. A successful step publishes its export's validated return value under its
+   stable step ID in the task execution context. Later bindings select that result or a
    declared field as data. A failed producer does not supply a success result.
    Repeated executions require explicit occurrence/checkpoint identities.
 9. Parse/validate the selected PythonCode and binding declarations before the
@@ -431,15 +510,18 @@ oversized values. They MUST remain data or be rejected before effects.
 
 Write a step table with **one row per actual execution step**:
 
-For each Python execution step, also record its required Skill association,
-ToolSkill UUIDs and Tool names. Pure-logic steps explicitly declare that they
-need no Tool binding. This per-step inventory tells IBS what must accompany the
+For each Tool-usage execution step, record its Skill association, ToolSkill UUIDs
+and Tool names. Pure steps declare their own export/contracts/dependencies and
+approval coverage, without artificial usages or bindings. This inventory tells IBS what must accompany the
 assembled code; do not leave it to the orchestrator to guess from prose.
 
-| Step | Channel | Component UUID/class/revision | Input origin | Output contract | Failure action |
+| Step | Channel | Component UUID/class | Input origin | Output contract | Failure action |
 | --- | --- | --- | --- | --- | --- |
-| Bind operation | Rust | ToolSkill / 13 | Binding descriptor | Tool availability only | Stop if unavailable |
+| Bind operation | Rust | ToolSkill / 13 | Binding descriptor | Prepared binding; no operation/result value | Stop if unavailable |
 | Invoke preloaded export | Orchestrator | PythonCode / 22 | Validated inputs or prior result | Named result fields and types | Stop or explicit safe retry |
+
+Record exact selected revisions in the task selection/evidence, not authored
+Recipe references. Binding preparation does not create a producer result edge.
 
 Rules:
 
@@ -481,10 +563,14 @@ Rules:
   referencing components; do not copy their source into a large custom body.
   Small means a coherent operation with clear inputs and results, not splitting
   every expression into an otherwise meaningless component.
-- The existing dependent-chain exception permits calls in one body only when
-  the later call consumes the earlier call's direct runtime output as one
-  logical unit. Document the binding coverage; do not use the exception to
-  group independent effects or evade the binding-pair rule.
+- The existing dependent-chain exception is conditional: a later call must
+  consume the earlier call's direct runtime output as one logical unit, and
+  the selected runner must support and qualify every binding, call occurrence,
+  result and effect/retry boundary. It never permits multi-UUID component steps
+  or a multi-Tool leaf Skill. The currently implemented retained runner admits
+  one binding and one Tool dispatch per executable step; it rejects an unbound
+  or repeated call. Author separate binding/execution pairs on that path. A
+  prose exception or dependency edge cannot enable an unsupported call chain.
 - The dependent-chain exception is not a step-reduction objective. Prefer
   separately reusable steps with explicit result handoffs when the runtime
   supports them. Do not grow monolithic Python bodies to make a Recipe shorter.
@@ -496,17 +582,21 @@ Rules:
   an error is raised versus returned as data.
 
 For every result edge, name the producing step, exact field and type, consuming
-step and argument, and transport/checkpoint mechanism. Distinguish the local
-Python `result`, the Tool's payload and `host.run_program`'s outer response
-(`ok`, `return_value`, `stdout`, `error`). They are not interchangeable.
+step and argument, and transport/checkpoint mechanism. Distinguish the
+export return value, the Tool's payload and any legacy `host.run_program` outer
+response (`ok`, `return_value`, `stdout`, `error`). They are not interchangeable;
+use the selected retained result contract, not a compatibility response envelope.
 
 The retained ordinary runner provides task-owned context and explicit typed
 result bindings across selected steps and waits. It preserves task/attempt/input
 isolation; a Python local in one invocation is not an implicit variable in the
 next. Use the declared result/field edge, never source interpolation or an
-undefined ambient `previous_result`. Legacy fresh-step execution is not the v3
-handoff contract. Complete crash continuation and dynamic repeated occurrences
-remain separate open work; VM memory is not a durable checkpoint.
+undefined ambient `previous_result`. The producer of a data edge is the
+executable export, not its non-executing Rust binding step. Follow
+[the result validation boundaries](skills.md#result-ownership-and-validation-boundaries)
+when an export transforms the primitive payload. Legacy fresh-step execution
+is not the v3 handoff contract. Complete crash continuation and dynamic repeated
+occurrences remain separate open work; VM memory is not a durable checkpoint.
 
 ## 7. Emit the actual persisted IBS schema
 
@@ -515,8 +605,9 @@ uses `StepDescriptionEntry` containing `steps` with `knowledge` and
 `stepnumber`. IBS reads this structured array, not `yaml_source`, `goal` or
 prose instructions.
 
-The following is a **design template, not insertable data**. Replace symbolic
-UUID tokens with stable component UUIDs. IBS resolves version selection into
+The following is a **partial immutable Recipe-document design, not an insert
+request or complete revision envelope**. Replace symbolic UUID tokens with stable
+identities from the selected compatible usage. IBS resolves version selection into
 the BuildInstruction during task-start assembly, not into Recipe `include`
 entries. Do not invent a revision field in this Recipe JSON.
 
@@ -535,16 +626,23 @@ entries. Do not invent a revision field in this Recipe JSON.
           "content": "Bind host.post_reply",
           "type": "component",
           "include": ["<RESOLVED_TS_HOST_POST_REPLY_UUID>"],
-          "tool_bindings": [],
+          "tool_bindings": [
+            {
+              "tool_id": "<RESOLVED_POST_REPLY_TOOL_UUID>",
+              "tool_name": "post_reply",
+              "params": {},
+              "error_policy": {"policy": "fail"}
+            }
+          ],
           "dependencies": null
         },
         {
           "stepnumber": 2,
           "knowledge": "orchestrator",
           "goal": "Post the fixed reply",
-          "content": "Run the fixed-reply PythonCode",
+          "content": "Invoke the reusable reply export with the bound constant",
           "type": "component",
-          "include": ["<RESOLVED_FIXED_REPLY_PYTHONCODE_UUID>"],
+          "include": ["<RESOLVED_REPLY_PYTHONCODE_UUID>"],
           "tool_bindings": [],
           "dependencies": null
         }
@@ -564,22 +662,45 @@ entries. Do not invent a revision field in this Recipe JSON.
       ],
       "variable_patterns": []
     }
-  ]
+  ],
+  "input_layouts": {
+    "fixed-readiness-reply": {
+      "format": "recipe-input-layout/1",
+      "task_inputs": {},
+      "steps": {
+        "0:2": {
+          "answer": {"kind": "constant", "value": "Ready."}
+        }
+      }
+    }
+  },
+  "invocations": {
+    "fixed-readiness-reply": {"0:2": "publish_turn_reply"}
+  }
 }
 ```
 
-The associated class-22 body is:
+The existing packaged reply usage declares this mapping export in its class-22
+source (see `global_bootstrap_components.rs` in the references):
 
 ```python
-result = host.post_reply(answer="Ready.")
+def publish_turn_reply(inputs):
+    return host.post_reply(answer=inputs["answer"])
 ```
 
-Reuse `ts-host-post-reply`. Reuse an existing PythonCode body only if its
-signature, result assignment and fixed-input behavior actually match; the
-generic placeholder-based reply body is not this fixed-input body. Provide a
-Skill describing this one usage and its explicit PythonCode association.
-The full stored Recipe also needs the metadata required by its store constructor;
-the JSON above shows only IBS/variant fields, not a complete insert request.
+The constant belongs to the Recipe's `0:2.answer` binding; no new fixed-reply
+PythonCode or source substitution is needed. Reuse the exact compatible retained
+reply Skill/code/ToolSkill/Tool selection and its declared
+`publish_turn_reply` mapping export. Its local `answer` input is a required string
+and its result is the published message reference. The example follows that
+adapter's `answer` keyword; legacy `text` signatures are not interchangeable.
+Loading the function publishes nothing; invocation performs the usage.
+
+This new Recipe/layout still needs its own complete workflow review and activation evidence. Reusing qualified components does not automatically
+approve a new workflow. Supply all required Recipe metadata and the immutable
+revision envelope through the supported owner. The `input_layouts` and
+`invocations` records belong in the retained Recipe document; the legacy SQL
+Recipe struct alone does not persist or enforce this complete contract.
 
 Schema rules:
 
@@ -597,10 +718,10 @@ Schema rules:
   reasoning MUST be wired through the supported execution path and verified.
 - IBS partitions channels; it does not itself execute one interleaved list.
   Verify how the runtime installs bindings before the Python uses them.
-- Current seed helpers use ToolSkill `include` references with empty
-  `tool_bindings`. Explicit `tool_bindings` can produce Rust directives, but
-  the inspected compose handler carries them without applying dynamic loading.
-  Neither metadata nor a ToolSkill reference proves the callable is available.
+- Some legacy helpers use empty `tool_bindings`; the packaged retained usage
+  above uses an explicit compatible binding. Follow the selected owner's actual
+  descriptor/native preparation path. Neither a nonempty metadata array nor a
+  ToolSkill reference proves the callable is registered, retained and available.
 - Dependency expressions specify component retrieval, not runtime result flow.
 
 ## 8. Make failures and completion explicit
@@ -609,15 +730,35 @@ Specify missing inputs, invalid inputs, unmatched/ambiguous requests, missing or
 unvalidated components, blocked Tools, authentication failure, malformed Tool
 responses, external failures, timeout, cancellation and reply failure.
 
-Validate all required inputs before the first side effect. Stop on failure
-unless an explicit safe recovery is implemented. Do not report success when a
-Tool returns an error payload. Retry only with a stated bound and demonstrated
-idempotency. Never replay completed effects or turn a begun Recipe failure into
-Tier 2. Only an actual No-Match may enter Tier 2.
+Validate supplied task inputs, selected declarations and bindings before effects.
+Validate computed arguments and prior-step results when they become available,
+before their consuming dispatch. Do not require a future result to exist before
+its producer runs. Missing/null/empty values follow the exact recursive contracts;
+empty text or lists are valid when those contracts permit them.
+
+Stop on failure unless explicit supported recovery applies. Never treat an error
+payload as success. Follow skills.md's exact retry contract: `max_attempts` is a
+positive integer including initial dispatch and survives waits/reclaims. Retries
+need explicit eligible outcomes and trusted read-only or durable deduplication
+evidence for the exact usage. Deduplicated recovery retains the original key and
+arguments. A timeout does not prove absence of effects; unknown completion needs
+its declared safety evidence or explicit reconciliation. Never replay completed
+effects because result validation, a later step or reply posting failed. Only
+actual No-Match enters Tier 2; begun Recipe failures remain failures.
+
+The exact failure format can describe more than the current runner supports.
+Follow [skills.md's current runner limit](skills.md#exact-failure-and-retry-contract):
+ordinary retained execution presently requires `stop` with `max_attempts: 1`.
+A Recipe must not wrap the same logical invocation in new steps/children to reset
+that limit or replay an unresolved/completed effect. Explicit reconciliation is
+a distinct operation with its own supported contract.
 
 Error-policy metadata is not proof that retries or fallback are implemented by
-the selected runner. Trace and test the runner. Define who posts the final reply
-exactly once, using `host.post_reply`; `builtin.echo` is diagnostic-only.
+the selected runner. Trace and verify the applicable runner path, reusing current
+evidence. Define one reply owner using the qualified reply usage; a missing
+acknowledgement does not authorize another publication. Do not promise exactly-once
+external execution without the operation's supported evidence. `builtin.echo`
+is diagnostic-only.
 History and completion must use the supported orchestration path without
 duplicating a reply or terminating the global orchestrator.
 
@@ -632,17 +773,52 @@ or claim tokens in model-visible or ordinary Recipe state.
 Use the supported component stores, RecipeVariant/intent registration and
 seed/integrity workflow. First-party component seeders include
 `builtin_bootstrap.rs`, `seed_builtin_host.rs` and extension seeders.
-Author in this order: Recipe design, PythonCode, ToolSkill, Skill with associated
-PythonCode, then ExtensionCatalogue updates. Resolve final references before
-activation.
+Design the Recipe first, then identify/reuse its PythonCode, required bindings
+and real Skill usages, followed by any ExtensionCatalogue update. Pure logic
+does not need an artificial Skill or ToolSkill. Persist dependencies and resolve
+real UUIDs before submitting the completed dependent Recipe for review; design
+order is not permission to store incomplete production references.
 
-Authored proposals retain automated Q1 and human Q2. First-party `source: system`
-bootstrap is a distinct integrity-checked path; do not relabel authored proposals
-as system components to bypass approval. Register intent examples through the
-actual store/seeder workflow; a list in Markdown alone changes no routing.
+Authored installed-instance changes require trusted automated Q1, behavioral
+evidence and human Q2 for the changed own workflow/functions. Shipped first-party
+components use controlled `system_seed` bootstrap with exact integrity/Q1/behavior
+evidence and no additional human Q2 action on the installed instance. A
+`source: system` label alone proves neither provenance nor approval. Do not
+change seeders or labels to bypass the installed-instance authored path.
+Register intent examples through the actual store/seeder workflow; a list in
+Markdown alone changes no routing.
 
-Q1 checks authoring constraints; Monty checks syntax when executing. Neither
-proves program logic correct. Do not infer that every binding rule has an
+For every new/changed Recipe, cover all supported declared variants, step links,
+input layouts, binding/export/dependency profiles, typed handoffs, actual effects,
+failures, waits, retries, child results, reply/history custody and completion.
+Use complete rule/path coverage and meaningful positive/negative/boundary cases;
+no arbitrary case quota, infinite input enumeration or matrix of all historical
+component versions. Unsupported runtime profiles remain with their existing
+owners and cannot be removed silently to claim success. A executes its own Q1;
+S obtains this workflow evidence through controlled bootstrap, not the authored
+queue. Run actual approved exports in workflow tests without restarting their
+own Q1/Q2. Missing component approval cannot be supplied by Recipe success.
+
+A Skill/implementation pair is jointly function-reviewed under
+[skills.md](skills.md#own-functional-approval-and-successor-compatibility), even
+though two IDs persist. Compatible A dependency updates leave this Recipe's own
+revision/approval unchanged; automatic technical re-resolution is not review.
+The current complete-Recipe publication API remains an implementation boundary
+until its existing owner delivers independent compatible component activation.
+
+Class-50 Scaffold is no future active type, validator or protected root. Inventory
+actual flows first; reuse a fitting class-21 Recipe, or author a normal Recipe for
+an actually distinct workflow. An empty legacy inventory needs no dummy Recipe.
+Preserve original rows and valid old pins; never reclassify their UUIDs. New
+consumer revisions use explicit Recipe identities through supported invocation.
+A Recipe UUID in a PythonCode-only step does not implement nested Recipe calls:
+reuse qualified native child admission with original parent claims/selections,
+or assign missing support to the existing runtime owner before activation.
+
+Check selected definitions in the supported interpreter before effects; parsing
+alone does not prove behavior or meaning. Trusted Q1 includes the required checks
+for the exact subject and validator selection, not merely a syntax pass. Do not
+infer that every binding rule has an
 implemented validator merely because AGENTS.md requires it. Inspect the actual
 validator and report any enforcement gaps.
 
@@ -659,7 +835,7 @@ implementation rather than claiming that mutable current rows satisfy it.
   or delete the previous approved version. Existing system-seed integrity rules
   remain applicable to the separate bootstrap path.
 - At task start, IBS/composition reads and resolves the newest activated,
-  validated version of the matched Recipe and every component it needs from
+  approved version of the matched Recipe and every component it needs from
   one consistent catalogue snapshot. Include Tools, ToolSkills, Skills,
   PythonCode and transitive/context dependencies.
   Check their contracts and associations together; incompatible newest versions
@@ -687,6 +863,14 @@ implementation rather than claiming that mutable current rows satisfy it.
 
 ## 10. Acceptance checklist — complete before claiming success
 
+This checklist establishes a completed runnable/activated Recipe, not a command
+list for every intermediate edit. Apply the relevant cases through the selected
+real path and reuse still-applicable evidence. Draft work can be reviewed and
+tested before activation, but must retain its incomplete/unapproved status.
+Do not run unrelated suites to tick a box; do not waive a required case because
+its environment is unavailable. Zero selected or skipped required tests are
+unverified, not passed.
+
 - [ ] Existing components were searched and reused wherever their contracts fit.
 - [ ] Complex behavior is decomposed into purposeful reusable steps; any new
   Rust Tool is justified by a missing primitive, not by reducing step count.
@@ -700,45 +884,112 @@ implementation rather than claiming that mutable current rows satisfy it.
   activating replacements neither changes those tasks nor invalidates originals.
 - [ ] Resume/child execution uses the recorded versions, while each dispatch
   independently checks current global Tool policy.
-- [ ] Skill prose and PythonCode have an explicit documented association.
+- [ ] Every real Skill usage has an exact validated prose/code/binding association
+  and own A function evidence or exact S/legacy usage evidence; independent pure exports have their own
+  required approval coverage without an artificial zero-Tool Skill.
 - [ ] Structured JSON deserializes into the actual IBS types; no symbolic UUIDs remain.
 - [ ] Every component step references exactly one component UUID; empty and
   multi-component `include` lists are rejected by the applicable validation path.
 - [ ] Internal PythonCode includes are validated, assembled in explicit order
   and version-pinned transitively; they preserve the Tool-call grain rules.
 - [ ] `step_link` selects exactly the intended steps in the intended order.
-- [ ] Every ToolSkill binding is paired with the correct executable PythonCode.
+- [ ] Every ToolSkill binding is paired with the correct executable PythonCode;
+  selected usage/export resolution is unambiguous and supported call cardinality
+  is observed. Canonical backlinks do not create dependency cycles.
 - [ ] The selected execution path exposes every required host callable.
-- [ ] At least 10 intent examples exist; variant routing and negative cases pass.
-- [ ] Captured names, values and types were checked through the real match/compose path.
-- [ ] Missing, empty and invalid inputs stop before effects; no unresolved placeholders remain.
+- [ ] Public Recipes have at least 10 intent examples; variant routing and negative
+  cases pass. Private workflows qualify allowed entry provenance, exact selection,
+  typed input/result and rejection of unauthorized public access instead.
+- [ ] Public captures were checked through real matching/composition; private inputs
+  through their actual admitted typed path. Neither path invents the other's effects.
+- [ ] Missing required or invalid inputs fail before their consuming effect;
+  empty/null values follow their declared contracts. Known task inputs are checked
+  before effects; later computed/prior-result arguments are checked when available.
 - [ ] Hostile text remains data or is rejected before effects.
 - [ ] Selected PythonCode and typed binding declarations validate before effects;
-  runtime values do not modify source. Legacy substitution is tested separately
-  and is not reported as the target input-binding implementation.
+  runtime values do not modify source. Test legacy substitution only when a
+  compatibility change requires it; it is not evidence of retained typed binding.
 - [ ] Every inter-step result handoff works through the actual runner.
 - [ ] Representative inputs produce the expected Tool arguments, effects and reply.
 - [ ] Failure, retry, cancellation and blocked-policy cases behave as specified.
 - [ ] Tier-0 execution makes zero LLM calls; Tier-1 calls occur only as designed.
-- [ ] Q1 passes and applicable human Q2 approval is recorded.
+- [ ] The own A workflow has complete Q1/behavior/human Q2 or S has controlled
+  workflow qualification and exact Skill-usage evidence; dependencies retain own approvals.
+- [ ] Compatible A successor updates preserve unchanged consumer approvals and
+  old task pins; coherent activation does not reapprove them.
 - [ ] Component seed/integrity checks pass where seeder data changed.
 - [ ] Evidence identifies the tested revisions/path and distinguishes unverified requirements.
 
 Use focused real execution evidence under the development policy. Read
 `LOCAL_TEST_ENV.md` if present before remote tests or provider setup. Do not run
-Cargo solely to validate prose. A Recipe blocked by missing transport, binding
-or context preservation remains incomplete, even if its JSON and Python parse.
+Cargo solely to validate ordinary prose; embedded runtime/seed content follows
+the policy's applicable integrity checks. A Recipe blocked by missing transport,
+binding or context preservation remains incomplete, even if its JSON and Python parse.
 
 ## Source references
+
+Retained production contracts and the reusable example owner:
+
+- [Typed input layouts and result edges](crates/brassclaw_engine/src/memory/retained_inputs.rs)
+- [Immutable dependency graph and class checks](crates/brassclaw_skills/src/component_revision.rs)
+- [Retained instruction and task-selection references](crates/brassclaw_engine/src/memory/retained_instruction.rs)
+- [Packaged reply/history source, contracts and layouts](crates/brassclaw_skills/src/global_bootstrap_components.rs)
+
+Shared schema and compatibility consumers (read the actual caller before reuse):
 
 - [IBS schema, selection and variable capture](crates/brassclaw_engine/src/memory/instruction_builder.rs)
 - [VariablePattern and ToolBinding types](crates/brassclaw_engine/src/types/ibs.rs)
 - [RecipeVariant type](crates/brassclaw_engine/src/types/recipe.rs)
-- [PostgreSQL compose path](crates/brassclaw_reborn_composition/src/pg_composition_port.rs)
+- [Legacy PostgreSQL compose path](crates/brassclaw_reborn_composition/src/pg_composition_port.rs)
 - [Retrieval capture and component fetching](crates/brassclaw_engine/src/memory/retrieval_source.rs)
 - [ComposedProgram assembly and text substitution](crates/brassclaw_engine/src/memory/composition.rs)
-- [Host dispatch, run_program and Tier-0 execution](crates/brassclaw_engine/src/executor/orchestrator.rs)
+- [Legacy host dispatch/run_program consumers](crates/brassclaw_engine/src/executor/orchestrator.rs)
 - [Monty parsing and execution](crates/brassclaw_engine/src/executor/scripting.rs)
 - [Recipe validator](crates/brassclaw_engine/src/memory/recipe_validator.rs)
 - [Q1 orchestration](crates/brassclaw_reborn_composition/src/q1_orchestrator.rs)
 - [Recipe store metadata](crates/brassclaw_reborn_composition/src/pg_recipe_store.rs)
+
+## Retained model-input selection metadata (Exact K3-2 successor)
+
+The retained class-21 component document may declare one model-input policy per
+existing variant. This is document metadata in the exact reviewed revision, not
+a new `reborn_recipes` insertion column, a `knowledge`/`stepnumber` key or a model
+prompt argument. The legacy Recipe-row APIs do not acquire this field implicitly.
+Use the retained component-document path that preserves the complete document.
+
+```json
+{
+  "model_input_bindings": {
+    "format": "recipe-model-input-bindings/1",
+    "variants": {
+      "selected": {"selection": "selected", "profile": "defensive"}
+    }
+  }
+}
+```
+
+Missing metadata or an omitted variant preserves Default. Explicit
+`{"selection":"default"}` is also supported. Selected names an existing profile;
+the native consumer resolves its exact compatible qualification/generation only
+from the original captured provider/model selection. Missing or incompatible
+selection is an error, without Base or catalogue fallback. The original Sempai
+interceptor review keeps its own role contract; this declaration selects the
+Recipe's Kohai usages. Different workflows/variants may select different profiles.
+Current version 1 does not define per-step override fields.
+
+`{"selection":"prefix_free_workflow","purpose":"prefix_generation"}` declares
+intentional absence for a qualified workflow. The other declared purposes are
+`basic_provider_configuration_values` and `model_design`. These are reviewed
+intent, not proof of qualification or permission. **The current native runner
+still rejects this mode before activation/execution until its complete retained
+workflow, technical encoding, child/review and evidence contract is available.**
+Parsing or staging the declaration cannot enable it. This preserves the required
+prefix-free bootstrap/generation target without silently using a default prefix.
+
+Unknown versions, fields, variant names, selection tags, null declarations or
+malformed sibling declarations fail. IBS retains the chosen policy in its
+original Recipe/variant selection as `recipe-model-input-selection/1`; old
+selections without this metadata keep their original byte representation.
+Approval/activation, original provider/Auth custody, live Tool policy and final
+complete-request validation remain separate requirements. See the actual
+`recipe_model_input` parser and the Exact plan's open I2 integration gates.

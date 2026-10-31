@@ -35,8 +35,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use brassclaw_event_projections::{ProjectionCursor, ProjectionScope};
 use brassclaw_filesystem::{
-    CasExpectation, ContentType, Entry, FilesystemError, Filter, IndexKey, IndexKind, IndexName,
-    IndexSpec, IndexValue, Page, RootFilesystem, ScopedFilesystem, VersionedEntry,
+    CasExpectation, ContentType, Entry, FilesystemError, FilesystemOperation, Filter, IndexKey,
+    IndexKind, IndexName, IndexSpec, IndexValue, Page, RootFilesystem, ScopedFilesystem,
+    VersionedEntry,
 };
 use brassclaw_host_api::{ResourceScope, ScopedPath, TenantId, ThreadId, UserId};
 use brassclaw_turns::{TurnActor, TurnScope};
@@ -118,7 +119,8 @@ where
         let entry = Entry::bytes(body)
             .with_content_type(ContentType::json())
             .with_indexed(tenant_id_index_key(), tenant_id_index_value(tenant));
-        self.put_with_byte_fallback(scope, path, entry, cas).await
+        self.put_with_projection_fallback(scope, path, entry, cas)
+            .await
     }
 
     /// Like [`put_json`] but additionally projects an indexed scope value so
@@ -145,17 +147,13 @@ where
                 tenant_id_index_key(),
                 tenant_id_index_value(&attempt.scope.tenant_id),
             );
-        self.put_with_byte_fallback(scope, path, entry, cas).await
+        self.put_with_projection_fallback(scope, path, entry, cas)
+            .await
     }
 
-    /// Write `entry` with the given CAS expectation, falling back to a
-    /// metadata-stripped opaque write + `CasExpectation::Any` for backends
-    /// that reject record-shape entries or non-`Any` CAS (e.g.
-    /// `LocalFilesystem`). Mirrors
-    /// [`brassclaw_processes::filesystem_store::put_with_byte_fallback`] so
-    /// every byte-only mount in the workspace stays writeable through the
-    /// new filesystem stores.
-    async fn put_with_byte_fallback(
+    /// Adapt unsupported indexed projections without changing the caller's
+    /// exact CAS condition. Unsupported conditional writes remain errors.
+    async fn put_with_projection_fallback(
         &self,
         scope: &ResourceScope,
         path: &ScopedPath,
@@ -164,10 +162,13 @@ where
     ) -> Result<(), OutboundError> {
         match self.filesystem.put(scope, path, entry.clone(), cas).await {
             Ok(_) => Ok(()),
-            Err(FilesystemError::Unsupported { .. }) => {
+            Err(FilesystemError::Unsupported {
+                operation: FilesystemOperation::WriteFile,
+                ..
+            }) if entry.kind.is_some() || !entry.indexed.is_empty() => {
                 let opaque = Entry::bytes(entry.body).with_content_type(entry.content_type);
                 self.filesystem
-                    .put(scope, path, opaque, CasExpectation::Any)
+                    .put(scope, path, opaque, cas)
                     .await
                     .map(|_| ())
                     .map_err(map_fs_error)

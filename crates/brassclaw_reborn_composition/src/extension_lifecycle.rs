@@ -180,7 +180,7 @@ impl RebornLocalExtensionManagementPort {
         let summaries = extensions
             .into_iter()
             .map(|extension| extension.summary())
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
         let count = summaries.len();
         Ok(response_with_payload(
             None,
@@ -219,7 +219,7 @@ impl RebornLocalExtensionManagementPort {
             .map_err(map_extension_installation_error)?
             .map(|installation| phase_for_activation_state(installation.activation_state()))
             .unwrap_or(LifecyclePhase::Discovered);
-        let summary = self.catalog.resolve(&package_ref)?.summary();
+        let summary = self.catalog.resolve(&package_ref)?.summary()?;
         Ok(response_with_payload(
             Some(package_ref),
             phase,
@@ -276,7 +276,7 @@ impl RebornLocalExtensionManagementPort {
                 continue;
             };
             summaries.push(LifecycleInstalledExtensionSummary {
-                summary: available.summary(),
+                summary: available.summary()?,
                 phase: phase_for_activation_state(installation.activation_state()),
             });
         }
@@ -3136,7 +3136,21 @@ mod tests {
     #[async_trait]
     impl RootFilesystem for DeleteFailingRootFilesystem {
         fn capabilities(&self) -> brassclaw_filesystem::BackendCapabilities {
-            self.inner.capabilities()
+            use brassclaw_filesystem::{Capability, TxnCapability};
+            self.inner
+                .capabilities()
+                .without(Capability::Records)
+                .without(Capability::Query)
+                .without(Capability::IndexExact)
+                .without(Capability::IndexPrefix)
+                .without(Capability::IndexFts)
+                .without(Capability::IndexVector)
+                .without(Capability::Append)
+                .without(Capability::Events)
+                .without(Capability::OpaqueWrite)
+                .without(Capability::EntryBodyCas)
+                .without(Capability::ConditionalEntryDelete)
+                .with_txn(TxnCapability::None)
         }
 
         async fn get_metadata(

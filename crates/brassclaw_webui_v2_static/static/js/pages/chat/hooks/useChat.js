@@ -6,7 +6,9 @@ import {
   createThread as createThreadRequest,
   resolveGate as resolveGateRequest,
   sendMessage,
-  submitManualToken,
+  requestManualTokenSetup,
+  submitManualTokenSecret,
+  continueManualToken,
 } from "../../../lib/api.js";
 import {
   listConnectableChannels,
@@ -21,12 +23,14 @@ import {
   recordAcceptedMessageRef,
   removePending,
 } from "../lib/pending-messages.js";
+import {
+  retainManualTokenOperation, recordManualTokenSetup,
+  validateManualTokenCompletion, closeManualTokenOperation,
+} from "../lib/manual-token-operation.js";
 import { useHistory } from "./useHistory.js";
 import { useSSE } from "./useSSE.js";
 
 const AUTH_TOKEN_FLOW_TIMEOUT_MS = 30000;
-const AUTH_GATE_CREDENTIAL_STORED_ERROR =
-  "credential_stored_gate_resolution_failed";
 const UNSUPPORTED_MULTIMODAL_PAYLOAD_ERROR =
   "webui_v2_multimodal_payload_unsupported";
 const OAUTH_CALLBACK_CHANNEL = "brassclaw-product-auth";
@@ -43,13 +47,6 @@ async function withAuthTokenTimeout(task) {
   }
 }
 
-function credentialStoredGateResolutionError(cause) {
-  const error = new Error("auth gate resolution failed after credential storage");
-  error.safeAuthGateCode = AUTH_GATE_CREDENTIAL_STORED_ERROR;
-  error.cause = cause;
-  return error;
-}
-
 function threadNeedsSidebarRefresh(threadId) {
   const cached = queryClient.getQueryData?.(["threads"]);
   const threads = cached?.threads;
@@ -62,10 +59,6 @@ function unsupportedMultimodalPayloadError() {
   const error = new Error("webchat v2 multimodal payload unsupported");
   error.safeErrorCode = UNSUPPORTED_MULTIMODAL_PAYLOAD_ERROR;
   return error;
-}
-
-function submitResponseResumedTurnGate(response) {
-  return response?.continuation?.type === "turn_gate_resume";
 }
 
 function isPendingOAuthGate(gate) {
@@ -160,7 +153,7 @@ export function useChat(threadId) {
   const [pendingGate, setPendingGate] = React.useState(null);
   const authTokenSubmitRef = React.useRef({
     gateKey: null,
-    credentialRef: null,
+    operation: null,
     inFlight: false,
   });
 
@@ -181,8 +174,20 @@ export function useChat(threadId) {
   const cooldownSeconds = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
   const pendingAuthGateKey =
     pendingGate?.runId && pendingGate?.gateRef
-      ? `${pendingGate.runId}\n${pendingGate.gateRef}`
+      ? JSON.stringify([threadId, pendingGate.runId, pendingGate.gateRef, pendingGate.provider, pendingGate.accountLabel || `${pendingGate.provider} credential`])
       : null;
+
+  const liveAuthGateRef = React.useRef(pendingAuthGateKey);
+  liveAuthGateRef.current = pendingAuthGateKey;
+  React.useEffect(() => {
+    liveAuthGateRef.current = pendingAuthGateKey;
+    return () => {
+      if (liveAuthGateRef.current === pendingAuthGateKey) liveAuthGateRef.current = null;
+      if (authTokenSubmitRef.current.gateKey === pendingAuthGateKey) {
+        authTokenSubmitRef.current = { gateKey: null, operation: null, inFlight: false };
+      }
+    };
+  }, [pendingAuthGateKey]);
 
   React.useEffect(() => {
     if (!cooldownUntil) return;
@@ -194,7 +199,7 @@ export function useChat(threadId) {
     if (authTokenSubmitRef.current.gateKey !== pendingAuthGateKey) {
       authTokenSubmitRef.current = {
         gateKey: pendingAuthGateKey,
-        credentialRef: null,
+        operation: null,
         inFlight: false,
       };
     }
@@ -405,111 +410,122 @@ export function useChat(threadId) {
       if (!runId || !gateRef) {
         throw new Error("resolveGate requires a pending gate with run_id and gate_ref");
       }
-      await resolveGateRequest({
-        threadId,
-        runId,
-        gateRef,
-        resolution,
-        always: opts.always,
-        credentialRef: opts.credentialRef,
-      });
-      const shouldContinueProcessing =
-        resolution === "approved" || resolution === "credential_provided";
-      setPendingGate(null);
-      setIsProcessing(shouldContinueProcessing);
-      if (!shouldContinueProcessing) {
-        setActiveRun(null);
+      const gateKey = pendingAuthGateKey;
+      if (!gateKey || liveAuthGateRef.current !== gateKey) {
+        throw new Error("gate changed before resolution");
+      }
+      const previous = authTokenSubmitRef.current;
+      const attempt = {
+        gateKey, inFlight: true,
+        operation: previous.gateKey === gateKey ? previous.operation : null,
+      };
+      authTokenSubmitRef.current = attempt;
+      try {
+        await resolveGateRequest({
+          threadId, runId, gateRef, resolution,
+          always: opts.always, credentialRef: opts.credentialRef,
+        });
+        if (liveAuthGateRef.current !== gateKey || authTokenSubmitRef.current !== attempt) {
+          throw new Error("gate changed while confirming resolution");
+        }
+        const shouldContinueProcessing =
+          resolution === "approved" || resolution === "credential_provided";
+        // The acknowledged server state stays truthful even if retaining the
+        // browser's redacted closed marker subsequently fails.
+        setPendingGate(null);
+        setIsProcessing(shouldContinueProcessing);
+        if (!shouldContinueProcessing) setActiveRun(null);
+        if (!shouldContinueProcessing && attempt.operation) {
+          closeManualTokenOperation(attempt.operation);
+        }
+      } finally {
+        if (authTokenSubmitRef.current === attempt) attempt.inFlight = false;
       }
     },
-    [pendingGate, threadId],
+    [pendingGate, pendingAuthGateKey, threadId],
   );
 
-  const submitAuthToken = React.useCallback(
-    async (token) => {
-      if (!pendingGate) {
-        throw new Error("auth gate is no longer pending");
-      }
+  const runManualTokenOperation = React.useCallback(
+    async (mode, token) => {
+      if (!pendingGate) throw new Error("auth gate is no longer pending");
       const { runId, gateRef, provider } = pendingGate;
-      if (!runId || !gateRef || !provider) {
+      if (!threadId || !runId || !gateRef || !provider) {
         throw new Error("auth gate is missing required credential metadata");
       }
-      // `account_label` is optional on the prompt (gates.js defaults it to
-      // an empty string), so don't gate submission on it — derive a sensible
-      // label when the prompt didn't carry one.
-      const accountLabel = pendingGate.accountLabel || `${provider} credential`;
-      const gateKey = `${runId}\n${gateRef}`;
-      if (authTokenSubmitRef.current.gateKey !== gateKey) {
-        authTokenSubmitRef.current = {
-          gateKey,
-          credentialRef: null,
-          inFlight: false,
-        };
-      }
-      if (authTokenSubmitRef.current.inFlight) {
+      const context = {
+        threadId, runId, gateRef, provider,
+        accountLabel: pendingGate.accountLabel || `${provider} credential`,
+      };
+      const gateKey = JSON.stringify([threadId, runId, gateRef, provider, context.accountLabel]);
+      if (authTokenSubmitRef.current.gateKey === gateKey && authTokenSubmitRef.current.inFlight) {
         throw new Error("auth token submission already in progress");
       }
-      authTokenSubmitRef.current.inFlight = true;
-
+      // Persist the original before the first network call. A reference action
+      // cannot create a replacement setup if no original was retained.
+      const operation = retainManualTokenOperation(context, { create: mode === "raw" });
+      const attempt = { gateKey, inFlight: true, operation };
+      authTokenSubmitRef.current = attempt;
+      const stillCurrent = () => {
+        if (liveAuthGateRef.current !== gateKey || authTokenSubmitRef.current !== attempt) {
+          throw new Error("auth gate changed while confirming credential setup");
+        }
+      };
+      const request = { identity: operation.identity, invocationId: operation.invocationId, threadId };
       try {
-        let credentialRef = authTokenSubmitRef.current.credentialRef;
-        let submitted = null;
-        if (!credentialRef) {
-          submitted = await withAuthTokenTimeout((signal) =>
-            submitManualToken({
-              provider,
-              accountLabel,
-              token,
-              threadId,
-              runId,
-              gateRef,
-              signal,
-            }),
-          );
-          credentialRef = submitted?.credential_ref;
-          if (!credentialRef) {
-            throw new Error("manual token submit returned no credential_ref");
-          }
-          authTokenSubmitRef.current.credentialRef = credentialRef;
+        stillCurrent();
+        const setup = await withAuthTokenTimeout(signal =>
+          requestManualTokenSetup({ ...context, ...request, signal }),
+        );
+        stillCurrent();
+        attempt.operation = recordManualTokenSetup(operation, context, setup);
+        if (setup.status !== "awaiting_user" && setup.status !== "completed") {
+          const failure = new Error("credential setup is no longer pending");
+          failure.safeAuthGateCode = `manual_setup_${setup.status}`;
+          try { closeManualTokenOperation(attempt.operation); }
+          catch (cause) { failure.cause = cause; }
+          throw failure;
         }
-
-        if (!submitResponseResumedTurnGate(submitted)) {
-          try {
-            await withAuthTokenTimeout((signal) =>
-              resolveGateRequest({
-                threadId,
-                runId,
-                gateRef,
-                resolution: "credential_provided",
-                credentialRef,
-                signal,
-              }),
-            );
-          } catch (err) {
-            throw credentialStoredGateResolutionError(err);
-          }
-        }
-
-        authTokenSubmitRef.current = {
-          gateKey: null,
-          credentialRef: null,
-          inFlight: false,
-        };
+        // Supplying raw data ALWAYS performs raw proof, even after an earlier
+        // saved result. Reference continuation is a distinct user action.
+        const completed = await withAuthTokenTimeout(signal => mode === "raw"
+          ? submitManualTokenSecret({ ...request, token, signal })
+          : continueManualToken({ ...request, signal }));
+        stillCurrent();
+        validateManualTokenCompletion(attempt.operation, context, completed);
+        closeManualTokenOperation(attempt.operation);
+        authTokenSubmitRef.current = { gateKey: null, operation: null, inFlight: false };
         setPendingGate(null);
         setIsProcessing(true);
-      } catch (err) {
-        if (authTokenSubmitRef.current.gateKey === gateKey) {
-          authTokenSubmitRef.current.inFlight = false;
+        return completed;
+      } catch (cause) {
+        stillCurrent();
+        const code = cause?.payload?.code;
+        const terminal = cause?.status === 404 && code === "unknown_or_expired_flow"
+          ? "manual_setup_unavailable"
+          : cause?.status === 400 && code === "canceled"
+            ? "manual_setup_canceled"
+            : cause?.status === 409 && code === "flow_already_terminal"
+              ? "manual_setup_terminal" : null;
+        if (terminal) {
+          const failure = new Error("credential setup is no longer available", { cause });
+          failure.safeAuthGateCode = terminal;
+          throw failure;
         }
-        throw err;
+        throw cause;
+      } finally {
+        if (authTokenSubmitRef.current === attempt) attempt.inFlight = false;
       }
     },
     [pendingGate, threadId],
   );
+  const submitAuthToken = React.useCallback(token => runManualTokenOperation("raw", token), [runManualTokenOperation]);
+  const continueAuthToken = React.useCallback(() => runManualTokenOperation("reference"), [runManualTokenOperation]);
 
   const cancelRun = React.useCallback(
     async (reason) => {
       const runId = activeRun?.runId;
       if (!runId || !threadId) return;
+      authTokenSubmitRef.current = { gateKey: null, operation: null, inFlight: false };
       setPendingGate(null);
       setIsProcessing(false);
       setActiveRun(null);
@@ -562,6 +578,7 @@ export function useChat(threadId) {
     send,
     resolveGate,
     submitAuthToken,
+    continueAuthToken,
     cancelRun,
     loadMore,
     dismissChannelConnectAction: () => setChannelConnectAction(null),

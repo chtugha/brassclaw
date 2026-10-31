@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::secrets_guard::{InlineSecretError, reject_inline_secret};
@@ -418,7 +418,7 @@ pub struct EmbeddingSection {
 /// References a provider by `provider_id` (resolved against the merged
 /// `ProviderRegistry` in the composition root) and optionally overrides
 /// the provider's `default_model` and `api_key_env`.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LlmSlotSelection {
     /// Stable provider identifier from the database catalogue after explicit import.

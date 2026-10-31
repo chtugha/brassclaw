@@ -46,6 +46,7 @@ mod first_party_tools;
 mod http_body;
 mod invocation_services;
 pub mod memory_context;
+mod memory_embedding_port;
 mod memory_probe;
 mod native_image;
 mod native_registration;
@@ -55,6 +56,7 @@ mod process_aliases;
 mod process_output;
 mod process_port;
 mod production;
+mod raw_secret_source;
 mod sandbox_process;
 mod services;
 mod surface;
@@ -120,6 +122,7 @@ pub use invocation_services::{
     InvocationServices, InvocationServicesError, InvocationServicesResolutionRequest,
     InvocationServicesResolver, LocalInvocationServicesResolver, ToolCallHttpEgress,
 };
+pub use memory_embedding_port::{RuntimeMemoryEmbeddingPort, with_task_memory_embeddings};
 pub use native_image::{
     NativeExecutableImage, NativeImageError, NativeVerificationLimits, PackagedExecutableImage,
 };
@@ -127,7 +130,7 @@ pub use native_registration::{NativeImplementationRef, NativeRegistrationError};
 pub use obligations::{
     BuiltinObligationHandler, BuiltinObligationServices, LEAK_REDACT_FAILED_CODE,
     ProcessObligationLifecycleStore, RuntimeCredentialAccessSecret,
-    RuntimeCredentialAccountRequest, RuntimeCredentialAccountResolver,
+    RuntimeCredentialAccountRequest, RuntimeCredentialAccountResolver, RuntimeCredentialUseGuard,
 };
 pub use planner::{ExecutionPlan, PlannerError, plan_capability};
 pub use process_output::{SavedCommandOutput, SavedCommandOutputSanitization};
@@ -136,6 +139,7 @@ pub use process_port::{
     RuntimeProcessPort, SandboxCommandTransport, TenantSandboxProcessPort,
 };
 pub use production::DefaultHostRuntime;
+pub use raw_secret_source::{RuntimeRawSecretRequest, RuntimeRawSecretSource};
 pub use sandbox_process::{
     RebornSandboxConfig, RebornSandboxContainerIdentity, RebornSandboxNetworkBroker,
     RebornSandboxScopeKey, RebornSandboxSecretBroker, RebornSandboxWorkspaceMode,
@@ -525,11 +529,15 @@ pub struct RuntimeApprovalGate {
     pub reason: RuntimeBlockedReason,
 }
 
-/// Auth/credential suspension state.
+/// Native authentication interruption, including nonresumable dispatch outcomes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeAuthGate {
     pub gate_id: RuntimeGateId,
     pub capability_id: CapabilityId,
+    /// Captured native invocation boundary, never inferred from a gate ID.
+    /// Only BeforeDispatch can enter an ordinary credential-wait path. A
+    /// dispatcher-entered or unproven outcome needs effect reconciliation.
+    pub boundary: brassclaw_host_api::AuthDispatchBoundary,
     pub reason: RuntimeBlockedReason,
     pub required_secrets: Vec<SecretHandle>,
     pub credential_requirements: Vec<RuntimeCredentialAuthRequirement>,

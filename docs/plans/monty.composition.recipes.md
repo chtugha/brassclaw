@@ -19,8 +19,8 @@ migration inputs; they do not override the retained implementation.
 New replacements still need their exact interface/binding/dependency/native and
 behavior qualification. Preserve old task selections, reply/history ownership,
 isolated mutable state, current kernel policy and no-replay finalization. Internal
-history remains private; public discovery requires its separately qualified
-execution Recipe and command.
+history remains private; intended MCP discovery requires a separately qualified
+MCP-call Recipe and command. Other complete Skills require no dedicated Recipe.
 
 **MCP source status:** the old raw-Skill/composer stub and legacy outbound
 attachment are retired. The implemented ordinary-chat bridge, always-running
@@ -30,6 +30,14 @@ retains the earlier source audit. Full public-library population remains open;
 that gap does not mean the current service is absent or unqualified in all scopes.
 
 **MCP discovery/provider lifecycle:** derive tools/list from available approved mcp-call-skill-recipes and their exact command variants. The server remains running; Kohai connects/advertises only after final prefix addition immediately before prompt send and disconnects on the complete model answer. Refresh the server list at startup/restart and qualified Skill/Recipe catalogue changes. Preserve request-local advertised contracts and ordinary-chat result recovery; see [the authoritative lifecycle](monty.composition.md#recipe-derived-discovery-and-kohai-owned-provider-connections).
+
+**Model-call migration:** use the Prefix owner's
+[four binding assembly rules](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26)
+for every model usage below. Kohai formats the dynamic prompt before optional
+Sempai correction, receives its final dynamic result and then inserts the intended
+finished immutable prefix unchanged exactly once. Sempai uses its own generated
+reviewer prefix/design; same-pair consumers share the generator's saved accepted
+design revision. Historical row descriptions do not define another render order.
 
 **Skill contract:** a Skill is one Tool usage with prose and an explicitly
 associated preloadable function interface. Pure helpers remain PythonCode.
@@ -477,3 +485,21 @@ N16 admits candidate proposals; it is not the validator Q1 persistence step. N15
 Conditional file creation, extraction/compression variants, PR pagination/per-file/per-finding work, validator semantic branches, doc-sync iteration and prefix child waits and ordinary-chat waits observed by MCP require retained control-flow support. The illustrated linear IBS skeletons do not supply it. Each completed workflow must implement the actual branches/occurrences/layout/continuation before coherent activation; an unfinished active workflow is an error to repair, never No-Match/Tier2.
 
 See the [main audit and acceptance gates](monty.composition.md#20-correctness-security-and-v3monty-alignment-audit) and [per-component implementation instructions](monty.composition.implementation.md#additional-audit-derived-reusable-parts-c06c07).
+
+## Open K3-2 successor — reusable Recipe inventory
+
+Consume the [shared K3-2 contract](../reborn/model-token-limits.md#open-k3-2-successor--retained-prefix-selection-and-prefix-free-construction-workflows)
+and the relevant [Exact implementation mapping](Exact_V3_definition_update_at_K3-2.md).
+This is an open consumer delta, not completion or a new implementation owner.
+The existing receipt, task capture, Recipe, native child/review and response owners
+remain authoritative. Extend their retained prefix binding with Default, Selected
+and PrefixFreeWorkflow, rather than a separate prefixless flag/queue.
+
+Required construction child/review workflows inherit prefix-free operation and
+keep their original model/auth/catalogue references. General independent chats and
+reviews are unchanged. Bootstrap values use supported technical reads first and
+optional B1/B2 source interpretation with strict non-LLM response checks. All
+generation-specific Q1 steps belong to the original generation Recipe; no second
+validation workflow is introduced merely to rename existing checks. Match the
+actual existing usages before adding new components. Prefix-Maker-prefix usage
+is only the future optional seam in Exact §5.1.

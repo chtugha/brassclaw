@@ -20,7 +20,7 @@ use crate::host::{
 };
 
 /// Session data persisted to disk.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SessionData {
     pub session_token: String,
     pub created_at: DateTime<Utc>,
@@ -28,11 +28,21 @@ pub struct SessionData {
     pub auth_provider: Option<String>,
 }
 
+impl std::fmt::Debug for SessionData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionData")
+            .field("session_token", &"[REDACTED]")
+            .field("created_at", &self.created_at)
+            .field("auth_provider", &self.auth_provider)
+            .finish()
+    }
+}
+
 /// A NEP-413 wallet signature plus the payload it covers, ready to exchange for
 /// a NEAR AI session token via `/v1/auth/near`. The browser produces this with a
 /// connected NEAR wallet; the fields map onto NEAR AI's auth request (note the
 /// nested wire fields are camelCase while the top-level keys are snake_case).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct NearWalletSignedMessage {
     pub account_id: String,
     pub public_key: String,
@@ -47,6 +57,19 @@ pub struct NearWalletSignedMessage {
     pub nonce: Vec<u8>,
     pub callback_url: Option<String>,
 }
+
+impl std::fmt::Debug for NearWalletSignedMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NearWalletSignedMessage")
+            .finish_non_exhaustive()
+    }
+}
+
+// NEAR's NEP-413 authentication wire contract, not resource budgets or a catalogue.
+pub const NEAR_WALLET_LOGIN_MESSAGE: &str = "Sign in to NEAR AI Cloud";
+pub const NEAR_WALLET_LOGIN_RECIPIENT: &str = "cloud.near.ai";
+/// Issuer NEP-413 nonce validity, independent of task/VM resource budgets.
+pub const NEAR_WALLET_NONCE_LIFETIME_SECS: u64 = 5 * 60;
 
 /// Build the `/v1/auth/near` request body. Kept separate so the wire shape (the
 /// snake_case top-level / camelCase nested split, and the nonce-as-byte-array) is
@@ -96,7 +119,7 @@ impl Default for SessionConfig {
 /// unset; the CLI build wires in real impls.
 pub struct SessionManager {
     config: SessionConfig,
-    client: Client,
+    client: Result<Client, reqwest::Error>,
     /// Current token in memory.
     token: RwLock<Option<SecretString>>,
     /// Prevents thundering herd during concurrent 401s.
@@ -119,8 +142,9 @@ impl SessionManager {
             config,
             client: Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap_or_else(|_| Client::new()),
+                .redirect(reqwest::redirect::Policy::none())
+                .retry(reqwest::retry::never())
+                .build(),
             token: RwLock::new(None),
             renewal_lock: Mutex::new(()),
             store: RwLock::new(None),
@@ -215,47 +239,86 @@ impl SessionManager {
     /// POSTs the signed message to `{auth_base}/v1/auth/near` and returns the
     /// `access_token` on success. NEAR AI rejects requests without a
     /// `User-Agent`, so one is always sent. This does NOT persist the token —
-    /// the caller applies it (e.g. via [`Self::save_session_for_renewer`]) so it
-    /// flows through the same disk/DB/secrets pipeline as the OAuth login.
+    /// the caller owns publication. The ordinary provider control plane uses
+    /// encrypted provider custody and its atomic original mutation receipt;
+    /// legacy session persistence remains a separate explicit caller choice.
     pub async fn near_wallet_login(
         &self,
         signed: &NearWalletSignedMessage,
     ) -> Result<String, LlmError> {
-        let url = format!("{}/v1/auth/near", self.config.auth_base_url);
-        let response = self
-            .client
-            .post(&url)
+        self.near_wallet_login_with_policy(signed, crate::ProviderRequestPolicy::default())
+            .await
+    }
+
+    /// Validate the configured authentication target before requesting a wallet signature.
+    pub fn near_wallet_auth_endpoint(&self) -> Result<url::Url, LlmError> {
+        let url = format!(
+            "{}/v1/auth/near",
+            self.config.auth_base_url.trim_end_matches('/')
+        );
+        let parsed = url::Url::parse(&url).map_err(|_| LlmError::RequestFailed {
+            provider: "nearai".into(),
+            reason: "NEAR authentication endpoint is invalid".into(),
+        })?;
+        if !matches!(parsed.scheme(), "http" | "https")
+            || parsed.host_str().is_none()
+            || !parsed.username().is_empty()
+            || parsed.password().is_some()
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+        {
+            return Err(LlmError::RequestFailed {provider:"nearai".into(),reason:"NEAR authentication endpoint must be HTTP(S) without credentials, query or fragment".into()});
+        }
+        Ok(parsed)
+    }
+
+    /// One explicit exchange with the selected timeout/optional response capacity.
+    /// No redirects, retry, file write or live-session publication is performed.
+    pub async fn near_wallet_login_with_policy(
+        &self,
+        signed: &NearWalletSignedMessage,
+        policy: crate::ProviderRequestPolicy,
+    ) -> Result<String, LlmError> {
+        let client = crate::registry_http_client("nearai authentication", policy.timeout_secs)?;
+        let parsed = self.near_wallet_auth_endpoint()?;
+        let response = client
+            .post(parsed)
             .header(reqwest::header::USER_AGENT, "brassclaw")
             .json(&near_auth_request_body(signed))
             .send()
             .await
-            .map_err(|e| LlmError::SessionRenewalFailed {
-                provider: "nearai".to_string(),
-                reason: format!("NEAR wallet login request failed: {e}"),
+            .map_err(|_| LlmError::SessionRenewalFailed {
+                provider: "nearai".into(),
+                reason: "NEAR wallet login transport failed; original outcome may be unknown"
+                    .into(),
             })?;
-
         if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            let preview = brassclaw_common::truncate_for_preview(&body, 200);
             return Err(LlmError::SessionRenewalFailed {
-                provider: "nearai".to_string(),
-                reason: format!("NEAR wallet login rejected: HTTP {status}: {preview}"),
+                provider: "nearai".into(),
+                reason: format!("NEAR wallet login rejected: HTTP {}", response.status()),
             });
         }
-
+        let bytes=crate::response_body::read(response,policy.max_response_bytes).await.map_err(|error| match error {
+            crate::response_body::ResponseBodyError::Capacity{limit}=>LlmError::ResponseTooLarge{provider:"nearai".into(),limit},
+            crate::response_body::ResponseBodyError::Transport(_)=>LlmError::SessionRenewalFailed {provider:"nearai".into(),reason:"NEAR wallet response could not be read; original outcome may be unknown".into()},
+        })?;
         #[derive(Deserialize)]
         struct NearAuthResponse {
             access_token: String,
         }
         let parsed: NearAuthResponse =
-            response
-                .json()
-                .await
-                .map_err(|e| LlmError::SessionRenewalFailed {
-                    provider: "nearai".to_string(),
-                    reason: format!("NEAR wallet login response unreadable: {e}"),
-                })?;
+            serde_json::from_slice(&bytes).map_err(|_| LlmError::SessionRenewalFailed {
+                provider: "nearai".into(),
+                reason: "NEAR wallet response is invalid".into(),
+            })?;
+        if parsed.access_token.trim().is_empty()
+            || reqwest::header::HeaderValue::from_str(&format!("Bearer {}", parsed.access_token))
+                .is_err()
+        {
+            return Err(LlmError::AuthFailed {
+                provider: "nearai".into(),
+            });
+        }
         Ok(parsed.access_token)
     }
 
@@ -328,13 +391,18 @@ impl SessionManager {
 
         let response = self
             .client
+            .as_ref()
+            .map_err(|_| LlmError::SessionRenewalFailed {
+                provider: "nearai".into(),
+                reason: "Session HTTP client could not be constructed".into(),
+            })?
             .get(&url)
             .header("Authorization", format!("Bearer {}", token.expose_secret()))
             .send()
             .await
-            .map_err(|e| LlmError::SessionRenewalFailed {
+            .map_err(|_| LlmError::SessionRenewalFailed {
                 provider: "nearai".to_string(),
-                reason: format!("Validation request failed: {}", e),
+                reason: "Validation request failed".into(),
             })?;
 
         if response.status().is_success() {
@@ -348,11 +416,9 @@ impl SessionManager {
         }
 
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        let preview = brassclaw_common::truncate_for_preview(&body, 200);
         Err(LlmError::SessionRenewalFailed {
             provider: "nearai".to_string(),
-            reason: format!("Validation failed: HTTP {status}: {preview}"),
+            reason: format!("Validation failed: HTTP {status}"),
         })
     }
 
@@ -508,9 +574,9 @@ impl SessionManager {
         };
 
         let session: SessionData =
-            serde_json::from_value(value).map_err(|e| LlmError::SessionRenewalFailed {
+            serde_json::from_value(value).map_err(|_| LlmError::SessionRenewalFailed {
                 provider: "nearai".to_string(),
-                reason: format!("Failed to parse DB session: {}", e),
+                reason: "Failed to parse saved NEAR database session".into(),
             })?;
 
         let mut guard = self.token.write().await;
@@ -538,17 +604,17 @@ impl SessionManager {
         let decrypted = secrets
             .get_decrypted(&user_id, "nearai_session_token")
             .await
-            .map_err(|e| LlmError::SessionRenewalFailed {
+            .map_err(|_| LlmError::SessionRenewalFailed {
                 provider: "nearai".to_string(),
-                reason: format!("Secrets lookup failed: {}", e),
+                reason: "NEAR session secret lookup failed".into(),
             })?;
 
         use secrecy::ExposeSecret as _;
         let session: SessionData =
-            serde_json::from_str(decrypted.expose_secret()).map_err(|e| {
+            serde_json::from_str(decrypted.expose_secret()).map_err(|_| {
                 LlmError::SessionRenewalFailed {
                     provider: "nearai".to_string(),
-                    reason: format!("Failed to parse session from secrets: {}", e),
+                    reason: "Failed to parse saved NEAR session from secrets".into(),
                 }
             })?;
 
@@ -575,9 +641,9 @@ impl SessionManager {
             })?;
 
         let session: SessionData =
-            serde_json::from_str(&data).map_err(|e| LlmError::SessionRenewalFailed {
+            serde_json::from_str(&data).map_err(|_| LlmError::SessionRenewalFailed {
                 provider: "nearai".to_string(),
-                reason: format!("Failed to parse session file: {}", e),
+                reason: "Failed to parse saved NEAR session file".into(),
             })?;
 
         {
@@ -865,3 +931,7 @@ mod tests {
         assert_eq!(mode, 0o600, "Session file should have 0600 permissions");
     }
 }
+
+#[cfg(test)]
+#[path = "session_wallet_native_tests.rs"]
+mod wallet_native_tests;

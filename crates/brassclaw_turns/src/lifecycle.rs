@@ -744,6 +744,16 @@ where
         self.inner.record_model_route_snapshot(request).await
     }
 
+    async fn block_native_auth(
+        &self,
+        request: crate::runner::native_auth::BlockNativeAuthRequest,
+    ) -> Result<TurnRunState, TurnError> {
+        let state = self.inner.block_native_auth(request).await?;
+        let event = TurnLifecycleEvent::from_run_state(&state, TurnEventKind::Blocked, None);
+        self.publish_state_once(state.clone(), event).await?;
+        Ok(state)
+    }
+
     async fn block_run(&self, request: BlockRunRequest) -> Result<TurnRunState, TurnError> {
         let state = self.inner.block_run(request).await?;
         let event = TurnLifecycleEvent::from_run_state(&state, TurnEventKind::Blocked, None);

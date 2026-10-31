@@ -43,10 +43,15 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
+use crate::custody::{
+    CUSTODY_FORMAT_V1, CustodyBody, DecodedSecretValue, OrdinarySecretValue,
+    TIMED_ORDINARY_FORMAT_V1, decrypt_stored_value,
+};
+use crate::{SecretCustodyMetadata, SecretCustodySource};
 use async_trait::async_trait;
 use brassclaw_filesystem::{
-    CasExpectation, ContentType, Entry, FilesystemError, IndexKey, IndexKind, IndexName, IndexSpec,
-    IndexValue, RootFilesystem, ScopedFilesystem,
+    CasExpectation, ContentType, Entry, EntryBodyChecksum, FilesystemError, IndexKey, IndexKind,
+    IndexName, IndexSpec, IndexValue, RecordVersion, RootFilesystem, ScopedFilesystem,
 };
 use brassclaw_host_api::{
     AgentId, HostApiError, ProjectId, ResourceScope, ScopedPath, SecretHandle, ThreadId, Timestamp,
@@ -54,6 +59,7 @@ use brassclaw_host_api::{
 use chrono::{Duration, Utc};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::{
     CredentialAccount, CredentialAccountId, CredentialAccountStatus, CredentialAccountStore,
@@ -82,6 +88,7 @@ const CAS_RETRY_ATTEMPTS: usize = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct StoredSecret {
+    #[serde(deserialize_with = "crate::stored_scope::deserialize_stored_scope")]
     scope: ResourceScope,
     handle: SecretHandle,
     /// AES-256-GCM ciphertext over the UTF-8 secret material.
@@ -92,16 +99,45 @@ struct StoredSecret {
     expires_at: Option<Timestamp>,
     created_at: Timestamp,
     updated_at: Timestamp,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    custody_format: Option<u8>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// Keep the physical token and body identity from the SAME backend read. The
+// opaque checksum covers encrypted bytes, not a plaintext token fingerprint.
+struct VersionedStoredSecret {
+    secret: StoredSecret,
+    version: RecordVersion,
+    body_checksum: EntryBodyChecksum,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct StoredLease {
+    // Internal rehydration is not authority. Every lease operation must still
+    // compare this full scope to the kernel-supplied caller before any effect.
+    #[serde(deserialize_with = "crate::stored_scope::deserialize_stored_scope")]
     scope: ResourceScope,
     handle: SecretHandle,
     lease_id: SecretLeaseId,
     status: SecretLeaseStatus,
     lease_expires_at: Timestamp,
     secret_expires_at: Option<Timestamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    secret_record_reference: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    selection_proof: Option<StoredLeaseProof>,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredLeaseProof {
+    ciphertext: Vec<u8>,
+    salt: Vec<u8>,
+}
+impl std::fmt::Debug for StoredLeaseProof {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("StoredLeaseProof([REDACTED])")
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,6 +263,56 @@ where
         }
     }
 
+    async fn issue_selected_lease(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: Option<&str>,
+    ) -> Result<Option<SecretLease>, SecretStoreError> {
+        let Some(stored) = self.read_secret(scope, handle).await? else {
+            return Ok(None);
+        };
+        if !self
+            .decode_secret(scope, handle, &stored)?
+            .runtime_eligible()
+        {
+            return Ok(None);
+        }
+        // Compare the same authenticated snapshot that will be pinned in the
+        // lease. A later replacement cannot turn it into a lease for new bytes.
+        let selected_reference = Self::hash_record_reference(&stored)?;
+        if let Some(expected) = expected
+            && selected_reference != expected
+        {
+            return Ok(None);
+        }
+        if let Some(expires_at) = stored.expires_at
+            && expires_at <= Utc::now()
+        {
+            return Err(SecretStoreError::SecretExpired);
+        }
+        let lease_id = SecretLeaseId::new();
+        let mut lease = StoredLease {
+            scope: scope.clone(),
+            handle: handle.clone(),
+            lease_id,
+            status: SecretLeaseStatus::Active,
+            lease_expires_at: Utc::now() + self.lease_ttl,
+            secret_expires_at: stored.expires_at,
+            secret_record_reference: Some(selected_reference),
+            selection_proof: None,
+        };
+        self.seal_lease_selection(&mut lease)?;
+        self.write_lease(&lease).await?;
+        if lease
+            .secret_expires_at
+            .is_some_and(|expiry| expiry <= Utc::now())
+        {
+            return Err(SecretStoreError::SecretExpired);
+        }
+        Ok(Some(Self::lease_to_public(&lease)))
+    }
+
     // The FS-stored master-key sentinel and `verify_can_decrypt_existing_secrets`
     // method that used to live here were removed when the per-tenant
     // `ScopedFilesystem` design landed: the sentinel record would have moved to
@@ -241,6 +327,17 @@ where
         scope: &ResourceScope,
         handle: &SecretHandle,
     ) -> Result<Option<StoredSecret>, SecretStoreError> {
+        Ok(self
+            .read_secret_versioned(scope, handle)
+            .await?
+            .map(|stored| stored.secret))
+    }
+
+    async fn read_secret_versioned(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<VersionedStoredSecret>, SecretStoreError> {
         let path = secret_path(scope, handle);
         let Some(versioned) = self
             .filesystem
@@ -254,14 +351,83 @@ where
         if !same_scope_owner(&stored.scope, scope) || &stored.handle != handle {
             return Ok(None);
         }
-        Ok(Some(stored))
+        Ok(Some(VersionedStoredSecret {
+            secret: stored,
+            version: versioned.version,
+            body_checksum: EntryBodyChecksum::for_body(&versioned.entry.body),
+        }))
     }
 
-    async fn write_secret(&self, secret: &StoredSecret) -> Result<(), SecretStoreError> {
+    fn encrypted_secret_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        stored: &StoredSecret,
+    ) -> Result<String, SecretStoreError> {
+        drop(self.decode_secret(scope, handle, stored)?);
+        Self::hash_record_reference(stored)
+    }
+
+    fn decode_secret(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        stored: &StoredSecret,
+    ) -> Result<DecodedSecretValue, SecretStoreError> {
+        let value = decrypt_stored_value(
+            &self.crypto,
+            &filesystem_secret_aad(scope, handle),
+            &stored.encrypted_value,
+            &stored.key_salt,
+            stored.custody_format,
+        )
+        .map_err(secret_error_to_store_error)?;
+        if stored.custody_format == Some(TIMED_ORDINARY_FORMAT_V1)
+            && stored.expires_at != value.secret_expires_at()
+        {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "stored secret expiry failed integrity verification".into(),
+            });
+        }
+        if let Some(body) = value.custody()
+            && (body.scope() != &stored.scope
+                || stored.expires_at.is_some()
+                || !same_scope_owner(body.scope(), scope))
+        {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "custody record has invalid stored owner".into(),
+            });
+        }
+        Ok(value)
+    }
+
+    // Call only after authenticating this exact stored record in the owner.
+    fn hash_record_reference(stored: &StoredSecret) -> Result<String, SecretStoreError> {
+        let owner = serialize_secret(&stored.scope)?;
+        let expiry = serialize_secret(&stored.expires_at)?;
+        let mut digest = Sha256::new();
+        digest.update(b"brassclaw-filesystem-encrypted-secret-reference/1\0");
+        for value in [
+            owner.as_slice(),
+            stored.handle.as_str().as_bytes(),
+            stored.key_salt.as_slice(),
+            stored.encrypted_value.as_slice(),
+            expiry.as_slice(),
+        ] {
+            digest.update((value.len() as u64).to_be_bytes());
+            digest.update(value);
+        }
+        Ok(format!("{:x}", digest.finalize()))
+    }
+
+    async fn write_secret(
+        &self,
+        secret: &StoredSecret,
+        expectation: CasExpectation,
+    ) -> Result<bool, SecretStoreError> {
         let path = secret_path(&secret.scope, &secret.handle);
-        let body = serialize_secret(secret)?;
         let entry = tag_entry_with_tenant(
-            Entry::bytes(body).with_content_type(ContentType::json()),
+            Entry::bytes(serialize_secret(secret)?).with_content_type(ContentType::json()),
             &secret.scope,
         );
         ensure_tenant_id_index_secret(
@@ -270,11 +436,107 @@ where
             &secret_owner_root(&secret.scope),
         )
         .await?;
-        self.filesystem
-            .put(&secret.scope, &path, entry, CasExpectation::Any)
+        match self
+            .filesystem
+            .put(&secret.scope, &path, entry, expectation)
             .await
-            .map(|_| ())
-            .map_err(fs_to_secret_store_error)
+        {
+            Ok(_) => Ok(true),
+            Err(
+                FilesystemError::VersionMismatch { .. } | FilesystemError::SnapshotMismatch { .. },
+            ) => Ok(false),
+            Err(error) => Err(fs_to_secret_store_error(error)),
+        }
+    }
+
+    fn custody_record(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        body: &CustodyBody,
+    ) -> Result<StoredSecret, SecretStoreError> {
+        if body.scope() != &scope {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "custody encryption owner mismatch".into(),
+            });
+        }
+        let (encrypted_value, key_salt) = crate::custody::encrypt_body(
+            &self.crypto,
+            &filesystem_secret_aad(&scope, &handle),
+            body,
+        )
+        .map_err(secret_error_to_store_error)?;
+        let now = Utc::now();
+        Ok(StoredSecret {
+            scope,
+            handle,
+            encrypted_value,
+            key_salt,
+            expires_at: None,
+            created_at: now,
+            updated_at: now,
+            custody_format: Some(CUSTODY_FORMAT_V1),
+        })
+    }
+
+    fn custody_repeat(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: &CustodyBody,
+        stored: &StoredSecret,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        let decoded = self.decode_secret(scope, handle, stored)?;
+        let matches = match (expected, decoded.custody()) {
+            (
+                CustodyBody::Original {
+                    scope,
+                    context,
+                    material,
+                },
+                Some(CustodyBody::Original {
+                    scope: actual_scope,
+                    context: actual_context,
+                    material: actual_material,
+                }),
+            ) => {
+                scope == actual_scope
+                    && context == actual_context
+                    && crate::crypto::secret_values_match(
+                        material.expose_secret(),
+                        actual_material.expose_secret(),
+                    )
+            }
+            (
+                CustodyBody::Retained {
+                    scope,
+                    source,
+                    material,
+                },
+                Some(CustodyBody::Retained {
+                    scope: actual_scope,
+                    source: actual_source,
+                    material: actual_material,
+                }),
+            ) => {
+                scope == actual_scope
+                    && source == actual_source
+                    && crate::crypto::secret_values_match(
+                        material.expose_secret(),
+                        actual_material.expose_secret(),
+                    )
+            }
+            _ => false,
+        };
+        if !matches {
+            return Ok(None);
+        }
+        // The matched actual body supplies captured origin metadata; expected
+        // input and caller scope never substitute for the stored selection.
+        decoded
+            .custody()
+            .map(|body| Ok(body.metadata(handle.clone(), Self::hash_record_reference(stored)?)))
+            .transpose()
     }
 
     async fn write_lease(&self, lease: &StoredLease) -> Result<(), SecretStoreError> {
@@ -287,10 +549,65 @@ where
         ensure_tenant_id_index_secret(&self.filesystem, &lease.scope, &lease_root(&lease.scope))
             .await?;
         self.filesystem
-            .put(&lease.scope, &path, entry, CasExpectation::Any)
+            .put(&lease.scope, &path, entry, CasExpectation::Absent)
             .await
             .map(|_| ())
             .map_err(fs_to_secret_store_error)
+    }
+
+    fn lease_selection_aad(lease: &StoredLease) -> Result<Vec<u8>, SecretStoreError> {
+        Ok(crate::crypto::build_aad(
+            b"reborn/v1/filesystem_secret_lease_selection",
+            &[
+                &serialize_secret(&lease.scope)?,
+                lease.lease_id.to_string().as_bytes(),
+            ],
+        ))
+    }
+
+    fn seal_lease_selection(&self, lease: &mut StoredLease) -> Result<(), SecretStoreError> {
+        let mut unsigned = lease.clone();
+        unsigned.selection_proof = None;
+        let (ciphertext, salt) = self
+            .crypto
+            .encrypt(
+                &serialize_secret(&unsigned)?,
+                &Self::lease_selection_aad(lease)?,
+            )
+            .map_err(secret_error_to_store_error)?;
+        lease.selection_proof = Some(StoredLeaseProof { ciphertext, salt });
+        Ok(())
+    }
+
+    fn verify_lease_selection(&self, lease: &StoredLease) -> Result<(), SecretStoreError> {
+        let invalid = || SecretStoreError::StoreUnavailable {
+            reason: "secret lease selection integrity verification failed".into(),
+        };
+        let Some(proof) = &lease.selection_proof else {
+            // Historical unproven rows may still be explicitly revoked. Their
+            // missing generation is rejected by consume before reading material.
+            return if lease.secret_record_reference.is_none() {
+                Ok(())
+            } else {
+                Err(invalid())
+            };
+        };
+        let plaintext = self
+            .crypto
+            .decrypt(
+                &proof.ciphertext,
+                &proof.salt,
+                &Self::lease_selection_aad(lease)?,
+            )
+            .map_err(|_| invalid())?;
+        let captured: StoredLease =
+            serde_json::from_str(plaintext.expose()).map_err(|_| invalid())?;
+        let mut unsigned = lease.clone();
+        unsigned.selection_proof = None;
+        if captured != unsigned {
+            return Err(invalid());
+        }
+        Ok(())
     }
 
     fn lease_to_public(stored: &StoredLease) -> SecretLease {
@@ -299,6 +616,7 @@ where
             scope: stored.scope.clone(),
             handle: stored.handle.clone(),
             status: stored.status,
+            secret_expires_at: stored.secret_expires_at,
         }
     }
 
@@ -325,17 +643,163 @@ impl<F> SecretStore for FilesystemSecretStore<F>
 where
     F: RootFilesystem,
 {
+    async fn close_identity(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        expected: crate::SecretIdentityClosure,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        if expected
+            .source()
+            .is_some_and(|source| !same_scope_owner(&scope, &source.scope))
+        {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "custody source owner mismatch".into(),
+            });
+        }
+        let prior = self.read_secret_versioned(&scope, &handle).await?;
+        let decoded = prior
+            .as_ref()
+            .map(|record| self.decode_secret(&scope, &handle, &record.secret))
+            .transpose()?;
+        let reference = prior
+            .as_ref()
+            .map(|record| Self::hash_record_reference(&record.secret))
+            .transpose()?;
+        let current = decoded.as_ref().zip(reference.as_deref());
+        let body = match expected.decide(&scope, current) {
+            crate::identity_closure::ClosureDecision::Reject => return Ok(None),
+            crate::identity_closure::ClosureDecision::Keep => {
+                return self.custody(&scope, &handle).await;
+            }
+            crate::identity_closure::ClosureDecision::Write(body) => body,
+        };
+        let mut stored = self.custody_record(scope.clone(), handle.clone(), &body)?;
+        let cas = match &prior {
+            Some(record) => {
+                stored.created_at = record.secret.created_at;
+                CasExpectation::VersionAndBody {
+                    version: record.version,
+                    body_checksum: record.body_checksum,
+                }
+            }
+            None => CasExpectation::Absent,
+        };
+        if self.write_secret(&stored, cas).await? {
+            return Ok(Some(
+                body.metadata(handle, Self::hash_record_reference(&stored)?),
+            ));
+        }
+        let actual = self.custody(&scope, &handle).await?;
+        Ok(actual.filter(|actual| expected.accepts(&scope, actual)))
+    }
     async fn put(
         &self,
         scope: ResourceScope,
         handle: SecretHandle,
         material: SecretMaterial,
     ) -> Result<SecretMetadata, SecretStoreError> {
-        let plaintext = material.expose_secret().as_bytes();
+        self.put_with_expiry(scope, handle, material, None).await
+    }
+
+    async fn put_with_expiry(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expires_at: Option<Timestamp>,
+    ) -> Result<SecretMetadata, SecretStoreError> {
+        let aad = filesystem_secret_aad(&scope, &handle);
+        let value = OrdinarySecretValue {
+            material,
+            expires_at,
+        };
+        let encrypted = value
+            .encrypt(&self.crypto, &aad)
+            .map_err(secret_error_to_store_error)?;
+        let now = Utc::now();
+        let stored = StoredSecret {
+            scope: scope.clone(),
+            handle: handle.clone(),
+            encrypted_value: encrypted.ciphertext,
+            key_salt: encrypted.salt,
+            expires_at,
+            created_at: now,
+            updated_at: now,
+            custody_format: encrypted.format,
+        };
+        drop(value);
+        let current = self.read_secret_versioned(&scope, &handle).await?;
+        if let Some(record) = &current
+            && self
+                .decode_secret(&scope, &handle, &record.secret)?
+                .custody()
+                .is_some()
+        {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "immutable secret identity cannot be replaced".into(),
+            });
+        }
+        let expectation = current
+            .map(|record| CasExpectation::VersionAndBody {
+                version: record.version,
+                body_checksum: record.body_checksum,
+            })
+            .unwrap_or(CasExpectation::Absent);
+        if !self.write_secret(&stored, expectation).await? {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "secret changed during conditional write".into(),
+            });
+        }
+        Ok(SecretMetadata { scope, handle })
+    }
+
+    async fn record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<String>, SecretStoreError> {
+        self.read_secret(scope, handle)
+            .await?
+            .map(|stored| self.encrypted_secret_reference(scope, handle, &stored))
+            .transpose()
+    }
+
+    async fn put_if_record_reference(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expected: Option<&str>,
+    ) -> Result<Option<SecretMetadata>, SecretStoreError> {
+        let current = self.read_secret_versioned(&scope, &handle).await?;
+        let decoded = current
+            .as_ref()
+            .map(|record| self.decode_secret(&scope, &handle, &record.secret))
+            .transpose()?;
+        let reference = current
+            .as_ref()
+            .map(|record| Self::hash_record_reference(&record.secret))
+            .transpose()?;
+        if reference.as_deref() != expected
+            || decoded
+                .as_ref()
+                .and_then(DecodedSecretValue::custody)
+                .is_some()
+        {
+            return Ok(None);
+        }
+        drop(decoded);
+        let expectation = current
+            .map(|stored| CasExpectation::VersionAndBody {
+                version: stored.version,
+                body_checksum: stored.body_checksum,
+            })
+            .unwrap_or(CasExpectation::Absent);
         let aad = filesystem_secret_aad(&scope, &handle);
         let (encrypted_value, key_salt) = self
             .crypto
-            .encrypt(plaintext, &aad)
+            .encrypt(material.expose_secret().as_bytes(), &aad)
             .map_err(secret_error_to_store_error)?;
         let now = Utc::now();
         let stored = StoredSecret {
@@ -346,9 +810,136 @@ where
             expires_at: None,
             created_at: now,
             updated_at: now,
+            custody_format: None,
         };
-        self.write_secret(&stored).await?;
-        Ok(SecretMetadata { scope, handle })
+        Ok(self
+            .write_secret(&stored, expectation)
+            .await?
+            .then_some(SecretMetadata { scope, handle }))
+    }
+
+    async fn matches(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        candidate: &SecretMaterial,
+    ) -> Result<bool, SecretStoreError> {
+        let stored = self.read_secret(scope, handle).await?.ok_or_else(|| {
+            SecretStoreError::UnknownSecret {
+                scope: Box::new(scope.clone()),
+                handle: handle.clone(),
+            }
+        })?;
+        let decoded = self.decode_secret(scope, handle, &stored)?;
+        let material =
+            decoded
+                .material_for_compare()
+                .ok_or_else(|| SecretStoreError::UnknownSecret {
+                    scope: Box::new(scope.clone()),
+                    handle: handle.clone(),
+                })?;
+        Ok(crate::crypto::secret_values_match(
+            material.expose_secret(),
+            candidate.expose_secret(),
+        ))
+    }
+
+    async fn put_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        context: serde_json::Value,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        let body = CustodyBody::Original {
+            scope: scope.clone(),
+            context,
+            material,
+        };
+        if let Some(stored) = self.read_secret(&scope, &handle).await? {
+            return self.custody_repeat(&scope, &handle, &body, &stored);
+        }
+        let stored = self.custody_record(scope.clone(), handle.clone(), &body)?;
+        if self.write_secret(&stored, CasExpectation::Absent).await? {
+            return Ok(Some(
+                body.metadata(handle, Self::hash_record_reference(&stored)?),
+            ));
+        }
+        let Some(winner) = self.read_secret(&scope, &handle).await? else {
+            return Ok(None);
+        };
+        self.custody_repeat(&scope, &handle, &body, &winner)
+    }
+    async fn custody(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        let Some(stored) = self.read_secret(scope, handle).await? else {
+            return Ok(None);
+        };
+        let value = self.decode_secret(scope, handle, &stored)?;
+        value
+            .custody()
+            .map(|body| Ok(body.metadata(handle.clone(), Self::hash_record_reference(&stored)?)))
+            .transpose()
+    }
+    async fn put_retained_from_original(
+        &self,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        source: SecretCustodySource,
+    ) -> Result<Option<SecretCustodyMetadata>, SecretStoreError> {
+        if !same_scope_owner(&scope, &source.scope) {
+            return Err(SecretStoreError::StoreUnavailable {
+                reason: "custody source owner mismatch".into(),
+            });
+        }
+        if handle == source.handle {
+            return Ok(None);
+        }
+        let Some(original) = self.read_secret(&source.scope, &source.handle).await? else {
+            return Ok(None);
+        };
+        let decoded = self.decode_secret(&source.scope, &source.handle, &original)?;
+        if Self::hash_record_reference(&original)? != source.reference {
+            return Ok(None);
+        }
+        let DecodedSecretValue::Custody(body) = decoded else {
+            return Ok(None);
+        };
+        let CustodyBody::Original {
+            scope: origin_scope,
+            material,
+            ..
+        } = *body
+        else {
+            return Ok(None);
+        };
+        if origin_scope != source.scope {
+            return Ok(None);
+        }
+        // CAS-only mounts select authenticated source DATA here, not an atomic
+        // multi-key transaction or grant. The owning auth flow must separately
+        // fence publication/cancellation and account for unresolved artifacts.
+        let body = CustodyBody::Retained {
+            scope: scope.clone(),
+            source,
+            material,
+        };
+        if let Some(stored) = self.read_secret(&scope, &handle).await? {
+            return self.custody_repeat(&scope, &handle, &body, &stored);
+        }
+        let stored = self.custody_record(scope.clone(), handle.clone(), &body)?;
+        if self.write_secret(&stored, CasExpectation::Absent).await? {
+            return Ok(Some(
+                body.metadata(handle, Self::hash_record_reference(&stored)?),
+            ));
+        }
+        let Some(winner) = self.read_secret(&scope, &handle).await? else {
+            return Ok(None);
+        };
+        self.custody_repeat(&scope, &handle, &body, &winner)
     }
 
     async fn metadata(
@@ -356,13 +947,19 @@ where
         scope: &ResourceScope,
         handle: &SecretHandle,
     ) -> Result<Option<SecretMetadata>, SecretStoreError> {
-        Ok(self
-            .read_secret(scope, handle)
-            .await?
-            .map(|stored| SecretMetadata {
-                scope: stored.scope,
-                handle: stored.handle,
-            }))
+        let Some(stored) = self.read_secret(scope, handle).await? else {
+            return Ok(None);
+        };
+        if !self
+            .decode_secret(scope, handle, &stored)?
+            .runtime_eligible()
+        {
+            return Ok(None);
+        }
+        Ok(Some(SecretMetadata {
+            scope: stored.scope,
+            handle: stored.handle,
+        }))
     }
 
     async fn delete(
@@ -370,12 +967,40 @@ where
         scope: &ResourceScope,
         handle: &SecretHandle,
     ) -> Result<bool, SecretStoreError> {
-        let path = secret_path(scope, handle);
-        match self.filesystem.delete(scope, &path).await {
-            Ok(()) => Ok(true),
-            Err(error) if is_not_found(&error) => Ok(false),
-            Err(error) => Err(fs_to_secret_store_error(error)),
+        let Some(selected) = self.read_secret_versioned(scope, handle).await? else {
+            return Ok(false);
+        };
+        let decoded = self.decode_secret(scope, handle, &selected.secret)?;
+        match decoded {
+            DecodedSecretValue::Custody(body) => {
+                if body.is_retired() {
+                    return Ok(false);
+                }
+                let retired = (*body).retire(Self::hash_record_reference(&selected.secret)?);
+                let mut stored =
+                    self.custody_record(selected.secret.scope.clone(), handle.clone(), &retired)?;
+                stored.created_at = selected.secret.created_at;
+                return self
+                    .write_secret(
+                        &stored,
+                        CasExpectation::VersionAndBody {
+                            version: selected.version,
+                            body_checksum: selected.body_checksum,
+                        },
+                    )
+                    .await;
+            }
+            DecodedSecretValue::Ordinary(material) => drop(material),
         }
+        self.filesystem
+            .delete_if_snapshot(
+                scope,
+                &secret_path(scope, handle),
+                selected.version,
+                selected.body_checksum,
+            )
+            .await
+            .map_err(fs_to_secret_store_error)
     }
 
     async fn lease_once(
@@ -383,28 +1008,22 @@ where
         scope: &ResourceScope,
         handle: &SecretHandle,
     ) -> Result<SecretLease, SecretStoreError> {
-        let stored = self.read_secret(scope, handle).await?.ok_or_else(|| {
-            SecretStoreError::UnknownSecret {
+        self.issue_selected_lease(scope, handle, None)
+            .await?
+            .ok_or_else(|| SecretStoreError::UnknownSecret {
                 scope: Box::new(scope.clone()),
                 handle: handle.clone(),
-            }
-        })?;
-        if let Some(expires_at) = stored.expires_at
-            && expires_at <= Utc::now()
-        {
-            return Err(SecretStoreError::SecretExpired);
-        }
-        let lease_id = SecretLeaseId::new();
-        let lease = StoredLease {
-            scope: scope.clone(),
-            handle: handle.clone(),
-            lease_id,
-            status: SecretLeaseStatus::Active,
-            lease_expires_at: Utc::now() + self.lease_ttl,
-            secret_expires_at: stored.expires_at,
-        };
-        self.write_lease(&lease).await?;
-        Ok(Self::lease_to_public(&lease))
+            })
+    }
+
+    async fn lease_once_if_record_reference(
+        &self,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected: &str,
+    ) -> Result<Option<SecretLease>, SecretStoreError> {
+        self.issue_selected_lease(scope, handle, Some(expected))
+            .await
     }
 
     async fn consume(
@@ -419,7 +1038,7 @@ where
         // concurrent consume from another process lose the race
         // deterministically.
         let path = lease_path(scope, lease_id);
-        cas_mutate(
+        let (material, secret_expires_at) = cas_mutate(
             &self.filesystem,
             scope,
             &path,
@@ -427,9 +1046,10 @@ where
             || unknown_lease(scope, lease_id),
             || lease_retry_exhausted("consume"),
             |mut lease: StoredLease| async move {
-                if !same_scope_for_lease(&lease.scope, scope) {
+                if lease.lease_id != lease_id || !same_scope_for_lease(&lease.scope, scope) {
                     return Ok(CasDecision::Settle(Err(unknown_lease(scope, lease_id))));
                 }
+                self.verify_lease_selection(&lease)?;
                 match Self::effective_status(&lease, Utc::now()) {
                     SecretLeaseStatus::Consumed => {
                         Ok(CasDecision::Settle(Err(SecretStoreError::LeaseConsumed {
@@ -450,6 +1070,7 @@ where
                             // Best-effort expiry promotion: if a peer races us
                             // to the Expired marker we still return LeaseExpired.
                             lease.status = SecretLeaseStatus::Expired;
+                            self.seal_lease_selection(&mut lease)?;
                             Ok(CasDecision::BestEffortCommit {
                                 record: lease,
                                 outcome,
@@ -457,6 +1078,15 @@ where
                         }
                     }
                     SecretLeaseStatus::Active => {
+                        let Some(expected) = lease
+                            .secret_record_reference
+                            .as_deref()
+                            .filter(|reference| !reference.is_empty())
+                        else {
+                            return Ok(CasDecision::Settle(Err(SecretStoreError::LeaseRevoked {
+                                lease_id,
+                            })));
+                        };
                         let stored =
                             self.read_secret(scope, &lease.handle)
                                 .await?
@@ -464,22 +1094,44 @@ where
                                     scope: Box::new(scope.clone()),
                                     handle: lease.handle.clone(),
                                 })?;
-                        let aad = filesystem_secret_aad(scope, &lease.handle);
-                        let decrypted = self
-                            .crypto
-                            .decrypt(&stored.encrypted_value, &stored.key_salt, &aad)
-                            .map_err(secret_error_to_store_error)?;
-                        let material = SecretMaterial::from(decrypted.expose().to_string());
+                        let decoded = self.decode_secret(scope, &lease.handle, &stored)?;
+                        if Self::hash_record_reference(&stored)? != expected {
+                            return Ok(CasDecision::Settle(Err(SecretStoreError::LeaseRevoked {
+                                lease_id,
+                            })));
+                        }
+                        if lease
+                            .secret_expires_at
+                            .is_some_and(|expiry| expiry <= Utc::now())
+                        {
+                            return Ok(CasDecision::Settle(Err(SecretStoreError::LeaseExpired {
+                                lease_id,
+                            })));
+                        }
+                        let material = decoded.into_runtime_material().ok_or_else(|| {
+                            SecretStoreError::UnknownSecret {
+                                scope: Box::new(scope.clone()),
+                                handle: lease.handle.clone(),
+                            }
+                        })?;
                         lease.status = SecretLeaseStatus::Consumed;
+                        self.seal_lease_selection(&mut lease)?;
+                        let secret_expires_at = lease.secret_expires_at;
                         Ok(CasDecision::Commit {
                             record: lease,
-                            value: material,
+                            value: (material, secret_expires_at),
                         })
                     }
                 }
             },
         )
-        .await
+        .await?;
+        // A delayed backend acknowledgement must not return expired material.
+        // The consumed original stays consumed; expiry never authorizes replay.
+        if secret_expires_at.is_some_and(|expiry| expiry <= Utc::now()) {
+            return Err(SecretStoreError::LeaseExpired { lease_id });
+        }
+        Ok(material)
     }
 
     async fn revoke(
@@ -503,9 +1155,10 @@ where
             || unknown_lease(scope, lease_id),
             || lease_retry_exhausted("revoke"),
             |mut lease: StoredLease| async move {
-                if !same_scope_for_lease(&lease.scope, scope) {
+                if lease.lease_id != lease_id || !same_scope_for_lease(&lease.scope, scope) {
                     return Ok(CasDecision::Settle(Err(unknown_lease(scope, lease_id))));
                 }
+                self.verify_lease_selection(&lease)?;
                 // Idempotent on terminal states: revoking an already-Consumed
                 // or already-Revoked lease succeeds without rewriting the
                 // marker, so a race with `consume` cannot overwrite the
@@ -529,6 +1182,7 @@ where
                         } else {
                             SecretLeaseStatus::Revoked
                         };
+                        self.seal_lease_selection(&mut lease)?;
                         let value = Self::lease_to_public(&lease);
                         Ok(CasDecision::Commit {
                             record: lease,
@@ -585,6 +1239,12 @@ where
             if !same_scope_for_lease(&stored.scope, scope) {
                 continue;
             }
+            if entry.name != format!("{}.json", stored.lease_id) {
+                return Err(SecretStoreError::StoreUnavailable {
+                    reason: "stored lease identity does not match its selected path".into(),
+                });
+            }
+            self.verify_lease_selection(&stored)?;
             stored.status = Self::effective_status(&stored, now);
             leases.push(Self::lease_to_public(&stored));
         }
@@ -1099,18 +1759,10 @@ fn lock_or_recover<T>(mutex: &Mutex<HashMap<String, T>>) -> MutexGuard<'_, HashM
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// Write `entry` with `cas`, falling back to `CasExpectation::Any` if the
-/// backend reports `Unsupported` for a non-`Any` CAS expectation. Used by
-/// the lease/secret transitions in this file so byte-only mounts like
-/// `LocalFilesystem` (which advertises no per-row versioning) stay
-/// writeable while CAS-capable backends still get the multi-process
-/// safety. The per-owner mutation lock on the caller carries the
-/// ordering safety invariant on the fallback path.
-///
-/// Returns the raw `FilesystemError` (including `VersionMismatch`) so the
-/// caller's CAS retry loop can detect contention; we only intercept the
-/// specific `Unsupported` shape.
-async fn put_with_version_fallback<F>(
+/// Keep the exact precondition at the actual owner. A process-local lock is
+/// not cross-process CAS; unsupported backends fail before a lease/session
+/// transition instead of silently becoming unconditional writes.
+async fn put_with_cas<F>(
     filesystem: &ScopedFilesystem<F>,
     scope: &ResourceScope,
     path: &ScopedPath,
@@ -1120,16 +1772,7 @@ async fn put_with_version_fallback<F>(
 where
     F: RootFilesystem,
 {
-    match filesystem.put(scope, path, entry.clone(), cas).await {
-        Ok(_) => Ok(()),
-        Err(FilesystemError::Unsupported { .. }) if !matches!(cas, CasExpectation::Any) => {
-            filesystem
-                .put(scope, path, entry, CasExpectation::Any)
-                .await
-                .map(|_| ())
-        }
-        Err(error) => Err(error),
-    }
+    filesystem.put(scope, path, entry, cas).await.map(|_| ())
 }
 
 // -- CAS retry helper -------------------------------------------------------
@@ -1204,8 +1847,8 @@ fn session_retry_exhausted(op: &str) -> CredentialBrokerError {
 /// closure returns one of these variants to drive the rest of the loop:
 ///
 /// * [`Commit`](CasDecision::Commit) writes `record` under
-///   `CasExpectation::Version(<latest version>)`. On
-///   `FilesystemError::VersionMismatch` the loop re-reads and calls `decide`
+///   the actual record version AND body checksum. On a version/body conflict
+///   the loop re-reads and calls `decide`
 ///   again; on success it returns `Ok(value)`.
 /// * [`BestEffortCommit`](CasDecision::BestEffortCommit) writes `record`
 ///   under the same CAS expectation but treats a `VersionMismatch` as if the
@@ -1249,37 +1892,32 @@ where
         else {
             return Err(not_found());
         };
+        let expected = CasExpectation::VersionAndBody {
+            version: versioned.version,
+            body_checksum: EntryBodyChecksum::for_body(&versioned.entry.body),
+        };
         let record = (ops.deserialize)(&versioned.entry.body)?;
         match decide(record).await? {
             CasDecision::Settle(outcome) => return outcome,
             CasDecision::Commit { record, value } => {
                 let entry = (ops.serialize)(&record, scope)?;
-                match put_with_version_fallback(
-                    filesystem,
-                    scope,
-                    path,
-                    entry,
-                    CasExpectation::Version(versioned.version),
-                )
-                .await
-                {
+                match put_with_cas(filesystem, scope, path, entry, expected).await {
                     Ok(()) => return Ok(value),
-                    Err(FilesystemError::VersionMismatch { .. }) => continue,
+                    Err(
+                        FilesystemError::VersionMismatch { .. }
+                        | FilesystemError::SnapshotMismatch { .. },
+                    ) => continue,
                     Err(error) => return Err((ops.map_fs_error)(error)),
                 }
             }
             CasDecision::BestEffortCommit { record, outcome } => {
                 let entry = (ops.serialize)(&record, scope)?;
-                match put_with_version_fallback(
-                    filesystem,
-                    scope,
-                    path,
-                    entry,
-                    CasExpectation::Version(versioned.version),
-                )
-                .await
-                {
-                    Ok(()) | Err(FilesystemError::VersionMismatch { .. }) => return outcome,
+                match put_with_cas(filesystem, scope, path, entry, expected).await {
+                    Ok(())
+                    | Err(
+                        FilesystemError::VersionMismatch { .. }
+                        | FilesystemError::SnapshotMismatch { .. },
+                    ) => return outcome,
                     Err(error) => return Err((ops.map_fs_error)(error)),
                 }
             }
@@ -1618,7 +2256,11 @@ mod tests {
     #[async_trait]
     impl RootFilesystem for DeleteCountingBackend {
         fn capabilities(&self) -> BackendCapabilities {
-            self.inner.capabilities()
+            self.inner
+                .capabilities()
+                .without(brassclaw_filesystem::Capability::OpaqueWrite)
+                .without(brassclaw_filesystem::Capability::Events)
+                .without(brassclaw_filesystem::Capability::Append)
         }
 
         async fn get_metadata(
@@ -1667,6 +2309,17 @@ mod tests {
             self.inner.stat(path).await
         }
 
+        async fn delete_if_snapshot(
+            &self,
+            path: &VirtualPath,
+            version: RecordVersion,
+            body_checksum: EntryBodyChecksum,
+        ) -> Result<bool, FilesystemError> {
+            self.delete_calls.fetch_add(1, Ordering::SeqCst);
+            self.inner
+                .delete_if_snapshot(path, version, body_checksum)
+                .await
+        }
         async fn delete(&self, path: &VirtualPath) -> Result<(), FilesystemError> {
             self.delete_calls.fetch_add(1, Ordering::SeqCst);
             self.inner.delete(path).await
@@ -1718,7 +2371,156 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn filesystem_secret_store_delete_skips_pre_read() {
+    async fn filesystem_historical_unproven_lease_cannot_read_a_current_generation() {
+        let scoped = default_scoped_fs(Arc::new(InMemoryBackend::new()));
+        let store = FilesystemSecretStore::new(scoped.clone(), test_crypto());
+        let scope = sample_scope("tenant-a", "user-a");
+        let handle = SecretHandle::new("historical-unproven-lease").unwrap();
+        store
+            .put(scope.clone(), handle.clone(), "current material".into())
+            .await
+            .unwrap();
+        let reference = store.record_reference(&scope, &handle).await.unwrap();
+        let lease = store.lease_once(&scope, &handle).await.unwrap();
+        let path = lease_path(&scope, lease.id);
+        let before = scoped.get(&scope, &path).await.unwrap().unwrap();
+        let mut value: serde_json::Value = serde_json::from_slice(&before.entry.body).unwrap();
+        assert!(
+            value
+                .as_object_mut()
+                .unwrap()
+                .remove("secret_record_reference")
+                .is_some()
+        );
+        assert!(
+            value
+                .as_object_mut()
+                .unwrap()
+                .remove("selection_proof")
+                .is_some()
+        );
+        let mut historical = before.entry;
+        historical.body = serde_json::to_vec(&value).unwrap();
+        scoped
+            .put(
+                &scope,
+                &path,
+                historical,
+                CasExpectation::Version(before.version),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            store.consume(&scope, lease.id).await.unwrap_err(),
+            SecretStoreError::LeaseRevoked { lease_id: lease.id }
+        );
+        assert_eq!(
+            store.record_reference(&scope, &handle).await.unwrap(),
+            reference
+        );
+        assert_eq!(
+            store.revoke(&scope, lease.id).await.unwrap().status,
+            SecretLeaseStatus::Revoked
+        );
+        let fresh = store.lease_once(&scope, &handle).await.unwrap();
+        assert_eq!(
+            store
+                .consume(&scope, fresh.id)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "current material"
+        );
+    }
+
+    #[tokio::test]
+    async fn filesystem_lease_selection_proof_rejects_reference_handle_status_and_expiry_changes() {
+        let scoped = default_scoped_fs(Arc::new(InMemoryBackend::new()));
+        let store = FilesystemSecretStore::new(scoped.clone(), test_crypto());
+        let scope = sample_scope("tenant-a", "user-a");
+        let handle = SecretHandle::new("sealed-lease-original").unwrap();
+        store
+            .put(
+                scope.clone(),
+                handle.clone(),
+                "original protected value".into(),
+            )
+            .await
+            .unwrap();
+        let other = SecretHandle::new("sealed-lease-other").unwrap();
+        store
+            .put(scope.clone(), other.clone(), "other protected value".into())
+            .await
+            .unwrap();
+        let original_reference = store.record_reference(&scope, &handle).await.unwrap();
+        let other_reference = store.record_reference(&scope, &other).await.unwrap();
+        let lease = store.lease_once(&scope, &handle).await.unwrap();
+        let path = lease_path(&scope, lease.id);
+        let original = scoped.get(&scope, &path).await.unwrap().unwrap().entry;
+        for field in ["reference", "handle", "status", "expiry", "proof"] {
+            let mut value: serde_json::Value = serde_json::from_slice(&original.body).unwrap();
+            match field {
+                "reference" => {
+                    value["secret_record_reference"] = serde_json::json!(other_reference)
+                }
+                "handle" => value["handle"] = serde_json::json!(other),
+                "status" => value["status"] = serde_json::json!("consumed"),
+                "expiry" => {
+                    value["lease_expires_at"] =
+                        serde_json::json!((Utc::now() + Duration::hours(12)).to_rfc3339())
+                }
+                "proof" => {
+                    assert!(
+                        value
+                            .as_object_mut()
+                            .unwrap()
+                            .remove("selection_proof")
+                            .is_some()
+                    );
+                }
+                _ => unreachable!(),
+            }
+            let mut changed = original.clone();
+            changed.body = serde_json::to_vec(&value).unwrap();
+            scoped
+                .put(&scope, &path, changed, CasExpectation::Any)
+                .await
+                .unwrap();
+            assert!(
+                matches!(
+                    store.consume(&scope, lease.id).await,
+                    Err(SecretStoreError::StoreUnavailable { .. })
+                ),
+                "{field} must fail integrity before reading material"
+            );
+            assert!(store.leases_for_scope(&scope).await.is_err());
+            assert_eq!(
+                store.record_reference(&scope, &handle).await.unwrap(),
+                original_reference
+            );
+            assert_eq!(
+                store.record_reference(&scope, &other).await.unwrap(),
+                other_reference
+            );
+        }
+        scoped
+            .put(&scope, &path, original, CasExpectation::Any)
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .consume(&scope, lease.id)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "original protected value"
+        );
+        assert!(store.consume(&scope, lease.id).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn filesystem_secret_store_delete_authenticates_selected_record_before_conditional_removal()
+     {
         let backend = Arc::new(DeleteCountingBackend::new(Arc::new(InMemoryBackend::new())));
         let store =
             FilesystemSecretStore::new(default_scoped_fs(Arc::clone(&backend)), test_crypto());
@@ -1740,8 +2542,8 @@ mod tests {
         assert!(removed);
         assert_eq!(
             backend.get_calls(),
-            get_calls_before_delete,
-            "delete should not add a pre-read before the backend delete path"
+            get_calls_before_delete + 1,
+            "delete must authenticate the same entry before its atomic selected removal"
         );
         assert_eq!(backend.delete_calls(), 1);
     }
@@ -2048,7 +2850,11 @@ mod tests {
     #[async_trait]
     impl RootFilesystem for VersionRacingBackend {
         fn capabilities(&self) -> BackendCapabilities {
-            self.inner.capabilities()
+            self.inner
+                .capabilities()
+                .without(brassclaw_filesystem::Capability::OpaqueWrite)
+                .without(brassclaw_filesystem::Capability::Events)
+                .without(brassclaw_filesystem::Capability::Append)
         }
 
         async fn get_metadata(
@@ -2085,7 +2891,10 @@ mod tests {
             // watched path. Everything else (initial `Any` writes, retries,
             // unrelated paths) goes through untouched.
             let should_race = path.as_str() == self.watched
-                && matches!(cas, CasExpectation::Version(_))
+                && matches!(
+                    cas,
+                    CasExpectation::Version(_) | CasExpectation::VersionAndBody { .. }
+                )
                 && !self.raced.swap(true, Ordering::SeqCst);
             if should_race && let Some(current) = self.inner.get(path).await? {
                 // Out-of-band write under `Any` to bump the path's stored
@@ -2116,6 +2925,16 @@ mod tests {
             self.inner.stat(path).await
         }
 
+        async fn delete_if_snapshot(
+            &self,
+            path: &VirtualPath,
+            version: RecordVersion,
+            body_checksum: EntryBodyChecksum,
+        ) -> Result<bool, FilesystemError> {
+            self.inner
+                .delete_if_snapshot(path, version, body_checksum)
+                .await
+        }
         async fn delete(&self, path: &VirtualPath) -> Result<(), FilesystemError> {
             self.inner.delete(path).await
         }
@@ -2166,7 +2985,11 @@ mod tests {
     #[async_trait]
     impl RootFilesystem for AlwaysRacingBackend {
         fn capabilities(&self) -> BackendCapabilities {
-            self.inner.capabilities()
+            self.inner
+                .capabilities()
+                .without(brassclaw_filesystem::Capability::OpaqueWrite)
+                .without(brassclaw_filesystem::Capability::Events)
+                .without(brassclaw_filesystem::Capability::Append)
         }
 
         async fn get_metadata(
@@ -2199,8 +3022,11 @@ mod tests {
             entry: Entry,
             cas: CasExpectation,
         ) -> Result<RecordVersion, FilesystemError> {
-            let should_race =
-                path.as_str() == self.watched && matches!(cas, CasExpectation::Version(_));
+            let should_race = path.as_str() == self.watched
+                && matches!(
+                    cas,
+                    CasExpectation::Version(_) | CasExpectation::VersionAndBody { .. }
+                );
             if should_race && let Some(current) = self.inner.get(path).await? {
                 self.races.fetch_add(1, Ordering::SeqCst);
                 let _ = self
@@ -2223,6 +3049,16 @@ mod tests {
             self.inner.stat(path).await
         }
 
+        async fn delete_if_snapshot(
+            &self,
+            path: &VirtualPath,
+            version: RecordVersion,
+            body_checksum: EntryBodyChecksum,
+        ) -> Result<bool, FilesystemError> {
+            self.inner
+                .delete_if_snapshot(path, version, body_checksum)
+                .await
+        }
         async fn delete(&self, path: &VirtualPath) -> Result<(), FilesystemError> {
             self.inner.delete(path).await
         }
@@ -2742,4 +3578,328 @@ mod tests {
     // correctness is now verified by the first per-tenant decrypt op rather
     // than a process-wide startup sentinel; see the comment in the impl
     // block above.
+    #[tokio::test]
+    async fn unsupported_secret_transition_cas_never_overwrites_local_bytes() {
+        use brassclaw_filesystem::{EntryBodyChecksum, LocalFilesystem};
+        use brassclaw_host_api::HostPath;
+        let directory = tempfile::tempdir().unwrap();
+        let mut root = LocalFilesystem::new();
+        root.mount_local(
+            VirtualPath::new("/tenants/t/u/secrets").unwrap(),
+            HostPath::from_path_buf(directory.path().to_path_buf()),
+        )
+        .unwrap();
+        let filesystem = build_scoped_fs(Arc::new(root), "/tenants/t/u/secrets");
+        let scope = sample_scope("tenant1", "user1");
+        let path = ScopedPath::new("/secrets/transition.json").unwrap();
+        filesystem
+            .put(
+                &scope,
+                &path,
+                Entry::bytes(b"original transition".to_vec()),
+                CasExpectation::Any,
+            )
+            .await
+            .unwrap();
+        let selected = filesystem.get(&scope, &path).await.unwrap().unwrap();
+        for condition in [
+            CasExpectation::Version(selected.version),
+            CasExpectation::VersionAndBody {
+                version: selected.version,
+                body_checksum: EntryBodyChecksum::for_body(&selected.entry.body),
+            },
+        ] {
+            assert!(matches!(
+                put_with_cas(
+                    &filesystem,
+                    &scope,
+                    &path,
+                    Entry::bytes(b"unconditional downgrade".to_vec()),
+                    condition
+                )
+                .await,
+                Err(FilesystemError::Unsupported { .. })
+            ));
+            assert_eq!(
+                filesystem
+                    .get(&scope, &path)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .entry
+                    .body,
+                selected.entry.body
+            );
+        }
+    }
+    #[tokio::test]
+    async fn filesystem_lease_identity_must_match_path_before_consume_or_revoke() {
+        let backend = Arc::new(InMemoryBackend::new());
+        let filesystem = default_scoped_fs(backend);
+        let store = FilesystemSecretStore::new(filesystem.clone(), test_crypto());
+        let scope = sample_scope("tenant-a", "user-a");
+        let handle = SecretHandle::new("lease-identity-probe").unwrap();
+        store
+            .put(
+                scope.clone(),
+                handle.clone(),
+                "actual protected material".into(),
+            )
+            .await
+            .unwrap();
+        let original = store.lease_once(&scope, &handle).await.unwrap();
+        let bytes = filesystem
+            .get(&scope, &lease_path(&scope, original.id))
+            .await
+            .unwrap()
+            .unwrap();
+        let alias = SecretLeaseId::new();
+        let alias_path = lease_path(&scope, alias);
+        filesystem
+            .put(
+                &scope,
+                &alias_path,
+                bytes.entry.clone(),
+                CasExpectation::Absent,
+            )
+            .await
+            .unwrap();
+        assert!(
+            store
+                .consume(&scope, alias)
+                .await
+                .unwrap_err()
+                .is_unknown_lease()
+        );
+        assert!(
+            store
+                .revoke(&scope, alias)
+                .await
+                .unwrap_err()
+                .is_unknown_lease()
+        );
+        assert_eq!(
+            filesystem
+                .get(&scope, &alias_path)
+                .await
+                .unwrap()
+                .unwrap()
+                .entry
+                .body,
+            bytes.entry.body
+        );
+        assert!(matches!(
+            store.leases_for_scope(&scope).await,
+            Err(SecretStoreError::StoreUnavailable { .. })
+        ));
+        // Remove only this explicit test-created alias, then consume the actual
+        // unchanged original through the real encrypted backend.
+        filesystem.delete(&scope, &alias_path).await.unwrap();
+        assert_eq!(
+            store
+                .consume(&scope, original.id)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "actual protected material"
+        );
+    }
+    #[tokio::test]
+    async fn filesystem_custody_rejects_tampered_purpose_scope_expiry_and_ciphertext_before_writes()
+    {
+        let backend = Arc::new(InMemoryBackend::new());
+        let filesystem = default_scoped_fs(backend);
+        let store = FilesystemSecretStore::new(filesystem.clone(), test_crypto());
+        let scope = sample_scope("tenant-a", "user-a");
+        let handle = SecretHandle::new("actual-custody-tamper").unwrap();
+        let context = json!({"first":"unchanged actual input"});
+        let original = store
+            .put_original(
+                scope.clone(),
+                handle.clone(),
+                "actual original material".into(),
+                context.clone(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let path = secret_path(&scope, &handle);
+        let saved = filesystem.get(&scope, &path).await.unwrap().unwrap();
+        let parsed: StoredSecret = deserialize_secret(&saved.entry.body).unwrap();
+        let mut cases = Vec::new();
+        let mut changed = parsed.clone();
+        changed.custody_format = None;
+        cases.push(changed);
+        let mut changed = parsed.clone();
+        changed.custody_format = Some(255);
+        cases.push(changed);
+        let mut changed = parsed.clone();
+        changed.scope.invocation_id = InvocationId::new();
+        cases.push(changed);
+        let mut changed = parsed.clone();
+        changed.expires_at = Some(Utc::now() + Duration::seconds(60));
+        cases.push(changed);
+        let mut changed = parsed;
+        changed.encrypted_value[0] ^= 1;
+        cases.push(changed);
+        for changed in cases {
+            let mut corrupted = saved.entry.clone();
+            corrupted.body = serialize_secret(&changed).unwrap();
+            filesystem
+                .put(&scope, &path, corrupted.clone(), CasExpectation::Any)
+                .await
+                .unwrap();
+            assert!(store.custody(&scope, &handle).await.is_err());
+            assert!(store.metadata(&scope, &handle).await.is_err());
+            assert!(store.lease_once(&scope, &handle).await.is_err());
+            assert!(store.leases_for_scope(&scope).await.unwrap().is_empty());
+            assert!(store.record_reference(&scope, &handle).await.is_err());
+            assert!(
+                store
+                    .put_original(
+                        scope.clone(),
+                        handle.clone(),
+                        "actual original material".into(),
+                        context.clone()
+                    )
+                    .await
+                    .is_err()
+            );
+            assert!(
+                store
+                    .put(
+                        scope.clone(),
+                        handle.clone(),
+                        "must never overwrite corrupt input".into()
+                    )
+                    .await
+                    .is_err()
+            );
+            assert!(
+                store
+                    .put_if_record_reference(
+                        scope.clone(),
+                        handle.clone(),
+                        "must never CAS corrupt input".into(),
+                        Some(&original.reference)
+                    )
+                    .await
+                    .is_err()
+            );
+            assert!(store.delete(&scope, &handle).await.is_err());
+            assert_eq!(
+                filesystem
+                    .get(&scope, &path)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .entry
+                    .body,
+                corrupted.body
+            );
+            // Deliberately restore only the exact test-corrupted entry. This is
+            // fixture recovery through the actual backend, never a store fallback.
+            filesystem
+                .put(&scope, &path, saved.entry.clone(), CasExpectation::Any)
+                .await
+                .unwrap();
+            assert_eq!(
+                store.custody(&scope, &handle).await.unwrap(),
+                Some(original.clone())
+            );
+        }
+        let wrong = FilesystemSecretStore::new(
+            filesystem.clone(),
+            Arc::new(SecretsCrypto::new("wrong-custody-native-master-key-2026".into()).unwrap()),
+        );
+        assert!(wrong.custody(&scope, &handle).await.is_err());
+        assert!(wrong.delete(&scope, &handle).await.is_err());
+        assert_eq!(
+            store.custody(&scope, &handle).await.unwrap(),
+            Some(original)
+        );
+    }
+
+    #[tokio::test]
+    async fn filesystem_issuer_deadline_cannot_be_removed_extended_or_retyped_outside_ciphertext() {
+        let filesystem = default_scoped_fs(Arc::new(InMemoryBackend::new()));
+        let store = FilesystemSecretStore::new(filesystem.clone(), test_crypto());
+        let scope = sample_scope("tenant-a", "user-a");
+        let handle = SecretHandle::new("authenticated-issuer-deadline").unwrap();
+        let deadline = Utc::now() + Duration::seconds(60);
+        store
+            .put_with_expiry(
+                scope.clone(),
+                handle.clone(),
+                "protected finite token".into(),
+                Some(deadline),
+            )
+            .await
+            .unwrap();
+        let lease = store.lease_once(&scope, &handle).await.unwrap();
+        let path = secret_path(&scope, &handle);
+        let saved = filesystem.get(&scope, &path).await.unwrap().unwrap();
+        let parsed: StoredSecret = deserialize_secret(&saved.entry.body).unwrap();
+        let mut cases = Vec::new();
+        let mut changed = parsed.clone();
+        changed.expires_at = None;
+        cases.push(changed);
+        let mut changed = parsed.clone();
+        changed.expires_at = Some(deadline + Duration::seconds(60));
+        cases.push(changed);
+        let mut changed = parsed.clone();
+        changed.custody_format = None;
+        cases.push(changed);
+        let mut changed = parsed.clone();
+        changed.custody_format = Some(CUSTODY_FORMAT_V1);
+        cases.push(changed);
+        let mut changed = parsed;
+        changed.encrypted_value[0] ^= 1;
+        cases.push(changed);
+        for changed in cases {
+            let mut corrupted = saved.entry.clone();
+            corrupted.body = serialize_secret(&changed).unwrap();
+            filesystem
+                .put(&scope, &path, corrupted.clone(), CasExpectation::Any)
+                .await
+                .unwrap();
+            assert!(store.metadata(&scope, &handle).await.is_err());
+            assert!(store.record_reference(&scope, &handle).await.is_err());
+            assert!(store.lease_once(&scope, &handle).await.is_err());
+            assert!(store.consume(&scope, lease.id).await.is_err());
+            assert!(
+                store
+                    .put(
+                        scope.clone(),
+                        handle.clone(),
+                        "must not replace corrupt generation".into()
+                    )
+                    .await
+                    .is_err()
+            );
+            assert!(store.delete(&scope, &handle).await.is_err());
+            assert_eq!(
+                filesystem
+                    .get(&scope, &path)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .entry
+                    .body,
+                corrupted.body
+            );
+        }
+        filesystem
+            .put(&scope, &path, saved.entry, CasExpectation::Any)
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .consume(&scope, lease.id)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "protected finite token"
+        );
+    }
 }

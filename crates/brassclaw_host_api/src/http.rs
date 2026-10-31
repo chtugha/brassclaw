@@ -21,7 +21,7 @@ use crate::{
 /// the service resolves approved credential injections. Those buffers are
 /// zeroized when the request is dropped; transport code may still need
 /// plaintext while dispatching the request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeHttpEgressRequest {
     pub runtime: RuntimeKind,
     pub scope: ResourceScope,
@@ -65,13 +65,36 @@ impl Drop for RuntimeHttpEgressRequest {
 impl RuntimeHttpEgressRequest {
     fn scrub_sensitive_url_and_headers(&mut self) {
         // Host credential injection currently writes secrets into URL components
-        // and header values. Header names and body payloads are separate
-        // caller-controlled data and need an explicit threat-model decision
-        // before broadening this carrier scrub scope.
+        // and header values. Auth setup/exchange also carries codes, verifiers
+        // and credentials in request bodies; caller-controlled does not imply
+        // nonsensitive. Scrub every owned body as well.
         self.url.zeroize();
         for (_, value) in &mut self.headers {
             value.zeroize();
         }
+        self.body.zeroize();
+    }
+}
+
+impl std::fmt::Debug for RuntimeHttpEgressRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RuntimeHttpEgressRequest")
+            .field("runtime", &self.runtime)
+            .field("scope", &self.scope)
+            .field("capability_id", &self.capability_id)
+            .field("method", &self.method)
+            .field("url", &"[REDACTED]")
+            .field("headers", &"[REDACTED]")
+            .field("body", &"[REDACTED]")
+            .field("body_bytes", &self.body.len())
+            .field(
+                "credential_injection_count",
+                &self.credential_injections.len(),
+            )
+            .field("response_body_limit", &self.response_body_limit)
+            .field("has_save_target", &self.save_body_to.is_some())
+            .field("timeout_ms", &self.timeout_ms)
+            .finish()
     }
 }
 
@@ -245,7 +268,7 @@ fn validate_runtime_credential_fragment_no_control(
     Ok(())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeHttpEgressResponse {
     pub status: u16,
     pub headers: Vec<(String, String)>,
@@ -255,6 +278,21 @@ pub struct RuntimeHttpEgressResponse {
     pub request_bytes: u64,
     pub response_bytes: u64,
     pub redaction_applied: bool,
+}
+
+impl std::fmt::Debug for RuntimeHttpEgressResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RuntimeHttpEgressResponse")
+            .field("status", &self.status)
+            .field("headers", &"[REDACTED]")
+            .field("body", &"[REDACTED]")
+            .field("body_bytes", &self.body.len())
+            .field("request_bytes", &self.request_bytes)
+            .field("response_bytes", &self.response_bytes)
+            .field("has_saved_body", &self.saved_body.is_some())
+            .field("redaction_applied", &self.redaction_applied)
+            .finish()
+    }
 }
 
 pub const RUNTIME_HTTP_REASON_RESPONSE_BODY_LIMIT_EXCEEDED: &str = "response_body_limit_exceeded";
@@ -435,7 +473,7 @@ mod tests {
     use crate::{InvocationId, UserId};
 
     #[test]
-    fn runtime_http_egress_request_scrubs_url_and_header_values() {
+    fn runtime_http_egress_request_redacts_debug_and_scrubs_owned_material() {
         let mut request = RuntimeHttpEgressRequest {
             runtime: RuntimeKind::Mcp,
             scope: ResourceScope::local_default(UserId::new("user1").unwrap(), InvocationId::new())
@@ -447,7 +485,7 @@ mod tests {
                 "authorization".to_string(),
                 "Bearer sk-header-secret".to_string(),
             )],
-            body: b"hello".to_vec(),
+            body: b"sk-body-secret".to_vec(),
             network_policy: NetworkPolicy {
                 allowed_targets: vec![],
                 deny_private_ip_ranges: true,
@@ -459,10 +497,50 @@ mod tests {
             timeout_ms: None,
         };
 
+        let debug = format!("{request:?}");
+        for raw in [
+            "sk-query-secret",
+            "sk-header-secret",
+            "sk-body-secret",
+            "api.example.test",
+        ] {
+            assert!(!debug.contains(raw));
+        }
+        assert!(!debug.contains(&format!("{:?}", request.body)));
         request.scrub_sensitive_url_and_headers();
 
         assert!(request.url.is_empty());
         assert_eq!(request.headers[0].0, "authorization");
         assert!(request.headers[0].1.is_empty());
+        assert!(request.body.is_empty());
+    }
+
+    #[test]
+    fn runtime_http_response_debug_never_exposes_credentials_or_raw_bytes() {
+        let response = RuntimeHttpEgressResponse {
+            status: 400,
+            headers: vec![
+                ("set-cookie".into(), "private-session-value".into()),
+                (
+                    "location".into(),
+                    "https://example.test/return?token=private-url-value".into(),
+                ),
+            ],
+            body: b"private-provider-body".to_vec(),
+            saved_body: None,
+            request_bytes: 91,
+            response_bytes: 123,
+            redaction_applied: false,
+        };
+        let debug = format!("{response:?}");
+        assert!(debug.contains("400"));
+        for raw in [
+            "private-session-value",
+            "private-url-value",
+            "private-provider-body",
+        ] {
+            assert!(!debug.contains(raw));
+        }
+        assert!(!debug.contains(&format!("{:?}", response.body)));
     }
 }

@@ -12,6 +12,8 @@ function matchesProvider(provider, query) {
 export function useProviderManagementActions({ settings, gatewayStatus, searchQuery, t }) {
   const providerState = useLlmProviders({ settings, gatewayStatus });
   const [dialogProvider, setDialogProvider] = React.useState(null);
+  const [dialogSelectionRefs, setDialogSelectionRefs] = React.useState(null);
+  const [dialogDefaults, setDialogDefaults] = React.useState(null);
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [message, setMessage] = React.useState(null);
   const messageTimerRef = React.useRef(null);
@@ -31,14 +33,21 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
 
   const openDialog = React.useCallback((provider = null) => {
     setDialogProvider(provider);
+    setDialogSelectionRefs({ ...(provider?.selection_refs || providerState.roleSelectionRefs) });
+    setDialogDefaults({
+      responseCacheDefaults: providerState.responseCacheDefaults,
+      modelDiscoveryDefaults: providerState.modelDiscoveryDefaults,
+      requestPolicyDefaults: providerState.requestPolicyDefaults,
+    });
     setIsDialogOpen(true);
-  }, []);
+  }, [providerState.roleSelectionRefs, providerState.responseCacheDefaults, providerState.modelDiscoveryDefaults, providerState.requestPolicyDefaults]);
 
   const handleUse = React.useCallback(
     async (provider) => {
       try {
         await providerState.setActiveProvider(provider);
         showMessage("success", t("llm.providerActivated", { name: provider.name || provider.id }));
+        return true;
       } catch (err) {
         if (err.message === "base_url" || err.message === "api_key" || err.message === "model") {
           openDialog(provider);
@@ -49,6 +58,7 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
         } else {
           showMessage("error", err.status === 409 ? t("llm.providerChanged") : err.message);
         }
+        return false;
       }
     },
     [openDialog, providerState, showMessage, t]
@@ -79,23 +89,24 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
   );
 
   const handleSave = React.useCallback(
-    async ({ form, apiKey, provider }) => {
+    async ({ form, apiKey, provider, activate = false }) => {
       if (provider?.builtin) {
-        await providerState.saveBuiltinProvider({ provider, form, apiKey });
+        const saved = await providerState.saveBuiltinProvider({ provider, form, apiKey, activate, selectionRefs: dialogSelectionRefs });
         showMessage("success", t("llm.providerConfigured", { name: provider.name || provider.id }));
-        return;
+        return saved;
       }
-      const saved = await providerState.saveCustomProvider({ form, apiKey, editingProvider: provider });
+      const saved = await providerState.saveCustomProvider({ form, apiKey, editingProvider: provider, activate, selectionRefs: dialogSelectionRefs });
       showMessage("success", t(provider ? "llm.providerUpdated" : "llm.providerAdded", { name: saved.name || saved.id }));
+      return saved;
     },
-    [providerState, showMessage, t]
+    [providerState, dialogSelectionRefs, showMessage, t]
   );
 
   const handleDeactivate = React.useCallback(
     async (provider) => {
       if (!window.confirm(t("llm.confirmDeactivate", { name: provider.name || provider.id }))) return;
       try {
-        await providerState.deactivateProvider();
+        await providerState.deactivateProvider(provider);
         showMessage("success", t("llm.providerDeactivated"));
       } catch (err) {
         showMessage("error", err.status === 409 ? t("llm.providerChanged") : err.message);
@@ -120,6 +131,7 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
   return {
     providerState,
     dialogProvider,
+    dialogDefaults,
     isDialogOpen,
     message,
     filteredProviders: providerState.providers.filter((provider) =>

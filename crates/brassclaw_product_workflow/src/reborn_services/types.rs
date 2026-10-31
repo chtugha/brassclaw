@@ -940,7 +940,10 @@ pub struct RebornExtensionSetupSecret {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RebornExtensionCredentialSetup {
-    ManualToken,
+    ManualToken {
+        account_label: String,
+        invocation_id: String,
+    },
     #[serde(rename = "oauth")]
     OAuth {
         account_label: String,

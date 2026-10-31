@@ -1,4 +1,4 @@
-# monty.composition — per-Skill execution Recipe instructions
+# monty.composition — optional MCP-call and reference Recipe instructions
 
 Implementation update (2026-10-09): the public reply successor uses
 `publish literal reply %` and preserves the original reply command aliases.
@@ -13,32 +13,47 @@ migration review gate below.
 
 ## Reply/history migration review gate
 
-The existing packaged `host-post-reply` and `host-save-history` Recipes, their
-associated Skills and PythonCode are migration inputs, **not qualified current-v3
-implementations to reuse unchanged**. Updating these exact workflows is the parent
-task; implementing the qualified preload/export adapter is its prerequisite.
+The qualified retained reply/history successors and shared preload/export adapter
+are the current baseline, as recorded in the [main plan](monty.composition.md#replyhistory-migration-review-gate)
+and [implementation status](../implementation-status.md). Reuse their exact
+accepted scope; do not rebuild the adapter or remigrate qualified successors
+because an older draft called them unqualified. Broader library/public-command
+population and general pure/recovery acceptance remain open.
 
-Before selecting a successor, independently review the actual retained definitions,
-interfaces, bindings, dependency graph, typed input/result handoffs and global-runtime
-callers against `recipe.md`, `skills.md` and section 24 of `monty.composition.md`.
-Upgrade the usages and Recipes for effect-free dependency-first loading, explicit
-pinned export invocation, isolated mutable state and current kernel enforcement.
-Complete the applicable exact-combination bootstrap/approval and behavioral evidence
-before activation. Names, existing package status, old acceptance receipts and the
-word “canonical” do not qualify the unchanged implementation.
+For a changed successor, inspect its actual interfaces, bindings, full graph,
+typed edges and consuming callers; preserve exact old selections, stable IDs,
+overrides and completed effects. Qualify only the changed closure through the
+supported authored or installation-owned path. Internal reply/history remains
+private unless a separate qualified public contract permits exposure. Public
+formatting/MCP delivery must never add a second reply or history effect.
 
-Preserve compatible stable UUIDs and old task selections when that reviewed migration
-supports them; do not copy deprecated source substitution, ambient step state,
-module-level Tool execution or unsafe retry guidance into the new adapter. Review
-reply/history ownership, both routing branches, history framing, finalization and
-no-replay behavior together after the adapter is qualified. Keep these internal
-usages out of public MCP discovery unless a separately qualified public contract
-explicitly permits exposure. The commented instructions below are historical only.
-
+The [concurrent ownership allocation](monty.composition.md#concurrent-implementation-with-simplified-v3)
+and [simplified library integration contract](../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration)
+apply to every entry below. Composition owns the component/variant/command and
+MCP protocol wiring. Shared loading, typed transport, child/chat lifecycle,
+provider identity, boot, settlement and upgrade support are implemented once
+in simplified's existing owners; validator retains approval/evidence semantics.
+Missing shared support stays there rather than becoming an appendix-local
+adapter, queue, resource controller, store or executor. Reuse unchanged qualified
+shared evidence and add only actual consumer/command cases still missing.
 
 **MCP discovery/provider lifecycle:** derive tools/list from available approved mcp-call-skill-recipes and their exact command variants. The server remains running; Kohai connects/advertises only after final prefix addition immediately before prompt send and disconnects on the complete model answer. Refresh the server list at startup/restart and qualified Skill/Recipe catalogue changes. Preserve request-local advertised contracts and ordinary-chat result recovery; see [the authoritative lifecycle](monty.composition.md#recipe-derived-discovery-and-kohai-owned-provider-connections).
 
+Model usages consume the Prefix owner's
+[four binding assembly rules](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26),
+including the generator's same saved accepted pair design, Kohai dynamic formatting
+before optional Sempai correction, Sempai's own generated reviewer prefix/design,
+and exactly one unchanged insertion of the finished prefix after the final dynamic
+prompt returns. No Skill-specific second formatter is introduced after review.
+
 Plans only. This appendix covers **98 Skill execution Recipe roles**: 90 legacy companion usages and eight explicitly associated newer/planned usages. The two retired pure wrappers and pure N19 are not Skills and receive no artificial execution Recipes. Role labels do not allocate UUIDs; equivalent existing Recipes/variants are reused after exact contract review. Additional future real Skills must receive the same companion Recipe contract before MCP exposure.
+
+The 98 roles remain a migration/reuse inventory, not 98 prerequisites for Skill
+existence or completeness. Classify each as intended MCP publication, ordinary
+consumer, contained test/reference or private internal invocation. A role can serve
+more than one purpose only with the corresponding separate evidence. Do not delete
+qualified private/reference Recipes or activate draft MCP entries to satisfy a
+blanket companion rule. Existing SKR anchors remain stable for linked plans.
 
 ## Command and variable-placement contract
 
@@ -52,7 +67,9 @@ The `<listed-skill-name>` is a unique admitted label mapped to canonical Skill/R
 
 ## Shared Recipe authoring requirements
 
-Each role below has exactly one canonical execution Recipe association. First inspect the existing Recipe inventory for the same one-usage inputs/results/effects; reuse or qualify a compatible existing variant. A task Recipe with additional writes/replies is not automatically equivalent. Keep old task selections and artifacts. Recipes carry stable component UUIDs without versions. The retained input layout maps decoded command inputs to `inputs["local_name"]` or explicit exported keyword parameters.
+Each role below identifies a proposed MCP-call or reference workflow, not a required owner of its Skill. Qualify an unambiguous Recipe/variant for each intended MCP publication; retain private/test workflows for their actual purpose. There is no global one-Recipe-per-Skill cardinality rule. First inspect the existing Recipe inventory for the same one-usage inputs/results/effects; reuse or qualify a compatible existing variant. A task Recipe with additional writes/replies is not automatically equivalent. Keep old task selections and artifacts. Recipes carry stable component UUIDs without versions. The retained input layout maps decoded command inputs to `inputs["local_name"]` or explicit exported keyword parameters.
+
+Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection) to every role and invocation example below. Resolve actual declared exports and exact usage contracts before filling a skeleton; a proposed public name does not install a callable. The non-runnable skeletons retain unresolved binding arrays: fill each Rust step with one exact ToolBinding record, empty params and fail policy as in [the worked composition example](monty.composition.md#102-concrete-composition-example-read-and-select-literal-lines). Replacing UUID markers alone does not complete binding preparation.
 
 Preload the complete selected function/helper/immutable-constant graph in dependency-first order without effects. The minimal usage sequence is one Rust ToolSkill component step followed immediately by one class-22 invocation component step; each step includes exactly one UUID. Optional pure input preparation or public-result formatting uses its own canonical component step. Select the export through a supported retained interface; invent no persisted Recipe fields. The usage result feeds the Recipe's selected normal public formatter/reply owner; ordinary chat history ownership remains in the existing chat path. MCP reads that posted response and forwards it without another formatter, reply or history write. <!-- Withdrawn: Reuse the existing reply/history ownership rather than append duplicate N01/N02 calls. --> Preserve one reply/history owner, but independently review and migrate its actual Recipe and usages under the migration review gate before reuse; do not append duplicate publication/history effects. If the Skill itself is a reply/history operation, explicitly qualify one output/history owner for that Recipe to avoid a second effect.
 
@@ -66,11 +83,11 @@ Expose only qualified public usages. Protected root/candidate/evidence/admin/ins
 
 **Exact command:** `run skill-read-file with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-read-file:** Implementation symbol `usage_l001(inputs)` from canonical component role L001; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_read_file(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-read-file:** Candidate implementation `usage_l001(inputs)` (role L001); proposed public export `use_skill_read_file(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_read_file(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_read_file(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -78,7 +95,7 @@ Expose only qualified public usages. Protected root/candidate/evidence/admin/ins
 result = use_skill_read_file(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l001(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l001(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -139,11 +156,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-write-file-new with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-write-file-new:** Implementation symbol `usage_l002(inputs)` from canonical component role L002; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_write_file_new(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-write-file-new:** Candidate implementation `usage_l002(inputs)` (role L002); proposed public export `use_skill_write_file_new(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_write_file_new(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_write_file_new(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -151,7 +168,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_write_file_new(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l002(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l002(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -212,11 +229,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-write-file-template with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-write-file-template:** Implementation symbol `usage_l002(inputs)` from canonical component role L002; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_write_file_template(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-write-file-template:** Candidate implementation `usage_l002(inputs)` (role L002); proposed public export `use_skill_write_file_template(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_write_file_template(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_write_file_template(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -224,7 +241,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_write_file_template(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l002(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l002(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -285,11 +302,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-write-file-replace with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-write-file-replace:** Implementation symbol `usage_l002(inputs)` from canonical component role L002; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_write_file_replace(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-write-file-replace:** Candidate implementation `usage_l002(inputs)` (role L002); proposed public export `use_skill_write_file_replace(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_write_file_replace(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_write_file_replace(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -297,7 +314,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_write_file_replace(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l002(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l002(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -358,11 +375,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-list-dir with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-list-dir:** Implementation symbol `usage_l003(inputs)` from canonical component role L003; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_list_dir(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-list-dir:** Candidate implementation `usage_l003(inputs)` (role L003); proposed public export `use_skill_list_dir(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_list_dir(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_list_dir(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -370,7 +387,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_list_dir(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l003(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l003(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -431,11 +448,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-list-dir-recursive with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-list-dir-recursive:** Implementation symbol `usage_l003(inputs)` from canonical component role L003; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_list_dir_recursive(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-list-dir-recursive:** Candidate implementation `usage_l003(inputs)` (role L003); proposed public export `use_skill_list_dir_recursive(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_list_dir_recursive(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_list_dir_recursive(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -443,7 +460,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_list_dir_recursive(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l003(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l003(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -504,11 +521,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-glob-by-extension with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-glob-by-extension:** Implementation symbol `usage_l004(inputs)` from canonical component role L004; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_glob_by_extension(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-glob-by-extension:** Candidate implementation `usage_l004(inputs)` (role L004); proposed public export `use_skill_glob_by_extension(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_glob_by_extension(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_glob_by_extension(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -516,7 +533,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_glob_by_extension(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l004(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l004(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -577,11 +594,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-glob-by-name with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-glob-by-name:** Implementation symbol `usage_l004(inputs)` from canonical component role L004; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_glob_by_name(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-glob-by-name:** Candidate implementation `usage_l004(inputs)` (role L004); proposed public export `use_skill_glob_by_name(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_glob_by_name(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_glob_by_name(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -589,7 +606,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_glob_by_name(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l004(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l004(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -650,11 +667,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-glob-in-subdir with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-glob-in-subdir:** Implementation symbol `usage_l004(inputs)` from canonical component role L004; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_glob_in_subdir(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-glob-in-subdir:** Candidate implementation `usage_l004(inputs)` (role L004); proposed public export `use_skill_glob_in_subdir(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_glob_in_subdir(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_glob_in_subdir(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -662,7 +679,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_glob_in_subdir(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l004(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l004(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -723,11 +740,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-grep-files with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-grep-files:** Implementation symbol `usage_l005(inputs)` from canonical component role L005; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_grep_files(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-grep-files:** Candidate implementation `usage_l005(inputs)` (role L005); proposed public export `use_skill_grep_files(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_grep_files(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_grep_files(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -735,7 +752,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_grep_files(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l005(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l005(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -796,11 +813,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-grep-content with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-grep-content:** Implementation symbol `usage_l005(inputs)` from canonical component role L005; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_grep_content(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-grep-content:** Candidate implementation `usage_l005(inputs)` (role L005); proposed public export `use_skill_grep_content(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_grep_content(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_grep_content(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -808,7 +825,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_grep_content(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l005(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l005(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -869,11 +886,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-grep-count with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-grep-count:** Implementation symbol `usage_l005(inputs)` from canonical component role L005; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_grep_count(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-grep-count:** Candidate implementation `usage_l005(inputs)` (role L005); proposed public export `use_skill_grep_count(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_grep_count(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_grep_count(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -881,7 +898,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_grep_count(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l005(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l005(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -942,11 +959,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-grep-case-insensitive with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-grep-case-insensitive:** Implementation symbol `usage_l005(inputs)` from canonical component role L005; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_grep_case_insensitive(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-grep-case-insensitive:** Candidate implementation `usage_l005(inputs)` (role L005); proposed public export `use_skill_grep_case_insensitive(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_grep_case_insensitive(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_grep_case_insensitive(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -954,7 +971,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_grep_case_insensitive(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l005(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l005(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1015,11 +1032,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-grep-type-filtered with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-grep-type-filtered:** Implementation symbol `usage_l005(inputs)` from canonical component role L005; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_grep_type_filtered(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-grep-type-filtered:** Candidate implementation `usage_l005(inputs)` (role L005); proposed public export `use_skill_grep_type_filtered(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_grep_type_filtered(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_grep_type_filtered(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1027,7 +1044,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_grep_type_filtered(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l005(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l005(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1088,11 +1105,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-apply-patch-single with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-apply-patch-single:** Implementation symbol `usage_l006(inputs)` from canonical component role L006; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_apply_patch_single(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-apply-patch-single:** Candidate implementation `usage_l006(inputs)` (role L006); proposed public export `use_skill_apply_patch_single(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_apply_patch_single(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_apply_patch_single(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1100,7 +1117,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_apply_patch_single(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l006(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l006(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1161,11 +1178,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-apply-patch-all with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-apply-patch-all:** Implementation symbol `usage_l006(inputs)` from canonical component role L006; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_apply_patch_all(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-apply-patch-all:** Candidate implementation `usage_l006(inputs)` (role L006); proposed public export `use_skill_apply_patch_all(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_apply_patch_all(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_apply_patch_all(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1173,7 +1190,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_apply_patch_all(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l006(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l006(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1234,11 +1251,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-grep-invert with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-grep-invert:** Implementation symbol `usage_l005(inputs)` from canonical component role L005; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_grep_invert(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-grep-invert:** Candidate implementation `usage_l005(inputs)` (role L005); proposed public export `use_skill_grep_invert(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_grep_invert(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_grep_invert(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1246,7 +1263,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_grep_invert(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l005(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l005(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1307,11 +1324,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-list-dir-files-only with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-list-dir-files-only:** Implementation symbol `usage_l003(inputs)` from canonical component role L003; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_list_dir_files_only(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-list-dir-files-only:** Candidate implementation `usage_l003(inputs)` (role L003); proposed public export `use_skill_list_dir_files_only(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_list_dir_files_only(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_list_dir_files_only(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1319,7 +1336,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_list_dir_files_only(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l003(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l003(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1380,11 +1397,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-list-dir-dirs-only with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-list-dir-dirs-only:** Implementation symbol `usage_l003(inputs)` from canonical component role L003; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_list_dir_dirs_only(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-list-dir-dirs-only:** Candidate implementation `usage_l003(inputs)` (role L003); proposed public export `use_skill_list_dir_dirs_only(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_list_dir_dirs_only(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_list_dir_dirs_only(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1392,7 +1409,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_list_dir_dirs_only(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l003(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l003(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1453,11 +1470,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-read-file-tail with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-read-file-tail:** Implementation symbol `usage_n05(inputs)` from canonical component role N05; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_read_file_tail(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-read-file-tail:** Candidate implementation `usage_n05(inputs)` (role N05); proposed public export `use_skill_read_file_tail(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_read_file_tail(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_read_file_tail(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1465,7 +1482,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_read_file_tail(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_n05(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_n05(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1530,7 +1547,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_file_exists(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_file_exists(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1538,7 +1555,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_file_exists(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `the qualified actual one-Tool function; currently BLOCKED` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `the qualified actual one-Tool function; currently BLOCKED`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1599,11 +1616,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-read-and-grep with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-read-and-grep:** Implementation symbol `usage_l001(inputs)` from canonical component role L001; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_read_and_grep(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-read-and-grep:** Candidate implementation `usage_l001(inputs)` (role L001); proposed public export `use_skill_read_and_grep(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_read_and_grep(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_read_and_grep(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1611,7 +1628,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_read_and_grep(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l001(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l001(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1672,11 +1689,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-list-and-filter with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-list-and-filter:** Implementation symbol `usage_l003(inputs)` from canonical component role L003; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_list_and_filter(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-list-and-filter:** Candidate implementation `usage_l003(inputs)` (role L003); proposed public export `use_skill_list_and_filter(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_list_and_filter(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_list_and_filter(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1684,7 +1701,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_list_and_filter(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l003(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l003(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1745,11 +1762,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-http-get with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-get:** Implementation symbol `usage_l016(inputs)` from canonical component role L016; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_get(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-get:** Candidate implementation `usage_l016(inputs)` (role L016); proposed public export `use_skill_http_get(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_http_get(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_http_get(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1757,7 +1774,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_http_get(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l016(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l016(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1818,11 +1835,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-http-post with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-post:** Implementation symbol `usage_l017(inputs)` from canonical component role L017; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_post(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-post:** Candidate implementation `usage_l017(inputs)` (role L017); proposed public export `use_skill_http_post(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_http_post(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_http_post(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1830,7 +1847,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_http_post(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l017(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l017(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1895,7 +1912,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_http_save_download(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_http_save_download(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1903,7 +1920,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_http_save_download(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `the qualified actual one-Tool function; currently BLOCKED` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `the qualified actual one-Tool function; currently BLOCKED`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -1964,11 +1981,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-http-patch with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-patch:** Implementation symbol `usage_l019(inputs)` from canonical component role L019; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_patch(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-patch:** Candidate implementation `usage_l019(inputs)` (role L019); proposed public export `use_skill_http_patch(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_http_patch(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_http_patch(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -1976,7 +1993,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_http_patch(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l019(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l019(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2037,11 +2054,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-http-head with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-head:** Implementation symbol `usage_l020(inputs)` from canonical component role L020; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_head(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-head:** Candidate implementation `usage_l020(inputs)` (role L020); proposed public export `use_skill_http_head(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_http_head(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_http_head(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2049,7 +2066,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_http_head(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l020(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l020(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2110,11 +2127,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-http-authenticated with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-authenticated:** Implementation symbol `usage_l021(inputs)` from canonical component role L021; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_authenticated(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-authenticated:** Candidate implementation `usage_l021(inputs)` (role L021); proposed public export `use_skill_http_authenticated(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_http_authenticated(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_http_authenticated(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2122,7 +2139,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_http_authenticated(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l021(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l021(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2183,11 +2200,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-http-put with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-put:** Implementation symbol `usage_l022(inputs)` from canonical component role L022; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_put(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-put:** Candidate implementation `usage_l022(inputs)` (role L022); proposed public export `use_skill_http_put(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_http_put(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_http_put(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2195,7 +2212,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_http_put(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l022(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l022(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2256,11 +2273,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-http-delete with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-delete:** Implementation symbol `usage_l023(inputs)` from canonical component role L023; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_delete(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-http-delete:** Candidate implementation `usage_l023(inputs)` (role L023); proposed public export `use_skill_http_delete(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_http_delete(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_http_delete(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2268,7 +2285,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_http_delete(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l023(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l023(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2329,11 +2346,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-memory-search with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-search:** Implementation symbol `usage_l028(inputs)` from canonical component role L028; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_search(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-search:** Candidate implementation `usage_l028(inputs)` (role L028); proposed public export `use_skill_memory_search(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_memory_search(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_memory_search(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2341,7 +2358,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_memory_search(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l028(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l028(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2402,11 +2419,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-memory-search-broad with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-search-broad:** Implementation symbol `usage_l028(inputs)` from canonical component role L028; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_search_broad(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-search-broad:** Candidate implementation `usage_l028(inputs)` (role L028); proposed public export `use_skill_memory_search_broad(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_memory_search_broad(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_memory_search_broad(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2414,7 +2431,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_memory_search_broad(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l028(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l028(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2475,11 +2492,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-memory-write-log with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-write-log:** Implementation symbol `usage_l029(inputs)` from canonical component role L029; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_write_log(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-write-log:** Candidate implementation `usage_l029(inputs)` (role L029); proposed public export `use_skill_memory_write_log(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_memory_write_log(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_memory_write_log(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2487,7 +2504,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_memory_write_log(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l029(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l029(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2548,11 +2565,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-memory-write-main with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-write-main:** Implementation symbol `usage_l029(inputs)` from canonical component role L029; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_write_main(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-write-main:** Candidate implementation `usage_l029(inputs)` (role L029); proposed public export `use_skill_memory_write_main(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_memory_write_main(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_memory_write_main(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2560,7 +2577,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_memory_write_main(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l029(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l029(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2621,11 +2638,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-memory-write-patch with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-write-patch:** Implementation symbol `usage_l030(inputs)` from canonical component role L030; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_write_patch(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-write-patch:** Candidate implementation `usage_l030(inputs)` (role L030); proposed public export `use_skill_memory_write_patch(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_memory_write_patch(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_memory_write_patch(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2633,7 +2650,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_memory_write_patch(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l030(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l030(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2694,11 +2711,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-memory-read with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-read:** Implementation symbol `usage_l031(inputs)` from canonical component role L031; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_read(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-read:** Candidate implementation `usage_l031(inputs)` (role L031); proposed public export `use_skill_memory_read(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_memory_read(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_memory_read(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2706,7 +2723,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_memory_read(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l031(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l031(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2767,11 +2784,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-memory-tree with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-tree:** Implementation symbol `usage_l032(inputs)` from canonical component role L032; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_tree(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-tree:** Candidate implementation `usage_l032(inputs)` (role L032); proposed public export `use_skill_memory_tree(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_memory_tree(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_memory_tree(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2779,7 +2796,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_memory_tree(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l032(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l032(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2840,11 +2857,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-memory-write-append with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-write-append:** Implementation symbol `usage_l035(inputs)` from canonical component role L035; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_write_append(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-memory-write-append:** Candidate implementation `usage_l035(inputs)` (role L035); proposed public export `use_skill_memory_write_append(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_memory_write_append(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_memory_write_append(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2852,7 +2869,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_memory_write_append(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l035(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l035(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2913,11 +2930,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-status with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-status:** Implementation symbol `usage_l036(inputs)` from canonical component role L036; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_status(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-status:** Candidate implementation `usage_l036(inputs)` (role L036); proposed public export `use_skill_shell_git_status(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_status(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_status(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2925,7 +2942,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_status(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l036(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l036(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -2986,11 +3003,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-log with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-log:** Implementation symbol `usage_l037(inputs)` from canonical component role L037; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_log(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-log:** Candidate implementation `usage_l037(inputs)` (role L037); proposed public export `use_skill_shell_git_log(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_log(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_log(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -2998,7 +3015,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_log(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l037(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l037(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3059,11 +3076,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-diff-stat with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-diff-stat:** Implementation symbol `usage_l038(inputs)` from canonical component role L038; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_diff_stat(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-diff-stat:** Candidate implementation `usage_l038(inputs)` (role L038); proposed public export `use_skill_shell_git_diff_stat(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_diff_stat(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_diff_stat(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3071,7 +3088,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_diff_stat(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l038(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l038(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3132,11 +3149,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-branch with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-branch:** Implementation symbol `usage_l039(inputs)` from canonical component role L039; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_branch(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-branch:** Candidate implementation `usage_l039(inputs)` (role L039); proposed public export `use_skill_shell_git_branch(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_branch(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_branch(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3144,7 +3161,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_branch(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l039(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l039(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3205,11 +3222,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-stash-list with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-stash-list:** Implementation symbol `usage_l040(inputs)` from canonical component role L040; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_stash_list(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-stash-list:** Candidate implementation `usage_l040(inputs)` (role L040); proposed public export `use_skill_shell_git_stash_list(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_stash_list(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_stash_list(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3217,7 +3234,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_stash_list(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l040(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l040(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3278,11 +3295,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-remote with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-remote:** Implementation symbol `usage_l042(inputs)` from canonical component role L042; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_remote(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-remote:** Candidate implementation `usage_l042(inputs)` (role L042); proposed public export `use_skill_shell_git_remote(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_remote(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_remote(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3290,7 +3307,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_remote(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l042(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l042(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3351,11 +3368,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-show-stat with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-show-stat:** Implementation symbol `usage_l043(inputs)` from canonical component role L043; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_show_stat(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-show-stat:** Candidate implementation `usage_l043(inputs)` (role L043); proposed public export `use_skill_shell_git_show_stat(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_show_stat(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_show_stat(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3363,7 +3380,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_show_stat(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l043(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l043(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3424,11 +3441,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-tag-list with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-tag-list:** Implementation symbol `usage_l044(inputs)` from canonical component role L044; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_tag_list(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-tag-list:** Candidate implementation `usage_l044(inputs)` (role L044); proposed public export `use_skill_shell_git_tag_list(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_tag_list(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_tag_list(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3436,7 +3453,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_tag_list(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l044(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l044(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3497,11 +3514,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-diff-name-only with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-diff-name-only:** Implementation symbol `usage_l045(inputs)` from canonical component role L045; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_diff_name_only(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-diff-name-only:** Candidate implementation `usage_l045(inputs)` (role L045); proposed public export `use_skill_shell_git_diff_name_only(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_diff_name_only(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_diff_name_only(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3509,7 +3526,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_diff_name_only(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l045(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l045(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3570,11 +3587,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-log-stat with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-log-stat:** Implementation symbol `usage_l046(inputs)` from canonical component role L046; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_log_stat(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-log-stat:** Candidate implementation `usage_l046(inputs)` (role L046); proposed public export `use_skill_shell_git_log_stat(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_log_stat(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_log_stat(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3582,7 +3599,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_log_stat(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l046(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l046(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3643,11 +3660,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-stash-show with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-stash-show:** Implementation symbol `usage_l047(inputs)` from canonical component role L047; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_stash_show(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-stash-show:** Candidate implementation `usage_l047(inputs)` (role L047); proposed public export `use_skill_shell_git_stash_show(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_stash_show(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_stash_show(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3655,7 +3672,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_stash_show(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l047(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l047(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3716,11 +3733,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-config-list with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-config-list:** Implementation symbol `usage_l048(inputs)` from canonical component role L048; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_config_list(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-config-list:** Candidate implementation `usage_l048(inputs)` (role L048); proposed public export `use_skill_shell_git_config_list(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_config_list(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_config_list(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3728,7 +3745,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_config_list(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l048(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l048(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3793,7 +3810,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_add(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_add(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3801,7 +3818,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_add(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_proposed_shell_dispatch(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_proposed_shell_dispatch(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3866,7 +3883,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_commit(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_commit(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3874,7 +3891,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_commit(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_proposed_shell_dispatch(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_proposed_shell_dispatch(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -3939,7 +3956,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_push(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_push(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -3947,7 +3964,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_push(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_proposed_shell_dispatch(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_proposed_shell_dispatch(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4012,7 +4029,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_pull(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_pull(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4020,7 +4037,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_pull(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_proposed_shell_dispatch(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_proposed_shell_dispatch(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4081,11 +4098,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-git-fetch with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-fetch:** Implementation symbol `usage_l053(inputs)` from canonical component role L053; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_fetch(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-git-fetch:** Candidate implementation `usage_l053(inputs)` (role L053); proposed public export `use_skill_shell_git_fetch(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_git_fetch(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_git_fetch(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4093,7 +4110,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_git_fetch(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l053(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l053(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4154,11 +4171,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-pwd with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-pwd:** Implementation symbol `usage_l054(inputs)` from canonical component role L054; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_pwd(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-pwd:** Candidate implementation `usage_l054(inputs)` (role L054); proposed public export `use_skill_shell_pwd(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_pwd(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_pwd(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4166,7 +4183,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_pwd(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l054(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l054(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4227,11 +4244,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-df with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-df:** Implementation symbol `usage_l055(inputs)` from canonical component role L055; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_df(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-df:** Candidate implementation `usage_l055(inputs)` (role L055); proposed public export `use_skill_shell_df(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_df(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_df(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4239,7 +4256,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_df(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l055(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l055(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4300,11 +4317,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-ps with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-ps:** Implementation symbol `usage_l056(inputs)` from canonical component role L056; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_ps(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-ps:** Candidate implementation `usage_l056(inputs)` (role L056); proposed public export `use_skill_shell_ps(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_ps(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_ps(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4312,7 +4329,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_ps(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l056(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l056(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4373,11 +4390,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-env with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-env:** Implementation symbol `usage_l057(inputs)` from canonical component role L057; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_env(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-env:** Candidate implementation `usage_l057(inputs)` (role L057); proposed public export `use_skill_shell_env(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_env(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_env(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4385,7 +4402,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_env(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l057(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l057(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4446,11 +4463,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-uname with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-uname:** Implementation symbol `usage_l058(inputs)` from canonical component role L058; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_uname(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-uname:** Candidate implementation `usage_l058(inputs)` (role L058); proposed public export `use_skill_shell_uname(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_uname(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_uname(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4458,7 +4475,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_uname(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l058(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l058(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4519,11 +4536,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-which with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-which:** Implementation symbol `usage_l059(inputs)` from canonical component role L059; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_which(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-which:** Candidate implementation `usage_l059(inputs)` (role L059); proposed public export `use_skill_shell_which(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_which(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_which(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4531,7 +4548,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_which(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l059(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l059(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4592,11 +4609,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-hostname with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-hostname:** Implementation symbol `usage_l060(inputs)` from canonical component role L060; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_hostname(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-hostname:** Candidate implementation `usage_l060(inputs)` (role L060); proposed public export `use_skill_shell_hostname(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_hostname(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_hostname(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4604,7 +4621,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_hostname(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l060(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l060(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4665,11 +4682,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-whoami with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-whoami:** Implementation symbol `usage_l061(inputs)` from canonical component role L061; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_whoami(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-whoami:** Candidate implementation `usage_l061(inputs)` (role L061); proposed public export `use_skill_shell_whoami(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_whoami(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_whoami(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4677,7 +4694,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_whoami(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l061(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l061(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4738,11 +4755,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-uptime with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-uptime:** Implementation symbol `usage_l062(inputs)` from canonical component role L062; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_uptime(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-uptime:** Candidate implementation `usage_l062(inputs)` (role L062); proposed public export `use_skill_shell_uptime(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_uptime(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_uptime(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4750,7 +4767,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_uptime(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l062(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l062(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4811,11 +4828,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-shell-free with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-free:** Implementation symbol `usage_l063(inputs)` from canonical component role L063; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_free(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-shell-free:** Candidate implementation `usage_l063(inputs)` (role L063); proposed public export `use_skill_shell_free(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_free(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_free(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4823,7 +4840,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_free(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l063(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l063(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4888,7 +4905,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_shell_wc_l(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_shell_wc_l(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4896,7 +4913,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_shell_wc_l(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_proposed_shell_dispatch(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_proposed_shell_dispatch(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -4957,11 +4974,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-trigger-list with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-trigger-list:** Implementation symbol `usage_l065(inputs)` from canonical component role L065; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_trigger_list(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-trigger-list:** Candidate implementation `usage_l065(inputs)` (role L065); proposed public export `use_skill_trigger_list(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_trigger_list(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_trigger_list(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -4969,7 +4986,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_trigger_list(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l065(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l065(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5030,11 +5047,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-trigger-list-active with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-trigger-list-active:** Implementation symbol `usage_l065(inputs)` from canonical component role L065; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_trigger_list_active(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-trigger-list-active:** Candidate implementation `usage_l065(inputs)` (role L065); proposed public export `use_skill_trigger_list_active(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_trigger_list_active(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_trigger_list_active(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5042,7 +5059,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_trigger_list_active(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l065(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l065(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5103,11 +5120,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-trigger-list-scheduled with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-trigger-list-scheduled:** Implementation symbol `usage_l065(inputs)` from canonical component role L065; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_trigger_list_scheduled(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-trigger-list-scheduled:** Candidate implementation `usage_l065(inputs)` (role L065); proposed public export `use_skill_trigger_list_scheduled(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_trigger_list_scheduled(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_trigger_list_scheduled(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5115,7 +5132,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_trigger_list_scheduled(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l065(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l065(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5176,11 +5193,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-time-now with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-time-now:** Implementation symbol `usage_l067(inputs)` from canonical component role L067; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_time_now(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-time-now:** Candidate implementation `usage_l067(inputs)` (role L067); proposed public export `use_skill_time_now(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_time_now(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_time_now(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5188,7 +5205,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_time_now(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l067(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l067(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5249,11 +5266,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-time-parse with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-time-parse:** Implementation symbol `usage_l068(inputs)` from canonical component role L068; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_time_parse(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-time-parse:** Candidate implementation `usage_l068(inputs)` (role L068); proposed public export `use_skill_time_parse(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_time_parse(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_time_parse(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5261,7 +5278,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_time_parse(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l068(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l068(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5322,11 +5339,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-time-convert with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-time-convert:** Implementation symbol `usage_l069(inputs)` from canonical component role L069; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_time_convert(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-time-convert:** Candidate implementation `usage_l069(inputs)` (role L069); proposed public export `use_skill_time_convert(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_time_convert(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_time_convert(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5334,7 +5351,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_time_convert(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l069(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l069(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5395,11 +5412,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-time-diff with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-time-diff:** Implementation symbol `usage_l070(inputs)` from canonical component role L070; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_time_diff(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-time-diff:** Candidate implementation `usage_l070(inputs)` (role L070); proposed public export `use_skill_time_diff(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_time_diff(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_time_diff(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5407,7 +5424,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_time_diff(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l070(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l070(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5468,11 +5485,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-time-format with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-time-format:** Implementation symbol `usage_l071(inputs)` from canonical component role L071; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_time_format(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-time-format:** Candidate implementation `usage_l071(inputs)` (role L071); proposed public export `use_skill_time_format(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_time_format(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_time_format(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5480,7 +5497,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_time_format(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l071(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l071(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5541,11 +5558,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-json-query with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-json-query:** Implementation symbol `usage_l072(inputs)` from canonical component role L072; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_json_query(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-json-query:** Candidate implementation `usage_l072(inputs)` (role L072); proposed public export `use_skill_json_query(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_json_query(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_json_query(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5553,7 +5570,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_json_query(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l072(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l072(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5614,11 +5631,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-json-stringify with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-json-stringify:** Implementation symbol `usage_l073(inputs)` from canonical component role L073; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_json_stringify(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-json-stringify:** Candidate implementation `usage_l073(inputs)` (role L073); proposed public export `use_skill_json_stringify(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_json_stringify(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_json_stringify(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5626,7 +5643,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_json_stringify(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l073(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l073(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5687,11 +5704,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-json-validate with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-json-validate:** Implementation symbol `usage_l074(inputs)` from canonical component role L074; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_json_validate(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-json-validate:** Candidate implementation `usage_l074(inputs)` (role L074); proposed public export `use_skill_json_validate(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_json_validate(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_json_validate(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5699,7 +5716,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_json_validate(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l074(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l074(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5760,11 +5777,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-github-list-issues with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-github-list-issues:** Implementation symbol `usage_l016(inputs)` from canonical component role L016; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_github_list_issues(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-github-list-issues:** Candidate implementation `usage_l016(inputs)` (role L016); proposed public export `use_skill_github_list_issues(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_github_list_issues(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_github_list_issues(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5772,7 +5789,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_github_list_issues(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l016(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l016(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5833,11 +5850,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-github-list-prs with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-github-list-prs:** Implementation symbol `usage_l016(inputs)` from canonical component role L016; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_github_list_prs(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-github-list-prs:** Candidate implementation `usage_l016(inputs)` (role L016); proposed public export `use_skill_github_list_prs(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_github_list_prs(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_github_list_prs(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5845,7 +5862,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_github_list_prs(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l016(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l016(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5906,11 +5923,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-github-get-authenticated-user with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-github-get-authenticated-user:** Implementation symbol `usage_l078(inputs)` from canonical component role L078; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_github_get_authenticated_user(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-github-get-authenticated-user:** Candidate implementation `usage_l078(inputs)` (role L078); proposed public export `use_skill_github_get_authenticated_user(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_github_get_authenticated_user(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_github_get_authenticated_user(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5918,7 +5935,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_github_get_authenticated_user(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l078(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l078(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -5979,11 +5996,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-github-search-issues with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-github-search-issues:** Implementation symbol `usage_l016(inputs)` from canonical component role L016; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_github_search_issues(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-github-search-issues:** Candidate implementation `usage_l016(inputs)` (role L016); proposed public export `use_skill_github_search_issues(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_github_search_issues(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_github_search_issues(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -5991,7 +6008,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_github_search_issues(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l016(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l016(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6052,11 +6069,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-zencoder-list-projects with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-list-projects:** Implementation symbol `usage_l094(inputs)` from canonical component role L094; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_list_projects(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-list-projects:** Candidate implementation `usage_l094(inputs)` (role L094); proposed public export `use_skill_zencoder_list_projects(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_zencoder_list_projects(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_zencoder_list_projects(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6064,7 +6081,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_zencoder_list_projects(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l094(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l094(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6125,11 +6142,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-zencoder-list-tasks with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-list-tasks:** Implementation symbol `usage_l095(inputs)` from canonical component role L095; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_list_tasks(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-list-tasks:** Candidate implementation `usage_l095(inputs)` (role L095); proposed public export `use_skill_zencoder_list_tasks(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_zencoder_list_tasks(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_zencoder_list_tasks(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6137,7 +6154,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_zencoder_list_tasks(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l095(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l095(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6198,11 +6215,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-zencoder-get-task with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-get-task:** Implementation symbol `usage_l096(inputs)` from canonical component role L096; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_get_task(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-get-task:** Candidate implementation `usage_l096(inputs)` (role L096); proposed public export `use_skill_zencoder_get_task(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_zencoder_get_task(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_zencoder_get_task(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6210,7 +6227,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_zencoder_get_task(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l096(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l096(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6271,11 +6288,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-zencoder-get-plan with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-get-plan:** Implementation symbol `usage_l097(inputs)` from canonical component role L097; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_get_plan(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-get-plan:** Candidate implementation `usage_l097(inputs)` (role L097); proposed public export `use_skill_zencoder_get_plan(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_zencoder_get_plan(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_zencoder_get_plan(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6283,7 +6300,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_zencoder_get_plan(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l097(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l097(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6344,11 +6361,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-zencoder-create-task with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-create-task:** Implementation symbol `usage_l098(inputs)` from canonical component role L098; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_create_task(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-create-task:** Candidate implementation `usage_l098(inputs)` (role L098); proposed public export `use_skill_zencoder_create_task(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_zencoder_create_task(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_zencoder_create_task(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6356,7 +6373,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_zencoder_create_task(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l098(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l098(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6417,11 +6434,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-zencoder-patch-task with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-patch-task:** Implementation symbol `usage_l099(inputs)` from canonical component role L099; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_patch_task(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-patch-task:** Candidate implementation `usage_l099(inputs)` (role L099); proposed public export `use_skill_zencoder_patch_task(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_zencoder_patch_task(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_zencoder_patch_task(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6429,7 +6446,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_zencoder_patch_task(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l099(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l099(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6490,11 +6507,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-zencoder-list-automations with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-list-automations:** Implementation symbol `usage_l100(inputs)` from canonical component role L100; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_list_automations(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-list-automations:** Candidate implementation `usage_l100(inputs)` (role L100); proposed public export `use_skill_zencoder_list_automations(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_zencoder_list_automations(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_zencoder_list_automations(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6502,7 +6519,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_zencoder_list_automations(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l100(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l100(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6563,11 +6580,11 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Exact command:** `run skill-zencoder-create-automation with %`. The only variable position is `%`, immediately after ` with `; supply the JSON object of this Skill's declared local inputs. tools/list must derive this sentence and every concrete variable field from the qualified execution Recipe variant and its linked Skill contract/examples; the Skill row alone does not produce an entry. Do not interpolate these values into Python.
 
-**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-create-automation:** Implementation symbol `usage_l101(inputs)` from canonical component role L101; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_create_automation(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+**Implementation/reuse disposition:** **Preloadable function-interface implementation for skill-zencoder-create-automation:** Candidate implementation `usage_l101(inputs)` (role L101); proposed public export `use_skill_zencoder_create_automation(inputs)`. Apply [shared usage/export selection](monty.composition.implementation.md#shared-usage-and-export-selection): reuse an equivalent qualified usage and its declared export, or define a distinct reviewed entry point for a different contract while sharing compatible helpers. Prose creates no callable alias.
 
 **Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_zencoder_create_automation(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_zencoder_create_automation(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6575,7 +6592,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_zencoder_create_automation(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_l101(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_l101(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6638,7 +6655,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Implementation/reuse disposition:** Reuse the associated export and exact reviewed profile described in this component section. A preparation-only body remains BLOCKED until its actual one-Tool implementation is qualified. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_reply_skill(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_reply_skill(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6646,7 +6663,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_reply_skill(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_n01(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_n01(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6709,7 +6726,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Implementation/reuse disposition:** Reuse the associated export and exact reviewed profile described in this component section. A preparation-only body remains BLOCKED until its actual one-Tool implementation is qualified. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_history_skill(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_history_skill(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6717,7 +6734,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_history_skill(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_n02(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_n02(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6780,7 +6797,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Implementation/reuse disposition:** Reuse the associated export and exact reviewed profile described in this component section. A preparation-only body remains BLOCKED until its actual one-Tool implementation is qualified. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_skill_read_file_interval(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_skill_read_file_interval(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6788,7 +6805,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_skill_read_file_interval(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_n05(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_n05(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6851,7 +6868,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Implementation/reuse disposition:** Reuse the associated export and exact reviewed profile described in this component section. A preparation-only body remains BLOCKED until its actual one-Tool implementation is qualified. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_typed_json_parse_usage(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_typed_json_parse_usage(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6859,7 +6876,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_typed_json_parse_usage(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `usage_n06(inputs)` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `usage_n06(inputs)`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6922,7 +6939,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Implementation/reuse disposition:** Reuse the associated export and exact reviewed profile described in this component section. A preparation-only body remains BLOCKED until its actual one-Tool implementation is qualified. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_immutable_candidate_admission_usage(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_immutable_candidate_admission_usage(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -6930,7 +6947,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_immutable_candidate_admission_usage(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `the qualified actual one-Tool function; currently BLOCKED` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `the qualified actual one-Tool function; currently BLOCKED`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -6993,7 +7010,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Implementation/reuse disposition:** Reuse the associated export and exact reviewed profile described in this component section. A preparation-only body remains BLOCKED until its actual one-Tool implementation is qualified. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_catalogue_export_usage(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_catalogue_export_usage(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -7001,7 +7018,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_catalogue_export_usage(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `the qualified actual one-Tool function; currently BLOCKED` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `the qualified actual one-Tool function; currently BLOCKED`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -7064,7 +7081,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Implementation/reuse disposition:** Reuse the associated export and exact reviewed profile described in this component section. A preparation-only body remains BLOCKED until its actual one-Tool implementation is qualified. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_compiler_worker_usage(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_compiler_worker_usage(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -7072,7 +7089,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_compiler_worker_usage(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `the qualified actual one-Tool function; currently BLOCKED` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `the qualified actual one-Tool function; currently BLOCKED`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 
@@ -7135,7 +7152,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 
 **Implementation/reuse disposition:** Reuse the associated export and exact reviewed profile described in this component section. A preparation-only body remains BLOCKED until its actual one-Tool implementation is qualified. Review the existing Recipe list for a compatible one-usage variant; mark both identities for duplicate review and reuse its canonical Recipe UUID if input/result/effect/continuation contracts agree. Narrower selectors/results need qualification rather than automatic merging. No new Recipe UUID is allocated here.
 
-**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected public alias `use_prefix_generation_publication_usage(inputs)` to its exact code/interface revision and dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
+**Concrete assembly:** Decode and validate the whole input object into the linked finite contract before effects. Resolve the selected qualified export (proposed name `use_prefix_generation_publication_usage(inputs)`) through agreeing code/interface records and its exact dependency graph, preload definitions with zero dispatch, then bind the matching ToolSkill and invoke the class-22 export. If this is a split legacy workflow, expose only its qualified one-Tool portion; preparation/filtering/transforming remain separate pure Recipe steps. The source body's former workflow name does not broaden the Skill.
 
 **Invocation example — internal Recipe code, never MCP source:**
 
@@ -7143,7 +7160,7 @@ Complete real capture patterns/at least ten meaningful positive and negative int
 result = use_prefix_generation_publication_usage(inputs)
 ```
 
-The alias is a proposed declared export, not an implemented API. Resolve it to `the qualified actual one-Tool function; currently BLOCKED` under the owning task's exact interface. Do not create a duplicate implementation or use runtime name lookup.
+This invocation uses a proposed export, not an implemented alias for `the qualified actual one-Tool function; currently BLOCKED`. Reuse the actual canonical export for an equivalent usage, or implement/declare the distinct entry point under the shared selection rules before using this example. The retained compiler resolves the selected symbol; no runtime name lookup is permitted.
 
 **Non-runnable usage-core IBS skeleton — use the existing complete execution Recipe/variant and its normal chat result/reply ownership; this binding/invocation core alone is not chat completion:**
 

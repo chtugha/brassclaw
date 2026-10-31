@@ -319,6 +319,10 @@ pub struct LifecycleExtensionCredentialRequirement {
     pub provider: String,
     pub required: bool,
     pub setup: LifecycleExtensionCredentialSetup,
+    /// Exact server-resolved declaration. Old summaries lacking it remain
+    /// readable but cannot establish a requirement-specific account binding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_requirement: Option<brassclaw_host_api::RuntimeCredentialAccountRequirement>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

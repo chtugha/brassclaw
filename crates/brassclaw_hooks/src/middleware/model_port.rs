@@ -54,6 +54,32 @@ impl HookedLoopModelPort {
 
 #[async_trait]
 impl LoopModelPort for HookedLoopModelPort {
+    async fn preflight_task_model_usage(
+        &self,
+        input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
+    ) -> Result<(), AgentLoopHostError> {
+        self.inner.preflight_task_model_usage(input).await
+    }
+
+    async fn capture_task_model_selection(
+        &self,
+        parent: Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<
+        Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        AgentLoopHostError,
+    > {
+        self.inner
+            .capture_task_model_selection(parent, capture.clone())
+            .await
+    }
+
+    fn task_model_selection(
+        &self,
+    ) -> Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>> {
+        self.inner.task_model_selection()
+    }
+
     async fn stream_model_with_custody(
         &self,
         request: LoopModelRequest,

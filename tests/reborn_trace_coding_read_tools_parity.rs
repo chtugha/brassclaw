@@ -19,6 +19,7 @@ const BETA_CONTENT: &str = "Project Beta has no marker.";
 
 #[tokio::test]
 async fn reborn_trace_coding_read_tools_parity() {
+    let _dispatch_trace = reborn_support::harness::trace_fixture_runtime_dispatch();
     let list_dir = CapabilityId::new(LIST_DIR_CAPABILITY_ID).expect("valid capability id");
     let glob = CapabilityId::new(GLOB_CAPABILITY_ID).expect("valid capability id");
     let grep = CapabilityId::new(GREP_CAPABILITY_ID).expect("valid capability id");

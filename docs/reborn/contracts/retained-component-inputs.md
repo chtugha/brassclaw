@@ -1,5 +1,12 @@
 # Retained component input metadata
 
+> **Current profiles and successor target:** the exact retention/review formats
+> and original inspected scopes below are preserved. Their existing authored
+> exact-combination requirement is an implementation profile, not the new A
+> functional-approval target. See the open successor at the end; it creates no
+> new supported JSON field or approval API.
+
+
 ## Binding preloadable Skill interface (v3)
 
 A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
@@ -15,7 +22,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -149,8 +158,11 @@ not production cutover or proof of behavioral approval.
 closure of its Skill usage, including the Skill owner. It excludes unrelated
 Recipe steps. Repeated uses of the same Skill share the closure; a technical
 aggregate limit rejects oversized combination metadata without truncation.
-An approval declaration must match this exact combination, and its references
-must separately resolve to trusted successful evidence before ordinary execution.
+In the current exact-review profile and the retained S usage contract, an
+approval declaration must match this exact combination and resolve trusted
+successful evidence. The successor A path instead checks own function approval
+and proven interface compatibility; the technical exact task closure remains.
+The owning reader must implement that distinction before new-profile publication.
 
 `RetainedRecipeExecution` is a step hosting primitive, not a workflow selector
 or approval service. The global Monty helper requests a selected step and passes
@@ -188,9 +200,11 @@ usage graph against the actual immutable revision rows in that same view, then
 checks Q1, every behavioral record and human Q2 against that exact combination.
 Missing/failed evidence, wrong classes/revisions/checksums, overlapping stage
 identities, duplicate behavioral references and mismatched Q2 review sets fail.
-System-seed records explicitly remain unsupported until their distinct integrity
-and observed-behavior producer adapter is implemented. No automatic downgrade to
-authored or legacy receipts is allowed.
+This authored reader does not supply the separate system-seed integrity/behavior
+producer adapter. Qualified installation usages use their actual installation
+owner; this original V102 authored-reader boundary neither certifies general
+seed coverage nor declares every separately supported S usage unavailable.
+No automatic downgrade to authored or legacy receipts is allowed.
 
 The infrastructure evidence envelope `component-review-evidence/1` has exactly:
 `format`, `evidence_id`, `kind`, `validation_mode`, `association_checksum`,
@@ -425,3 +439,44 @@ in a minimal immutable document. They reject malformed include types, nonempty
 includes, declared dependencies and non-null registry metadata before execution.
 An empty list declares no nested code; this compatibility change supplies no
 recursive assembler or permission to discard a declared dependency graph.
+
+## Open successor — own A evidence with exact retained selection
+
+After bounded BUILD-014 acceptance, the existing Validator Steps2/3/8–10 and
+Composition/Simplified owners implement the target from
+[skills.md](../../../skills.md#own-functional-approval-and-successor-compatibility)
+in place of contradictory still-open general A combination-review work. There
+is no requirement to complete that superseded design first. Accepted packages,
+original records, strict existing formats and valid old exact profiles keep
+their meaning; no in-place extension of their bytes.
+
+For A, own functional records identify the changed revisions and their complete
+rule/behavior/human-Q2 evidence. Skill and implementing PythonCode share one
+functional subject; unchanged counterparts and already approved dependencies
+are context, not new approvals. One existing submission/work/approval owner
+coordinates changed roots, per-root CAS and atomic verdicts. A compatible
+successor preserves needed consumer interfaces without new consumer submissions
+or approvals. Technical relationships and actual selection checksums remain exact.
+Current code/association-schema equality is an actual reader restriction: only
+qualified directed required/provided contract checks replace it for the new A
+profile. Unknown fields/coercions remain errors; same types prove no semantics.
+
+S retains exact per-Skill usage evidence after independent prerequisite Tool,
+then ToolSkill qualification and joint Skill/code behavior. The closure list
+identifies tested revisions; it cannot confer missing individual approvals.
+S stays outside normal authored Q1, with verified integrity/behavior and no
+additional installed human Q2. Mixed graphs retain each revision's provenance;
+compatible shapes do not transfer exact S evidence to changed partner bytes.
+
+The existing publisher connects prepare/selection/approval/deployment/restore,
+private review, task/child/wait and applicable Prefix/MCP readers before new A
+publication. New tasks choose coherent active successors; old selections retain
+actual artifacts. A task manifest records selection, not new approval. Compatible
+updates create neither consumer Q1/Q2 nor per-call reviews. Live policy/fencing,
+exact error handling and original evidence custody remain independent.
+
+Recipe-own workflow evidence and shared ToolSkill selection consume these same
+records, not another writer. Current tuple lookup has no export-name key; only
+actual unambiguous usage selection is supported until its existing owner qualifies
+any needed successor. All new-format/reader work is an open owner task consumed
+by the next open production cutover, not implemented by this document.

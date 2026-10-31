@@ -13,12 +13,68 @@ pub use source_inventory::{SOURCE_ENTRIES_SOURCE, source_inventory_drafts};
 mod python_structure;
 pub use python_structure::{python_definitions_draft, python_graph_draft, python_structure_drafts};
 
+#[path = "validator_python_pure.rs"]
+mod python_pure;
+pub use python_pure::{python_pure_calls_draft, python_pure_structure_drafts};
+
 pub const AGGREGATE_SOURCE: &str = include_str!("validator_aggregate.py");
 pub const COLLECT_SOURCE: &str = include_str!("validator_collect.py");
 pub const STRUCTURAL_PRESENCE_SOURCE: &str = include_str!("validator_structural_presence.py");
 pub const PRELOAD_DEFINITION_SOURCE: &str = include_str!("validator_preload_definition.py");
 pub const SUBJECT_SOURCES_SOURCE: &str = include_str!("validator_subject_sources.py");
+pub const REVIEW_SUBJECT_READER_SOURCE: &str = include_str!("validator_review_subject.py");
+pub const SKILL_INTERFACE_SOURCE: &str = include_str!("validator_skill_interface.py");
 pub const RECURSIVE_CONTRACT_SOURCE: &str = include_str!("validator_recursive_contract.py");
+
+/// Private dependency shared by subject-consuming checks. It returns borrowed
+/// parsed data inside the VM; it exposes no command, invocation or approval API.
+pub fn review_subject_reader_draft(id: Uuid) -> Result<ComponentRevisionDraft, RevisionError> {
+    ComponentRevisionDraft::from_json(&json!({
+        "format":"component-revision/1","uuid":id,"class_code":22,
+        "document":{"name":"review-subject-reader",
+            "description":"Shared private parsing of complete single-root /1 and function /2 review subjects. Validate exact envelope/role/revision identities, include each selected partner once and leave both bases out of executable dependencies. Return original parsed objects within the invocation without source substitution or serialization copies. This is shape/data handling, not checksum authentication, prior approval, semantic review, candidate execution or Q1/Q2. Only the trusted owner supplies original sealed subject/custody.",
+            "content":REVIEW_SUBJECT_READER_SOURCE,"includes":[],"dependency_registry":null,
+            "preload":{"format":"python-preload/2","exports":{},
+                "private_functions":{"_validator_review_entry":["entry"],"_validator_review_base":["base","candidate"],"_validator_review_subject":["inputs"]},
+                "constants":[],"imports":["json"],"dependencies":[],"default_export":null}},
+        "dependencies":[],"association":null
+    }).to_string())
+}
+
+/// One reusable declaration check, not complete joint Skill/code validation.
+/// Source/graph, variance, effect/behavior and prose meaning remain other rules.
+pub fn skill_interface_draft(
+    id: Uuid,
+    recursive_rule: Uuid,
+) -> Result<ComponentRevisionDraft, RevisionError> {
+    let reader = crate::global_bootstrap_components::packaged_component_id(
+        "validator:review-subject-reader",
+    );
+    let definition =
+        crate::global_bootstrap_components::packaged_component_id("validator:preload-definition");
+    let draft = ComponentRevisionDraft::from_json(&json!({
+        "format":"component-revision/1","uuid":id,"class_code":22,
+        "document":{"name":"check-review-skill-interface",
+            "description":"Check the strict Skill interface against its actual associated implementation in a complete retained function subject. Require usage prose and closed format/UUID/export/signature/private/dependency declarations; reuse recursive input/result grammar and compare usage inputs/result/failure to the exact association with boolean/number distinctions. Extra implementation exports and compatible schema changes are not rejected merely for differing from usage declarations. Source definitions, reachable private completeness, variance/consumer compatibility, actual calls/effects/errors/retries, isolation, behavior and prose meaning remain separately required checks. Context receives no new approval. This component executes no candidate, grants no Q1/Q2 and is not a complete class validator.",
+            "content":SKILL_INTERFACE_SOURCE,"includes":[],"dependency_registry":null,
+            "input_contract":{"subject_json":{"type":"string","required":true,"checks":[]}},
+            "result_contract":rule_contract(),
+            "preload":{"format":"python-preload/2","exports":{
+                "check_review_skill_interface":{"symbol":"check_review_skill_interface","parameters":["inputs"],"mapping":true}},
+                "private_functions":{"_validator_skill_interface_equal":["left","right"]},
+                "constants":[],"imports":["json"],"dependencies":[recursive_rule,reader,definition],"default_export":"check_review_skill_interface"}},
+        "dependencies":[recursive_rule,reader,definition],"association":null
+    }).to_string())?;
+    crate::value_contract::InputContract::from_value(
+        &draft.document()["input_contract"],
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    crate::value_contract::ValueContract::result_from_value(
+        &draft.document()["result_contract"],
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    Ok(draft)
+}
 
 /// Review every selected PythonCode's public contracts using the existing pure
 /// grammar export. The exact original subject and helper selection are supplied
@@ -33,6 +89,9 @@ pub fn python_contracts_draft(
             "distinct Python contract rule identities required",
         ));
     }
+    let subject_reader = crate::global_bootstrap_components::packaged_component_id(
+        "validator:review-subject-reader",
+    );
     let draft = ComponentRevisionDraft::from_json(&json!({
         "format":"component-revision/1","uuid":id,"class_code":22,
         "document":{
@@ -43,8 +102,8 @@ pub fn python_contracts_draft(
             "result_contract":rule_contract(),
             "preload":{"format":"python-preload/2","exports":{
                 "check_review_python_contracts":{"symbol":"check_review_python_contracts","parameters":["inputs"],"mapping":true}
-            },"private_functions":{},"constants":[],"imports":["json"],"dependencies":[recursive_rule],"default_export":"check_review_python_contracts"}
-        },"dependencies":[recursive_rule],"association":null
+            },"private_functions":{},"constants":[],"imports":["json"],"dependencies":[recursive_rule,subject_reader],"default_export":"check_review_python_contracts"}
+        },"dependencies":[recursive_rule,subject_reader],"association":null
     }).to_string())?;
     crate::value_contract::InputContract::from_value(
         &draft.document()["input_contract"],
@@ -97,19 +156,22 @@ pub fn recursive_contract_draft(id: Uuid) -> Result<ComponentRevisionDraft, Revi
 /// subject for their separate checks. This transformation is not a provenance
 /// verifier: the review owner must bind/observe the actual retained subject.
 pub fn subject_sources_draft(id: Uuid) -> Result<ComponentRevisionDraft, RevisionError> {
+    let subject_reader = crate::global_bootstrap_components::packaged_component_id(
+        "validator:review-subject-reader",
+    );
     let draft = ComponentRevisionDraft::from_json(&json!({
         "format":"component-revision/1","uuid":id,"class_code":22,
         "document":{
             "name":"extract-review-python-sources",
-            "description":"Extract every exact class-22 content string from the complete retained candidate/dependency subject into a UUID-keyed inventory, preserving empty text and excluding the comparison base. Non-Python records remain available in the original subject for separate checks. No candidate executes, source is not normalized or truncated, and this pure transformation establishes no integrity, review provenance, verdict or approval. The trusted owner must supply the sealed subject and observe its actual typed input/result edges.",
+            "description":"Extract every exact class-22 content string from complete single-root or Skill/code function subjects through the shared private reader into a UUID-keyed inventory, preserving empty text and excluding comparison bases. Include the exact partner once; no context is reapproved. Non-Python records remain available in the original subject for separate checks. No candidate executes, source is not normalized or truncated, and this pure transformation establishes no integrity, review provenance, verdict or approval. The trusted owner must supply the sealed subject and observe its actual typed input/result edges.",
             "content":SUBJECT_SOURCES_SOURCE,"includes":[],"dependency_registry":null,
             "input_contract":{"subject_json":{"type":"string","required":true,"checks":[]}},
             "result_contract":{"type":"object","checks":[],"fields":{},"allow_extra_fields":true,
                 "extra_fields":{"type":"string","checks":[]}},
             "preload":{"format":"python-preload/2","exports":{
                 "extract_review_python_sources":{"symbol":"extract_review_python_sources","parameters":["inputs"],"mapping":true}
-            },"private_functions":{},"constants":[],"imports":["json"],"dependencies":[],"default_export":"extract_review_python_sources"}
-        },"dependencies":[],"association":null
+            },"private_functions":{},"constants":[],"imports":[],"dependencies":[subject_reader],"default_export":"extract_review_python_sources"}
+        },"dependencies":[subject_reader],"association":null
     }).to_string())?;
     crate::value_contract::InputContract::from_value(
         &draft.document()["input_contract"],
@@ -175,7 +237,7 @@ pub fn preload_definition_draft(id: Uuid) -> Result<ComponentRevisionDraft, Revi
             "result_contract":rule_contract(),
             "preload":{"format":"python-preload/2","exports":{
                 "check_preload_definition":{"symbol":"check_preload_definition","parameters":["inputs"],"mapping":true}
-            },"private_functions":{"_validator_preload_identifier":["name"]},"constants":[],"imports":[],"dependencies":[],"default_export":"check_preload_definition"}
+            },"private_functions":{"_validator_preload_identifier":["name"],"_validator_preload_export_shape":["value"]},"constants":[],"imports":[],"dependencies":[],"default_export":"check_preload_definition"}
         },"dependencies":[],"association":null
     }).to_string())?;
     crate::value_contract::InputContract::from_value(
@@ -296,7 +358,7 @@ pub fn aggregate_draft(id: Uuid) -> Result<ComponentRevisionDraft, RevisionError
     }).to_string())
 }
 
-/// One mechanical parser usage with a canonical execution Recipe. The caller
+/// One mechanical parser usage with a separate reference Recipe. The caller
 /// supplies an actually registered Tool identity and retains its implementation
 /// separately. These drafts create neither that Tool nor approval/activation.
 pub fn source_inspection_drafts(
@@ -350,7 +412,7 @@ pub fn source_inspection_drafts(
             ids.skill,
             1,
             json!({"body":format!(
-            "Purpose\nInspect Python source text without executing it. This is one parser usage, not a class validator.\n\nComponents and interface\nTool {}; ToolSkill {}; PythonCode {}. Pinned export inspect_python_source(inputs) calls host.source_inspection(source=inputs['source']) exactly once. No helpers, constants or dependencies. Loading has no effects.\n\nInput and result\nsource is a required non-null string, including empty source, quotes, Unicode, newlines and template-looking text. It remains data and is never substituted into executable source. Return exact python-source-facts/1 JSON bytes with preparation revision, retained worker checksum and mechanical parser observations. A parse success is not a validation verdict or proof of behavior.\n\nPrerequisites and failure\nRetain the actual registered native implementation and worker artifact. Current instance Tool policy, cancellation, attempt fencing and acknowledged preparation limits apply at every dispatch. Missing/null/nonstring inputs, unavailable backend, syntax/parser/worker errors and capacity rejection stop the usage. One initial attempt, no automatic retry or approval grant. Never turn a failure into No-Match.\n\nExecution Recipe and command\nRecipe {}, variant selected, command: inspect Python source %. Position zero is source:string, required, non-null and verbatim. Examples: inspect Python source value = 1; inspect Python source raise RuntimeError('data only'). Matching commands do not authorize or execute their source. This deterministic usage is Tier 0 only after complete qualification and activation. The consuming validator Recipe chooses rules and produces its own verdict; this usage writes no evidence, approval, reply or component state.",ids.tool,ids.tool_skill,ids.python_code,ids.recipe),
+            "Purpose\nInspect Python source text without executing it. This is one parser usage, not a class validator.\n\nComponents and interface\nTool {}; ToolSkill {}; PythonCode {}. Pinned export inspect_python_source(inputs) calls host.source_inspection(source=inputs['source']) exactly once. No helpers, constants or dependencies. Loading has no effects.\n\nInput and result\nsource is a required non-null string, including empty source, quotes, Unicode, newlines and template-looking text. It remains data and is never substituted into executable source. Return exact python-source-facts/1 JSON bytes with preparation revision, retained worker checksum and mechanical parser observations. A parse success is not a validation verdict or proof of behavior.\n\nPrerequisites and failure\nRetain the actual registered native implementation and worker artifact. Current instance Tool policy, cancellation, attempt fencing and acknowledged preparation limits apply at every dispatch. Missing/null/nonstring inputs, unavailable backend, syntax/parser/worker errors and capacity rejection stop the usage. One initial attempt, no automatic retry or approval grant. Never turn a failure into No-Match.\n\nOptional consuming/reference Recipe and command\nThe referenced workflow is a separate consumer/test contract, not a prerequisite for Skill completeness or reuse. MCP exposure requires a separately qualified declaration.\nRecipe {}, variant selected, command: inspect Python source %. Position zero is source:string, required, non-null and verbatim. Examples: inspect Python source value = 1; inspect Python source raise RuntimeError('data only'). Matching commands do not authorize or execute their source. This deterministic usage is Tier 0 only after complete qualification and activation. The consuming validator Recipe chooses rules and produces its own verdict; this usage writes no evidence, approval, reply or component state.",ids.tool,ids.tool_skill,ids.python_code,ids.recipe),
             "interface":{"format":"skill-interface/1","python_code_uuid":ids.python_code,"exports":preload["exports"],"inputs":inputs,
                 "result":result,"failure":failure,"dependencies":[],"private_symbols":[]}}),
             vec![ids.python_code, ids.tool_skill, ids.tool],

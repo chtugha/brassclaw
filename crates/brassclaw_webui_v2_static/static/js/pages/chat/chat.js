@@ -50,6 +50,7 @@ export function Chat({
     loadMore,
     setSuggestions,
     submitAuthToken,
+    continueAuthToken,
     dismissChannelConnectAction,
   } = useChat(activeThreadId);
 
@@ -227,8 +228,10 @@ export function Chat({
                 : pendingGate.challengeKind === "manual_token"
                   ? html`
                   <${AuthTokenCard}
+                    key=${JSON.stringify([activeThreadId, pendingGate.runId, pendingGate.gateRef, pendingGate.provider, pendingGate.accountLabel])}
                     gate=${pendingGate}
                     onSubmit=${submitAuthToken}
+                    onContinue=${continueAuthToken}
                     onCancel=${() =>
                       approve(pendingGate.requestId, "cancel", pendingGate.kind)}
                   />

@@ -1,26 +1,16 @@
 #![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 use std::sync::Arc;
 
-use brassclaw_filesystem::{LocalFilesystem, RootFilesystem, ScopedFilesystem};
-use brassclaw_host_api::{
-    MountAlias, MountGrant, MountPermissions, MountView, ThreadId, VirtualPath,
-};
+use brassclaw_host_api::ThreadId;
+use brassclaw_pg::PgPool;
 use brassclaw_threads::{
-    FilesystemSessionThreadService, SessionThreadService, ThreadHistoryRequest,
-    ThreadMessageRecord, ThreadScope,
+    PgSessionThreadService, SessionThreadService, ThreadHistoryRequest, ThreadMessageRecord,
+    ThreadScope,
 };
 use thiserror::Error;
 
-use super::filesystem::local_filesystem;
-
 #[derive(Debug, Error)]
 pub enum RebornThreadHarnessError {
-    #[error("failed to create thread harness tempdir: {0}")]
-    Tempdir(#[from] std::io::Error),
-    #[error("failed to configure local filesystem: {0}")]
-    Filesystem(#[from] brassclaw_filesystem::FilesystemError),
-    #[error("invalid mount view: {0}")]
-    MountView(#[from] brassclaw_host_api::HostApiError),
     #[error("thread service failed: {0}")]
     Thread(#[from] brassclaw_threads::SessionThreadError),
     #[error("thread history does not contain final assistant reply containing {0:?}")]
@@ -29,46 +19,25 @@ pub enum RebornThreadHarnessError {
 
 pub struct RebornThreadHarness {
     pub scope: ThreadScope,
-    pub service: Arc<FilesystemSessionThreadService<LocalFilesystem>>,
-    backend: Arc<LocalFilesystem>,
-    root: Arc<tempfile::TempDir>,
+    pub service: Arc<PgSessionThreadService>,
+    pool: Arc<PgPool>,
 }
 
 impl RebornThreadHarness {
-    pub fn filesystem_temp(scope: ThreadScope) -> Result<Self, RebornThreadHarnessError> {
-        let root = Arc::new(tempfile::tempdir()?);
-        let backend = Arc::new(local_filesystem(root.path())?);
-        Self::filesystem_shared_backend(scope, backend, root)
-    }
-
-    pub fn filesystem_shared_backend(
-        scope: ThreadScope,
-        backend: Arc<LocalFilesystem>,
-        root: Arc<tempfile::TempDir>,
-    ) -> Result<Self, RebornThreadHarnessError> {
-        let scoped = scoped_threads_fs_at(Arc::clone(&backend), &scope)?;
-        let service = Arc::new(FilesystemSessionThreadService::new(scoped));
-        Ok(Self {
+    pub fn postgres(scope: ThreadScope, pool: Arc<PgPool>) -> Self {
+        let service = Arc::new(PgSessionThreadService::new(
+            Arc::clone(&pool),
+            scope.tenant_id.as_str(),
+        ));
+        Self {
             scope,
             service,
-            backend,
-            root,
-        })
+            pool,
+        }
     }
 
-    pub fn reopened(&self) -> Result<Self, RebornThreadHarnessError> {
-        Self::filesystem_shared_backend(
-            self.scope.clone(),
-            Arc::clone(&self.backend),
-            Arc::clone(&self.root),
-        )
-    }
-
-    pub fn service_instance(
-        &self,
-    ) -> Result<FilesystemSessionThreadService<LocalFilesystem>, RebornThreadHarnessError> {
-        let scoped = scoped_threads_fs_at(Arc::clone(&self.backend), &self.scope)?;
-        Ok(FilesystemSessionThreadService::new(scoped))
+    pub fn service_instance(&self) -> PgSessionThreadService {
+        PgSessionThreadService::new(Arc::clone(&self.pool), self.scope.tenant_id.as_str())
     }
 
     pub async fn history(
@@ -112,27 +81,4 @@ impl RebornThreadHarness {
             ))
         }
     }
-}
-
-fn scoped_threads_fs_at<F>(
-    backend: Arc<F>,
-    scope: &ThreadScope,
-) -> Result<Arc<ScopedFilesystem<F>>, brassclaw_host_api::HostApiError>
-where
-    F: RootFilesystem,
-{
-    let user_id = scope
-        .owner_user_id
-        .as_ref()
-        .map_or("_system", |user_id| user_id.as_str());
-    let target = format!(
-        "/engine/tenants/{}/users/{}/threads",
-        scope.tenant_id, user_id
-    );
-    let mounts = MountView::new(vec![MountGrant::new(
-        MountAlias::new("/threads").expect("valid threads alias"),
-        VirtualPath::new(target).expect("valid threads target"),
-        MountPermissions::read_write_list_delete(),
-    )])?;
-    Ok(Arc::new(ScopedFilesystem::with_fixed_view(backend, mounts)))
 }

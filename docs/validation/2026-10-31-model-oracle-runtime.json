@@ -1,0 +1,312 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-017",
+  "batched_request": "BUILD-016",
+  "status": "passed",
+  "package": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8",
+  "package_after_sha256": "d116810c5f207b7a89cf9097c1509c4e7865bf3212b10ba5d38cfeccb88062fd",
+  "sources": {
+    "crates/brassclaw_model_encoding/tests/huggingface_oracle.py": "ccc9bcb386d7548f32c3ac368829d2af0b5cc007542100268ba2b39e0d4d2c24",
+    "crates/brassclaw_model_encoding/tests/ornith_fixed_prefix_probe.py": "9dc31cc9a9905eec233938be761f84ead9c8cc514c673d056b4320c15019c366",
+    "crates/brassclaw_model_encoding/tests/model_oracle.rs": "b11c625e5452e72b6120f80dfbcb0f788a9951f560393b445e9cf904dbdb8889",
+    "crates/brassclaw_model_encoding/README.md": "7d2d08e81aacd05bb96b055219be83491c5c2515d30ae2109ad5b68f558139f9",
+    "crates/brassclaw_model_encoding/tests/requirements-oracle.txt": "2696a5c4d186c061631f64e550796eaf73ead60cb04c40b63df9f1b6727c43da",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/model_encoding_tests.rs": "035ef753d5f894a062610880c353b57dbcc7099fcd37381da037a66c81d25c22",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/prefix_measurement_job_tests.rs": "3e73f6e1cdc0a2c5f75dc5aa19e7e276060aff98af74b9c91bb5cb8b179c6d93",
+    "docs/reborn/pure-component-review.md": "cba10515d000b5ef78475e9976905d68f5fc0eb3e6ab53cf57a722866a7dc24b",
+    "docs/reborn/contracts/component-review-submissions.md": "c48b44ccad0cb6e70408fcad8c1b5675b4773b11b6e2ca87e938584bbf49e666"
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-4/source.json",
+    "sha256": "b58fcc4a60e927c4032beb3c790ae4f924504c070411988a9af3d2862ba60b54",
+    "entries": 8177,
+    "embedded_input_map": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-4/embedded-inputs.json",
+    "embedded_input_map_sha256": "b19e5d73093ec18b83bd944f83a74253acbc003499a6b4decc865185c8403206",
+    "reviewed_root": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/current-root-inputs-model-oracle-runtime.json",
+    "reviewed_root_sha256": "04d0fae8babc9e4246e94a4602777c4fbbef1a0d2cca3d9b700b57f2cc3e7a71",
+    "reviewed_root_paths": 278
+  },
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-1",
+      "status": "failed",
+      "progress_sha256": "b65b5377012a120cbb0736b26391ee2721fe2c1b6648bbb208bfcc304891513b",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.36397316702641547,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.23972158296965063,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "python-dependency-check",
+          "exit_code": 0,
+          "seconds": 0.34893591701984406,
+          "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+        },
+        {
+          "stage": "composition-image",
+          "exit_code": 0,
+          "seconds": 247.33289087493904,
+          "log_sha256": "41fa1cb0512eeed0cc5e5f1db581eaa6c8498f562de0ad972cb0dfe3db0ce0db"
+        }
+      ],
+      "reused_results": null,
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/runner.py\", line 138, in <module>\n    run('independent-oracle-image',['cargo','+1.96.0','test','-p','brassclaw_model_encoding','--test','model_oracle','--no-run','--locked','--message-format=json'],True)\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/runner.py\", line 57, in run\n    assert int(disk.splitlines()[-1].split()[4].rstrip('%')) <= 90\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n"
+    },
+    "run-2": {
+      "path": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-2",
+      "status": "failed",
+      "progress_sha256": "ccdad01da09625339511cad02074f543f82bcad770a5b1bde16c2e50238a6e94",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.34100624988786876,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.25591379194520414,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "python-dependency-check",
+          "exit_code": 0,
+          "seconds": 0.36952258297242224,
+          "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+        }
+      ],
+      "reused_results": null,
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/runner-reuse.py\", line 147, in <module>\n    assert sha(cached['path'])==cached['sha256'] and sha(cached['original'])==cached['sha256']\n           ~~~^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/runner-reuse.py\", line 15, in sha\n    with path.open('rb') as stream:\n         ^^^^^^^^^\nAttributeError: 'str' object has no attribute 'open'\n"
+    },
+    "run-3": {
+      "path": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-3",
+      "status": "passed",
+      "progress_sha256": "1290467221c1e7bb270fb7125e5002081fc65848f5984b9e26487d7a4bb5a398",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.25582883390598,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.21702475007623434,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "python-dependency-check",
+          "exit_code": 0,
+          "seconds": 0.33687470806762576,
+          "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+        },
+        {
+          "stage": "required-package-cache-clean",
+          "exit_code": 0,
+          "seconds": 0.7224165839143097,
+          "log_sha256": "791dcd4c34783aa7f5565cd2bcb077c6cc55695c974b4c9836f50e24ab0a11e4"
+        },
+        {
+          "stage": "independent-oracle-image",
+          "exit_code": 0,
+          "seconds": 1.4491994159761816,
+          "log_sha256": "d89eb632b53330952d58f2f00b93cd475ec9460159f06ce9cb3bfaa804c58c23"
+        },
+        {
+          "stage": "actual-offline-hf-oracles",
+          "exit_code": 0,
+          "seconds": 17.972329874988645,
+          "log_sha256": "44e53e3f9c3e493ac7f682876fd55907aa1d1bb607fb8636a64e6a8a6f1b8a86",
+          "passed": 4
+        },
+        {
+          "stage": "actual-native-global-oracle-callers",
+          "exit_code": 0,
+          "seconds": 379.0672744999174,
+          "log_sha256": "966304dcd2e551f83d9201d1be196b55ea4fe69549cc2d5840193faa019bb550",
+          "passed": 1
+        },
+        {
+          "stage": "connected-strict",
+          "exit_code": 0,
+          "seconds": 88.78074054210447,
+          "log_sha256": "d45c413f5ee415611a321626d3a205c5f103063fbabd05423869c24bfbd181cc"
+        }
+      ],
+      "reused_results": [
+        {
+          "stage": "composition-image",
+          "exit_code": 0,
+          "seconds": 247.33289087493904,
+          "log_sha256": "41fa1cb0512eeed0cc5e5f1db581eaa6c8498f562de0ad972cb0dfe3db0ce0db"
+        }
+      ],
+      "diagnostic": null
+    },
+    "run-4": {
+      "path": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-4",
+      "status": "passed",
+      "progress_sha256": "e2857e15b44d229817843f83c63962cc7f08de94408b789fe5cdcf2a89812019",
+      "results": [
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.2255204590037465,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "python-dependency-check",
+          "exit_code": 0,
+          "seconds": 0.3414884170051664,
+          "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+        },
+        {
+          "stage": "actual-offline-hf-oracles",
+          "exit_code": 0,
+          "seconds": 17.341545791132376,
+          "log_sha256": "92aadd10f3d733bdf1d5dfac6e0386a7122b8eddc308d2fc948a6a701c9029f8",
+          "passed": 4
+        },
+        {
+          "stage": "actual-native-global-oracle-callers",
+          "exit_code": 0,
+          "seconds": 378.70772083313204,
+          "log_sha256": "f9bdb9d56b43244e567f42fa4948c495b1092d4ac213b659c64778d27a0fb817",
+          "passed": 1
+        }
+      ],
+      "reused_results": null,
+      "diagnostic": null
+    }
+  },
+  "images": {
+    "brassclaw_reborn_composition": {
+      "path": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-7a32f5faf18eef18",
+      "sha256": "5a502d5ff78b59e5b30ceeec6482e50907323a7b2e259d3740cbdbb6412687cf",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ],
+      "compilation_evidence": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-1/progress.json",
+      "compilation_evidence_sha256": "b65b5377012a120cbb0736b26391ee2721fe2c1b6648bbb208bfcc304891513b",
+      "compilation_source_sha256": "080ae117fa6cdc873f85e63c3f2b573acc7c2fafd6a5c9bf2eae9047b3932811",
+      "original_removed_by_required_package_clean": true
+    },
+    "model_oracle": {
+      "path": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-3/model_oracle-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/model_oracle-c0563bc5ebe54822",
+      "sha256": "714442876cd8871d9c2bfd8fa0ed9897950187f58c8442a7b4a04e0961378f68",
+      "features": []
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-3/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+    "build_evidence": "/private/tmp/brassclaw-validation-target-validation-20261031/run-2/progress.json",
+    "build_evidence_sha256": "929aacb5d27b794d1176bb22e501138c1fa3ff814461bd10f2fa39a9fe66b185",
+    "reason": "Only cfg-test Rust callers, Python test helpers/declarations and documentation changed; production worker and its lower inputs are unchanged.",
+    "actual_reused_test_companion": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-1/monty_worker"
+  },
+  "python_runtime": {
+    "executable": "/Users/ollama/brassclaw-target/model-oracle-venv/bin/python",
+    "executable_sha256": "b502cb4c5b46b8d4192ec6bcb600ce8922f1afc396fcf646e8765c6eba74a0bf",
+    "lock": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/oracle-runtime.lock.txt",
+    "lock_sha256": "7536189a2d395534a3b9fcede8592fa28e4cc7c148c95fdbe062cde57388b331",
+    "typed_smoke": "/private/tmp/brassclaw-model-oracle-runtime-20261031-4rotf6f8/typed-config-smoke.json",
+    "typed_smoke_sha256": "6cad79b6d6f3478b67b5a2e13ab3d0131be5dc1b1d71e2ca5730cd9b15436870",
+    "pip_reports": {
+      "pip-tool-report.json": "da03a6240915d00ce6b133ccb40fe83c3ab1f00f4c96ba9cb0a28f01d1cc7e08",
+      "pip-oracle-report.json": "d9d988bc1ef49841862076995cdcc462b41bd58951f1d7ad8351122cc4b81a01",
+      "pip-torch-report.json": "ea8df324bfb5531a28cc055b2dffd2574191a7a7bcc1b5bb30a005639e2da5b9"
+    }
+  },
+  "model_assets": {
+    "source": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-3/model-artifacts",
+    "retained": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-4/model-artifacts",
+    "files": {
+      "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+      "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+      "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+      "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+      "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+      "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+    },
+    "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6"
+  },
+  "reused_compilation_and_lint": {
+    "path": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-3/progress.json",
+    "sha256": "1290467221c1e7bb270fb7125e5002081fc65848f5984b9e26487d7a4bb5a398",
+    "source_sha256": "080ae117fa6cdc873f85e63c3f2b573acc7c2fafd6a5c9bf2eae9047b3932811",
+    "reason": "Only externally loaded Python measurement script changed. All Rust and literal embedded inputs are unchanged; original callers load that script by runtime path, not include_str.",
+    "results": [
+      {
+        "stage": "composition-image",
+        "exit_code": 0,
+        "seconds": 247.33289087493904,
+        "log_sha256": "41fa1cb0512eeed0cc5e5f1db581eaa6c8498f562de0ad972cb0dfe3db0ce0db"
+      },
+      {
+        "stage": "independent-oracle-image",
+        "exit_code": 0,
+        "seconds": 1.4491994159761816,
+        "log_sha256": "d89eb632b53330952d58f2f00b93cd475ec9460159f06ce9cb3bfaa804c58c23"
+      },
+      {
+        "stage": "connected-strict",
+        "exit_code": 0,
+        "seconds": 88.78074054210447,
+        "log_sha256": "d45c413f5ee415611a321626d3a205c5f103063fbabd05423869c24bfbd181cc"
+      }
+    ]
+  },
+  "cache_reclamation": {
+    "package": "brassclaw_reborn_composition",
+    "reason": "R1 completed the required test image, then the91-percent disk guard stopped before the next Cargo command.",
+    "disk_evidence": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-1/independent-oracle-image-disk.txt",
+    "disk_evidence_sha256": "750be00530765a6005c64a7147a3f42488877dd45264ea3be7fffd6ee00c3986",
+    "preserved_image": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+    "preserved_worker": "/private/tmp/brassclaw-model-oracle-runtime-validation-20261031/run-1/monty_worker"
+  },
+  "tests": {
+    "fresh_distinct": 5,
+    "ignored": 0,
+    "names": [
+      "retained_ornith_default_wire_matches_huggingface",
+      "retained_ornith_injected_leading_chat_matches_huggingface",
+      "retained_ornith_matches_huggingface",
+      "retained_ornith_partition_matches_huggingface",
+      "runtime::tests::authored_catalogue_tests::component_deployment_tests::native_component_deployment_preserves_recipes_and_pins_review_subjects"
+    ]
+  },
+  "scope": [
+    "Supported isolated Transformers5.22.1/Tokenizers0.23.3/Torch2.15/Jinja3.1.6 test environment loads real Qwen3_5Config; explicit interpreter is reused by existing standalone/native callers.",
+    "Actual independent HF backend measures complete rendered text with padding/truncation disabled; original model/template/tokenizer/config files and model context limit remain unchanged.",
+    "Four offline Rust/HF tests explicitly execute their normally ignored cases; exact rendered bytes/token IDs/physical partitions/wire mapping and float/Unicode cases pass.",
+    "Actual PostgreSQL/global native base/Sempai measurement consumers pass, including correct rejection of oversized context without inference, replay or activation; original mismatch/backend/oversize-preparation/deprecation warnings are absent.",
+    "Existing016 nested model-input metadata docs integrated with the same affected native batch; no API/format or approval change.",
+    "Exact R1/R3 compilation and strict results reused after the sole external Python counting API correction; no unnecessary Rust recompilation."
+  ],
+  "limits": [
+    "These are offline tokenizer/rendering/current-profile native consumer checks, not real model inference, provider Serving or accepted model-specific design/prefix activation.",
+    "Windows/Linux interpreter selection is portable source support; neither platform deployment nor CPU-wheel installation was executed here.",
+    "No production renderer, provider config/server template, Q1/Q2, pure/function approval or Free capability was added.",
+    "R1 diskstop/R2 private Path preflight retained. Only the required Composition package cache was reclaimed after actual needed images were preserved; no whole-target clean/source restoration or warning suppression.",
+    "General joint-subject/own approvals/S qualification, full validator/library/resource/recovery/plans and release remain open."
+  ]
+}

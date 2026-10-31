@@ -27,6 +27,118 @@ pub struct LlmKeyStore {
 }
 
 impl LlmKeyStore {
+    /// Read authenticated version metadata without consuming a lease, locking
+    /// rows or migrating legacy records in an administration GET snapshot.
+    #[cfg(feature = "postgres")]
+    pub(crate) async fn inspect_record_reference_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        provider_id: &str,
+    ) -> Result<Option<String>, LlmKeyStoreError> {
+        let store = self.postgres.as_ref().ok_or_else(|| {
+            LlmKeyStoreError::Store(SecretStoreError::BackendMisconfigured {
+                reason: "coordinated key storage is unavailable".into(),
+            })
+        })?;
+        store
+            .inspect_record_reference_in_transaction(
+                transaction,
+                &scope(),
+                &handle_for(provider_id)?,
+            )
+            .await
+            .map_err(LlmKeyStoreError::Store)
+    }
+
+    /// Opaque identity of the actual authenticated encrypted provider key row.
+    #[cfg(feature = "postgres")]
+    pub(crate) async fn record_reference_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        provider_id: &str,
+    ) -> Result<Option<String>, LlmKeyStoreError> {
+        let store = self.postgres.as_ref().ok_or_else(|| {
+            LlmKeyStoreError::Store(SecretStoreError::BackendMisconfigured {
+                reason: "coordinated key storage is unavailable".into(),
+            })
+        })?;
+        store
+            .authenticated_record_reference_in_transaction(
+                transaction,
+                &scope(),
+                &handle_for(provider_id)?,
+            )
+            .await
+            .map_err(LlmKeyStoreError::Store)
+    }
+
+    /// Trusted login publication compares the original credential under the
+    /// same encrypted-store lock as its write; no file or live token is mutated.
+    #[cfg(feature = "postgres")]
+    pub(crate) async fn put_if_record_reference_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        provider_id: &str,
+        material: SecretMaterial,
+        expected: Option<&str>,
+    ) -> Result<bool, LlmKeyStoreError> {
+        let store = self.postgres.as_ref().ok_or_else(|| {
+            LlmKeyStoreError::Store(SecretStoreError::BackendMisconfigured {
+                reason: "coordinated key storage is unavailable".into(),
+            })
+        })?;
+        store
+            .put_if_record_reference_in_transaction(
+                transaction,
+                scope(),
+                handle_for(provider_id)?,
+                material,
+                expected,
+            )
+            .await
+            .map(|metadata| metadata.is_some())
+            .map_err(LlmKeyStoreError::Store)
+    }
+
+    /// Original mutation proof. It is deliberately stored as encrypted secret
+    /// material, never a plaintext fingerprint in the provider history.
+    #[cfg(feature = "postgres")]
+    pub(crate) async fn record_mutation_proof(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        mutation_id: uuid::Uuid,
+        proof: SecretMaterial,
+    ) -> Result<(), LlmKeyStoreError> {
+        let store = self.postgres.as_ref().ok_or_else(|| {
+            LlmKeyStoreError::Store(SecretStoreError::BackendMisconfigured {
+                reason: "coordinated key storage is unavailable".into(),
+            })
+        })?;
+        store
+            .put_in_transaction(transaction, scope(), mutation_handle(mutation_id)?, proof)
+            .await
+            .map_err(LlmKeyStoreError::Store)?;
+        Ok(())
+    }
+
+    #[cfg(feature = "postgres")]
+    pub(crate) async fn matches_mutation_proof(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        mutation_id: uuid::Uuid,
+        proof: &SecretMaterial,
+    ) -> Result<bool, LlmKeyStoreError> {
+        let store = self.postgres.as_ref().ok_or_else(|| {
+            LlmKeyStoreError::Store(SecretStoreError::BackendMisconfigured {
+                reason: "coordinated key storage is unavailable".into(),
+            })
+        })?;
+        store
+            .matches_in_transaction(transaction, &scope(), &mutation_handle(mutation_id)?, proof)
+            .await
+            .map_err(LlmKeyStoreError::Store)
+    }
+
     /// Wrap the instance's shared secret store.
     pub fn new(store: Arc<dyn SecretStore>) -> Self {
         Self {
@@ -150,6 +262,15 @@ impl LlmKeyStore {
             .await
             .map_err(LlmKeyStoreError::Store)
     }
+}
+
+#[cfg(feature = "postgres")]
+fn mutation_handle(mutation_id: uuid::Uuid) -> Result<SecretHandle, LlmKeyStoreError> {
+    SecretHandle::new(format!("llm_mutation_{mutation_id}_proof")).map_err(|_| {
+        LlmKeyStoreError::Store(SecretStoreError::BackendMisconfigured {
+            reason: "provider mutation proof identity is invalid".into(),
+        })
+    })
 }
 
 fn scope() -> ResourceScope {

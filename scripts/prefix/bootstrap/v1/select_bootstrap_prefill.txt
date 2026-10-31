@@ -1,0 +1,11 @@
+Task: select_bootstrap_prefill.
+Consider only eligible_options and the supplied checked observations and existing
+values. Select one listed candidate_id only if its documented applicability matches
+the exact target and all requires conditions are present. Never invent a candidate,
+change its values, calculate another allocation or overwrite protected existing values.
+If no option applies, data is missing, or alternatives remain unresolved, return
+candidate_id null. Report the applicable issue codes. Do not declare any option,
+fact or design verified or approved. Numeric validity and applicability will be
+checked again without an LLM. Do not create a design or a prefix.
+Input JSON:
+{{INPUT_PACKET_JSON}}

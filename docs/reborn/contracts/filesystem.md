@@ -543,3 +543,33 @@ put/opaque-put/byte-append/event-append reject before publishing changes. Native
 PostgreSQL's signed version overflow aborts and rolls back. Actual maximum-state
 regressions check retained body/version/events. This is the storage integer
 representation, not a configurable resource quota; no counter can be reused.
+
+### Atomic body-bound CAS
+
+`CasExpectation::VersionAndBody` combines the selected `RecordVersion` with
+`EntryBodyChecksum::for_body` computed from that same read. A backend advertising
+`Capability::EntryBodyCas` must compare both under the lock/transaction that
+performs the mutation. Native in-memory and PostgreSQL implementations support
+this condition; the mount catalogue rejects unsupported capability claims.
+`SnapshotMismatch` means the body changed while the supplied version still
+matched and no write occurred. Neither errors nor Debug include the checksum
+or body. Existing Any/Absent/Version wire forms are unchanged. Local byte-only
+mounts reject version/body conditions before effects. Consumers must preserve
+the supplied precondition and propagate unsupported operations, never retry with
+an unconditional write. This identifies the exact body rather than all metadata
+or physical object lifetimes, and grants no filesystem or Tool authority.
+
+### Snapshot-conditional single-entry deletion
+
+`RootFilesystem::delete_if_snapshot` and its scoped/composite forwarding delete
+one selected leaf using its version and body checksum under the actual native
+owner lock/transaction. They do not delete a subtree. Missing entries,
+directories, changed versions or changed bodies return false without mutation.
+Unsupported backends return errors with no read-plus-unconditional-delete retry.
+`Capability::ConditionalEntryDelete` is explicit and validated at mount time;
+native memory and PostgreSQL implement it, while Local leaves it unsupported.
+Scoped callers need the existing Delete permission; selection is no authority.
+Lost COMMIT acknowledgement remains an error and cannot justify deleting a new
+replacement. Existing recursive delete keeps its separate semantics. This
+primitive is infrastructure for existing K3 step2 all-writer immutable custody;
+it does not establish that the full auth consumer cutover is finished.

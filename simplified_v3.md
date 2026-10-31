@@ -8,6 +8,318 @@
 > activation, deployed support or full-v3 completion.
 
 
+## Vorrang: Konformität des bereits implementierten Stands herstellen
+
+**Abgleich vom 24.10.2026; vor der nächsten regulären Planfortsetzung ausführen.**
+Dieser Abschnitt gleicht die geänderten Verträge der fünf Pläne gegen die bereits
+implementierten Teilpfade ab. Er ersetzt weder die bisherigen Implementierungen
+noch ihre unveränderlichen historischen Belege. Ausgangspunkt sind der aktuelle
+[Implementierungsindex](docs/implementation-status.md), die dort verlinkten
+Abnahmen und der geprüfte gemeinsame Arbeitsbaum, einschließlich der privaten
+neun Schritte/drei Regeln aus dem [Graph-Prüfschritt](docs/validation/2026-10-24-python-graph-review.md).
+Die ursprüngliche Prüfung ist Quell-/Vertragsanalyse; die K1-/K2-Reparaturen
+haben inzwischen ihre unten verlinkten begrenzten Abnahmen. K3–K7 sind weiterhin
+offen. Ein im Code fehlender Übergang
+ist von einem noch nicht vorliegenden Nachweis zu unterscheiden.
+K2/K3 betreffen bereits teilweise implementierte Pfade mit zuvor offenen
+Integrationen; die präzisierte Reihenfolge macht sie für vorhandene Consumer
+vorrangig. Das erklärt ihre früheren begrenzten Abnahmen nicht nachträglich
+für falsch und behauptet keine allein durch die Planänderung entstandene Regression.
+
+**Reihenfolge:** K0 festhalten, K1–K6 im angegebenen Owner bearbeiten, K7 schließen;
+erst danach die reguläre Remaining-Liste und die nächsten offenen Schritte der
+fünf Pläne fortsetzen. Abhängige Änderungen dürfen zu einem kohärenten Paket
+gebündelt werden. Eine bloße Zuständigkeitsverschiebung verlangt keine erneute
+Implementierung. Bei einem Nachweisabgleich ist eine Codeänderung nur nötig, wenn
+der betroffene Pfad den Vertrag tatsächlich verletzt; sonst genügt ein exakt
+passender vorhandener oder ergänzender Caller-Nachweis. Bereits laufende Tasks
+werden dadurch weder rematcht noch erneut ausgeführt oder automatisch abgebrochen.
+
+### K0 — Ausgangsumfang und Abschlussbelege verbindlich festhalten
+
+Die folgenden Feststellungen in den vorhandenen Implementierungs-/Validierungs-
+record übernehmen, mit tatsächlichen Source-/Paket-/Artefaktidentitäten und den
+zugehörigen bisherigen Receipts. Keine zweite Statusdatenbank oder neue Queue.
+Laufende parallele Änderungen beim Beginn jedes betroffenen Pakets abgleichen;
+keine älteren Quellen über den gemeinsamen Arbeitsbaum kopieren.
+
+| Plan / bereits implementierter Teil | Ergebnis des Abgleichs / vorrangige Folge |
+| --- | --- |
+| Simplified: globaler Dienst, typisierte Auswahl, Live-Settings, native Custody und atomare PG-Aufnahme | Grundlage bleibt erhalten. Neue Produktübergaben betreffen K1–K3; Child/MCP und Artefakt-/Upgradegrenzen benötigen den begrenzten Nachweisabgleich K4/K6. Kein Neubau der Runtime. |
+| Validator: unveränderliche Subjects, Source-/Definition-/Contract-/Graphregeln und sealed Observations; exakte menschliche Usage-Q2-Route | Keine durch die Ownership-Änderung belegte Notwendigkeit, diese Bausteine neu zu schreiben. K5 sichert ihre tatsächliche Grenze und die geänderten Paketinputs. Acht produktive Klassenrouten, allgemeine Pure-Approval und deren Writer waren bereits offen. |
+| Monty composition: qualifizierter Reply-/History-Pfad, vorhandene authored Aktivierung und begrenzte öffentliche Commands/MCP | Aktivierungsübergang in K2 ergänzen, aktuelle Caller-/Lifecycle-Belege in K4 abgleichen. Bereits qualifizierte Adapter wiederverwenden; keine neue MCP-Ausführungsschicht. |
+| Monty implementation: vorhandene Preload-/Binding-/Werteadapter und explizites natives Child-Profil | K4 prüft die präzisierten Isolations-/Parent-/Resultgrenzen. R09-Parentaktivierung, fünf Subagentmigrationen und R10/Doc-Consumer bleiben offene Facharbeit. |
+| Prefix: Source-only-Jobdefinitionen, Profile/Originale/Generationen, Messungen und revisionierte Modellgrenzen | Konkrete Identitätslücke K1, bestehende Provider-/Aktivierungsübergaben K2/K3 und Paket-/Retentionsabgleich K5/K6. Quarantäne ist weiterhin keine Serving-Aktivierung. |
+
+### K1 — Bestehende Prefix-Aufnahme auf vollständige Requestidentität korrigieren
+
+> **Stand 24.10.2026, nach dem obigen Abgleich:** K0 und K1 sind für ihren
+> beschriebenen Umfang abgeschlossen. [K1-Abnahme](docs/validation/2026-10-24-k1-prefix-request-identity.md)
+> belegt 33 tatsächliche Tests, strikte betroffene Lints und exakte Artefakte.
+> Die folgenden K1-Befunde/Reparaturschritte erklären den behobenen Ausgangspunkt.
+> K2 ist inzwischen separat abgenommen, siehe dessen Abschnitt; K3–K7 bleiben
+> vor der regulären Fortsetzung offen.
+
+**Belegte Codelücke; Owner:** gemeinsamer Admissionvertrag in Phase 3a, mit dem
+Prefix-Owner für den fachlichen Requestvergleich (§7 des Prefix-Plans).
+[submit_prefix_source_snapshot / admit_prefix_definition](crates/brassclaw_reborn_composition/src/prefix_job_submission.rs)
+liest bei vorhandener Job-ID die Definition, vergleicht aber im Wiederholungszweig
+nicht den erneut übergebenen `snapshot_bytes` mit ihrem gespeicherten Input.
+Auch [Store::reserve](crates/brassclaw_reborn_composition/src/prefix_job_definitions.rs)
+vergleicht in beiden Konfliktpfaden Request-/Scope-Metadaten, ohne den angebotenen
+Input vollständig einzubeziehen. Damit kann gleiche ID mit abweichenden Quellen
+statt eines Konflikts den alten Auftrag zurückgeben.
+
+1. Explizit übergebene fachliche Daten unter der ursprünglichen ID vollständig
+   vergleichen, einschließlich Snapshot/Input und etwaiger expliziter Auswahl.
+   Identische Wiederholung liest Originaldefinition und Originalrun; geänderter
+   Inhalt wird vor Aufnahme/Effekten als Konflikt abgewiesen. Dieselbe Prüfung
+   vorgefundenen Datensätzen und dem Gewinner eines konkurrierenden Inserts geben.
+2. Automatisch erfasste Quellen oder neu verfügbare Compilerrevisionen bei einem
+   Transportretry nicht erneut auswählen: die ursprüngliche Auswahl bleibt gültig.
+   Reconnect ohne neue Nutzlast ist ein eigener Original-Lookup, kein geänderter
+   Submit. Bewusst neue Quellen bekommen eine neue Request-/Jobidentität.
+3. Den vorhandenen Definition-/Thread-/internen ResultOnly-/Runpfad erhalten.
+   Verlorenes Reserve-/Ensure-/Admission-COMMIT zuerst über Originalidentitäten
+   nachlesen; solange das nicht möglich ist, ungeklärt bleiben statt Ersatzjob.
+   Interne Transportnachrichten sind keine öffentliche Chat-/Matcheraufnahme.
+
+**Abnahme:** gleiche ID mit gleichen und unterschiedlichen Snapshots, zwei
+konkurrierende Inserts mit unterschiedlichen Inputs, Compilerwechsel nach erster
+Aufnahme und verlorene Bestätigung. Konflikt verursacht null zusätzliche Runs/
+Dispatches; echte Wiederholung liefert ursprüngliche Inputs/Artefakte. Den
+Messjobpfad auf dieselbe Vertragslücke prüfen und nur betroffene Vergleiche ändern.
+
+### K2 — Vorhandene Katalogaktivierung mit dauerhafter Invalidierung verbinden
+
+> **Abgeschlossen für vorhandene Consumer, 24.10.2026:**
+> [K2-Abnahme](docs/validation/2026-10-24-k2-catalogue-publication.md) belegt die
+> atomare Invalidierung V177, Original-Readback, tatsächliche Fehler vor/nach
+> COMMIT, sichtbaren Runtime-/Discovery-Uptake, Restart/Overrides und betroffene
+> Source-/Mess-/Child-/WebUI-Consumer. 39 frische plus neun genau weiterverwendete
+> Rust-Ergebnisse und 21 UI-Fälle bestehen, ebenso strikte Lints und Integrität.
+> Die folgenden Befunde erklären den reparierten Ausgangspunkt. Generiertes
+> Prefix-Serving, K3–K7 und die Gesamtpläne sind damit nicht abgeschlossen.
+
+**Belegte Übergabelücke; Owner:** Phase 0a/§8.2, Prefix liefert Abhängigkeiten und
+seinen Neubau-Consumer, Composition die bestehenden Aktivierungs-/MCP-Consumer.
+[activate_authored](crates/brassclaw_reborn_composition/src/authored_monty_catalogue.rs)
+publiziert Katalog/Intentdaten/aktiven Pointer und Aktivierungsbeleg transaktional.
+Ein dauerhafter betroffener Prefix-Invalidierungsauftrag ist dort noch nicht Teil
+dieser Transaktion; Discovery/In-Memory-Publikation folgen nach COMMIT.
+
+1. Betroffene Source-/Prefix-/Consumerreferenzen mit der neuen Kataloggeneration
+   über denselben bestehenden Publikationsowner dauerhaft invalidieren bzw. zur
+   Verarbeitung markieren. Aktiven Pointer, vollständigen genehmigten Katalog
+   und Invalidierungsreferenz gemeinsam committen. Vorhandene Records erweitern,
+   falls nötig additiv migrieren; kein zweiter Aktivator oder Jobrunner.
+2. Nach ungewissem COMMIT oder fehlgeschlagener Discovery-/Runtimepublikation
+   ursprünglichen Aktivierungsbeleg lesen und genau diese Generation abgleichen.
+   Sichtbare Ziel-/Effektiv-/Pendingzustände dürfen keinen alten In-Memory-Stand
+   als neuen Erfolg ausgeben. Keine neue Aktivierungsidentität zum Reparieren.
+3. Prefix aus dem neuen aktiven Snapshot bauen, niemals vor dessen Publikation.
+   Neue abhängige Modellcalls bleiben bis zum passenden qualifizierten Prefix
+   blockiert; providerfreie Builds/Verwaltung/geeignete Tier-0-Arbeit bleiben frei.
+   Vorhandene qualifizierte Inline-/Recipe-Kontexte als solche exakt ausweisen;
+   nicht als vollständigen neuen Prefix-Servingpfad deklarieren oder pauschal
+   verwerfen. Alte Tasks behalten ihre kompatible Auswahl unter Live-Policy.
+
+**Abnahme:** Aktivierung ohne Provider/Prefix, Crash-/Ackverlust vor/nach COMMIT,
+Discoveryfehler nach erfolgreichem DB-Commit, verlorene/doppelte Invalidierung,
+Neustart und fehlgeschlagener Build. Keine unpublizierte Generation im Compiler,
+kein stiller Rollback, kein stale Modellkontext und kein Tier-2-Replay. Bestehende
+[authored Caller-Fälle](crates/brassclaw_reborn_composition/src/runtime/tests/authored_catalogue_tests.rs)
+gezielt erweitern statt einen zweiten Aktivierungstestpfad zu bauen.
+
+### K3 — Bestehende Provideränderungen bis zu ihren Verbrauchern quittieren
+
+**Belegte Übergabelücke; Owner:** §10.1/Phase 3a; Prefix und Composition liefern
+Verbraucherfälle. [PgProviderRepo](crates/brassclaw_reborn_composition/src/pg_provider_repo.rs)
+hat revisioniertes CAS und atomare Deaktivierung/Auswahlbereinigung.
+[LlmConfigService](crates/brassclaw_reborn_composition/src/llm_config_service.rs)
+committet Definition/ggf. Key/Auswahl und lädt danach laufende Clients neu.
+Ungewisser COMMIT und fehlgeschlagenes Reload liefern Unavailable; der vollständige
+revisionsbezogene Readback-/Invalidierungs-/Effektivvertrag ist damit nicht erfüllt.
+
+1. Den ursprünglichen Änderungsauftrag und seine bestätigte oder ungeklärte
+   Providerrevision über die vorhandene Transaktion rekonstruierbar machen.
+   Wiederholtes Nachlesen erzeugt keine neue Revision, Secretmutation oder
+   Reaktivierung. Ein späterer fremder Edit darf nicht als eigene Bestätigung
+   gelten; Geheimnisse verbleiben im verschlüsselten Hostbereich.
+2. Betroffene Modell-/Prefix-/Kohai-/Sempai-Verbraucher über den vorhandenen
+   Revisions-/Publikationsmechanismus zuverlässig aktualisieren/invalidieren.
+   Verlorene Notification bei Wiederaufnahme nachlesen; kein zweiter Provider-
+   katalog und keine neue allgemeine Event-Infrastruktur. Persistierte Revision,
+   effektive Revision und fehlgeschlagene/pending Übernahme getrennt zeigen.
+3. Vor dem nächsten betroffenen Dispatch aktuelle Deaktivierung, Auth-/Target-
+   Kompatibilität und technische Verschärfung prüfen. Alte Clients nicht als
+   erfolgreichen Uptake melden. Kein stiller Endpoint-/Modell-/Prefixfallback;
+   letzter deaktivierter Provider lässt Verwaltung und providerfreie Arbeit zu.
+
+**Abnahme:** echtes Edit/Deactivate/Re-Add mit verlorenem COMMIT-Reply,
+Reloadfehler, parallelem Edit, externem DB-Writer/Neustart und Änderung im Wait.
+Die bestehenden [Provider-Caller-Fälle](crates/brassclaw_reborn_composition/src/runtime/tests/provider_request_policy_tests.rs)
+und Modelllimit-Fälle gezielt ergänzen. Der noch offene vollständige finale
+Render-/Größenguard bleibt beim Prefix-Owner; seine komplette neue Servingpipeline
+ist keine Voraussetzung, diesen bestehenden DB-/Dispatchübergang zu reparieren.
+
+### K4 — Bereits qualifizierte Loader-, Child- und MCP-Grenzen abgleichen
+
+**Nachweisabgleich; kein pauschal festgestellter Neubau. Owner:** Phase 0a/3a,
+Composition liefert die tatsächlichen Verbraucher nach seinem Ownershipvertrag.
+[RetainedPreload](crates/brassclaw_engine/src/executor/retained_preload.rs),
+[RetainedRecipeExecution](crates/brassclaw_engine/src/executor/retained_recipe.rs),
+[native Child-Provenienz](crates/brassclaw_reborn_composition/src/pg_monty_child.rs),
+[Child-Reconciliation](crates/brassclaw_reborn_composition/src/monty_child_admission.rs)
+und [MCP-Chatbridge](crates/brassclaw_reborn_composition/src/mcp_chat_bridge.rs)
+enthalten bereits die tragenden Mechanismen. Bestehende einschlägige Belege zuerst
+auf exakte Source-/Graph-/Artefaktidentität und folgende neue Präzisierungen prüfen:
+
+1. Gleichnamige alte/neue Exporte behalten nach Wait/Child ihre Bindings; mutable
+   Inputs/Defaults/Ergebnisse sind isoliert. Unzulässige rohe Monty-Werte werden
+   vor verlustbehafteter Konversion abgewiesen; echter Markertext bleibt Daten.
+2. Parentclaim und ursprüngliche Invocation/Childauswahl bleiben erhalten;
+   Aufnahmebeleg ist kein terminales Ergebnis. Bereits unterstützte readable
+   Ackverluste lösen keinen Ersatzchild aus. Nicht unterstützte/unlesbare Outcomes
+   bleiben sichtbar ungeklärt; Catch/Timeout erzeugt keinen leeren Erfolg.
+3. Ein wartender MCP-Parent blockiert seinen gewöhnlichen Chat nicht. Ungewisser
+   Send, Result-Delivery und nicht destruktiver Close werden am Originalchat
+   abgeglichen; Kohai-Disconnect betrifft nur den eigenen Request. Kein zweiter
+   Reply/History-Effekt und kein direkter MCP-Executor.
+
+**Arbeit/Abnahme:** Nur fehlende Fälle durch die realen bestehenden Caller
+qualifizieren und konkret gefundene Fehler in diesen Ownern korrigieren.
+Vorhandene passende Receipts wiederverwenden. Unsupported Retry-/Ketten-/Occurrence-
+profile nicht neu freischalten: aktuell `stop`/`max_attempts: 1` und ein gebundener
+Toolcall pro gewöhnlichem Ausführungsschritt. R09-Public-Parentbootstrap und fünf
+Subagentrecipes, volle Crash-Recovery und V35-13/14 bleiben reguläre offene Arbeit.
+
+#### Offene Definitions- und Consumerpräzisierungen nach K3
+
+Der [Exact-Abgleich](docs/plans/Exact_V3_definition_update_at_K3.md) wird mit dem
+jetzigen Auftrag als begrenzte Dokument-/Contractlieferung ab K4 umgesetzt. K0–K3
+und bereits abgeschlossene Teilnachweise bleiben unverändert; keine zusätzliche
+Voraussetzung für deren Abschluss. Die frühere Phase-3a-Pin-/Singleton-/Tracker-
+Beschreibung ist historischer Ausgangspunkt, keine Anweisung zum erneuten Upgrade.
+Aktuelle Baseline sind der tatsächlich vendorte Monty-1.0-Controlstand, vorhandener
+retained Loader und ein globaler Dienst; verbleibende Lifecycle-/Recoverygates
+bleiben beim bisherigen Owner. Später abgeschlossene K4-Teile ebenfalls nicht öffnen.
+
+Für neue Consumer gelten die vier Komponentenguides und folgende genaue Zuordnung:
+
+- K4 gleicht vorhandene Caller für Definition versus Invocation, echte typed
+  Resultrefs, Source-Daten und MCP-Advertisement versus tatsächliches Taskcapture
+  ab. Die [Composition-Nachfolger](docs/plans/monty.composition.md#open-contract-and-reference-successors-from-k4)
+  und [vollständige Referenz](docs/plans/monty.composition.implementation.md#open-definition-and-example-successors-from-k4)
+  ersetzen für neue Arbeit die dort benannten alten pauschalen Beispielregeln,
+  ohne deren Originaltext/Receipts zu ändern. Bereits qualifizierte Mechanik nutzen.
+- K5 prüft D01–D12 nur soweit tatsächlich betroffene Dokument-/Teaching-/Paketinputs
+  vorliegen. Quellen-/Beispielprüfung ist keine Runtimeaktivierung. Neue eingebettete
+  Bytes erhalten ihre eigene Identität; unabhängige alte Belege behalten ihren Scope.
+- K6 übernimmt geänderte Paketbytes über bestehende immutable Revisionen/Bootstrap/
+  Upgradeowner, unter Erhalt alter Tasks und Overrides. `ON CONFLICT DO NOTHING`
+  oder ein neuer Rust-Text allein beweist keine installierte Übernahme.
+- K7 dokumentiert Textlieferung, tatsächlich betroffene aktuelle Ausführung und
+  zukünftige nicht aktivierte Entwürfe getrennt. Aktive Fehler können nicht als
+  bloß zukünftige Arbeit vertagt werden; unbetroffene aktive Pfade nicht abschalten.
+
+Keine neue VM, Approvalroute, MCP-Registry oder K8. Neue allgemeine Pure-Approval,
+acht Validatorrouten, Bibliotheks-/Subagentmigration und dynamische Occurrences
+bleiben bei ihren bestehenden offenen Gates. Eine Dokumentkorrektur zieht diese
+nicht vor. Bei einer konkreten neu belegten Callerabweichung folgt nur das echte
+Delta beim zuständigen Owner mit dessen Nachweis; kein pauschaler neuer Testauftrag.
+
+### K5 — Geänderte eingebettete Dokumente und Validatorgrenzen nachziehen
+
+**Paket-/Nachweisabgleich; Owner:** Installation/Phase 3a/6, mit Prefix- und
+Validator-Owner. [Release-Dokumente](crates/brassclaw_reborn_composition/src/prefix_release_documents.rs),
+[Release-Inventar](scripts/prefix/release-reference-inventory.json) und
+[Source-Capture](crates/brassclaw_reborn_composition/src/prefix_source_capture.rs)
+verwenden vollständige Paketquellen und unveränderliche gespeicherte Revisionen.
+Die aktuellen Guide-/Planänderungen sind keine nachträgliche Änderung alter
+Snapshots; der [jüngste Validatorbeleg](docs/validation/2026-10-24-python-graph-review.md)
+schließt parallele Dokumentänderungen und die reguläre App ausdrücklich aus.
+
+1. Tatsächlich paketierte geänderte Texte/Includelisten ermitteln, neue exakte
+   Dokument-/Paketrevisionen erfassen und über vorhandenes Seeding/Repair anbieten.
+   Keine alten Quellbytes, Hashes, Approvals oder Overrides überschreiben und keine
+   alte Source-only-Generation durch bloßes Umbenennen als aktuell deklarieren.
+2. Nur dadurch betroffene Paket-/Bootstrap-/Source-Capture-Consumer erneut
+   qualifizieren. Nicht betroffene Interpreter-/Loaderbelege behalten ihren Scope.
+   Qualifizierte shipped Nachfolger nutzen system_seed ohne zusätzliche Instanz-Q2;
+   Operatoränderungen behalten authored Q1/Behavior/human Q2.
+3. Aktuelle private Definition-/Contract-/Graphregeln und sealed Inputs weiterhin
+   als begrenzte Vorprüfungen behandeln. Bei geänderten Paket-/Regelinputs die
+   ursprüngliche Subject-/Rule-/Validatorauswahl und negative Substitutionsfälle
+   nachweisen. Kein Runabschluss/Parsererfolg/stdout erzeugt Q1 oder Pure-Approval.
+   Die bestehende menschliche Usage-Q2-Route bleibt exakt und idempotent; keine
+   Rollen-/Human-Flag-Abkürzung und keine pauschale neue Q2-Runde für alte Tasks.
+
+**Abnahme:** neue Dokumentrevision bei erhaltenem alten Snapshot/Override,
+wiederholter Boot ohne künstliche Passbelege und korrekte neue Source-Capture-
+Identität. Fehlender neuer Klassengraph ist weiterhin fehlender Support, keine
+Regression der neun bereits geprüften privaten Schritte. Allgemeine Q1-/Pure-
+Writer und acht produktive Routen nicht in diese Paketkorrektur hineinziehen.
+
+### K6 — Alte Artefakte und Daten vor dem gemeinsamen Upgrade absichern
+
+**Nachweis-/Retentionslücke; Owner:** Phase 6/8, fachliche Inventare aus allen vier
+anderen Plänen. Der aktuelle [Supportindex](docs/implementation-status.md) belegt
+retained Workerhosting, aber keinen allgemeinen ABI-Loader, vollständigen
+Review-/Prefix-Restore oder beliebige Fortsetzung nach Prozesscrash.
+
+1. Für den bereits unterstützten Umfang laufende/suspendierte Originalruns,
+   Katalog-/Export-/native Implementierungsreferenzen, ursprüngliche Counts,
+   confirmed/unresolved Effekte, Overrides und ggf. advertisierten Command-/Chat-
+   Zustand im vorhandenen Upgrade-Inventar festhalten. Dazu bestehende Prefix-
+   Originale/Generationen/Jobdefinitionen sowie vorhandene sealed Review-/Q2-Daten
+   und Source-/Derivedreferenzen nehmen; keine künftigen Datenfelder erfinden.
+2. Beim einen Backup-/Restoreowner tatsächliche benötigte Bytes/Checksums und
+   unterstützte Reader/Adapter sichern/prüfen. Eine eingefrorene Workerdatei
+   beweist keine Wiederladbarkeit jeder alten nativen Toolimplementierung.
+   Wenn alte Tasks nicht sicher weiterlaufen können: Upgrade vor Cutover blockieren
+   oder vorher kontrolliert drainen/reconciliieren; niemals latest substituieren,
+   ungewisse Effekte wiederholen oder eine alte RAM-Fortsetzung neu erfinden.
+3. Fehlende Retentions-/Fencingprüfungen für diese vorhandenen Artefakte ergänzen.
+   Neue fachliche Restore-/Migrationsteilnehmer später im selben Owner aufnehmen;
+   keine separaten Prefix-/Validator-Backupbefehle und keine angewandten Migrationen
+   umschreiben. Die allgemeine Recoveryimplementierung bleibt offen, bis ihr
+   vollständiger eigener Vertrag abgenommen ist.
+
+**Abnahme:** bestehender Task/Override über kompatibles Paketupgrade bzw. sichere
+Blockade bei fehlendem alten Artefakt; Restore der bereits unterstützten Records
+mit bestätigten und ungeklärten Effekten. Fehlende Wiederaufnahme bleibt explizit
+blockiert und ist kein „bestandener Restore“. Weiterentwicklung ohne unsicheren
+Upgrade benötigt keinen vorgezogenen universellen Cross-Version-Loader.
+
+### K7 — Konformitäts-Gate schließen und am bisherigen Fortschritt fortsetzen
+
+Im bestehenden Validierungsrecord pro K0-Zeile und K1–K6 festhalten: konkrete
+Änderung oder begründetes „keine Codeänderung“, exakte betroffene Identitäten,
+wiederverwendete/neu beobachtete Callerfälle und verbleibende Supportgrenzen.
+Ein Quellbefund allein ist kein bestandener Verhaltenstest. Gemeinsame Fälle
+nur einmal am Owner ausführen; passende Belege in den anderen Plänen referenzieren.
+Kein pauschaler Full-Build/Full-Suite-Lauf allein wegen dieser Markdownergänzung.
+Bei späteren Ruständerungen die notwendigen echten gezielten Builds/Tests/Lints
+nach der Entwicklungspolicy durchführen.
+
+**Voraussetzung der regulären Fortsetzung:** K1–K3 sind für vorhandene Consumer
+repariert und abgenommen; K4–K6 sind für den bereits unterstützten Umfang durch
+passende Belege oder sichere ausdrückliche Blockaden geschlossen. Eine Blockade
+gilt nur, wenn der fehlende Pfad im Produkt wirklich nicht als unterstützt
+freigegeben ist und seine Records/Effects erhalten bleiben; kein Markdown-Label
+und kein stilles Entfernen einer aktiven Recipe. Unveränderte funktionierende
+Pfade nicht abschalten, um das Gate rechnerisch zu erfüllen. Offene Befunde in
+bereits aktiven Pfaden verhindern den Abschluss dieses Vorrangblocks.
+
+Danach an den bereits erreichten offenen Schritten weiterarbeiten. Allgemeine
+Pure-Approval/acht Validatorrouten, fünf Subagentmigrationen, vollständige
+Bibliothekskonvertierung, akzeptierte Prefixdesigns/Generate/Serving/finaler Guard,
+Scope-/Produktcutover, dynamische Occurrences und allgemeine Crash-Recovery bleiben
+bei ihren bisherigen Ownern und offenen Gates. Sie werden weder durch dieses
+Gate als erledigt markiert noch als angebliche Wiederholung abgeschlossener
+Schritte vorgezogen. Historische akzeptierte Belege bleiben unverändert erhalten.
+
 ## Remaining implementation — consolidated 2026-10-22
 
 This is the current remaining-work disposition for the existing phases, not a
@@ -76,6 +388,20 @@ for those gaps; do not add a runtime approval exception or duplicate writer here
    occurrences and connection/facility consolidation use the existing
    [v3.5 work IDs](path_to_v3.5.md#ongoing-plan-handoffs-not-parallel-implementations).
    Preserve native accounting/custody when moving business sequencing to Python.
+   The concrete shared handoffs are specified below in Phase 3a's
+   [admission/recovery contract](#gemeinsamer-admission--und-recoveryvertrag-für-produktaufträge),
+   Phase 6 item 10, Phase 8 item 7, §8.2's activation ordering and §10.1 items 7–8.
+   Prefix consumes these mechanisms and supplies its own payloads/adapters and
+   integration cases; it does not implement another scheduler or upgrade owner.
+   The [shared review-runtime contract](#gemeinsame-runtime-anbindung-der-komponentenprüfung)
+   additionally covers validator-specific custody/admission/boot/upgrade needs.
+   [validator_v3.md](validator_v3.md#concurrent-implementation-with-simplified-v3)
+   implements review subjects, all class checks and trusted approval semantics;
+   this plan integrates them without creating another review/evidence writer.
+   The [library integration contract](#gemeinsame-runtime-verträge-für-die-komponentenmigration)
+   covers composition export/child/MCP/deployment handoffs. Composition owns the
+   component families and protocol/command wiring; this plan implements only the
+   missing shared mechanics in their existing owners.
 6. **Complete data and compatibility migration (Phases 6/8).** Finish dry-run
    inventory, override-aware immutable seed upgrades and retained old artifact/
    approval references. Audit remaining config.toml/provider-file and scoped
@@ -110,7 +436,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -199,8 +527,11 @@ Aufrufe verwenden die am Vorgangsstart fixierten Revisionen und Exportbindungen.
 Gemeinsamer Code/unveränderliche Konstanten sind zulässig; veränderliche Arrays,
 Defaults und Ergebnisse bleiben pro Vorgang/Versuch/Aufruf isoliert. Ein
 passender ToolSkill und aktuelle Kernelprüfungen bleiben vor jedem Dispatch
-erforderlich. Jeder echte Skill besitzt ein Ausführungs-Recipe mit eindeutiger
-Befehlsschablone; MCP übermittelt diesen Befehl, keinen Pythoncode. „Leaf Skill“ meint
+erforderlich. Ein vollständiger Skill benötigt kein eigenes Recipe und keine
+Befehlsschablone; mehrere Recipes können dieselbe freigegebene Nutzung verwenden.
+Nur eine beabsichtigte MCP-Veröffentlichung benötigt ein gesondert qualifiziertes
+MCP-Aufruf-Recipe oder eine geeignete Variante. MCP übermittelt dessen Befehl,
+keinen Pythoncode. „Leaf Skill“ meint
 dieselbe Einheit. Größere fachliche Zusammenhänge gehören zur **Extension** und
 ihrem ExtensionCatalogue; das **Recipe** bestimmt Reihenfolge und Datenübergabe.
 Tool und ToolSkill gehören zur Rust-Seite. Binden führt nichts aus; PythonCode
@@ -290,8 +621,14 @@ Eingabe
               Nutzereingabe + Vorgangs-History
               (aus der Komponentenbibliothek vorkompiliert)
           → Prompt wird an Kohai geschickt
-          → Falls ein Sempai mit dem Kohai verbunden ist wird der Prompt analysiert und optimiert und an Kohai zurückgegeben.
-          → Kohai fügt den Prefix hinzu und schickt den gesamten Promt zum LLM
+          → Kohai formatiert nur den dynamischen Prompt anhand des
+            gespeicherten akzeptierten Designs des Provider-/Modell-Zielpaars
+          → Falls Sempai verbunden/aktiviert ist: diesen formatierten Prompt
+            optimieren/korrigieren und als finalen dynamischen Prompt zurückgeben;
+            Sempais eigener Aufruf nutzt sein eigenes für sein Zielpaar generiertes Prefix
+          → Kohai setzt das vorgesehene fertige, unveränderlich gespeicherte Prefix
+            zeichengetreu genau einmal davor; keine erneute Formatierung
+          → Vollständigen Request prüfen und zum LLM schicken
           → LLM bearbeitet die Aufgabe
           → LLM sendet die Antwort zurück an Kohai
           → Wenn ein Sempai an Kohai angeschlossen ist sendet Kohai die Antwort an Monty und an Sempai voneinander unabhängig weiter, sonst nur an Monty.
@@ -518,6 +855,120 @@ Insert oder Helfertest gilt als vollständige Durchsetzung. Fehlende Nachweise
 sperren gewöhnlichen produktiven Recipe-Cutover, nicht unabhängige sichere
 Entwicklungsarbeit oder explizite eingeschränkte Draft-Validierung.
 
+#### Gemeinsame Runtime-Verträge für die Komponentenmigration
+
+Dieser Plan implementiert die folgenden gemeinsamen Mechanismen für
+[monty.composition](docs/plans/monty.composition.md#concurrent-implementation-with-simplified-v3)
+und dessen Anhänge. Die Komponenten-/Commandmigration samt engen fachlichen
+Primitivprofilen bleibt dort; Validator behält Review/Evidenz, Prefix seine
+Compiler-/Generierungs-/Servinglogik und V35-13/14 dynamische Kontrollstrukturen.
+Vorhandene Store-, Interface-, Preload-, Child-, Chat- und Deployment-Unterstützung
+ist der Ausgangspunkt. Nur nachgewiesene Lücken in ihren bestehenden Ownern
+schließen; keine zweite Registry, Queue, VM, Approval- oder Komponentenablage.
+
+**Skill, Prüfung, Deployment und MCP getrennt halten.** Ein Skill hat kein
+verpflichtendes eigenes Recipe. Ein konsumierendes oder prüfendes Recipe erzeugt
+keine Eigentumsbeziehung; Validator-Recipes dürfen die eigenständige Nutzung prüfen.
+Der vorhandene Deployment-Pfad veröffentlicht vollständige Recipe-Graphen. Das
+belegt keine unabhängige Aktivierung ungenutzter Bibliothekskomponenten und verlangt
+kein zusätzliches MCP-Recipe. Exakte Usage-, Workflow- und MCP-Kommandoevidenz bleiben
+getrennt. Optionales `mcp_call` gehört zur unveränderlichen Recipe-Revision; fehlende
+Deklaration ist zulässig, eine vorhandene fehlerhafte Deklaration bleibt ein Fehler.
+Entzug/Änderung nutzt den bestehenden Revisions-/Freigabe-/Publikationsweg. Bereits
+erfasste Tasks behalten ihre Auswahl; alte Kommandos vor Taskaufnahme werden bei
+geändertem/entzogenem Vertrag abgelehnt. Keine zweite Registry oder Ausführungslane.
+
+1. **Exportauflösung und Aufrufzustand durchgängig erhalten.** Composition liefert
+   kanonische UUIDs, checksummierte Interfaces/Implementierungssymbole, explizite
+   private Helper-/Konstantenabhängigkeiten, fixe/berechnete Argumente und genaue
+   Producer-/Consumerverträge. Phase 0a löst sie in einer Katalogauswahl auf und
+   erhält Export-/Binding-/Artefaktauflösung auch nach verschachteltem Aufruf,
+   Child und Wait. Mehrdeutige Export-/Symbol-/Aliaszuordnung, kollidierende Namen,
+   Zyklen, fehlende Imports oder Initialisierungseffekte vor Dispatch ablehnen.
+   Gleiche öffentliche Namen in alter/neuer Auswahl dürfen einander nicht
+   überschreiben. Mutable Defaults/Arrays/Closures/Inputs/Ergebnisse bleiben
+   invocationbezogen, auch beim Wiederverwenden reiner Helper. Unsupported rohe
+   Monty-Werte vor verlustbehafteter Konversion ablehnen; ein echter String mit
+   Markertext bleibt zulässig. Der bestehende gewöhnliche retained Pfad bleibt
+   bei einem gebundenen Toolcall je Ausführungsschritt und `stop`/`max_attempts: 1`,
+   bis sein Owner einen erweiterten Binding-/Retryvertrag wirklich qualifiziert.
+   Keine dokumentierte Kettenausnahme oder Read-only-Evidenz schaltet ihn allein frei.
+2. **R09 über die bestehende Child-Aufnahme vervollständigen.** Den vorhandenen
+   expliziten Workflow-/Inputpfad mit Parentclaim, ursprünglicher nativer Invocation,
+   Child-Run und Original-Katalog binden. Composition liefert endliche rekursive
+   Input-/Result-/Fehlerprofile und die tatsächlichen Parent-/Subagentrecipes;
+   diese Phase implementiert fehlende Admission-/Fortsetzungs-/Result-Custody.
+   Parent wartet ohne Worker-/VM-Blockade; Child matcht nicht neu und liest nicht
+   latest. Aufnahmebeleg und terminales Child-Ergebnis bleiben getrennt; echte
+   Reply-/Run-/Fehlerdaten einschließlich optionalem nullable sanitisiertem Fehler
+   nach dem deklarierten Profil liefern, nie `authorized:true` oder leeren Erfolg
+   als Abschluss. Lost-Ack, Cancel, Sättigung, stale Parentattempt, unlesbares oder
+   ungeklärtes Ergebnis bleiben am ursprünglichen Child; keinen Ersatzchild nach
+   Timeout erzeugen. Andere Tasks/Control müssen während Parentwait fortschreiten.
+   Composition migriert alle fünf Tier-1-Subagentworkflows und ihre Consumer erst
+   nach qualifizierter Parent-Binding-/Export-/Bootstrap-Abnahme. Keine neue
+   spezialisierte Child-Engine oder Wiederbelebung des Flavor-/Task-Legacypfads.
+3. **MCP mit gewöhnlichem Chat-Lifecycle versorgen.** Bestehende authentifizierte
+   Create-/Send-/Observe-/Close-Ports samt nicht destruktiver Schließung und
+   bestätigten terminalen Reply-/Historyreferenzen verwenden. Composition besitzt
+   Protokoll, Commandprüfung, Listing und MCP-Request-/Chatkorrelation; diese Phase
+   ergänzt nur fehlende gewöhnliche Produkt-/Runtimeunterstützung. Exakte Message/
+   Run/Attempt-Zuordnung statt neuester Nachricht verwenden. Unsicheres Submit
+   idempotent nachlesen; Delivery-/Closefehler am Originalchat reparieren, ohne
+   neue Nachricht/Chat oder Replay des Effects. Ein wartender MCP-Parent darf
+   die Ausführung seines normalen Childchats nicht blockieren; vorhandene faire
+   begrenzte Worker-Claims und denselben Monty-Account nutzen. Disconnect ist
+   weder Cancelbeweis noch Löschung laufender Arbeit. Kein direkter MCP-Zugang zu
+   Monty/IBS/Tools, kein zusätzlicher Reply-/Historywriter oder Chat-Ausführungsmodus.
+4. **Listener und Kohai sauber in gemeinsame Lebenszyklen einhängen.** Die eine
+   Startup-/Shutdown-Reihenfolge übernimmt bestehende Listener-Ready-/Cleanup-
+   Hooks und baut das vollständige qualifizierte Listing vor Werbung auf. Keine
+   frühe Producer-/Providerwerbung vor Bereitschaft; Fehler nicht als erfolgreiche
+   leere Ersatzliste maskieren. Der Server bleibt bei Providerdisconnect und
+   Idle aktiv. Composition implementiert das tatsächlich unterstützte Kohai-
+   MCP-Protokoll und requestlokales Advertisement/Cleanup; §10.1 liefert Provider-
+   Revision/Auth/Availability. Prefix liefert den finalen Prefix; danach unmittelbar vor Send verbinden/
+   advertisen. Der eine finale Requestguard prüft den tatsächlich gesendeten
+   Request einschließlich seiner Tool-/Advertisement-Metadaten; Intermediate Toolroundtrips
+   sind kein fertiger Modellanswer. Complete-Answer/Cancel/Error räumt genau diese
+   Verbindung auf, ohne andere Exchanges oder den Server zu stoppen. Fehlende
+   Providerprotokolle bleiben explizit unsupported, ohne heimlichen Fallback.
+   Listenerfehler folgen dem bestehenden readinessabhängigen Ingressvertrag;
+   Diagnose und sichere unabhängige Aufgaben erhalten ihre eigenen Freigaben.
+5. **Komponentenpakete unter einem Deployment-/Restorevertrag migrieren.**
+   Composition liefert pro Familie die installierte UUID-/Revision-/Alias-/
+   Consumer-/Override-Zuordnung und eindeutige Reuse-/Retire-/Blocked-Ziele, keine
+   anhand von Namen erratenen Identitäten. Phase 2/6 implementiert fehlendes
+   hostabgeleitetes Instanzrouting vorhandener Storageadapter; fachliche Objekt-
+   und Source-/Derivedbeziehungen bleiben erhalten. R06–R08/N16/N20 definieren
+   ihre Operationen im Composition-/Prefix-Owner, nicht in einem zweiten Store.
+   Genehmigte ausführbare Revisionen und mutable Pending-Dokumente unterscheiden;
+   ein Dokument-Upsert publiziert keinen Code. Vollständige Quellsnapshots, deren
+   bestätigte Speicherreferenzen, Hash-/Darstellungsvertrag und abgeleitete Texte
+   mit getrennten Effektreceipts sichern; nummerierte Vorschau ist kein Original.
+   Fehlende fachliche Lineageoperationen bleiben explizite Primitive-/Usagearbeit,
+   physische Sicherung/Reader-/Routingmigration gehört Phase 6/8. Ausgelieferte
+   exakte Pakete durch vorhandenen noncircular Seed-/Integrity-/Behaviorpfad
+   qualifizieren und Overrides erhalten; authored Änderungen nutzen Validator-Q2.
+   Aktivierung über §8.2 veröffentlicht genehmigte Closure und Invalidierung;
+   Prefix baut danach. Neue Legacy-Aufnahme familienweise erst nach erfolgreicher
+   Consumerabnahme ersetzen. Alte Exporte, native Artefakte, Approvals und Commands
+   erhalten, solange Tasks/Waits/advertisierte Requests sie benötigen; ein vor
+   Chat-Submit nicht mehr kompatibler Command wird vor Effekten abgewiesen, statt
+   eine alte Recipe heimlich auszuwählen. Runtime-/Binary-Rollback niemals aus
+   einem bloßen Komponenten-Auswahlrollback ableiten.
+
+Gemeinsame Abnahmefälle: alte/neue gleichnamige Exporte mit isolierten mutablen
+Daten; Parent A wartet, unabhängiger Task B läuft, Child liefert genau sein Ergebnis;
+Child-Aufnahme-/Replyverlust und Live-Toolblock ohne Ersatzdispatch; MCP-Roundtrip
+bei begrenzten Claims und getrennten Send-/Delivery-/Closefehlern; Request-lokales
+Kohai-Cleanup bei parallelen Exchanges; Familienupgrade/Restore mit Override,
+altem Wait, fehlendem alten nativen Artefakt und Source-/Derivedreferenzen.
+Dafür die echten PostgreSQL-/Monty-/Host-/Chatcaller verwenden. Gemeinsame Belege
+am implementierenden Owner einmal führen; Composition ergänzt seine konkreten
+Familien/Commands/Subagentvarianten. Unveränderte qualifizierte Mechanismen nicht
+neu implementieren oder in einer zweiten identischen Testpipeline prüfen.
+
 ### Phase 1 — Einzige Instanz- und Betreiberidentität
 
 1. Einen instanzweiten `Instance`-Kontext definieren. Der authentifizierte WebUI-Aufrufer ist stets `Owner`; keine vom Client gelieferte User-/Tenant-/Project-ID darf diese Identität verändern.
@@ -634,11 +1085,26 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 
 2. **Boot-Prerequisites aus der WebUI herausziehen.** In `webui.rs` die bestehenden `seed_*`, Queue-Recovery, Content-Integritätschecks und `init_*`-Ladungen zu genau einer gemeinsam genutzten Kompositionsinitialisierung extrahieren. Ihre Abhängigkeiten und Reihenfolge erhalten; `BootedDb` bleibt der Migrationsnachweis. `runtime.rs`, CLI `serve` und `repl` auf explizites Bauen/Initialisieren/Starten umstellen. Ziel: DB/Migrations → Seeder → Integritätsprüfung → Host-/Component-/Kohai-Ports → verifizierter Orchestrator-Code → globale VM → initialer Work-Wait-Handshake → Worker/Produzenten → Ingress/Readiness. Für erforderliche Komponenten Fehler weitergeben statt nur warnen. `build_webui_services` darf keine nachträgliche Voraussetzung für Monty mehr herstellen. Worker, Trigger-Poller und Kanaladapter dürfen vor dem Handshake weder neue Arbeit claimen noch Side Effects ausführen. Jeder Zwischenfehler räumt bereits erworbene Locks/Tasks/DB-Ressourcen auf.
 
+   **Prefix als Teilnehmer derselben Initialisierung:** Der Prefix-Owner liefert
+   die exakten Reference-/Compiler-/Profil-/Design-Seedpakete, Abhängigkeiten und
+   Integritätsprüfungen nach [Prefix §6](docs/plans/prefix_v3_upgrade.md#6-installation-time-db-seeding-preferred-combined-approach).
+   Diese Phase integriert sie in die vorhandene gemeinsame Initialisierung;
+   keine zweite Bootstrap-Registry, WebUI-Initialisierung oder Startwarteschlange.
+   Pflichtbestandteile des globalen Root-/Hostvertrags müssen vor Ready geprüft
+   sein. Eine noch nicht erzeugte Prefixgeneration, ein fehlender optionaler
+   Domainbestand oder ein unkonfigurierter Provider ist dagegen ein sichtbarer
+   Produktzustand und darf einen sonst sicheren Runtime-Boot nicht verhindern.
+   Runtime-Ready, Build-Bereitschaft und Modell-/Serving-Bereitschaft getrennt
+   ausweisen. Ein initialer Build wird erst nach dem Handshake als gewöhnlicher
+   qualifizierter Auftrag aufgenommen; Boot wartet weder auf seine Fertigstellung
+   noch auf Netzwerk/GPU/Modellaufrufe. Fehlende lokale Compiler-/Tokenizerartefakte
+   blockieren den betroffenen Build, nicht automatisch die Betreiberverwaltung.
+
 3. **Thread-freien VM-Boot ermöglichen.** `prepare_monty_session`, `MontySession::new` und `build_orchestrator_inputs` in `engine/src/executor/orchestrator.rs` sind heute an `Thread` und dessen Kontext gebunden. Einen neutralen Boot-Input mit Instanz-/Protokollversion und leerem Taskzustand einführen; keinen Dummy-Chat, Dummy-Run, Betreiber-Grant oder fingierten Userprompt anlegen. `basic_mode.py` muss vor der ersten Arbeit ausschließlich zulässige Boot-/Wait-Operationen ausführen; auch das bisher vor `await_next_turn()` stehende `check_signals()` darf keinen fiktiven Run verlangen. Taskgebundene Tools ohne aktiven Kontext verweigern. Die einzige globale VM beim Boot kompilieren/starten und bis zu ihrem ersten Eingabe-Wait treiben. Fehlender/ungültiger Code, Integritätsfehler, Boot-Timeout, frühes `FINAL` oder fehlender Handshake verhindern Ready; die erste Chatnachricht darf diese Fehler nicht erst entdecken.
 
-4. **Work-/Control-Ereignisse und begrenzte Inbox definieren.** Eingaben tragen Protokollversion, Conversation-/Thread-/Turn-/Run-ID, genaue AcceptedMessageRef, Reply-Binding, Worker-Claim-/Attempt-Identität und Deadline. Payloadauflösung erfolgt im Host-Adapter. Control unterscheidet Run-Abbruch, externe Auth-Fortsetzung, Child-/Tool-Ergebnis, Settingsrevision und Shutdown. Python erhält validierte Monty-Werte; unbekannte Versionen/Typen scheitern explizit. Leere Nachricht, geschlossener Sender und Run-Stop bedeuten kein globales `FINAL`. Begrenzte Workqueue, Backpressure und garantierte Control-Kapazität/Priorität unter Last festlegen. Die persistente Turn-Ablage bleibt Arbeitsquelle; die Inbox ist Transport und kein zweiter dauerhafter Scheduler.
+4. **Work-/Control-Ereignisse und begrenzte Inbox definieren.** Eingaben tragen Protokollversion, ihre echten fachlichen Task-/Thread-/Turn-/Run-Referenzen, Worker-Claim-/Attempt-Identität und Deadline. Chat-Eingaben behalten die genaue AcceptedMessageRef und das Reply-Binding. Hostseitig aufgenommene interne Produktaufträge nutzen ihre tatsächliche dauerhaft gebundene Eingabereferenz und Abschlussart gemäß dem gemeinsamen Admission-/Recoveryvertrag unten; keine fingierte Benutzer-Nachricht oder Reply-Pflicht einführen. Payloadauflösung erfolgt im Host-Adapter. Control unterscheidet Run-Abbruch, externe Auth-Fortsetzung, Child-/Tool-Ergebnis, Settingsrevision und Shutdown. Python erhält validierte Monty-Werte; unbekannte Versionen/Typen scheitern explizit. Leere Nachricht, geschlossener Sender und Run-Stop bedeuten kein globales `FINAL`. Begrenzte Workqueue, Backpressure und garantierte Control-Kapazität/Priorität unter Last festlegen. Die persistente Turn-Ablage bleibt Arbeitsquelle; die Inbox ist Transport und kein zweiter dauerhafter Scheduler.
 
-   **Recipe-Zustand gehört Monty.** IBS kompiliert das Recipe in ein `BuildInstruction`; Monty führt die Schritte aus und hält benötigte Zwischenwerte im jeweiligen Recipe-Ausführungskontext. Kein verpflichtendes leeres `{}` pro PythonCode-Schritt und kein Zusammenlegen von Schritten als Ersatz für fehlende Zustandsweitergabe. Bei einer Child-VM oder einem Child-Prozess übergibt Monty die benötigten Eingaben und übernimmt zurückgegebene Ergebnisse in denselben Kontext. Laufzeitdaten als validierte Werte transportieren, nicht in Python-Quelltext interpolieren. Unabhängige Vorgänge und Attempts bleiben getrennt; Fortsetzung nach Waits erhält den zugehörigen Kontext, Retry-/Checkpoint-Restore ist ausdrücklich validiert und beendet/abgebrochenes Task-State wird freigegeben. Durch den Produktions-Caller eine Kette A → B mit B als Verbraucher von A nachweisen, einschließlich Child-Ausführung, externer Wartephase, interleavtem fremden Task und veraltetem Attempt. Die bisherige Fresh-Step-Ausführung ist eine zu behebende Implementierungslücke.
+   **Recipe-Zustand gehört Monty.** IBS kompiliert das Recipe in ein `BuildInstruction`; Monty führt die Schritte aus und hält benötigte Zwischenwerte im jeweiligen Recipe-Ausführungskontext. Kein verpflichtendes leeres `{}` pro PythonCode-Schritt und kein Zusammenlegen von Schritten als Ersatz für fehlende Zustandsweitergabe. Explizite Child-Tasks erhalten typisierte Eingaben und Ergebnisse über denselben globalen Dienst; sie starten keine weitere Monty-VM. Ein unterstützter nativer Tool-Subprozess bleibt eine separate Implementierungsgrenze, kein zweiter Orchestrator. Laufzeitdaten als validierte Werte transportieren, nicht in Python-Quelltext interpolieren. Unabhängige Vorgänge und Attempts bleiben getrennt; Fortsetzung nach Waits erhält den zugehörigen Kontext, Retry-/Checkpoint-Restore ist ausdrücklich validiert und beendet/abgebrochenes Task-State wird freigegeben. Durch den Produktions-Caller eine Kette A → B mit B als Verbraucher von A nachweisen, einschließlich Child-Ausführung, externer Wartephase, interleavtem fremden Task und veraltetem Attempt. Die bisherige Fresh-Step-Ausführung ist eine zu behebende Implementierungslücke.
 
 5. **Exakte Nachricht statt „latest“ auflösen.** `PersistentMontyDriver::drive_turn` verwendete vor Implementierungsbeginn `latest_thread_message(...Submitted)`. Der exakte Lookup der `LoopRunContext.accepted_message_ref` samt Inhalt-/Referenz-/Turn-/Run-/Thread-Prüfung ist inzwischen über `submitted_user_message` umgesetzt und gezielt getestet; die folgenden History-/Idempotenz-Anforderungen bleiben Teil dieses Schritts. Vorhandene Message-/Host-Lookups wiederverwenden oder einen schmalen neutralen Port ergänzen; keine SQL-Abfrage im Runner. Fehlende Referenz oder DB-Fehler ist ein expliziter Run-Fehler, kein leerer Text. History bis zur konkreten Eingabe ordnen und diese exakt einmal aufnehmen; später akzeptierte Nachrichten dürfen weder den Input ersetzen noch vorzeitig im LLM-Prompt erscheinen. Deduplizierung über vorhandene Message-/Turn-Idempotenz erhalten. Retry desselben Inputs erzeugt keinen zweiten Task oder Reply.
 
@@ -665,7 +1131,7 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 
    Der vorhandene Monty-A→B→A-Test ist eine API-Voraussetzung. Zusätzlich denselben Ablauf durch produktive Aufnahme, konkrete Recipes, verschachteltes `host.run_program`, Worker-Freigabe und Antwortpersistenz prüfen. Taskfehler, lange Python-Schleife, Live-Settings und Shutdown unter Last gehören zum Vorabnachweis.
 
-9. **Signale, Replies und Fehler voneinander isolieren.** Signaladressierung mindestens durch Run-ID + Attempt ersetzen/ergänzen; ein verspätetes `Stop` für Run A darf nicht den nächsten Run desselben Chats oder die globale VM beenden. Reply-Persistenz aus `persist_new_assistant_messages` weiterverwenden, aber am konkreten Task/Message/Reply-Binding festmachen und gegen Doppelschreiben absichern. Vorgang erst nach bestätigter Persistenz abschließen; die bestehende Turn-/Event-Transition genau einmal anwenden. Fehler eines Tasks lässt den Dienst bereit, sofern die VM nachweislich konsistent ist. Ist sie beschädigt, `Failed` melden, Aufnahme/Dispatch sperren und Recovery beaufsichtigen. Den alten `SessionGuard::Drop` mit unüberwachtem asynchronem Re-Park nicht auf eine globale Singleton-VM übertragen.
+9. **Signale, Replies und Fehler voneinander isolieren.** Signaladressierung mindestens durch Run-ID + Attempt ersetzen/ergänzen; ein verspätetes `Stop` für Run A darf nicht den nächsten Run desselben Chats oder die globale VM beenden. Reply-Persistenz aus `persist_new_assistant_messages` weiterverwenden, aber am konkreten Task/Message/Reply-Binding festmachen und gegen Doppelschreiben absichern. Chatvorgänge erst nach bestätigter Reply-Persistenz abschließen; interne ResultOnly-Aufträge nach dauerhaft bestätigter Ergebnis-/Effect-Settlement-Persistenz ohne synthetische Assistant-Antwort. Die bestehende Turn-/Event-Transition jeweils genau einmal gemäß ihrer echten Abschlussart anwenden; ein Produkt-Statuslabel ist kein Abschlussnachweis. Fehler eines Tasks lässt den Dienst bereit, sofern die VM nachweislich konsistent ist. Ist sie beschädigt, `Failed` melden, Aufnahme/Dispatch sperren und Recovery beaufsichtigen. Den alten `SessionGuard::Drop` mit unüberwachtem asynchronem Re-Park nicht auf eine globale Singleton-VM übertragen.
 
 10. **Budgets für Dauerbetrieb nachweisen.** Den oben definierten 1.0.0-Engine-/Hosting-Vertrag für Taskzeit, gegebenenfalls separat nachgewiesene Taskallokationen und konfigurierbaren Monty-Speicher samt Allocator-Backstop umsetzen. Taskverbrauch über Schritte/Fortsetzungen erhalten; nach Abschluss neue Aufgaben mit eigenem Budget starten. Tokenverbrauch je Vorgang getrennt erfassen. Startdimensionierung ohne laufende Messungen, kleine manuelle Limits, optionale automatische Erhöhung/Senkung, RAM-Reserve, milden Druck ohne Aufnahmestopp, kritischen Druck, Messausfälle, Idle-/Auth-/Tool-Waits und globalen Speicherfehler testen. Gemeinsame Heaprechnung über Root und verschachtelte Ausführung ohne Doppelzählung nachweisen. Inbox, Fortsetzungen, stdout und History-Caches begrenzen; vollständige relevante Ausgaben persistent erhalten. Diagnosemetadaten enthalten keine Roh-Prompts/Secrets. Keine unbegrenzten Limits oder Taskabschluss durch Neustart der globalen VM kaschieren.
 
@@ -685,11 +1151,239 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 
 12. **Zusammenhängend migrieren und abnehmen.** `PersistentMontyDriver` zum Übergabeadapter machen oder durch einen klar benannten Adapter ersetzen; Registry ausschließlich als fachliche Daten-/Continuation-Ablage behalten, falls erforderlich, niemals für globale Chat-VMs. `session_registry.rs`, Engine-/Crate-CLAUDE, `docs/agents-v3/{01-architecture-overview,12-agent-loop,13-orchestrator-default-py}.md`, Architektur-Prefix, Boot-Seeds und C.6-Planverweise auf das Ziel ausrichten. Geänderte Systemkomponenten samt Checksums mit Seeder/Repair migrieren; Python-Codeänderung im Dateisystem allein erreicht produktive DB-Komponenten nicht. Vorher alte Inflight-Runs drainen/reconciliieren; neue Ereignis-/Codegenerationen dürfen keine alten RAM-Fortsetzungen übernehmen. „VM gestartet“ im Readiness-Vertrag durch einen echten Handshake-Test belegen, nicht durch `Option::is_some()` oder Seed-Zählung.
 
+Die [gemeinsamen Runtime-Verträge für die Komponentenmigration](#gemeinsame-runtime-verträge-für-die-komponentenmigration)
+konkretisieren diese Phase außerdem für Parent-/Child-Ausführung, gewöhnliche
+MCP-Chats und Listener-/Kohai-Lifecycle. Die folgenden Produkt-/Reviewverträge
+verwenden dieselbe Admission, Custody und Recovery; keine parallelen Owner.
+
+#### Gemeinsamer Admission- und Recoveryvertrag für Produktaufträge
+
+Dieser Vertrag konkretisiert Phase 3a Punkte 4/7/9/11 und Phase 0a Punkte 9–10
+für interne Prefix-, Sources-, Mess-, Design- und Validatoraufträge. Vorhandene dauerhafte
+Turn-Admission, Transaktions-Teilnehmer, reservierte interne Bindings,
+`LoopCompletionKind::ResultOnly` und native Settlement-/Reconciliation-Owner
+wiederverwenden. Deren begrenzte Unterstützung ist kein Auftrag zum Neubau und
+keine allgemeine Freigabe aller Produkt-Recipes. Siehe die tatsächlichen
+[Prefix-Aufnahmepfade](crates/brassclaw_reborn_composition/src/prefix_job_submission.rs)
+und [Abschlussarten](crates/brassclaw_turns/src/loop_exit.rs).
+
+**Geprüfte native Voraussetzung — 30. Oktober 2026:** Die optionale positive
+Output-Einstellung aus ursprünglichen typisierten Recipe-Argumenten erreicht
+über vorhandene PG-Custody/Gateway den echten SDK-/Final-Guard-Vertrag, auch bei
+deaktivierten diskretionären Tokenbudgets. Ein aktiviertes engeres Limit lehnt
+ab, statt zu clampen. [Begrenzter Nachweis](docs/validation/2026-10-30-original-model-output.md).
+Diese Infrastruktur wiederverwenden; Tier1-ResultOnly-Aufnahme, erforderliche
+Child-/Review-Custody und tatsächliche Free-Qualifikation bleiben die folgenden
+offenen Verträge. Kein zweiter Modellexecutor oder abgeleiteter Freigabenachweis.
+
+
+**Begrenzte Runtime-Abnahme — 30. Oktober 2026:**
+[BUILD-004](docs/validation/2026-10-30-internal-model-admission.md) trennt die aus
+dem ursprünglichen Claim abgeleitete ResultOnly-Abschlussart vom unverändert
+wirksamen deterministischen Modellverbot. V191, globale Aufnahme, echte native
+Modell-Custody/SDK-Übergabe, persistierter Abschluss und vorhandene Consumer haben
+zwölf unterschiedliche Fälle/0 ignoriert sowie strenge verbundene/Default-Prüfung.
+Den vorhandenen optionalen realen HostFactory-Parameter der Bootstrap-Aufnahme
+wiederverwenden. [BUILD-008](docs/validation/2026-10-31-shared-model-capture.md)
+ergänzt denselben gemeinsamen Capture-/Metadaten-/Native-Binding-Handoff für den
+vorhandenen enthaltenen Vorstart-/Entwicklungsbeobachter. Neun native/Consumer-
+Fälle und strenge verbundene/Default-Prüfung bestehen, einschließlich originaler
+unbegonnener Claim-/Herkunftsprüfung und Capture vor Binding. Der tatsächliche
+sealed I2-Source bleibt zu integrieren; daraus folgt kein zweiter Live-VM-Pfad.
+Die separate native Custody des vorhandenen Sempai-Reviews vor dem Hauptaufruf
+hat mit [BUILD-011](docs/validation/2026-10-31-related-model-custody.md) zehn
+unterschiedliche Fälle/0 ignoriert und verbundene/Default-/neutrale strenge Abnahme:
+eigene Work-ID/Anfrage/Route/Prefix und unveränderte Wire-/Provider-/Loop-Originale,
+eigene Übermittlungssperre und spätere Speicherung nach Stornierung ohne Replay.
+Volle Anfragebytes bleiben in PG, im RAM nur deren geprüfter Digest. Dies ist
+kein Post-primary-Review- oder Free-Nachweis.
+[BUILD-012](docs/validation/2026-10-31-review-unsubmitted.md) ergänzt die vorhandene
+Accounting-Anbindung nach nativ bestätigter Nichtübermittlung: Der tatsächliche
+Governor/PG-/SDK-Verbraucher unterscheidet denselben Budgetfehler vor dem Senden
+von einer tatsächlich empfangenen Length-Antwort. Fünf Fälle/0 ignoriert und
+strenge verbundene/Default-Prüfung bestehen; nur belegte Nichtübermittlung gibt
+die Review-Reservierung frei. Unklare Effekte behalten ihre Reservierung. Dies
+ist keine dauerhafte Crash-Recovery oder Provider-Abrechnungsqualifikation.
+[BUILD-009](docs/validation/2026-10-31-model-host-compatibility.md) migriert die
+historischen Modell-Host-Tests auf dieselben tatsächlichen Composition-Owner:
+Prepare/Bind mit vollständiger konsistenter Auswahl, Reply/History vor Binding
+und ein gemeinsamer unveränderter Metadatenparser für native und isolierte
+Admission-Consumer. 24 frische Fälle/0 ignoriert, verbundene sowie isolierte
+strenge Prüfung und CI-/YAML-/Formatprüfungen bestehen. Die native Capture-Seal
+bleibt von beobachteten Daten getrennt; allgemeine Pure-/I1-/I2-Freigabe folgt
+daraus nicht.
+Konkrete Produkt-/Review-Qualifikation,
+dauerhafte Wiederaufnahme und die übrigen
+folgenden Anforderungen bleiben offen. Keine neue Queue, DTO-Berechtigung,
+Modellschleife oder abgeschlossene Free-/Serving-Freigabe daraus ableiten.
+
+1. **Authentische Aufnahme und Abschlussart.** Nur vertrauenswürdige Host-Admission
+   bindet interne Herkunft, konkrete Recipe/Variante, typisierte Eingabe,
+   Katalog-/Artefaktauswahl und Abschlussart an den Run. Öffentliches Chat-/MCP-
+   oder Modelldatum kann diese Bindung nicht auswählen oder imitieren. Interne
+   Aufträge matchen keinen fingierten Userprompt und wechseln bei Fehlern nicht
+   nach Tier 2. ResultOnly ist ein persistierter Ergebnisabschluss, keine
+   Assistant-Nachricht; gewöhnliche Chat-/MCP-Workflows behalten ihre eigene
+   Reply-/History-Verantwortung. Tier-1-Aufträge brauchen den tatsächlich
+   unterstützten Modell-/Tier-Vertrag, keine Umdeklaration als Tier 0.
+2. **Auftragsdefinition und Run eindeutig verbinden.** Bestehende idempotente
+   Aufnahme-/Transaktionsgrenzen so erweitern, dass bestätigte Produktdefinition,
+   Requestidentität, genaue Input-/Workflowauswahl und ursprünglicher Run vor
+   Effekten dauerhaft zusammengehören. Wo derselbe PostgreSQL-Owner beteiligt
+   ist, dessen vorhandenen Transaktions-Teilnehmer nutzen. Bei getrennten
+   Persistenzgrenzen einen ausdrücklichen idempotenten Prepare-/Reconciliation-
+   Vertrag festlegen und vor Effekten die vollständige Bindung nachweisen.
+   Dieselbe Request-ID mit demselben bestätigten Inhalt liefert denselben Auftrag;
+   geänderter Inhalt oder eine andere Auswahl unter derselben ID ist ein Konflikt.
+   Bei verlorener Commit-/HTTP-Bestätigung über die ursprüngliche Identität
+   nachlesen/reconciliieren; keinen neuen Run, Snapshot oder Request erzeugen.
+   Eine allein gespeicherte Produktdefinition ist noch keine erfolgte Aufnahme.
+3. **Status als reparierbare Projektion.** Produktstufen, Fortschritt und Artefakt-
+   verweise stammen aus dem zugeordneten Run und seinen echten Ergebnissen.
+   Die vorhandene Event-/Statusprojektion muss nach Reconnect/Neustart fehlende
+   oder doppelte Updates über ursprüngliche Run-/Invocation-/Ereignisidentitäten
+   idempotent abgleichen können. Eine verloren gegangene UI-Verbindung oder ein
+   Projektionsfehler startet keine Ausführung neu. Empfangene native Ergebnisse
+   und ihre Custody bleiben bis zum bestätigten Settlement erhalten; ein Fehler
+   der Produktanzeige oder einer späteren Antwort wiederholt keinen Effekt.
+4. **Operationsspezifische Klärung anbinden.** Prefix liefert geprüfte Compiler-
+   Artefakt-/Statusabfragen und Publikationsreceipts unter dem bestehenden
+   Invocation-/Effect-Vertrag. Der gemeinsame Owner bewahrt Originalargumente,
+   Keys, Counts, Auswahlsnapshots und confirmed/unresolved-Zustände und erzwingt
+   Fencing. Recipe/Python entscheidet die fachlichen Klärungsschritte; Rust stellt
+   Aufnahme, Custody, Statuszugriff und technische Sperren bereit. Kein universeller
+   neuer Hook-Executor, Recovery-Worker oder zweites permanentes Journal.
+   Ein Compilerexit 0, eine Stufenmeldung oder ein Run ohne geprüftes Endartefakt
+   ist kein Prefix-Erfolg; domänenspezifische Validierung bleibt beim Prefix-Owner.
+5. **Abbruch und Wiederanlauf exakt erhalten.** Browserabbruch ist kein Runabbruch.
+   Expliziter Abbruch benutzt den ursprünglichen Run/Attempt und die gemeinsame
+   Ack-/Fencing-Regel. Ein Ack-Timeout bedeutet ungeklärten Status, nicht bestätigten
+   Abbruch oder freie Kapazität. Späte Ergebnisse werden dem Original zugeordnet,
+   ohne stale Publikation oder erneuten Dispatch; benötigte Wirkungsevidenz bleibt
+   erhalten. Bei Reclaim/Restart zuerst ursprüngliche Aufnahme, Effect-Records und
+   Custody klären. Keine automatische Wiederholung des Gesamtauftrags und kein
+   Rücksetzen von Counts. Die Ausführung bleibt bei `stop`/`max_attempts: 1`, solange der
+   gemeinsame dauerhafte Retryadapter nicht implementiert und qualifiziert ist;
+   Sicherheitsnachweise allein schalten ihn nicht frei.
+
+Diese Anforderungen erweitern ausschließlich die vorhandenen Owner und Ports.
+Konkrete Schemaergänzungen erst nach Prüfung ihrer tatsächlichen Records/Leser
+festlegen; diese Liste erfindet keine API-Felder oder neue Queue. Prefix speichert
+seine Fachdefinitionen, Artefakte und unveränderlichen Ausführungsreferenzen und
+liefert die Integrationsfälle aus [Prefix §7](docs/plans/prefix_v3_upgrade.md#7-persistence-and-generation-lifecycle).
+
+#### Gemeinsame Runtime-Anbindung der Komponentenprüfung
+
+Diese Phase implementiert die gemeinsame Ausführungs-/Custody-Unterstützung für
+[Validator Steps 3/6/9–12](validator_v3.md#concurrent-implementation-with-simplified-v3).
+Der Validator-Owner behält Submissions, Review-Subjects, Check-/Coverage-Regeln,
+semantische/behaviorale Bewertung, Q1/Q2-/Association-/Pure-Evidenz und kontrollierte
+Seed-Provenienz. Bestehende Review-Stores, sealed Subjects/Observations, globale
+Admission und authentifizierte Q2-Route wiederverwenden. Die fehlende allgemeine
+Pure-Approval-Unterstützung bleibt beim Validator; keine neue Ausnahme im Runtime-Owner.
+
+1. **Privates Review-Work eindeutig aufnehmen.** Der Validator liefert die
+   unveränderliche Submission samt Candidate-/Base-/Dependency-Subject und
+   Check-Set. Die Runtime bindet diese Herkunft getrennt vom ausgewählten bereits
+   genehmigten Validator-Recipe/Variante/Layout/Engine-/Host-Artefaktgraph an den
+   ursprünglichen Review-Run und seine Abschlussart. Beides vor Effekten dauerhaft
+   festhalten; dasselbe Eingabeobjekt oder dieselbe UUID ersetzt die getrennten
+   Identitäten nicht. Den vorhandenen Submission-Transaktionspfad mit der
+   gemeinsamen Aufnahme verknüpfen; für ungewissen Commit den ursprünglichen
+   Datensatz nachlesen statt ein zweites Review anzulegen. Ein bewusstes Resubmit
+   erzeugt eine neue Subject-/Reviewidentität; Transportretry aktualisiert weder
+   Candidate noch Validator auf latest. Review-Work bleibt in bestehenden Stores
+   auffindbar; vorhandene Zustellung/Reconciliation wiederverwenden, keine zweite
+   Turnqueue, Review-Poller-Schleife oder synthetic Chat-/MCP-Route.
+2. **Ausführung und Evidenzfreigabe getrennt übergeben.** Die Runtime bewahrt pro
+   Run/Attempt/Occurrence die tatsächlich ausgeführte Quelle/Interpreteridentität,
+   genaue Inputs/Ergebnisse/Native-Aufrufe, ursprüngliche Beobachtungsgrenzen und
+   deren confirmed/unresolved-Status. Die vorhandenen sealed Observations bleiben
+   dem ursprünglichen Subject und Validatorgraph zugeordnet; ein fremder Run,
+   stale Attempt, vom Kandidaten geliefertes Flag oder stdout begründet keine
+   erfolgreiche Beobachtung. Spätere Limitänderungen schreiben vergangene
+   Beobachtungen nicht um. Ressourcen-, Host-, Cancel- oder Custodyfehler bleiben
+   maßgeblich, auch bei abgefangener Python-Exception und Erfolgspayload.
+   Ein Runabschluss ist kein Q1-Erfolg: Der Validator-Writer prüft genaues Subject,
+   verlangte Regeln/Occurrences und authentische vollständige Beobachtungen vor
+   Evidenzcommit. Fehlende/interrupted/übersprungene Checks bleiben unvollständig;
+   Kandidatenablehnung, Infrastrukturfehler und unbekannte Wirkung unterscheiden.
+3. **Settlement und Review-Projektion wiederaufnehmbar koppeln.** Native Ergebnisse
+   bis zum bestätigten gemeinsamen Settlement erhalten. Der Validator-Owner
+   schreibt seine Evidenz über den vorhandenen vertrauenswürdigen Writer mit
+   stabiler Review-/Evidenzidentität; die Runtime liefert Originalrun und Custody.
+   Fehler/verlorene Bestätigung zwischen Ergebnis, Evidenzcommit und Queue/UI-
+   Projektion sind über dieselben Records abgleichbar, ohne den Check/Tool-Effekt
+   neu auszuführen oder einen Pass zu synthetisieren. Duplikate idempotent lesen,
+   abweichende Inhalte als Konflikt melden. Späte Ergebnisse eines alten Subjects
+   dürfen dessen Historie ergänzen, aber kein neueres Resubmit oder Q2 freigeben.
+   Cancel-/Ack-/Recovery-Vertrag aus dem gemeinsamen Admissionvertrag anwenden;
+   ungeklärte Wirkung sperrt Reviewfreigabe. Ein ausschließlich reviewbezogener
+   Fehler stoppt keine unabhängigen Tasks; echte globale Runtimefehler folgen
+   unverändert dem gemeinsamen Fencing-/Fatal-Recovery-Vertrag.
+4. **Begrenzte Prüfumgebung aus vorhandenen Mechanismen bereitstellen.** Der
+   genehmigte Validatorgraph ist ausführbares Programm; ungeprüfte Candidate-
+   Quellen/Graphen sind bei Inspektion ausschließlich Daten. Nur ein ausdrücklich
+   qualifizierter Draft-Testing-Pfad darf Candidate-Code mit benannten Fixtures,
+   erlaubten Hostadaptern und technischen Grenzen ausführen. Das ist keine
+   Aufnahme des Drafts in normales Matching und verlangt nicht dessen eigene
+   vorherige Q1/Q2. Bestehende abgeschirmte Prüf-/Worker-/Kernelgrenzen erweitern;
+   keine zweite globale VM, allgemeiner Rust-Validatorloop oder breite Hostfreigabe.
+   Runtime liefert taskbezogene Compute-/Preparation-/Heap-/Hostdaten-/Print-/
+   Suspension-Grenzen, qualifizierte Interruption und native Watchdogs über die
+   vorhandenen Accounts/Settings. Der Validator definiert seine endlichen Check-
+   und Fixtureprofile, nicht eigene Ressourcencontroller. Kontrollierte Testeffekte
+   und deren Aufräum-/Recovery-Evidenz vollständig erhalten; ein Infrastrukturausfall
+   ist keine Kandidatenablehnung und ein erfolgreicher Parser kein Verhaltenstest.
+   Bedingte/wiederholte Checks nutzen nur den qualifizierten V35-13/14-Vertrag.
+5. **Boot und Providerbereitschaft ohne Selbstapproval integrieren.** Validator
+   liefert exakte qualifizierte Pakete, Herkunft/Behavior-Nachweise und abhängige
+   Class-Routen; die eine Initialisierung prüft/registriert sie vor Producer-Ready.
+   Installationseigene Verifikation bleibt noncircular: kein Validator zertifiziert
+   seinen eigenen unbekannten Nachfolger und keine Erstinstallation wartet auf
+   dessen eigene Q1/Q2. Root-/Pflichtintegritätsfehler sperren unsichere Freigabe;
+   offene authored Reviews oder optionale modellabhängige Checks sind getrennte
+   Pending-/Unconfigured-Zustände. Deterministische Review-Routen und Verwaltung
+   brauchen weder generierten Modell-Prefix noch einen Provider. Modellschritte
+   verwenden §10.1 und den einzigen Prefix-Requestguard: fehlende Bereitschaft
+   hält den betroffenen Check unvollständig, statt versteckt einen anderen Provider,
+   Prefix oder Tier-2-Pfad zu nutzen. Keine Reviewer-Providerregistry/-Transportschicht.
+6. **Menschliches Q2 an vorhandene Betreiber-Identität binden.** Phase 1 liefert
+   authentifizierten Caller und CSRF/Origin-Schutz, ohne separate Reviewerrolle.
+   Der Validator-Owner prüft im bestehenden exakten View-/Approval-Writer die
+   Subject-/Base-/Dependency-/Q1-/Behavior-Referenzen und transaktionale Frische.
+   Ein Parameter `human`, Modelloutput oder Component-Management-Call ersetzt
+   keine menschliche Betreiberaktion. Unvollständige/überholte Reviews sind nicht
+   freigabefähig; ein Q2-Commit mit verlorener Antwort wird idempotent rekonstruiert,
+   nicht als neue Entscheidung auf einem neueren Subject wiederholt. Ausführungs-
+   beobachtungen, Bootstrap-Nachweise und Reviewfreigabe bleiben getrennte Records
+   mit ihren jeweiligen Herkunfts-/Verknüpfungsprüfungen. Seeds behalten ihren separaten vertrauenswürdigen Vertrag ohne Instanz-Q2.
+
+Diese Übergaben sind Anforderungen an bestehende Ports/Records, keine neuen
+JSON-Felder oder ein zweites Review-Framework. Aktivierung folgt §8.2: Validator
+liefert gültige Approval-/Support-Prädikate und Routebindungen, die gemeinsame
+Katalogtransaktion publiziert sie. Ein Modell-Prefix des neuen Katalogs wird danach
+vom Prefix-Owner gebaut; fehlende Modellbereitschaft sperrt nur abhängige Calls.
+Die Review-/Bootstrap- und Laufzeitabnahme muss vor erster Aktivierung selbst
+bestanden sein; diese Reihenfolge erlaubt keine ungeprüften Class-Routen.
+Gemeinsame Caller-/Recovery-Nachweise einmal am implementierenden Owner führen
+und im Validator wiederverwenden. Dort nur fehlende fachliche Subject-/Coverage-/
+Approval-Fälle ergänzen; die Tabellen verlangen keine zweite identische Testpipeline.
+
 **Pflichttests für Phase 3a (durch den Produktions-Caller):**
 
 | Fall | Nachzuweisendes Verhalten |
 |---|---|
 | Monty-1.0.0-Upgrade | Beide Dependencies/Lockfile konsistent; unterstützte Build-Toolchains bestehen. Recipe-/Resume-/Hostfehler-Kompatibilität, aktive Rechenzeit über mehrere Feeds, erhaltene Live-Revisionen, Allokations-Disposition und tatsächliche Allocator-Speicherbegrenzung sind durch Caller-Level-Tests belegt; alte Fortsetzungen werden vor Versionswechsel reconciliiert. |
+| Runtime bereit ohne erzeugten Prefix/Provider | Pflicht-Seeds/Integrität vor Ready; leere Generationen oder unkonfigurierter Provider bleiben sichtbare Produktzustände. Qualifizierter Build mit lokalen Artefakten startet erst nach Ready ohne Modell-/Netzwerkaufruf; fehlendes optionales Profil blockiert nur seine Aktion. |
+| Interner ResultOnly-Auftrag | Hostgebundene Herkunft und Auswahl, reale Eingabereferenz und genau ein persistierter Ergebnisabschluss ohne Assistant-Reply; gleichzeitiger normaler Chat behält eigene History/Reply. Öffentlicher Input kann den internen Pfad nicht auswählen. |
+| Auftrag/Admission mit verlorener Bestätigung | Crash oder verlorenes COMMIT/HTTP vor/nach Bindung: ursprünglicher Request/Run wird eindeutig rekonstruiert; Konflikt bleibt Konflikt, kein zusätzlicher Run oder Dispatch. |
+| ResultOnly-Settlement und Statusprojektion | Erfolgreicher nativer Effekt mit fehlgeschlagenem Ergebnis-/Projektionswrite, doppelten/späten Events und Neustart: echte Ergebnisse/Custody erhalten, Projektion reparierbar, kein Effekt-Replay und kein synthetischer Erfolg. |
+| Produktabbruch mit unklarem Ausgang | Cancel-Ack-Timeout/Claim-Verlust und spätes Compiler-/Publikationsergebnis bleiben am Originalrun; stale Updates aktivieren nichts, ungeklärte Effekte und gebundene Kapazität verschwinden nicht durch UI-Neustart. |
+| Review-Aufnahme und Resubmit | Dasselbe bestätigte Subject/Validator/Request führt trotz verlorener Bestätigung zu demselben Run; geändertes Resubmit erhält neue Identität. Interner Pfad erzeugt keinen Chat-Reply, kein Rematching und keinen zweiten Claim. |
+| Review-Resultat, Evidence-Commit und UI-Reparatur | Native Resultate/Custody bleiben bei fehlgeschlagenem/verlorenem Evidenzcommit oder Projektionsupdate erhalten; idempotenter Originalabgleich ohne erneute Checkeffekte. Stale/wrong-subject/abgefangene Hostfehler können weder Q1 noch Q2 freigeben. |
+| Draft-Testing und Ressourcen | Candidate bei Inspektion nur Daten, Ausführung nur im qualifizierten begrenzten Draftprofil. Taskbudget/Print-/Hostdaten-/Suspension-/native Grenzen isolieren den Review; echte globale Fehler werden gefenct, kein zweiter VM-/Ressourcenowner. |
+| Review-Boot und menschliche Entscheidung | Noncircular Seedprüfung vor Review-Produzenten; Pending/fehlender Modellprovider blockiert keine sichere unabhängige Route. Q2 nur als authentifizierte exakte menschliche Entscheidung, unverändert beim verlorenen Response rekonstruierbar. |
 | Frische und bestehende DB, noch kein Chat | Seeding/Prüfung vor VM-Start; genau eine globale VM wartet vor Ready; auch REPL-/Nicht-WebUI-Boot nutzt diesen Pfad. |
 | Zweiter Produkteinstieg / zweiter Instanzprozess | Gleiche Runtime teilt Handle; gleiche Instanzablage erlaubt keinen zweiten Owner; fehlgeschlagener Boot/Crash gibt Besitz kontrolliert frei. |
 | Fehlende/korrupte Orchestrator-Zeile, Syntaxfehler, früher VM-Abschluss | Boot scheitert vor Worker-Claims/Ingress; gestartete Ressourcen werden beendet; keine spätere lazy VM. |
@@ -763,7 +1457,7 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 4. Nur alte Rollen-/Scopeberechtigungen, Toolgrants und Invocation-Approval-Leases entfernen, nachdem alle Leser/Schreiber umgestellt sind. Worker-Claims/Attempt-Tokens, externe Auth-/Accountdaten, Q1/Q2 und fachliche Identitäten erhalten. Alte Toolsettings einschließlich `ask` mit dokumentierter Betreiberentscheidung in das globale Modell überführen.
 5. Schema-, Index-, Constraint- und nötige Namespaceänderungen durch neue versionierte Migrationen einführen. Bereits angewandte Migrationen und deren Prüfsummen unverändert lassen. Komponentenchecksums sind ein gesonderter Integritätsvertrag. Datenmigrationen wiederaufnehmbar und idempotent gestalten; kein stilles Löschen produktiver Daten.
 6. Integrationstests mit alten und neuen Datenständen, Kollisionen, Teilfehlern, Wiederanlauf und Rollback/Restore-Fall durchführen.
-7. Task-/Attempt-/Continuation-/Reply-Beziehungen sowie Recipe-UUIDs, Varianten, `step_link`, Komponenten-Includes, `dependency_registry` und Intent-Zuordnungen vollständig erhalten bzw. konsistent remappen. Migrationsprüfung weist jede Referenz auf eine vorhandene passende Revision nach; keine dangling UUIDs oder durch Konflikte überschriebene Varianten. Kohai-Prefix und Caches aus dem migrierten validierten Bestand erneuern. Nur notwendige Felder ergänzen; keine zweite dauerhafte Turnqueue oder persistente `BuildInstruction`-Tabelle. RAM-Sitzungen sind keine DB-migrierbaren Snapshots.
+7. Task-/Attempt-/Continuation-/Reply-Beziehungen sowie Recipe-UUIDs, Varianten, `step_link`, Komponenten-Includes, `dependency_registry` und Intent-Zuordnungen vollständig erhalten bzw. konsistent remappen. Migrationsprüfung weist jede Referenz auf eine vorhandene passende Revision nach; keine dangling UUIDs oder durch Konflikte überschriebene Varianten. Prefix-/Cache-Frische gegen den migrierten validierten Bestand nach §8.2 abgleichen; notwendige Neubauten nach Ready über den qualifizierten Prefix-Auftrag ausführen, ohne eine Generation ungeprüft zu aktivieren oder den Migrationsrunner zum Compiler zu machen. Nur notwendige Felder ergänzen; keine zweite dauerhafte Turnqueue oder persistente `BuildInstruction`-Tabelle. RAM-Sitzungen sind keine DB-migrierbaren Snapshots.
 8. **Phase-0a-Verträge mitmigrieren.** Versionierte Komponenten/Assoziationen,
    getrennte vertrauenswürdige Approval-Evidenz, Actual-Tool-Artefakte/Adapter,
    Taskmanifeste, durablen Invocation-/Retry-/Effektstatus und stabile Policy-
@@ -793,6 +1487,58 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
    Engine-Loader wird dadurch nicht wieder aktiviert; Daten-IDs verleihen keine
    Toolberechtigung. Implementierungs-/Abnahmestand in
    `docs/plans/simplified-v3-implementation.md` verfolgen.
+
+10. **Komponenten-, Prefix- und Review-Daten gemeinsam migrieren und sichern.** Der
+    vorhandene Migrationsowner nimmt die Teilnehmerdaten aus
+    [Prefix §12](docs/plans/prefix_v3_upgrade.md#coordinated-upgrade-and-recovery)
+    auf: Legacy-Bundles, Quellenoriginale/Registrierungen und Beobachtungen,
+    Profile, akzeptierte Designs/Model-Spezifikationen, Generationen/Composites,
+    Consumer-/Providerbindungen, Job-/Run-/Invocationverweise sowie benötigte
+    Compiler-/Tokenizer-/Template-/native Artefakte und ihre exakten Manifest-
+    referenzen. Prefix liefert die fachlichen Migrationen und Prüfer; dieser Plan
+    führt sie mit den übrigen Teilnehmern unter derselben Versions-/Lock-/Backup-
+    Grenze aus. Kein zweiter Migrationsrunner, Datenkatalog oder Restorebefehl.
+
+    Vor dem Backup die Referenzen laufender/suspendierter Aufträge und ungeklärter
+    Effekte erfassen und benötigte Artefakte vor Bereinigung schützen. DB-Stand und
+    externe Artefakte nach dem gemeinsamen Drain/Fencing über ein vollständiges
+    geprüftes Inventar zusammen sichern; eine DB-only-Sicherung ist unvollständig,
+    wenn benötigte Dateien fehlen. Restore prüft tatsächliche Bytes/Checksums,
+    kompatible Reader/Adapter, Original-IDs und alte Task-/Prefixauswahl samt Counts
+    und Receipts. Fehlende/unvertrauenswürdige Altbelege bleiben Legacy/Unverified;
+    keine nachträgliche Approval oder stilles Ersetzen durch den neuesten Compiler.
+    Externe Inferenzprozesse/GPU-Caches werden nicht als wiederhergestellter Zustand
+    behauptet; nach Restore ist Cachewiederverwendung neu zu verifizieren.
+
+    Abnahme über denselben Koordinator: frische Installation, Upgrade mit
+    Overrides und laufendem Build, unterbrochene Migration, fehlendes/korruptes
+    Quell- oder Compilerartefakt und echter Restore inklusive beider Modellconsumer.
+    Fachliche Snapshotreferenzen bleiben erhalten; keine portable alte RAM-VM
+    oder automatische erneute Publikation unterstellen.
+
+    Der Validator liefert als weiteren Teilnehmer Legacy-/neue Submissions,
+    versiegelte Candidate-/Base-/Dependency-Subjects, davon getrennte Validator-
+    Recipe-/Rule-/Occurrence-/Source-/Engine-/Native-Auswahlen, Beobachtungen,
+    Q1-/Behavior-/Human-Q2-/Seed-/Association-/Pure-Evidenz, ursprüngliche
+    Run-/Attempt-/Custodyverweise, Routen und Overrides. Derselbe Koordinator
+    sichert diese vollständigen Closure-/Provenienzreferenzen und prüft sie beim
+    Restore mit den Validator-eigenen vertrauenswürdigen Lesern. Ein vorhandener
+    Datensatz oder erfolgreicher SQL-Import erzeugt keine nachträgliche Approval;
+    fehlende/unsealed Altbelege bleiben ausdrücklich reviewbedürftig. Keine
+    zweite Review-Migration, Erfolgsrekonstruktion aus Labels oder Restore-Queue.
+    Gemeinsame Fälle: wartendes Q2, Resubmit/Validatorwechsel während offenen
+    Reviews, verlorener Evidenz-/Approval-Commit, deaktivierte Routen/Overrides,
+    fehlendes Interpreter-/Sourceartefakt und inkompatibler Upgrade-Rollback.
+
+    Composition liefert die Familien-/Usage-/Alias-/Consumer- und Override-Ledger,
+    alten/neuen Export-/Command- und nativen Closure-Artefakte sowie benötigte
+    Source-/Derived-Dokumentreferenzen aus dem gemeinsamen Migrationsvertrag.
+    Mit derselben Backupgrenze sichern und tatsächliche alte Loader-/ABI-/Reader-
+    Verfügbarkeit beim Restore prüfen. Ausgelieferte Successors überschreiben
+    keine Operatorversion anhand eines Namens. Alte benötigte Artefakte nicht
+    wegen des abgeschlossenen neuen Familienimports löschen; fehlende alte
+    Ausführbarkeit blockiert ein Upgrade, das alte Tasks unfortsetzbar machen
+    würde; keine latest-Substitution.
 
 ### Phase 7 — Tests, Architekturverträge und Dokumentation bereinigen
 
@@ -860,6 +1606,33 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
    Authentifizierte Diagnose/Verwaltung und explizite Draft-Validierung bleiben
    gemäß ihren technischen Verträgen möglich. Ein Statusupdate im Plan oder
    ein erfolgreiches Seeding ersetzt weder die Abnahme noch das Gate.
+
+7. **Teilnehmer vollständig in dasselbe Cutover aufnehmen.** Vor Beginn die
+   tatsächlichen Komponenten-/Prefix-/Provider-/Source-/Compiler-/Review-Teilnehmer
+   aus Phase 6 item 10
+   und ihre abhängigen Aufträge im bestehenden Upgrade-Inventar erfassen. Ihre
+   Migrationen, Prüfungen und Restorebelege gehören zum selben Backup-/Schema-/
+   Binary-Cutover; keine nachgelagerte Prefix-Sondermigration nach geöffnetem
+   Ingress. Der gemeinsame Koordinator ruft bestehende fachliche Ports/Prüfer auf,
+   ohne Recipe-Sequenzierung oder einen zusätzlichen Plugin-/Jobrunner zu erfinden.
+   Fehlende Pflichtartefakte/Referenzen für sichere Ausführung verhindern die
+   betroffene Freigabe; Diagnose/Verwaltung bleiben nach Phase 3a möglich.
+   Runtime-Ready verlangt keinen frisch generierten Serving-Prefix. Modellconsumer
+   werden zusätzlich nach §8.2 und Prefix Gate A1/C2 freigegeben; kein alter
+   inkompatibler Prefix oder Providerfallback als vermeintlich erfolgreicher Boot.
+   Gemeinsame Abnahme enthält unterbrochenes Upgrade/Restore, alte behaltene
+   Taskreferenzen und getrennte Auswahl- gegenüber Binary-/DB-Rollbacks. Ein
+   Prefix-Auswahlrollback ändert weder Schema noch Orchestratorgeneration.
+   Validator-Seed-/Routenwechsel und Evidenzreader werden in demselben Cutover
+   geprüft: alte genehmigte Review-Tasks behalten ihre Auswahl, neue Tasks nutzen
+   nur qualifizierte Routen. Physischer Restore und Runtime-Sicherheit gehören
+   diesem Owner; semantische Approval-/Bootstrap-Provenienz und exact-view Q2
+   bleiben beim Validator. Kein zweiter Erfolgswriter und keine Ausnahme für
+   unvollständig migrierte aktive Validatoren.
+   Composition-Familien liefern Seed-/Alias-/Command-/Consumerwechsel und ihre
+   genauen Restoreprüfungen an denselben Koordinator. Familienweise qualifizierte
+   Freigabe bleibt möglich; eine neue Familie darf weder eine ungeprüfte Nachbar-
+   familie aktivieren noch unveränderte gemeinsame Infrastruktur erneut aufbauen.
 
 ## 5. Globale Abnahmekriterien
 
@@ -962,7 +1735,40 @@ Vor der vollständigen UI-Anbindung diese Backend-Lücken schließen:
 3. **Matching-Testfeld:** dieselbe Auswahl-/Variablenlogik wie im Produktpfad nutzen, mit ausdrücklich schreibfreier Ausführung. Recipe/Variante, Variablen, Mehrdeutigkeit, No-Match und technische Fehler anzeigen. Keine Tool-/Recipe-/LLM-Ausführung und keine Änderung von Scores, Lern-/Disambiguierungsdaten. Vorschau eines Entwurfs klar von aktiver Auswahl unterscheiden.
 4. **Konsistente Revisionen und Validierung:** Entwurf, Q1/Q2-Status und aktive Komponentenrevision trennen. Alle authored-Änderungen, einschließlich Änderungen bisheriger Builtins, benötigen automatisches Q1, menschliches Q2, Verhaltensnachweise und die passende exakte Kombinationsapproval vor Aktivierung; trusted system_seed bleibt der gesonderte kontrollierte Bootstrapvertrag aus Phase 0a; Bearbeitung überschreibt keine noch von Vorgängen verwendete Revision. Aktivierung von Komponenten-/Variantenbeispielen und Matching-Einträgen transaktional, revisionsgeprüft und ohne Teilzustände durchführen. Gelernte Einträge mit Herkunft erhalten. Bestehende IBS-/Komponenten-/Matching-Caches nach Revision aktualisieren; Kohai-Prefix aus validierten Komponenten erneuern. Aktive Prefix-/Cachegeneration und ausstehende Erneuerung sichtbar machen; folgende Tasks erhalten einen konsistenten aktiven Stand.
 
-   Die neue Generation erst veröffentlichen, wenn die zugehörigen Komponentenreferenzen, Matching-Daten und erforderlichen Prefix-/Cacheartefakte verfügbar sind. Bis dahin bleibt die bisherige Generation aktiv; ein Fehler lässt sie nutzbar. Ein Vorgang erhält eine konsistente Generation, statt neues Matching mit altem Komponenten-/Prefixinhalt zu mischen. Globale Toolsettings werden unabhängig davon vor jedem Dispatch aktuell geprüft.
+   **Katalogaktivierung und Prefixbereitschaft ohne Kreisabhängigkeit:**
+   Eine Kataloggeneration umfasst konsistente genehmigte Komponenten, Matching,
+   Bindings, Approval und ausführbare native Artefakte. Deren Aktivierung benötigt
+   keinen erst aus dieser Generation zu erzeugenden Modell-Prefix. In derselben
+   vorhandenen Aktivierungs-/Invalidierungsgrenze die betroffenen Prefix-Abhängigkeiten
+   revisionsgeprüft als erneuerungsbedürftig festhalten; vorhandene dauerhafte
+   Änderungszustellung oder wiederaufnehmbare Reconciliation verwenden, keine
+   zweite Aktivierungsregistry. Scheitert die Katalogtransaktion, bleibt die alte
+   Kataloggeneration aktiv. Nach erfolgreichem Commit können qualifizierte
+   modellfreie Builds die neue aktive Auswahl als vollständigen Snapshot lesen.
+
+   Der Prefix-Owner baut/validiert daraus seine unveränderliche Generation nach
+   [Prefix §7](docs/plans/prefix_v3_upgrade.md#7-persistence-and-generation-lifecycle).
+   Vor Auswahl/Serving exakt Quelle/Katalog, Design, Provider-/Modelldaten und
+   Frische gegen den dann gewünschten Stand prüfen. Ein zwischenzeitlich überholter
+   erfolgreicher Build bleibt historisches Artefakt und wird nicht automatisch
+   ausgewählt. Prefix-Publikation, Designannahme und Consumeraktivierung bleiben
+   die getrennten Produktoperationen des Prefix-Plans; sie schalten keine
+   nicht genehmigten Komponenten frei.
+
+   Neue Aufgaben, die einen betroffenen Prefix benötigen, bleiben vor ihren
+   abhängigen Effekten explizit wartend/blockiert, bis die passende Generation und
+   deren Consumer-Gates bestanden sind. Kein unbemerkter Rückgriff auf alte
+   Komponenten oder einen veralteten Prefix, keine Vermischung von Snapshots und
+   kein Tier-2-Fallback. Verwaltung, unabhängige Tier-0-Recipes und der modellfreie
+   Build dürfen weiterarbeiten. Laufende Tasks behalten ihre ursprünglichen
+   kompatiblen Auswahlen, vorbehaltlich aktueller Policy, Providerverfügbarkeit,
+   Widerruf und technischen Grenzen; bei fehlender Sicherheit blockieren statt
+   umzubinden oder Effekte zu wiederholen. Globale Toolregeln bleiben live.
+
+   Abnahme: Aktivierung bei fehlendem Prefix/Provider, neuer Katalog während
+   laufendem Build, verlorenes Invalidierungsereignis/Neustart und fehlgeschlagener
+   Neubau. Kein zirkuläres Warten, alte Artefakte/Tasks erhalten und kein neuer
+   Modellrequest mit nicht passendem Prefix. Modellfreie Arbeit bleibt möglich.
 
    **Systemkomponenten:** geprüfte Seeds und Checksums erhalten. Betreiberänderungen als explizite eigene Revision/Kopie mit definiertem Override und Q1/Q2 behandeln; keine stillen Body-/Checksummutationen. Boot/Repair darf Overrides und deaktivierte Intent-Zuordnungen nicht reaktivieren oder überschreiben. Persistente Override-/Deaktivierungsregeln und Verhalten bei Seed-Upgrades vor Implementierung festlegen und testen. Geschützte Root-Orchestratorrevisionen wechseln weiterhin nur nach kontrollierter Reconciliation; gewöhnliche Intents/Recipes werden ohne Dienstneustart aktiv.
 5. **Auswahl im Chat-Verlauf sichtbar machen:** für den konkreten Vorgang die tatsächlich verwendete Komponente, das Recipe, die Variante und Tier 0/1 bzw. den No-Match-/Tier-2-Pfad anzeigen. Die Auswahl aus dem ausgeführten Vorgang übernehmen, nicht nachträglich mit dem aktuellen Intent-Bestand neu berechnen. Ein Recipe kann LLM-Schritte enthalten: Nur Tier 0 bedeutet null LLM-Aufrufe; Tier 1 führt die vorgesehenen LLM-Schritte aus.
@@ -973,10 +1779,10 @@ Vor der vollständigen UI-Anbindung diese Backend-Lücken schließen:
 - Hinzufügen, Ändern, Löschen und Variantenwechsel eines einzelnen Beispiels aktualisieren Komponenteninhalt und Matching-Bestand konsistent; kein veralteter Ausdruck oder verlorener `step_link` bleibt zurück. Fehlgeschlagene Änderungen erzeugen keine Teilzustände.
 - Mehrfachzuordnungen desselben Ausdrucks, konkurrierende Editoränderungen und Draft-/Aktivierungsfehler erzeugen keine still überschriebenen Varianten. Auswahl verwendet nur den vorgesehenen aktiven validierten Stand.
 - Der Matching-Test zeigt die gleiche Auswahl und Variablenauflösung wie der produktive Pfad, ohne Tools auszuführen oder produktive Matching-/Lerndaten zu verändern.
-- Review-pflichtige Änderungen werden erst nach dem erforderlichen Validierungsweg aktiv; Q2 bleibt menschlich. Freigegebene Änderungen wirken ohne Neustart auf folgende Matching-Vorgänge.
+- Review-pflichtige Änderungen werden erst nach dem erforderlichen Validierungsweg aktiv; Q2 bleibt menschlich. Freigegebene Änderungen wirken ohne Neustart auf folgende Matching-Vorgänge; benötigte neue Modell-Prefixe durchlaufen die getrennte §8.2-Bereitschaftsprüfung, ohne alten Prefixinhalt als passend auszugeben.
 - Der Chat-Verlauf zeigt die tatsächlich verwendete Auswahl auch dann korrekt, wenn Intents oder Recipes später bearbeitet werden. Tier-0-Recipes laufen ohne LLM; Tier-1-Recipes führen ihre vorgesehenen LLM-Schritte aus.
 - Bestehende validierte Komponenten, Recipe-Varianten, UUID-Verweise und gelernte Intent-Einträge bleiben beim Umbau erhalten; Betreiberänderungen überstehen Boot/Repair gemäß der festgelegten Systemkomponentenregel.
-- Ein suspendierter Vorgang verwendet seine bisherigen Komponentenrevisionen, ein folgender Vorgang den neuen aktiven Matching-/Komponenten-/Prefixstand; Toolberechtigungen folgen unabhängig davon stets der aktuellen globalen Einstellung.
+- Ein suspendierter Vorgang verwendet seine bisherigen Komponentenrevisionen, ein folgender Vorgang den neuen aktiven Matching-/Komponentenstand mit dazu passendem Prefix, sofern benötigt; sonst wartet/blockiert nur der betroffene Verbraucher gemäß §8.2. Toolberechtigungen folgen unabhängig davon stets der aktuellen globalen Einstellung.
 
 ## 9. Verbindliche Klarstellung — Vollständige Betreiberverwaltung und globale Tool-Berechtigungen
 
@@ -1014,4 +1820,182 @@ Vor der vollständigen UI-Anbindung diese Backend-Lücken schließen:
 5. **Vollständige Betreiberverwaltung mit wiederherstellbarem Entfernen ermöglichen.** Alle Providerdefinitionen über WebUI/API hinzufügen, ändern, deaktivieren, ausblenden und wieder hinzufügen können. „Entfernen“ bedeutet Ausblenden und Deaktivieren (Soft Delete), keine physische Löschung der Providerdefinition. Die DB-Zeile mit stabiler Provider-ID bleibt erhalten; den bestehenden `deleted_at`-Mechanismus für die Ausblendung prüfen und einen eindeutigen Aktivitätsvertrag festlegen. Kein Provider erhält eine Herkunftssperre, auch kein initial angelegter oder bisher als `is_builtin` markierter Provider. Die bisherige `is_builtin`-Immutabilität und alle darauf beruhenden UI-/API-/Store-Entfernungssperren ablösen; Herkunft bleibt reine Metadaten. Aktive Auswahlreferenzen beim Entfernen transaktional auf eine ausdrücklich gewählte Alternative umstellen oder als unkonfiguriert kennzeichnen. Bereits laufende Aufrufe nach definiertem Abschluss-/Abbruchvertrag behandeln; folgende Aufrufe dürfen inaktive/ausgeblendete Provider nicht auswählen. Über „Provider hinzufügen“ entfernte Definitionen aus der DB anbieten und dieselbe Zeile revisionsgeprüft wieder sichtbar/aktiv setzen, statt Duplikate anzulegen. Vor Aktivierung Modelle/URLs, Adapterfähigkeit und gültige Secret-/Authreferenzen prüfen; fehlende Konfiguration sichtbar ergänzen lassen. Frühere aktive Auswahlen nicht stillschweigend wiederherstellen. Neustarts, Upgrades und Initialisierung dürfen entfernte Provider nicht automatisch reaktivieren; Wiederaufnahme erfolgt ausschließlich durch eine ausdrückliche Betreiberaktion.
 6. **Repositorydatei und Begleitpfade löschen.** Nach Umstellung der Verbraucher `providers.json` aus dem Repository löschen. Docker-COPYs, Build-Einbettung, CI-Pfadfilter, Testfixtures, Architekturtests und Dokumentation aktualisieren. Keine Ersatzdatei oder neue konstante Anbieter-Definitionsliste im Rust-/Frontend-Code einführen. Historische Changelog-/Migrationsbeschreibungen als historische Belege erhalten; aktuelle Anleitungen beschreiben ausschließlich DB-Verwaltung.
 
+7. **Wirksame Revisionen verlustfrei an Verbraucher übergeben.** Den vorhandenen
+   DB-/Reload-/Settingsvertrag um die nachgewiesen fehlende Übergabe ergänzen:
+   stabile Provider-/Modellidentität, exakte Definitions-/Policyrevision und
+   gewünschter/wirksamer Übernahmezustand sind für CLI, Runtime, WebUI und die
+   Prefix-Verbraucher aus derselben Autorität lesbar. Gleichzeitige Edits werden
+   revisionsgeprüft, nicht still überschrieben. Änderung und deren dauerhafte
+   Zustell-/Reconciliation-Referenz über die vorhandene Transaktionsgrenze
+   verbinden; keine neue Prefix-Eventqueue oder parallele Providerregistry.
+   Nachrichten dürfen doppelt/verspätet sein oder fehlen: Verbraucher gleichen
+   ihre Revision beim Wiederverbinden/Neustart mit dem DB-Owner ab. Eventdaten
+   allein autorisieren keinen Dispatch und ersetzen kein aktuelles Nachlesen.
+
+   Deaktivierung und verschärfte wirksame technische Grenzen dürfen nicht auf
+   einen langen Prefix-Build warten. Vor Modell-Dispatch Providerverfügbarkeit
+   und aktuelle effektive Grenzen am gemeinsamen Boundary prüfen. Fehlt ein
+   verlässlicher Aktualitätsnachweis, den betroffenen Aufruf blockieren statt
+   alte Metadaten als Erlaubnis zu verwenden. Ein bereits begonnener Fremdaufruf
+   wird nach seinem tatsächlichen Status abgewickelt, nicht automatisch wiederholt.
+
+8. **Prefix-Anbindung im selben Providervertrag abnehmen.** Der Prefix-Owner
+   konsumiert diese Revisionen für Antwort-, Sempai- und Designprovider getrennt,
+   liefert die in §5.3 seines Plans definierten Modell-/Kapazitätsfelder und
+   berechnet Frische/Kompatibilität seiner Generationen und Consumerbindungen.
+   Diese Felder erweitern den bestehenden Provider-/Modellowner; unveränderliche
+   Mess-/Designsnapshots sind Evidenz, keine zweite mutable Konfiguration.
+   Dieser Plan implementiert Zustellung/Readback und technische Provideraufnahme;
+   Prefix implementiert Rendering, Partitionmessung und den einen finalen
+   Requestgrößenguard nach [Prefix §5.3](docs/plans/prefix_v3_upgrade.md#53-database-owned-model-specifications-and-model-specific-designs).
+   Kein zweiter Budgetstore, keine neue Guard-Implementierung in diesem Plan.
+
+   Verbindlicher [Prefix-/Paar-Designvertrag](docs/reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26):
+   Design für Formate und Grenzen je Provider-/Modellpaar gemeinsam verwenden;
+   Rollenwissen/Inhaltsregeln und fertige Prefixgenerationen getrennt halten.
+   Generator, Kohai und gegebenenfalls Sempai nutzen für dasselbe Paar dieselbe
+   gespeicherte, akzeptierte Designrevision. Jedes Prefix wird bei der Generierung
+   für sein konkretes Zielpaar fertig formatiert und unveränderlich gespeichert.
+   Recipe, Orchestrator oder Rolle bestimmen ein spezifisches Prefix;
+   ohne solche Auswahl gilt base-prompt,
+   daher normalerweise auch bei No-Match. Ein fehlendes/inkompatibles explizites
+   Prefix oder ein ungeklärter Auswahlkonflikt blockiert den betroffenen Aufruf,
+   statt heimlich base zu wählen. Keine generelle Pflicht zur Base-Komposition.
+   Orchestrator-Prompt an Kohai → Kohai formatiert ausschließlich den dynamischen
+   Prompt für das Zielpaar anhand des gespeicherten akzeptierten Designs → falls
+   Sempai verbunden/aktiviert ist, optimiert/korrigiert er diesen bereits
+   formatierten Prompt und gibt den finalen dynamischen Prompt an Kohai zurück
+   → Kohai setzt das vorgesehene fertige Prefix zeichengetreu genau einmal davor
+   → vollständigen Request prüfen → senden. Kein erneutes Formatieren durch Kohai
+   nach Sempais Rückgabe. Für das Zusammenfügen gilt Sempais zurückgegebener finaler
+   dynamischer Prompt, nicht der ursprüngliche oder unkorrigierte Zwischenstand.
+   Ohne Sempai gilt Kohais bereits formatierter dynamischer Prompt.
+   Sempais eigener Aufruf verwendet sein eigenes Prefix,
+   das anhand des Designs seines Zielpaars generiert wurde. Generator, Kohai und
+   Sempai verwenden bei demselben Provider-/Modellpaar dieselbe gespeicherte,
+   akzeptierte Designrevision; die rollenbezogenen Prefixtexte bleiben getrennt.
+   Sempais eigenes Prefix bleibt in dessen Review-Aufruf und wird nicht zum
+   zurückgegebenen dynamischen Prompt. Die
+   [explizite Übergabeabnahme](docs/reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests)
+   ist beim Prefix-Owner umzusetzen und hier wiederzuverwenden.
+   Manuelle Prefix-/Promptgrenzen sind in allen Ansichten über denselben bestehenden
+   revisionsgeprüften Provider-Endpunkt verknüpft; historische Pins sind keine
+   zweite editierbare Konfiguration. Providerfakten abrufen oder mit Herkunft
+   manuell ergänzen; keine Änderungen an Provider-Host/Servertemplate/Service.
+   Die Caller-Abnahme muss dieselben/verschiedene Paare, Standard-/explizite
+   Auswahl, exakte Zeichenfolge, synchronisierte Edits und harte Gesamtgrenzen
+   auch bei deaktiviertem Budget prüfen. Keine neue Pipeline/Registry in diesem Plan.
+
+   Die [Generierungsdialoge](docs/reborn/model-token-limits.md#generation-prompts-missing-selection-and-model-use)
+   bieten OK/Cancel bei fehlendem/inkompatiblem ausgewählten Prefix und nach jedem
+   erfolgreichen Use die Base-Prompt-Generierung für das Paar. Vorhandene Job-/
+   Readiness-/Waitgrenzen verwenden: keine zweite Queue, kein Modellcall vor Ready,
+   keine Wiederholung des Originalinputs. Cancel nach Use lehnt Generierung ab,
+   setzt aber die bereits gespeicherte Providerauswahl nicht heimlich zurück.
+
+   Vor Consumer-Auswahl Änderungen seit dem Build prüfen, Prefix-/Design-/
+   Targetreferenzen durch denselben vorhandenen Revisionsvertrag festhalten und
+   den tatsächlichen Request am finalen Boundary erneut prüfen. Ein alter Task
+   wird nicht still auf einen neuen Endpoint/Compiler/Prefix umgebunden; fehlende
+   Kompatibilität oder deaktivierter Provider stoppt den betroffenen Dispatch.
+   Bei gültigem Providerwechsel ohne passenden Prefix bleibt der gewünschte
+   Zustand sichtbar blockiert; keine automatische Modellreparatur oder heimliche
+   Wiederherstellung alter Auswahlen. Das Entfernen des letzten Providers lässt
+   Verwaltung und qualifizierte providerfreie Aufgaben verwendbar.
+
+   Gemeinsame Caller-Abnahme mit Prefix C2: unterschiedliche Antwort-/Sempai-/
+   Designtargets, gleichzeitiger Edit und Dispatch, Tightening bei deaktiviertem
+   Tokenbudget, verlorene/doppelte Notification und Neustart, Deaktivierung im
+   Wait, letzter Provider sowie Wiederaufnahme ohne implizite Auswahl. Nachweise
+   der gemeinsamen Infrastruktur wiederverwenden und nur die tatsächlichen
+   Prefix-Consumerfälle ergänzen; keine zweite vollständige Testpipeline.
+
+   Explizite modellgestützte Validatorchecks sind weitere Verbraucher desselben
+   Vertrags. Validator wählt über genehmigte Recipes den genauen Model-/Target-
+   und Kontextvertrag; diese Phase liefert Revision/Availability/Readback und
+   der Prefix-Owner den finalen Größen-/Renderingguard. Keine neue Providerliste,
+   Modelltransport-/Budget-/Retryimplementierung im Validator. Deaktivierung,
+   fehlender passender Prefix, Outputfehler oder ungeklärte Modellwirkung halten
+   den Review unvollständig; kein stiller Fallback und keine Kandidatenablehnung
+   allein aus Infrastrukturproblemen. Abnahme verbindet solche Checks mit einem
+   unabhängigen deterministischen Review und testet gleiche/verschiedene Targets,
+   Live-Änderung im Wait und den verlorenen ursprünglichen Modellreply ohne Replay.
+
 **Abnahme:** Frische und bestehende Instanzen verwenden vom ersten Providerzugriff an ausschließlich PostgreSQL. Tests laufen ohne `providers.json` und ohne Provider-Env-/Datei-Fallback: Boot, CLI und WebUI zeigen denselben Bestand; DB-only hinzugefügte Anbieter sind nutzbar; alle initialen, früheren Builtin- und benutzerangelegten Provider lassen sich über UI/API ausblenden/deaktivieren, einschließlich des letzten Providers. Ihre Definitionen bleiben in der DB und lassen sich über „Provider hinzufügen“ mit derselben ID ohne Duplikate wieder aktivieren. Inaktive/ausgeblendete Provider erscheinen nicht in aktiven Listen und werden nicht zur Ausführung ausgewählt. Das Entfernen aktiver Provider löst ihre Auswahlreferenzen konsistent auf; danach bleibt die Betreiberverwaltung erreichbar und LLM-bedürftige Vorgänge melden fehlende Konfiguration. Änderung, Ausblendung/Deaktivierung und ausdrückliches Wiederhinzufügen funktionieren revisionsgeprüft; Neustart/Upgrade erhalten Betreiberentscheidungen ohne automatische Reaktivierung. Wiederhinzufügen prüft Konfiguration und Authreferenzen und stellt alte aktive Auswahlen nicht ungefragt wieder her. Modell-/Auth-/Embeddingpfade sowie Secretauflösung funktionieren weiter. Fehlende Konfiguration und DB-Fehler sind unterscheidbar. Backup/Restore und Migration erhalten alle Provider-/Auswahl-/Secretreferenzen. Der Repository-Scan weist keine produktiven Dateikatalog-/Rust-Seeder-Verbraucher mehr nach; historische Migrationen bleiben unverändert.
+
+## Offener Folgeauftrag K3-2 ab K4 — Provider-/Design-Ersteinrichtung und Prefix-Lebenszyklus
+
+**New open follow-up; not implemented by this document patch.** Existing completed
+sections and original acceptance criteria remain unchanged. This section carries
+only the relevant future-consumer delta from [Exact K3-2](docs/plans/Exact_V3_definition_update_at_K3-2.md) and the
+[shared selection/lifecycle contract](docs/reborn/model-token-limits.md#open-k3-2-successor--retained-prefix-selection-and-prefix-free-construction-workflows).
+It does not reopen K0–K3, replace a current owner's work or create a parallel
+implementation. Original sections are read references; no code activation is claimed.
+
+- Root-/Child-/Reviewcapture trägt den qualifizierten Workflowstandard und die
+  drei retained Prefixauswahlzustände aus Exact §5.2. Provider/Auth/Katalogbindung,
+  inherited absence, Attempt-/Claim-/Cancellationgrenzen bleiben unabhängig wirksam.
+- Bestehende `TaskSelection`-/Admission-/Reviewmetadaten kompatibel erweitern, soweit
+  nötig. Modell- und tatsächlich verwendete Prefixauswahl kohärent erfassen, nicht
+  verschiedene latest-Reads als atomaren Capture deklarieren. Keine neue Manifest-
+  oder Admissionverwaltung und kein taskweiter permissiver Skipflag.
+- Originales Use-Receipt dauerhaft mit derselben Discovery-Admission verbinden;
+  ACKverlust liest/nachführt den ursprünglichen Vorgang, ohne erneute Auswahlwirkung.
+- Normale Prefixconsumer behalten ihren Guard. Der prefixfreie Konstruktionworkflow
+  benötigt keine Accepted-Prefixgeneration für ihre eigene Erzeugung. Reader/Writer
+  und technische Messung qualifizieren, bevor neue Varianten zugelassen werden.
+
+
+## Open Exact-validation successor — own A functions, S qualification and workflow scope
+
+**Open text handoff, not implemented.** The sequencing prerequisite is terminal
+acceptance of Root's actually running bounded BUILD-014 review/model-selection
+repair, not completion of all earlier open steps or the obsolete general authored
+exact-closure approval design. Immediately afterward, these target rules replace
+contradictory still-open implementation instructions in the same existing owner
+steps. Retain accepted packages, original evidence and valid old /1 profiles;
+do not reopen K0–K3 or alter BUILD-014's frozen inputs/contracts. New-profile
+publication still requires the connected successor readers/writers, not prior
+implementation of the superseded design. No second plan owner, queue or VM.
+
+Consume the binding target in [skills.md](skills.md#own-functional-approval-and-successor-compatibility): authored installed changes (A) have
+own Q1/behavior/human Q2; Skill and implementation code share one functional
+subject with distinct immutable IDs. S retains exact Skill-usage qualification
+after independently qualified Tool then ToolSkill, outside normal authored queue,
+with no additional installed Q2. Provenance belongs to each revision/usage; mixed
+graphs are allowed but do not transfer S exact evidence to changed partner bytes.
+Existing Single-root/exact-combination/Recipe-deployment APIs remain current
+support boundaries until the following connected successor is implemented.
+For new implementation immediately after BUILD-014, earlier blanket authored
+combination-review and class-10/50 protection instructions no longer govern the
+contradictory open work: only S exact usages retain the extra combination record,
+and only class10 retains root protection. Existing exact-profile readers keep
+their current checks until a qualified successor replaces them; preserving that
+support does not require completing an obsolete general A reapproval engine.
+
+### Existing catalogue/runtime owners: one coherent publication
+
+1. After bounded BUILD-014 acceptance, existing K4/Phase0a/3a and catalogue
+   owners consume Validator's own A function/compatibility approvals. Read current
+   consumer requirements from existing revision/selection stores; no new registry.
+   Compatible provider updates technically re-resolve affected new-task selections
+   without new consumer revisions, submission or Q1/Q2. Compare requirements and
+   concurrent changes within the existing generation transaction/CAS; separate
+   successful per-component CAS is not proof of a coherent graph.
+2. New tasks choose newest active approved versions; old/waiting/resumed/child
+   tasks retain exact original exports/artifacts. Explicit revocation, live policy,
+   resource limits and fencing still apply. Retention/recovery stays with existing
+   owners; no universal GC, whole-Recipe replay or older-version fallback assumed.
+3. Connect all affected prepare/approval/publication/task/private/child/restore/
+   MCP/Prefix readers before publishing new A profiles. Preserve original S exact
+   checks and old valid authored profiles. S prerequisite proofs and package
+   integrity remain with the installation owner, not normal authored Q1.
+4. Consume Composition's class50 migration; remove no class10/root protection.
+   Real missing runtime/child support stays here, without new VM, scheduler or
+   Rust workflow engine. Existing qualified native admission/capture/custody and
+   accounting are reused, not rebuilt by the validation change.
+
+**Outgoing gate:** next open K4/K6/K7/Phase6/8 activation/upgrade successor must
+consume both Validator evidence and Composition directed readers before new
+selection profiles. BUILD-002 Free and BUILD-010 V2 bridge work remain separately
+owned. B1/B2 bytes, I1 activation and the running BUILD-014 scope are unchanged.

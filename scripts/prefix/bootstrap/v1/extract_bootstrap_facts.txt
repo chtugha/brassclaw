@@ -1,0 +1,11 @@
+Task: extract_bootstrap_facts.
+For every entry in required_facts return exactly one fact with the same field
+and scope. Locate explicit statements in the supplied sources for the exact target.
+Use status proposed only when the source explicitly states the value. Include
+source_id, a source locator and an exact quote for every proposed value.
+If sources disagree within the same scope, return conflict, value null and cite
+the conflicting statements. If no matching statement exists, return unknown,
+value null and evidence []. Do not turn model-declared limits into endpoint limits.
+Do not derive prefix/prompt budget allocations or generate a model design.
+Input JSON:
+{{INPUT_PACKET_JSON}}

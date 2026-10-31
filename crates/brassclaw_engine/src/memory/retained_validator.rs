@@ -423,6 +423,9 @@ impl RetainedValidatorCoverage {
         &self,
         subject: &brassclaw_skills::review_submission_store::RetainedValidatorSubject,
     ) -> Result<(), &'static str> {
+        if subject.is_function_review() {
+            return Err("single-class validator does not cover the complete function subject");
+        }
         if subject.candidate().class_code != self.class_code {
             return Err("validator route differs from retained subject class");
         }

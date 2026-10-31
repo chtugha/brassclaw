@@ -234,6 +234,26 @@ impl fmt::Display for SeqNo {
     }
 }
 
+/// Opaque body identity captured from the exact entry that supplied its version.
+/// This is an integrity precondition, never a credential or an authority lease.
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct EntryBodyChecksum([u8; 32]);
+impl EntryBodyChecksum {
+    pub fn for_body(body: &[u8]) -> Self {
+        Self(*blake3::hash(body).as_bytes())
+    }
+    pub(crate) fn matches_body(&self, body: &[u8]) -> bool {
+        // BLAKE3 Hash equality uses constant_time_eq_32 in the pinned library.
+        blake3::Hash::from(self.0) == blake3::hash(body)
+    }
+}
+impl fmt::Debug for EntryBodyChecksum {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("EntryBodyChecksum([REDACTED])")
+    }
+}
+
 /// Compare-and-swap precondition for [`put`](crate::RootFilesystem::put).
 ///
 /// All multi-step store operations (lease claim, lease consume, status
@@ -251,6 +271,13 @@ pub enum CasExpectation {
     /// Path must currently hold the named version. Used for claim/consume/
     /// status transitions.
     Version(RecordVersion),
+    /// Match version AND the exact body, atomically in the backend. This guards
+    /// reusable keys whose version may restart after physical deletion. Bodies
+    /// and checksums are not returned in mismatch errors. Requires EntryBodyCas.
+    VersionAndBody {
+        version: RecordVersion,
+        body_checksum: EntryBodyChecksum,
+    },
     /// Overwrite regardless of current state. Used only by backfills / admin
     /// flows; domain code should default to one of the other variants.
     Any,
@@ -430,11 +457,44 @@ mod tests {
             CasExpectation::Absent,
             CasExpectation::Any,
             CasExpectation::Version(RecordVersion::from_backend(7)),
+            CasExpectation::VersionAndBody {
+                version: RecordVersion::from_backend(7),
+                body_checksum: EntryBodyChecksum::for_body(b"opaque snapshot"),
+            },
         ];
         for case in cases {
             let json = serde_json::to_string(&case).unwrap();
             let back: CasExpectation = serde_json::from_str(&json).unwrap();
             assert_eq!(case, back);
         }
+    }
+}
+
+#[cfg(test)]
+mod body_cas_tests {
+    use super::*;
+    #[test]
+    fn compound_cas_preserves_old_wire_forms_and_redacts_opaque_identity() {
+        for (json, expected) in [
+            (r#"{"type":"any"}"#, CasExpectation::Any),
+            (r#"{"type":"absent"}"#, CasExpectation::Absent),
+            (
+                r#"{"type":"version","version":7}"#,
+                CasExpectation::Version(RecordVersion::from_backend(7)),
+            ),
+        ] {
+            assert_eq!(
+                serde_json::from_str::<CasExpectation>(json).unwrap(),
+                expected
+            );
+            assert_eq!(
+                serde_json::to_value(expected).unwrap(),
+                serde_json::from_str::<serde_json::Value>(json).unwrap()
+            );
+        }
+        let checksum = EntryBodyChecksum::for_body(b"selected encrypted body");
+        assert!(checksum.matches_body(b"selected encrypted body"));
+        assert!(!checksum.matches_body(b"different encrypted body"));
+        assert_eq!(format!("{checksum:?}"), "EntryBodyChecksum([REDACTED])");
     }
 }

@@ -120,3 +120,224 @@ fn jinja_concatenation_remains_indexable_and_sliceable() {
         "system|2|user,system,"
     );
 }
+
+fn partition_request(text: &str, start: usize, end: usize) -> Request {
+    let mut request = request(vec![Probe::PartitionedText {
+        text: text.into(),
+        prefix_start: start,
+        prefix_end: end,
+    }]);
+    request.format = request_protocol(&request.probes).into();
+    request
+}
+#[test]
+fn partitions_actual_full_text_ids_without_saved_padding_or_truncation() {
+    for (start, end, prefix_ids, prompt_ids) in [
+        (0, 5, vec![1], vec![2]),
+        (6, 11, vec![2], vec![1]),
+        (0, 11, vec![1, 2], vec![]),
+        (0, 0, vec![], vec![1, 2]),
+    ] {
+        let report = analyze(partition_request("hello world", start, end)).unwrap();
+        assert_eq!(report.format, "brassclaw-model-encoding/2");
+        let probe = &report.probes[0];
+        let partition = probe.partition.as_ref().unwrap();
+        assert_eq!(probe.token_ids_sha256, ids_checksum(&[1, 2]));
+        assert_eq!(partition.prefix_tokens, prefix_ids.len() as u64);
+        assert_eq!(partition.prompt_tokens, prompt_ids.len() as u64);
+        assert_eq!(
+            partition.prefix_tokens + partition.prompt_tokens,
+            probe.token_count
+        );
+        assert_eq!(partition.prefix_token_ids_sha256, ids_checksum(&prefix_ids));
+        assert_eq!(partition.prompt_token_ids_sha256, ids_checksum(&prompt_ids));
+        assert_eq!(
+            partition.prefix_bytes_sha256,
+            checksum(&b"hello world"[start..end])
+        );
+        assert_eq!(partition.qualification, "supplied-byte-span-only");
+    }
+    let report = analyze(partition_request(&"hello ".repeat(2050), 0, 5)).unwrap();
+    assert_eq!(report.probes[0].token_count, 2050);
+    assert_eq!(
+        report.probes[0].partition.as_ref().unwrap().prompt_tokens,
+        2049
+    );
+}
+#[test]
+fn physical_partition_rejects_boundary_merges_and_invalid_utf8_ranges() {
+    for (text, start, end) in [("hello world", 1, 5), ("hello world", 0, 4)] {
+        assert!(matches!(
+            analyze(partition_request(text, start, end)),
+            Err(EncodingError::PartitionAlignment)
+        ));
+    }
+    for (text, start, end) in [
+        ("ü world", 0, 1),
+        ("hello", 5, 4),
+        ("hello", 0, 6),
+        ("hello", 2, 2),
+    ] {
+        assert!(matches!(
+            analyze(partition_request(text, start, end)),
+            Err(EncodingError::InvalidInput)
+        ));
+    }
+    let report = analyze(partition_request("ü world", 0, 2)).unwrap();
+    assert_eq!(
+        report.probes[0].partition.as_ref().unwrap().prefix_tokens,
+        1
+    );
+    assert_eq!(
+        report.probes[0].partition.as_ref().unwrap().prompt_tokens,
+        1
+    );
+}
+#[test]
+fn partition_requires_new_protocol_and_legacy_report_shape_stays_exact() {
+    let mut new = partition_request("hello world", 0, 5);
+    new.format = PROTOCOL.into();
+    assert!(matches!(analyze(new), Err(EncodingError::InvalidInput)));
+    let mut old = request(vec![Probe::Text {
+        text: "hello world".into(),
+    }]);
+    old.format = PARTITION_PROTOCOL.into();
+    assert!(matches!(analyze(old), Err(EncodingError::InvalidInput)));
+    let legacy = serde_json::to_value(
+        analyze(request(vec![Probe::Text {
+            text: "hello world".into(),
+        }]))
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(legacy["format"], "brassclaw-model-encoding/1");
+    assert_eq!(legacy["probes"][0].as_object().unwrap().len(), 4);
+    assert!(legacy["probes"][0].get("partition").is_none());
+    assert!(parse_probes(r#"[{"kind":"partitioned_text","text":"hello","prefix_start":0,"prefix_end":5,"claim":"semantic"}]"#).is_err());
+}
+
+#[test]
+fn actual_bpe_boundary_merge_is_not_independent_substring_counting() {
+    let model = tokenizers::models::bpe::BPE::builder()
+        .vocab_and_merges(
+            [
+                ("a".to_owned(), 0),
+                ("b".to_owned(), 1),
+                ("ab".to_owned(), 2),
+            ],
+            vec![("a".to_owned(), "b".to_owned())],
+        )
+        .build()
+        .unwrap();
+    let tokenizer = Tokenizer::new(model);
+    assert_eq!(tokenizer.encode("a", false).unwrap().len(), 1);
+    assert_eq!(tokenizer.encode("b", false).unwrap().len(), 1);
+    assert_eq!(tokenizer.encode("ab", false).unwrap().get_ids(), &[2]);
+    let mut request = partition_request("ab", 0, 1);
+    request.assets.tokenizer_json = tokenizer.to_string(false).unwrap();
+    assert!(matches!(
+        analyze(request),
+        Err(EncodingError::PartitionAlignment)
+    ));
+}
+#[test]
+fn unmappable_offsets_fail_closed_but_disabled_prefix_counts_all_ids() {
+    for offsets in [(0, 0), (4, 3), (0, 6)] {
+        let encoding = tokenizers::Encoding::from_tokens(
+            vec![tokenizers::Token {
+                id: 7,
+                value: "opaque".into(),
+                offsets,
+            }],
+            0,
+        );
+        assert!(matches!(
+            partition_tokens("hello", 0, 5, &encoding),
+            Err(EncodingError::PartitionAlignment)
+        ));
+        let disabled = partition_tokens("hello", 0, 0, &encoding).unwrap();
+        assert_eq!(disabled.prefix_tokens, 0);
+        assert_eq!(disabled.prompt_tokens, 1);
+        assert_eq!(disabled.prompt_token_ids_sha256, ids_checksum(&[7]));
+    }
+}
+
+fn leading_request(context: &str, prefix: &str) -> Request {
+    let probes = vec![Probe::LeadingPrefixChat {
+        context_json: context.into(),
+        leading_prefix: prefix.into(),
+    }];
+    Request {
+        format: request_protocol(&probes).into(),
+        assets: Assets {
+            tokenizer_json: tokenizer(),
+            tokenizer_config_json: "{}".into(),
+            chat_template: "{{ messages[0].content }}".into(),
+        },
+        probes,
+    }
+}
+#[test]
+fn leading_chat_binds_actual_full_render_context_and_partition() {
+    let context = r#"{"messages":[{"role":"system","content":"hello world"}]}"#;
+    let report = analyze(leading_request(context, "hello")).unwrap();
+    let probe = &report.probes[0];
+    let partition = probe.partition.as_ref().unwrap();
+    assert_eq!(report.format, "brassclaw-model-encoding/2");
+    assert_eq!(probe.rendered_sha256, checksum(b"hello world"));
+    assert_eq!(partition.prefix_start, 0);
+    assert_eq!(partition.prefix_end, 5);
+    assert_eq!(partition.prefix_tokens, 1);
+    assert_eq!(partition.prompt_tokens, 1);
+    assert_eq!(
+        partition.qualification,
+        "verified-leading-render-bytes-only"
+    );
+    assert_eq!(
+        partition.render_context_sha256.as_deref(),
+        Some(checksum(context.as_bytes()).as_str())
+    );
+    let unicode = r#"{"messages":[{"role":"system","content":"ü world"}]}"#;
+    assert_eq!(
+        analyze(leading_request(unicode, "ü")).unwrap().probes[0]
+            .partition
+            .as_ref()
+            .unwrap()
+            .prefix_end,
+        2
+    );
+    let disabled = analyze(leading_request(unicode, "")).unwrap();
+    assert_eq!(
+        disabled.probes[0].partition.as_ref().unwrap().prefix_tokens,
+        0
+    );
+    assert_eq!(
+        disabled.probes[0].partition.as_ref().unwrap().prompt_tokens,
+        2
+    );
+}
+#[test]
+fn leading_chat_never_searches_repeated_later_text_or_accepts_boundary_merges() {
+    let context = r#"{"messages":[{"role":"system","content":"hello world hello"}]}"#;
+    assert!(matches!(
+        analyze(leading_request(context, "world")),
+        Err(EncodingError::LeadingPrefixMismatch)
+    ));
+    assert!(matches!(
+        analyze(leading_request(context, "hell")),
+        Err(EncodingError::PartitionAlignment)
+    ));
+    let report = analyze(leading_request(context, "hello")).unwrap();
+    let partition = report.probes[0].partition.as_ref().unwrap();
+    assert_eq!(partition.prefix_tokens, 1);
+    assert_eq!(partition.prompt_tokens, 2);
+    assert_eq!(partition.prefix_token_ids_sha256, ids_checksum(&[1]));
+    assert_eq!(partition.prompt_token_ids_sha256, ids_checksum(&[2, 1]));
+    assert!(matches!(
+        analyze(leading_request("{bad}", "hello")),
+        Err(EncodingError::InvalidInput)
+    ));
+    let mut old = leading_request(context, "hello");
+    old.format = PROTOCOL.into();
+    assert!(matches!(analyze(old), Err(EncodingError::InvalidInput)));
+}

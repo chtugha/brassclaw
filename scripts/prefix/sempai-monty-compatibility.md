@@ -59,7 +59,9 @@ binding, retained implementation identity, compatibility nor global permission.
 
 Read the pinned language, builtin and module limitations before emitting code.
 Use small data-oriented functions, exact type/presence checks, finite containers,
-explicit returns and final result assignment. Do not assume all stdlib packages or
+explicit returns. Only standalone invocation bodies capture a module-level result;
+preload definitions remain effect-free until their selected caller invokes them.
+Do not assume all stdlib packages or
 all methods of an available module exist. Third-party packages are unavailable in
 the sandbox. Host dependencies installed for the compiler are not sandbox imports.
 
@@ -94,7 +96,10 @@ current global Tool policy is checked independently before every actual dispatch
 
 Cross-host data is not ordinary shared Python memory. Containers can cross as
 copies; unsupported/cyclic/deep values can have lossy upstream conversions. Emit
-the supported finite typed data boundary only; validate actual converted results.
+the supported finite typed data boundary only; reject unsupported raw values before
+lossy stringification and validate converted results. A genuine string containing
+a repr/depth-limit marker or Python source remains string data when its declared
+schema and transport grammar allow it; do not blacklist the string's contents.
 Never depend on object identity or mutation propagating across host calls. Rust
 transport limits can be stricter than upstream Python/JS limits. Resolve the
 selected adapter's acknowledged frame/value/shape limits; the private paths
@@ -157,7 +162,9 @@ Tool calls into preload to satisfy it. Conversely, a standalone called-helper dr
 is incomplete when it only defines a function without invoking it. Select the
 validator and executable shape from the actual trusted artifact/runner contract.
 
-Each real Skill has a canonical execution Recipe or variant with a matching command.
+A complete Skill needs no dedicated Recipe or matching command. Only intended MCP
+exposure requires a separately qualified MCP-call Recipe/variant. Test and consuming
+workflows remain separate from Skill definition and MCP publication.
 MCP tools/list supplies the exact command sentence, variable types/positions,
 escaping and examples. MCP accepts the completed listed command, creates a normal
 chat and sends that command as a user message. Ordinary chat ingress, matching and

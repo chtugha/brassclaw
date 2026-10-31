@@ -537,6 +537,7 @@ mod tests {
             subagent_depth: 0,
             spawn_tree_root_run_id: None,
             claimed_child_reservation_released: None,
+            native_auth_wait: None,
         }
     }
 

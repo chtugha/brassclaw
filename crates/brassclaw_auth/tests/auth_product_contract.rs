@@ -14,3 +14,6 @@ mod oauth_helpers_contract;
 mod refresh_contract;
 #[path = "auth_product_contract/serde_redaction_contract.rs"]
 mod serde_redaction_contract;
+
+#[path = "auth_product_contract/requirement_contract.rs"]
+mod requirement_contract;

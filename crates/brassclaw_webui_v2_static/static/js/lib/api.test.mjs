@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { deleteThread, listAutomations } from "./api.js";
+import { deleteThread, listAutomations, requestManualTokenSetup, submitManualTokenSecret, continueManualToken, submitManualToken } from "./api.js";
 
 test("listAutomations reads through the v2 automations route", async () => {
   const calls = [];
@@ -95,4 +95,65 @@ test("deleteThread rejects before fetch when thread id is missing", async () => 
   await assert.rejects(deleteThread(), /threadId is required/);
 
   assert.equal(fetchCalled, false);
+});
+
+test("manual setup/raw/reference use the same explicit original and keep continuation token-free", async () => {
+  const calls = [];
+  globalThis.sessionStorage = { getItem: () => "operator-token" };
+  globalThis.fetch = async (path, options) => {
+    calls.push({ path, options, body: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ acknowledged: true }), {
+      status: 200, headers: { "content-type": "application/json" },
+    });
+  };
+  const original = {
+    identity: { interaction_id: "10000000-0000-4000-8000-000000000001", flow_id: "20000000-0000-4000-8000-000000000002" },
+    invocationId: "30000000-0000-4000-8000-000000000003", threadId: "original-thread",
+  };
+  await requestManualTokenSetup({ ...original, provider: "test", accountLabel: "Test account", runId: "run", gateRef: "gate" });
+  await submitManualTokenSecret({ ...original, token: "  private raw ü  " });
+  await continueManualToken({ ...original, token: "must never be transmitted by reference" });
+  assert.deepEqual(calls.map(call => call.path), [
+    "/api/reborn/product-auth/manual-token/setup",
+    "/api/reborn/product-auth/manual-token/secret-submit",
+    "/api/reborn/product-auth/manual-token/continue",
+  ]);
+  for (const call of calls) {
+    assert.deepEqual(call.body.identity, original.identity);
+    assert.equal(call.body.invocation_id, original.invocationId);
+    assert.equal(call.body.thread_id, original.threadId);
+    assert.equal(call.options.headers.get("Authorization"), "Bearer operator-token");
+    assert.equal(call.options.credentials, "same-origin");
+  }
+  assert.equal(calls[1].body.token, "  private raw ü  ");
+  assert.equal(Object.hasOwn(calls[0].body, "token"), false);
+  assert.equal(Object.hasOwn(calls[2].body, "token"), false);
+});
+
+test("every manual transport rejects a missing original before fetch", async () => {
+  let calls = 0;
+  globalThis.fetch = async () => { calls += 1; throw new Error("unexpected fetch"); };
+  for (const port of [requestManualTokenSetup, submitManualTokenSecret, continueManualToken, submitManualToken]) {
+    await assert.rejects(async () => port({ threadId: "thread", token: "private" }), /identity is required/);
+  }
+  assert.equal(calls, 0);
+});
+
+test("original setup-only transport preserves optional thread and absent continuation", async () => {
+  let body;
+  globalThis.sessionStorage = { getItem: () => "operator-token" };
+  globalThis.fetch = async (_path, options) => {
+    body = JSON.parse(options.body);
+    return new Response(JSON.stringify({ acknowledged: true }), {
+      status: 200, headers: { "content-type": "application/json" },
+    });
+  };
+  await requestManualTokenSetup({
+    identity: { interaction_id: "10000000-0000-4000-8000-000000000001", flow_id: "20000000-0000-4000-8000-000000000002" },
+    invocationId: "30000000-0000-4000-8000-000000000003", provider: "test", accountLabel: "Settings setup",
+  });
+  assert.equal(Object.hasOwn(body, "thread_id"), false);
+  assert.equal(Object.hasOwn(body, "run_id"), false);
+  assert.equal(Object.hasOwn(body, "gate_ref"), false);
+  assert.equal(Object.hasOwn(body, "token"), false);
 });

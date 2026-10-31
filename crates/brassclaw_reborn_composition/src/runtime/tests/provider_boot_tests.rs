@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "task_embedding_tests.rs"]
+mod task_embedding_tests;
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_database_budget_configuration_is_atomic_and_strict() {
     use crate::db_config::{self, ConfigError, ConfigWriteContext};
@@ -265,6 +268,7 @@ async fn native_database_budget_configuration_is_atomic_and_strict() {
     );
 }
 
+#[cfg(feature = "migrate-from-libsql")]
 #[tokio::test]
 async fn native_legacy_budget_import_keeps_coupled_configuration_atomic() {
     let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
@@ -577,6 +581,48 @@ async fn native_pg_secret_owner_keys_and_authenticated_legacy_upgrade() {
             value
         );
     }
+    let mut snapshot_client = rig.pool.get().await.unwrap();
+    let snapshot = tokio_postgres::Client::build_transaction(&mut snapshot_client)
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    let before_rotation = store
+        .inspect_record_reference_in_transaction(&snapshot, &owner, &handle)
+        .await
+        .unwrap()
+        .unwrap();
+    // Re-encrypt the same value: exact encrypted-record identity changes, and
+    // a previously captured snapshot must continue observing its old identity.
+    store
+        .put(owner.clone(), handle.clone(), "owner-a-value".into())
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .inspect_record_reference_in_transaction(&snapshot, &owner, &handle)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some(before_rotation.as_str())
+    );
+    snapshot.commit().await.unwrap();
+    let snapshot = tokio_postgres::Client::build_transaction(&mut snapshot_client)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    assert_ne!(
+        store
+            .inspect_record_reference_in_transaction(&snapshot, &owner, &handle)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some(before_rotation.as_str())
+    );
+    snapshot.commit().await.unwrap();
+    drop(snapshot_client);
     // Material follows its owner across invocations; leases do not.
     let lease = store.lease_once(&other_invocation, &handle).await.unwrap();
     assert_eq!(
@@ -658,6 +704,53 @@ async fn native_pg_secret_owner_keys_and_authenticated_legacy_upgrade() {
     let encoded = base64::engine::general_purpose::STANDARD
         .encode([salt.as_slice(), ciphertext.as_slice()].concat());
     client.execute("INSERT INTO brassclaw_secrets (tenant_id, scope, name, ciphertext, key_version) VALUES ('physical-owner-a', 'secret://legacy-owner-key', 'legacy-owner-key', $1, 1)", &[&encoded]).await.unwrap();
+    // Read-only metadata authenticates old bytes but performs no migration or
+    // lease mutation. It sees the same reference across this exact snapshot.
+    let mut read_client = rig.pool.get().await.unwrap();
+    let snapshot = tokio_postgres::Client::build_transaction(&mut read_client)
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    let legacy_reference = store
+        .inspect_record_reference_in_transaction(&snapshot, &owner, &legacy_handle)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(legacy_reference.len(), 64);
+    assert!(
+        store
+            .inspect_record_reference_in_transaction(&snapshot, &other_user, &legacy_handle)
+            .await
+            .is_err()
+    );
+    assert!(
+        copied
+            .inspect_record_reference_in_transaction(&snapshot, &owner, &handle)
+            .await
+            .is_err()
+    );
+    assert!(
+        wrong_key
+            .inspect_record_reference_in_transaction(&snapshot, &owner, &handle)
+            .await
+            .is_err()
+    );
+    assert!(
+        store
+            .inspect_record_reference_in_transaction(
+                &snapshot,
+                &owner,
+                &SecretHandle::new("missing-read-only-key").unwrap()
+            )
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(snapshot.query_one("SELECT ciphertext FROM brassclaw_secrets WHERE tenant_id='physical-owner-a' AND scope='secret://legacy-owner-key'", &[]).await.unwrap().get::<_, String>(0), encoded);
+    snapshot.commit().await.unwrap();
+    drop(read_client);
     // Legacy row names did not identify the user. Wrong-owner access may not
     // delete it or upgrade it under a new owner; the error remains explicit.
     assert!(store.metadata(&other_user, &legacy_handle).await.is_err());
@@ -686,6 +779,33 @@ async fn native_pg_secret_owner_keys_and_authenticated_legacy_upgrade() {
             .is_some()
     );
     assert_eq!(client.query_one("SELECT count(*) FROM brassclaw_secrets WHERE tenant_id = 'physical-owner-a' AND scope = 'secret://legacy-owner-key'", &[]).await.unwrap().get::<_, i64>(0), 0);
+    let mut read_client = rig.pool.get().await.unwrap();
+    let snapshot = tokio_postgres::Client::build_transaction(&mut read_client)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    let migrated_reference = store
+        .inspect_record_reference_in_transaction(&snapshot, &owner, &legacy_handle)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(
+        migrated_reference, legacy_reference,
+        "migration preserves a distinct exact-byte reference"
+    );
+    snapshot.commit().await.unwrap();
+    let snapshot = read_client.transaction().await.unwrap();
+    assert_eq!(
+        store
+            .authenticated_record_reference_in_transaction(&snapshot, &owner, &legacy_handle)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some(migrated_reference.as_str())
+    );
+    snapshot.commit().await.unwrap();
+    drop(read_client);
     let legacy_lease = brassclaw_secrets::SecretLeaseId::new();
     let payload =
         serde_json::to_vec(&serde_json::json!({"handle":legacy_handle,"scope":owner})).unwrap();
@@ -760,19 +880,19 @@ async fn native_database_provider_retains_selected_prompt_cache_policy() {
     for retention in ["long", "short", "none"] {
         definition.cache_retention = Some(retention.into());
         repo.upsert(definition.clone()).await.unwrap();
-        let (selected, retained_definition) =
-            crate::llm_catalog::resolve_provider_selection_db(&rig.pool, tenant, &keys)
-                .await
-                .unwrap()
-                .unwrap();
-        let provider = selected.provider.unwrap();
+        let selected = crate::llm_catalog::resolve_provider_selection_db(&rig.pool, tenant, &keys)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(selected.revision.model, "selected-database-model");
+        let provider = selected.config.provider.unwrap();
         assert_eq!(
             provider.cache_retention,
             retention.parse::<brassclaw_llm::CacheRetention>().unwrap()
         );
         assert_eq!(provider.model, "selected-database-model");
         assert_eq!(
-            retained_definition.cache_retention.as_deref(),
+            selected.definition.cache_retention.as_deref(),
             Some(retention)
         );
     }
@@ -1154,9 +1274,20 @@ async fn native_global_monty_live_model_selection_retains_inflight_exchange() {
         max_total: RUNTIME_SEND_TIMEOUT,
     });
     let runtime = Arc::new(Box::pin(build_reborn_runtime(input)).await.unwrap());
+    let configuration = runtime
+        .webui_llm_configuration()
+        .expect("shared provider configuration");
+    let callback = runtime
+        .nearai_login_callback_mount()
+        .expect("configured callback mount");
+    assert!(!callback.descriptors.is_empty());
     let bundle = crate::build_webui_services(runtime.clone(), None)
         .await
         .unwrap();
+    assert!(
+        Arc::ptr_eq(&configuration, &runtime.webui_llm_configuration().unwrap()),
+        "callback and WebUI retain the same publication owner"
+    );
     let caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
         brassclaw_host_api::TenantId::new(tenant).unwrap(),
         brassclaw_host_api::UserId::new("native-live-owner").unwrap(),
@@ -1164,16 +1295,20 @@ async fn native_global_monty_live_model_selection_retains_inflight_exchange() {
         None,
     );
     let credentials = runtime.services().llm_key_store();
+    let observed = bundle.api.get_llm_config(caller.clone()).await.unwrap();
     let request = |id: &str, revision: u64, name: &str, key: &str, set_active: bool| {
-        serde_json::from_value::<brassclaw_product_workflow::UpsertLlmProviderRequest>(
-            serde_json::json!({
-                "id":id, "expected_revision":revision, "name":name, "adapter":"open_ai_completions",
-                "base_url":format!("http://{address}/{}/v1",if id=="nearai" {"a"} else {"b"}),
-                "default_model":if id=="nearai" {"boot-model"} else {"provider-b-default"},
-                "api_key":key,"set_active":set_active,"model":"must-not-be-published-on-failure"
-            }),
-        )
-        .unwrap()
+        let mut payload = serde_json::json!({
+            "mutation_id":uuid::Uuid::new_v4(), "id":id, "expected_revision":revision, "name":name, "adapter":"open_ai_completions",
+            "base_url":format!("http://{address}/{}/v1",if id=="nearai" {"a"} else {"b"}),
+            "default_model":if id=="nearai" {"boot-model"} else {"provider-b-default"},
+            "api_key":key,"set_active":set_active,"model":"must-not-be-published-on-failure"
+        });
+        if set_active {
+            payload["expected_selection_ref"] =
+                serde_json::json!(observed.role_selection_refs["kohai"]);
+        }
+        serde_json::from_value::<brassclaw_product_workflow::UpsertLlmProviderRequest>(payload)
+            .unwrap()
     };
     let before = repo.get_revision("nearai", false).await.unwrap().unwrap();
     let edited = bundle
@@ -1315,6 +1450,16 @@ async fn native_global_monty_live_model_selection_retains_inflight_exchange() {
                 None,
             ),
             brassclaw_product_workflow::SetActiveLlmRequest {
+                mutation_id: uuid::Uuid::new_v4(),
+                expected_revision: Some(
+                    edited
+                        .providers
+                        .iter()
+                        .find(|row| row.id == "openai_codex")
+                        .unwrap()
+                        .revision,
+                ),
+                expected_selection_ref: Some(edited.role_selection_refs["kohai"].clone()),
                 provider_id: "openai_codex".into(),
                 model: Some("selected-live-model".into()),
                 role: Some(brassclaw_product_workflow::ProviderRole::Kohai),
@@ -1340,14 +1485,24 @@ async fn native_global_monty_live_model_selection_retains_inflight_exchange() {
     assert!(
         bundle
             .api
-            .delete_llm_provider(caller.clone(), "openai_codex".into(), b_revision + 1)
+            .delete_llm_provider(
+                caller.clone(),
+                "openai_codex".into(),
+                b_revision + 1,
+                uuid::Uuid::new_v4()
+            )
             .await
             .is_err()
     );
     assert!(repo.get("openai_codex").await.unwrap().is_some());
     let removed = bundle
         .api
-        .delete_llm_provider(caller.clone(), "openai_codex".into(), b_revision)
+        .delete_llm_provider(
+            caller.clone(),
+            "openai_codex".into(),
+            b_revision,
+            uuid::Uuid::new_v4(),
+        )
         .await
         .unwrap();
     assert!(removed.active.is_none());
@@ -1414,6 +1569,16 @@ async fn native_global_monty_live_model_selection_retains_inflight_exchange() {
         .set_active_llm(
             caller.clone(),
             brassclaw_product_workflow::SetActiveLlmRequest {
+                mutation_id: uuid::Uuid::new_v4(),
+                expected_revision: Some(
+                    restored
+                        .providers
+                        .iter()
+                        .find(|row| row.id == "openai_codex")
+                        .unwrap()
+                        .revision,
+                ),
+                expected_selection_ref: Some(restored.role_selection_refs["kohai"].clone()),
                 provider_id: "openai_codex".into(),
                 model: Some("selected-live-model".into()),
                 role: None,
@@ -1428,8 +1593,23 @@ async fn native_global_monty_live_model_selection_retains_inflight_exchange() {
         )
         .await
         .unwrap();
+    crate::db_config::save_config_changes(
+        &rig.pool,
+        tenant,
+        &[("llm.default.model", Some("external-writer-model"))],
+        crate::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+    let fourth = runtime
+        .send_user_message(
+            &conversation,
+            "ordinary opaque probe after external model edit without notification",
+        )
+        .await
+        .unwrap();
     let mut outcomes = Vec::new();
-    for reply in [&first, &second, &third] {
+    for reply in [&first, &second, &third, &fourth] {
         let row = rig.pool.get().await.unwrap().query_one("SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",&[&reply.run_id.as_uuid()]).await.unwrap();
         outcomes.push(row.get::<_, serde_json::Value>(0));
     }
@@ -1453,6 +1633,11 @@ async fn native_global_monty_live_model_selection_retains_inflight_exchange() {
     );
     assert_eq!(third.status, TurnStatus::Completed);
     assert_eq!(third.text, second.text);
+    assert_eq!(fourth.status, TurnStatus::Completed);
+    assert_eq!(
+        fourth.text.as_deref(),
+        Some("selected external-writer-model at /b/v1/chat/completions")
+    );
     assert_eq!(
         *state.observations.lock().await,
         vec![
@@ -1464,6 +1649,10 @@ async fn native_global_monty_live_model_selection_retains_inflight_exchange() {
             (
                 "/b/v1/chat/completions".into(),
                 "selected-live-model".into()
+            ),
+            (
+                "/b/v1/chat/completions".into(),
+                "external-writer-model".into()
             )
         ]
     );
@@ -1476,6 +1665,10 @@ async fn native_global_monty_live_model_selection_retains_inflight_exchange() {
         outcomes[0]["execution"]["root"]["vm_id"],
         outcomes[2]["execution"]["root"]["vm_id"]
     );
+    assert_eq!(
+        outcomes[0]["execution"]["root"]["vm_id"],
+        outcomes[3]["execution"]["root"]["vm_id"]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1485,6 +1678,9 @@ async fn native_llm_response_cache_zero_capacity_and_completion_ttl() {
     struct EndpointState {
         calls: std::sync::atomic::AtomicUsize,
         delay_millis: std::sync::atomic::AtomicU64,
+        hold_next: std::sync::atomic::AtomicBool,
+        started: tokio::sync::Notify,
+        release: tokio::sync::Notify,
     }
     async fn endpoint(
         State(state): State<Arc<EndpointState>>,
@@ -1493,6 +1689,13 @@ async fn native_llm_response_cache_zero_capacity_and_completion_ttl() {
         state
             .calls
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if state
+            .hold_next
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            state.started.notify_one();
+            state.release.notified().await;
+        }
         tokio::time::sleep(Duration::from_millis(
             state.delay_millis.load(std::sync::atomic::Ordering::SeqCst),
         ))
@@ -1504,6 +1707,9 @@ async fn native_llm_response_cache_zero_capacity_and_completion_ttl() {
     let state = Arc::new(EndpointState {
         calls: std::sync::atomic::AtomicUsize::new(0),
         delay_millis: std::sync::atomic::AtomicU64::new(0),
+        hold_next: std::sync::atomic::AtomicBool::new(false),
+        started: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
     });
     let listener = native_http::bind_loopback().await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -1598,7 +1804,7 @@ async fn native_llm_response_cache_zero_capacity_and_completion_ttl() {
         .delay_millis
         .store(0, std::sync::atomic::Ordering::SeqCst);
     let isolated = CachedProvider::new(
-        raw,
+        raw.clone(),
         ResponseCacheConfig {
             ttl: Duration::from_secs(60),
             max_entries: 100,
@@ -1644,6 +1850,70 @@ async fn native_llm_response_cache_zero_capacity_and_completion_ttl() {
         2,
         "map insertion order does not alter a request's identity"
     );
+    let late = Arc::new(CachedProvider::new(
+        raw,
+        ResponseCacheConfig {
+            ttl: Duration::from_secs(60),
+            max_entries: 2,
+        },
+    ));
+    state
+        .hold_next
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let late_call = {
+        let late = late.clone();
+        let pending_request = request();
+        tokio::spawn(async move { late.complete(pending_request).await })
+    };
+    tokio::time::timeout(Duration::from_secs(5), state.started.notified())
+        .await
+        .unwrap();
+    late.update_policy(brassclaw_llm::ResponseCachePolicy {
+        enabled: false,
+        max_entries: 2,
+        ttl_secs: 60,
+    })
+    .unwrap();
+    late.update_policy(brassclaw_llm::ResponseCachePolicy {
+        enabled: true,
+        max_entries: 2,
+        ttl_secs: 60,
+    })
+    .unwrap();
+    state.release.notify_one();
+    assert_eq!(
+        late_call
+            .await
+            .unwrap()
+            .unwrap()
+            .usage
+            .unwrap()
+            .input_tokens,
+        1
+    );
+    assert!(
+        late.is_empty(),
+        "an old fill cannot survive disable and re-enable"
+    );
+    assert_eq!(
+        late.complete(request())
+            .await
+            .unwrap()
+            .usage
+            .unwrap()
+            .input_tokens,
+        1
+    );
+    assert_eq!(
+        late.complete(request())
+            .await
+            .unwrap()
+            .usage
+            .unwrap()
+            .input_tokens,
+        0
+    );
+    assert_eq!(state.calls.load(std::sync::atomic::Ordering::SeqCst), 12);
     shutdown.cancel();
     server.await.unwrap();
 }
@@ -1918,6 +2188,32 @@ async fn native_pg_credential_sessions_fence_last_use_and_reissuance() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_startup_restores_sempai_before_ingress_without_webui() {
     use crate::db_config::{ConfigWriteContext, save_config_changes};
+    use axum::{Json, Router, extract::State, routing::post};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let submitted = Arc::new(AtomicUsize::new(0));
+    async fn endpoint(
+        State(submitted): State<Arc<AtomicUsize>>,
+        Json(body): Json<serde_json::Value>,
+    ) -> Json<serde_json::Value> {
+        submitted.fetch_add(1, Ordering::SeqCst);
+        Json(
+            serde_json::json!({"id":"unexpected-startup-dispatch", "object":"chat.completion", "created":1, "model":body["model"],
+            "choices":[{"index":0,"message":{"role":"assistant","content":"unexpected dispatch"},"finish_reason":"stop"}],
+            "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}),
+        )
+    }
+    let listener = native_http::bind_loopback().await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let stop = tokio_util::sync::CancellationToken::new();
+    let server_stop = stop.clone();
+    let app = Router::new()
+        .route("/v1/chat/completions", post(endpoint))
+        .with_state(submitted.clone());
+    let server = tokio::spawn(async move {
+        native_http::serve(listener, app, server_stop.cancelled_owned())
+            .await
+            .unwrap();
+    });
     let home = tempfile::tempdir().unwrap();
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _guard = rig.lock_db().await;
@@ -1927,7 +2223,7 @@ async fn native_startup_restores_sempai_before_ingress_without_webui() {
     let repo = crate::PgProviderRepo::new(rig.pool.as_ref().clone(), tenant);
     let definition: brassclaw_llm::ProviderDefinition = serde_json::from_value(serde_json::json!({
         "id": "installed-local-provider", "aliases": [], "protocol": "open_ai_completions",
-        "default_base_url": "http://127.0.0.1:8000/v1", "base_url_env": null,
+        "default_base_url": format!("http://{address}/v1"), "base_url_env": null,
         "base_url_required": true, "api_key_env": null, "api_key_required": false,
         "model_env": "BRASSCLAW_UNUSED_NATIVE_BOOT_MODEL", "default_model": "provider-default",
         "description": "Native stored Sempai startup test", "extra_headers_env": null,
@@ -1959,6 +2255,10 @@ async fn native_startup_restores_sempai_before_ingress_without_webui() {
             agent_id: "native-sempai-agent".into(),
             source_binding_id: "native-sempai-source".into(),
             reply_target_binding_id: "native-sempai-reply".into(),
+        })
+        .with_poll_settings(PollSettings {
+            interval: Duration::from_millis(10),
+            max_total: RUNTIME_SEND_TIMEOUT,
         })
     };
     for boot in 0..2 {
@@ -2004,7 +2304,14 @@ async fn native_startup_restores_sempai_before_ingress_without_webui() {
                 .unwrap();
             assert_eq!(primary.active_model_name(), "selected-primary-model");
             assert!(Arc::ptr_eq(&admitted_sempai, &sempai.pinned_provider().0));
-            bundle
+            let operator = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
+                brassclaw_host_api::TenantId::new(tenant).unwrap(),
+                brassclaw_host_api::UserId::new("native-sempai-owner").unwrap(),
+                None,
+                None,
+            );
+            let observed = bundle.api.get_llm_config(operator.clone()).await.unwrap();
+            let selection = bundle
                 .api
                 .set_active_llm(
                     brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
@@ -2014,6 +2321,16 @@ async fn native_startup_restores_sempai_before_ingress_without_webui() {
                         None,
                     ),
                     brassclaw_product_workflow::SetActiveLlmRequest {
+                        mutation_id: uuid::Uuid::new_v4(),
+                        expected_revision: Some(
+                            observed
+                                .providers
+                                .iter()
+                                .find(|row| row.id == "installed-local-provider")
+                                .unwrap()
+                                .revision,
+                        ),
+                        expected_selection_ref: Some(observed.role_selection_refs["kohai"].clone()),
                         provider_id: "installed-local-provider".into(),
                         model: Some("webui-live-primary-model".into()),
                         role: Some(brassclaw_product_workflow::ProviderRole::Kohai),
@@ -2033,6 +2350,18 @@ async fn native_startup_restores_sempai_before_ingress_without_webui() {
                         None,
                     ),
                     brassclaw_product_workflow::SetActiveLlmRequest {
+                        mutation_id: uuid::Uuid::new_v4(),
+                        expected_revision: Some(
+                            selection
+                                .providers
+                                .iter()
+                                .find(|row| row.id == "installed-local-provider")
+                                .unwrap()
+                                .revision,
+                        ),
+                        expected_selection_ref: Some(
+                            selection.role_selection_refs["kohai"].clone(),
+                        ),
                         provider_id: "installed-local-provider".into(),
                         model: Some("selected-primary-model".into()),
                         role: Some(brassclaw_product_workflow::ProviderRole::Kohai),
@@ -2070,6 +2399,203 @@ async fn native_startup_restores_sempai_before_ingress_without_webui() {
             .iter()
             .any(|(key, value)| key == "llm.default.model" && value == "selected-primary-model")
     );
+    let operator = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
+        brassclaw_host_api::TenantId::new(tenant).unwrap(),
+        brassclaw_host_api::UserId::new("native-sempai-owner").unwrap(),
+        None,
+        None,
+    );
+    // A malformed optional role is still configured. It must not prevent the
+    // real global service/control plane from starting or silently bypass Sempai.
+    for (role, key, model) in [
+        (
+            brassclaw_llm::ProviderRole::Sempai,
+            "llm.sempai.provider_id",
+            "selected-sempai-model",
+        ),
+        (
+            brassclaw_llm::ProviderRole::Kohai,
+            "llm.default.provider_id",
+            "selected-primary-model",
+        ),
+    ] {
+        save_config_changes(
+            &rig.pool,
+            tenant,
+            &[(key, Some("missing-optional-provider"))],
+            ConfigWriteContext::Operator,
+        )
+        .await
+        .unwrap();
+        let runtime = Arc::new(build_reborn_runtime(input()).await.unwrap());
+        assert!(runtime.services().readiness.workers.turn_runner);
+        let root = runtime.global_monty_owner.client().root_identity();
+        let bundle = crate::build_webui_services(runtime.clone(), None)
+            .await
+            .unwrap();
+        let observed = bundle.api.get_llm_config(operator.clone()).await.unwrap();
+        let role_name = if role == brassclaw_llm::ProviderRole::Kohai {
+            "kohai"
+        } else {
+            "sempai"
+        };
+        let selected = if role_name == "kohai" {
+            &observed.kohai_active
+        } else {
+            &observed.sempai_active
+        };
+        assert_eq!(
+            selected.as_ref().unwrap().provider_id,
+            "missing-optional-provider"
+        );
+        assert_eq!(
+            observed.desired_publications[role_name],
+            brassclaw_llm::ProviderPublication::Untracked
+        );
+        let chat = runtime.new_conversation().await.unwrap();
+        let denied = runtime
+            .send_user_message(&chat, "unmatched unavailable startup model usage")
+            .await
+            .unwrap();
+        assert_eq!(denied.status, TurnStatus::Failed);
+        assert!(denied.text.is_none());
+        assert_eq!(
+            submitted.load(Ordering::SeqCst),
+            0,
+            "invalid Sempai must not silently permit primary dispatch"
+        );
+        let repaired = bundle
+            .api
+            .set_active_llm(
+                operator.clone(),
+                brassclaw_product_workflow::SetActiveLlmRequest {
+                    mutation_id: uuid::Uuid::new_v4(),
+                    expected_revision: Some(
+                        observed
+                            .providers
+                            .iter()
+                            .find(|p| p.id == "installed-local-provider")
+                            .unwrap()
+                            .revision,
+                    ),
+                    expected_selection_ref: Some(observed.role_selection_refs[role_name].clone()),
+                    provider_id: "installed-local-provider".into(),
+                    model: Some(model.into()),
+                    role: Some(role),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            repaired.desired_publications[role_name],
+            repaired.runtime_publications[role_name]
+        );
+        assert!(
+            !repaired
+                .runtime_publication_failures
+                .contains_key(role_name)
+        );
+        assert_eq!(runtime.global_monty_owner.client().root_identity(), root);
+        drop(bundle);
+        shutdown_shared_runtime(runtime).await.unwrap();
+    }
+    // Known SDK/credential failures retain exact failed targets. Repair the
+    // original definition or real encrypted store, then acknowledge both roles
+    // through their ordinary WebUI writers without replacing the global VM.
+    let original_definition = repo.get("installed-local-provider").await.unwrap().unwrap();
+    for missing_credential in [false, true] {
+        let mut required = original_definition.clone();
+        if missing_credential {
+            required.api_key_required = true;
+            required.api_key_env = Some("NATIVE_BOOT_CREDENTIAL_METADATA_ONLY".into());
+        } else {
+            // The native Gemini constructor explicitly rejects a stable-v1 URL;
+            // this reaches SDK preparation after valid catalogue resolution.
+            required.protocol = brassclaw_llm::ProviderProtocol::Gemini;
+        }
+        repo.upsert(required).await.unwrap();
+        let runtime = Arc::new(build_reborn_runtime(input()).await.unwrap());
+        let root = runtime.global_monty_owner.client().root_identity();
+        let bundle = crate::build_webui_services(runtime.clone(), None)
+            .await
+            .unwrap();
+        let observed = bundle.api.get_llm_config(operator.clone()).await.unwrap();
+        for role in ["kohai", "sempai"] {
+            assert_eq!(
+                observed.runtime_publication_failures[role],
+                observed.desired_publications[role]
+            );
+            assert_ne!(
+                observed.runtime_publications[role],
+                observed.desired_publications[role]
+            );
+        }
+        let chat = runtime.new_conversation().await.unwrap();
+        let denied = runtime
+            .send_user_message(&chat, "unmatched missing startup credential")
+            .await
+            .unwrap();
+        assert_eq!(denied.status, TurnStatus::Failed);
+        assert!(denied.text.is_none());
+        assert_eq!(submitted.load(Ordering::SeqCst), 0);
+        if missing_credential {
+            runtime
+                .services()
+                .llm_key_store()
+                .put(
+                    "installed-local-provider",
+                    secrecy::SecretString::from("native-boot-repair-key"),
+                )
+                .await
+                .unwrap();
+        } else {
+            repo.upsert(original_definition.clone()).await.unwrap();
+        }
+        for (role, name, model) in [
+            (
+                brassclaw_llm::ProviderRole::Kohai,
+                "kohai",
+                "selected-primary-model",
+            ),
+            (
+                brassclaw_llm::ProviderRole::Sempai,
+                "sempai",
+                "selected-sempai-model",
+            ),
+        ] {
+            let observed = bundle.api.get_llm_config(operator.clone()).await.unwrap();
+            let repaired = bundle
+                .api
+                .set_active_llm(
+                    operator.clone(),
+                    brassclaw_product_workflow::SetActiveLlmRequest {
+                        mutation_id: uuid::Uuid::new_v4(),
+                        expected_revision: Some(
+                            observed
+                                .providers
+                                .iter()
+                                .find(|p| p.id == "installed-local-provider")
+                                .unwrap()
+                                .revision,
+                        ),
+                        expected_selection_ref: Some(observed.role_selection_refs[name].clone()),
+                        provider_id: "installed-local-provider".into(),
+                        model: Some(model.into()),
+                        role: Some(role),
+                    },
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                repaired.desired_publications[name],
+                repaired.runtime_publications[name]
+            );
+            assert!(!repaired.runtime_publication_failures.contains_key(name));
+        }
+        assert_eq!(runtime.global_monty_owner.client().root_identity(), root);
+        drop(bundle);
+        shutdown_shared_runtime(runtime).await.unwrap();
+    }
     assert!(repo.delete("installed-local-provider").await.unwrap());
     let deactivated = build_reborn_runtime(input()).await.unwrap();
     assert_eq!(
@@ -2117,6 +2643,8 @@ async fn native_startup_restores_sempai_before_ingress_without_webui() {
             .is_none()
     );
     runtime.shutdown().await.unwrap();
+    stop.cancel();
+    server.await.unwrap();
 }
 
 /// Real PostgreSQL selection/secret reads and real HTTP requests against a
@@ -2132,6 +2660,7 @@ async fn native_embedding_catalogue_credentials_endpoints_and_errors() {
         response::IntoResponse,
         routing::post,
     };
+    use brassclaw_memory::EmbeddingProviderSource as _;
     type Observation = (String, Option<String>, serde_json::Value);
     type Observations = Arc<tokio::sync::Mutex<Vec<Observation>>>;
     async fn embedding_endpoint(
@@ -2306,7 +2835,7 @@ async fn native_embedding_catalogue_credentials_endpoints_and_errors() {
         let definition = serde_json::from_value(serde_json::json!({
             "id": id, "aliases": [alias], "protocol": protocol,
             "default_base_url": endpoint, "base_url_env": null, "base_url_required": true,
-            "api_key_env": null, "api_key_required": key_required,
+            "api_key_env": if id == "native-openai" { serde_json::json!("PATH") } else { serde_json::Value::Null }, "api_key_required": key_required,
             "model_env": "BRASSCLAW_UNUSED_EMBEDDING_MODEL", "default_model": "provider-default",
             "description": "Native embedding protocol fixture", "extra_headers_env": null,
             "unsupported_params": [], "setup": null, "token_budget": null,
@@ -2328,7 +2857,26 @@ async fn native_embedding_catalogue_credentials_endpoints_and_errors() {
         .unwrap();
         assert!(resolve(missing_storage.path().into()).await.is_err());
         if key_required {
-            assert!(resolve(storage.path().into()).await.is_err());
+            if id == "native-openai" {
+                assert!(
+                    std::env::var_os("PATH").is_some_and(|value| !value.is_empty()),
+                    "native test requires the ordinary nonempty process PATH"
+                );
+            }
+            assert!(
+                resolve(storage.path().into()).await.is_err(),
+                "an ambient value named by compatibility metadata cannot replace the captured encrypted credential"
+            );
+            let source = crate::memory_embedding_source::PgMemoryEmbeddingSource::new(
+                pool.clone(),
+                data_owner.into(),
+                keys.clone(),
+                Arc::new(brassclaw_llm::SessionManager::new(Default::default())),
+            );
+            assert!(
+                source.snapshot().await.is_err(),
+                "the ordinary memory source also rejects ambient credentials"
+            );
             keys.put(
                 id,
                 secrecy::SecretString::from("native-stored-embedding-key"),
@@ -2380,13 +2928,23 @@ async fn native_embedding_catalogue_credentials_endpoints_and_errors() {
             provider.space_id(),
             "cache edits preserve vector compatibility"
         );
+        let before_disabled = observations.lock().await.len();
+        uncached.embed("first input").await.unwrap();
+        uncached.embed("first input").await.unwrap();
+        provider.embed("first input").await.unwrap();
+        assert_eq!(
+            observations.lock().await.len(),
+            before_disabled + 3,
+            "cache-off also reaches an already retained client before its next access"
+        );
         let mut new_revision = repo.get(id).await.unwrap().unwrap();
-        new_revision
+        let contract = new_revision
             .embedding_models
             .0
             .get_mut("native-custom-vector-model")
-            .unwrap()
-            .vector_revision = std::num::NonZeroU32::new(2).unwrap();
+            .unwrap();
+        contract.vector_revision = std::num::NonZeroU32::new(2).unwrap();
+        contract.cache_max_entries = 3;
         repo.upsert(new_revision).await.unwrap();
         let changed = resolve(storage.path().into()).await.unwrap().unwrap();
         assert_ne!(
@@ -2394,16 +2952,15 @@ async fn native_embedding_catalogue_credentials_endpoints_and_errors() {
             provider.space_id(),
             "explicit model revision selects another vector space"
         );
-        let before_disabled = observations.lock().await.len();
-        uncached.embed("first input").await.unwrap();
-        uncached.embed("first input").await.unwrap();
-        assert_eq!(observations.lock().await.len(), before_disabled + 2);
-        provider.embed("first input").await.unwrap();
+        let before_revision_fence = observations.lock().await.len();
+        assert!(provider.embed("first input").await.is_err());
+        assert!(uncached.embed("uncached original revision").await.is_err());
         assert_eq!(
             observations.lock().await.len(),
-            before_disabled + 2,
-            "old captured adapter retains its exact model/cache contract"
+            before_revision_fence,
+            "an incompatible vector successor blocks old cached and uncached dispatches"
         );
+        let provider = changed.clone();
         // No approximate token-to-byte cap may discard eligible input. The
         // actual configured adapter/cache must send every UTF-8 byte unchanged.
         let before = observations.lock().await.len();
@@ -2437,8 +2994,8 @@ async fn native_embedding_catalogue_credentials_endpoints_and_errors() {
             serde_json::json!([rejected])
         );
         // Consume configured transport controls through this exact persisted
-        // provider. Existing captured adapters retain their prior deadline/body
-        // contract; fresh resolutions use the new values without retrying.
+        // provider. Captured adapters cannot bypass a new deadline/body
+        // constraint; fresh resolutions use it without retrying.
         let mut bounded = repo.get(id).await.unwrap().unwrap();
         bounded.request_policy.timeout_secs = 1;
         bounded.request_policy.max_response_bytes = Some(128);
@@ -2464,13 +3021,17 @@ async fn native_embedding_catalogue_credentials_endpoints_and_errors() {
             before_capacity + 1,
             "capacity failure never retries"
         );
-        assert_eq!(
-            uncached
+        let before_old_capacity = observations.lock().await.len();
+        assert!(
+            provider
                 .embed("capacity-fixture:private-input")
                 .await
-                .unwrap(),
-            vec![1.0; 3],
-            "old adapter keeps its unrestricted body contract"
+                .is_err()
+        );
+        assert_eq!(
+            observations.lock().await.len(),
+            before_old_capacity,
+            "old adapters cannot bypass the newly finite body contract"
         );
         let before_delay = observations.lock().await.len();
         let deadline = bounded
@@ -2486,10 +3047,12 @@ async fn native_embedding_catalogue_credentials_endpoints_and_errors() {
             before_delay + 1,
             "timeout never retries"
         );
+        let before_old_deadline = observations.lock().await.len();
+        assert!(provider.embed("delay-fixture:private-input").await.is_err());
         assert_eq!(
-            uncached.embed("delay-fixture:private-input").await.unwrap(),
-            vec![1.0; 3],
-            "old adapter keeps its longer deadline"
+            observations.lock().await.len(),
+            before_old_deadline,
+            "old adapters cannot bypass the tighter deadline"
         );
         let before_redirect = observations.lock().await.len();
         let redirect = bounded
@@ -2518,6 +3081,7 @@ async fn native_embedding_catalogue_credentials_endpoints_and_errors() {
                 .unwrap(),
             vec![1.0; 3]
         );
+        let provider = resolve(storage.path().into()).await.unwrap().unwrap();
         // Actual service failures stay errors, without leaking echoed text,
         // credentials, URLs or issuing another model request.
         for (marker, expected) in [
@@ -2876,7 +3440,7 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
                 .await
                 .unwrap()
                 .unwrap();
-            let request:UpsertLlmProviderRequest=serde_json::from_value(serde_json::json!({"id":"native-cache-policy","adapter":"open_ai_completions","expected_revision":before.revision,"response_cache":policy})).unwrap();
+            let request:UpsertLlmProviderRequest=serde_json::from_value(serde_json::json!({"mutation_id":uuid::Uuid::new_v4(),"id":"native-cache-policy","adapter":"open_ai_completions","expected_revision":before.revision,"response_cache":policy})).unwrap();
             let snapshot = api.upsert_llm_provider(caller, request).await?;
             let selected = snapshot
                 .providers
@@ -2941,7 +3505,7 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
                 "the protocol fixture supplies a complete meter; cache hits have known zero usage"
             )
             .input_tokens,
-        0
+        1
     );
     assert_eq!(
         retained_sempai
@@ -2954,12 +3518,12 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
                 "the protocol fixture supplies a complete meter; cache hits have known zero usage"
             )
             .input_tokens,
-        0
+        1
     );
     assert_eq!(
         state.calls.load(std::sync::atomic::Ordering::SeqCst),
-        9,
-        "old retained selections remain intact"
+        11,
+        "retained targets consume current response-cache policy"
     );
     publish(ResponseCachePolicy {
         enabled: false,
@@ -2971,7 +3535,7 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
     for _ in 0..2 {
         primary.complete(request("disabled cache")).await.unwrap();
     }
-    assert_eq!(state.calls.load(std::sync::atomic::Ordering::SeqCst), 11);
+    assert_eq!(state.calls.load(std::sync::atomic::Ordering::SeqCst), 13);
     publish(ResponseCachePolicy {
         enabled: true,
         max_entries: 0,
@@ -2982,7 +3546,7 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
     for _ in 0..2 {
         primary.complete(request("zero capacity")).await.unwrap();
     }
-    assert_eq!(state.calls.load(std::sync::atomic::Ordering::SeqCst), 13);
+    assert_eq!(state.calls.load(std::sync::atomic::Ordering::SeqCst), 15);
     publish(ResponseCachePolicy {
         enabled: true,
         max_entries: 2,
@@ -2992,12 +3556,12 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
     .unwrap();
     primary.complete(request("expiry request")).await.unwrap();
     primary.complete(request("expiry request")).await.unwrap();
-    assert_eq!(state.calls.load(std::sync::atomic::Ordering::SeqCst), 14);
+    assert_eq!(state.calls.load(std::sync::atomic::Ordering::SeqCst), 16);
     tokio::time::sleep(Duration::from_millis(1100)).await;
     primary.complete(request("expiry request")).await.unwrap();
     assert_eq!(
         state.calls.load(std::sync::atomic::Ordering::SeqCst),
-        15,
+        17,
         "live lifetime expires after completion"
     );
     let before = repo
@@ -3048,7 +3612,7 @@ async fn native_live_response_cache_policy_updates_selected_roles() {
         .primary_provider();
     backend.complete(request("restart request")).await.unwrap();
     backend.complete(request("restart request")).await.unwrap();
-    assert_eq!(state.calls.load(std::sync::atomic::Ordering::SeqCst), 16);
+    assert_eq!(state.calls.load(std::sync::atomic::Ordering::SeqCst), 18);
     restarted.shutdown().await.unwrap();
     shutdown.cancel();
     server.await.unwrap();
@@ -3608,7 +4172,7 @@ async fn native_embedding_model_contract_management_and_upgrade_are_revisioned()
     );
     let models = serde_json::json!({"custom-model":{"dimension":3,"cache_max_entries":0}});
     let saved = service.upsert_provider(caller.clone(), serde_json::from_value(serde_json::json!({
-        "id":"edited-vector-provider","adapter":"open_ai_completions","base_url":"http://127.0.0.1:8000/v1",
+        "mutation_id":uuid::Uuid::new_v4(),"id":"edited-vector-provider","adapter":"open_ai_completions","base_url":"http://127.0.0.1:8000/v1",
         "default_model":"custom-model","embedding_models":models
     })).unwrap()).await.unwrap();
     let view = saved
@@ -3622,7 +4186,7 @@ async fn native_embedding_model_contract_management_and_upgrade_are_revisioned()
     );
     let revision = view.revision;
     let saved = service.upsert_provider(caller.clone(), serde_json::from_value(serde_json::json!({
-        "id":"edited-vector-provider","expected_revision":revision,"adapter":"open_ai_completions","name":"Renamed provider"
+        "mutation_id":uuid::Uuid::new_v4(),"id":"edited-vector-provider","expected_revision":revision,"adapter":"open_ai_completions","name":"Renamed provider"
     })).unwrap()).await.unwrap();
     let view = saved
         .providers
@@ -3636,7 +4200,7 @@ async fn native_embedding_model_contract_management_and_upgrade_are_revisioned()
     );
     let current_revision = view.revision;
     assert!(matches!(service.upsert_provider(caller.clone(), serde_json::from_value(serde_json::json!({
-        "id":"edited-vector-provider","expected_revision":revision,"adapter":"open_ai_completions","embedding_models":{}
+        "mutation_id":uuid::Uuid::new_v4(),"id":"edited-vector-provider","expected_revision":revision,"adapter":"open_ai_completions","embedding_models":{}
     })).unwrap()).await, Err(brassclaw_product_workflow::LlmConfigServiceError::Conflict{..})));
     let before = repo
         .get_revision("edited-vector-provider", false)
@@ -3645,7 +4209,7 @@ async fn native_embedding_model_contract_management_and_upgrade_are_revisioned()
         .unwrap();
     assert_eq!(before.revision, current_revision);
     let rejected=service.upsert_provider(caller.clone(),serde_json::from_value(serde_json::json!({
-        "id":"edited-vector-provider","expected_revision":current_revision,"adapter":"anthropic","embedding_models":models
+        "mutation_id":uuid::Uuid::new_v4(),"id":"edited-vector-provider","expected_revision":current_revision,"adapter":"anthropic","embedding_models":models
     })).unwrap()).await;
     assert!(matches!(
         rejected,
@@ -3660,9 +4224,9 @@ async fn native_embedding_model_contract_management_and_upgrade_are_revisioned()
         current_revision
     );
     for invalid in [
-        r#"{"id":"p","adapter":"ollama","embedding_models":null}"#,
-        r#"{"id":"p","adapter":"ollama","embedding_models":{"m":{"dimension":0,"cache_max_entries":0}}}"#,
-        r#"{"id":"p","adapter":"ollama","embedding_models":{"m":{"dimension":1,"cache_max_entries":0},"m":{"dimension":2,"cache_max_entries":0}}}"#,
+        r#"{"mutation_id":"579bf426-a7dc-44ca-9ae9-cdc51f381a4c","id":"p","adapter":"ollama","embedding_models":null}"#,
+        r#"{"mutation_id":"579bf426-a7dc-44ca-9ae9-cdc51f381a4c","id":"p","adapter":"ollama","embedding_models":{"m":{"dimension":0,"cache_max_entries":0}}}"#,
+        r#"{"mutation_id":"579bf426-a7dc-44ca-9ae9-cdc51f381a4c","id":"p","adapter":"ollama","embedding_models":{"m":{"dimension":1,"cache_max_entries":0},"m":{"dimension":2,"cache_max_entries":0}}}"#,
     ] {
         assert!(
             serde_json::from_str::<brassclaw_product_workflow::UpsertLlmProviderRequest>(invalid)
@@ -3962,7 +4526,17 @@ async fn native_live_memory_embedding_uses_registered_tools_and_current_db_selec
     );
     let vm = runtime.global_monty_owner.client().root_identity();
     let source = runtime.services.memory_embedding_source.clone().unwrap();
+    let embedding_publication = runtime.webui_embedding_publication().unwrap();
+    assert_eq!(
+        embedding_publication.publication_status().await.effective,
+        brassclaw_llm::ProviderPublication::Untracked,
+        "attachment alone must not acknowledge an unprepared client"
+    );
     let first = source.snapshot().await.unwrap().unwrap();
+    let first_publication = embedding_publication.publication_status().await.effective;
+    assert!(matches!(&first_publication,
+        brassclaw_llm::ProviderPublication::Configured {selection}
+        if selection.provider_id == "memory-provider" && selection.model == "space-a"));
     assert!(
         Arc::ptr_eq(&first, &source.snapshot().await.unwrap().unwrap()),
         "stable snapshot retains real cache/client"
@@ -4117,11 +4691,21 @@ async fn native_live_memory_embedding_uses_registered_tools_and_current_db_selec
         None,
         None,
     );
+    assert_eq!(
+        bundle
+            .api
+            .get_llm_config(caller.clone())
+            .await
+            .unwrap()
+            .runtime_publications["embedding"],
+        first_publication,
+        "ordinary settings read reports the same source's actual publication"
+    );
     let initial_definition = repo.get("memory-provider").await.unwrap().unwrap();
     let cache_edit = |revision, capacity| {
         let mut models = initial_definition.embedding_models.clone();
         models.0.get_mut("space-a").unwrap().cache_max_entries = capacity;
-        serde_json::from_value(json!({"id":"memory-provider","expected_revision":revision,
+        serde_json::from_value(json!({"mutation_id":uuid::Uuid::new_v4(),"id":"memory-provider","expected_revision":revision,
             "adapter":"open_ai_completions","embedding_models":models}))
         .unwrap()
     };
@@ -4150,6 +4734,10 @@ async fn native_live_memory_embedding_uses_registered_tools_and_current_db_selec
             .revision,
         before_rejection
     );
+    assert_eq!(
+        embedding_publication.publication_status().await.effective,
+        first_publication
+    );
     let before_cached = calls.lock().await.len();
     first.embed("semantic needle").await.unwrap();
     assert_eq!(
@@ -4164,11 +4752,14 @@ async fn native_live_memory_embedding_uses_registered_tools_and_current_db_selec
             .unwrap()
             .unwrap()
             .revision;
-        bundle
+        let changed = bundle
             .api
             .upsert_llm_provider(caller.clone(), cache_edit(revision, capacity))
             .await
             .unwrap();
+        assert!(matches!(&changed.runtime_publications["embedding"],
+            brassclaw_llm::ProviderPublication::Configured {selection}
+            if selection.definition_revision == revision + 1 && selection.model == "space-a"));
         let before_probe = calls.lock().await.len();
         // Use the retained provider directly before requesting another source
         // snapshot: the successful WebUI save itself must resize its cache.
@@ -4183,6 +4774,34 @@ async fn native_live_memory_embedding_uses_registered_tools_and_current_db_selec
             "cache-only edits retain the actual client"
         );
     }
+    let before_rotation = calls.lock().await.len();
+    let before_rotation_publication = embedding_publication.publication_status().await.effective;
+    runtime
+        .services()
+        .llm_key_store()
+        .put(
+            "memory-provider",
+            secrecy::SecretString::from("native-memory-credential-successor"),
+        )
+        .await
+        .unwrap();
+    assert!(
+        first.embed("semantic needle").await.is_err(),
+        "retained cache cannot bypass key-only rotation"
+    );
+    assert_eq!(calls.lock().await.len(), before_rotation);
+    assert_eq!(
+        embedding_publication.publication_status().await.effective,
+        before_rotation_publication,
+        "a settings read cannot label a newly stored credential as published"
+    );
+    let first = source.snapshot().await.unwrap().unwrap();
+    assert_ne!(
+        embedding_publication.publication_status().await.effective,
+        before_rotation_publication
+    );
+    first.embed("authenticated successor query").await.unwrap();
+    assert_eq!(calls.lock().await.len(), before_rotation + 1);
     let before_block = calls.lock().await.len();
     let search_tool =
         policy_snapshot.capabilities[&CapabilityId::new(MEMORY_SEARCH_CAPABILITY_ID).unwrap()];
@@ -4225,6 +4844,22 @@ async fn native_live_memory_embedding_uses_registered_tools_and_current_db_selec
     .unwrap();
     let second = source.snapshot().await.unwrap().unwrap();
     assert_ne!(first.space_id(), second.space_id());
+    let before_retired = calls.lock().await.len();
+    first.embed("old-space-retired-cache").await.unwrap();
+    first.embed("old-space-retired-cache").await.unwrap();
+    let retired_calls = calls.lock().await;
+    assert_eq!(
+        retired_calls.len(),
+        before_retired + 2,
+        "a retired source cache never refills, even while compatible pinned work completes"
+    );
+    assert!(
+        retired_calls[before_retired..]
+            .iter()
+            .all(|body| body["model"] == "space-a")
+    );
+    drop(retired_calls);
+
     let RuntimeCapabilityOutcome::Completed(result) = retained
         [&CapabilityId::new(MEMORY_SEARCH_CAPABILITY_ID).unwrap()]
         .invoke(search("semantic needle"))
@@ -4246,6 +4881,52 @@ async fn native_live_memory_embedding_uses_registered_tools_and_current_db_selec
         source.snapshot().await.is_err(),
         "invalid selected metadata never reuses the old provider"
     );
+    assert_eq!(
+        embedding_publication.publication_status().await.effective,
+        brassclaw_llm::ProviderPublication::Untracked,
+        "failed source resolution cannot report an effective client or successful disable"
+    );
+    let failed_selection = bundle.api.get_llm_config(caller.clone()).await.unwrap();
+    assert_eq!(
+        failed_selection.runtime_publication_failures["embedding"],
+        failed_selection.desired_publications["embedding"]
+    );
+    let failed_target = failed_selection.runtime_publication_failures["embedding"].clone();
+    // A new desired model is pending, not the target of the previous failure.
+    crate::db_config::save_config_changes(
+        &rig.pool,
+        "default",
+        &[("embedding.model", Some("space-a"))],
+        crate::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+    let newer = bundle.api.get_llm_config(caller.clone()).await.unwrap();
+    assert_ne!(newer.desired_publications["embedding"], failed_target);
+    assert_eq!(
+        newer.runtime_publication_failures["embedding"],
+        failed_target
+    );
+    source.snapshot().await.unwrap().unwrap();
+    assert!(
+        !bundle
+            .api
+            .get_llm_config(caller.clone())
+            .await
+            .unwrap()
+            .runtime_publication_failures
+            .contains_key("embedding")
+    );
+    // Retain the existing invalid-space/write failure coverage below.
+    crate::db_config::save_config_changes(
+        &rig.pool,
+        "default",
+        &[("embedding.model", Some("space-b"))],
+        crate::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+    assert!(source.snapshot().await.is_err());
     let invalid_write = retained[&CapabilityId::new(MEMORY_WRITE_CAPABILITY_ID).unwrap()]
         .invoke(invoke(
             MEMORY_WRITE_CAPABILITY_ID,
@@ -4271,17 +4952,86 @@ async fn native_live_memory_embedding_uses_registered_tools_and_current_db_selec
         before,
         "plain read needs no model resolution"
     );
-    bundle
+    // A role-only primary edit must not depend on the independently broken
+    // embedding selection. A definition edit still attempts both owners; an
+    // embedding failure must not leave the primary's compatible update unapplied.
+    let current = repo
+        .get_revision("memory-provider", false)
+        .await
+        .unwrap()
+        .unwrap()
+        .revision;
+    let seen_selection = bundle.api.get_llm_config(caller.clone()).await.unwrap();
+    let primary = bundle.api.set_active_llm(caller.clone(), serde_json::from_value(json!({
+        "mutation_id":uuid::Uuid::new_v4(),"provider_id":"memory-provider","model":"space-a",
+        "role":"kohai","expected_revision":current,"expected_selection_ref":seen_selection.role_selection_refs["kohai"],
+    })).unwrap()).await.unwrap();
+    assert_eq!(
+        primary.runtime_publications["embedding"],
+        brassclaw_llm::ProviderPublication::Untracked
+    );
+    let definition_edit = uuid::Uuid::new_v4();
+    assert!(bundle.api.upsert_llm_provider(caller.clone(), serde_json::from_value(json!({
+        "mutation_id":definition_edit,"id":"memory-provider","expected_revision":current,
+        "adapter":"open_ai_completions","name":"Independent embedding publication fixture",
+    })).unwrap()).await.is_err());
+    let original = bundle
+        .api
+        .provider_mutation(caller.clone(), definition_edit)
+        .await
+        .unwrap();
+    assert_eq!(original.provider_revision, Some(current + 1));
+    let pending = bundle.api.get_llm_config(caller.clone()).await.unwrap();
+    assert!(matches!(&pending.runtime_publications["kohai"],
+        brassclaw_llm::ProviderPublication::Configured {selection}
+        if selection.definition_revision == current + 1));
+    assert_eq!(
+        pending.runtime_publications["embedding"],
+        brassclaw_llm::ProviderPublication::Untracked
+    );
+    assert_eq!(
+        calls.lock().await.len(),
+        before,
+        "preparation and original readback do not call a model"
+    );
+    let repaired = bundle.api.set_active_llm(caller.clone(), serde_json::from_value(json!({
+        "mutation_id":uuid::Uuid::new_v4(),"provider_id":"memory-provider","model":"space-a",
+        "role":"embedding","expected_revision":current + 1,"expected_selection_ref":pending.role_selection_refs["embedding"],
+    })).unwrap()).await.unwrap();
+    assert!(matches!(&repaired.runtime_publications["embedding"],
+        brassclaw_llm::ProviderPublication::Configured {selection}
+        if selection.model == "space-a" && selection.definition_revision == current + 1));
+    let reconciled = bundle
+        .api
+        .reconcile_provider_mutation(caller.clone(), definition_edit)
+        .await
+        .unwrap();
+    assert_eq!(reconciled.mutation_receipt.as_ref(), Some(&original));
+    assert_eq!(
+        reconciled.runtime_publications["embedding"],
+        repaired.runtime_publications["embedding"]
+    );
+    assert_eq!(
+        calls.lock().await.len(),
+        before,
+        "reconciliation prepares clients without inference or replay"
+    );
+    let disabled = bundle
         .api
         .set_active_llm(
             caller.clone(),
             serde_json::from_value(json!({
-                "provider_id":"","role":"embedding"
+                "mutation_id":uuid::Uuid::new_v4(),"provider_id":"","role":"embedding",
+                "expected_selection_ref":reconciled.role_selection_refs["embedding"]
             }))
             .unwrap(),
         )
         .await
         .unwrap();
+    assert_eq!(
+        disabled.runtime_publications["embedding"],
+        brassclaw_llm::ProviderPublication::Unconfigured
+    );
     assert!(source.snapshot().await.unwrap().is_none());
     let RuntimeCapabilityOutcome::Completed(result) = retained
         [&CapabilityId::new(MEMORY_SEARCH_CAPABILITY_ID).unwrap()]
@@ -4305,6 +5055,14 @@ async fn native_live_memory_embedding_uses_registered_tools_and_current_db_selec
     assert_eq!(
         outage_text.output["result_count"], 1,
         "failed embeddings keep complete text-only indexing"
+    );
+    assert!(repo.delete("memory-provider").await.unwrap());
+    assert!(first.embed("deactivated retained space-a").await.is_err());
+    assert!(second.embed("deactivated retained space-b").await.is_err());
+    assert_eq!(
+        calls.lock().await.len(),
+        before,
+        "deactivation fences every retained embedding space before cache/HTTP use"
     );
     // Exercise the registered retained Tool and actual PostgreSQL filesystem,
     // after disabling embeddings, including a count crossing the filesystem
@@ -5841,6 +6599,42 @@ async fn native_coding_primitives_protect_structured_entries_on_both_backends() 
                 "opaque file edit {capability} must remain supported: {outcome:?}"
             );
         }
+        // Exercise the actual HTTP response-body store on both native backends,
+        // using the captured invocation grant rather than a permissive resolver.
+        let body_store = brassclaw_filesystem::ScopedFilesystem::with_fixed_view(
+            filesystem.clone(),
+            MountView::default(),
+        );
+        let save_target = brassclaw_host_api::RuntimeHttpSaveTarget {
+            path: brassclaw_host_api::ScopedPath::new("/workspace/state.json").unwrap(),
+            mount_grant: Some(mounts.mounts[0].clone()),
+        };
+        let save_scope = brassclaw_host_api::ResourceScope::local_default(
+            UserId::new("record-owner").unwrap(),
+            brassclaw_host_api::InvocationId::new(),
+        )
+        .unwrap();
+        let save_capability =
+            CapabilityId::new(brassclaw_host_runtime::HTTP_SAVE_CAPABILITY_ID).unwrap();
+        brassclaw_host_runtime::RuntimeHttpBodyStore::authorize_write(
+            &body_store,
+            &save_scope,
+            &save_capability,
+            &save_target,
+        )
+        .unwrap();
+        brassclaw_host_runtime::RuntimeHttpBodyStore::write_body(
+            &body_store,
+            &save_scope,
+            &save_capability,
+            &save_target,
+            b"downloaded file",
+        )
+        .unwrap();
+        assert_eq!(
+            filesystem.get(&path).await.unwrap().unwrap().entry.body,
+            b"downloaded file"
+        );
         filesystem
             .put(
                 &path,
@@ -5854,6 +6648,26 @@ async fn native_coding_primitives_protect_structured_entries_on_both_backends() 
             .await
             .unwrap();
         let original = filesystem.get(&path).await.unwrap().unwrap();
+        assert!(
+            brassclaw_host_runtime::RuntimeHttpBodyStore::authorize_write(
+                &body_store,
+                &save_scope,
+                &save_capability,
+                &save_target,
+            )
+            .is_err()
+        );
+        assert!(
+            brassclaw_host_runtime::RuntimeHttpBodyStore::write_body(
+                &body_store,
+                &save_scope,
+                &save_capability,
+                &save_target,
+                b"must not replace a record",
+            )
+            .is_err()
+        );
+        assert_eq!(filesystem.get(&path).await.unwrap().unwrap(), original);
         for cas in [
             CasExpectation::Any,
             CasExpectation::Absent,

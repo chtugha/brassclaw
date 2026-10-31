@@ -228,6 +228,7 @@ async fn local_dev_oauth_turn_gate_callback_resumes_default_turn_coordinator() {
     let flow = product_auth
         .flow_manager()
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: auth_scope.clone(),
             kind: AuthFlowKind::IntegrationCredential,
@@ -242,7 +243,7 @@ async fn local_dev_oauth_turn_gate_callback_resumes_default_turn_coordinator() {
             },
             update_binding: None,
             opaque_state_hash: Some(state_hash()),
-            pkce_verifier_hash: Some(pkce_hash()),
+            pkce_verifier_hash: Some(pkce_hash("raw-pkce-verifier")),
             expires_at: Utc::now() + Duration::minutes(5),
         })
         .await
@@ -261,12 +262,12 @@ async fn local_dev_oauth_turn_gate_callback_resumes_default_turn_coordinator() {
                         "raw-auth-code".to_string(),
                     ))
                     .unwrap(),
-                    authorization_code_hash: code_hash(),
+                    authorization_code_hash: code_hash("raw-auth-code"),
                     pkce_verifier: PkceVerifierSecret::new(SecretString::from(
                         "raw-pkce-verifier".to_string(),
                     ))
                     .unwrap(),
-                    pkce_verifier_hash: pkce_hash(),
+                    pkce_verifier_hash: pkce_hash("raw-pkce-verifier"),
                     scopes: vec![provider_scope("repo")],
                 },
             },
@@ -685,6 +686,7 @@ async fn create_flow(
     product_auth
         .flow_manager()
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope,
             kind: AuthFlowKind::IntegrationCredential,
@@ -696,7 +698,7 @@ async fn create_flow(
             continuation,
             update_binding: None,
             opaque_state_hash: Some(state_hash()),
-            pkce_verifier_hash: Some(pkce_hash()),
+            pkce_verifier_hash: Some(pkce_hash("raw-pkce-verifier")),
             expires_at: Utc::now() + Duration::minutes(5),
         })
         .await
@@ -712,6 +714,7 @@ async fn create_notion_flow(
     match product_auth
         .flow_manager()
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope,
             kind: AuthFlowKind::IntegrationCredential,
@@ -723,7 +726,7 @@ async fn create_notion_flow(
             continuation,
             update_binding: None,
             opaque_state_hash: Some(state_hash()),
-            pkce_verifier_hash: Some(pkce_hash()),
+            pkce_verifier_hash: Some(pkce_hash("raw-notion-pkce-verifier")),
             expires_at: Utc::now() + Duration::minutes(5),
         })
         .await
@@ -750,12 +753,12 @@ fn authorized_request(
                     "raw-auth-code".to_string(),
                 ))
                 .unwrap(),
-                authorization_code_hash: code_hash(),
+                authorization_code_hash: code_hash("raw-auth-code"),
                 pkce_verifier: PkceVerifierSecret::new(SecretString::from(
                     "raw-pkce-verifier".to_string(),
                 ))
                 .unwrap(),
-                pkce_verifier_hash: pkce_hash(),
+                pkce_verifier_hash: pkce_hash("raw-pkce-verifier"),
                 scopes: vec![provider_scope("repo")],
             },
         },
@@ -778,12 +781,12 @@ fn notion_authorized_request(
                     "raw-notion-auth-code".to_string(),
                 ))
                 .unwrap(), // safety: test-only fixture literal is valid by construction.
-                authorization_code_hash: code_hash(),
+                authorization_code_hash: code_hash("raw-notion-auth-code"),
                 pkce_verifier: PkceVerifierSecret::new(SecretString::from(
                     "raw-notion-pkce-verifier".to_string(),
                 ))
                 .unwrap(), // safety: test-only fixture literal is valid by construction.
-                pkce_verifier_hash: pkce_hash(),
+                pkce_verifier_hash: pkce_hash("raw-notion-pkce-verifier"),
                 scopes: vec![provider_scope("workspace")],
             },
         },
@@ -792,26 +795,19 @@ fn notion_authorized_request(
 
 #[cfg(test)]
 fn state_hash() -> OpaqueStateHash {
-    OpaqueStateHash::new(fake_digest("state-hash")).unwrap()
+    brassclaw_auth::opaque_state_hash("factory-auth-state-fixture").unwrap()
 }
 
 #[cfg(test)]
-fn pkce_hash() -> PkceVerifierHash {
-    PkceVerifierHash::new(fake_digest("pkce-hash")).unwrap()
+fn pkce_hash(raw: &str) -> PkceVerifierHash {
+    let verifier = PkceVerifierSecret::new(SecretString::from(raw.to_owned())).unwrap();
+    brassclaw_auth::pkce_verifier_hash(&verifier).unwrap()
 }
 
 #[cfg(test)]
-fn code_hash() -> AuthorizationCodeHash {
-    AuthorizationCodeHash::new(fake_digest("code-hash")).unwrap()
-}
-
-fn fake_digest(value: &str) -> String {
-    format!(
-        "{:064x}",
-        value.bytes().fold(0_u64, |hash, byte| {
-            hash.wrapping_mul(31).wrapping_add(u64::from(byte))
-        })
-    )
+fn code_hash(raw: &str) -> AuthorizationCodeHash {
+    let code = OAuthAuthorizationCode::new(SecretString::from(raw.to_owned())).unwrap();
+    brassclaw_auth::authorization_code_hash(&code).unwrap()
 }
 
 fn form_params(body: &[u8]) -> std::collections::BTreeMap<String, String> {

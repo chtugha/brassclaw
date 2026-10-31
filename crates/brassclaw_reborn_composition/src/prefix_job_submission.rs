@@ -38,18 +38,17 @@ impl RebornRuntime {
         caller: brassclaw_product_workflow::WebUiAuthenticatedCaller,
         release_documents: bool,
     ) -> Result<Uuid, RebornRuntimeError> {
+        validate_source_request(id, profile, expected_revision)?;
         let snapshot =
             if crate::prefix_job_definitions::Store::new(self.installed_catalogue.pool.clone())
                 .get(id)
                 .await
-                .map_err(|error| RebornRuntimeError::InvalidArgument {
-                    reason: error.to_string(),
-                })?
+                .map_err(definition_error)?
                 .is_some()
             {
                 // The shared submission boundary validates the retained request and
                 // reconstructs its scopes. A retry never recollects current sources.
-                String::new()
+                None
             } else {
                 let captured = if release_documents {
                     self.installed_catalogue
@@ -60,15 +59,28 @@ impl RebornRuntime {
                         .capture_core_prefix_sources(profile)
                         .await
                 };
-                captured.map_err(|error| RebornRuntimeError::InvalidArgument {
-                    reason: error.to_string(),
-                })?
+                Some(captured.map_err(|error| {
+                    use brassclaw_product_workflow::{
+                        InterceptorConfigServiceError as ProductError, RecipeStoreError,
+                    };
+                    match error {
+                        RecipeStoreError::Unavailable(_) | RecipeStoreError::Internal(_) => {
+                            RebornRuntimeError::PrefixJob(ProductError::Unavailable)
+                        }
+                        RecipeStoreError::Conflict(_) => {
+                            RebornRuntimeError::PrefixJob(ProductError::Conflict)
+                        }
+                        error => RebornRuntimeError::InvalidArgument {
+                            reason: error.to_string(),
+                        },
+                    }
+                })?)
             };
         self.submit_prefix_source_snapshot(
             id,
             profile,
             expected_revision,
-            &snapshot,
+            snapshot.as_deref(),
             caller,
             release_documents,
         )
@@ -92,7 +104,7 @@ impl RebornRuntime {
             id,
             profile,
             expected_revision,
-            snapshot_bytes,
+            Some(snapshot_bytes),
             caller,
             false,
         )
@@ -104,65 +116,51 @@ impl RebornRuntime {
         id: Uuid,
         profile: &str,
         expected_revision: u64,
-        snapshot_bytes: &str,
+        snapshot_bytes: Option<&str>,
         caller: brassclaw_product_workflow::WebUiAuthenticatedCaller,
         release_documents: bool,
     ) -> Result<Uuid, RebornRuntimeError> {
-        use crate::prefix_job_definitions::{Reservation, Store};
+        use crate::prefix_job_definitions::{Reservation, Store, Target};
         let invalid = |reason: &str| RebornRuntimeError::InvalidArgument {
             reason: reason.into(),
         };
-        if id.is_nil()
-            || expected_revision == 0
-            || !matches!(profile, "base-prompt" | "prefix-maker" | "sempai")
-        {
-            return Err(invalid("unsupported source-only prefix snapshot request"));
-        }
+        validate_source_request(id, profile, expected_revision)?;
         let mut request = serde_json::json!({"profile":profile,"expected_revision":expected_revision,"mode":"source_only"});
         if release_documents {
             request["source_capture"] = serde_json::json!("declared_release");
         }
+        let (scope, thread_scope) = self.prefix_definition_scope(id, &caller)?;
+        let target = Target::Profile {
+            name: profile.into(),
+            revision: expected_revision,
+        };
         let store = Store::new(self.installed_catalogue.pool.clone());
-        let existing = store
-            .get(id)
-            .await
-            .map_err(|error| invalid(&error.to_string()))?;
+        let existing = store.get(id).await.map_err(definition_error)?;
         let definition = if let Some(existing) = existing {
             if existing.request != request
-                || existing.profile != profile
-                || existing.revision != expected_revision
+                || existing.target != target
                 || existing.operation != "generate"
                 || existing.mode != "source_only"
                 || existing.created_by != caller.user_id.as_str()
-                || existing.scope.tenant_id != caller.tenant_id
-                || existing.scope.project_id != caller.project_id
+                || existing.scope != scope
+                || existing.thread_scope != thread_scope
+                || snapshot_bytes.is_some_and(|bytes| {
+                    !same_source_input(&existing.input, profile, expected_revision, bytes)
+                })
             {
-                return Err(invalid(
-                    "prefix job request conflicts with its retained definition",
+                return Err(RebornRuntimeError::PrefixJob(
+                    brassclaw_product_workflow::InterceptorConfigServiceError::Conflict,
                 ));
             }
             existing
         } else {
+            let snapshot_bytes = snapshot_bytes
+                .ok_or_else(|| invalid("source snapshot required for a new prefix job"))?;
             crate::prefix_job_execution::validate_snapshot(profile, snapshot_bytes).map_err(
                 |_| {
                     invalid("canonical source snapshot/procedures must match the selected compiler")
                 },
             )?;
-            let thread = ThreadId::new(format!("prefix-job-{id}"))
-                .map_err(|_| invalid("invalid prefix job identity"))?;
-            let scope = TurnScope::new_with_owner(
-                caller.tenant_id.clone(),
-                Some(self.thread_scope.agent_id.clone()),
-                caller.project_id.clone(),
-                thread,
-                Some(caller.user_id.clone()),
-            );
-            let thread_scope = brassclaw_threads::ThreadScope {
-                tenant_id: caller.tenant_id.clone(),
-                agent_id: self.thread_scope.agent_id.clone(),
-                project_id: caller.project_id.clone(),
-                owner_user_id: Some(caller.user_id.clone()),
-            };
             let program = self
                 .installed_catalogue
                 ._compiler_program
@@ -172,8 +170,7 @@ impl RebornRuntime {
             store
                 .reserve(Reservation {
                     id,
-                    profile,
-                    revision: expected_revision,
+                    target: &target,
                     operation: "generate",
                     mode: "source_only",
                     request: &request,
@@ -184,7 +181,7 @@ impl RebornRuntime {
                     created_by: caller.user_id.as_str(),
                 })
                 .await
-                .map_err(|error| invalid(&error.to_string()))?
+                .map_err(definition_error)?
         };
         self.admit_prefix_definition(definition).await
     }
@@ -198,7 +195,7 @@ impl RebornRuntime {
         request: brassclaw_product_workflow::MeasurePrefixRequest,
         caller: brassclaw_product_workflow::WebUiAuthenticatedCaller,
     ) -> Result<Uuid, RebornRuntimeError> {
-        use crate::prefix_job_definitions::{Reservation, Store};
+        use crate::prefix_job_definitions::{Reservation, Store, Target};
         let invalid = |reason: &str| RebornRuntimeError::InvalidArgument {
             reason: reason.into(),
         };
@@ -211,70 +208,165 @@ impl RebornRuntime {
         }
         let metadata = crate::prefix_measurement_capture::metadata(profile, &request)
             .map_err(|_| invalid("invalid measurement metadata"))?;
+        let (scope, thread_scope) = self.prefix_definition_scope(id, &caller)?;
+        let target = Target::Profile {
+            name: profile.into(),
+            revision: request.expected_profile_revision,
+        };
         let store = Store::new(self.installed_catalogue.pool.clone());
-        let definition =
-            if let Some(existing) = store.get(id).await.map_err(|e| invalid(&e.to_string()))? {
-                if existing.request != metadata
-                    || existing.profile != profile
-                    || existing.revision != request.expected_profile_revision
-                    || existing.operation != "measure"
-                    || existing.mode != "target"
-                    || existing.created_by != caller.user_id.as_str()
-                    || existing.scope.tenant_id != caller.tenant_id
-                    || existing.scope.project_id != caller.project_id
-                {
-                    return Err(invalid(
-                        "prefix job request conflicts with its retained definition",
-                    ));
-                }
-                existing
-            } else {
-                let input = crate::prefix_measurement_capture::capture(
-                    self.installed_catalogue.pool.clone(),
-                    caller.tenant_id.as_str(),
-                    profile,
-                    &request,
-                )
+        let definition = if let Some(existing) = store.get(id).await.map_err(definition_error)? {
+            if existing.request != metadata
+                || existing.target != target
+                || existing.operation != "measure"
+                || existing.mode != "target"
+                || existing.created_by != caller.user_id.as_str()
+                || existing.scope != scope
+                || existing.thread_scope != thread_scope
+            {
+                return Err(RebornRuntimeError::PrefixJob(
+                    brassclaw_product_workflow::InterceptorConfigServiceError::Conflict,
+                ));
+            }
+            existing
+        } else {
+            let input = crate::prefix_measurement_capture::capture(
+                self.installed_catalogue.pool.clone(),
+                caller.tenant_id.as_str(),
+                profile,
+                &request,
+            )
+            .await
+            .map_err(RebornRuntimeError::PrefixJob)?;
+            let program = self
+                .installed_catalogue
+                .measurement_qualification
+                .as_ref()
+                .ok_or_else(|| invalid("measurement workflow qualification unavailable"))?
+                .program();
+            store
+                .reserve(Reservation {
+                    id,
+                    target: &target,
+                    operation: "measure",
+                    mode: "target",
+                    request: &metadata,
+                    program: &program,
+                    input: &input,
+                    scope: &scope,
+                    thread_scope: &thread_scope,
+                    created_by: caller.user_id.as_str(),
+                })
                 .await
-                .map_err(|e| invalid(&e.to_string()))?;
-                let program = self
-                    .installed_catalogue
-                    .measurement_qualification
-                    .as_ref()
-                    .ok_or_else(|| invalid("measurement workflow qualification unavailable"))?
-                    .program();
-                let scope = TurnScope::new_with_owner(
-                    caller.tenant_id.clone(),
-                    Some(self.thread_scope.agent_id.clone()),
-                    caller.project_id.clone(),
-                    ThreadId::new(format!("prefix-job-{id}"))
-                        .map_err(|_| invalid("invalid prefix job identity"))?,
-                    Some(caller.user_id.clone()),
-                );
-                let thread_scope = brassclaw_threads::ThreadScope {
-                    tenant_id: caller.tenant_id,
-                    agent_id: self.thread_scope.agent_id.clone(),
-                    project_id: caller.project_id,
-                    owner_user_id: Some(caller.user_id.clone()),
-                };
-                store
-                    .reserve(Reservation {
-                        id,
-                        profile,
-                        revision: request.expected_profile_revision,
-                        operation: "measure",
-                        mode: "target",
-                        request: &metadata,
-                        program: &program,
-                        input: &input,
-                        scope: &scope,
-                        thread_scope: &thread_scope,
-                        created_by: caller.user_id.as_str(),
-                    })
-                    .await
-                    .map_err(|e| invalid(&e.to_string()))?
-            };
+                .map_err(definition_error)?
+        };
         self.admit_prefix_definition(definition).await
+    }
+
+    /// Execute only the retained template worked cases of an unaccepted pair
+    /// proposal. A completed comparison grants no design or serving acceptance.
+    /// The first immutable source capture/program/run survives request retries.
+    pub async fn submit_prefix_pair_cases(
+        &self,
+        id: Uuid,
+        specification: &str,
+        proposal: &str,
+        caller: brassclaw_product_workflow::WebUiAuthenticatedCaller,
+    ) -> Result<Uuid, RebornRuntimeError> {
+        use crate::prefix_job_definitions::{Reservation, Store, Target};
+        let invalid = |reason: &str| RebornRuntimeError::InvalidArgument {
+            reason: reason.into(),
+        };
+        if id.is_nil()
+            || caller.tenant_id.as_str() != self.webui_tenant_id()
+            || crate::prefix_model_designs::hash(specification).is_err()
+            || crate::prefix_model_designs::hash(proposal).is_err()
+        {
+            return Err(invalid("invalid retained pair case request"));
+        }
+        let target = Target::Pair {
+            specification: specification.into(),
+            proposal: proposal.into(),
+        };
+        let request = target
+            .pair_request()
+            .ok_or_else(|| invalid("pair target required"))?;
+        let (scope, thread_scope) = self.prefix_definition_scope(id, &caller)?;
+        let store = Store::new(self.installed_catalogue.pool.clone());
+        let definition = if let Some(existing) = store.get(id).await.map_err(definition_error)? {
+            if existing.request != request
+                || existing.target != target
+                || existing.operation != "check_cases"
+                || existing.mode != "target"
+                || existing.created_by != caller.user_id.as_str()
+                || existing.scope != scope
+                || existing.thread_scope != thread_scope
+            {
+                return Err(RebornRuntimeError::PrefixJob(
+                    brassclaw_product_workflow::InterceptorConfigServiceError::Conflict,
+                ));
+            }
+            existing
+        } else {
+            // Caller-supplied/partial packets are never an execution input.
+            let packet = crate::prefix_model_designs::PgPrefixModelDesigns::new(
+                self.installed_catalogue.pool.clone(),
+                caller.tenant_id.as_str().into(),
+            )
+            .case_packet(specification, proposal)
+            .await
+            .map_err(RebornRuntimeError::PrefixJob)?;
+            let input = serde_json::json!({"case_packet_bytes":packet.case_packet_bytes});
+            let program = self
+                .installed_catalogue
+                .pair_case_qualification
+                .as_ref()
+                .ok_or_else(|| invalid("pair case workflow qualification unavailable"))?
+                .program();
+            store
+                .reserve(Reservation {
+                    id,
+                    target: &target,
+                    operation: "check_cases",
+                    mode: "target",
+                    request: &request,
+                    program: &program,
+                    input: &input,
+                    scope: &scope,
+                    thread_scope: &thread_scope,
+                    created_by: caller.user_id.as_str(),
+                })
+                .await
+                .map_err(definition_error)?
+        };
+        self.admit_prefix_definition(definition).await
+    }
+
+    // Derive transport identity once for both first admission and retry. This
+    // is data custody, not an operator-role or Tool-permission decision.
+    fn prefix_definition_scope(
+        &self,
+        id: Uuid,
+        caller: &brassclaw_product_workflow::WebUiAuthenticatedCaller,
+    ) -> Result<(TurnScope, brassclaw_threads::ThreadScope), RebornRuntimeError> {
+        let thread = ThreadId::new(format!("prefix-job-{id}")).map_err(|_| {
+            RebornRuntimeError::InvalidArgument {
+                reason: "invalid prefix job identity".into(),
+            }
+        })?;
+        let scope = TurnScope::new_with_owner(
+            caller.tenant_id.clone(),
+            Some(self.thread_scope.agent_id.clone()),
+            caller.project_id.clone(),
+            thread,
+            Some(caller.user_id.clone()),
+        );
+        let thread_scope = brassclaw_threads::ThreadScope {
+            tenant_id: caller.tenant_id.clone(),
+            agent_id: self.thread_scope.agent_id.clone(),
+            project_id: caller.project_id.clone(),
+            owner_user_id: Some(caller.user_id.clone()),
+        };
+        Ok((scope, thread_scope))
     }
 
     async fn admit_prefix_definition(
@@ -283,6 +375,19 @@ impl RebornRuntime {
     ) -> Result<Uuid, RebornRuntimeError> {
         let invalid = |reason: &str| RebornRuntimeError::InvalidArgument {
             reason: reason.into(),
+        };
+        let title = match &definition.target {
+            crate::prefix_job_definitions::Target::Profile { name, .. } => {
+                format!("Prefix build: {name}")
+            }
+            crate::prefix_job_definitions::Target::Pair { specification, .. } => {
+                if definition.operation != "check_cases"
+                    || self.installed_catalogue.pair_case_qualification.is_none()
+                {
+                    return Err(invalid("pair case workflow qualification unavailable"));
+                }
+                format!("Prefix model case check: {specification}")
+            }
         };
         let id = definition.id;
         let conversation = ConversationId(definition.scope.thread_id.clone());
@@ -293,7 +398,7 @@ impl RebornRuntime {
                 scope: definition.thread_scope.clone(),
                 thread_id: Some(conversation.0.clone()),
                 created_by_actor_id: definition.created_by.clone(),
-                title: Some(format!("Prefix build: {}", definition.profile)),
+                title: Some(title),
                 metadata_json: None,
             })
             .await
@@ -323,12 +428,54 @@ impl RebornRuntime {
     }
 }
 
+fn validate_source_request(
+    id: Uuid,
+    profile: &str,
+    revision: u64,
+) -> Result<(), RebornRuntimeError> {
+    if id.is_nil() || revision == 0 || !matches!(profile, "base-prompt" | "prefix-maker" | "sempai")
+    {
+        return Err(RebornRuntimeError::InvalidArgument {
+            reason: "unsupported source-only prefix snapshot request".into(),
+        });
+    }
+    Ok(())
+}
+
+// A missing explicit payload is permitted only for the private original-lookup
+// path. An explicitly supplied empty string is still data and cannot bypass
+// comparison. Compare borrowed bytes without cloning the full source snapshot.
+fn same_source_input(input: &serde_json::Value, profile: &str, revision: u64, bytes: &str) -> bool {
+    input.as_object().is_some_and(|value| {
+        value.len() == 3
+            && value.get("profile").and_then(serde_json::Value::as_str) == Some(profile)
+            && value.get("revision").and_then(serde_json::Value::as_str)
+                == Some(revision.to_string().as_str())
+            && value
+                .get("snapshot_bytes")
+                .and_then(serde_json::Value::as_str)
+                == Some(bytes)
+    })
+}
+
+fn definition_error(error: crate::prefix_job_definitions::Error) -> RebornRuntimeError {
+    use brassclaw_product_workflow::InterceptorConfigServiceError as ProductError;
+    RebornRuntimeError::PrefixJob(match error {
+        crate::prefix_job_definitions::Error::Conflict => ProductError::Conflict,
+        crate::prefix_job_definitions::Error::Unavailable => ProductError::Unavailable,
+        crate::prefix_job_definitions::Error::Invalid => ProductError::InvalidRequest {
+            reason: "invalid retained prefix job definition".into(),
+        },
+    })
+}
+
 #[cfg(test)]
 pub(super) async fn assert_global_snapshot_submission(
     runtime: &Arc<RebornRuntime>,
+    id: Uuid,
+    transport: &brassclaw_pg::test_support::AckCutTransport,
 ) -> (Uuid, Uuid) {
     use serde_json::{Value, json};
-    let id = Uuid::new_v4();
     let pool = runtime.installed_catalogue.pool.clone();
     let client = pool.get().await.unwrap();
     let revision: i64 = client
@@ -381,6 +528,73 @@ pub(super) async fn assert_global_snapshot_submission(
             .is_none()
     );
     let identity = runtime.global_monty_owner.client().root_identity();
+    // Lose this public call's actual reservation COMMIT acknowledgement.
+    // Retry must recover the same stored definition/run, without new capture.
+    {
+        use crate::prefix_job_definitions::Store;
+        transport.arm(1).unwrap();
+        let reserved = runtime
+            .submit_prefix_generation_snapshot(
+                id,
+                "base-prompt",
+                revision as u64,
+                &snapshot,
+                caller.clone(),
+            )
+            .await;
+        assert!(matches!(
+            reserved,
+            Err(RebornRuntimeError::PrefixJob(
+                brassclaw_product_workflow::InterceptorConfigServiceError::Unavailable
+            ))
+        ));
+        assert_eq!(
+            transport.cut_count(),
+            1,
+            "actual PostgreSQL COMMIT acknowledgement must be lost"
+        );
+        let saved = Store::new(pool.clone()).get(id).await.unwrap().unwrap();
+        assert_eq!(saved.input["snapshot_bytes"], snapshot);
+        for offered in ["changed data after an unknown reservation", ""] {
+            assert!(matches!(
+                runtime
+                    .submit_prefix_generation_snapshot(
+                        id,
+                        "base-prompt",
+                        revision as u64,
+                        offered,
+                        caller.clone()
+                    )
+                    .await,
+                Err(RebornRuntimeError::PrefixJob(
+                    brassclaw_product_workflow::InterceptorConfigServiceError::Conflict
+                ))
+            ));
+        }
+        let client = pool.get().await.unwrap();
+        assert_eq!(
+            client
+                .query_one(
+                    "SELECT count(*) FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+                    &[&id]
+                )
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            0
+        );
+        assert_eq!(
+            client
+                .query_one(
+                    "SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1",
+                    &[&id]
+                )
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            0
+        );
+    }
     assert_eq!(
         runtime
             .submit_prefix_generation_snapshot(
@@ -460,14 +674,28 @@ pub(super) async fn assert_global_snapshot_submission(
             .get::<_, i64>(0)
     };
     assert_eq!(count().await, 5);
-    // A reconnect uses the retained snapshot even if its caller now offers
-    // unrelated text. Durable ingress deduplication must not replay effects.
+    // Explicit changed/empty data conflicts before admission. Exact retry reads
+    // the original definition/run and cannot replay the completed compiler.
+    for offered in ["a changed capture is never substituted", ""] {
+        assert!(
+            runtime
+                .submit_prefix_generation_snapshot(
+                    id,
+                    "base-prompt",
+                    revision as u64,
+                    offered,
+                    caller.clone()
+                )
+                .await
+                .is_err()
+        );
+    }
     runtime
         .submit_prefix_generation_snapshot(
             id,
             "base-prompt",
             revision as u64,
-            "a changed capture is never substituted",
+            &snapshot,
             caller.clone(),
         )
         .await

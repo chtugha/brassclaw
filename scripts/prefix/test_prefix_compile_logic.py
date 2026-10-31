@@ -48,6 +48,35 @@ def run_stages(source):
 
 
 class CompileLogicTests(unittest.TestCase):
+    def test_design_inputs_reuse_profile_requirements_and_preserve_excluded_originals(self):
+        for profile in ['base-prompt', 'prefix-maker', 'sempai']:
+            source = snapshot(profile, 'literal-reference/v5-contextual-sharing')
+            source['sources'].extend([
+                {'path': 'catalogue/components/new.json', 'kind': 'component', 'disposition': 'included',
+                 'reason': 'current selected component', 'text': '{"example":"complete"}'},
+                {'path': 'archive/old.md', 'kind': 'document', 'disposition': 'historical',
+                 'reason': 'preserved historical original', 'text': '# Old\nComplete archived source.\n'}])
+            snapshot_bytes = namespace['prefix_json'](source)
+            prepared = namespace['prefix_prepare']({'snapshot_bytes': snapshot_bytes})
+            digests = [hashlib.sha256(text.encode()).hexdigest() for text in prepared['texts']]
+            args = {'snapshot_bytes': snapshot_bytes, 'digests': digests}
+            result = namespace['prefix_design_inputs'](args)
+            self.assertEqual(result['snapshot_bytes'], snapshot_bytes)
+            floor = json.loads(result['floor_bytes'])
+            expected = json.loads(prepared['state_bytes'])['required_sources']
+            self.assertEqual([selector['path'] for selector in floor['required_coverage']], expected)
+            self.assertEqual(floor['profile'], profile)
+            included = json.loads(result['sources_bytes'])['sources']
+            self.assertIn('catalogue/components/new.json', [item['path'] for item in included])
+            self.assertNotIn('archive/old.md', [item['path'] for item in included])
+            for item in included:
+                self.assertEqual(item['sha256'], hashlib.sha256(item['text'].encode()).hexdigest())
+            self.assertEqual(json.loads(namespace['compile_stage']({'phase': 'design-inputs', **args})), result)
+            with self.assertRaises(ValueError):
+                namespace['prefix_design_inputs']({**args, 'required_sources': []})
+            with self.assertRaises(ValueError):
+                namespace['prefix_design_inputs']({**args, 'digests': digests[:-1]})
+
     def test_actual_profiles_and_views_preserve_every_original_and_match_shared_renderer(self):
         for profile in ['base-prompt', 'prefix-maker']:
             for view in ['literal-reference/v1', 'literal-reference/v2-deduplicated', 'literal-reference/v3-trailing-inventory', 'literal-reference/v4-stable-sharing', 'literal-reference/v5-contextual-sharing']:
@@ -132,4 +161,13 @@ def native_fixture(profile, view):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    import sys
+    if sys.argv[1:] == ['--design-fixture']:
+        source = snapshot('base-prompt', 'literal-reference/v5-contextual-sharing')
+        snapshot_bytes = namespace['prefix_json'](source)
+        prepared = namespace['prefix_prepare']({'snapshot_bytes': snapshot_bytes})
+        args = {'snapshot_bytes': snapshot_bytes,
+                'digests': [hashlib.sha256(text.encode()).hexdigest() for text in prepared['texts']]}
+        print(namespace['prefix_json']({'inputs': args, 'expected': namespace['prefix_design_inputs'](args)}))
+    else:
+        unittest.main()

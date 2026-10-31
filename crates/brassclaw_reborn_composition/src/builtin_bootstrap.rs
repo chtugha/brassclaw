@@ -96,9 +96,16 @@ pub(crate) const VALIDATOR_PYTHON_DEFINITIONS_SEED: &str =
 pub(crate) const VALIDATOR_PYTHON_GRAPH_SEED: &str =
     include_str!("../../brassclaw_skills/src/validator_python_graph.py");
 
+pub(crate) const VALIDATOR_PYTHON_PURE_CALLS_SEED: &str =
+    include_str!("../../brassclaw_skills/src/validator_python_pure_calls.py");
+
 #[cfg(feature = "skills-db")]
 pub(crate) const VALIDATOR_STRUCTURE_RECEIPT_SEED: &str =
     include_str!("../../brassclaw_skills/src/validator_structure_receipt.py");
+
+#[cfg(feature = "skills-db")]
+pub(crate) const VALIDATOR_PURE_STRUCTURE_RECEIPT_SEED: &str =
+    include_str!("../../brassclaw_skills/src/validator_pure_structure_receipt.py");
 
 /// Seed content for the codeact_preamble (class 10).
 pub(crate) const CODEACT_PREAMBLE_SEED: &str =
@@ -908,7 +915,8 @@ pub(crate) async fn retain_validator_check_drafts(
         global_bootstrap_components::packaged_component_id,
         validator_components::{
             preload_definition_draft, python_contracts_draft, python_definitions_draft,
-            python_graph_draft, recursive_contract_draft, structural_presence_draft,
+            python_graph_draft, python_pure_calls_draft, recursive_contract_draft,
+            review_subject_reader_draft, skill_interface_draft, structural_presence_draft,
             subject_sources_draft,
         },
     };
@@ -919,6 +927,11 @@ pub(crate) async fn retain_validator_check_drafts(
         preload_definition_draft(packaged_component_id("validator:preload-definition")),
         subject_sources_draft(packaged_component_id("validator:subject-sources")),
         recursive_contract_draft(packaged_component_id("validator:recursive-contract")),
+        review_subject_reader_draft(packaged_component_id("validator:review-subject-reader")),
+        skill_interface_draft(
+            packaged_component_id("validator:skill-interface"),
+            packaged_component_id("validator:recursive-contract"),
+        ),
         python_contracts_draft(
             packaged_component_id("validator:python-contracts"),
             packaged_component_id("validator:recursive-contract"),
@@ -932,6 +945,10 @@ pub(crate) async fn retain_validator_check_drafts(
         python_graph_draft(
             packaged_component_id("validator:python-graph"),
             VALIDATOR_PYTHON_GRAPH_SEED,
+        ),
+        python_pure_calls_draft(
+            packaged_component_id("validator:python-pure-calls"),
+            VALIDATOR_PYTHON_PURE_CALLS_SEED,
         ),
     ] {
         let draft = draft.map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
@@ -954,20 +971,34 @@ pub(crate) async fn retain_validator_structure_drafts(
     pool: &Arc<PgPool>,
     inventory: brassclaw_skills::global_bootstrap_components::UsageComponentIds,
 ) -> Result<(), SeedBuiltinBootstrapError> {
+    let profile = serde_json::to_value(brassclaw_engine::executor::retained_profile::profile())
+        .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
+            reason: error.to_string(),
+        })?;
     let drafts = brassclaw_skills::validator_components::python_structure_drafts(
         inventory,
         VALIDATOR_STRUCTURE_RECEIPT_SEED,
-        serde_json::to_value(brassclaw_engine::executor::retained_profile::profile()).map_err(
-            |error| SeedBuiltinBootstrapError::ComponentRevision {
-                reason: error.to_string(),
-            },
-        )?,
+        profile.clone(),
     )
     .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
         reason: error.to_string(),
     })?;
     let store = brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone());
     for draft in drafts {
+        store.retain_packaged_draft(&draft).await.map_err(|error| {
+            SeedBuiltinBootstrapError::ComponentRevision {
+                reason: error.to_string(),
+            }
+        })?;
+    }
+    for draft in brassclaw_skills::validator_components::python_pure_structure_drafts(
+        inventory,
+        VALIDATOR_PURE_STRUCTURE_RECEIPT_SEED,
+        profile,
+    )
+    .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
+        reason: error.to_string(),
+    })? {
         store.retain_packaged_draft(&draft).await.map_err(|error| {
             SeedBuiltinBootstrapError::ComponentRevision {
                 reason: error.to_string(),

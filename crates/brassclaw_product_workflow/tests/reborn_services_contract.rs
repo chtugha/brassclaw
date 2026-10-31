@@ -22,8 +22,13 @@ use std::{
 };
 
 use async_trait::async_trait;
-use brassclaw_auth::{CredentialAccountId, CredentialAccountProjection};
-use brassclaw_host_api::{AgentId, ApprovalRequestId, ProjectId, TenantId, ThreadId, UserId};
+use brassclaw_auth::{
+    AuthContinuationRef, AuthFlowStatus, CredentialAccountId, CredentialAccountLabel,
+    CredentialAccountProjection, CredentialAccountStatus, ManualTokenSetupIdentity,
+};
+use brassclaw_host_api::{
+    AgentId, ApprovalRequestId, ExtensionId, ProjectId, TenantId, ThreadId, UserId,
+};
 use brassclaw_product_adapters::{
     ProductAdapterError, ProductOutboundEnvelope, ProductWorkflowRejectionKind, ProjectionCursor,
     ProjectionStream, ProjectionSubscriptionRequest, ProtocolAuthFailure, RedactedString,
@@ -60,6 +65,13 @@ use brassclaw_product_workflow::{
     WebUiListThreadsRequest, WebUiResolveGateRequest, WebUiSendMessageRequest,
     WebUiSetAutomationStateRequest, WebUiSetupExtensionRequest, WebUiUpdateAutomationRequest,
     approval_gate_ref,
+};
+use brassclaw_product_workflow::{
+    ExtensionCredentialPrepareRequest, ExtensionCredentialReferenceRequest,
+    ExtensionCredentialTarget, ExtensionManualTokenCompletion, ExtensionManualTokenOriginal,
+    ExtensionManualTokenSetupReceipt, RebornExtensionCredentialSetup,
+    WebUiExtensionManualTokenReferenceRequest, WebUiExtensionManualTokenSetupRequest,
+    WebUiExtensionManualTokenSubmitRequest,
 };
 use brassclaw_threads::{
     AcceptInboundMessageRequest, AcceptedInboundMessage, AcceptedInboundMessageReplay,
@@ -1045,10 +1057,72 @@ fn automation_info(
 #[derive(Default)]
 struct RecordingExtensionCredentialSetupService {
     status_requests: Mutex<Vec<ExtensionCredentialStatusRequest>>,
+    prepare_requests: Mutex<Vec<ExtensionCredentialPrepareRequest>>,
     submit_requests: Mutex<Vec<ExtensionCredentialSubmitRequest>>,
 }
 
 impl RecordingExtensionCredentialSetupService {
+    fn setup_receipt(
+        request: &ExtensionCredentialPrepareRequest,
+    ) -> ExtensionManualTokenSetupReceipt {
+        let brassclaw_host_api::RuntimeCredentialRequirementSource::ProductAuthAccount {
+            provider,
+            ..
+        } = &request
+            .candidate_requirement
+            .as_ref()
+            .unwrap()
+            .requirement()
+            .source
+        else {
+            panic!("product account required");
+        };
+        ExtensionManualTokenSetupReceipt {
+            identity: request.identity,
+            invocation_id: request.scope.resource.invocation_id,
+            status: AuthFlowStatus::AwaitingUser,
+            provider: brassclaw_auth::AuthProviderId::new(provider.as_str()).unwrap(),
+            label: CredentialAccountLabel::new(
+                brassclaw_product_workflow::extension_manual_token_label(
+                    request.requester_extension.as_str(),
+                    provider.as_str(),
+                    &request.requirement_name,
+                ),
+            )
+            .unwrap(),
+            expires_at: "2099-01-01T00:00:00Z".parse().unwrap(),
+        }
+    }
+    fn require_original(
+        &self,
+        scope: &brassclaw_auth::AuthProductScope,
+        identity: ManualTokenSetupIdentity,
+        extension: &ExtensionId,
+        name: &str,
+    ) -> Result<(), RebornServicesError> {
+        if self
+            .prepare_requests
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|original| {
+                original.scope == *scope
+                    && original.identity == identity
+                    && &original.requester_extension == extension
+                    && original.requirement_name == name
+            })
+        {
+            return Ok(());
+        }
+        Err(RebornServicesError {
+            code: RebornServicesErrorCode::NotFound,
+            kind: RebornServicesErrorKind::BlockedAuthentication,
+            status_code: 404,
+            retryable: false,
+            field: None,
+            validation_code: None,
+        })
+    }
     fn status_count(&self) -> usize {
         self.status_requests.lock().expect("lock").len()
     }
@@ -1071,9 +1145,68 @@ impl ExtensionCredentialSetupService for RecordingExtensionCredentialSetupServic
     async fn submit_manual_token(
         &self,
         request: ExtensionCredentialSubmitRequest,
-    ) -> Result<CredentialAccountId, RebornServicesError> {
+    ) -> Result<ExtensionManualTokenCompletion, RebornServicesError> {
+        self.require_original(
+            &request.scope,
+            request.identity,
+            &request.requester_extension,
+            &request.requirement_name,
+        )?;
+        let result = ExtensionManualTokenCompletion {
+            identity: request.identity,
+            invocation_id: request.scope.resource.invocation_id,
+            credential_ref: CredentialAccountId::new(),
+            status: CredentialAccountStatus::Configured,
+            continuation: AuthContinuationRef::SetupOnly,
+        };
         self.submit_requests.lock().expect("lock").push(request);
-        Ok(CredentialAccountId::new())
+        Ok(result)
+    }
+    async fn recover_manual_token(
+        &self,
+        request: ExtensionCredentialReferenceRequest,
+    ) -> Result<Option<ExtensionManualTokenOriginal>, RebornServicesError> {
+        Ok(self
+            .prepare_requests
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|original| {
+                original.scope == request.scope
+                    && original.identity == request.identity
+                    && original.requester_extension == request.requester_extension
+                    && original.requirement_name == request.requirement_name
+            })
+            .map(|original| ExtensionManualTokenOriginal {
+                receipt: Self::setup_receipt(original),
+                target: original.target.clone(),
+            }))
+    }
+    async fn prepare_manual_token(
+        &self,
+        request: ExtensionCredentialPrepareRequest,
+    ) -> Result<ExtensionManualTokenSetupReceipt, RebornServicesError> {
+        let result = Self::setup_receipt(&request);
+        self.prepare_requests.lock().expect("lock").push(request);
+        Ok(result)
+    }
+    async fn continue_manual_token(
+        &self,
+        request: ExtensionCredentialReferenceRequest,
+    ) -> Result<ExtensionManualTokenCompletion, RebornServicesError> {
+        self.require_original(
+            &request.scope,
+            request.identity,
+            &request.requester_extension,
+            &request.requirement_name,
+        )?;
+        Ok(ExtensionManualTokenCompletion {
+            identity: request.identity,
+            invocation_id: request.scope.resource.invocation_id,
+            credential_ref: CredentialAccountId::new(),
+            status: CredentialAccountStatus::Configured,
+            continuation: AuthContinuationRef::SetupOnly,
+        })
     }
 }
 
@@ -4924,31 +5057,114 @@ async fn setup_extension_returns_post_setup_onboarding_payload() {
     );
 }
 
+async fn extension_setup_invocation(
+    services: &RebornServices,
+    package: &str,
+) -> brassclaw_host_api::InvocationId {
+    let response = services
+        .setup_extension(
+            caller(),
+            lifecycle_package_ref(package),
+            WebUiSetupExtensionRequest::default(),
+        )
+        .await
+        .unwrap();
+    let value = serde_json::to_value(&response.secrets[0].setup).unwrap();
+    brassclaw_host_api::InvocationId::parse(value["invocation_id"].as_str().unwrap()).unwrap()
+}
+
+#[tokio::test]
+async fn extension_manual_handoff_uses_projected_invocation_exact_raw_and_distinct_reference() {
+    use secrecy::ExposeSecret;
+    let credentials = Arc::new(RecordingExtensionCredentialSetupService::default());
+    let services =
+        setup_services_with_requirements(vec![manual_credential_requirement("api_token", true)])
+            .with_extension_credentials(credentials.clone());
+    let invocation = extension_setup_invocation(&services, "github").await;
+    let identity = ManualTokenSetupIdentity::default();
+    let prepared = services
+        .prepare_extension_manual_token(
+            caller(),
+            lifecycle_package_ref("github"),
+            WebUiExtensionManualTokenSetupRequest {
+                requirement: "api_token".into(),
+                identity,
+                invocation_id: invocation,
+                target: ExtensionCredentialTarget::New {},
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(prepared.identity, identity);
+    assert_eq!(prepared.label.as_str(), "github github api_token");
+    let result = services
+        .submit_extension_manual_token(
+            caller(),
+            lifecycle_package_ref("github"),
+            WebUiExtensionManualTokenSubmitRequest {
+                requirement: "api_token".into(),
+                identity,
+                invocation_id: invocation,
+                secret: "  exact token ü  ".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.identity, identity);
+    assert_eq!(result.continuation, AuthContinuationRef::SetupOnly);
+    assert_eq!(
+        credentials.status_count(),
+        1,
+        "dispatch does not reselect today's account"
+    );
+    {
+        let requests = credentials.submit_requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].secret.expose_secret(), "  exact token ü  ");
+        assert_eq!(requests[0].scope.surface, brassclaw_auth::AuthSurface::Web);
+        assert_eq!(requests[0].scope.resource.invocation_id, invocation);
+        assert_eq!(requests[0].identity, identity);
+    }
+    services
+        .continue_extension_manual_token(
+            caller(),
+            lifecycle_package_ref("github"),
+            WebUiExtensionManualTokenReferenceRequest {
+                requirement: "api_token".into(),
+                identity,
+                invocation_id: invocation,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        credentials.submit_count(),
+        1,
+        "reference has no raw-submit connection"
+    );
+}
+
 #[tokio::test]
 async fn setup_extension_rejects_blank_required_manual_secret() {
     let credentials = Arc::new(RecordingExtensionCredentialSetupService::default());
     let services =
         setup_services_with_requirements(vec![manual_credential_requirement("api_token", true)])
             .with_extension_credentials(credentials.clone());
-
-    let err = services
-        .setup_extension(
+    let invocation = extension_setup_invocation(&services, "github").await;
+    let error = services
+        .submit_extension_manual_token(
             caller(),
             lifecycle_package_ref("github"),
-            WebUiSetupExtensionRequest {
-                action: Some("submit".to_string()),
-                payload: Some(json!({
-                    "secrets": {
-                        "api_token": "   "
-                    }
-                })),
+            WebUiExtensionManualTokenSubmitRequest {
+                requirement: "api_token".into(),
+                identity: ManualTokenSetupIdentity::default(),
+                invocation_id: invocation,
+                secret: "   ".into(),
             },
         )
         .await
-        .expect_err("blank required token is rejected");
-
-    assert_setup_validation(err, "secrets", WebUiInboundValidationCode::Blank);
-    assert_eq!(credentials.status_count(), 1);
+        .unwrap_err();
+    assert_setup_validation(error, "token", WebUiInboundValidationCode::Blank);
     assert_eq!(credentials.submit_count(), 0);
 }
 
@@ -4958,26 +5174,88 @@ async fn setup_extension_rejects_unknown_secret_name() {
     let services =
         setup_services_with_requirements(vec![manual_credential_requirement("api_token", true)])
             .with_extension_credentials(credentials.clone());
-
-    let err = services
-        .setup_extension(
+    let invocation = extension_setup_invocation(&services, "github").await;
+    let error = services
+        .prepare_extension_manual_token(
             caller(),
             lifecycle_package_ref("github"),
-            WebUiSetupExtensionRequest {
-                action: Some("submit".to_string()),
-                payload: Some(json!({
-                    "secrets": {
-                        "unknown_name": "value"
-                    }
-                })),
+            WebUiExtensionManualTokenSetupRequest {
+                requirement: "unknown_name".into(),
+                identity: ManualTokenSetupIdentity::default(),
+                invocation_id: invocation,
+                target: ExtensionCredentialTarget::New {},
             },
         )
         .await
-        .expect_err("unknown secret name is rejected");
-
-    assert_setup_validation(err, "secrets", WebUiInboundValidationCode::InvalidValue);
-    assert_eq!(credentials.status_count(), 0);
+        .unwrap_err();
+    assert_setup_validation(
+        error,
+        "requirement",
+        WebUiInboundValidationCode::InvalidValue,
+    );
+    assert!(credentials.prepare_requests.lock().unwrap().is_empty());
     assert_eq!(credentials.submit_count(), 0);
+}
+
+#[tokio::test]
+async fn extension_original_metadata_and_reference_survive_removed_current_requirement() {
+    let credentials = Arc::new(RecordingExtensionCredentialSetupService::default());
+    let services =
+        setup_services_with_requirements(vec![manual_credential_requirement("api_token", true)])
+            .with_extension_credentials(credentials.clone());
+    let invocation = extension_setup_invocation(&services, "github").await;
+    let identity = ManualTokenSetupIdentity::default();
+    let request = WebUiExtensionManualTokenSetupRequest {
+        requirement: "api_token".into(),
+        identity,
+        invocation_id: invocation,
+        target: ExtensionCredentialTarget::New {},
+    };
+    let original = services
+        .prepare_extension_manual_token(caller(), lifecycle_package_ref("github"), request.clone())
+        .await
+        .unwrap();
+    // A new current catalogue has no old requirement; original recovery must
+    // complete before looking it up, not interpret absence as a new setup.
+    let changed =
+        setup_services_with_requirements(vec![]).with_extension_credentials(credentials.clone());
+    assert_eq!(
+        changed
+            .prepare_extension_manual_token(caller(), lifecycle_package_ref("github"), request)
+            .await
+            .unwrap(),
+        original
+    );
+    assert_eq!(credentials.prepare_requests.lock().unwrap().len(), 1);
+    changed
+        .submit_extension_manual_token(
+            caller(),
+            lifecycle_package_ref("github"),
+            WebUiExtensionManualTokenSubmitRequest {
+                requirement: "api_token".into(),
+                identity,
+                invocation_id: invocation,
+                secret: "original credential".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(credentials.submit_requests.lock().unwrap().len(), 1);
+    let unknown = changed
+        .submit_extension_manual_token(
+            caller(),
+            lifecycle_package_ref("github"),
+            WebUiExtensionManualTokenSubmitRequest {
+                requirement: "api_token".into(),
+                identity: ManualTokenSetupIdentity::default(),
+                invocation_id: invocation,
+                secret: "must not set up from raw input".into(),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(unknown.status_code, 404);
+    assert_eq!(credentials.submit_requests.lock().unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -4986,26 +5264,98 @@ async fn setup_extension_rejects_oauth_secret_via_manual_submit() {
     let services =
         setup_services_with_requirements(vec![oauth_credential_requirement("google_oauth", true)])
             .with_extension_credentials(credentials.clone());
-
-    let err = services
-        .setup_extension(
+    let invocation = extension_setup_invocation(&services, "google").await;
+    let error = services
+        .prepare_extension_manual_token(
             caller(),
             lifecycle_package_ref("google"),
-            WebUiSetupExtensionRequest {
-                action: Some("submit".to_string()),
-                payload: Some(json!({
-                    "secrets": {
-                        "google_oauth": "value"
-                    }
-                })),
+            WebUiExtensionManualTokenSetupRequest {
+                requirement: "google_oauth".into(),
+                identity: ManualTokenSetupIdentity::default(),
+                invocation_id: invocation,
+                target: ExtensionCredentialTarget::New {},
             },
         )
         .await
-        .expect_err("oauth credential cannot be submitted as a manual token");
-
-    assert_setup_validation(err, "secrets", WebUiInboundValidationCode::InvalidValue);
-    assert_eq!(credentials.status_count(), 0);
+        .unwrap_err();
+    assert_setup_validation(
+        error,
+        "requirement",
+        WebUiInboundValidationCode::InvalidValue,
+    );
+    assert!(credentials.prepare_requests.lock().unwrap().is_empty());
     assert_eq!(credentials.submit_count(), 0);
+}
+
+#[tokio::test]
+async fn extension_manual_rejects_foreign_invocation_and_keeps_same_provider_requirements_distinct()
+{
+    let credentials = Arc::new(RecordingExtensionCredentialSetupService::default());
+    let services = setup_services_with_requirements(vec![
+        manual_credential_requirement("read_token", true),
+        manual_credential_requirement("write_token", true),
+    ])
+    .with_extension_credentials(credentials.clone());
+    let response = services
+        .setup_extension(
+            caller(),
+            lifecycle_package_ref("github"),
+            WebUiSetupExtensionRequest::default(),
+        )
+        .await
+        .unwrap();
+    let labels = response
+        .secrets
+        .iter()
+        .map(|secret| match &secret.setup {
+            RebornExtensionCredentialSetup::ManualToken { account_label, .. } => {
+                account_label.clone()
+            }
+            other => panic!("unexpected {other:?}"),
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(labels.len(), 2);
+    let error = services
+        .prepare_extension_manual_token(
+            caller(),
+            lifecycle_package_ref("github"),
+            WebUiExtensionManualTokenSetupRequest {
+                requirement: "read_token".into(),
+                identity: ManualTokenSetupIdentity::default(),
+                invocation_id: brassclaw_host_api::InvocationId::new(),
+                target: ExtensionCredentialTarget::New {},
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_setup_validation(
+        error,
+        "invocation_id",
+        WebUiInboundValidationCode::InvalidValue,
+    );
+    assert!(credentials.prepare_requests.lock().unwrap().is_empty());
+}
+
+#[test]
+fn extension_generic_payload_and_reference_contracts_reject_raw_fields() {
+    assert!(
+        serde_json::from_value::<WebUiSetupExtensionRequest>(
+            json!({"action":"submit","payload":{"secrets":{"api_token":"PRIVATE"}}})
+        )
+        .is_err()
+    );
+    let identity = ManualTokenSetupIdentity::default();
+    let reference = json!({"requirement":"api_token","identity":identity,"invocation_id":brassclaw_host_api::InvocationId::new(),"token":"PRIVATE"});
+    assert!(
+        serde_json::from_value::<WebUiExtensionManualTokenReferenceRequest>(reference).is_err()
+    );
+    let raw = WebUiExtensionManualTokenSubmitRequest {
+        requirement: "api_token".into(),
+        identity,
+        invocation_id: brassclaw_host_api::InvocationId::new(),
+        secret: "PRIVATE".into(),
+    };
+    assert!(!format!("{raw:?}").contains("PRIVATE"));
 }
 
 fn setup_services_with_requirements(
@@ -5030,6 +5380,21 @@ fn extension_summary(
     credential_requirements: Vec<LifecycleExtensionCredentialRequirement>,
     onboarding: Option<LifecycleExtensionOnboarding>,
 ) -> LifecycleExtensionSummary {
+    let credential_requirements = credential_requirements
+        .into_iter()
+        .map(|mut requirement| {
+            if let Some(exact) = &requirement.runtime_requirement {
+                requirement.runtime_requirement = Some(
+                    brassclaw_host_api::RuntimeCredentialAccountRequirement::new(
+                        ExtensionId::new(package_id).unwrap(),
+                        exact.requirement().clone(),
+                    )
+                    .unwrap(),
+                );
+            }
+            requirement
+        })
+        .collect();
     LifecycleExtensionSummary {
         package_ref: lifecycle_package_ref(package_id),
         name: package_id.to_string(),
@@ -5055,11 +5420,61 @@ fn onboarding_fixture() -> LifecycleExtensionOnboarding {
     }
 }
 
+fn declared_test_requirement(
+    name: &str,
+    provider: &str,
+    extension: &str,
+    setup: &LifecycleExtensionCredentialSetup,
+    required: bool,
+) -> brassclaw_host_api::RuntimeCredentialAccountRequirement {
+    use brassclaw_host_api::*;
+    let (setup, scopes) = match setup {
+        LifecycleExtensionCredentialSetup::ManualToken => {
+            (RuntimeCredentialAccountSetup::ManualToken, vec![])
+        }
+        LifecycleExtensionCredentialSetup::OAuth { scopes } => (
+            RuntimeCredentialAccountSetup::OAuth {
+                scopes: scopes.clone(),
+            },
+            scopes.clone(),
+        ),
+    };
+    RuntimeCredentialAccountRequirement::new(
+        ExtensionId::new(extension).unwrap(),
+        RuntimeCredentialRequirement {
+            handle: SecretHandle::new(name).unwrap(),
+            source: RuntimeCredentialRequirementSource::ProductAuthAccount {
+                provider: RuntimeCredentialAccountProviderId::new(provider).unwrap(),
+                setup,
+            },
+            provider_scopes: scopes,
+            audience: NetworkTargetPattern {
+                scheme: None,
+                host_pattern: "api.example.test".into(),
+                port: None,
+            },
+            target: RuntimeCredentialTarget::Header {
+                name: "Authorization".into(),
+                prefix: Some("Bearer ".into()),
+            },
+            required,
+        },
+    )
+    .unwrap()
+}
+
 fn manual_credential_requirement(
     name: &str,
     required: bool,
 ) -> LifecycleExtensionCredentialRequirement {
     LifecycleExtensionCredentialRequirement {
+        runtime_requirement: Some(declared_test_requirement(
+            name,
+            "github",
+            "github",
+            &LifecycleExtensionCredentialSetup::ManualToken,
+            required,
+        )),
         name: name.to_string(),
         provider: "github".to_string(),
         required,
@@ -5072,6 +5487,15 @@ fn oauth_credential_requirement(
     required: bool,
 ) -> LifecycleExtensionCredentialRequirement {
     LifecycleExtensionCredentialRequirement {
+        runtime_requirement: Some(declared_test_requirement(
+            name,
+            "google",
+            "google",
+            &LifecycleExtensionCredentialSetup::OAuth {
+                scopes: vec!["https://www.googleapis.com/auth/gmail.readonly".into()],
+            },
+            required,
+        )),
         name: name.to_string(),
         provider: "google".to_string(),
         required,
@@ -5680,4 +6104,119 @@ async fn unwired_monty_lifecycle_never_fabricates_running_or_restart_acknowledge
             .unwrap_err();
         assert_eq!(error.status_code, 503);
     }
+}
+
+#[tokio::test]
+async fn oauth_requirement_resolver_preserves_full_declarations_and_checks_setup_context() {
+    let mut first = oauth_credential_requirement("first", true);
+    let mut second = oauth_credential_requirement("second", true);
+    for (entry, host) in [
+        (&mut first, "mail.example.test"),
+        (&mut second, "drive.example.test"),
+    ] {
+        let mut declaration = entry
+            .runtime_requirement
+            .as_ref()
+            .unwrap()
+            .requirement()
+            .clone();
+        declaration.handle = brassclaw_host_api::SecretHandle::new("shared-oauth").unwrap();
+        declaration.audience.host_pattern = host.into();
+        entry.runtime_requirement = Some(
+            brassclaw_host_api::RuntimeCredentialAccountRequirement::new(
+                ExtensionId::new("google").unwrap(),
+                declaration,
+            )
+            .unwrap(),
+        );
+    }
+    let mut manual = manual_credential_requirement("manual", true);
+    manual.runtime_requirement = Some(
+        brassclaw_host_api::RuntimeCredentialAccountRequirement::new(
+            ExtensionId::new("google").unwrap(),
+            manual
+                .runtime_requirement
+                .as_ref()
+                .unwrap()
+                .requirement()
+                .clone(),
+        )
+        .unwrap(),
+    );
+    let services = setup_services_with_requirements(vec![first.clone(), second.clone(), manual]);
+    let package = lifecycle_package_ref("google");
+    let view = services
+        .setup_extension(
+            caller(),
+            package.clone(),
+            serde_json::from_value(json!({})).unwrap(),
+        )
+        .await
+        .unwrap();
+    let RebornExtensionCredentialSetup::OAuth { invocation_id, .. } = &view
+        .secrets
+        .iter()
+        .find(|s| s.name == "first")
+        .unwrap()
+        .setup
+    else {
+        panic!("OAuth projection")
+    };
+    let invocation = brassclaw_host_api::InvocationId::parse(invocation_id).unwrap();
+    for entry in [first, second] {
+        let resolved = services
+            .resolve_extension_oauth_requirement(
+                caller(),
+                package.clone(),
+                entry.name.clone(),
+                invocation,
+            )
+            .await
+            .unwrap();
+        assert_eq!(Some(resolved), entry.runtime_requirement);
+    }
+    for name in ["missing", "manual"] {
+        assert_setup_validation(
+            services
+                .resolve_extension_oauth_requirement(
+                    caller(),
+                    package.clone(),
+                    name.into(),
+                    invocation,
+                )
+                .await
+                .unwrap_err(),
+            "requirement",
+            WebUiInboundValidationCode::InvalidValue,
+        );
+    }
+    assert_setup_validation(
+        services
+            .resolve_extension_oauth_requirement(
+                caller(),
+                package,
+                "first".into(),
+                brassclaw_host_api::InvocationId::new(),
+            )
+            .await
+            .unwrap_err(),
+        "invocation_id",
+        WebUiInboundValidationCode::InvalidValue,
+    );
+    let mut unproven = oauth_credential_requirement("unproven", true);
+    unproven.runtime_requirement = None;
+    let missing = setup_services_with_requirements(vec![unproven]);
+    assert_eq!(
+        missing
+            .resolve_extension_oauth_requirement(
+                caller(),
+                lifecycle_package_ref("google"),
+                "unproven".into(),
+                invocation
+            )
+            .await
+            .unwrap_err()
+            .status_code,
+        503
+    );
 }

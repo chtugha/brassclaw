@@ -132,6 +132,16 @@ impl TurnRunTransitionPort for EventPublishingTurnRunTransitionPort {
         self.inner.record_model_route_snapshot(request).await
     }
 
+    async fn block_native_auth(
+        &self,
+        request: brassclaw_turns::runner::native_auth::BlockNativeAuthRequest,
+    ) -> Result<TurnRunState, TurnError> {
+        let state = self.inner.block_native_auth(request).await?;
+        self.publish_state_event_best_effort(&state, TurnEventKind::Blocked, None)
+            .await;
+        Ok(state)
+    }
+
     async fn block_run(&self, request: BlockRunRequest) -> Result<TurnRunState, TurnError> {
         let state = self.inner.block_run(request).await?;
         self.publish_state_event_best_effort(&state, TurnEventKind::Blocked, None)

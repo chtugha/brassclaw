@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "source_sha256": "8baa9079a2e929e4ee49ed4da5abf558411d32127b6e0b2f1e71d2508cbeb79c",
-  "manifest_sha256": "40dbf72cc37bed73d2e38da4f2677ee8d0db6ff27954b61e8ac22765e887c3f9",
+  "source_sha256": "6f1ecaf37172887a7226b8258f816f5df1082024775cee7ad2d8410694f5e27f",
+  "manifest_sha256": "7869af7d10f80a5b56fd02b622810ee6c68f6bbcefecc8c558525428972166cc",
   "checker_sha256": "966003d6fa1d6d4a4d7392d32ad65a48a1dc96ab1acb6b1dc36480f6a6252edb",
   "validator_sha256": "4095812570a44bb98ac3c3def665acb179a22b226161f0fc25b0fde2991dfb59",
   "engine": "bounded isolated Linux CPython and offline design checks, not Monty/Q1/Q2",

@@ -88,18 +88,17 @@ async fn composite_routes_filesystem_operations_to_matching_backend() {
         Arc::new(memory_backend),
     )
     .unwrap();
-    root.mount(
-        descriptor(
-            "/projects",
-            "project-files",
-            BackendKind::LocalFilesystem,
-            StorageClass::FileContent,
-            ContentKind::ProjectFile,
-            IndexPolicy::NotIndexed,
-        ),
-        Arc::new(project_backend),
-    )
-    .unwrap();
+    let mut project_mount = descriptor(
+        "/projects",
+        "project-files",
+        BackendKind::LocalFilesystem,
+        StorageClass::FileContent,
+        ContentKind::ProjectFile,
+        IndexPolicy::NotIndexed,
+    );
+    project_mount.capabilities = project_backend.capabilities();
+    root.mount(project_mount, Arc::new(project_backend))
+        .unwrap();
 
     assert_eq!(
         root.read_file(&VirtualPath::new("/memory/MEMORY.md").unwrap())
@@ -153,6 +152,24 @@ async fn composite_routes_filesystem_operations_to_matching_backend() {
         .await
         .unwrap();
     assert!(project_dir.path().join("generated/deep").is_dir());
+
+    let opaque_path = VirtualPath::new("/projects/generated/deep/opaque.txt").unwrap();
+    let placement = root.describe_path(&opaque_path).await.unwrap();
+    assert!(placement.capabilities.has(Capability::Read));
+    assert!(placement.capabilities.has(Capability::Write));
+    assert!(placement.capabilities.has(Capability::OpaqueWrite));
+    assert!(!placement.capabilities.has(Capability::EntryBodyCas));
+    root.put_opaque(
+        &opaque_path,
+        b"opaque project file".to_vec(),
+        CasExpectation::Any,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        root.get(&opaque_path).await.unwrap().unwrap().entry.body,
+        b"opaque project file",
+    );
 
     root.delete(&VirtualPath::new("/memory/notes/new.md").unwrap())
         .await
@@ -295,4 +312,23 @@ fn descriptor(
             .with(Capability::List)
             .with(Capability::Stat),
     }
+}
+
+#[test]
+fn composite_rejects_claimed_body_cas_on_an_actual_local_backend() {
+    let mut root = CompositeRootFilesystem::new();
+    let (local, _directory) = empty_local_backend("/secrets");
+    assert!(!local.capabilities().has(Capability::EntryBodyCas));
+    let mut mount = descriptor(
+        "/secrets",
+        "local-secrets",
+        BackendKind::LocalFilesystem,
+        StorageClass::FileContent,
+        ContentKind::ProjectFile,
+        IndexPolicy::NotIndexed,
+    );
+    mount.capabilities = mount.capabilities.with(Capability::EntryBodyCas);
+    assert!(
+        matches!(root.mount(mount, Arc::new(local)), Err(FilesystemError::DescriptorOverclaims { missing, .. }) if missing.contains(&Capability::EntryBodyCas))
+    );
 }

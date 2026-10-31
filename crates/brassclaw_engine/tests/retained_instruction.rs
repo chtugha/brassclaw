@@ -762,3 +762,166 @@ async fn retained_disambiguation_returns_all_eligible_workflows_without_alias_du
     );
     tx.commit().await.unwrap();
 }
+
+#[tokio::test]
+async fn model_input_binding_is_pinned_with_exact_recipe_and_never_added_to_legacy_selection() {
+    use brassclaw_skills::recipe_model_input::RecipeModelInput;
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let (root, first, second) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+    let first_ref = store
+        .stage(
+            &draft(first, 22, json!({"content":"result = 'first'"}), &[]),
+            0,
+        )
+        .await
+        .unwrap();
+    let second_ref = store
+        .stage(
+            &draft(second, 22, json!({"content":"result = 'second'"}), &[]),
+            0,
+        )
+        .await
+        .unwrap();
+    let mut document = recipe_document(first, second, "2:1-2:E+0:1-0:E");
+    document["input_layouts"] = json!({"selected":{"format":"recipe-input-layout/1","task_inputs":{},"steps":{"2:1":{},"0:1":{}}}});
+    let legacy_ref = store
+        .stage(&draft(root, 21, document.clone(), &[first, second]), 0)
+        .await
+        .unwrap();
+    let legacy_snapshot = Arc::new(
+        store
+            .read_exact(&[root], &[legacy_ref, first_ref, second_ref])
+            .await
+            .unwrap(),
+    );
+    let legacy = compile_retained_recipe(
+        legacy_snapshot.clone(),
+        root,
+        "selected",
+        WorkflowClass::Deterministic,
+    )
+    .unwrap();
+    let old = legacy.retained_selection().unwrap();
+    let old_bytes = old.exact_bytes().to_owned();
+    assert_eq!(legacy.model_input(), &RecipeModelInput::Default);
+    assert!(
+        serde_json::from_str::<Value>(&old_bytes)
+            .unwrap()
+            .get("model_input_binding")
+            .is_none()
+    );
+    document["model_input_bindings"] = json!({"format":"recipe-model-input-bindings/1",
+        "variants":{"selected":{"selection":"selected","profile":"defensive"}}});
+    let selected_ref = store
+        .stage(&draft(root, 21, document.clone(), &[first, second]), 1)
+        .await
+        .unwrap();
+    let selected_snapshot = Arc::new(
+        store
+            .read_exact(&[root], &[selected_ref, first_ref, second_ref])
+            .await
+            .unwrap(),
+    );
+    let instruction = compile_retained_recipe(
+        selected_snapshot.clone(),
+        root,
+        "selected",
+        WorkflowClass::Deterministic,
+    )
+    .unwrap();
+    assert_eq!(
+        instruction.model_input(),
+        &RecipeModelInput::Selected {
+            profile: "defensive".into()
+        }
+    );
+    let selected = instruction.retained_selection().unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(selected.exact_bytes()).unwrap()["model_input_binding"],
+        json!({"format":"recipe-model-input-selection/1","binding":{"selection":"selected","profile":"defensive"}})
+    );
+    // A later immutable Recipe revision cannot replace either original selection.
+    document["model_input_bindings"]["variants"]["selected"] =
+        json!({"selection":"prefix_free_workflow","purpose":"prefix_generation"});
+    store
+        .stage(&draft(root, 21, document, &[first, second]), 2)
+        .await
+        .unwrap();
+    let resumed = compile_retained_recipe(
+        selected_snapshot,
+        root,
+        "selected",
+        WorkflowClass::Deterministic,
+    )
+    .unwrap();
+    assert_eq!(
+        resumed.retained_selection().unwrap().exact_bytes(),
+        selected.exact_bytes()
+    );
+    let old_resumed = compile_retained_recipe(
+        legacy_snapshot,
+        root,
+        "selected",
+        WorkflowClass::Deterministic,
+    )
+    .unwrap();
+    assert_eq!(
+        old_resumed.retained_selection().unwrap().exact_bytes(),
+        old_bytes
+    );
+    assert_ne!(old.checksum(), selected.checksum());
+}
+
+/// Actual retained graph and source inspector, including dependency-first symbol
+/// resolution. This is an unapproved component fixture, never activation proof.
+#[tokio::test]
+async fn bootstrap_prefill_uses_retained_budget_export_instead_of_parallel_arithmetic() {
+    use brassclaw_engine::{
+        executor::{retained_recipe::RetainedProgram, retained_source::InspectedRetainedProgram},
+        memory::retained_inputs::prepare_retained_unbound_program,
+    };
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let (recipe, answer, budget) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+    let answer_draft =
+        brassclaw_skills::prefix_bootstrap_components::bootstrap_answer_draft(answer, budget)
+            .unwrap();
+    let budget_draft =
+        brassclaw_skills::prefix_compiler_components::model_budget_draft(budget).unwrap();
+    let recipe_draft = draft(
+        recipe,
+        21,
+        json!({
+            "variants":[{"variant_key":"selected", "step_link":"0:1-0:E", "intent_examples":["bootstrap candidate"], "variable_patterns":[]}],
+            "step_descriptions":[{"desc_idx":0,"label":"Check captured bootstrap option","yaml_source":"", "steps":[{
+                "stepnumber":1,"knowledge":"orchestrator","goal":"Check candidate without importing or approving it", "content":"","type":"component","include":[answer]
+            }]}],
+            "input_layouts":{"selected":{"format":"recipe-input-layout/1",
+                "task_inputs":answer_draft.document()["input_contract"],
+                "steps":{"0:1":{"phase":{"kind":"task_input","reference":"{{vars.phase}}"}, "data_bytes":{"kind":"task_input","reference":"{{vars.data_bytes}}"}}}}},
+            "invocations":{"selected":{"0:1":"bootstrap_answer_stage"}}
+        }),
+        &[answer],
+    );
+    let mut references = Vec::new();
+    for component in [&budget_draft, &answer_draft, &recipe_draft] {
+        references.push(store.stage(component, 0).await.unwrap());
+    }
+    let snapshot = Arc::new(store.read_exact(&[recipe], &references).await.unwrap());
+    let instruction =
+        compile_retained_recipe(snapshot, recipe, "selected", WorkflowClass::Deterministic)
+            .unwrap();
+    let program = prepare_retained_unbound_program(instruction).unwrap();
+    let inspected = InspectedRetainedProgram::inspect(
+        RetainedProgram::Unbound(Arc::new(program)),
+        &brassclaw_monty_host::process::installed_worker().unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(inspected.preload_order(), &[budget, answer]);
+    assert_eq!(
+        inspected.invocation("0:1"),
+        Some("result = bootstrap_answer_stage(inputs=inputs)")
+    );
+}

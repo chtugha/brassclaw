@@ -12,6 +12,16 @@ pub struct ProviderObservationError;
 
 #[async_trait]
 pub trait ProviderWireObserver: Send + Sync {
+    /// Final host-owned attempt check after provider preparation and before
+    /// constructing a submission. This grants no Tool permission.
+    async fn before_submission(&self) -> Result<(), ProviderObservationError>;
+    /// Synchronous custody marker immediately before the transport can send.
+    /// A later failure cannot then be classified as confirmed unsubmitted.
+    fn submission_started(&self);
+    /// Native transport evidence that this attempt was rejected before its
+    /// send. A previous submission_started marker remains authoritative; this
+    /// callback cannot clear an earlier unknown/sent effect.
+    fn submission_rejected(&self);
     /// Own the original bytes synchronously, before a cancellable write await.
     fn receive_response(&self, status: u16, body: &[u8]) -> Result<(), ProviderObservationError>;
     async fn persist_response(&self) -> Result<(), ProviderObservationError>;
@@ -33,6 +43,14 @@ pub async fn observe_chat_completion<T>(
 
 pub(crate) fn current() -> Option<Arc<dyn ProviderWireObserver>> {
     OBSERVER.try_with(Arc::clone).ok()
+}
+/// Native preparation barrier only. Call at a site which has not entered the
+/// provider operation, never by inspecting an error category after a send.
+/// Observers retain any earlier submission_started marker independently.
+pub fn record_pre_submission_rejection() {
+    if let Some(observer) = current() {
+        observer.submission_rejected();
+    }
 }
 
 /// Lossless host-private envelope. Identity comes from the selected host route,

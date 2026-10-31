@@ -1,8 +1,13 @@
 //! Retained review submissions -> read-only preparation -> actual operator
 //! publication -> ordinary global Monty. Reuses actual bundled usage approval.
+#[path = "prefix_pair_construction_tests.rs"]
+mod pair_construction_tests;
+#[path = "prefix_model_setup_http_tests.rs"]
+mod setup_http_tests;
 use super::*;
 use crate::runtime::RebornRuntime;
-async fn at(
+use secrecy::ExposeSecret;
+pub(super) async fn at(
     app: &axum::Router,
     method: &str,
     path: &str,
@@ -39,9 +44,34 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     let rig = super::super::super::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
+    let snapshot_request = Uuid::new_v4();
+    use brassclaw_pg::test_support::{AckBoundary, AckCutRule, AckCutTransport};
+    let transport = AckCutTransport::start(
+        rig.url.expose_secret(),
+        vec![AckCutRule::after_bind(
+            1,
+            vec![
+                snapshot_request.as_bytes().to_vec(),
+                b"snapshot_bytes".to_vec(),
+            ],
+            vec![],
+            AckBoundary::Commit,
+        )],
+    )
+    .await
+    .unwrap();
+    // All application readers share the actual wire-transport pool. A second
+    // 16-connection metadata pool can exceed embedded PostgreSQL's 20 total
+    // connections when key-presence checks run concurrently.
+    let pool = transport.pool.clone();
     let input = RebornRuntimeInput::from_services(
-        rig.build_input("component-deployment-owner", root.path())
-            .with_runtime_policy(local_dev_runtime_policy()),
+        crate::RebornBuildInput::postgres_with_reborn_home(
+            "component-deployment-owner",
+            (*transport.pool).clone(),
+            brassclaw_secrets::SecretMaterial::from(transport.connection_string().to_owned()),
+            root.path().to_path_buf(),
+        )
+        .with_runtime_policy(local_dev_runtime_policy()),
     )
     .with_model_gateway_override(Arc::new(RecordingGateway {
         reply: "unmatched reply".into(),
@@ -139,7 +169,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         2,
         "installation must commit actual storage-usage proofs before readiness"
     );
-    let client = rig.pool.get().await.unwrap();
+    let client = pool.get().await.unwrap();
     let dispatches: i64 = client
         .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
         .await
@@ -147,7 +177,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         .get(0);
     drop(client);
     let reused = Box::pin(crate::bootstrap_generation_approval::qualify(
-        rig.pool.clone(),
+        pool.clone(),
         catalogue.kernel.clone(),
         &catalogue._generation_candidates,
         &catalogue.worker,
@@ -160,7 +190,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         .as_ref()
         .expect("closed compiler qualification before readiness");
     let reused_compiler = Box::pin(crate::bootstrap_compiler_approval::qualify(
-        rig.pool.clone(),
+        pool.clone(),
         catalogue.kernel.clone(),
         &catalogue._source_compiler_candidates.source,
         &catalogue.generation_approvals,
@@ -174,7 +204,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         compiler_approval.approval_id()
     );
     crate::bootstrap_compiler_approval::assert_incomplete_intent_is_not_replayed(
-        rig.pool.clone(),
+        pool.clone(),
         compiler_approval,
     )
     .await;
@@ -198,7 +228,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         "recipe_id":candidate_instruction.recipe().uuid,"workflow_class":"deterministic",
         "components":candidate_instruction.snapshot().revisions().values().map(|revision| reference(revision.reference())).collect::<Vec<_>>(),"association_approvals":{},
     })).unwrap();
-    let mut route_client = rig.pool.get().await.unwrap();
+    let mut route_client = pool.get().await.unwrap();
     let route_tx = route_client
         .build_transaction()
         .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -219,7 +249,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     );
     route_tx.rollback().await.unwrap();
     drop(route_client);
-    let mut client = rig.pool.get().await.unwrap();
+    let mut client = pool.get().await.unwrap();
     let tx = client
         .build_transaction()
         .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -243,7 +273,12 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     crate::prefix_reference_seeds::assert_database_sources(&catalogue).await;
     crate::prefix_job_definitions::assert_metadata_only(&catalogue).await;
     let (prefix_job_id, sempai_job_id) =
-        crate::runtime::prefix_job_submission::assert_global_snapshot_submission(&runtime).await;
+        crate::runtime::prefix_job_submission::assert_global_snapshot_submission(
+            &runtime,
+            snapshot_request,
+            &transport,
+        )
+        .await;
 
     // The canonical Retain workflow may use only its own qualified formatter.
     // A different Recipe sharing the storage usage cannot borrow that coverage.
@@ -253,7 +288,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
             serde_json::from_value(json!({"recipe_id":instruction.recipe().uuid,
                 "workflow_class":"deterministic","components":instruction.snapshot().revisions().values()
                     .map(|r| reference(r.reference())).collect::<Vec<_>>(),"association_approvals":{}})).unwrap();
-        let mut client = rig.pool.get().await.unwrap();
+        let mut client = pool.get().await.unwrap();
         let tx = client
             .build_transaction()
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -284,7 +319,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         )
         .unwrap();
         let changed_ref =
-            brassclaw_skills::revision_store::PgComponentRevisionStore::new(rig.pool.clone())
+            brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone())
                 .stage(&changed, 0)
                 .await
                 .unwrap();
@@ -301,7 +336,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
             "components":components,"association_approvals":{}}),
         )
         .unwrap();
-        let mut client = rig.pool.get().await.unwrap();
+        let mut client = pool.get().await.unwrap();
         let tx = client
             .build_transaction()
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -487,11 +522,11 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
             runtime.webui_turn_coordinator(),
         )
         .with_llm_config_service(
-            prefix_metadata_llm_service(rig.pool.clone(), runtime.webui_tenant_id()).await,
+            prefix_metadata_llm_service(pool.clone(), runtime.webui_tenant_id()).await,
         )
         .with_interceptor_config_service(Arc::new(
             crate::interceptor_config_service::RebornInterceptorConfigService::new(
-                rig.pool.clone(),
+                pool.clone(),
                 runtime.webui_tenant_id(),
             )
             .with_runtime(runtime.clone()),
@@ -583,8 +618,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         StatusCode::BAD_REQUEST
     );
     assert_eq!(
-        rig.pool
-            .get()
+        pool.get()
             .await
             .unwrap()
             .query_one(
@@ -664,10 +698,10 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     );
     // Registry-owned metadata edits survive migration reruns; no compiler path
     // supplied here can enable generation or alter the legacy bundle pointer.
-    let registry_client = rig.pool.get().await.unwrap();
+    let registry_client = pool.get().await.unwrap();
     registry_client.execute("UPDATE reborn_prefix_profiles SET label='Operator label',revision=revision+1 WHERE name='sempai'", &[]).await.unwrap();
     drop(registry_client);
-    brassclaw_pg::migrations::run_migrations(&rig.pool)
+    brassclaw_pg::migrations::run_migrations(&pool)
         .await
         .unwrap();
     let profiles = at(&app, "GET", "/api/webchat/v2/prefixes", None, true)
@@ -735,7 +769,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     {
         use brassclaw_host_runtime::PrefixGenerationBackend;
         let backend =
-            crate::pg_prefix_generation_backend::PgPrefixGenerationBackend::new(rig.pool.clone());
+            crate::pg_prefix_generation_backend::PgPrefixGenerationBackend::new(pool.clone());
         let scope = brassclaw_host_api::ResourceScope::system();
         let receipt = backend
             .retain("base-prompt", 1, &generation_bytes, &scope)
@@ -788,7 +822,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
             .iter()
             .any(|g| g["generation"] == exported["generation_package"])
     );
-    let storage_client = rig.pool.get().await.unwrap();
+    let storage_client = pool.get().await.unwrap();
     let legacy_count: i64 = storage_client
         .query_one("SELECT count(*) FROM reborn_basic_prompt_store", &[])
         .await
@@ -929,7 +963,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
             .iter()
             .all(|source| source["archived"] == true)
     );
-    let source_client = rig.pool.get().await.unwrap();
+    let source_client = pool.get().await.unwrap();
     assert_eq!(
         source_client
             .query_one(
@@ -950,14 +984,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     );
     drop(source_client);
     exercise_prefix_maker_import(&app, &checkout, root.path()).await;
-    exercise_prefix_model_records(
-        &model_app,
-        &rig.pool,
-        &runtime,
-        prefix_job_id,
-        sempai_job_id,
-    )
-    .await;
+    exercise_prefix_model_records(&model_app, &pool, &runtime, prefix_job_id, sempai_job_id).await;
     let initial = at(&app, "GET", "/api/webchat/v2/catalogue", None, true)
         .await
         .1;
@@ -976,7 +1003,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         assert_eq!(status, StatusCode::OK, "{receipt}");
         subjects.push(json!({"subject":{"submission_id":receipt["submission_id"],"subject_checksum":receipt["subject_checksum"]},"workflow_class":"deterministic","association_approvals":{}}));
     }
-    let client = rig.pool.get().await.unwrap();
+    let client = pool.get().await.unwrap();
     let evidence_before: i64 = client
         .query_one("SELECT count(*) FROM reborn_component_review_evidence", &[])
         .await
@@ -1406,6 +1433,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     drop(app);
     drop(catalogue);
     shutdown_shared_runtime(runtime).await.unwrap();
+    transport.shutdown().await.unwrap();
 }
 
 async fn exercise_prefix_model_records(
@@ -1424,7 +1452,9 @@ async fn exercise_prefix_model_records(
     let (status, empty) = at(app, "GET", catalogue_route, None, true).await;
     assert_eq!(status, StatusCode::OK, "{empty}");
     assert_eq!(empty["design_generation_available"], false);
-    let provider = json!({"id":"prefix-model-acceptance","adapter":"open_ai_completions","base_url":"http://127.0.0.1:1/v1","default_model":"exact-model","set_active":true});
+    let (status, observed) = at(app, "GET", "/api/webchat/v2/llm/providers", None, true).await;
+    assert_eq!(status, StatusCode::OK, "{observed}");
+    let provider = json!({"expected_selection_ref":observed["role_selection_refs"]["kohai"],"mutation_id":uuid::Uuid::new_v4(),"id":"prefix-model-acceptance","adapter":"open_ai_completions","base_url":"http://127.0.0.1:1/v1","default_model":"exact-model","model_token_limits":{"configured-inactive-model":{"max_prefix_tokens":100000,"max_prompt_tokens":14688}},"set_active":true});
     let (status, saved) = at(
         app,
         "POST",
@@ -1434,6 +1464,69 @@ async fn exercise_prefix_model_records(
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{saved}");
+    let mutation_id = provider["mutation_id"].as_str().unwrap();
+    let original_route = format!("/api/webchat/v2/llm/mutations/{mutation_id}");
+    let reconcile_route = format!("{original_route}/reconcile");
+    assert_eq!(
+        saved["mutation_receipt"]["mutation_id"],
+        provider["mutation_id"]
+    );
+    assert_eq!(
+        at(app, "GET", &original_route, None, false).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, original) = at(app, "GET", &original_route, None, true).await;
+    assert_eq!(status, StatusCode::OK, "{original}");
+    assert_eq!(original, saved["mutation_receipt"]);
+    assert_eq!(
+        at(app, "POST", &reconcile_route, None, false).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, reconciled) = at(app, "POST", &reconcile_route, None, true).await;
+    assert_eq!(status, StatusCode::OK, "{reconciled}");
+    assert_eq!(reconciled["mutation_receipt"], original);
+    let (status, replayed) = at(
+        app,
+        "POST",
+        "/api/webchat/v2/llm/providers",
+        Some(&provider),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{replayed}");
+    assert_eq!(replayed["mutation_receipt"], original);
+    let mut conflict = provider.clone();
+    conflict["name"] = json!("different original payload");
+    assert_eq!(
+        at(
+            app,
+            "POST",
+            "/api/webchat/v2/llm/providers",
+            Some(&conflict),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let unknown_route = format!("/api/webchat/v2/llm/mutations/{}", Uuid::new_v4());
+    assert_eq!(
+        at(app, "GET", &unknown_route, None, true).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        at(
+            app,
+            "POST",
+            &format!("{unknown_route}/reconcile"),
+            None,
+            true
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+
     let (status, catalogue) = at(app, "GET", catalogue_route, None, true).await;
     assert_eq!(status, StatusCode::OK, "{catalogue}");
     let target = catalogue["targets"]
@@ -1470,6 +1563,7 @@ async fn exercise_prefix_model_records(
         at(app, "POST", capture_route, Some(&request), true).await.1,
         specification
     );
+    setup_http_tests::exercise(app, &specification).await;
     exercise_prefix_model_artifacts(
         app,
         pool,
@@ -1524,8 +1618,16 @@ async fn exercise_prefix_model_records(
         .0,
         StatusCode::BAD_REQUEST
     );
-    let selection =
-        json!({"provider_id":"prefix-model-acceptance","model":"different-model","role":"kohai"});
+    let (status, observed) = at(app, "GET", "/api/webchat/v2/llm/providers", None, true).await;
+    assert_eq!(status, StatusCode::OK, "{observed}");
+    let revision = observed["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "prefix-model-acceptance")
+        .unwrap()["revision"]
+        .clone();
+    let selection = json!({"expected_selection_ref":observed["role_selection_refs"]["kohai"],"expected_revision":revision,"mutation_id":uuid::Uuid::new_v4(),"provider_id":"prefix-model-acceptance","model":"different-model","role":"kohai"});
     let (status, result) = at(
         app,
         "POST",
@@ -1591,6 +1693,91 @@ async fn exercise_prefix_model_records(
                 .is_err()
         );
     }
+    drop(client);
+    let before = at(app, "GET", "/api/webchat/v2/llm/providers", None, true)
+        .await
+        .1;
+    let catalogue = at(app, "GET", catalogue_route, None, true).await.1;
+    let target = catalogue["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|target| {
+            target["provider_id"] == "prefix-model-acceptance"
+                && target["model"] == "configured-inactive-model"
+        })
+        .unwrap();
+    assert_eq!(target["consumer"], "configured");
+    assert_eq!(target["configured_context_window"], Value::Null);
+    let request = json!({"provider_id":target["provider_id"],
+        "expected_provider_revision":target["provider_revision"],"model":target["model"]});
+    let mut stale = request.clone();
+    stale["expected_provider_revision"] = json!(target["provider_revision"].as_u64().unwrap() + 1);
+    assert_eq!(
+        at(app, "POST", capture_route, Some(&stale), true).await.0,
+        StatusCode::CONFLICT
+    );
+    let (status, inactive) = at(app, "POST", capture_route, Some(&request), true).await;
+    assert_eq!(status, StatusCode::OK, "{inactive}");
+    let contract: Value =
+        serde_json::from_str(inactive["specification_bytes"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        contract["model_token_limits"],
+        json!({"max_prefix_tokens":100000,"max_prompt_tokens":14688})
+    );
+    assert_eq!(contract["configured_context_window"], Value::Null);
+    assert_eq!(inactive["model"], "configured-inactive-model");
+    assert_eq!(
+        at(app, "POST", capture_route, Some(&request), true).await.1,
+        inactive
+    );
+    let after = at(app, "GET", "/api/webchat/v2/llm/providers", None, true)
+        .await
+        .1;
+    assert_eq!(
+        before, after,
+        "inactive model capture must not edit providers or role selections"
+    );
+    let passive_provider = json!({"mutation_id":Uuid::new_v4(),"id":"prefix-passive-provider",
+        "adapter":"open_ai_completions","base_url":"http://127.0.0.1:1/v1",
+        "default_model":"configured-inactive-model",
+        "model_token_limits":{"configured-inactive-model":{"max_prefix_tokens":64000,"max_prompt_tokens":32768}},
+        "set_active":false});
+    let (status, passive) = at(
+        app,
+        "POST",
+        "/api/webchat/v2/llm/providers",
+        Some(&passive_provider),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{passive}");
+    assert_eq!(passive["kohai_active"], before["kohai_active"]);
+    assert_eq!(passive["sempai_active"], before["sempai_active"]);
+    let catalogue = at(app, "GET", catalogue_route, None, true).await.1;
+    let target = catalogue["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|target| target["provider_id"] == "prefix-passive-provider")
+        .unwrap();
+    assert_eq!(target["consumer"], "configured");
+    assert_eq!(target["configured_context_window"], Value::Null);
+    let request = json!({"provider_id":target["provider_id"],
+        "expected_provider_revision":target["provider_revision"],"model":target["model"]});
+    let (status, specification) = at(app, "POST", capture_route, Some(&request), true).await;
+    assert_eq!(status, StatusCode::OK, "{specification}");
+    assert_ne!(
+        specification["id"], inactive["id"],
+        "same model name on another provider is another target"
+    );
+    let contract: Value =
+        serde_json::from_str(specification["specification_bytes"].as_str().unwrap()).unwrap();
+    assert_eq!(contract["configured_context_window"], Value::Null);
+    assert_eq!(
+        contract["model_token_limits"],
+        json!({"max_prefix_tokens":64000,"max_prompt_tokens":32768})
+    );
 }
 
 async fn prefix_metadata_llm_service(
@@ -2017,6 +2204,7 @@ async fn exercise_prefix_model_artifacts(
     for field in ["runtime_cache", "weights_identity", "serving_context_limit"] {
         assert!(observation[field].is_null());
     }
+    pair_construction_tests::exercise(app, pool, specification, &read).await;
     let bytes = read["artifact_set_bytes"].as_str().unwrap();
     assert_eq!(
         stored["id"],

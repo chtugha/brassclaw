@@ -2,6 +2,20 @@
 
 use async_trait::async_trait;
 
+/// Live policy for one retained target. This is configuration, not permission
+/// to dispatch a Tool or to select another embedding space.
+#[derive(Debug, Clone, Copy)]
+pub struct EmbeddingDispatchState {
+    pub definition_revision: u64,
+    pub cache_max_entries: usize,
+}
+
+#[async_trait]
+pub trait EmbeddingDispatchGuard: Send + Sync {
+    /// No embedding request or other model work may be submitted here.
+    async fn check(&self) -> Result<EmbeddingDispatchState, EmbeddingError>;
+}
+
 /// Error type for embedding operations.
 #[derive(Debug, thiserror::Error)]
 pub enum EmbeddingError {

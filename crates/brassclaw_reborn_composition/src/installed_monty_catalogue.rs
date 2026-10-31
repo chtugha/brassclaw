@@ -150,14 +150,22 @@ pub(crate) struct InstalledMontyCatalogue {
     pub(crate) capture_gate:
         tokio::sync::Mutex<Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>>,
     captured_prefixes: std::sync::Mutex<BTreeMap<String, std::sync::Weak<TaskCatalogue>>>,
+    tool_credential_sources:
+        std::sync::OnceLock<Arc<crate::task_tool_credentials::ToolCredentialSourceOwner>>,
     child_tasks: child_tasks::ChildTasks,
     pub(crate) discovery_publication: tokio::sync::Mutex<()>,
+    pub(crate) discovery_effective: tokio::sync::RwLock<Option<Uuid>>,
     // Retain the bootstrap subject independently of its approved active selection.
     _public_reply_candidate: Arc<InspectedRetainedProgram>,
     pub(super) _generation_candidates: [Arc<InspectedRetainedProgram>; 2],
     pub(super) _source_compiler_candidates: crate::prefix_compiler_candidates::CompilerCandidates,
+    pub(super) _design_selection_candidates: [Arc<InspectedRetainedProgram>; 3],
     pub(super) _measurement_candidate: Arc<InspectedRetainedProgram>,
     pub(super) _measurement_program: Option<Arc<InspectedRetainedProgram>>,
+    pub(super) _pair_case_candidate: Arc<InspectedRetainedProgram>,
+    pub(super) _pair_case_program: Option<Arc<InspectedRetainedProgram>>,
+    pub(super) pair_case_qualification:
+        Option<crate::bootstrap_pair_approval::BootstrapPairQualification>,
     pub(super) measurement_qualification:
         Option<crate::bootstrap_measurement_approval::BootstrapMeasurementQualification>,
     pub(super) _compiler_program: Option<Arc<InspectedRetainedProgram>>,
@@ -173,6 +181,15 @@ pub(crate) struct InstalledMontyCatalogue {
 }
 
 impl InstalledMontyCatalogue {
+    pub(crate) fn bind_tool_credential_sources(
+        &self,
+        owner: Arc<crate::task_tool_credentials::ToolCredentialSourceOwner>,
+    ) -> Result<(), AgentLoopDriverError> {
+        self.tool_credential_sources
+            .set(owner)
+            .map_err(|_| failed())
+    }
+
     /// Closed behavioral review only; this cannot publish a draft catalogue or
     /// supply an ordinary task with an unapproved selection. The original
     /// native registration, current policy and actual parent owner still apply.
@@ -231,6 +248,9 @@ impl InstalledMontyCatalogue {
             admission,
             program,
             runtimes,
+            kernel: self.kernel.clone(),
+            credential_policies: BTreeMap::new(),
+            credentials: crate::task_tool_credentials::CapturedToolCredentials::Uncaptured,
             mounts: MountView::default(),
             answers: native_answers::NativeToolAnswers::default(),
             model_responses: None,
@@ -373,6 +393,12 @@ impl InstalledMontyCatalogue {
                 .await
                 .map_err(|_| failed())?;
         }
+        if let Some(qualification) = &self.pair_case_qualification {
+            qualification
+                .verify_in_transaction(tx)
+                .await
+                .map_err(|_| failed())?;
+        }
 
         for selected in std::iter::once(&self.reply)
             .chain(std::iter::once(&self.history))
@@ -495,6 +521,15 @@ impl InstalledMontyCatalogue {
             preparation,
         )
         .await?;
+        let design_selection_candidates = crate::prefix_design_candidates::retain(
+            pool.clone(),
+            &source_compiler_candidates.source,
+            &encoding_candidates[0],
+            [json_tool, generation_tool, model_encoding_tool],
+            worker,
+            preparation,
+        )
+        .await?;
         let generation_approvals = Box::pin(crate::bootstrap_generation_approval::qualify(
             pool.clone(),
             kernel.clone(),
@@ -533,6 +568,27 @@ impl InstalledMontyCatalogue {
         ))
         .await?;
         let measurement_program = measurement_qualification
+            .as_ref()
+            .map(|qualification| qualification.program());
+        let pair_case_candidate = crate::prefix_pair_candidates::retain(
+            pool.clone(),
+            kernel.as_ref(),
+            json_tool,
+            model_encoding_tool,
+            worker,
+            preparation,
+        )
+        .await?;
+        let pair_case_qualification = Box::pin(crate::bootstrap_pair_approval::qualify(
+            pool.clone(),
+            kernel.clone(),
+            &pair_case_candidate,
+            compiler_approval.as_ref(),
+            &encoding_approvals,
+            worker,
+        ))
+        .await?;
+        let pair_case_program = pair_case_qualification
             .as_ref()
             .map(|qualification| qualification.program());
         let store = PgComponentRevisionStore::new(pool.clone());
@@ -843,6 +899,7 @@ impl InstalledMontyCatalogue {
             initial_preparation: preparation_policy,
             preparation_settings: std::sync::RwLock::new(None),
             captured_prefixes: std::sync::Mutex::new(BTreeMap::new()),
+            tool_credential_sources: std::sync::OnceLock::new(),
             child_tasks: child_tasks::ChildTasks::default(),
             #[cfg(test)]
             capture_gate: tokio::sync::Mutex::new(None),
@@ -851,14 +908,19 @@ impl InstalledMontyCatalogue {
             active: tokio::sync::RwLock::new(active),
             activation: tokio::sync::Mutex::new(()),
             discovery_publication: tokio::sync::Mutex::new(()),
+            discovery_effective: tokio::sync::RwLock::new(Some(generation)),
             mcp_discovery,
             qualification_scope: scope.clone(),
             _public_reply_candidate: public_reply_candidate,
             _generation_candidates: generation_candidates,
             _source_compiler_candidates: source_compiler_candidates,
+            _design_selection_candidates: design_selection_candidates,
             _measurement_candidate: measurement_candidate,
             _measurement_program: measurement_program,
             measurement_qualification,
+            _pair_case_candidate: pair_case_candidate,
+            _pair_case_program: pair_case_program,
+            pair_case_qualification,
             generation_approvals,
             compiler_approval,
             encoding_approvals,
@@ -910,7 +972,52 @@ impl SystemBundleSource for InstalledMontyCatalogue {
                 "retained task prefix scope differs",
             ));
         }
-        Ok(task.view.prefix.clone())
+        match &task.target_prefix {
+            Some(prefix) => Ok(prefix
+                .resolve()
+                .await?
+                .prefix_content()
+                .ok_or_else(unavailable)?
+                .to_string()),
+            None => Ok(task.view.prefix.clone()),
+        }
+    }
+    async fn get_context_bundle_for_run(
+        &self,
+        user: &str,
+        project: &str,
+        run: &str,
+    ) -> Result<Option<String>, brassclaw_turns::run_profile::AgentLoopHostError> {
+        use brassclaw_turns::run_profile::{AgentLoopHostError, AgentLoopHostErrorKind};
+        let task = self
+            .captured_prefixes
+            .lock()
+            .map_err(|_| {
+                AgentLoopHostError::new(
+                    AgentLoopHostErrorKind::Unavailable,
+                    "retained task prefix is unavailable",
+                )
+            })?
+            .get(run)
+            .and_then(std::sync::Weak::upgrade)
+            .ok_or_else(|| {
+                AgentLoopHostError::new(
+                    AgentLoopHostErrorKind::Unavailable,
+                    "retained task prefix is unavailable",
+                )
+            })?;
+        if task.prefix_user != user || task.prefix_project != project {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "retained task prefix scope differs",
+            ));
+        }
+        // The qualified target reference is inserted once at the final model
+        // boundary. Never also emit the legacy library bundle as a snippet.
+        Ok(task
+            .target_prefix
+            .is_none()
+            .then(|| task.view.prefix.clone()))
     }
     async fn get_system_bundle(&self, _user_id: &str, _project_id: &str) -> String {
         self.active.read().await.prefix.clone()
@@ -918,6 +1025,7 @@ impl SystemBundleSource for InstalledMontyCatalogue {
 }
 
 struct TaskCatalogue {
+    credentials: crate::task_tool_credentials::CapturedToolCredentials,
     reference: CatalogueReference,
     prefix_user: String,
     prefix_project: String,
@@ -927,6 +1035,7 @@ struct TaskCatalogue {
     resolution: Option<IntentResolution>,
     query: String,
     view: Arc<crate::authored_monty_catalogue::CatalogueGeneration>,
+    target_prefix: Option<brassclaw_reborn::monty_model_capability::RecipeModelPrefix>,
     _package: Arc<InstalledMontyCatalogue>,
 }
 
@@ -1001,23 +1110,37 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             .map(Some)
             .map_err(|_| failed());
         }
-        let revision = definition.revision.to_string();
+        if definition.operation == "check_cases" {
+            if input.user_input != reference
+                || definition.scope != context.scope
+                || definition.created_by
+                    != context.actor.as_ref().ok_or_else(failed)?.user_id.as_str()
+                || definition.mode != "target"
+            {
+                return Err(failed());
+            }
+            return crate::prefix_pair_case_capture::select(
+                self, host, admission, definition, reference,
+            )
+            .await
+            .map(Some)
+            .map_err(|_| failed());
+        }
+        let (profile, target_revision) = definition.target.profile().ok_or_else(failed)?;
+        let revision = target_revision.to_string();
         if input.user_input != reference
             || definition.scope != context.scope
             || definition.created_by != context.actor.as_ref().ok_or_else(failed)?.user_id.as_str()
             || definition.operation != "generate"
             || definition.mode != "source_only"
-            || !matches!(
-                definition.profile.as_str(),
-                "base-prompt" | "prefix-maker" | "sempai"
-            )
-            || definition.input["profile"] != definition.profile
+            || !matches!(profile, "base-prompt" | "prefix-maker" | "sempai")
+            || definition.input["profile"] != profile
             || definition.input["revision"] != revision.as_str()
         {
             return Err(failed());
         }
         crate::prefix_job_execution::validate_snapshot(
-            &definition.profile,
+            profile,
             definition.input["snapshot_bytes"]
                 .as_str()
                 .ok_or_else(failed)?,
@@ -1055,30 +1178,40 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         let RetainedProgram::Tools(program) = inspected.program() else {
             return Err(failed());
         };
-        let tools = bootstrap_compiler_tools(
-            self.pool.clone(),
-            self.kernel.clone(),
-            host,
-            admission,
-            program.clone(),
-            false,
-        )
-        .map_err(|_| failed())?;
+        let program = program.clone();
+        let binding_pool = self.pool.clone();
+        let binding_kernel = self.kernel.clone();
+        let bind_tools = Box::new(move || {
+            bootstrap_compiler_tools(
+                binding_pool.clone(),
+                binding_kernel.clone(),
+                host.clone(),
+                admission.clone(),
+                program.clone(),
+                false,
+            )
+        });
         Ok(Some(Arc::new(crate::prefix_job_execution::Invocation {
+            receipt_contract: crate::prefix_job_execution::ReceiptContract::Generation,
             definition,
             reference,
             inspected,
-            tools,
+            tools: Default::default(),
+            bind_tools,
             pool: self.pool.clone(),
         })))
     }
-    async fn capture(
+    async fn prepare(
         &self,
         host: Arc<MontyTaskHost>,
         admission: Arc<PgMontyAdmission>,
         input: &TaskInput,
-    ) -> Result<Arc<dyn MontyTaskCatalogue>, AgentLoopDriverError> {
+    ) -> Result<Arc<dyn crate::global_task_factory::CapturedMontyCatalogue>, AgentLoopDriverError>
+    {
         let _serial = self.activation.lock().await;
+        self.reconcile_committed_runtime_locked()
+            .await
+            .map_err(|_| failed())?;
         let view = self.active.read().await.clone();
         let context = host.run_context();
         let scope = IntentScope {
@@ -1161,14 +1294,13 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             captured.notify_one();
             release.notified().await;
         }
-        self.bind_captured_view(
-            host,
-            admission,
+        Ok(self.prepare_captured_view(
+            &host,
+            &admission,
             view,
             Some(resolution),
             input.user_input.clone(),
-        )
-        .map(|task| task as Arc<dyn MontyTaskCatalogue>)
+        ))
     }
 }
 
@@ -1221,6 +1353,9 @@ pub(crate) fn bootstrap_reply_tools(
         admission,
         program,
         runtimes: BTreeMap::from([("0:2".to_owned(), Arc::new(runtime))]),
+        kernel,
+        credential_policies: BTreeMap::new(),
+        credentials: crate::task_tool_credentials::CapturedToolCredentials::Uncaptured,
         mounts: MountView::default(),
         answers: native_answers::NativeToolAnswers::default(),
         model_responses: None,
@@ -1274,7 +1409,8 @@ pub(super) fn bootstrap_encoding_tools(
 mod inspection_candidate_tools;
 #[cfg(test)]
 pub(crate) use inspection_candidate_tools::{
-    response_parser_candidate_tools, source_inventory_candidate_tools,
+    design_selection_candidate_tools, pair_case_candidate_tools, response_parser_candidate_tools,
+    source_inventory_candidate_tools,
 };
 
 pub(super) fn bootstrap_measurement_tools(
@@ -1299,6 +1435,29 @@ pub(super) fn bootstrap_measurement_tools(
     bootstrap_builtin_tools(pool, kernel, host, admission, program, denied)
 }
 
+// Exact pair bindings for installation qualification and qualified private jobs.
+// Reusing the native dispatcher grants no workflow approval or Tool permission.
+pub(super) fn bootstrap_pair_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+    denied: bool,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    if program.bindings().len() != 2
+        || program.bindings().get("0:3").is_none_or(|binding| {
+            binding.capability_id() != brassclaw_host_runtime::JSON_CAPABILITY_ID
+        })
+        || program.bindings().get("0:5").is_none_or(|binding| {
+            binding.capability_id() != brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID
+        })
+    {
+        return Err(invalid("pair qualification bindings differ"));
+    }
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, denied)
+}
+
 // Transport/policy construction only. The closed producer above checks its exact
 // subject; development tests below cannot manufacture bootstrap approval.
 #[cfg(all(test, feature = "root-llm-provider"))]
@@ -1314,32 +1473,41 @@ pub(crate) fn model_recipe_candidate_tools(
     ),
     application_checksum: [u8; 32],
 ) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
-    if program.inputs().instruction().class()
-        != brassclaw_engine::memory::retained_instruction::WorkflowClass::RequiresModel
-        || program.bindings().len() != 4
-        || program
+    let canonical_reply = program.bindings().len() == 4
+        && program
             .bindings()
             .values()
             .filter(|b| b.capability_id() == "builtin.json")
             .count()
-            != 2
-        || program
+            == 2
+        && program
             .bindings()
             .values()
             .filter(|b| b.capability_id() == "host.post_reply")
             .count()
-            != 1
-        || program
+            == 1
+        && program
             .bindings()
             .values()
             .filter(|b| b.capability_id() == "host.kohai_complete")
             .count()
-            != 1
+            == 1;
+    // A closed infrastructure case may execute the existing model usage
+    // directly without a reply workflow. No ordinary catalogue approval or
+    // public model-only entry is supplied by this test-only constructor.
+    let model_only = host.is_result_only_completion()
+        && !program.bindings().is_empty()
+        && program
+            .bindings()
+            .values()
+            .all(|binding| binding.capability_id() == "host.kohai_complete");
+    if program.inputs().instruction().class()
+        != brassclaw_engine::memory::retained_instruction::WorkflowClass::RequiresModel
+        || !(canonical_reply || model_only)
     {
         return Err(invalid("model candidate bindings differ"));
     }
     let (prefix, responses) = model;
-    let mut prefix = Some(prefix);
     let mut runtimes = BTreeMap::new();
     for (step, binding) in program.bindings() {
         let capability = CapabilityId::new(binding.capability_id())
@@ -1384,14 +1552,9 @@ pub(crate) fn model_recipe_candidate_tools(
         });
         let runtime = match capability.as_str() {
             "host.post_reply" => kernel.reply(host.clone(), policy)?,
-            "host.kohai_complete" => kernel.model(
-                host.clone(),
-                prefix
-                    .take()
-                    .ok_or_else(|| invalid("model candidate prefix already bound"))?,
-                responses.clone(),
-                policy,
-            )?,
+            "host.kohai_complete" => {
+                kernel.model(host.clone(), prefix.clone(), responses.clone(), policy)?
+            }
             _ => kernel
                 .builtin_with_policy(
                     &capability,
@@ -1411,6 +1574,9 @@ pub(crate) fn model_recipe_candidate_tools(
         mounts: MountView::default(),
         answers: native_answers::NativeToolAnswers::default(),
         model_responses: Some(responses),
+        kernel,
+        credential_policies: BTreeMap::new(),
+        credentials: crate::task_tool_credentials::CapturedToolCredentials::Uncaptured,
     }))
 }
 
@@ -1458,6 +1624,9 @@ fn bootstrap_builtin_tools(
         admission,
         program,
         runtimes,
+        kernel,
+        credential_policies: BTreeMap::new(),
+        credentials: crate::task_tool_credentials::CapturedToolCredentials::Uncaptured,
         mounts: MountView::default(),
         answers: native_answers::NativeToolAnswers::default(),
         model_responses: None,
@@ -1493,6 +1662,34 @@ pub(crate) fn bootstrap_compiler_tools(
     bootstrap_builtin_tools(pool, kernel, host, admission, program, denied)
 }
 
+/// Resolve only within an already committed match and its original view.
+/// Ambiguous or missing artifacts are corruption, never Default/No-Match.
+pub(super) fn program_for_committed_match<'a>(
+    programs: impl Iterator<Item = &'a InspectedRetainedProgram>,
+    resolution: &IntentResolution,
+) -> Result<Option<&'a InspectedRetainedProgram>, PortFailure> {
+    let IntentResolution::Match {
+        component_id,
+        step_link,
+        input_text,
+        ..
+    } = resolution
+    else {
+        return Ok(None);
+    };
+    let mut matching = programs.filter(|p| {
+        let i = p.program().inputs().instruction();
+        i.recipe().uuid == *component_id
+            && i.variant().step_link == *step_link
+            && i.variant().intent_examples.contains(input_text)
+    });
+    let selected = matching.next().ok_or_else(failure)?;
+    if matching.next().is_some() {
+        return Err(failure());
+    }
+    Ok(Some(selected))
+}
+
 #[async_trait]
 impl MontyTaskCatalogue for TaskCatalogue {
     fn catalogue_reference(&self) -> Option<CatalogueReference> {
@@ -1513,20 +1710,17 @@ impl MontyTaskCatalogue for TaskCatalogue {
         match resolution {
             IntentResolution::NoMatch => Ok(MontyIntentSelection::NoMatch),
             IntentResolution::Disambiguation { .. } => Ok(MontyIntentSelection::Disambiguation),
-            IntentResolution::Match {
-                component_id,
-                step_link,
-                input_text,
-                ..
-            } => {
+            IntentResolution::Match { input_text, .. } => {
+                let inspected = program_for_committed_match(
+                    std::iter::once(&self.reply)
+                        .chain(self.incoming.iter())
+                        .map(|p| p.inspected.as_ref()),
+                    resolution,
+                )?
+                .ok_or_else(failure)?;
                 let original = std::iter::once(&self.reply)
                     .chain(self.incoming.iter())
-                    .find(|p| {
-                        let i = p.inspected.program().inputs().instruction();
-                        i.recipe().uuid == *component_id
-                            && i.variant().step_link == *step_link
-                            && i.variant().intent_examples.contains(input_text)
-                    })
+                    .find(|p| std::ptr::eq(p.inspected.as_ref(), inspected))
                     .ok_or_else(failure)?;
                 let mut selected = copy_selection(original);
                 selected.inputs = Some(
@@ -1568,10 +1762,47 @@ struct SelectedTools {
     admission: Arc<PgMontyAdmission>,
     program: Arc<RetainedToolProgram>,
     runtimes: BTreeMap<String, Arc<RetainedFirstPartyCapability>>,
+    kernel: Arc<dyn crate::monty_kernel::MontyKernelSnapshot>,
+    credential_policies: BTreeMap<String, Arc<PgSelectedToolPolicy>>,
+    credentials: crate::task_tool_credentials::CapturedToolCredentials,
     mounts: MountView,
     // A lost answer commit retains the actual result; it cannot justify replay.
     answers: native_answers::NativeToolAnswers,
     model_responses: Option<Arc<dyn RecipeModelResponseStore>>,
+}
+
+impl SelectedTools {
+    fn runtime_for_invocation(
+        &self,
+        step: &str,
+        original: &Arc<RetainedFirstPartyCapability>,
+        scope: &brassclaw_host_api::ResourceScope,
+    ) -> Result<Arc<RetainedFirstPartyCapability>, AgentLoopDriverError> {
+        if original.descriptor().runtime_credentials.is_empty() {
+            return Ok(original.clone());
+        }
+        let policy = self
+            .credential_policies
+            .get(step)
+            .ok_or_else(failed)?
+            .clone();
+        let services = self.credentials.bind_invocation(&self.host, scope)?;
+        let bound = self
+            .kernel
+            .builtin_with_credential_sources(
+                &original.descriptor().id,
+                original.native_identity().ok_or_else(failed)?,
+                policy,
+                services,
+            )
+            .map_err(|_| failed())?;
+        if bound.native_identity() != original.native_identity()
+            || bound.descriptor() != original.descriptor()
+        {
+            return Err(failed());
+        }
+        Ok(Arc::new(bound))
+    }
 }
 #[async_trait]
 impl RetainedToolPort for SelectedTools {
@@ -1672,27 +1903,44 @@ impl RetainedToolPort for SelectedTools {
             provenance: TrustProvenance::AdminConfig,
             evaluated_at: chrono::Utc::now(),
         };
-        let answer = match self
-            .host
-            .invoke_retained_tool(
-                runtime,
-                RuntimeCapabilityRequest::new(
-                    execution,
-                    runtime.descriptor().id.clone(),
-                    ResourceEstimate::default(),
-                    arguments,
-                    trust,
-                ),
-            )
-            .await
-        {
-            Ok(RuntimeCapabilityOutcome::Completed(completed)) => PortAnswer::Return {
-                value: completed.output.into(),
+        // Bind the captured family to this already journalled ORIGINAL native
+        // invocation. A failed binding is retained as its answer; it cannot
+        // abandon custody or cause a replacement dispatch/selection.
+        let native =
+            self.runtime_for_invocation(invocation.step_id(), runtime, &execution.resource_scope);
+        let answer = match native {
+            Err(_) => error(),
+            Ok(runtime) => match self
+                .host
+                .invoke_retained_tool(
+                    &runtime,
+                    RuntimeCapabilityRequest::new(
+                        execution,
+                        runtime.descriptor().id.clone(),
+                        ResourceEstimate::default(),
+                        arguments,
+                        trust,
+                    ),
+                )
+                .await
+            {
+                Ok(RuntimeCapabilityOutcome::Completed(completed)) => PortAnswer::Return {
+                    value: completed.output.into(),
+                },
+                Ok(RuntimeCapabilityOutcome::AuthRequired(gate)) => PortAnswer::TerminalError {
+                    reason_kind: match gate.boundary {
+                        brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch => {
+                            "retained_tool_auth_required"
+                        }
+                        _ => "retained_tool_auth_outcome_unresolved",
+                    }
+                    .into(),
+                },
+                Ok(RuntimeCapabilityOutcome::Failed(failed)) => PortAnswer::TerminalError {
+                    reason_kind: format!("retained_tool_{}", failed.kind.as_str()),
+                },
+                _ => error(),
             },
-            Ok(RuntimeCapabilityOutcome::Failed(failed)) => PortAnswer::TerminalError {
-                reason_kind: format!("retained_tool_{}", failed.kind.as_str()),
-            },
-            _ => error(),
         };
         let answer = match received.receive(answer) {
             Ok(answer) => answer,

@@ -84,6 +84,7 @@ async fn webui_event_stream_uses_credential_requirement_for_manual_token_auth_pr
         thread_id.clone(),
     );
     let credential_requirements = vec![RuntimeCredentialAuthRequirement {
+        requirement: None,
         provider: RuntimeCredentialAccountProviderId::new("github").unwrap(),
         requester_extension: ExtensionId::new("github").unwrap(),
         provider_scopes: Vec::new(),
@@ -236,6 +237,7 @@ async fn webui_event_stream_creates_google_oauth_prompt_for_runtime_credential_g
         thread_id.clone(),
     );
     let credential_requirements = vec![RuntimeCredentialAuthRequirement {
+        requirement: None,
         provider: RuntimeCredentialAccountProviderId::new("google").unwrap(),
         requester_extension: ExtensionId::new("google-calendar").unwrap(),
         provider_scopes: vec!["https://www.googleapis.com/auth/calendar.readonly".to_string()],
@@ -403,6 +405,7 @@ async fn webui_event_stream_creates_notion_dcr_oauth_prompt_for_runtime_credenti
         thread_id.clone(),
     );
     let credential_requirements = vec![RuntimeCredentialAuthRequirement {
+        requirement: None,
         provider: RuntimeCredentialAccountProviderId::new("notion").unwrap(),
         requester_extension: ExtensionId::new("notion").unwrap(),
         provider_scopes: Vec::new(),

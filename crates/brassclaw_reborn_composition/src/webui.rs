@@ -139,38 +139,8 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     // Requires both root-llm-provider and postgres — the service is DB-exclusive
     // after the V047/V048 migration.
     #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
-    if let Some(pool) = services.pg_pool.clone() {
-        let keys = runtime.services().llm_key_store();
-        let tenant_id = runtime.webui_tenant_id().to_string();
-        let pg_repo = Arc::new(crate::pg_provider_repo::PgProviderRepo::new(
-            pool.as_ref().clone(),
-            tenant_id.clone(),
-        ));
-        let mut llm_config =
-            crate::RebornLlmConfigService::new(keys, pool.clone(), pg_repo, tenant_id);
-        if let Some(source) = &services.memory_embedding_source {
-            llm_config = llm_config.with_memory_embedding_source(source.clone());
-        }
-        if let Some(adapter) = runtime.webui_llm_reload_adapter() {
-            let trigger = Arc::new(adapter) as Arc<dyn crate::LlmReloadTrigger>;
-            // Runtime startup has already restored the primary selection before
-            // Monty/workers/ingress. Attaching a surface must not republish it;
-            // this handle is reserved for explicit live settings changes.
-            llm_config = llm_config.with_reload_trigger(trigger);
-        }
-        if let Some(session) = runtime.webui_llm_session() {
-            llm_config = llm_config.with_nearai_session(session);
-        }
-        if let Some(states) = runtime.webui_nearai_login_states() {
-            llm_config = llm_config.with_nearai_login_states(states);
-        }
-        if let Some(swappable) = runtime.sempai_swappable() {
-            llm_config = llm_config.with_sempai_swappable(swappable);
-        }
-        if let Some(mode) = runtime.interceptor_mode() {
-            llm_config = llm_config.with_interceptor_mode(mode);
-        }
-        api = api.with_llm_config_service(Arc::new(llm_config));
+    if let Some(configuration) = runtime.webui_llm_configuration() {
+        api = api.with_llm_config_service(configuration);
     }
 
     // UI-specific doc-sync watchers. The runtime already seeded and verified
@@ -321,7 +291,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     // Wire the interceptor configuration service (Phase 5.5, postgres +
     // root-llm-provider only).  When the pool is available, the service
     // provides snapshot/update/reassemble/prewarm over brassclaw_config.
-    #[cfg(feature = "postgres")]
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
     if let Some(pool) = services.pg_pool.clone() {
         let tenant_id = runtime.webui_tenant_id().to_string();
         let mut interceptor_svc =

@@ -469,7 +469,8 @@ pub fn webui_v2_app_with_lifecycle(
             config.tenant_id.clone(),
             config.default_agent_id.clone(),
             config.default_project_id.clone(),
-        );
+        )
+        .with_services(Arc::clone(&bundle.api));
         if let Some(google_oauth) = config.google_oauth.clone() {
             state = state.with_google_oauth(google_oauth);
         }

@@ -1,0 +1,134 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-012",
+  "status": "passed",
+  "package": "/private/tmp/brassclaw-review-unsubmitted-20261031-zwx3wc7e",
+  "sources": {
+    "crates/brassclaw_reborn/src/loop_driver_host/model_interceptor.rs": "de1a1abe4ccb0d1b68e66a4b050f64f413ea4751d12e76af256f99799efabb08",
+    "crates/brassclaw_reborn_composition/src/native_model_usage_tests.rs": "2b385a1e00e04a022fb105f69feb8b1365f4f9253d300893e950e47d510ce55a"
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-review-unsubmitted-validation-20261031/run-1/source.json",
+    "sha256": "1f15abda6e62c3dc3a3f3b3854f9f417f1060430b33d96941f85fb9e24ff9a01",
+    "paths": 7970,
+    "reviewed_root": "/private/tmp/brassclaw-review-unsubmitted-20261031-zwx3wc7e/current-root-inputs-review-unsubmitted.json",
+    "reviewed_root_sha256": "73949d35815aebbe5bcd1c2ca95ab4a051947f5ef6cce5c745466deeaa95a284",
+    "reviewed_root_paths": 231
+  },
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-review-unsubmitted-validation-20261031/run-1",
+      "status": "passed",
+      "progress_sha256": "183516323bb13c531f67b992b4fc1835d359c94c8655d03cbfa63a5e8298288b",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.21370912506245077,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "connected-images",
+          "exit_code": 0,
+          "seconds": 236.5645600410644,
+          "log_sha256": "9dc920897a1ee7d2366da22c34be9564990c5266fda6fa468fed0acd63ad48c9"
+        },
+        {
+          "stage": "actual-review-accounting",
+          "exit_code": 0,
+          "seconds": 10.131270000012591,
+          "log_sha256": "0a423577943f79633c0bfd449e93b41fa11c628f03d33791664d96eb19994581",
+          "passed": 1
+        },
+        {
+          "stage": "ordinary-related-custody",
+          "exit_code": 0,
+          "seconds": 5.271273375023156,
+          "log_sha256": "7a60529166dc7c9a2ad291827a96e6dc06f6f870f9604c16492cb7901cc6c33e",
+          "passed": 1
+        },
+        {
+          "stage": "original-output-settings",
+          "exit_code": 0,
+          "seconds": 10.67653129203245,
+          "log_sha256": "f2eaf4e7afb6b8e395824c143d3fd1d6135a0f18fe10f9ae4621e40d4650257e",
+          "passed": 1
+        },
+        {
+          "stage": "interceptor-protocol",
+          "exit_code": 0,
+          "seconds": 0.1933524999767542,
+          "log_sha256": "4ca8e1701138ca38180aeb0107ace062edf7e896b9099d6f9c007fe42b29fe9e",
+          "passed": 2
+        },
+        {
+          "stage": "connected-strict",
+          "exit_code": 0,
+          "seconds": 93.81602670787834,
+          "log_sha256": "b3c6930cf7ecdf043e954fe89f06e235727854ec88443408211d5fc046bba25f"
+        },
+        {
+          "stage": "default-strict",
+          "exit_code": 0,
+          "seconds": 17.96523829200305,
+          "log_sha256": "a00b41bc81f4a68ff22cdbfa8e0fc5f868ea38bad5e13f83b40d280e9ae27b0a"
+        }
+      ]
+    }
+  },
+  "images": {
+    "brassclaw_reborn": {
+      "path": "/private/tmp/brassclaw-review-unsubmitted-validation-20261031/run-1/brassclaw_reborn-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn-b0f928d5bf511523",
+      "sha256": "9c45597f2e2197b60aae09b85f37199872afc2a1626642d4de8abd4d4306f156",
+      "features": [
+        "default",
+        "root-llm-provider"
+      ]
+    },
+    "brassclaw_reborn_composition": {
+      "path": "/private/tmp/brassclaw-review-unsubmitted-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-035c3a046b54c942",
+      "sha256": "1631175364d8d7ec4c6545b3f7063f405687eb4cfd90f49f1cc5392f62337444",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-review-unsubmitted-validation-20261031/run-1/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+    "build_evidence": "/private/tmp/brassclaw-related-model-custody-validation-20261031/run-2/progress.json",
+    "build_evidence_sha256": "d65468699a9180b4824dabb41b5fde3d276c50e4a7dc6d8ac4e9213c22ceff91",
+    "reason": "Exact actual BUILD-011 worker, unchanged worker inputs; only high-level Reborn interceptor and Composition test changed."
+  },
+  "model_assets": {
+    "source": "/Volumes/SSDE/brassclaw/target/validation/prefix-model-source-cacik5n7",
+    "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6",
+    "retained": "/private/tmp/brassclaw-review-unsubmitted-validation-20261031/run-1/model-artifacts",
+    "files": {
+      "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+      "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+      "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+      "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+      "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+      "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+    }
+  },
+  "actual_governor_cases": 2,
+  "distinct_fresh_passed": 5,
+  "ignored": 0,
+  "scope": "Preserve actual native confirmed-unsubmitted review evidence across error conversion and use existing accountant reconciliation. Actual GovernorBackedAccountant separates primary/review reservations, releases known unsubmitted work, retains observed failures of the same error category. No retry or category-derived proof.",
+  "limitations": [
+    "Actual InMemoryResourceGovernor plus GovernorBackedAccountant and PostgreSQL/native/SDK loopback prove caller accounting semantics, not durable resource-governor crash recovery or real-model billing.",
+    "Known unsubmitted work is released only through the existing supported reconciliation; unknown or unsupported outcomes retain conservative holds. No retry or category-derived evidence.",
+    "Current mid-turn PRE-primary review scope only; no POST-primary path, Free qualification, component approval or activation.",
+    "SDK loopback/declared tokenizer fixtures are not real inference or model-design/production Serving qualification; full I1I2/K3-K7/validator/library/compatibility/recovery/platform/release and complete plans remain open."
+  ]
+}

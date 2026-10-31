@@ -52,9 +52,127 @@ use brassclaw_turns::{
     runner::{RecordModelRouteSnapshotRequest, TurnRunTransitionPort},
 };
 use serde_json::{Value, json};
+use sha2::Digest as _;
 use uuid::Uuid;
 
 use crate::{native_admission_fixture as admission_fixture, pg_monty_admission};
+
+/// Observe the actual gateway's Rust-owned evidence; all dispatch, retention,
+/// custody and capability behavior is delegated unchanged to the real gateway.
+type ObservedRejectionSummaries = Arc<std::sync::Mutex<Vec<(brassclaw_turns::TurnRunId, String)>>>;
+struct ObservedSubmissionGateway {
+    inner: Arc<dyn brassclaw_loop_support::HostManagedModelGateway>,
+    errors: Arc<std::sync::Mutex<Vec<(brassclaw_turns::TurnRunId, bool)>>>,
+    rejection_summaries: Option<ObservedRejectionSummaries>,
+}
+#[async_trait::async_trait]
+impl brassclaw_loop_support::HostManagedModelGateway for ObservedSubmissionGateway {
+    async fn capture_task_model_selection(
+        &self,
+        parent: Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<
+        Option<brassclaw_loop_support::HostManagedTaskModelSelection>,
+        brassclaw_loop_support::HostManagedModelError,
+    > {
+        Ok(self
+            .inner
+            .capture_task_model_selection(parent, capture.clone())
+            .await?
+            .map(
+                |selected| brassclaw_loop_support::HostManagedTaskModelSelection {
+                    binding: selected.binding,
+                    gateway: Arc::new(Self {
+                        inner: selected.gateway,
+                        errors: self.errors.clone(),
+                        rejection_summaries: self.rejection_summaries.clone(),
+                    }),
+                },
+            ))
+    }
+
+    async fn preflight_task_model_usage(
+        &self,
+        input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
+    ) -> Result<(), brassclaw_loop_support::HostManagedModelError> {
+        self.inner.preflight_task_model_usage(input).await
+    }
+
+    async fn retain_model_selection(
+        &self,
+        request: &brassclaw_loop_support::HostManagedModelRequest,
+    ) -> Result<
+        Option<Arc<dyn brassclaw_loop_support::HostManagedModelGateway>>,
+        brassclaw_loop_support::HostManagedModelError,
+    > {
+        Ok(self
+            .inner
+            .retain_model_selection(request)
+            .await?
+            .map(|inner| {
+                Arc::new(Self {
+                    inner,
+                    errors: self.errors.clone(),
+                    rejection_summaries: self.rejection_summaries.clone(),
+                }) as Arc<dyn brassclaw_loop_support::HostManagedModelGateway>
+            }))
+    }
+    fn supports_provider_observation(&self) -> bool {
+        self.inner.supports_provider_observation()
+    }
+    fn supports_tool_exchange(&self) -> bool {
+        self.inner.supports_tool_exchange()
+    }
+    async fn stream_model(
+        &self,
+        request: brassclaw_loop_support::HostManagedModelRequest,
+    ) -> Result<
+        brassclaw_loop_support::HostManagedModelResponse,
+        brassclaw_loop_support::HostManagedModelError,
+    > {
+        self.inner.stream_model(request).await
+    }
+    async fn stream_model_with_capabilities(
+        &self,
+        request: brassclaw_loop_support::HostManagedModelRequest,
+        capabilities: Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>,
+    ) -> Result<
+        brassclaw_loop_support::HostManagedModelResponse,
+        brassclaw_loop_support::HostManagedModelError,
+    > {
+        self.inner
+            .stream_model_with_capabilities(request, capabilities)
+            .await
+    }
+    async fn stream_model_observed(
+        &self,
+        request: brassclaw_loop_support::HostManagedModelRequest,
+        capabilities: Option<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>>,
+        custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
+    ) -> Result<
+        brassclaw_loop_support::HostManagedModelResponse,
+        brassclaw_loop_support::HostManagedModelError,
+    > {
+        let run = request.run_id;
+        let result = self
+            .inner
+            .stream_model_observed(request, capabilities, custodian)
+            .await;
+        if let Err(error) = &result {
+            self.errors
+                .lock()
+                .unwrap()
+                .push((run, error.confirmed_unsubmitted()));
+            if let Some(summaries) = &self.rejection_summaries {
+                summaries
+                    .lock()
+                    .unwrap()
+                    .push((run, error.safe_summary.clone()));
+            }
+        }
+        result
+    }
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires BRASSCLAW_TEST_MODEL_URL and BRASSCLAW_TEST_MODEL_ID for an actual operator-selected model"]
@@ -403,6 +521,7 @@ async fn native_prepared_model_call_retains_backend_before_accounting_and_keeps_
     // A retained system selection cannot be repurposed for another task or text.
     let retained = direct
         .retain_model_selection(&system_request)
+        .await
         .unwrap()
         .unwrap();
     let mut different = system_request.clone();
@@ -425,6 +544,12 @@ async fn native_prepared_model_call_retains_backend_before_accounting_and_keeps_
 }
 
 async fn program(store: &PgComponentRevisionStore) -> Arc<RetainedToolProgram> {
+    program_with_model_input(store, None).await
+}
+pub(crate) async fn program_with_model_input(
+    store: &PgComponentRevisionStore,
+    model_input: Option<brassclaw_skills::recipe_model_input::RecipeModelInput>,
+) -> Arc<RetainedToolProgram> {
     let (root, code, binding, tool, skill) = (
         Uuid::new_v4(),
         Uuid::new_v4(),
@@ -432,10 +557,10 @@ async fn program(store: &PgComponentRevisionStore) -> Arc<RetainedToolProgram> {
         Uuid::new_v4(),
         Uuid::new_v4(),
     );
-    let text = json!({"type":"string","required":true,"checks":[]});
-    let inputs = json!({"prompt":{"type":"object","required":true,"checks":[],"allow_extra_fields":false,"fields":{
-        "user_query":text,"chat_history":{"type":"list","required":true,"checks":[],"items":{"type":"object","checks":[],"allow_extra_fields":false,"fields":{"role":text,"content":text}}}
-    }}});
+    let mut prompt_schema =
+        brassclaw_skills::model_completion_components::model_prompt_result_schema();
+    prompt_schema["required"] = json!(true);
+    let inputs = json!({"prompt":prompt_schema});
     let result = json!({"type":"string","checks":[]});
     let failure = json!({"action":"stop","max_attempts":1,"idempotency":"not_assumed","idempotency_evidence_ref":null,"retryable_outcomes":[]});
     let exports = json!({"complete":{"symbol":"complete_model_usage","parameters":["inputs"],"mapping":true}});
@@ -492,7 +617,13 @@ async fn program(store: &PgComponentRevisionStore) -> Arc<RetainedToolProgram> {
         ),
     ];
     let mut references = Vec::new();
-    for (id, class, doc, deps, association) in docs {
+    for (id, class, mut doc, deps, association) in docs {
+        if class == 21
+            && let Some(model_input) = &model_input
+        {
+            doc["model_input_bindings"] = json!({"format":"recipe-model-input-bindings/1",
+                "variants":{"selected":model_input}});
+        }
         let draft=ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":id,"class_code":class,"document":doc,"dependencies":deps,"association":association}).to_string()).unwrap();
         references.push(store.stage(&draft, 0).await.unwrap());
     }
@@ -801,6 +932,12 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
         )
         .with_max_output_tokens(None),
     );
+    let submission_errors = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let gateway = Arc::new(ObservedSubmissionGateway {
+        inner: gateway,
+        errors: submission_errors.clone(),
+        rejection_summaries: None,
+    });
     let system_gateway = gateway.clone();
     let thread_scope = ThreadScope {
         tenant_id: context.scope.tenant_id.clone(),
@@ -930,6 +1067,11 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
     )
     .await;
     assert!(matches!(failed, RuntimeCapabilityOutcome::Failed(_)));
+    assert_eq!(
+        submission_errors.lock().unwrap().as_slice(),
+        &[(context.run_id, false)],
+        "a real transmitted/charged completion cannot be marked unsubmitted after its answer is lost"
+    );
     assert_eq!(
         relay_state.calls.load(Ordering::SeqCst),
         1,
@@ -1395,6 +1537,158 @@ async fn native_model_usage_retains_real_response_before_output_validation_and_r
     assert_eq!(count, 4);
     assert_eq!(relay_state.calls.load(Ordering::SeqCst), 7);
     assert_eq!(relay_state.actual_responses.lock().await.len(), 7);
+    // A separate actual run reaches the final submission fence after all
+    // prompt/provider preparation. Hold its invocation row, cancel the real
+    // claim while that preparation waits, then release it. No upstream model
+    // request may start, and no response/counter is manufactured for this case.
+    let (fenced, mut fenced_claim) = admission_fixture::reserve_with_claim(
+        rig.pool.clone(),
+        "cancel before actual provider submission",
+    )
+    .await;
+    let route = context.resolved_model_route.clone().unwrap();
+    fenced_claim.state = fenced
+        .state
+        .record_model_route_snapshot(RecordModelRouteSnapshotRequest {
+            run_id: fenced.context.run_id,
+            runner_id: fenced_claim.runner_id,
+            lease_token: fenced_claim.lease_token,
+            snapshot: route.clone(),
+        })
+        .await
+        .unwrap();
+    let fenced_context = fenced.context.clone().with_resolved_model_route(route);
+    let fenced_host = Arc::new(MontyTaskHost::new(
+        MontyTaskHandoff::new(
+            AgentLoopDriverRunRequest {
+                turn_id: fenced_context.turn_id,
+                run_id: fenced_context.run_id,
+                resolved_run_profile: fenced_context.resolved_run_profile.clone(),
+            },
+            brassclaw_turns::run_profile::MontyTaskAttempt {
+                run_id: fenced_context.run_id,
+                runner_id: fenced_claim.runner_id,
+                lease_token: fenced_claim.lease_token,
+            },
+            Arc::new(
+                factory
+                    .build_text_only_host(RebornLoopDriverHostRequest {
+                        claimed_run: fenced_claim,
+                        loop_run_context: fenced_context.clone(),
+                    })
+                    .await
+                    .unwrap(),
+            ),
+        )
+        .unwrap(),
+    ));
+    let fenced_responses = fenced.admission.model_response_store(prefix_ref.into());
+    let fenced_runtime = crate::monty_kernel::capture(&services)
+        .unwrap()
+        .model(
+            fenced_host.clone(),
+            RecipeModelPrefix::new(prefix_ref.into(), prefix.clone()).unwrap(),
+            fenced_responses.clone(),
+            live.clone(),
+        )
+        .unwrap();
+    let execution = execution_context(&fenced_host);
+    let fenced_id = execution.invocation_id;
+    let fenced_args = json!({"prompt":{"user_query":"This cancelled input must never reach the provider.","chat_history":[]}});
+    let fenced_record = fenced
+        .admission
+        .begin_tool_invocation(
+            fenced_id,
+            &program,
+            "0:2",
+            &fenced_args,
+            EXECUTION_DATA_LIMITS,
+        )
+        .await
+        .unwrap();
+    let mut gate = rig.pool.get().await.unwrap();
+    let gate_pid: i32 = gate
+        .query_one("SELECT pg_backend_pid()", &[])
+        .await
+        .unwrap()
+        .get(0);
+    let held_row = gate.transaction().await.unwrap();
+    held_row.query_one("SELECT invocation_id FROM brassclaw_monty_tool_invocations WHERE invocation_id=$1 FOR UPDATE",
+        &[&fenced_id.as_uuid()]).await.unwrap();
+    let pending = {
+        let host = fenced_host.clone();
+        tokio::spawn(async move {
+            host.invoke_retained_tool(
+                &fenced_runtime,
+                RuntimeCapabilityRequest::new(
+                    execution,
+                    fenced_runtime.descriptor().id.clone(),
+                    ResourceEstimate::default(),
+                    fenced_args,
+                    trust(),
+                ),
+            )
+            .await
+        })
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !rig.pool.get().await.unwrap().query_one(
+            "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE query LIKE 'SELECT phase FROM brassclaw_monty_tool_invocations%' AND $1=ANY(pg_blocking_pids(pid)))",
+            &[&gate_pid],
+        ).await.unwrap().get::<_, bool>(0) {
+            assert!(!pending.is_finished(), "native model call must reach its real pre-submission row barrier");
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }).await.expect("native transport reaches final claim check after preparation");
+    fenced
+        .state
+        .request_cancel(brassclaw_turns::CancelRunRequest {
+            scope: fenced_context.scope.clone(),
+            actor: fenced_context.actor.clone().unwrap(),
+            run_id: fenced_context.run_id,
+            reason: brassclaw_turns::SanitizedCancelReason::UserRequested,
+            idempotency_key: brassclaw_turns::IdempotencyKey::new(
+                "native-model-cancel-before-wire",
+            )
+            .unwrap(),
+        })
+        .await
+        .unwrap();
+    held_row.commit().await.unwrap();
+    drop(gate);
+    match pending.await.unwrap() {
+        Ok(RuntimeCapabilityOutcome::Failed(_)) => {}
+        Err(error) => assert_eq!(
+            error.kind,
+            brassclaw_turns::run_profile::AgentLoopHostErrorKind::Cancelled
+        ),
+        _ => panic!("cancelled native model submission cannot complete"),
+    }
+    assert!(!fenced_responses.has_uncommitted_results());
+    assert!(
+        submission_errors
+            .lock()
+            .unwrap()
+            .contains(&(fenced_context.run_id, true)),
+        "only the denied final transport barrier supplies confirmed-unsubmitted evidence"
+    );
+    let observations: i64 = rig.pool.get().await.unwrap().query_one(
+        "SELECT (SELECT count(*) FROM brassclaw_monty_provider_wire_observations WHERE invocation_id=$1) + (SELECT count(*) FROM brassclaw_monty_provider_observations WHERE invocation_id=$1) + (SELECT count(*) FROM brassclaw_monty_model_responses WHERE invocation_id=$1)",
+        &[&fenced_id.as_uuid()],
+    ).await.unwrap().get(0);
+    assert_eq!(observations, 0);
+    assert_eq!(
+        relay_state.calls.load(Ordering::SeqCst),
+        7,
+        "cancel during preparation prevents any new HTTP submission"
+    );
+    assert_eq!(relay_state.actual_responses.lock().await.len(), 7);
+    fenced_record
+        .record_answer(&brassclaw_monty_host::process::PortAnswer::TerminalError {
+            reason_kind: "model_attempt_cancelled_before_submission".into(),
+        })
+        .await
+        .unwrap();
     stop_relay.cancel();
     relay_server.await.unwrap();
 }
@@ -1812,4 +2106,1203 @@ mod accounting {
         stop_heartbeat.send(true).unwrap();
         heartbeat.await.unwrap().unwrap();
     }
+}
+
+/// Ordinary task-host/kernel entry with no legacy route resolver or manually
+/// written run route. The actual configured HTTP adapter receives the pinned
+/// database selection; the controlled peer is transport evidence, not inference.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tracing_test::traced_test]
+async fn native_task_model_usage_captures_database_selection_without_legacy_route() {
+    native_task_model_input_case(None, None, None).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tracing_test::traced_test]
+async fn native_recipe_selected_prefix_uses_original_pair_without_base_fallback() {
+    native_task_model_input_case(Some("sempai"), None, None).await;
+}
+
+/// The values distinguish an actual per-invocation parameter from a hidden
+/// constant or the accepted Prefix default. This controlled peer is SDK
+/// transport evidence, not an inference-quality or activation certificate.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_recipe_output_setting_reaches_sdk_and_guard_with_token_budgets_disabled() {
+    for tokens in [37, 79] {
+        native_task_model_input_case(None, Some(tokens), None).await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_review_accounting_distinguishes_unsubmitted_and_observed_budget_failure() {
+    for known_unsubmitted in [true, false] {
+        native_task_model_input_case(None, None, Some(known_unsubmitted)).await;
+    }
+}
+
+async fn native_task_model_input_case(
+    selected_profile: Option<&str>,
+    requested_output_tokens: Option<u32>,
+    review_accounting_case: Option<bool>,
+) {
+    use crate::task_model_provider::TaskProviderConfiguration;
+    use axum::{Json, extract::State, routing::post};
+    use brassclaw_loop_support::HostManagedModelGateway as _;
+    fn sdk_text(content: &Value) -> &str {
+        match content {
+            Value::String(text) => text,
+            Value::Array(parts) => {
+                let [part] = parts.as_slice() else {
+                    panic!("complete SDK content must be one text part: {parts:?}")
+                };
+                assert_eq!(part["type"], "text");
+                part["text"].as_str().expect("complete SDK text part")
+            }
+            other => panic!("unexpected SDK content: {other:?}"),
+        }
+    }
+    let calls: Arc<tokio::sync::Mutex<Vec<Value>>> = Default::default();
+    async fn completion(
+        State(calls): State<Arc<tokio::sync::Mutex<Vec<Value>>>>,
+        Json(body): Json<Value>,
+    ) -> Json<Value> {
+        calls.lock().await.push(body.clone());
+        let mut finish_reason = "stop";
+        let content = if body["model"] == "captured-sempai-model" {
+            let message = body["messages"].as_array().unwrap().last().unwrap();
+            assert_eq!(message["role"], "user");
+            let audit = sdk_text(&message["content"]);
+            let volatile: Vec<(String, String)> = serde_json::from_str(audit).unwrap();
+            if volatile
+                .iter()
+                .any(|(_, text)| text.contains("related-review-length-failure"))
+            {
+                finish_reason = "length";
+            }
+            serde_json::to_string(&brassclaw_interceptor::SempaiReviewOutcome {
+                adjusted_volatile_messages: volatile,
+                bridge_messages: vec![],
+                composition_summary: "retained role transport".into(),
+                proposed_recipe_updates: vec![],
+                proposed_intent_examples: vec![],
+                settings_adjustments: vec![],
+                proposed_components: vec![],
+            })
+            .unwrap()
+        } else {
+            "database selected native answer".into()
+        };
+        Json(
+            json!({"id":"native-task-selection","object":"chat.completion","created":1,
+            "model":body["model"],"choices":[{"index":0,"message":{"role":"assistant","content":content},"finish_reason":finish_reason}],
+            "usage":{"prompt_tokens":8,"completion_tokens":4,"total_tokens":12}}),
+        )
+    }
+    let (address, stop, server) = loopback_http::spawn(
+        axum::Router::new()
+            .route("/v1/chat/completions", post(completion))
+            .with_state(calls.clone()),
+    )
+    .await;
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let program = program_with_model_input(
+        &store,
+        selected_profile.map(|profile| {
+            brassclaw_skills::recipe_model_input::RecipeModelInput::Selected {
+                profile: profile.into(),
+            }
+        }),
+    )
+    .await;
+    let (admitted, claimed) = admission_fixture::reserve_unstarted_with_claim(
+        rig.pool.clone(),
+        "selected database model",
+    )
+    .await;
+    let context = admitted.context.clone();
+    assert!(context.resolved_model_route.is_none());
+    let tenant = context.scope.tenant_id.as_str();
+    let captured_model = format!("modèle/模型/{}", "long_model_".repeat(25));
+    let keys = crate::LlmKeyStore::new_postgres(Arc::new(
+        brassclaw_secrets::PgSecretStore::new(
+            rig.pool.as_ref().clone(),
+            "native-task-selection-authenticated-master-fixture".into(),
+            tenant,
+        )
+        .unwrap(),
+    ));
+    let definition: brassclaw_llm::ProviderDefinition = serde_json::from_value(json!({"id":"task-selected","protocol":"open_ai_completions",
+        "default_base_url":format!("http://{address}/v1"),"model_env":"BRASSCLAW_NATIVE_TASK_MODEL",
+        "default_model":captured_model,"api_key_required":false,"description":"native task model transport fixture",
+        "context_window_tokens":200000,"model_token_limits":{(captured_model.clone()):{"max_prefix_tokens":100000,"max_prompt_tokens":100000}},
+        "request_policy":brassclaw_llm::ProviderRequestPolicy { max_retries:0,..Default::default() }})).unwrap();
+    crate::PgProviderRepo::new(rig.pool.as_ref().clone(), tenant)
+        .replace_revision(definition.clone(), None)
+        .await
+        .unwrap();
+    let mut reviewer_definition = definition.clone();
+    reviewer_definition.id = "task-reviewer".into();
+    reviewer_definition.default_model = "captured-sempai-model".into();
+    reviewer_definition.model_token_limits =
+        serde_json::from_value(json!({"captured-sempai-model":{
+        "max_prefix_tokens":100000,"max_prompt_tokens":100000}}))
+        .unwrap();
+    crate::PgProviderRepo::new(rig.pool.as_ref().clone(), tenant)
+        .replace_revision(reviewer_definition, None)
+        .await
+        .unwrap();
+    let measurement_scope = brassclaw_host_api::ResourceScope {
+        tenant_id: context.scope.tenant_id.clone(),
+        user_id: context.actor.as_ref().unwrap().user_id.clone(),
+        agent_id: context.scope.agent_id.clone(),
+        project_id: context.scope.project_id.clone(),
+        thread_id: Some(context.scope.thread_id.clone()),
+        invocation_id: InvocationId::new(),
+    };
+    let target = |provider: &str, model: &str| brassclaw_product_workflow::PrefixModelTarget {
+        provider_id: provider.into(),
+        provider_revision: 1,
+        model: model.into(),
+        consumer: "native-task-fixture".into(),
+        configured_context_window: Some(200000),
+    };
+    let primary_prefix = crate::prefix_acceptances::tests::qualify_for_existing_provider(
+        rig.pool.clone(),
+        measurement_scope.clone(),
+        target("task-selected", &captured_model),
+        selected_profile.unwrap_or("base-prompt"),
+    )
+    .await;
+    let reviewer_prefix = crate::prefix_acceptances::tests::qualify_for_existing_provider(
+        rig.pool.clone(),
+        measurement_scope,
+        target("task-reviewer", "captured-sempai-model"),
+        "sempai",
+    )
+    .await;
+    crate::db_config::save_config_changes(
+        rig.pool.as_ref(),
+        tenant,
+        &[
+            ("llm.default.provider_id", Some("task-selected")),
+            ("llm.default.model", Some(captured_model.as_str())),
+            ("llm.sempai.provider_id", Some("task-reviewer")),
+            ("llm.sempai.model", Some("captured-sempai-model")),
+        ],
+        crate::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+    let sources = TaskProviderConfiguration::new(rig.pool.as_ref().clone(), tenant, keys)
+        .with_final_encoding(
+            Some(primary_prefix.worker.clone()),
+            primary_prefix.governor.clone(),
+        )
+        .with_session(Arc::new(brassclaw_llm::SessionManager::new(
+            Default::default(),
+        )));
+    let live_output_limit = brassclaw_agent_loop::LiveTokenBudget::new(None);
+    let gateway = Arc::new(
+        LlmProviderModelGateway::new(
+            Arc::new(crate::runtime::PlaceholderLlmProvider),
+            LlmModelProfilePolicy::new()
+                .allow_model_profile(context.resolved_run_profile.model_profile_id.clone(), None),
+        )
+        .with_task_source(sources.role(brassclaw_llm::ProviderRole::Kohai))
+        .with_max_output_tokens(Some(live_output_limit.clone())),
+    );
+    let rejected_requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let gateway = Arc::new(ObservedSubmissionGateway {
+        inner: gateway,
+        errors: Default::default(),
+        rejection_summaries: Some(rejected_requests.clone()),
+    });
+    let sempai = Arc::new(
+        LlmProviderModelGateway::new(
+            Arc::new(crate::runtime::PlaceholderLlmProvider),
+            LlmModelProfilePolicy::new().allow_model_profile(
+                brassclaw_turns::run_profile::ModelProfileId::new("sempai_model").unwrap(),
+                None,
+            ),
+        )
+        .with_task_source(sources.role(brassclaw_llm::ProviderRole::Sempai))
+        .with_total_input_tokens(
+            (review_accounting_case == Some(true))
+                .then(|| brassclaw_agent_loop::LiveTokenBudget::new(Some(1))),
+        ),
+    );
+    let live_mode = brassclaw_interceptor::SharedInterceptorMode::new();
+    live_mode.set_rerouting();
+    brassclaw_reborn::loop_driver_host::init_sempai_persona(
+        include_str!("../../brassclaw_engine/prompts/sempai_audit.md").into(),
+    );
+    let thread_scope = ThreadScope {
+        tenant_id: context.scope.tenant_id.clone(),
+        agent_id: context.scope.agent_id.clone().unwrap(),
+        project_id: context.scope.project_id.clone(),
+        owner_user_id: None,
+    };
+    brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
+        include_str!("../../brassclaw_loop_support/prompts/compaction_summarizer_fresh.md").into(),
+    );
+    let accounting = review_accounting_case.map(|_| {
+        let events = Arc::new(brassclaw_resources::InMemoryBudgetEventSink::new());
+        let governor = Arc::new(
+            brassclaw_resources::InMemoryResourceGovernor::new().with_event_sink(events.clone()),
+        );
+        (governor, events)
+    });
+    let mut factory = RebornLoopDriverHostFactory::new(
+        Arc::new(PgSessionThreadService::new(rig.pool.clone(), tenant)),
+        thread_scope,
+        gateway,
+        Arc::new(InMemoryCheckpointStateStore::default()),
+        admitted.state.clone(),
+        Arc::new(InMemoryLoopCheckpointStore::default()),
+        Arc::new(InMemoryLoopHostMilestoneSink::default()),
+        TextOnlyLoopHostConfig {
+            max_messages: 8,
+            require_model_route_snapshot: false,
+        },
+        InstructionSafetyContext::local_development_noop(),
+    )
+    .with_token_budget_mode(move || review_accounting_case.is_some())
+    .with_sempai_gateway(sempai)
+    .with_interceptor_mode(live_mode.clone())
+    .with_hook_dispatcher_builder_factory(|| {
+        Ok(brassclaw_hooks::dispatch::HookDispatcherBuilder::new(
+            brassclaw_hooks::registry::HookRegistry::new(),
+        ))
+    });
+    if let Some((governor, _)) = &accounting {
+        factory = factory.with_model_budget_accountant(Arc::new(
+            brassclaw_loop_support::GovernorBackedAccountant::new(
+                governor.clone(),
+                Arc::new(brassclaw_loop_support::ZeroCostTable),
+            ),
+        ));
+    }
+    let host = Arc::new(MontyTaskHost::new(
+        MontyTaskHandoff::new(
+            AgentLoopDriverRunRequest {
+                turn_id: context.turn_id,
+                run_id: context.run_id,
+                resolved_run_profile: context.resolved_run_profile.clone(),
+            },
+            brassclaw_turns::run_profile::MontyTaskAttempt {
+                run_id: context.run_id,
+                runner_id: claimed.runner_id,
+                lease_token: claimed.lease_token,
+            },
+            Arc::new(
+                factory
+                    .build_text_only_host(RebornLoopDriverHostRequest {
+                        claimed_run: claimed,
+                        loop_run_context: context.clone(),
+                    })
+                    .await
+                    .unwrap(),
+            ),
+        )
+        .unwrap(),
+    ));
+    // Same capture/admission calls used by OwnedGlobalTaskFactory, through the
+    // real hook wrapper, host-managed port, thread resolver and interceptor.
+    let selected = host
+        .capture_task_model_selection(None, None)
+        .await
+        .unwrap()
+        .unwrap();
+    admitted
+        .admission
+        .bind_task_models(Some(selected.retained_metadata().unwrap()))
+        .unwrap();
+    // GlobalRecipePorts starts the bound admission before the native effect.
+    // This direct native caller must perform that same real transition.
+    admitted.admission.check_and_start().await.unwrap();
+    let prefix = crate::task_model_provider::recipe_prefix_for_instruction(
+        &host,
+        brassclaw_llm::ProviderRole::Kohai,
+        program.inputs().instruction(),
+    )
+    .unwrap()
+    .expect("actual retained Recipe prefix binding");
+    let input = prefix.resolve().await.unwrap().input_reference();
+    assert_eq!(
+        input.selection,
+        if selected_profile.is_some() {
+            brassclaw_turns::run_profile::RecipePrefixSelection::Selected
+        } else {
+            brassclaw_turns::run_profile::RecipePrefixSelection::Default
+        }
+    );
+    let conflicting = LlmProviderModelGateway::new(
+        Arc::new(crate::runtime::PlaceholderLlmProvider),
+        LlmModelProfilePolicy::new().allow_model_profile(
+            context.resolved_run_profile.model_profile_id.clone(),
+            Some("unrelated-profile-model".into()),
+        ),
+    )
+    .with_task_source(sources.role(brassclaw_llm::ProviderRole::Kohai))
+    .capture_task_model_selection(Some(selected.clone()), None)
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(
+        conflicting
+            .gateway
+            .preflight_task_model_usage(Some(&input))
+            .await
+            .is_err(),
+        "a profile override cannot replace the original selected task model"
+    );
+    let repo = crate::PgProviderRepo::new(rig.pool.as_ref().clone(), tenant);
+    let mut incompatible = definition.clone();
+    incompatible.default_base_url = Some("http://127.0.0.1:1/v1".into());
+    repo.replace_revision(incompatible.clone(), Some(1))
+        .await
+        .unwrap();
+    assert!(
+        host.preflight_task_model_usage(Some(&input)).await.is_err(),
+        "incompatible live target must reject before any Recipe effect or model submission"
+    );
+    assert!(calls.lock().await.is_empty());
+    repo.replace_revision(definition, Some(2)).await.unwrap();
+    host.preflight_task_model_usage(Some(&input)).await.unwrap();
+    assert_eq!(
+        host.selected_model_route().unwrap().model_id,
+        captured_model
+    );
+    assert!(host.run_context().resolved_model_route.is_none());
+    crate::db_config::save_config_key(
+        rig.pool.as_ref(),
+        tenant,
+        "llm.default.model",
+        "replacement-model",
+        crate::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+    crate::db_config::save_config_key(
+        rig.pool.as_ref(),
+        tenant,
+        "llm.sempai.model",
+        "replacement-sempai",
+        crate::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+    live_mode.set_routing();
+    let tool = program.bindings()["0:2"].tool().uuid;
+    let live = Arc::new(LiveStableToolPolicy::new(policy(1, tool, true, None)).unwrap());
+    let trust_policy = HostTrustPolicy::new(vec![Box::new(AdminConfig::with_entries(vec![
+        AdminEntry::for_local_manifest(
+            PackageId::new("host").unwrap(),
+            "/system/extensions/host/manifest.toml".into(),
+            None,
+            HostTrustAssignment::first_party(),
+            vec![EffectKind::ExternalWrite],
+            None,
+        ),
+    ]))])
+    .unwrap();
+    let services = HostRuntimeServices::new(
+        Arc::new(ExtensionRegistry::new()),
+        Arc::new(brassclaw_filesystem::InMemoryBackend::new()),
+        Arc::new(brassclaw_resources::InMemoryResourceGovernor::new()),
+        Arc::new(InstanceToolAuthorizer::new(live.clone())),
+        brassclaw_processes::ProcessServices::in_memory(),
+        brassclaw_host_runtime::CapabilitySurfaceVersion::new("native-task-selected").unwrap(),
+    )
+    .with_first_party_capabilities(Arc::new(FirstPartyCapabilityRegistry::new()))
+    .with_trust_policy(Arc::new(trust_policy))
+    .with_runtime_policy(brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy {
+        deployment: brassclaw_host_api::runtime_policy::DeploymentMode::LocalSingleUser,
+        requested_profile: brassclaw_host_api::runtime_policy::RuntimeProfile::LocalDev,
+        resolved_profile: brassclaw_host_api::runtime_policy::RuntimeProfile::LocalDev,
+        filesystem_backend:
+            brassclaw_host_api::runtime_policy::FilesystemBackendKind::HostWorkspace,
+        process_backend: brassclaw_host_api::runtime_policy::ProcessBackendKind::LocalHost,
+        network_mode: brassclaw_host_api::runtime_policy::NetworkMode::DirectLogged,
+        secret_mode: brassclaw_host_api::runtime_policy::SecretMode::ScrubbedEnv,
+        approval_policy: brassclaw_host_api::runtime_policy::ApprovalPolicy::AskDestructive,
+        audit_mode: brassclaw_host_api::runtime_policy::AuditMode::LocalMinimal,
+    });
+    host.preflight_task_model_usage(Some(&input)).await.unwrap();
+    let missing_program = program_with_model_input(
+        &store,
+        Some(
+            brassclaw_skills::recipe_model_input::RecipeModelInput::Selected {
+                profile: "absent-profile".into(),
+            },
+        ),
+    )
+    .await;
+    let missing = crate::task_model_provider::recipe_prefix_for_instruction(
+        &host,
+        brassclaw_llm::ProviderRole::Kohai,
+        missing_program.inputs().instruction(),
+    )
+    .unwrap()
+    .unwrap();
+    assert!(
+        missing.resolve().await.is_err(),
+        "missing Selected cannot fall back to a ready Base"
+    );
+    let free_program = program_with_model_input(
+        &store,
+        Some(
+            brassclaw_skills::recipe_model_input::RecipeModelInput::PrefixFreeWorkflow {
+                purpose: brassclaw_skills::recipe_model_input::PrefixFreePurpose::PrefixGeneration,
+            },
+        ),
+    )
+    .await;
+    assert!(!crate::global_recipe_ports::model_input_supported(
+        free_program.inputs().instruction()
+    ));
+    assert!(
+        crate::task_model_provider::recipe_prefix_for_instruction(
+            &host,
+            brassclaw_llm::ProviderRole::Kohai,
+            free_program.inputs().instruction(),
+        )
+        .is_err(),
+        "unsupported Free is recognized and blocked, never treated as Default"
+    );
+    let mut foreign = input.clone();
+    foreign.selection = brassclaw_turns::run_profile::RecipePrefixSelection::Selected;
+    foreign.reference = format!(
+        "prefix-generation:sempai:foreign:qualification:{}",
+        Uuid::new_v4()
+    );
+    assert!(
+        host.preflight_task_model_usage(Some(&foreign))
+            .await
+            .is_err(),
+        "a qualification outside the original captured map is not selectable"
+    );
+    let mut changed_generation = input.clone();
+    changed_generation.reference =
+        input
+            .reference
+            .replacen("prefix-generation:", "changed-generation:", 1);
+    assert!(
+        host.preflight_task_model_usage(Some(&changed_generation))
+            .await
+            .is_err(),
+        "the whole canonical reference must match, not just its approved UUID suffix"
+    );
+    assert!(
+        calls.lock().await.is_empty(),
+        "input preflight cannot submit model work"
+    );
+    if selected_profile.is_some() {
+        assert!(
+            host.preflight_task_model_usage(None).await.is_err(),
+            "the fixture has no Base: explicit Selected must not require or manufacture it"
+        );
+    }
+    let responses = admitted
+        .admission
+        .selected_model_response_store(prefix.clone(), host.task_model_selection());
+    let runtime = crate::monty_kernel::capture(&services)
+        .unwrap()
+        .model(host.clone(), prefix, responses.clone(), live)
+        .unwrap();
+    let mut arguments = json!({"prompt":{"user_query":"selected task input","chat_history":[]}});
+    if review_accounting_case == Some(false) {
+        arguments["prompt"]["user_query"] = json!("related-review-length-failure");
+    }
+    if let Some(tokens) = requested_output_tokens {
+        arguments["prompt"]["max_output_tokens"] = json!(tokens);
+    }
+    let original_arguments = arguments.clone();
+    let (invocation, outcome) = invoke(
+        &host,
+        &admitted.admission,
+        &program,
+        &runtime,
+        "0:2",
+        arguments,
+    )
+    .await;
+    if let Some(known_unsubmitted) = review_accounting_case {
+        assert!(!matches!(outcome, RuntimeCapabilityOutcome::Completed(_)));
+        let (governor, events) = accounting.as_ref().unwrap();
+        let account = brassclaw_resources::ResourceAccount::tenant(context.scope.tenant_id.clone());
+        let client = rig.pool.get().await.unwrap();
+        let row = client.query_one(
+            "SELECT work_id,dispatch_count::bigint FROM brassclaw_monty_related_model_work WHERE invocation_id=$1",
+            &[&invocation.as_uuid()],
+        ).await.unwrap();
+        let work_id: Uuid = row.get(0);
+        assert_ne!(work_id, invocation.as_uuid());
+        let event_log = events.snapshot();
+        let reserved: std::collections::BTreeSet<_> = event_log
+            .iter()
+            .filter_map(|event| match event {
+                brassclaw_resources::BudgetEvent::Reserved { reservation, .. } => {
+                    Some(reservation.scope.invocation_id.as_uuid())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            reserved,
+            [invocation.as_uuid(), work_id].into_iter().collect(),
+            "the actual accountant reserves primary and review separately"
+        );
+        let released: std::collections::BTreeSet<_> = event_log
+            .iter()
+            .filter_map(|event| match event {
+                brassclaw_resources::BudgetEvent::Released { receipt, .. } => {
+                    Some(receipt.scope.invocation_id.as_uuid())
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            released.contains(&invocation.as_uuid()),
+            "primary was never submitted"
+        );
+        assert_eq!(
+            released.contains(&work_id),
+            known_unsubmitted,
+            "only native no-submission evidence can release review spend"
+        );
+        assert_eq!(
+            governor.usage_for(&account),
+            Default::default(),
+            "no fabricated completed spend"
+        );
+        if known_unsubmitted {
+            assert_eq!(governor.reserved_for(&account), Default::default());
+            assert_eq!(row.get::<_, i64>(1), 0);
+            assert!(
+                calls.lock().await.is_empty(),
+                "actual preparation guard rejects before SDK transport"
+            );
+        } else {
+            assert!(
+                governor.reserved_for(&account).input_tokens > 0,
+                "an actually submitted budget failure keeps its unresolved reservation"
+            );
+            assert_eq!(row.get::<_, i64>(1), 1);
+            assert_eq!(
+                calls.lock().await.len(),
+                1,
+                "only review reached the real SDK peer"
+            );
+            let reason: String = client.query_one(
+                "SELECT o.response_bytes::jsonb#>>'{response,finish_reason}'
+                 FROM brassclaw_monty_related_model_observations o JOIN brassclaw_monty_related_model_work w USING(work_id)
+                 WHERE w.work_id=$1 AND o.format='provider-model-observation/1'", &[&work_id],
+            ).await.unwrap().get(0);
+            assert_eq!(
+                reason, "length",
+                "same budget error category after a real provider response"
+            );
+        }
+        assert!(!responses.has_uncommitted_results());
+        stop.cancel();
+        server.await.unwrap();
+        return;
+    }
+    let RuntimeCapabilityOutcome::Completed(answer) = outcome else {
+        panic!(
+            "native model operation must complete with captured database selection: {outcome:?}; submitted requests: {}",
+            calls.lock().await.len()
+        )
+    };
+    assert!(
+        answer
+            .output
+            .to_string()
+            .contains("database selected native answer")
+    );
+    let client = rig.pool.get().await.unwrap();
+    let original = client.query_one(
+        "SELECT arguments_bytes,attempt_count::bigint FROM brassclaw_monty_tool_invocations WHERE invocation_id=$1",
+        &[&invocation.as_uuid()],
+    ).await.unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(original.get::<_, &str>(0)).unwrap(),
+        original_arguments
+    );
+    assert_eq!(original.get::<_, i64>(1), 1);
+    let row = client.query_one("SELECT selection_bytes FROM brassclaw_monty_recipe_selections WHERE run_id=$1 AND recipe_id=$2",
+        &[&context.run_id.as_uuid(), &program.inputs().instruction().recipe().uuid]).await.unwrap();
+    let persisted: Value = serde_json::from_str(row.get::<_, &str>(0)).unwrap();
+    if let Some(profile) = selected_profile {
+        assert_eq!(
+            persisted["model_input_binding"],
+            json!({"format":"recipe-model-input-selection/1",
+            "binding":{"selection":"selected","profile":profile}})
+        );
+    } else {
+        assert!(
+            persisted.get("model_input_binding").is_none(),
+            "old Default metadata stays original"
+        );
+    }
+    for table in [
+        "brassclaw_monty_model_responses",
+        "brassclaw_monty_provider_observations",
+        "brassclaw_monty_provider_wire_observations",
+    ] {
+        let row = client
+            .query_one(
+                &format!("SELECT prefix_reference FROM {table} WHERE invocation_id=$1"),
+                &[&invocation.as_uuid()],
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            row.get::<_, &str>(0),
+            input.reference,
+            "all native stages use the original selected reference"
+        );
+    }
+    let related = client
+        .query(
+        "SELECT work_id,work_bytes,request_bytes,prefix_reference,dispatch_count::bigint,phase,request_checksum
+         FROM brassclaw_monty_related_model_work WHERE invocation_id=$1",
+            &[&invocation.as_uuid()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        related.len(),
+        1,
+        "the review owns a distinct native work record"
+    );
+    let related = &related[0];
+    let work_id: Uuid = related.get(0);
+    assert_ne!(work_id, invocation.as_uuid());
+    let work: Value = serde_json::from_str(related.get::<_, &str>(1)).unwrap();
+    let review_request: Value = serde_json::from_str(related.get::<_, &str>(2)).unwrap();
+    assert_eq!(
+        related.get::<_, String>(6),
+        hex::encode(sha2::Sha256::digest(related.get::<_, &str>(2).as_bytes())),
+        "native address retains the checksum of the complete immutable original request"
+    );
+    assert_eq!(work["work_id"], work_id.to_string());
+    assert_eq!(work["kind"]["kind"], "sempai_review");
+    assert_eq!(work["resolved_model_route"]["provider_id"], "task-reviewer");
+    assert_eq!(
+        work["resolved_model_route"]["model_id"],
+        "captured-sempai-model"
+    );
+    assert_eq!(
+        review_request["resolved_model_route"],
+        work["resolved_model_route"]
+    );
+    assert_eq!(review_request["run_id"], context.run_id.to_string());
+    assert_eq!(review_request["turn_id"], context.turn_id.to_string());
+    assert!(
+        review_request["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| {
+                message["content"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("selected task input"))
+            })
+    );
+    assert!(
+        related
+            .get::<_, &str>(3)
+            .starts_with("prefix-generation:sempai:")
+    );
+    assert_ne!(related.get::<_, &str>(3), input.reference);
+    assert_eq!(related.get::<_, i64>(4), 1);
+    assert_eq!(related.get::<_, &str>(5), "dispatch_intent");
+    let observations = client.query(
+        "SELECT format,response_bytes,response_checksum FROM brassclaw_monty_related_model_observations
+         WHERE work_id=$1 ORDER BY format", &[&work_id],
+    ).await.unwrap();
+    assert_eq!(observations.len(), 3);
+    for observation in observations {
+        let format: &str = observation.get(0);
+        let bytes: &str = observation.get(1);
+        assert_eq!(
+            observation.get::<_, String>(2),
+            hex::encode(sha2::Sha256::digest(bytes.as_bytes()))
+        );
+        let response: Value = serde_json::from_str(bytes).unwrap();
+        if format == "loop-model-response/1" {
+            assert_eq!(response["effective_model_profile_id"], "sempai_model");
+        } else {
+            assert_eq!(response["format"], format);
+            assert_eq!(response["provider_id"], "task-reviewer");
+            assert_eq!(response["model_id"], "captured-sempai-model");
+        }
+    }
+    for sql in [
+        "UPDATE brassclaw_monty_related_model_work SET dispatch_count=0 WHERE work_id=$1",
+        "UPDATE brassclaw_monty_related_model_work SET request_bytes='{}' WHERE work_id=$1",
+        "DELETE FROM brassclaw_monty_related_model_work WHERE work_id=$1",
+        "DELETE FROM brassclaw_monty_related_model_observations WHERE work_id=$1",
+    ] {
+        let failure = client.execute(sql, &[&work_id]).await.unwrap_err();
+        assert_eq!(
+            failure.code(),
+            Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+        );
+    }
+    drop(client);
+    let sent = calls.lock().await;
+    assert_eq!(sent.len(), 2);
+    assert_eq!(sent[0]["model"], "captured-sempai-model");
+    assert_eq!(sent[1]["model"], captured_model);
+    if let Some(tokens) = requested_output_tokens {
+        let sdk_output = sent[1]
+            .get("max_completion_tokens")
+            .or_else(|| sent[1].get("max_tokens"));
+        assert_eq!(
+            sdk_output,
+            Some(&json!(tokens)),
+            "the original native argument must reach the actual SDK request unchanged"
+        );
+        let review_output = sent[0]
+            .get("max_completion_tokens")
+            .or_else(|| sent[0].get("max_tokens"))
+            .and_then(Value::as_u64)
+            .expect("review retains its own actual accepted Prefix output setting");
+        assert!(review_output > 0);
+        assert_ne!(
+            review_output,
+            u64::from(tokens),
+            "never copy the Kohai output request into review work"
+        );
+    }
+    let primary_system = sdk_text(&sent[1]["messages"][0]["content"]);
+    let review_system = sdk_text(&sent[0]["messages"][0]["content"]);
+    assert!(primary_system.starts_with(&primary_prefix.reference));
+    assert_eq!(
+        primary_system.matches(&primary_prefix.reference).count(),
+        1,
+        "Kohai preserves its whole original reference exactly once before dynamic system material"
+    );
+    assert!(review_system.starts_with(&reviewer_prefix.reference));
+    assert_eq!(
+        review_system.matches(&reviewer_prefix.reference).count(),
+        1,
+        "Sempai preserves its own qualified reference exactly once"
+    );
+    assert!(
+        review_system
+            .strip_prefix(&reviewer_prefix.reference)
+            .unwrap()
+            .contains(brassclaw_reborn::loop_driver_host::sempai_persona()),
+        "SDK-joined review instructions remain after the unchanged fixed reference"
+    );
+    drop(sent);
+    let pending_review = if requested_output_tokens.is_none() {
+        let before = calls.lock().await.len();
+        let (failed, outcome) = invoke(
+            &host,
+            &admitted.admission,
+            &program,
+            &runtime,
+            "0:4",
+            json!({"prompt":{"user_query":"related-review-length-failure","chat_history":[]}}),
+        )
+        .await;
+        assert!(!matches!(outcome, RuntimeCapabilityOutcome::Completed(_)));
+        assert_eq!(
+            calls.lock().await.len(),
+            before + 1,
+            "failed review must not submit Kohai"
+        );
+        let client = rig.pool.get().await.unwrap();
+        let counts = client
+            .query_one(
+                "SELECT (SELECT count(*) FROM brassclaw_monty_related_model_observations o
+              JOIN brassclaw_monty_related_model_work w USING(work_id) WHERE w.invocation_id=$1),
+              (SELECT count(*) FROM brassclaw_monty_model_responses WHERE invocation_id=$1)",
+                &[&failed.as_uuid()],
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            counts.get::<_, i64>(0),
+            2,
+            "actual wire and adapter original survive length rejection"
+        );
+        assert_eq!(
+            counts.get::<_, i64>(1),
+            0,
+            "never fabricate a primary answer"
+        );
+        client.batch_execute("CREATE FUNCTION reject_related_provider_original() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.format='provider-model-observation/1' THEN RAISE EXCEPTION 'deliberate related provider write failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_related_provider_original BEFORE INSERT ON brassclaw_monty_related_model_observations FOR EACH ROW EXECUTE FUNCTION reject_related_provider_original();").await.unwrap();
+        drop(client);
+        let (pending, outcome) = invoke(
+            &host, &admitted.admission, &program, &runtime, "0:6",
+            json!({"prompt":{"user_query":"retain actual related provider original","chat_history":[]}}),
+        ).await;
+        assert!(!matches!(outcome, RuntimeCapabilityOutcome::Completed(_)));
+        assert_eq!(calls.lock().await.len(), before + 2);
+        assert!(responses.has_uncommitted_results());
+        rig.pool.get().await.unwrap().batch_execute("DROP TRIGGER reject_related_provider_original ON brassclaw_monty_related_model_observations; DROP FUNCTION reject_related_provider_original();").await.unwrap();
+        Some(pending)
+    } else {
+        None
+    };
+    if requested_output_tokens.is_some() {
+        // A schema-valid, positive value that cannot fit the real captured
+        // context must fail the existing final request guard before transport.
+        // This is a fresh retained occurrence, never a replay of 0:2.
+        let (_, outcome) = invoke(
+            &host, &admitted.admission, &program, &runtime, "0:4",
+            json!({"prompt":{"user_query":"must not send","chat_history":[],"max_output_tokens":u32::MAX}}),
+        ).await;
+        assert!(!matches!(outcome, RuntimeCapabilityOutcome::Completed(_)));
+        assert!(
+            rejected_requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(run, summary)| {
+                    *run == context.run_id && summary.starts_with("model input rejected:")
+                }),
+            "the negative case must reach the actual final request token check, not pass on an unrelated rejection"
+        );
+        assert_eq!(
+            calls
+                .lock()
+                .await
+                .iter()
+                .filter(|body| body["model"] == captured_model)
+                .count(),
+            1,
+            "the actual guard rejects an impossible output reservation before the primary peer"
+        );
+    }
+    if let Some(tokens) = requested_output_tokens {
+        // A later, separately admitted occurrence sees a newly enabled limit.
+        // Reject the explicit original value; never silently send a smaller one.
+        live_output_limit.set(Some(usize::try_from(tokens - 1).unwrap()));
+        let (_, outcome) = invoke(
+            &host, &admitted.admission, &program, &runtime, "0:6",
+            json!({"prompt":{"user_query":"must not clamp","chat_history":[],"max_output_tokens":tokens}}),
+        ).await;
+        assert!(!matches!(outcome, RuntimeCapabilityOutcome::Completed(_)));
+        assert!(
+            rejected_requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(run, summary)| {
+                    *run == context.run_id
+                        && summary == "explicit output reservation exceeds the enabled token budget"
+                }),
+            "the existing live limit must reject this original request setting"
+        );
+        assert_eq!(
+            calls
+                .lock()
+                .await
+                .iter()
+                .filter(|body| body["model"] == captured_model)
+                .count(),
+            1,
+            "an enabled cap must not clamp and submit the request"
+        );
+        live_output_limit.set(None);
+    }
+    let calls_before_incompatible = calls.lock().await.len();
+    repo.replace_revision(incompatible, Some(3)).await.unwrap();
+    assert!(
+        host.preflight_task_model_usage(Some(&input)).await.is_err(),
+        "cached clients must receive the same live preflight check"
+    );
+    assert_eq!(
+        calls.lock().await.len(),
+        calls_before_incompatible,
+        "preflight never performs inference"
+    );
+    if let Some(pending) = pending_review {
+        admitted
+            .state
+            .request_cancel(brassclaw_turns::CancelRunRequest {
+                scope: context.scope.clone(),
+                actor: context.actor.clone().unwrap(),
+                run_id: context.run_id,
+                reason: brassclaw_turns::SanitizedCancelReason::UserRequested,
+                idempotency_key: brassclaw_turns::IdempotencyKey::new(
+                    "related-original-after-cancellation",
+                )
+                .unwrap(),
+            })
+            .await
+            .unwrap();
+        host.fence_dispatch();
+        assert!(host.check_dispatch_open().is_err());
+        responses
+            .reconcile_received_response(pending)
+            .await
+            .unwrap();
+        responses
+            .reconcile_received_response(pending)
+            .await
+            .unwrap();
+        assert!(!responses.has_uncommitted_results());
+        assert_eq!(
+            calls.lock().await.len(),
+            calls_before_incompatible,
+            "late original persistence cannot repeat provider work after cancellation"
+        );
+        let client = rig.pool.get().await.unwrap();
+        let count: i64 = client
+            .query_one(
+                "SELECT count(*) FROM brassclaw_monty_related_model_observations o
+             JOIN brassclaw_monty_related_model_work w USING(work_id) WHERE w.invocation_id=$1",
+                &[&pending.as_uuid()],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(
+            count, 2,
+            "received original is reconciled; missing loop success stays absent"
+        );
+    }
+    stop.cancel();
+    server.await.unwrap();
+}
+
+/// Real component selection + encrypted provider capture + admission SQL.
+/// The Prefix table is deliberately unavailable to prove capture independence;
+/// no model call or prefix-free activation is accepted by this fixture.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_prefix_free_capture_retains_original_pair_without_prefix_table_or_dispatch_grant() {
+    use brassclaw_engine::executor::{
+        retained_recipe::RetainedProgram, retained_source::InspectedRetainedProgram,
+    };
+    use brassclaw_skills::recipe_model_input::{PrefixFreePurpose, RecipeModelInput};
+    use brassclaw_turns::run_profile::{LoopModelInputReference, RecipePrefixSelection};
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let program = program_with_model_input(
+        &store,
+        Some(RecipeModelInput::PrefixFreeWorkflow {
+            purpose: PrefixFreePurpose::PrefixGeneration,
+        }),
+    )
+    .await;
+    let inspected = InspectedRetainedProgram::inspect(
+        RetainedProgram::Tools(program.clone()),
+        &brassclaw_monty_host::process::installed_worker().unwrap(),
+    )
+    .await
+    .unwrap();
+    let (admitted, _claim) = admission_fixture::reserve_unstarted_with_claim(
+        rig.pool.clone(),
+        "prefix-free capture only",
+    )
+    .await;
+    let tenant = admitted.context.scope.tenant_id.as_str();
+    let keys = crate::task_model_provider::tests::keys(&rig.pool, tenant);
+    crate::task_model_provider::tests::provider(
+        &rig.pool,
+        tenant,
+        "first-pair",
+        "http://127.0.0.1:1/v1",
+        None,
+    )
+    .await;
+    crate::task_model_provider::tests::select(
+        &rig.pool,
+        tenant,
+        "kohai",
+        "first-pair",
+        "original-model",
+    )
+    .await;
+    let configuration = crate::task_model_provider::TaskProviderConfiguration::new(
+        rig.pool.as_ref().clone(),
+        tenant,
+        keys,
+    )
+    .with_session(Arc::new(brassclaw_llm::SessionManager::new(
+        Default::default(),
+    )));
+    let source = configuration.role(brassclaw_llm::ProviderRole::Kohai);
+    let capture = crate::task_model_capture::PrefixFreeCapture::from_program(&inspected, tenant)
+        .unwrap()
+        .unwrap();
+    let other =
+        crate::task_model_capture::PrefixFreeCapture::from_program(&inspected, "other-namespace")
+            .unwrap()
+            .unwrap();
+    let normal = source.capture(None, None).await.unwrap();
+    assert_eq!(
+        normal.retained_metadata().unwrap()["format"],
+        "brassclaw-task-provider-binding/2"
+    );
+    assert!(!normal.matches_capture_context(capture.as_ref()));
+    assert!(
+        source
+            .capture(Some(normal), Some(capture.clone()))
+            .await
+            .is_err()
+    );
+    assert!(
+        source.capture(None, Some(other)).await.is_err(),
+        "native namespace must agree"
+    );
+    struct ForeignCapture;
+    impl brassclaw_turns::run_profile::LoopModelCaptureContext for ForeignCapture {
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+    }
+    assert!(
+        source
+            .capture(None, Some(Arc::new(ForeignCapture)))
+            .await
+            .is_err()
+    );
+    rig.pool.get().await.unwrap().batch_execute(
+        "ALTER TABLE reborn_prefix_target_bindings RENAME TO temporarily_unavailable_prefix_bindings"
+    ).await.unwrap();
+    assert!(
+        source.capture(None, None).await.is_err(),
+        "ordinary capture still needs its binding owner"
+    );
+    let selected = source.capture(None, Some(capture.clone())).await.unwrap();
+    assert!(selected.matches_capture_context(capture.as_ref()));
+    let metadata = selected.retained_metadata().unwrap();
+    assert_eq!(metadata["format"], "brassclaw-task-provider-binding/3");
+    assert_eq!(metadata["prefix_bindings"], json!([]));
+    assert_eq!(metadata["prefix_capture"]["purpose"], "prefix_generation");
+    assert_eq!(
+        metadata["prefix_capture"]["recipe_uuid"],
+        json!(program.inputs().instruction().recipe().uuid)
+    );
+    assert_eq!(
+        metadata["prefix_capture"]["selection_checksum"],
+        hex::encode(
+            program
+                .inputs()
+                .instruction()
+                .retained_selection()
+                .unwrap()
+                .checksum()
+        )
+    );
+    crate::task_model_provider::tests::select(
+        &rig.pool,
+        tenant,
+        "kohai",
+        "first-pair",
+        "replacement-model",
+    )
+    .await;
+    let child = source.capture(Some(selected.clone()), None).await.unwrap();
+    assert!(Arc::ptr_eq(&selected, &child));
+    let review = configuration
+        .role(brassclaw_llm::ProviderRole::Sempai)
+        .capture(Some(selected.clone()), Some(capture.clone()))
+        .await
+        .unwrap();
+    assert!(Arc::ptr_eq(&selected, &review));
+    assert_eq!(selected.model_route().unwrap().model_id, "original-model");
+    assert_eq!(child.retained_metadata().unwrap(), metadata);
+    assert_eq!(review.retained_metadata().unwrap(), metadata);
+    // Recompute bad subjects so rejection cannot be credited merely to a stale
+    // outer checksum. These are observations, not native declaration objects.
+    fn rehash(mut value: Value) -> Value {
+        use sha2::Digest;
+        let mut selection = value["selection"].clone();
+        selection.sort_all_objects();
+        let base = hex::encode(sha2::Sha256::digest(
+            serde_json::to_vec(&selection).unwrap(),
+        ));
+        let mut capture = value["prefix_capture"].clone();
+        capture.sort_all_objects();
+        let mut prefixes = value["prefix_bindings"].clone();
+        prefixes.sort_all_objects();
+        value["checksum"] = json!(hex::encode(sha2::Sha256::digest(
+            serde_json::to_vec(&json!([base, prefixes, capture])).unwrap()
+        )));
+        value
+    }
+    for (field, value) in [
+        ("purpose", json!("unqualified-purpose")),
+        ("namespace", json!("foreign-namespace")),
+        ("recipe_version", json!(0)),
+        ("recipe_checksum", json!("invalid")),
+        ("variant", json!("")),
+        ("unexpected", json!(true)),
+    ] {
+        let mut bad = metadata.clone();
+        bad["prefix_capture"][field] = value;
+        assert!(
+            admitted
+                .admission
+                .bind_task_models(Some(rehash(bad)))
+                .is_err(),
+            "{field}"
+        );
+    }
+    let mut bad = metadata.clone();
+    bad["prefix_bindings"] = json!([{"qualification":Uuid::new_v4()}]);
+    assert!(
+        admitted
+            .admission
+            .bind_task_models(Some(rehash(bad)))
+            .is_err()
+    );
+    admitted
+        .admission
+        .bind_task_models(Some(metadata.clone()))
+        .unwrap();
+    admitted.admission.check_and_start().await.unwrap();
+    let client = rig.pool.get().await.unwrap();
+    let persisted: Value = client
+        .query_one(
+            "SELECT task_model_selection FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&admitted.context.run_id.as_uuid()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(persisted, metadata);
+    assert!(client.execute(
+        "UPDATE brassclaw_monty_task_admissions SET task_model_selection=jsonb_set(task_model_selection,'{prefix_capture,purpose}','\"model_design\"') WHERE run_id=$1",
+        &[&admitted.context.run_id.as_uuid()],
+    ).await.is_err(), "original family is immutable");
+    drop(client);
+    let free_input = LoopModelInputReference {
+        selection: RecipePrefixSelection::PrefixFreeWorkflow,
+        reference: "capture-is-not-qualification".into(),
+    };
+    assert!(
+        source
+            .preflight_compatibility(&selected, None, None)
+            .await
+            .is_err()
+    );
+    assert!(
+        source
+            .preflight_compatibility(&selected, None, Some(&free_input))
+            .await
+            .is_err()
+    );
+    assert!(!crate::global_recipe_ports::model_input_supported(
+        program.inputs().instruction()
+    ));
+    assert!(
+        crate::installed_monty_catalogue::program_for_committed_match(
+            std::iter::once(&inspected),
+            &brassclaw_engine::memory::intent_system::IntentResolution::NoMatch,
+        )
+        .unwrap()
+        .is_none()
+    );
 }

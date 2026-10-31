@@ -1,5 +1,14 @@
 # Simplified v3 implementation record
 
+**2026-10-28 contract clarification:** Skill completeness, contained usage review,
+deployment through actual consuming Recipe graphs and optional MCP publication
+are separate. No dedicated per-Skill Recipe is required. Reuse existing retained
+interfaces, exact approvals, catalogue CAS and optional Recipe `mcp_call`; this is
+not evidence of independent activation of unused library entries. Qualify changed
+packaged prose/source as successor revisions, preserving old selections/receipts.
+Align Phase 0a/3a and deployment/Prefix/MCP consumers with the corresponding
+[shared runtime contract](../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration).
+
 ## Binding preloadable Skill interface (v3)
 
 A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
@@ -15,7 +24,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -13713,3 +13724,1003 @@ passes 50 actual tests, 17 closed Recipe cases, full-feature/default strict lint
 format and whitespace. Complete pure/call/binding/behavior checks, ordinary private
 Q1 admission, trusted settled evidence and activation remain validator-owned work.
 Current embedded-guide and final regular product acceptance remain separate.
+
+### 2026-10-24 — K0 conformity baseline before K1–K7
+
+The operator now requires the opening conformity block in `simplified_v3.md`
+before ordinary remaining work. Its inspected SHA-256 is
+`114614e9770b9d408fdff862541a9bffb2552235e445939eaca47f1c1ca70f53`;
+this identifies the observed plan bytes, not a new runtime acceptance.
+Common branch/index baseline is `6b669a5a33530dd6eb9a0fb511d23abe49d4fa2e`,
+pushed and verified on `origin/main`. Parallel uncommitted guide/plan/scanner
+edits and the in-flight pure-source draft remain preserved. No source rollback,
+new queue/status database, release, activation or deployment occurs.
+
+| Existing owning plan / baseline | Applicable records and boundary | Priority disposition |
+| --- | --- | --- |
+| Simplified global service, typed selection, live limits and custody | [Retained global worker](../validation/2026-10-23-retained-global-worker.md), [original-subject custody](../validation/2026-10-23-validator-subject-inputs.md), and the status index's atomic PG/inbound records retain their exact source/receipt/artifact identities. | Preserve infrastructure. K1–K3 repair current handoffs; K4/K6 compare actual existing callers/retention. No blanket runtime rebuild. |
+| Validator source/definition/contract/graph rules and sealed observer | [Graph acceptance](../validation/2026-10-24-python-graph-review.md): source inventory `60c7d519fc8dcf9e7e32c06041ee705ef2f133d50529a50cded4da20c4ebfbe9`, accepted receipt `f245d05f4db0d2555861267e128d1b9a9e62d1fd07be9caff424870d65257485`; nine private steps/three rules, 50 tests, no complete Q1 or activation. | K5 checks changed package inputs and existing human Usage-Q2 scope. General pure writers and eight routes stay regular remaining work. |
+| Composition ordinary reply/history, authored activation and MCP | [Combined source validation](../validation/2026-10-22-consolidation.md) and subsequent exact index-linked native/command receipts remain scoped. Qualified public usage is not the whole public library. | K2 adds durable invalidation at the existing publisher. K4 checks current command/chat/disconnect callers. |
+| Composition implementation retained preload/bindings/values/explicit child | [Pure-review foundation](../validation/2026-10-23-pure-review-foundation.md) and index-linked child acceptance retain native parent/selection/custody evidence. | K4 checks old/new export isolation, parent/child terminal data and unsupported outcomes. R09 public bootstrap, five subagent conversions and general recovery remain open. |
+| Prefix source-only definitions, original sources/generations, measurement and model limits | The combined-source record and existing prefix records in the status/Prefix owner retain their original package/worker/test identities; quarantine is not serving activation. | K1 fixes explicit-input identity. K2/K3 repair publication/revision handoffs. K5/K6 compare current package sources and supported retention/restore. |
+
+The actual retained worker used by graph acceptance has SHA-256
+`d7860b5f96f9a9001e219cf4d23a2a0dbeffcfc2ac22cc44e9fe0a0e33f2877c`;
+the tested composition executable is
+`93440594b8e208aec7f0f673e8b8a70d0bec14cd283dfd5278efa75aa8ac62b7`.
+These are historical exact artifacts, not acceptance of current embedded guides
+or a new regular application. The already-running pure-source batch has its own
+`target/accepted-evidence/python-pure-calls-review-20261024/run-1/source.json`
+and no acceptance claim until its actual completion. It will not be expanded into
+general pure-Q1 work before this priority block is closed.
+
+K1 source inspection confirms both existing-row and insert-winner paths omit
+input equality. At baseline, submission source SHA-256 is
+`12d287521a203195731c1b44b79f6d90a7783b0362fb4498cae432a5669ab45f`;
+definition-store source is
+`cfec89efbd4b588e9753b3905b946b9ad3f90823eb456671a5e86901d7840218`.
+Existing tests explicitly accepted changed offered source under the old request;
+their historical receipts are retained, while successor assertions must require
+a pre-effect conflict. Automatic capture reconnect must be a typed original
+lookup, distinct from explicitly supplied empty/changed data. Measurement metadata
+already captures every explicit request field (including exact probe checksum);
+its automatically captured input and compiler must remain originally selected.
+K1 behavior/concurrency/lost-ack acceptance is not yet performed. K2–K7 remain open.
+
+### K1 first native run — retained failure, 2026-10-24
+
+The affected test build and both architecture selectors passed; the actual native
+caller failed before completion at the new insert-wait observer. Its query reused
+the lock-owning transaction, whose PostgreSQL activity snapshot can remain cached.
+The test now observes on a separate autocommit connection and ties both waits to
+the actual lock backend using `pg_blocking_pids`. No production behavior or test
+timeout was relaxed. The original failed executable, source identity, runner and
+logs remain in `target/accepted-evidence/k1-prefix-request-identity-20261024/run-1/`.
+K1 is not accepted; run-2 rebuilds the corrected actual caller and completes the
+previously unreached native checks and strict lints. No simultaneous Cargo.
+
+K2 read-only design during K1 validation: keep the existing catalogue publisher,
+add the durable exact prefix invalidation reference to its activation transaction,
+reconcile original activation after uncertain commit and expose desired/runtime/
+discovery effective state on the existing status route. A frozen uncertain WebUI
+request must allow status inspection without rebasing or replacement identity.
+The qualified retained inline context is distinct from still unsupported generated
+prefix serving; no hidden build or new queue. Working analysis only, no K2 code or
+acceptance yet. Continue K2 after K1 closes, not general Pure-Q1.
+
+K1 run-2 retained failure: the corrected real insert race and original core,
+declared-release and Sempai source jobs passed their helper assertions. The broad
+caller later returned 503 on model-catalogue GET, before its measurement cases.
+The ACK transport introduced a second 16-connection application pool while the
+fixture metadata service still used the original 16-connection rig pool; embedded
+PostgreSQL allows 20 connections. Concurrent key-presence reads could exhaust that
+aggregate. All application readers in this existing caller now share its actual
+transport pool, preserving real SQL/credentials/reload behavior and the original
+ACK cut. No pool cap or timeout was enlarged and no assertion was removed.
+Run-3 must establish the repair through the full actual caller; K1 is not accepted.
+
+K1 run-3 actual caller passed (354.0879 s, one real native test, plus 32
+architecture tests). This includes the complete metadata/model/artifact/native-HF
+measurement path after pool unification, all explicit measurement-field conflicts,
+original ACK-cut reservation reconciliation, real insert race, original compiler
+and zero replay. Strict lints/final identity are still running, so acceptance is
+not yet declared. Preserve the HF warning for the complete Sempai diagnostic
+context (371462 > declared 262144); actual capacity says false and no generation
+is activated for serving. No truncation or model-limit increase was used.
+
+### 2026-10-24 — K1 accepted, K2 next
+
+[Exact report](../validation/2026-10-24-k1-prefix-request-identity.md). Run-3 passes
+33 actual tests and strict root/composition common-feature and PostgreSQL-default
+lints, format, whitespace and final source/artifact verification. Accepted receipt
+SHA256 `81d2153030ca18217d67960c90553229201b6885b101a4ba2f5bf4edfcc07ad5`, source
+SHA256 `1ab1bbaadfe0815ba8e89b47e84739f85365fb71e1b28449e85c8f0a74dd1267`.
+Original failure attempts and full model-context warnings remain retained. The
+source-only/diagnostic context is not serving activation. Current scope closes K1,
+not K2–K7, final application/release, generated prefix serving or general Q1.
+Next implement existing catalogue publication/invalidation/readback and its actual
+consumer status (K2), then K3. No ordinary Pure-Q1 continuation before K7.
+
+### 2026-10-24 — K2 connected implementation, native acceptance pending
+
+The existing publication owner now commits the active pointer, immutable
+activation and exact prefix/source/profile invalidation together (additive V177).
+Original-reference reconciliation repairs lost commit/publication acknowledgement;
+it does not issue a new activation or republish a superseded receipt. Runtime and
+discovery revisions are projected separately, including readable pending state
+while qualification fails. Fresh ordinary input and source export reconcile the
+durable target. Qualified retained inline context remains usable independently of
+the unfinished generated-prefix consumer; no extra queue, runner or activation.
+
+The existing authored HTTP/native caller was extended with precommit rollback,
+actual lost COMMIT acknowledgement, postcommit discovery failure, reference-only
+reconnect, restart, failed build, fresh inline model context and one-connection
+lock-order cases. These Rust cases have not run yet. Eleven actual editor tests
+and six JavaScript syntax checks pass; inspection/reconnect never rebases frozen
+uncertain publication requests. The serial source-check screen waits for another
+chat's actual Cargo lock before formatting; no simultaneous Cargo is started.
+The first disk-space preflight failed before compilation and is preserved under
+`target/accepted-evidence/k2-catalogue-publication-20261024/source-preflight-1/`.
+Affected product/workflow cleanup is now included when required to reach the
+existing free-space floor. K2 is not accepted until its real caller, migrations,
+affected lints and source/artifact integrity pass. K3–K7 remain next in order.
+
+K2 run-1 compiled the affected native callers successfully (Rust 1.96.0, no
+compiler/linker warning), then stopped before tests because the source integrity
+check detected concurrent Prefix design changes. Its original snapshot, binary,
+runner and failure remain in `target/accepted-evidence/k2-catalogue-publication-20261024/run-1/`.
+The Prefix chat has now finished its package, released the lock and confirmed it
+will leave runtime/embedded sources stable during K2. Preserve its changes; run-2
+formats and captures the current common tree before its actual acceptance.
+
+Run-2 passes the current build, 32 architecture checks and actual V176→V177
+historical-row migration. Its authored caller reaches the deliberate precommit
+backend termination, then exposes a real shared test-transport defect: a reset/
+broken-pipe relay ends the listener and independent observer sessions. The
+backend transport now contains only connection-level disconnects and records
+their safe error class; protocol errors and task panics still fail the transport.
+No database/application acknowledgement is fabricated. Run-3 must exercise that
+actual publisher/observer plus the existing child caller's three ACK cuts, then
+finish the previously unreached K2 cases and lints. The separate Clippy
+`collapsible_if` finding is repaired with an explicit read-guard-ending boolean
+and short-circuited restoration. Both previous failed runs remain retained.
+
+Run-3 passes its build, three backend wire guards, architecture checks and real
+upgrade migration. The authored caller passes the repaired precommit termination,
+actual lost COMMIT, exact original retry/conflict, committed source capture and
+failed-build/provider-free-work assertions. Its actual No-Match model request has
+the new exact system context, but a subsequent new test query incorrectly expects
+a Recipe-Tool model-response row for this ordinary model-port call. The successor
+correlates that same real request with its actual settled admission, immutable
+catalogue/prefix checksums and one No-Match exchange. No new production record or
+mock result is added. This is a test-observer correction, not completed K2
+acceptance; remaining postcommit-discovery/restart/pool/consumer/lint cases still
+must run. Run-3 retains the actual failed caller and its original executable.
+
+Run-4 passes every intended behavioral selector, including the complete authored
+fault/recovery caller (52.16 s), routing/restart (69.63 s), actual child/three
+ACK cuts (37.23 s), broad deployment/source/model caller (343.56 s) and both route
+descriptor contracts. Strict lint then rejects only an explicit auto-deref at the
+new migration-helper argument. The original tested file is archived and verified;
+the equivalent corrected call is typechecked by the successor lint rather than
+blindly repeating unchanged behavior cases.
+
+Before run-5 could start Cargo, it detects a newly integrated Prefix-only proposal/
+parser/UI package. Nine peer baseline files exactly match run-4's original hashes;
+the ten successor files are preserved. The previously passed publisher/migration/
+restart/child/route scopes stay separately qualified. Run-6 tests the changed actual
+deployment/measurement consumer, declaration units and retained design integration,
+then strict affected/default lints and final integrity. All 21 current UI controller
+cases and seven JavaScript syntax checks pass. The Prefix chat explicitly confirms
+no further runtime/embedded writes or Cargo until this entire closure package ends.
+K2 remains pending until that actual closure; no prior failed batch is relabelled.
+
+### 2026-10-24 — K2 accepted; K3 next
+
+[Exact report](../validation/2026-10-24-k2-catalogue-publication.md). The common-tree
+closure passes 39 fresh Rust tests, nine exactly qualified run-4 Rust results and
+21 current UI cases. The updated actual HTTP/PG deployment/measurement caller
+(344.648 s) includes the integrated unaccepted v1/v2 proposal cases; the retained
+design integration also passes. Strict affected/root test lint, default Composition
+lint, format, whitespace and final integrity pass. No failed/partial earlier batch
+is added to the passed-test count and no new binary is attributed to old execution.
+
+Accepted receipt SHA256
+`45762253e1c57e66adfc66365ced0f25e9b491f1e9427c1640c1052e47525326`;
+source SHA256 `1e98e7b0f5a6d7763f73621ae431b297d2c096b79177f48c930c95dc288eeee0`.
+All production inputs, 270 declared documents, original/current executables and
+six original model artifacts were checked before later status edits. Commands,
+scripts, logs, failed attempts and exact reuse rationale are preserved under
+`target/accepted-evidence/k2-catalogue-publication-20261024/`. The actual retained
+worker is still `d7860b5f96f9a9001e219cf4d23a2a0dbeffcfc2ac22cc44e9fe0a0e33f2877c`.
+The real full Sempai warning (371505 > declared 262144 tokens) remains visible;
+capacity is false, without truncation, enlarged model limit or serving activation.
+
+The whole K2 Cargo/source window is explicitly released to the Prefix chat.
+Next implement K3's original provider-mutation identity/readback and real
+revision-bound consumer uptake/fencing in its existing owner. K3–K7, full serving,
+general Q1/recovery, regular final application/release and deployed/platform
+acceptance remain open; no ordinary Pure-Q1 continuation before the gate closes.
+
+
+## 2026-10-24 — K3 original manual provider publication accepted
+
+[Scoped acceptance](../validation/2026-10-24-k3-provider-originals.md) records V178,
+original UUID/request custody in the existing definition/key/selection transaction,
+encrypted request comparison, exact replay and reference-only operator read/reconcile.
+Role-only reconciliation preserves unrelated admitted clients. Canonical WebUI reads
+and confirmed/unknown mutation state include the reviewed Prefix-chat corrections.
+Run-7 closes with 38 fresh Rust executions, 19 applicable original run-6 results,
+26 UI cases, strict affected/default lints, format and final identities. All failed
+attempts remain retained; no current app/release/deployment acceptance is claimed.
+K3 remains open for actual client revision acknowledgement, desired/effective status,
+external-writer/retained/cache/retry live fencing and remaining Prefix integration.
+K4–K7 still precede the regular remaining implementation.
+
+## 2026-10-25 — K3 authentication custody: accepted boundaries and remaining order
+
+The [implementation index](../implementation-status.md) and exact reports own
+current acceptance. [NEAR browser publication](../validation/2026-10-25-k3-nearai-browser-publication.md),
+[wallet publication](../validation/2026-10-25-k3-nearai-wallet-publication.md) and
+[same-provider model preservation](../validation/2026-10-25-k3-login-model-preservation.md)
+are scoped accepted. They do not close dedicated setup/rotating-session K3.
+The latter has18 fresh native/service/global cases with current strict checks.
+Do not rebuild their completed owners or infer full auth/deployment support.
+
+These are concrete remaining steps of Simplified §10.1/Phase3a, not a new plan,
+store, queue or implementation owner. Reuse the selected `PgAuthProductServices`
+and `ProviderBackedCredentialAccountService` wrapper, the actual
+`HostOAuthProviderClient`/`OAuthDcrProvider`, `PgSecretStore`, existing publication
+owner and the one global Monty/host transport. The raw PG/filesystem account
+backend delegates refresh to the wrapper; its unavailable method does not mean
+that composed refresh is absent. Generic broker invocation sessions are distinct
+from OAuth access-token lifetime. The shared-owner rules in path_to_v3.5 remain.
+
+1. **Repair refresh artifact identity and registered-client handoff first.**
+   Current refresh uses fixed per-account token handles, so an obsolete completion
+   can overwrite ciphertext referenced by another account revision even when a
+   later metadata comparison rejects it. Use fresh private write destinations,
+   validate them before external submission, and preserve exact DCR client
+   material when the issuer rotates its refresh token. An omitted rotation keeps
+   the original refresh token and registration. Known prepublication binding
+   failures clean only their own unpublished tokens/material and surface cleanup
+   failure. A storage UUID is not a durable request/attempt receipt or permission.
+   Native encrypted-store regressions must prove originals/other completions
+   remain intact, exact binding survives rotation and failed binding removes its
+   own unpublished artifacts. This step now has [scoped acceptance](../validation/2026-10-25-k3-oauth-refresh-artifacts.md):26 actual Rust results and current strict checks. It does not close step2 custody. Do not copy an older expiry proposal over this successor.
+2. **Make refresh/request custody durable in the existing AuthProduct owner.**
+   Trace actual selected callers and all account/flow writers. Retain the original
+   refresh action identity, original credential generation/refs and pre-egress
+   ownership before one issuer attempt. Pending/unknown effects survive waits,
+   lost acknowledgement and restart; timeout/cancellation never resets them or
+   permits issuer replay. Fence stale completion after reauthorization/revocation
+   or another writer. Commit/read back the exact result through the existing
+   account/flow/secret boundary. Inspect current separate account/flow commits
+   and error cleanup: unknown publication must be reconciled before deleting any
+   material that an account may already reference. The actual PG callback currently lacks the filesystem owner
+   completion checks for submitted scope/state/provider/PKCE and writes account/flow
+   separately; preserve original deterministic identity and make that publication
+   atomic. Its generic facade currently cleans tokens on any completion error,
+   including an unknown account commit. Manual-token secret/account/interaction
+   writes share this unknown-cleanup risk; include these existing writers.
+   The final refresh read also needs an atomic expected-snapshot update through
+   the existing setup/store boundary. That final snapshot-CAS prerequisite now has
+   [scoped acceptance](../validation/2026-10-25-k3-oauth-refresh-cas.md):96 fresh Rust cases and current strict checks.
+   PG direct reads/deletes and exact-scope lists must match existing domain/FS
+   boundaries while stable-owner scans remain distinct. Preserve session metadata
+   when validating setup bindings, use absent-only insertion rather than UPSERT,
+   cancel only the referenced manual interaction and retain the first completed
+   continuation acknowledgement. These PG boundary prerequisites now have
+   [scoped acceptance](../validation/2026-10-25-k3-pg-auth-boundaries.md):34 fresh Rust cases,
+   actual native UPDATE/DELETE failures and current strict checks. This does not
+   close original refresh or callback/manual success custody.
+   The following original-refresh custody prerequisite now has
+   [scoped acceptance](../validation/2026-10-25-k3-auth-refresh-custody.md):283 distinct Rust
+   cases (current83 +200 exactly qualified native/consumer results) and current
+   strict checks. Exact original/prepared destinations, durable result before final
+   account/receipt, PG/persistent FS restart/rejection and actual public/GSuite
+   consumers are implemented. Callback/manual success custody below remains open.
+   Persist original action/request identity AND actual prepared token destinations
+   before a possible issuer attempt. A storage UUID alone cannot account for a
+   lost returned result. Same original must read back; another action with the
+   same unresolved refresh credential must not bypass pending custody. GSuite
+   uses its active operation identity, not the account's historical invocation.
+   Current Host RefreshFailed/status/parse mapping does not prove no issuer effect.
+   Durably retain the exact returned outcome before attempting account publication;
+   a failed account write must not discard the provider response after restart.
+   Original readback reconciles that stored outcome without another issuer call.
+   PG account/action finalization must be atomic in its existing owner; filesystem
+   account serializers must retain the same final action metadata under one record
+   CAS. A separate original intent/result locator never certifies account publication.
+   The cheap original-refresh readback correction now has its separate bounded
+   [acceptance](../validation/2026-10-25-k3-refresh-readback.md):273 fresh Rust cases,
+   current strict checks, real held PG account/action rows, known-pending blocking
+   and independent finalizers. Missing/Submitted/final originals bypass publication
+   locks; only known pending outcomes reconcile. Begin remains the sole dispatch
+   claim after lookup races. Preserve this successor in callback/manual work;
+   manual-token success custody remains open. The original OAuth callback
+   prerequisite now has [scoped acceptance](../validation/2026-10-25-k3-auth-callback-custody.md):
+   334 distinct passing Rust cases (201 fresh run5/133 independent reused, exact
+   final equivalent-expression qualification) and current strict checks. The
+   earlier PG/facade callback diagnosis in this step is historical after that
+   repair. Exact admission/result/PG atomic or CAS decision/account receipt,
+   initial bound snapshot, cancel/expiry/stale/unknown and public Host/global
+   callers are implemented. Error PKCE cleanup authenticates the exact durable
+   terminal flow; invalid pending input cannot destroy its legitimate verifier.
+   Manual setup-flow creation readback now has its own bounded
+   [acceptance](../validation/2026-10-25-k3-manual-setup-custody.md):337 distinct
+   Rust cases (204 fresh/133 exact reused), current strict checks and no
+   intermediate failure. One Flow ID is chosen before writing; only the full
+   original is read after lost acknowledgement, without abandon/replacement.
+   Expired initial requests fail before writes; terminal/foreign/expired readback
+   cannot be offered as a waiting challenge. Native PG reuses the same helper.
+   This is not first-interaction transport idempotency or manual success custody.
+   Generic authenticated secret reference/real conditional write/material comparison
+   now has [scoped acceptance](../validation/2026-10-25-k3-secret-generation-ports.md):
+   429 run2 passing cases, exactly qualified for final unused-import removals and
+   current strict/default/fmt checks. All actual backends/wrappers, native readonly
+   legacy reads and real lost COMMIT acknowledgement are covered. These ports
+   alone do not make a mutable handle an immutable first input or finish manual
+   publication/retention; keep the same step2 below and step4 lease owner.
+   Follow-up source audit found a missing race in that scoped evidence:
+   filesystem conditional write checks the ciphertext reference before a
+   Version-only backend CAS. Physical delete/recreate can reuse that version,
+   allowing an interleaved stale write. Repair the actual atomic precondition in
+   the owning storage primitive (captured version plus the exact encrypted body)
+   and preserve it through native backends/forwarders without Any downgrade.
+   Add controlled actual-store delete/recreate-between-read-and-write tests,
+   including native persistent PG-backed FS, before claiming this race closed or
+   continuing the immutable manual-input cutover. Preserve historical passed
+   receipts; they did not exercise this particular window. Native PgSecretStore
+   already compares the authenticated reference while holding its row locks;
+   do not replace that path with the filesystem protocol.
+   This write-CAS ABA prerequisite now has
+   [scoped acceptance](../validation/2026-10-26-k3-secret-cas-aba.md):904
+   positive Rust cases (216 fresh final/688 exactly qualified), current
+   strict/default/fmt, controlled actual memory/persistent PG secret races,
+   unsupported Local no-downgrade and existing native/public/global callers.
+   Before activating immutable original/retained FS records, also fence EVERY
+   normal deletion. RootFilesystem currently exposes only unconditional recursive
+   delete: a read/ordinary-delete can race another delete plus an absent-only
+   immutable insert and remove that new original. A process lock or the new write
+   CAS cannot prove conditional deletion. Add one native single-leaf
+   delete_if_snapshot primitive using the same captured version/body under its
+   owner lock/transaction, preserve ScopedFilesystem Delete permission and
+   composite forwarding, and require truthful backend capability. Missing/stale/
+   directory returns no effect, unsupported/error never becomes ordinary delete.
+   Actual memory/PG recreate/normal-successor/absence/directory, unsupported Local,
+   scope permissions and lost-ack cases must pass before connecting ALL ordinary
+   and custody delete writers. This is a prerequisite within this same step2,
+   not another store/queue, whole Recipe replay or new approval grant.
+   The single-entry deletion prerequisite now has
+   [scoped acceptance](../validation/2026-10-26-k3-conditional-entry-delete.md):116
+   fresh positive Rust cases, current strict/default/fmt, actual native/Local/
+   scope/COMMIT-ack and both global callers with a genuinely rebuilt current
+   worker. The old worker530-file applicability list omitted transitive normal
+   dependencies; the linked report records this limitation and the new complete
+   conservative source provenance. Preserve historical receipts. This primitive
+   does not activate the larger private original/retained secret-owner draft or
+   complete the following all-writer/manual/browser publication work.
+   The connected immutable secret storage prerequisite now has
+   [scoped acceptance](../validation/2026-10-26-k3-secret-custody.md):348
+   fresh positive Rust cases, all22 final hashes and preceding Prefix5 preserved,
+   current strict/default/fmt. Required ports/all actual owners/forwarders,
+   authenticated original/retained/retired values, every ordinary SecretStore
+   write/CAS/delete guard, real native/PG-backed-FS lost acknowledgements/races/
+   System/tamper/read-only/provider lock-order and actual public/global callers
+   pass. Prior private-draft wording is historical. These new storage ports are
+   not yet the full manual producer/publication path; the next work below must
+   retain a concrete native PG Secret owner across feature profiles. That concrete
+   native-owner prerequisite now has [scoped acceptance](../validation/2026-10-26-k3-native-auth-owner.md):
+   209 fresh Rust cases, strict full/default/PostgreSQL-without-RootLLM profiles,
+   actual current native/public/global callers and indexed backend guides. It
+   does not close manual publication. The following ordinary native transaction
+   now has [scoped acceptance](../validation/2026-10-26-k3-native-manual-publication.md):
+   283 freshly executed Rust cases, nine real native manual cases, current strict
+   full/default/PostgreSQL-only checks and formatting. The high-level native path
+   atomically publishes original/retained material, account, consumed interaction
+   and completed flow; same raw input returns the original result, changed input
+   conflicts, and no current-account substitution or unknown-commit cleanup is
+   used. The lower interaction operation still does not complete a flow. Explicit
+   bound setup snapshots and original-flow-backed legacy proof are preserved;
+   unbound native setups do not implicitly overwrite another account. The older
+   coordinator-delegation statement below describes its historical source, not
+   this native successor. Generic/FS/facade/browser and final grants remain open.
+   Before the remaining FS manual publication, carry the ORIGINAL captured entry
+   version and body identity through EVERY AuthProduct account/flow/interaction/
+   refresh-action conditional writer. Current source inspection found version-only
+   comparisons can accept a deleted/recreated record with a reused version, even
+   after the secret owner's separate ABA repair. Reuse existing EntryBodyCas;
+   never rederive the old identity from a current read, use Any, or imply native
+   multi-record transactions for FS. Callback publication decisions also retain
+   their selected account body identity. Historical matching same-account receipts
+   may reconcile without rewriting; unproven old decisions remain accountable,
+   pending/conflicting until the existing controlled-upgrade owner drains or
+   reconciles them. Prove actual independent memory/PG revocation/cancellation
+   plus delete/recreate races, legacy receipt/pending behavior and unsupported
+   Local no-downgrade. This coherent13-file source/contracts/changelog successor
+   now has [scoped acceptance](../validation/2026-10-26-k3-auth-record-snapshots.md):
+   296 freshly executed Rust cases, including the five real snapshot/legacy cases
+   and eight current Prefix-source cases, strict full/PostgreSQL/default and
+   format checks. Old matching receipts can finish without account rewrite;
+   unproven pending decisions remain preserved/conflicting and require the actual
+   controlled-upgrade drain/reconciliation gate before full completion. This
+   repairs conditional Auth record writes, not full FS manual publication below.
+   Next connect remaining generic/FS original request/input/account
+   selection/result and native atomic or CAS flow/account/interaction publication
+   without latest-account substitution. Account updates require a validated
+   binding before the challenge; remove the historical submit-time automatic
+   reusable-account update instead of retaining that contract violation. An
+   unbound setup selects its new interaction-derived account, as native does.
+   The ordinary FS interaction-decision/account-receipt/flow/cancel successor now
+   has [scoped acceptance](../validation/2026-10-26-k3-fs-manual-publication.md):
+   308 freshly executed Rust cases, twelve real-backend rejection/lost-ack/race/
+   restart/facade cases,53 other durable cases and current public/global callers;
+   strict full/PostgreSQL/default/fmt checks pass. It retains lower operation
+   semantics and uses CAS, not a fake multi-record transaction. Generic/fake/raw-
+   facade/browser first-setup identity and final-grant requirements remain open.
+   The manual coordinator/HTTP uncertainty prerequisite now has
+   [scoped acceptance](../validation/2026-10-25-k3-manual-uncertainty.md):353 cases,
+   85 fresh final/268 exactly qualified, with current strict/default/fmt. Native
+   delegates the shared coordinator; no blind cancel/revoke/HTTP abandonment on
+   unconfirmed completion/error/timeout or invalid input. Actual persisted
+   completion and public real-timeout/invalid-then-valid cases pass. Explicit
+   cancellation remains. This does not qualify original input/selection/result,
+   lower-store cleanup or full multi-record publication below.
+   The raw facade/test-adapter successor now has
+   [scoped acceptance](../validation/2026-10-26-k3-manual-facade-original.md):
+   271 distinct Rust cases (107 fresh final/164 qualified unchanged individual
+   results), current strict/default/fmt. No raw fallback uses completed metadata
+   or a current account; same input retains original result and continuation,
+   changed input conflicts. Fakes capture prechallenge snapshots and create new
+   unbound accounts. Generic cancellation status is corrected; the native
+   override/consumed proof finding below still needs its connected repair.
+   Next finish manual secret/account/interaction/flow custody with original
+   HTTP/browser setup and actual submit/abandon/reference-only paths; prove
+   same/different original input without plaintext token fingerprints, retain
+   original account selection, and never compensate an unknown successful write
+   with revoke/delete/cancel. Reuse existing SecretStore/native transaction owners.
+   Include the actual browser consumer: api.js still submits the combined route
+   without an original request identity. useChat.js caches only a confirmed
+   credentialRef by run/gate, so a lost reply can start replacement setup and a
+   changed token after confirmation can be skipped in favor of that cached ref.
+   Persist the original setup/submit identity before transport; compare changed
+   input in its owning service. The next connected native setup/cancellation
+   change must also repair PgAuthProductServices' override: Some(Completed) is
+   not an abandonment success, and consumed interaction proof must not be
+   deleted. Retain explicit cancellation disposition so a retry cannot recreate
+   the same canceled setup. Qualify actual native independent writers and lost
+   acknowledgements alongside the original setup/flow IDs and first expiry.
+   That native disposition prerequisite now has
+   [scoped acceptance](../validation/2026-10-26-k3-manual-cancel-disposition.md):
+   274 fresh Rust cases, actual COMMIT-ack loss, consumed/canceled retention and
+   strict full/PostgreSQL/default/fmt. Its fixed-stub build-script input/output
+   correction also has actual execution evidence. The earlier native finding
+   above is repaired. The original setup/raw/reference backend and facade now
+   have [scoped acceptance](../validation/2026-10-26-k3-original-manual-setup-owner.md):
+   281 freshly executed Rust cases including seven new actual native/Memory/
+   PostgreSQL-backed FS/public cases; strict full/PostgreSQL/default/fmt pass.
+   Independent pair IDs, first expiry, exact scope/definition, prechallenge binding
+   and actual terminal disposition survive original readback. Strong raw checks
+   the selected pair before effects. Explicit reference-only continuation requires
+   actual confirmed publication/completed flow and never substitutes a current
+   account or upgrades lower-only raw publication. Do not reimplement these owners.
+   The connected public manual HTTP/Chat migration now has
+   [scoped acceptance](../validation/2026-10-26-k3-manual-http-browser.md):140 fresh
+   Rust executions and34 applicable common Node cases, including protected real
+   Chromium/PostgreSQL/Auth/Turn continuation after committed acknowledgement
+   loss, reload and changed raw rejection. Strict affected/Postgres/default/fmt
+   checks pass. Pair/invocation, first expiry/status, separate raw/reference and
+   late-response fencing reach the actual caller. Runtime Auth now uses the final
+   coordinator rather than the earlier factory dispatcher; independent native
+   completion/replay and all factory Auth tests pass with real fixture hashes.
+   This state-fixture browser acceptance is not Recipe auth/re-execution proof.
+   The connected Extension consumer now has
+   [scoped Product/Auth/protected native HTTP acceptance](../validation/2026-10-26-k3-extension-originals.md):
+   175 fresh Rust cases,46 applicable common Node cases and strict affected/default/
+   Postgres/fmt checks. Per-requirement Product ports, the existing high Auth
+   adapter, dedicated protected ingress and browser carry the canonical Web
+   invocation, original pair, explicit initial target and first expiry. Repeated
+   setup recovers its original binding, including proven partial FS projection
+   repair; no current-account reselection, raw trimming, generic secret payload,
+   replacement registry or queue. Raw and confirmed reference remain distinct;
+   cancellation reports actual state. The
+   [elapsed-expiry/real Chromium successor](../validation/2026-10-26-k3-extension-browser-expiry.md)
+   now qualifies four actual-time owner cases and the protected real ConfigureModal/
+   PostgreSQL/Chromium caller: unknown acknowledgements, reload, changed raw,
+   explicit reference and new bound setup cancellation preserve exact originals
+   and privacy. Proven missing FS projections recover after elapsed expiry with
+   no account or secret publication.47 actual common Node cases and strict lint/
+   build are applicable through recorded exact source/image reuse; no full K3 or
+   platform/release qualification follows. Reuse step4's existing account-selection/
+   original-grant owner for requirement-specific readiness and final-use binding;
+   distinct mutation labels alone do not establish it. Retain this consumer's
+   Web surface and explicit original identity; no submit-time account substitution.
+   Partial known/unresolved
+   artifacts retain accountable references for the existing cleanup owner.
+   The [common DCR/lifecycle successor](../validation/2026-10-26-k3-dcr-originals.md)
+   now qualifies original setup/blocked-gate registration and cleanup custody,
+   exact local retirement, legacy input continuity, native PG/persistent-FS
+   unknown-write cases and the actual Chromium/native Auth component caller.
+   Failed/unknown DELETE outcomes remain visible and retained, not warning-only
+   best-effort removal; registration and deletion are not replayed. Stable later
+   lifecycle owners reconcile the same account-owned selections/receipts.
+   Its342 distinct Rust cases and browser acceptance are scoped, not complete
+   step2/K3 acceptance. Finish account-lifetime retained client/source dependency
+   reclamation and broader terminal artifact disposition through these same
+   owners; do not delete a source still required by a retained account/task.
+   Full Extensions-page/successful live issuer callback and complete K6
+   pending-plan transfer/restore acceptance remain separate open gates.
+   Reuse immutable old outputs while still needed; do not invent another token
+   runner or blindly delete a later pair. Acceptance includes actual PG CAS,
+   concurrent wrappers, cancellation after submission, lost acknowledgement on
+   each write, restarted original readback and zero repeated issuer exchanges.
+3. **Carry issuer access expiry to the final eligible consumers.**
+   Existing OAuthTokenResponse parses lifetime but exchange/refresh/account
+   records lose it. Preserve exact optional expiry from a conservative pre-request
+   origin, check arithmetic before storage, treat zero as expired and omission as
+   unknown without an invented lifetime. Persist/propagate it with that exact
+   access credential through both existing backends, refresh, projections,
+   recovery/account selection, GSuite and runtime injection. Omitted lifetime on
+   a new access token clears the previous access lifetime; omitted refresh-token
+   rotation preserves its old refresh token. Wall-clock expiry is a derived read
+   state, not a mutation of raw record equality or evidence of a concurrent edit.
+   Advertised selection choices remain an identity whitelist; final live account
+   eligibility must be rechecked. Bound final staged-secret use as well as the
+   initial resolver check; keep invocation-session/VM/resource budgets separate.
+   Read every actual constructor/writer/consumer before applying the optional
+   schema change. Existing unknown-expiry records remain readable. Qualify actual
+   PostgreSQL/filesystem, provider and final injection callers, including expiry
+   during a wait/refresh, omitted/zero/overflow values and no expired egress.
+   **26 October successor, scoped acceptance passed:**
+   [Issuer-expiry acceptance](../validation/2026-10-26-k3-issuer-expiry.md)
+   records738 distinct fresh Rust passes, strict affected test lint/build and
+   actual native PostgreSQL/Chromium. The optional deadline is carried through
+   real callback/refresh and retained-result publication, both account owners,
+   derived eligibility/recovery, GSuite/runtime and authenticated Secret leases
+   to final staging/cache/restore/injection. Unknown/zero/invalid/overflow values,
+   actual elapsed waits, tampered outer metadata and delayed native consumption
+   acknowledgements are covered. A real recovered new-account callback originally
+   dropped its deadline; the shared publisher now retains it without repeating
+   the issuer call. Three existing Docker cases remain unexecuted. Do not redo
+   this completed boundary or equate it with step4's remaining original grants,
+   requirement-specific selection, complete K3 or platform/release acceptance.
+4. **Complete typed DB-owned dedicated auth setup and original-grant capture.**
+   **26 October necessary correction accepted, step4 still open:**
+   [Ambiguity/setup-error acceptance](../validation/2026-10-26-k3-credential-selection.md)
+   records109 fresh Rust passes, strict test lint/build, actual native PG and
+   Chromium. The timestamp/label chooser is removed; readiness and runtime retain
+   ambiguity. OAuth applies its existing exact update scope before ambiguity and
+   returns unavailable/selection errors before a new flow. Both the rejected bare
+   PKCE identity and registry retrieval from an actual admitted original are
+   qualified, with no post-setup HTTP. Do not recreate the removed chooser or
+   equate this correction with the persistent bindings/sharing/family grants below.
+   Include the observed Extension readiness/selection gap: the current selector
+   uses provider/requester/scopes, so one same-provider account can be projected
+   as ready for another manual requirement without an explicit usage binding.
+   Inspect the actual advertised requirement/credential-handle identity, account
+   selection, runtime resolver and final injection together. Extend their existing
+   retained DB-owned selection contract and consume it in step2's projection/UI;
+   do not implement another registry or infer a binding from a mutable label.
+   Qualify two requirements sharing a provider, deliberate supported account
+   sharing, distinct selected accounts, ambiguity, replacement during a wait and
+   final live eligibility. Unrelated same-provider account existence alone cannot
+   prove readiness or silently become a new original target on retry.
+   **27 October transport/setup precursor accepted, step4 still open:**
+   [The scoped R4 record](../validation/2026-10-27-k3-requirement-custody.md)
+   qualifies682 distinct fresh Root Rust cases, strict affected/default checks,
+   actual native PG/record-filesystem owners and HTTP/Chromium. The full usage
+   now reaches authorization, resolver/error context, MCP/GSuite and separate
+   exact gate addressing. New first setup writes retain it; changed/removed
+   metadata cannot reinterpret an original, including after native commit loss.
+   The new stored envelope rejects unknown nested constraints, and absent custody
+   preserves old shapes. The test-only HTTP listener is physically in the test
+   tree; the unchanged architecture guard passes. Preserve these implemented
+   boundaries. Three Docker cases remain unexecuted; this is not full step4/K3.
+   **27 October publisher successors, scoped acceptance passed; step4 remains open:**
+   the existing selection owner now publishes metadata for manual setup, OAuth and
+   explicit account choice. Native account/flow/head transactions retain originals;
+   FS stages exact original custody, publishes the head via CAS and completes last.
+   A losing FS OAuth/manual publisher retains actual account effects with an
+   explicit failed flow; cancellation cannot acknowledge a chosen pending write.
+   Completed recovery never overwrites a later head; archived originals/decisions
+   do not silently gain new bindings. The Auth fake uses one pure precheck before
+   mutex publication. Reuse the exact scopes in
+   [native manual](../validation/2026-10-27-native-requirement-publication.md),
+   [FS manual](../validation/2026-10-27-fs-requirement-publication.md),
+   [native OAuth/choice](../validation/2026-10-27-native-other-requirement-publication.md),
+   [FS OAuth/choice](../validation/2026-10-27-fs-other-requirement-publication.md) and
+   [fake transitions](../validation/2026-10-27-fake-other-requirement-publication.md).
+   These overlapping receipts are not additive whole-product test counts.
+   They establish metadata publication, not authenticated original material grants.
+   Actual immutable material-generation proof, deliberate sharing and the real
+   UI/readiness/runtime plus original family/child/wait consumers below remain
+   mandatory. A copied hash/account label or publication receipt is insufficient;
+   unsupported/legacy selections never acquire a runtime grant by inference.
+   The remaining Google/DCR and conditional lease-issuance requirements also
+   remain open; transport/setup alone does not establish those grants.
+
+   **27 October manual/readiness successor, scoped acceptance passed:**
+   [The R4 handoff record](../validation/2026-10-27-extension-requirement-handoff.md)
+   qualifies365 distinct actual cases (339 Rust/26 JS), exact Source16/image reuse,
+   strict tests/default checks and real encrypted native/record-FS adapters. Actual
+   lifecycle summaries now carry the complete typed requirement and its stable
+   content-reference name, retaining audience/target distinctions and declaration
+   order independence. Manual setup captures its original usage/previous head;
+   metadata/raw/reference/cancel calls recover original identity before mutable
+   manifest lookup. Readiness authenticates completed selection custody and live
+   exact account eligibility. Legacy missing descriptors remain Unknown/not ready.
+   Reuse these corrected producers and their qualified scope. Google/DCR Extension
+   OAuth usage/target/head handoff and full HTTP/browser acceptance remain open below,
+   alongside actual family/material/refresh-lineage/runtime consumers. A configured
+   metadata projection is not final dispatch/grant acceptance. New embedded status
+   facts enter the next ordinary K5 compiler/seed qualification, not old receipts.
+
+   **28 October Google original-identity successor, scoped acceptance passed:**
+   [The R3 record](../validation/2026-10-28-google-original-identity.md) qualifies 151
+   distinct Rust cases (86 fresh R3 / 65 applicable earlier cases), 43 fresh Extension
+   JS cases and strict full-feature tests/default checks. Google now retains the
+   caller's original flow ID/expiry/state/PKCE/update target, supports recovery and
+   cancellation through the Auth facade, and shares the existing original UI
+   controller with DCR. Changed/foreign/missing originals cannot silently restart;
+   an actual lost native autocommit-INSERT acknowledgement and concurrent creators
+   preserve the accepted verifier. The initial zero-selection and incorrect COMMIT
+   fixture failures remain preserved. This closes the specific Google ID/controller
+   finding, not full OAuth usage/target/head custody, durable PKCE, generic Google
+   originals, browser/deployment support or actual family/material consumers.
+   Keep step4/K3 open and implement those remaining contracts below in their
+   existing owners. No new registry, Recipe loop or Prefix implementation was added.
+
+   **28 October OAuth usage successor, scoped acceptance passed:**
+   [The R6 handoff record](../validation/2026-10-28-oauth-usage-handoff.md)
+   qualifies504 distinct Rust cases (317 fresh R6 /187 applicable R5),45 fresh
+   Extension JS cases and actual Chromium. New Google/DCR originals carry the
+   complete server-resolved requirement, explicit New/existing-account target
+   and previous head into retained Auth custody and the encrypted DCR preparation
+   context. Native PG/record-FS callbacks publish that usage; repeated old
+   callbacks cannot exchange again or overwrite a newer selection. Original
+   recovery precedes current-manifest resolution. Legacy missing custody remains
+   absent; WebUI v2 pins targets across reload and displayed-account changes.
+   Auth/Product/Composition/worker compilation, strict full-feature/default
+   lib/tests, actual account-selection/atomic-admission/global tests pass. Exact
+   feature-gate/image reuse and failed predecessors are documented, not erased.
+   This closes the ordinary setup/callback usage handoff and scoped component
+   browser gate, not full task-family/material grants, issuer, platform or K3.
+   Next implement durable Google PKCE/provider originals and generic Google IDs.
+   Also reconcile a protected DCR preparation whose expiry passes before an Auth
+   flow is stored: retain/recover the first definition/material and terminal
+   retirement through the existing owner, without registering again or inventing
+   a successful flow. The expired-input precheck alone does not close that gap.
+   Then finish the family/material/conditional-lease consumers below.
+
+   **26 October historical source finding (transport/setup successors above):** the manifest's real
+   `RuntimeCredentialRequirement.handle` is available at obligation construction,
+   but `RuntimeCredentialAccountRequest` drops it before account selection.
+   The historical Extension readiness projection also omitted the full requirement;
+   its manual/readiness successor above fixes that producer. Preserve the exact
+   server-validated requirement contract through
+   these existing ports and its selected AuthProduct account metadata; do not
+   infer it from an account label. `available_extensions.rs` currently generates
+   `handle__ordinal` names for distinct sources sharing a handle. That ordinal is
+   a presentation/lookup value, not a stable authorization or selection identity:
+   reordering declarations must not bind an old setup to a different source.
+   Retain the actual handle, provider and applicable setup/scope contract with
+   the original setup/task selection and compare those original facts on retry.
+   The exact identity must also retain audience, injection target/prefix and
+   requester Extension; provider/scopes alone are not the usage. The current
+   HostRuntime auth-gate digest likewise uses only provider/requester and joined
+   scopes, so distinct usages can address the same gate. New gate identity must
+   include the retained complete declaration with unambiguous structured encoding;
+   existing stored gate/run identities remain original recovery inputs, never a
+   request to rematch or silently create another gate. Authorization, MCP error
+   context and first-party GSuite error context are separate real producers;
+   propagate the exact declaration from all three before relying on it downstream.
+   Keep the persistent requirement→account selection in the existing Auth record
+   owner and include that requirement in original setup custody. Native flow/
+   account/selection publication must be atomic. Filesystem publication needs its
+   existing retained original decision, exact CAS and idempotent result recovery,
+   with no claim of multi-record transactions. A later account or binding edit
+   cannot repair an old original by substitution. Optional metadata additions must
+   preserve old raw snapshot bytes when absent; unproven old records provide no
+   selection/grant evidence and remain in the existing controlled-upgrade gate.
+   The then-current Extension OAuth body lacked the complete requirement handoff;
+   the OAuth usage successor above closes that ordinary setup/callback boundary.
+   **Historical Google ID finding (closed by the 28 October successor):**
+   the Google branch dropped the browser's flow ID; the corrected route/facade
+   and common controller now preserve it through Start/Recover/Cancel. Reuse that
+   implementation and its scoped native/FS/controller evidence rather than
+   recreating it. Reuse the newer full requirement/target/head custody as well.
+   Remaining work includes durable Google PKCE originals through the existing
+   provider/Secret owner and the interrupted DCR pre-flow preparation boundary.
+   Resolve current declarations only for a new setup; retries retain the accepted
+   usage/target/expiry. Do not backfill old originals, infer grants from labels or
+   add a second pending map. Preserve old raw context/record shapes when optional
+   new custody is absent. Ordinary callback publication/readiness now has the
+   scoped evidence above; complete task-family/runtime consumers with these
+   original usage/material identities.
+   Extend acceptance to full requirement/target retention, reordered same-handle
+   declarations, changed/removed metadata, independent creators, unknown writes,
+   cancellation and restart. Existing identity tests are prerequisites, not proof
+   of full runtime grants or complete-product/issuer support. The R6 record adds
+   real scoped-controller browser evidence. Complete the remaining material/
+   family producer/consumer handoffs in the existing owners.
+   SetupHint is presentation metadata, not an auth API endpoint. Provider auth
+   endpoint/client parameters and account/grant binding belong to retained DB
+   configuration and the existing AuthProduct/secret owners. No environment/file
+   override or second provider list. Pin original provider/target/auth setup and
+   a verified original credential generation with the task family; permit a
+   legitimate refresh only within that same generation under live checks.
+   A raw API-key JSON label cannot self-assert such provenance. Later operator
+   replacement must not become read-latest credentials for an old task.
+   Concrete existing secret-lease gap: PG StoredLeasePayload and filesystem
+   StoredLease pin handle/owner/expiry but no encrypted generation; consume can
+   read a later replacement. The legacy adapter records secret_id and reads before
+   its usage update, but current source propagation matters: record_usage failure
+   is returned before material, and the sole memory backend gives each replacement
+   a fresh UUID. Do not claim it returns a replacement merely from the split read;
+   qualify that actual guard with the required replacement/race cases. Its contract
+   and any new retained/retirement paths must preserve or strengthen this boundary.
+   Pin/verify the authenticated actual generation where missing,
+   when issuing a lease and check that SAME selected material atomically on
+   consume, including native transaction ports and all wrappers. Old stored
+   leases without proof must fail closed; no copied reference, new grant, silent
+   latest selection or replay. Actual replacement/delete/reinsert/wait/cancel
+   tests belong to this original-grant step4, not an acceptance claim for the
+   step2 reference/CAS prerequisite.
+   **26 October successor, scoped acceptance passed:**
+   PG leases now pin the actual encrypted generation after legacy upgrade under
+   the existing row lock and consume checks that selection without reversing
+   the writer/advisory-lock order. FS leases authenticate their full selection
+   and lifecycle state; lease/session CAS binds both body and version, including
+   restored sealed revocation at a reused numeric version. Genuine old unproven
+   leases remain revocable but cannot read latest. The actual memory UUID/usage
+   guard stays intact. [The scoped validation record](../validation/2026-10-26-k3-secret-lease-generation.md)
+   records395 distinct passing Rust cases, strict affected test lint/build,
+   actual native generation8/custody14 and connected DCR/provider/runtime/
+   lifecycle/Chromium checks. The historical native manual-abandon fault test now
+   targets the actual retained cancellation UPDATE and qualifies failed-write
+   original/revision preservation and successful/repeated tombstone idempotence
+   through real PostgreSQL. Three existing Docker cases remain unexecuted and
+   outside this scoped claim. Do not recreate or weaken the applied owners.
+   This successor does not establish original task-family grants, requirement-
+   specific selection or issuer expiry/final injection, which remain above.
+   **27 October family-selection clarification:** issuer-expiry/final-injection
+   has its separate accepted successor in step3; do not repeat that work. The
+   unconstrained SecretStore `lease_once(scope, handle)` does not select a caller's
+   captured encrypted generation. The current owners and wrappers already expose
+   `lease_once_if_record_reference`; inspect/reuse its actual applicable evidence
+   rather than adding another issuance API. The ordinary account staging caller
+   still uses the unconstrained method. Capturing a family reference and then
+   separately reading/issuing an unconstrained lease cannot prove selection of
+   that original generation. Integrate the existing conditional issuance through
+   every actual consumer before returning material; a reference read before/after
+   an unconstrained lease is not an atomic substitute.
+   Retain the accepted consume/revocation/expiry guarantees. Qualify replacement
+   before and during issuance, wait/child/family reuse, legitimate original refresh
+   lineage and final-use fencing against actual native/FS/legacy callers. New
+   credentials obtained through a task's original Auth gate need a verified
+   continuation on that same family; absent initial configuration is not authority
+   to read arbitrary later instance selections when the task resumes.
+   **29 October original Tool-account source/use successor, scoped acceptance:**
+   [The nineteen-path implementation](../validation/2026-10-29-tool-source-capture-and-use.md)
+   now captures protected original choices and actual encrypted generations for
+   complete declared native ProductAuth-account usages, before consumer binding.
+   Captured absence never refills from a later global selection. The actual parent
+   family is carried into child admission before awaits; exact invocation views
+   preserve native identity and current kernel policy. Binding failure settles
+   the original answer journal. Mandatory explicit source-use fencing checks
+   before/after conditional lease and consumption; an unused fenced lease is
+   revoked, late material is not staged and cleanup errors remain visible.
+   Current compiler/format/Host and connected/default Composition strict pass
+   with103 fresh actual cases/0ignored. Eleven earlier global/child/internal cases
+   retain their own older source; they are not added to this fresh total. Reuse
+   these owners instead of rebuilding capture/binding or conditional issuance.
+   **29 October original-flow source proof, scoped owner acceptance:**
+   [The 24-path successor](../validation/2026-10-29-original-auth-flow-source.md)
+   retains an authenticated access-generation reference bound to the exact
+   original selection, in the existing PG flow transaction/RecordFS first-stage
+   CAS. Manual PG writes its retained output before capturing proof in that same
+   transaction. Original-flow getters never look up today's head/material;
+   retries preserve old proof and old absence. Real native PG and memory/native
+   RecordFS pass 73 fresh cases; unchanged 120 Auth cases and strict checks remain valid.
+   Current compiler/format/connected/default strict pass without suppression.
+   Reuse this storage/readback prerequisite; it is not issuer-lineage, family
+   progression, refresh or native Auth-wait workflow acceptance.
+   **29 October raw-source family/consumer successor, scoped acceptance:**
+   [The 11-path implementation](../validation/2026-10-29-raw-source-family.md)
+   captures raw generations/absence on the existing family before binding.
+   Its same invocation object resolves/fences original raw sources; bound
+   preflight and injection now use the shared conditional lease/consume/staging
+   and cleanup path. Native identity/current policy and original missing ports
+   stay fixed. Compiler/format/Host and connected/default Composition strict pass
+   with 111 fresh actual cases/0ignored, including real PG task/SecretStore views
+   and actual global/child/Default/Selected consumers. Reuse this support rather
+   than creating another raw source registry or issuance path. Actual native raw
+   declarations/workflows and unbound legacy consumer migration remain open.
+   **29 October legacy raw preflight successor, scoped race repair:**
+   [The two-file consumer repair](../validation/2026-10-29-legacy-raw-preflight.md)
+   passes the exact authenticated preflight selections through audit/resource
+   preparation to shared conditional injection. It removes unconstrained issuance
+   from that handler's unbound branch and avoids a second bound resolution.
+   Actual prepare with a concurrent audit-time replacement rejects the new value
+   and clears earlier partial handoffs. Current builds/format/Host and connected/
+   default Composition strict pass with 107 fresh cases/0ignored. Legacy selection
+   remains invocation-local; original-family/own-flow migration is still required.
+   **Step4 remains open. Next exact deltas:**
+   - Current native built-in declarations have empty runtime_credentials. Trace
+     actual first-party extension registrations, approved ToolSkill bindings and
+     host adapters before qualifying a credential workflow. Supply the missing
+     native/adapter support in its existing owner; a prose label, fabricated
+     artifact identity or invented ToolSkill field cannot activate GSuite or
+     another unsupported consumer. Do not hide its workflow in a Rust Tool.
+     **Source-checked next migration:** factory registers GSuite through ordinary
+     `insert_handler`; `NativeBuiltinRegistration::new` accepts only the real
+     builtin provider/IDs and supplies no extension artifact identity. Existing
+     GSuite manifests already declare complete account usages, but its executor
+     holds global account/resolver/staging objects and its AuthExpired branch
+     refreshes and repeats the request inside Rust. A registration alone cannot
+     qualify this path. Bind actual retained invocation/family sources through
+     supported host ports and move refresh/retry sequencing into its qualified
+     Recipe/PythonCode owner before native activation. Preserve original effect
+     occurrences, arguments, counts and outcome custody; HTTP authentication
+     failure alone grants no automatic effect replay. Do not relabel the legacy
+     handler as builtin or weaken native provenance to make selection succeed.
+   - Qualify the remaining actual raw-handle declarations/adapters and migrate
+     every intended unbound legacy consumer onto the accepted raw family/port
+     above. The bound obligation `preflight_secret_injection`/`inject_secrets`
+     consumers and their unbound invocation-race repair are implemented. The
+     unbound branch now pins preflight generation and conditionally issues it,
+     but still selects at invocation time rather than original task preparation;
+     it is not full-v3 family acceptance. Trace actual callers/placement before
+     cutover; never fill captured absence with
+     current material or silently return to those old branches. Keep genuine
+     missing ports missing and preserve cleanup/unknown-effect custody.
+     `RuntimeCredentialAccountRequirement` deliberately rejects raw SecretHandle
+     declarations; the new raw port preserves that distinction. Do not weaken it
+     or manufacture an account to reuse the type.
+   - Start original Auth setup with the captured complete requirement AND previous
+     selection before challenge creation. Retain the original flow address before
+     I/O, recover unknown writes at that address, then read its protected original
+     completion rather than today's head. Consume the new protected original
+     selection/source proof above, verify it against the task's own original
+     setup/previous selection and actual issuer-output/refresh lineage, and check
+     current eligibility before advancing this task/family source. The metadata
+     reader alone remains insufficient. Missing historical proof must not capture
+     current material. Preserve old selections and reject unrelated replacement
+     or late/cancelled callback adoption.
+   - Wire the existing native wait lifecycle from the original journalled host
+     preflight before its one primitive dispatch. Preserve original claim/count,
+     cancellation acknowledgement and result custody; never use checkpoint/requeue,
+     a replacement invocation or Rust-loop/Tier2 replay. Authentication workflow
+     sequencing stays with supported Recipes/Monty; protocol/custody support stays
+     with Auth/kernel/runtime. Fulfil all required credentials before resuming the
+     primitive: one provider flow's completion is not aggregate gate readiness.
+     Respect the existing same-occurrence wait replay guard; do not invent a new
+     gate round or clear custody to conceal missing multi-requirement support.
+   - Qualify actual native/global/UI consumers for changed head/generation/absence,
+     own-flow and legitimate refresh, verified child isolation, multiple credentials,
+     cancellation/late result/unknown acknowledgement, final-use eligibility and
+     cleanup. Current source-use fencing is no proof of the remaining complete
+     policy-revision coordination or durable recovery. Reuse step6's technical-policy
+     owner and the existing recovery gate instead of parallel dispatch controls.
+5. **Cut over the actual Codex management and SDK consumers together.**
+   The return-only SDK authorization method exists; the WebUI controller still
+   publishes a legacy file before checking its current attempt and uses a raw
+   role writer, while the static factory is file-backed. Extend the actual
+   AuthProduct device/poll/one-shot exchange vocabulary where missing. Use its
+   original identity, atomic encrypted custody, role/provider CAS and observable
+   reconciliation. Update actual controller/factory/token refresh/task consumers
+   and UI original-receipt/late-generation acknowledgement together. Do not store
+   only the access token as an API key, copy into a shared session file, invent a
+   dummy OAuthUrl/manual challenge or replay a submitted model to repair auth.
+   Controlled legacy import/active-instance/rollback compatibility stays with K6;
+   ordinary execution gains no file fallback. Prove actual stored sessions,
+   rotation/omission/expiry, wrong/later attempt, key/provider edit while waiting,
+   original lost reply/restart and unchanged first submitted model call.
+6. **Close remaining protocol consumers and K3 acceptance.**
+   Trace every configured ordinary model/embedding/Sempai/Prefix/MCP and external
+   protocol path through the same retained settings/auth owner and final dispatch
+   guard. Review real transport retry behavior; a one-call adapter alone cannot
+   certify physical no-replay. The shared Reqwest protocol-NACK resend prerequisite
+   now has [scoped acceptance](../validation/2026-10-25-k3-network-no-replay.md):49 fresh
+   Rust cases, physical full-body HTTP/2/default-control and current strict checks.
+   Other protocols and complete Auth custody remain open. The K3 reference-CAS
+   inspection additionally identified remaining compatibility helpers that convert
+   unsupported CAS into Any in run_state::put_with_cas, outbound/processes/
+   conversations::put_with_byte_fallback and the threads/turns filesystem helpers.
+   The focused secret/resource prerequisite removes that downgrade only from its
+   actual selected consumers. In this existing step6, inspect each caller and
+   preserve its exact condition through projection adaptation; byte-only backends
+   unable to enforce it must fail before effects. Add actual supported/unsupported
+   backend and caller regressions, including absent races; do not claim a process-
+   local mutex supplies cross-process atomicity. Reuse these corrected helpers for
+   K4 lifecycle proof instead of implementing a second compatibility owner.
+   **27 October successor, scoped acceptance passed:** the six existing helpers
+   now preserve every original condition. Opaque run/turn/thread entries perform
+   the requested conditional write directly; unsupported indexed projections in
+   conversation/outbound/process records may adapt only with the SAME condition.
+   Process start also requires atomic Absent, mapping the competing winner to
+   its existing duplicate error. Actual LocalFilesystem initial creation remains
+   supported; unsupported version updates leave original records intact. Shared
+   consumer checks cover actual negative/supported transitions and an independent
+   process-start race, with the same contracts selected against native PG.
+   [The joint R5 acceptance](../validation/2026-10-27-k3-conditional-writes.md)
+   records291 applicable consumer cases, zero ignored, qualified only through
+   exact emitted image equality with actual passing R3/R4 executions. R4 freshly
+   ran the six new contracts and actual six-consumer native PG parity. Three
+   Prefix cases ran freshly in R5. Strict affected/default lint, actual worker/
+   test-image builds and whole-workspace format/whitespace checks pass. The
+   actual Pair failure exposed missing ordinary step-observation capture; a
+   trusted internal source can now require the existing bounded observations,
+   default false and enabled only by the PairCases receipt owner. Matching,
+   mismatching and invalid-input outcomes settle without replay or relaxed guards.
+   R1–R4 failures retain their exact inputs/diagnostics. These CAS/evidence
+   prerequisites are closed; requirement/family binding and the remaining K3
+   protocol/technical-policy consumers below remain open.
+   **29 October successor, scoped token-transport acceptance:**
+   [The acknowledged OAuth package](../validation/2026-10-29-oauth-token-transport.md)
+   closes the generic token client's timeout/body-limit wiring. Existing execution
+   fields `oauth_token_timeout_millis` (30,000ms) and
+   `oauth_token_response_body_bytes` (16KiB) are factory-wired to the shared
+   acknowledged owner, retained together before callback/refresh dispatch and
+   reflected in actual live status/WebUI with EN/DE help. V187 preserves explicit
+   values and the existing default. Actual PG, private-endpoint host-policy denial,
+   original in-flight bounds, native global execution and rendered save/uptake/
+   restoration pass. Current-table invalid/update/atomicity checks remain intact;
+   corrected historical migration-default fixtures run their real emitted defaults
+   and exact target CHECK on a separate PG projection, rather than incorrectly
+   imposing later fields. Reuse this completed token-client path; do not create
+   another auth settings registry. This does not close the remaining K3 consumers.
+   **29 October DCR successor, scoped HTTP acceptance:**
+   [The per-request DCR package](../validation/2026-10-29-dcr-http-settings.md)
+   closes discovery/registration/cleanup timeout/body-cap wiring through the same
+   acknowledged owner. V189, actual WebUI/effective status and EN/DE help consume
+   `oauth_dcr_timeout_millis` (30,000ms) and
+   `oauth_dcr_response_body_bytes` (32KiB). New requests capture current paired
+   limits; an in-flight request retains its pair, while the later discovery GET
+   observes a subsequent acknowledged edit. Registration/cleanup capture before
+   new claims; missing settings consume no dispatch. Actual native PG/host/policy
+   denial, all DCR regressions and current connected/default strict pass. The
+   existing token, migration, incoming Exact-owner and actual browser receipts
+   retain their exact source/image scope. Reuse these completed HTTP consumers;
+   the old grouped-discovery probe is superseded, never final acceptance.
+   **30 October gate-recovery successor:**
+   [The original preparation correction](../validation/2026-10-30-dcr-gate-recovery.md) reads exact
+   encrypted custody before a missing-flow gate retry derives a new expiry or
+   provider defaults. Gate continuation and absence of setup/update binding remain
+   required; exact original verification is unchanged. Real PG insert rejection,
+   unavailable settings, one host-denied POST/Unknown and no replay pass with all
+   DCR regressions and affected strict checks. Both native fixtures now explicitly
+   select PostgreSQL Auth. The older HTTP fixture used PG settings/global hosting
+   with Filesystem Auth; its receipt is not PG Auth acceptance. Current evidence
+   corrects that scope without rewriting old receipts. All incoming Exact UI
+   sources remain unchanged. This prerequisite does not close lifecycle controls.
+   **30 October cache-control successor, scoped acceptance:**
+   [The metadata-cache package](../validation/2026-10-30-dcr-metadata-cache.md) adds actual acknowledged
+   `oauth_dcr_metadata_cache_ttl_secs` (default600s,0 disables reuse), V190,
+   effective status and EN/DE controls. Monotonic age/min(captured,current),
+   permanent lazy removal of invalid entries and preserved original registrations
+   are freshly native-validated. Explicit0/defaults/overrides/revisions, current
+   global/worker/browser uptake, all settings cases and affected/default strict
+   pass. This closes cache lifetime only, not setup/server/browser policy.
+   **Still implement here:** `DCR_FLOW_TTL_SECONDS` still fixes setup creation
+   at600s. Route lifecycle controls through this same acknowledged owner with EN/DE help;
+   new setups use the acknowledged expiry but old originals retain their first
+   accepted expiry, outcome and custody. A cache edit must not replay registration
+   or rewrite original endpoint/PKCE/client selections. Keep cache validity and
+   actual setup expiry distinct; HTTP timeout is neither. Preserve no-replay,
+   actual cleanup and unsupported/unknown states. The existing
+   ProductAuth backend timeout and useChat.js AUTH_TOKEN_FLOW_TIMEOUT_MS also
+   remain independently fixed at30 seconds. The same technical-policy migration
+   must include manual setup lifetime600s/OAuth maximum expiry600s and extension
+   manual lifetime300s. Also replace the actual fixed10-minute browser producers
+   `extensions-api.js::extensionOauthExpiry` and
+   `useExtensions.js::OAUTH_SETUP_TIMEOUT_MS` in this same connected migration;
+   lowering server policy alone must not break fresh ordinary UI setup. Preserve
+   the first accepted browser/server original expiry on retry. The current route
+   also fixes mutation-body bytes, callback
+   query/field/scope bytes, raw OAuth-value bytes and mutation/refresh/callback
+   rate counts/window; their exact current values are in the existing runtime
+   limits audit. Carry those still-active guards through the same acknowledged
+   technical-policy owner and explain their actual effect beside the WebUI field.
+   Step4's durable original-flow/Secret migration owns retiring the remaining
+   1024-entry route PKCE cache and its cap once actual consumers switch; do not
+   create another cache or expose a cosmetic setting for a retired path.
+   The former filesystem Auth owner enumeration guards
+   (1024 session roots/records) have been removed through the existing complete
+   readers in step2's DCR/lifecycle successor: actual2050-account/2050-flow and
+   1025-session-root coverage passes, with duplicate identity rejection before
+   effects. Do not reintroduce those caps or repeat this completed migration.
+   Inspect remaining actual selected consumers; preserve overflow rejection
+   until complete pagination/streaming or adjustable policy replaces each
+   remaining bound, never return a partial set as complete. Expose actual consumed
+   settings with EN/DE help and native/FS/browser uptake checks, not unused controls.
+   New setups use the acknowledged lifetime; retries retain the first accepted
+   expiry and confirmed completions. Carry the same acknowledged owner
+   and help through server/browser cancellation semantics; changing the timer
+   never proves no effect or permits replacement submission. The runtime
+   limit audit records these remaining source facts. Required real caller, failed/unknown outcome and
+   original-result tests must identify their transport/backend scope. Providerless
+   management/deterministic work remains available. Keep existing Rust workflow
+   migration in its named Composition/v3.5 owner; these native auth repairs cannot
+   become another task workflow loop. Only then close K3 and proceed to K4–K7.

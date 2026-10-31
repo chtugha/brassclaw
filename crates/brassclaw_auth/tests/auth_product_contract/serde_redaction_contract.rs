@@ -1,8 +1,3 @@
-use brassclaw_auth::{
-    AuthProviderClient, OAuthAuthorizationCode, OAuthProviderCallbackRequest,
-    OAuthProviderExchangeContext, PkceVerifierSecret,
-};
-
 use crate::common::*;
 
 #[test]
@@ -46,6 +41,7 @@ fn serde_contracts_are_validated_snake_case_and_redacted() {
             provider: provider(),
             label: label("work"),
             status: CredentialAccountStatus::Configured,
+            access_expires_at: None,
             ownership: CredentialOwnership::UserReusable,
             owner_extension: None,
             granted_extensions: Vec::new(),
@@ -117,30 +113,18 @@ async fn serializable_records_never_include_raw_oauth_or_token_material() {
     let services = InMemoryAuthProductServices::new();
     let owner = scope("alice");
     let flow = oauth_flow(&services, owner.clone()).await;
-    let exchange = services
-        .exchange_callback(
-            OAuthProviderExchangeContext {
-                scope: owner.clone(),
-                flow_id: flow.id,
-            },
-            OAuthProviderCallbackRequest {
-                provider: provider(),
-                account_label: label("work github"),
-                authorization_code: OAuthAuthorizationCode::new(secret("raw-auth-code"))
-                    .expect("valid code"),
-                authorization_code_hash: code_hash("code-hash"),
-                pkce_verifier: PkceVerifierSecret::new(secret("raw-pkce-verifier"))
-                    .expect("valid verifier"),
-                pkce_verifier_hash: pkce_hash("pkce-hash"),
-                scopes: provider_scopes(&["repo"]),
-            },
-        )
-        .await
-        .expect("exchange");
+    let (dispatched, exchange) = admitted_oauth_exchange(
+        &services,
+        &flow,
+        label("work github"),
+        provider_scopes(&["repo"]),
+    )
+    .await;
     let completed = services
         .complete_oauth_callback(
             &owner,
             OAuthCallbackInput {
+                dispatched: Some(dispatched),
                 flow_id: flow.id,
                 opaque_state_hash: state_hash("state-hash"),
                 outcome: ProviderCallbackOutcome::Authorized { exchange },
@@ -152,7 +136,7 @@ async fn serializable_records_never_include_raw_oauth_or_token_material() {
     assert!(!serialized.contains("raw-auth-code"));
     assert!(!serialized.contains("raw-pkce-verifier"));
     assert!(!serialized.contains("ghp_"));
-    assert!(serialized.contains(&fake_digest("code-hash")));
+    assert!(serialized.contains(code_hash("raw-auth-code").as_str()));
 
     let account = services
         .get_account(CredentialAccountLookupRequest::new(

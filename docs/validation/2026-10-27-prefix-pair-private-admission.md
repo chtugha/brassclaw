@@ -1,0 +1,23 @@
+# Private Pair jobs — scoped ordinary-runtime acceptance
+
+[R5 acceptance](../../target/accepted-evidence/prefix-pair-private-admission-20261026/run-5/accepted.json), SHA-256 `feb8110bddb17a7c09526b2d0b7ee42debad64eabce813417bdf049217a24d24`, establishes the exact Pair workflow through ordinary private ResultOnly admission, selection and durable settlement. It reuses the immutable job definitions and qualified installation-owned Recipe; there is no additional queue, settings store, model request or assistant reply.
+
+The existing source owner supplies the complete namespace-bound proposal/case packet. Reconnection retains the original input and qualified program without recollection or replay. Changed targets and foreign/invalid inputs are rejected. Receipt verification checks exact source, step handoffs/order, native arguments/answers/attempts, original preparation acknowledgement and bounded observations. It does not infer original settings from a later mutable settings read.
+
+## Observed behavior
+
+Both native Pair tests pass with zero ignored cases (82.97 seconds including runner overhead). They cover the independent bootstrap fixtures and actual ordinary jobs on the same global root. The `matches` and `changed-suffix` jobs are Completed and durably settled; their comparison values differ as expected. Missing leading prefix bytes produce `retained_tool_invalid_input` at step `0:5`; that job is Failed and durably settled with the retained failed-Recipe acknowledgement and without an internal success receipt. Forged handoffs, incomplete native journals and changed acknowledgements are rejected. Reading/reconnecting does not repeat either native dispatch.
+
+The existing complete HTTP/PostgreSQL/native Prefix regression also passes, one selected test with zero ignored cases (369.02 seconds). It exercises Core/release/Sempai source generation, immutable model/design data, independent Hugging Face token checks, measurement jobs and reconnect without replay. The oversized Sempai diagnostic remains non-fitting and unactivated: largest probe 376,593 tokens, with the independent tokenizer warning against the retained 262,144-position configuration. These historical diagnostic template measurements are not default serving-template acceptance or live server capacity evidence.
+
+The actual Composition image is `2a1fcc545547aab8ef0deec49e4a9fbe3c9006fc3cba039d1620f5b96b8bc1fe`; its actual sibling worker is `586693a8d5361acfaa98690b6ba23b1302832997c579937cae6e63683e07353f`. Exact source identities, toolchain/features and immutable model originals are referenced by R5. The shared [conditional-writes R5](../../target/validation/conditional-writes-20261026/run-5/accepted.json) supplies strict affected-test Clippy, actual builds, strict default Composition Clippy, formatting and whitespace checks. Cargo used the inherited canonical target and serial lock; the Prefix direct runner performed no independent build.
+
+## Cause repaired and failed evidence retained
+
+The first private-admission attempt failed strict compilation due to missing explicit test imports. The following shared compile exposed an incorrect helper reference type, corrected against the real runtime constructor. The R3-era direct attempt and [R4 diagnostics](../../target/accepted-evidence/prefix-pair-private-admission-20261026/run-4/failed.json) then exposed the actual caller gap: ordinary internal execution disabled step observations, while the correctly strict Pair verifier required them. Native calls had returned, but the finish receipt was rejected with `InvalidPortResult`; admission remained started. This was not an observer race.
+
+The fix lets a trusted internal source request existing bounded step observations, defaulting to false. Only the Pair receipt source opts in. It reuses the retained executor's existing capture path; limits, live kernel enforcement, acknowledgement checks and settlement requirements remain intact. No timeout, polling shortcut or weakened receipt guard repairs the result. All prior failed archives remain preserved; the separate R3 legacy-only success remains historical regression evidence, not private Pair acceptance.
+
+## Still open
+
+The later [operator diagnostic successor](2026-10-27-prefix-pair-operator.md) separately qualifies public Pair submit/status/facade and the WebUI source path. Interactive browser acceptance, accepted provider/model construction designs, compiler and Kohai readers, final request guards, default-template/wire/cache compatibility and answer quality remain open. This package changes no remote server, Compose, host venv, systemd, LMCache or canonical token setting. Shared Auth/backend acceptance belongs to its own owner and is not enlarged by this receipt.

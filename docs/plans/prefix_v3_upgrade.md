@@ -1,6 +1,6 @@
 # Prefix v3 upgrade: compiler, source catalogue and WebUI
 
-> **Current status — 2026-10-22:** use [the combined implementation and ownership
+> **Current status — 2026-10-27:** use [the combined implementation and ownership
 > index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
 > binding contracts remain in force. Implement each shared responsibility in its
@@ -23,7 +23,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -45,10 +47,11 @@ migrated to this interface before being accepted as updated v3 implementations.
 
 
 Status: **partially implemented; full product cutover is not complete**.
-Current source/evidence reconciliation: **2026-10-22**. The workspace declares
+Current source/evidence reconciliation: **2026-10-27**. The workspace declares
 `1.7.0-rc.4`; exact source/artifact manifests, not that version alone, identify tested
-implementations. This update changes the plan only and performs no deployment,
-migration, model call, prefix activation or inference-service change.
+implementations. This reconciliation records scoped local implementation and validation. It does
+not certify deployment, model-design acceptance, prefix activation or an
+inference-service change.
 
 The opening status and remaining-work sequence below govern what to do next.
 Sections 4–10 define the required contracts; section 11's dated entries are the
@@ -57,27 +60,188 @@ that must all be repeated. Earlier “pending” statements in those entries are
 superseded only where the current status explicitly records their successor.
 A locally accepted prerequisite does not establish full-plan or deployed support.
 
+### Binding operator correction — 26 October 2026
+
+The [four binding rules](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26),
+explicitly restated and clarified by the operator on 28 October 2026, govern every
+generation, design, review and serving step below:
+
+1. Generate the finished prefix specifically for the concrete provider/model pair,
+   already formatted for that pair, and store it immutably.
+2. Generator and Kohai consume the same stored, accepted design revision for that
+   pair. Sempai consumes that revision too when the same pair is its provider/model.
+3. Kohai first formats the dynamic Orchestrator prompt for the final target pair.
+   If Sempai is connected/enabled, it receives that already formatted prompt for
+   optimization/correction and returns the final dynamic prompt to Kohai. For its
+   own call, Sempai uses its own prefix generated for its own target-pair design.
+4. Kohai then inserts the intended finished prefix unchanged and exactly once
+   before the final dynamic prompt. No formatting stage follows Sempai's return.
+
+Existing acceptance requirements below must verify this order; historical
+examples and receipts do not establish a competing contract.
+Use the [explicit two-request handoff](../reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests)
+for compiler, Kohai and Sempai integration. Sempai's own request framing never
+introduces a second formatting pass over the returned final-target prompt.
+
+**Request-owned role prefixes only.** The operator reports removing the global
+Sempai `--chat-template` override on the Ornith test server. That model serves
+multiple roles, each with its own prefix. BrassClaw production cannot access
+provider configuration files; installing/changing a provider template or service
+configuration is therefore **not a supported prompt-configuration option**.
+The test target uses the model/provider's default template. This is the operator's
+reported change, not a new API/runtime measurement or permission to access the host.
+
+**Correct ownership: generate the prefix once; format only the dynamic prompt
+at runtime.** The generation process may share reusable stages, but its output
+is an already formatted, immutable **provider/model-specific prefix** for the
+selected role/task/composite. It is not a model-neutral artifact awaiting runtime
+formatting. Preserve its exact character sequence and UTF-8 payload hash.
+Provider/model-specific prefix rendering remains part of the compiler contract;
+the earlier instruction to remove it was an incorrect interpretation and is
+withdrawn. No implementation may rely on that withdrawn instruction.
+
+Kohai receives the Orchestrator's dynamic prompt, including the relevant history,
+tools and task data. Kohai first formats **only that dynamic prompt part** for
+the final provider/model pair using its stored accepted design. If Sempai is
+connected/enabled, Kohai sends this already formatted dynamic prompt for
+optimization/correction. Sempai uses its own prefix, generated for its target-pair
+design, for its own call and returns the **final dynamic prompt** to Kohai.
+Kohai does not format that return again. It then adds the intended already
+generated matching prefix, unchanged and exactly once, using the
+qualified target joining contract. This is the operation order; the prefix is
+placed before the dynamic prompt at the contract's insertion point, not appended
+as an afterthought at the end. Kohai must not regenerate, normalize, trim,
+summarize, re-escape, reorder or reformat the prefix itself. Lossless transport
+encoding is allowed only if the decoded/model-facing prefix characters are
+preserved. Frozen final assembly, measurement and submission follow that join.
+
+The generator, Kohai and Sempai whenever it targets that same pair must resolve
+the **same stored, accepted, pinned design revision for the provider/model pair**
+from the existing design store.
+That design supplies generation-time prefix rules and the compatible runtime
+dynamic-prompt format/join contract; recording a formatter identifier without
+Kohai consuming this design before optional review is insufficient. Generator,
+Kohai and Sempai share this accepted revision when they target the same pair.
+Do not introduce a separate mutable Kohai format configuration. Sempai's own
+review call independently uses its selected
+provider/model pair's pinned design and finished reviewer prefix, with its own
+complete-request guard. Its output can correct the dynamic prompt, not replace
+the final target's design or prefix. Resumption retains both selections.
+
+**Pair-owned design, role-specific content (operator clarification):** the design
+primarily defines provider/model limits and formatting: prefix/prompt ceilings,
+compatible prefix-generation and dynamic-prompt formats, supported documented
+standards, framing/join rules and relevant tokenizer/cache facts. It is shared
+by all roles using that provider/model pair. If Kohai and Sempai use the same
+pair, they resolve the same accepted pair-design revision, not separate role-owned
+format designs. Their content/coverage profiles and generated prefix artifacts
+remain distinct; the Sempai prefix must first be generated specifically for that
+pair just like every other prefix. Different pairs resolve their respective designs.
+Limits remain manually editable through the canonical per-pair settings owner;
+immutable design records reference that policy rather than own duplicate values.
+Provider metadata/documentation can populate evidenced design facts through
+supported APIs, or an operator can supply them; this never requires provider host
+configuration access or a server template/service change.
+
+**Default selection and content separation (operator contract):** `base-prompt`
+is the normal prefix whenever the retained Recipe, Orchestrator instruction or
+role specifies no particular prefix. No-Match therefore normally selects base;
+base is not Tier-2-only. An explicit role prefix such as Sempai replaces that
+implicit choice. Conflicting explicit selections require the existing declared
+routing resolution or an error; do not invent an overriding priority. Missing or
+incompatible explicitly selected content blocks the call instead of silently
+selecting base. Base readiness is required for calls that actually select base,
+not for unrelated model-free work.
+
+Pair design, profile/content rules and finished generation are separate contracts;
+see [the shared contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26).
+A role/profile can reuse shared source knowledge or explicitly require a composite,
+but does not automatically inherit the whole base prefix. All roles using the
+same provider/model pair share the same accepted pair design and canonical current
+limits; their content rules and generated text remain role-specific. Historical
+profile-bound design-proposal schemas remain evidence/current storage facts, not
+authority for a second mutable role-owned format/limits design. Extend the existing
+owners with typed references and compatible readers where migration is needed;
+do not assume these explanatory contracts are already accepted API/SQL fields.
+
+Generate/Regenerate captures the role/task, explicit provider/model target,
+model/tokenizer specification, accepted prefix-format/design revision, canonical
+size policy, and complete required execution/authoring knowledge. Use the
+connected target **or the model explicitly selected in the WebUI even when it is
+not an active role selection**. The design provider is independent. Selecting
+another generation target must not change active models or silently borrow their
+format/limits. Use accepted target-specific formatting and whole-unit selection
+to fit the fullest useful reviewed content, preserving mandatory knowledge and
+originals. Do not add filler to fill a token ceiling.
+
+The target-specific immutable prefix and the separately formatted prompt retain
+their own identities. The joining contract pins insertion layer, role/protocol
+framing and separator ownership, with no ad-hoc prefix edits. Validate no doubled
+chat markers or duplicate reference insertion under provider defaults. Measure
+the **actual combined request** after all required lossless serialization/default
+render mapping, including both caps, framing, history/tools and effective output.
+Counts of independently tokenized parts need not add up. The model-facing order
+must preserve **fixed prefix followed by the already formatted Orchestrator prompt,
+including its dynamic tools/history**. Do not apply another whole-request template
+after joining that moves dynamic data ahead of the prefix or changes its text.
+If a transport/default mapping cannot preserve this contract, that target path
+remains unqualified/blocked until a correct adapter is available. Locating a
+non-leading span is diagnostic evidence, not an alternate serving architecture.
+The configured prefix ceiling (100,000 for the requested Ornith policy) remains
+an allocation limit, not an LCP or a promise of cache residency. Neither reduce
+that ceiling nor infer cache loss from the discarded whole-render interpretation;
+actual token-prefix identity and cache behavior still require separate evidence.
+
+Historical template-export artifacts and their receipts remain readable as
+evidence; they cannot be newly installed/activated or offered as production
+configuration. The old `inject_reference`/supplied-template measurement pipeline
+and its six-context 2,179-token leading-prefix result describe the custom-template
+path, not qualification of default-template request-owned serving. The physical
+partition, leading-byte verification and policy arithmetic primitives retain
+their actual mechanical scopes. They do not close this changed production path.
+This correction governs the remaining steps and historical journal entries below.
+
 ### Current delivery status — 2026-10-22
+
+**Worker evidence correction — 26 October 2026:** the historical 530-file
+reuse inventory omitted actual local build dependencies. Its recorded hash
+checks do not prove complete unchanged-worker source applicability. Preserve
+observed historical results and immutable receipts, but do not reuse that
+incomplete closure. The physical-partition successor built its worker freshly;
+[fresh current native requalification](../validation/2026-10-26-prefix-leading-chat.md)
+now covers the exact affected export/source/archive/selection/budget cases with
+a newly built worker. This does not certify every older receipt or unexecuted
+consumer. See
+[the exact scope and required requalification](../validation/2026-10-26-prefix-worker-evidence-review.md).
 
 | Area | Implemented and evidenced boundary | Still required for completion |
 | --- | --- | --- |
 | Profile registry / startup | Six first-party profiles, revisions/metadata and installation-owned registration in `prefix_profile_seeds.rs` / `InstalledMontyCatalogue`; operator edits survive reseeding. | Complete custom-profile creation and accepted compiler/design bindings. Metadata alone enables no workflow. |
 | Legacy serving | Scope bundle, existing base-only assembly Recipe, fencing and compatibility reader remain. The ordinary list labels this `legacy-unverified`; other profiles stay blocked. | Replace ordinary generation/serving through the qualified named/composite path; remove compatibility fallback only after consumer cutover. |
 | Offline compilers | Base and Prefix-Maker entry points exist, shared evidence/rendering helpers and deterministic source packages exist; domain/Sempai standalone citation, configuration and teaching helpers are retained. | Shared-engine capability/validation parity for Defensive, HA and tomedo; no blanket qualification of all standalone modes. |
-| Source/catalogue capture | Owner-selected coherent export, exact component revisions/metadata and installation-retained core/declared-release documents; explicit private prefix workflow sources are included by supported export. | Prove complete installed library/private dependency coverage and eligible registered domain-source inclusion, with no row caps or omitted required records. Legacy sweep still has `LIMIT 1000` and summary preference. |
+| Source/catalogue capture | Owner-selected coherent export, exact component revisions/metadata and installation-retained core/declared-release documents; explicit private prefix workflow sources are included by supported export. [Acknowledged export capacity](../validation/2026-10-25-prefix-export-capacity.md) now uses the existing `execution_limits.max_catalogue_bytes` owner, counts complete serialized JSON without a second full buffer and rejects whole oversized exports; actual runtime/PG boundary and strict checks pass. | Prove complete installed library/private dependency coverage and eligible registered domain-source inclusion, with no row caps or omitted required records. Legacy sweep still has `LIMIT 1000` and summary preference. |
 | Generation storage | V142 immutable originals/artifacts/maps and quarantined imports, generation list/detail/download and legacy archive support; existing generation-retention primitive. | Accepted target artifacts, lineage/invalidation, publication eligibility and consumer selections. Retention/import is not activation. |
 | Recipe compiler / bootstrap | Reusable typed Python stages, shared segmentation/renderers, JSON digest usages and Retain; installation-owned exact graph/integrity/behavior qualification. | Qualify successor graphs/options in the same owner; no expansion of the closed compiler approval exception to arbitrary pure code. |
 | Durable source-only jobs | V167/V171 metadata uses existing turn admission/global Monty/native custody; base/Prefix-Maker and v5 Sempai source-only capture/build/reconnect are locally accepted. | Ordinary one-click target-aware Generate, remaining profile adapters, parent/composite jobs and complete cancellation/recovery acceptance. No second queue/executor. |
 | Stable presentation | Versioned literal/deduplicated/trailing/progressive/context-aware v1–v5 layouts, complete origins/maps and original bytes retained; v5 source-only native acceptance. | Accepted per-model budget-dependent teaching/selection designs and actual serving/quality qualification. Source-only layout options are not accepted model designs. |
-| Model diagnostics | V145 model/specification/proposal storage, V157 immutable local artifacts, bounded config inspector/API/UI and real retained encoding worker; full token/HF comparisons, exact template identities and durable measurements. | Verified deployed identity/geometry, semantic prefix/dynamic partition, accepted designs/bindings and runtime compatibility. Config declarations are not deployed facts. |
-| Capacity observations | Frozen native base probe 141,978 and complete Sempai probe 345,129 tokens, no truncation/replay/activation. Earlier standalone Sempai probe 334,756 is a different capture. | A reviewed design that fits the chosen target; do not clip originals, treat counts as constants, or substitute config position capacity for prefix allowance. |
-| Per-model hard settings | `ProviderDefinition.model_token_limits[model]`, existing provider definition/revision/CAS and GET/POST provider API; same editor/query in Inference and Prefix, stale-edit protection and model-selection refresh. Real PG service tests and 37 frontend helper/state tests pass. | Installed-instance API upgrade/write/readback, external CLI/server notification uptake, both-target resolution and unconditional final dispatch guards. No duplicate mutable prefix settings store. |
+| Model diagnostics | [Exact retained formatting sources](../validation/2026-10-26-prefix-format-sources.md) now expose complete standalone/named templates, tokenizer/special-token maps and declared memory fields through the same inspector/read owner (eight fresh Rust cases including actual native PG, six UI cases); this remains source-only evidence, without effective-template/default selection. V145 model/specification/proposal storage, V157 immutable local artifacts, bounded config inspector/API/UI and real retained encoding worker; full token/HF comparisons, exact template identities and durable measurements. [Versioned physical-span attribution](../validation/2026-10-26-prefix-token-partition.md) now has native/HF/bootstrap/journal evidence; supplied byte spans remain semantically unqualified. [Leading-chat rendering](../validation/2026-10-26-prefix-leading-chat.md) now verifies expected leading bytes in the complete render and binds ordered context identity, with real injection/HF/native/bootstrap/journal evidence. [Grouped quantization declarations](../validation/2026-10-26-prefix-grouped-quantization.md) also have nine-case/native-PG scoped acceptance in this inspector. | Verified deployed identity/geometry, semantic prefix/dynamic partition, accepted designs/bindings and runtime compatibility. Config declarations are not deployed facts. |
+| Capacity observations | The latest [K1 complete Sempai diagnostic](../validation/2026-10-24-k1-prefix-request-identity.md) has a largest probe of 371,462 tokens and remains oversized/unactivated. Earlier native base 141,978, Sempai 345,129 and standalone Sempai 334,756 observations belong to different preserved captures. | A reviewed design that fits the chosen target; do not clip originals, treat counts as constants, or substitute config position capacity for prefix allowance. |
+| Per-model hard settings | `ProviderDefinition.model_token_limits[model]`, existing provider definition/revision/CAS and GET/POST provider API; same editor/query in Inference and Prefix, stale-edit protection and model-selection refresh. Real PG service tests and 37 frontend helper/state tests pass. [Original model-policy integrity](../validation/2026-10-27-prefix-model-policy.md) now checks recorded model-snapshot protocol/context/limits against the exact historical provider revision on capture/read/retry/catalogue, caching each revision per read. Three native PG cases plus two existing declaration and two actual Pair regressions pass; historical absent limits stay Unknown. [Scoped final-SDK transport](../validation/2026-10-28-prefix-final-request-guard.md) now checks exact prepared-body custody, mandatory live comparisons and native no-send evidence, with sixteen actual regressions and strict checks. Its counters are declared test fixtures, not a real-model oracle. | Installed-instance API upgrade/write/readback, external CLI/server notification uptake, canonical planning/admission and both-target resolution, unconditional final dispatch guards. Original-snapshot integrity is not live dispatch/capacity approval. No duplicate mutable prefix settings store. |
 | Pure budget planning | `model_budget_draft` / `prefix_model_budget.py` calculates effective budget/shortfalls from pinned explicit policy/reservations; actual Monty and typed-contract checks pass. | Canonical policy read/identity qualification and integration into generation/design/serving Recipes; exact rendered fit, quality and activation are separate gates. |
+| Budget-dependent reference selection | `prefix_design_selection.py` and `prefix_design_components.rs` provide reusable namespace/whole-unit generation rules, separate rule/resolved-plan identities, mandatory coverage, dependency/priority candidates and exact-measurement selection through existing digest/encoding usages. New components can resolve under unchanged rules. [Installed captured-source execution](../validation/2026-10-27-prefix-captured-design.md) now retains/inspects both variants and runs the complete captured variant on the already-running global Monty service: actual core-source capture, native journals, independent every-band floor, selected/blocked outcomes and weakened-band rejection pass, with unchanged root identity. The [budgeted successor](../validation/2026-10-28-prefix-budget-generation.md) composes the existing pure planner into that same Recipe, resolves verified original model-policy inputs and exercises ten native singleton scenarios with optional token budgets disabled. See [the contract](../reborn/prefix-budget-design.md). | Trusted accepted-design/live canonical-policy admission bindings, complete source eligibility, workflow/bootstrap qualification, ordinary draft/Generate admission and retention, transport-sized batching, semantic envelope fit and quality/activation remain open. Private candidate execution does not grant approval or activate a workflow. |
 | Sources management | V143 immutable registrations, used-generation inventory, pending registration API/UI and green/red/neutral presentation contracts exist; checks remain disabled. | Admitted checks on panel open, qualified observations/projection, collection/review and eligible next-build inclusion. Saving a URL does not add reviewed knowledge. |
-| Source-check prerequisites | Existing HTTP-family typed successor, composed diagnostic graph, actual native loopback/policy/bounds tests and pure exact-content classification pass. `builtin.prefix_source` read/append backend and separate canonical usages pass native identity/preload and real PG immutability/idempotency tests. | Seed/qualify the exact full check graph, generation-original owner adapter, durable source job and UI uptake. Stored diagnostic bytes remain **unqualified**, not availability/review approval. |
+| Source-check prerequisites | Existing HTTP-family successor, exact-content classifier and `builtin.prefix_source` read/append usages have native/preload/PG evidence. The [registered-source Recipe variant](../validation/2026-10-25-prefix-registered-source-check.md) now connects pinned read, stored URL, bounded fetch, hash/classification and immutable diagnostic retention in 16 explicit steps; seven fresh Rust cases and strict affected/default checks pass. | Qualify/seed the exact graph, integrate used-generation originals through their existing owner, admit durable source jobs and project trusted observations into the UI. Stored diagnostics remain **unqualified**, not availability/review approval. |
 | Sempai reference | Installed v5 source-only selection retains binding/compatibility/procedure guides and pinned Monty model references; complete originals and no-replay native measurements retained. | Fit/qualify its actual composite, successor review/request contracts, both-target limits, production artifact validation and held-out reviewer/proposal behavior. |
 | Sempai infrastructure | Existing post-turn consumer, immutable proposal/deployment and native effect/accounting reconciliation are reusable infrastructure; semantic conversion remains owned by `sempai_v3.5.md` / root `path_to_v3.5.md`. | Consume those shared reusable components; do not recreate their Rust workflow policy in prefix jobs or count infrastructure acceptance as reviewer quality. |
-| Prefix-Maker / design workflows | Offline Prefix-Maker compiler/reference, registry metadata, immutable declarative proposals and Model Designs inspection/history exist. | Compatible runtime Prefix-Maker, accepted per-model designs and provider-assisted Redesign/model-design/Create Recipes, confirmed UI actions and exact candidate acceptance. Generate model design is currently disabled. |
+| Optional model documentation — scoped acceptance | [Model-card evidence](../validation/2026-10-27-prefix-model-card.md) permits complete optional `README.md` through the existing artifact importer/owner and exact null-pointer Pair references. Hash/UTF-8/byte integrity, JSON-pointer and template-promotion rejection, real HTTP/PostgreSQL readback, original-template/native comparison and durable no-replay outcomes pass. Browser helper/notice, artifact guide and shipped Prefix-Maker teaching reference are aligned. Six Rust/integration, three import and one offline compiler/export test pass on frozen current sources, with strict affected/default lint, format and whitespace checks. Failed Prefix/shared predecessors remain preserved. | Broader official provider/model documentation collection and trusted URL/revision/applicability/licensing provenance, content review and machine-ready design selection. Retaining a README does not verify its publisher/facts, effective cache geometry or serving identity, nor accept a model design or enable Generate/Redesign. Related quantized/upstream research originals are archived separately without automatic ingestion. |
+| Shared pair construction drafts | [V180/source-bound pair drafts](../validation/2026-10-26-prefix-pair-construction.md) extend the same immutable proposal table with a role-independent format, exact original/template/evidence bindings, literal cases and operator API/UI import. Six fresh Rust cases (including actual public HTTP/PG and DB acceptance-FK rejection), eight UI cases and offline export pass. | Broader archived provider/documentation evidence, registered deterministic machine-ready construction options, independent tokenizer/provider case qualification, trusted acceptance/bindings and compiler/Kohai consumers. Drafts remain unaccepted; no generation/serving enablement. |
+| Complete pair worked cases | [Canonical case export and comparison candidates](../validation/2026-10-26-prefix-pair-cases.md) preserve every saved context and expected string through the existing namespace-bound proposal owner/operator GET. Reusable PythonCode and a six-step Recipe reuse exact UTF-8 digest and original-template encoding usages. Four independent HF contexts match the real retained-artifact worker/Monty. The [scoped bootstrap successor](../validation/2026-10-26-prefix-pair-bootstrap.md) now qualifies the exact installation-owned graph. | The [ordinary private](../validation/2026-10-27-prefix-pair-private-admission.md) and [operator API/UI](../validation/2026-10-27-prefix-pair-operator.md) successors now connect this exact program to shared ResultOnly admission and public diagnostic submit/status. Accepted provider/model formatter, final wire, context/cache and answer-quality gates remain open. |
+| Complete pair Recipe/journal prerequisite | [Closed whole-Recipe execution](../validation/2026-10-26-prefix-pair-journal.md) exercises actual global Python, retained preloads, native encoding, kernel and PostgreSQL journals. At that baseline the source-owned generic captured-case verifier was test-only; the [installed finite bootstrap verifier](../validation/2026-10-26-prefix-pair-bootstrap.md) separately qualifies its exact packaged workflow with independently known fixtures and durable observations. | The [ordinary private successor](../validation/2026-10-27-prefix-pair-private-admission.md) promotes/reuses the complete source-owned capture/journal checks, actual per-operation preparation acknowledgement and step bounds. The [operator diagnostic successor](../validation/2026-10-27-prefix-pair-operator.md) now supplies public submit/status; accepted designs remain open. |
+| Shared pair job target metadata | [V181/explicit job targets](../validation/2026-10-26-prefix-pair-job-targets.md) extend the same immutable definition table and Rust owner with Profile/Pair targets. Only `check_cases` may omit both profile fields; captures equal the complete source-owned case packet. Retry/selection retention, changed-input and concurrent-target conflicts, namespace/partial/settings-copy rejection and historical DDL preservation pass in real PostgreSQL. The legacy Prefix flow passes again in the bootstrap successor. | The [private ResultOnly successor](../validation/2026-10-27-prefix-pair-private-admission.md) now passes ordinary admission/selection/settlement; the [operator successor](../validation/2026-10-27-prefix-pair-operator.md) adds pair-aware public diagnostic status/UI. Metadata alone grants no execution. Reuse the qualified exact program, without another queue, profile sentinel or copied limits. |
+| Pair comparison bootstrap | [R4 scoped acceptance](../validation/2026-10-26-prefix-pair-bootstrap.md): the exact six-step packaged graph and shared workflow-evidence store qualify before ingress. Six independent fixture outcomes, actual native/PG journals, captured VM/step bounds, forged evidence/source and incomplete-intent rejection, retained no-replay read and the full legacy native Prefix regression pass. Three selected integration tests, strict affected/default lint and format checks pass; R1–R3 failures remain preserved. | The [ordinary private successor](../validation/2026-10-27-prefix-pair-private-admission.md) now qualifies admission/selector/settlement; the [operator successor](../validation/2026-10-27-prefix-pair-operator.md) adds public diagnostic UI. This qualifies one exact installation-owned workflow, not arbitrary pure code, an accepted model design, serving/cache/capacity or answer quality. |
+| Private pair ResultOnly jobs — scoped acceptance | [R5 native acceptance](../validation/2026-10-27-prefix-pair-private-admission.md) reuses immutable definitions, the qualified program and ordinary private admission/selection/settlement. The complete source-owned verifier checks actual native journals and preparation acknowledgements. Selective trusted-source step capture supplies the required bounded observations. Positive and mismatch jobs complete/settle; missing leading prefix fails/settles. Original reconnect does not replay; conflicting/foreign inputs are rejected. Both Pair tests and the complete legacy Prefix regression pass, zero ignored, with strict affected/default lint and format checks. | The [operator diagnostic successor](../validation/2026-10-27-prefix-pair-operator.md) closes the public facade/status/UI source path. Interactive browser acceptance, accepted model designs and their compiler/Kohai consumers remain open. This private receipt alone makes no public, serving/cache/context or answer-quality claim. |
+| Pair operator diagnostic API/UI — scoped acceptance | [R3 acceptance](../validation/2026-10-27-prefix-pair-operator.md) supplies authenticated body-free submit and read-only status over the existing qualified Recipe/immutable definitions. One discriminated Profile/Pair status retains existing profile JSON fields without a Pair sentinel. Each retained pair proposal has a comparison panel: original-ID reconnect, read-only refresh, stale-result fencing and explicit new-job action after durable settlement. Actual HTTP/PG/Monty positive/mismatch/encoding-failure cases, no-replay/conflict/input/auth rejection and byte-identical embedded assets pass. 92 Rust/integration plus 23 actual-source frontend cases pass; strict affected/default lint, formatting and whitespace pass. Failed R1 teardown compilation and R2 post-test capacity gate remain preserved; R3 completes missing checks without repeating native tests. | Interactive browser acceptance; model construction acceptance, registered machine-ready formatting, compiler/Kohai readers, final request guards, provider-wire/cache and quality gates. Comparing cases does not enable Generate/Redesign or activate a design. |
+| Prefix-Maker / design workflows | Offline Prefix-Maker compiler/reference, registry metadata, immutable declarative proposals and Model Designs inspection/history exist. The [construction-teaching successor](../validation/2026-10-26-prefix-maker-construction-teaching.md) removes server-injection/custom-template assumptions and qualifies exact offline/native reference uptake. | Compatible runtime Prefix-Maker, accepted per-model designs and provider-assisted Redesign/model-design/Create Recipes, confirmed UI actions and exact candidate acceptance. Generate model design is currently disabled. |
 | Answer/cache validation | Standalone source/citation/configuration/teaching helpers and historical Ornith/LMCache experiments exist; retained worker/native-C memory containment and runtime-discovery evidence are documented below. | Production citation/config checks, actual injection/resolver, current native/external restore qualification and held-out answer quality. Historical backport experiments do not certify the current server. |
 | Deployment | Latest recorded remote discovery is read-only: app has no revisioned model-limit map and reports `active: null`; model endpoint advertises 131,072 context. | Upgrade the supported application path and verify policy readback before claiming limits are live. Requested Ornith policy remains 100,000 prefix / 14,688 other prompt tokens; `requested_change_applied` is false. No vLLM/Compose/venv/systemd change is authorized by this plan update. |
 
@@ -113,9 +277,11 @@ are ready. Do not block model-free source builds on optional provider-assisted w
    `InstalledMontyCatalogue`, retained IBS/preload, global admission, compiler
    bootstrap and native custody already implemented. Record exact applicable
    receipts for the intended successor graph. Obtain missing general pure-component
-   approval/flow/occurrence/resource support from the v3.5 owners only when the new
-   graph needs it; do not rebuild the VM, provider registry or journal. Qualify each
-   new exact dependency/native closure through the installation path or authored
+   approval from validator, qualified flow/occurrences from their v3.5 owners,
+   and runtime/resource support from simplified only when the new graph needs it. Shared runtime/resource/recovery and provider-lifecycle work
+   is implemented by [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) and [simplified §10.1](../../simplified_v3.md#101-umsetzung-und-entfernung);
+   consume those results rather than rebuilding the VM, provider registry or journal.
+   Qualify each new exact dependency/native closure through the installation path or authored
    Q1/behavior/human Q2 as applicable. Exit: supported graph fails before effects
    on missing approval/artifacts/policy, retains selections and never falls to Tier 2.
 2. **Finish authoritative source coverage (A/B/C).** Extend
@@ -126,15 +292,66 @@ are ready. Do not block model-free source builds on optional provider-assisted w
    without legacy row/heading cuts. Include approved dynamic catalogue changes and
    registered-source eligibility. Exit: >1,000-record and concurrent-activation
    cases, exact manifests, missing-required failures and override-preserving reseed.
+   The [catalogue-export capacity consumer](../validation/2026-10-25-prefix-export-capacity.md)
+   now captures acknowledged `execution_limits.max_catalogue_bytes` once through
+   the existing preparation/settings owner after generation syntax validation and
+   before activation/SQL locks. The old fixed 64-MiB duplicate is removed; no new
+   configuration field/store/endpoint is added. Count the complete encoded JSON,
+   including escaping, without another complete serialization buffer, and fail
+   the whole projection on overflow. Native ordinary-runtime/PG/live-CAS checks
+   pass at the exact byte limit and reject one byte less with token budgets both
+   off and on. Raising the canonical limit restores identical complete source
+   bytes; a rejected settings commit preserves the acknowledged limit and output.
+   This closes that consumer/constant gap, not complete-library coverage, native
+   artifact/IPC limits, model token-size guards or target-aware generation.
 3. **Complete Sources execution (C/D; §8.1).** Reuse the existing HTTP/JSON and
    `builtin.prefix_source` usages. Compose registration read -> bounded fetch/read
    -> full identity/hash -> classify -> append diagnostic -> checked receipt, with
-   separate actual Tool steps. Add an adapter using the existing generation owner
+   separate actual Tool steps. Reuse the extended generation-read/source variant
    for originals; do not misuse registration foreign keys. Qualify/seed the graph,
    admit through ordinary jobs, project only trusted results and check on panel
    open/recheck. Add collection/archive/review and next-build inclusion without
    autoapproval. Exit: real HTTP/DB/artifact, policy/redirect/empty/change/failure,
    cancellation/dedup/reconnect/restart and pending-versus-used cases. No hidden LLM.
+   The existing generation-read usage now has a candidate `source` variant via
+   `generation_original_drafts`: one actual immutable-generation read followed
+   by pure `project_prefix_generation_source`. Its input contract derives from
+   the real reader result; `detail` binds to that result, never a task-supplied
+   assertion. It returns the whole indexed UTF-8 original, original hash,
+   disposition/reason and generation qualification. Legacy/no-index, different
+   profile/generation, missing/duplicate references and malformed selected
+   artifacts fail without current-file fallback. Python checks cover BOM/CRLF,
+   literal code and a >1,000-entry index. [Scoped native acceptance](../validation/2026-10-25-prefix-archived-original.md)
+   passes four integration cases in the joint Wallet run-5 receipt, including
+   actual Monty projection and both retained read variants' assembly/preload;
+   five Python checks are exact-source reused. This adds no store, registration
+   FK, availability publication, public Sources job or approval shortcut.
+   The [historical-index successor](../validation/2026-10-25-prefix-archived-original.md#historical-index-compatibility-successor)
+   now accepts the native reader's `brassclaw-prefix-source-package/1` layout,
+   including baseline rows without `artifact`/`kind`. It resolves originals by
+   `raw/<sha256>` without following old input-package artifact names as
+   generation/filesystem paths. Modern raw-pointer checks remain strict; missing
+   required disposition/reason is an explicit error, never invented review data.
+   Seven Python checks and all four native integration cases freshly pass with
+   strict affected/default lints and source integrity. This differs from
+   `legacy-bundle`, which lacks recoverable indexed originals. Qualify the exact
+   component combination and execute the complete admitted Source workflow
+   separately; these projection/assembly checks do not execute that workflow or
+   a new PG read.
+   A [registered-source candidate](../validation/2026-10-25-prefix-registered-source-check.md)
+   now extends the existing HTTP diagnostic Recipe with `registered`: parse exact
+   source pin/technical bounds -> native registration read -> resolve stored web URL
+   -> reuse the complete eight-step fetch/digest/classifier -> pack metadata ->
+   native unqualified append -> original receipt. The original direct `selected`
+   variant stays intact; Read/Retain use one source Tool identity and their actual
+   canonical binding definitions. URL/hash overrides are rejected. A registration
+   checksum is never treated as an expected content hash; unknown baseline stays
+   neutral, never green. Seven fresh Rust tests cover actual retained Monty/kernel
+   HTTP/PG behavior, full large-response hashing, 404, wrong pin, overflow/live block,
+   and immutable diagnostics without enabling availability. Remaining work is exact
+   qualification, durable admission/settlement, used-source adapter integration,
+   coalescing/cancel/reconnect/restart and trusted UI projection; candidate execution
+   does not close those gates or collect reviewed knowledge for generation.
 4. **Finish profile/shared-engine parity (B/C).** Port and qualify Defensive, HA
    and tomedo source/config/coverage/citation adapters against the shared worker;
    preserve their raw caches and domain semantics, no clinical tomedo content or
@@ -142,28 +359,375 @@ are ready. Do not block model-free source builds on optional provider-assisted w
    Exit: deterministic host/path-independent packages, all six profile contracts,
    malformed/incomplete-source failures and domain-specific configuration checks.
 5. **Close model-policy/capability preparation (C/C2; §5.3).** Use only the existing
-   provider definition map/API/revision owner. Add supported notifications/readback
-   for all settings consumers and CLI; preserve hard limits when budgeting is off.
+   provider definition map/API/revision owner. [simplified §10.1](../../simplified_v3.md#101-umsetzung-und-entfernung)
+   implements DB-only catalogue lifecycle, shared notifications/readback and CLI
+   migration. This plan adds §5.3's prefix/model-specific fields and consumes that
+   existing API/revision stream; it does not create another registry, reload owner
+   or settings store. Preserve hard limits when discretionary budgeting is off.
    Capture exact answer/Sempai/design target identities, policy references,
    tokenizer/template/injection/output/deployed-context facts, with Unknown explicit.
    Exit: different providers/models, stale edits, toggle/restart persistence and
    no second mutable setting. Missing required target facts are Setup required.
+   Include the K3 UI handoff in that exit: an original mutation receipt proves
+   persistence, not that its returned catalogue is still current or that runtime
+   uptake succeeded. Inference/Prefix editors must refresh the existing canonical
+   provider query after confirmed persistence, including known-commit/reload-error
+   paths; preserve the original receipt and visible read/reload errors separately.
+   Do not publish an older mutation snapshot into that shared query. One provider's
+   revision cannot order unrelated providers or role selections. The readonly
+   Prefix Model Designs consumer must also fence superseded catalogue responses
+   and errors so a late read cannot restore an older capture target. Signal known
+   persistence through the existing notification owner even if runtime reconciliation
+   remains pending; Unknown is not confirmed persistence. These are consumers of
+   K3, not a second revision, reload or settings owner.
+   That original-publication/UI handoff now has scoped shared K3 acceptance:
+   [38 fresh/19 qualified reused Rust results and 26 current UI cases](../validation/2026-10-24-prefix-budget-selection.md#k3-prefix-ui-handoff--scoped-package-passed),
+   including the real HTTP/PostgreSQL Prefix caller and strict affected/default
+   lints. The subsequent [shared consumer package](../validation/2026-10-24-k3-provider-consumers.md)
+   qualifies atomic backend/publication reads, async preparation, compatibility
+   checks before cache use and raw retry attempts, and live cache/fill fencing.
+   It has 123 actual passing Rust cases (120 main plus three explicitly executed
+   live-model cases), 43 UI cases and strict affected/default lints. Reuse these
+   existing owners; do not build another publication, provider or retry guard.
+   Subsequent shared packages qualify role CAS, desired/effective publication,
+   failed-target state, task-wide model selection and optional-role startup in
+   their recorded scopes. Consult the current
+   [implementation/ownership index](../implementation-status.md) for remaining
+   K3 session/login/callback/refresh and other protocol custody; do not recreate
+   already qualified provider or embedding owners. Prefix still owns the single final
+   semantic envelope/token-size guard in step 6. The qualified compatibility gate
+   is not that guard and does not complete model-policy preparation or serving.
+   The earlier ordinary **MATCH** native-model prerequisite now has scoped
+   [task-selection acceptance](../validation/2026-10-24-k3-task-model-selection.md):
+   the existing owner captures DB-backed Kohai/Sempai selections before effects,
+   retains them through admission and verified children, and the actual native
+   model capability consumes that binding without a fabricated legacy route.
+   Reuse it rather than adding a Prefix resolver or legacy `approved_routes`
+   grants. Optional-role startup/recovery subsequently passes in the shared
+   [Prefix successor acceptance](../validation/2026-10-24-prefix-budget-selection.md#profile-derived-design-inputs--shared-successor-acceptance),
+   including provider-free ordinary Match after restart with both roles unavailable.
+   Historical fixtures with manually recorded routes and global No-Match/client
+   success alone were insufficient; those are not the accepted replacement.
+   Task-selected model identity is not accepted named/composite Prefix selection
+   or a final-envelope token-size guard. The shared
+   [task-family embedding consumer](../validation/2026-10-25-k3-task-embedding.md)
+   is now scoped accepted for both retained and generic Memory dispatch. Remaining
+   K3 lifecycle/protocol boundaries stay with their existing owners.
 6. **Implement unconditional technical request guards (C1/C2).** Kohai receives
    both active-target and Sempai-target bundles. Add the qualified semantic
    prefix/dynamic partition measurement and one shared last pre-dispatch guard over
    the actual transformed envelope. Check the complete Sempai request before review,
-   then reassemble/recheck edited prompt + history/tools/framing + prefix before
-   final dispatch. Include unchanged/disabled review, retry/tool continuations and
+   after Kohai has formatted only the Orchestrator's dynamic prompt with the
+   final target's pinned design. If connected/enabled, Sempai optimizes/corrects
+   that already formatted prompt and returns the final dynamic prompt. Kohai
+   joins its intended finished prefix unchanged exactly once, without formatting
+   the return again, and rechecks the combined request before final dispatch.
+   Use Sempai's returned final dynamic value for this join, not the original or
+   pre-correction prompt. Generator and Kohai consume the same
+   accepted design revision for that provider/model pair; the Sempai call uses
+   its selected pair's pinned design and separately generated reviewer prefix;
+   a shared pair uses the same design revision. Verify the
+   [explicit handoff acceptance](../reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests).
+   Include unchanged/disabled review, retry/tool continuations and
    tightened live ceilings; no token-budget bypass, estimated fit or silent cuts.
    Exit: exact/one-token-over tests for both caps/context/output with budgeting on
    and off, zero provider calls on overflow and explicit stale-policy handling.
+   The [physical-span encoding prerequisite](../validation/2026-10-26-prefix-token-partition.md)
+   now passes: the existing offline Tool and both canonical encoding Recipes
+   support version-2 `partitioned_text` probes. One complete literal rendered
+   text is tokenized once; actual UTF-8 byte offsets attribute token IDs to an
+   explicitly supplied span or the remaining prompt. Boundary merges and
+   unmappable nonempty-span offsets reject the measurement. Version-1 text/chat
+   reports remain unchanged. Actual retained Ornith/Hugging Face, native
+   PostgreSQL/bootstrap/journal and global-runtime checks pass with strict
+   affected/default validation. This observation is explicitly
+   `supplied-byte-span-only`: it does **not** establish that the span is the
+   authenticated semantic prefix. Still implement the qualified adapter's
+   exact transformed-envelope/range provenance, accepted prefix/composite and
+   canonical policy binding, both ceilings and output/context arithmetic in
+   the last pre-dispatch path. Do not treat the observation or the older
+   complete-probe `fits` result as that guard. No new limit setting/store exists.
+   The [leading-chat render successor](../validation/2026-10-26-prefix-leading-chat.md)
+   now connects that measurement to exact chat rendering: `leading_prefix_chat`
+   verifies complete supplied prefix bytes at offset zero in the full rendered
+   chat, then partitions one actual encoding and binds the original ordered
+   context digest. The real shared injection adapter has an independent six-context
+   Ornith/Hugging Face comparison with stable prefix IDs across dynamic
+   tools/roles/thinking/history; actual packaged native/bootstrap/journal and
+   ordinary global checks pass. Its `verified-leading-render-bytes-only` label
+   proves no accepted serving artifact, provider-wire mapping or policy compliance.
+   Still bind this verified expected prefix/context to the actual host-owned
+   transformed request and accepted artifact, then enforce current canonical
+   prefix/prompt/context/output ceilings immediately before dispatch. Do not
+   activate it as a guard or route version-2 reports through the old version-1
+   capacity calculator. The observation is usable by those later Recipe steps;
+   it neither adds a policy setting nor broadens legacy measurement admission.
+   The [canonical dispatch-policy/count prerequisite](../validation/2026-10-26-prefix-dispatch-policy.md)
+   now exposes exact provider/model input caps, applicable configured context and
+   original requested output in the existing live guard's revision-bound result,
+   from the same canonical read as cache policy. It adds no mutable settings or
+   database owner. A reusable technical comparison checks whole-input count
+   consistency, both caps and actual input plus output with checked integers;
+   another model cannot borrow default-model context, and unknown limits/output
+   remain errors. Actual PostgreSQL Kohai/Sempai/current-revision/original-target
+   and live cache/request/global consumers pass. This is **configured-policy
+   arithmetic**, not authenticated counts, deployed geometry or automatic final
+   enforcement. The existing tightening failure remains until qualified fresh
+   evaluation is actually integrated. Bind the actual effective output after SDK
+   parameter transformation too; requested `max_tokens` may be stripped and must
+   not become fictitious server headroom. Keep both this comparison and the old
+   diagnostic fit receipt distinct from the final accepted guard.
+   **Historical dispatch observation (26 October; superseded in part below):**
+   `brassclaw_llm::ProviderRequestFacts` currently contains only `model` and
+   `max_output_tokens`; the existing `GuardedProvider`/cache checks cannot derive
+   actual input size from it. `brassclaw_reborn::model_gateway` coalesces system
+   messages and sorts Tool definitions before the provider adapter translates
+   them. The OpenAI `OptionalAuthHttp` path prepares the final request before
+   calling `ProviderWireObserver.before_submission`; that response-custody callback
+   receives no body. The 28 October successor below now adds a separate native
+   body check at that same transport boundary. Complete/reuse these preparation,
+   submission and custody
+   boundaries with their shared owner; do not add another transport, observer
+   registry, input journal, provider client or Prefix workflow loop.
+   Preserve a single immutable prepared-request identity through exact mapping,
+   measurement, cache handling and actual submission. Bind its actual transformed
+   messages/tools/flags to the retained tokenizer/template and host-selected
+   prefix artifact, rather than trusting a separately supplied diagnostic context
+   or serializing an allegedly equivalent request a second time. Injection is
+   request-owned only: use the target's default provider/model formatting and add
+   the role/composite content exactly once through a qualified request slot.
+   Prefix compilers already produce the finished provider/model-specific text.
+   Kohai formats only the Orchestrator prompt part, then joins the pinned prefix
+   unchanged. Previews reuse that same join contract and never reformat the
+   prefix; final checks inspect the composed actual request. Provider file
+   access, installation, service changes and a global role override are forbidden.
+   Verify the required prefix-first order and actual content spans; a default
+   mapping that moves tools/history ahead of the fixed prefix blocks this path
+   rather than qualifying it through span-only accounting.
+   Cover actual supported transports and multimodal expansion; text placeholder
+   tokens cannot certify image/audio input size. Unsupported/unverified mappings
+   remain explicit blocked states for the guarded target path.
+   Apply technical checks before cache return as well as before a real send.
+   At the last pre-submission fence, recheck that the selected prepared bytes,
+   target and live policy revision still match the measurement; a tightened cap
+   needs fresh qualified evaluation or an explicit configuration-changed failure,
+   never an old fit receipt. Keep `PgProviderDispatchGuard`'s current tightening
+   rejection until that replacement is actually connected and tested. No role
+   change may silently reselect an existing task's model. Include zero-submission
+   tests for late transformations, stale context/artifact/policy, tool/retry
+   continuations, cached responses and both Kohai/Sempai targets. No optional
+   discretionary-budget flag may bypass these checks.
+   **Scoped SDK/transport successor — 28 October 2026:** the
+   [final-request transport acceptance](../validation/2026-10-28-prefix-final-request-guard.md)
+   now covers one immutable actual HTTP request, full-body/target identity,
+   mandatory canonical checks after measurement and immediately before send,
+   call-local guarding after SDK message/schema rewrites, shared registry-client
+   reuse, cache bypass, unsupported-transport rejection and native no-send
+   evidence. Eight final-guard/SDK cases plus the existing SDK/policy, native
+   gateway/PostgreSQL and global Monty regressions pass: sixteen actual Rust
+   tests, none ignored, with connected/default strict checks. Measurement
+   fixtures supply declared counts; these checks do **not** qualify a real model
+   tokenizer, semantic prefix partition, accepted design or ordinary attachment.
+   `submission_rejected` records a native barrier; an error category alone
+   cannot release unknown effects, and a previous submission-start marker wins.
+   No additional provider pool, limit store or selectable hard-limit bypass exists.
+   The initial supported hook covers immutable OpenAI Chat/ChatMaxTokens SDK
+   calls; unknown/routed, guarded streaming/multipart and unqualified multimodal
+   mappings remain blocked in this scoped path. Model KV caching is unchanged;
+   the cache bypass concerns BrassClaw's complete-response DTO cache only.
+   **Concrete contained counter successor — 29 October 2026:** the
+   [native encoding prerequisite](../validation/2026-10-29-prefix-final-model-encoding.md)
+   now supplies `ContainedFinalRequestMeasurer` over the existing bounded worker,
+   explicit strict SDK-body mapping, original default-template/tokenizer assets,
+   one complete encoding and exact leading-byte/token partition. Three independent
+   offline Ornith/HF comparisons and eight native integration/regression cases
+   pass freshly; 27 unchanged encoder/SDK results retain explicit applicability.
+   Connected/default strict checks pass. The SDK producer now avoids redundant
+   equal-model overrides that emitted duplicate JSON keys. The native acceptance
+   verifier used in the integration case remains an explicit fixture, not trusted
+   pair/profile/generation acceptance. No ordinary role attachment or provider
+   rendering/cache qualification is claimed.
+   **Native acceptance and caller successor — 29 October 2026:**
+   [the connected acceptance record](../validation/2026-10-29-prefix-native-acceptance-and-callers.md)
+   supersedes the missing native-binding/ordinary-attachment observations above
+   for the scoped OpenAI text path. V182–V185 extend the existing proposal,
+   acceptance, generation and admission owners. Pair/Profile/Generation approvals
+   retain exact original sources, mapping, tokenizer/default-template assets,
+   native worker/client contract and measured evidence. Approval and CAS target
+   activation are separate; old tasks retain their selected generation. Ordinary
+   Kohai/Sempai calls and the global post-turn reviewer now use that native binding
+   and the actual final SDK body. Canonical live limits apply with discretionary
+   budgets disabled. A selected final measurer replaces the older provisional
+   tightening rejection with real current-cap evaluation; unmeasured paths retain
+   the original fence. Twenty-three distinct relevant Rust cases and connected,
+   default and Root-caller strict checks pass; this is local caller acceptance,
+   not deployment or physical model-server parity.
+
+   Apply these design/generation instructions through the existing producers:
+   (a) retain source-only compiler packages unchanged and create a separate
+   `brassclaw-prefix-target-generation/1` envelope with the exact original source
+   package, finished `prefix.utf8` and `model_input_binding.json`; source-only
+   imports cannot serve. Bind its Pair/Profile proposals and mapping without
+   self-referential generation/approval hashes. (b) Use the actual default
+   template **and actual SDK serialization** to choose the stable prefix boundary.
+   Multiple system messages may be joined into one preamble. A closing system
+   delimiter can therefore belong to the dynamic suffix: do not assume it is a
+   stable prefix merely because a hand-authored example renders that way. Preserve
+   the complete reference and fixed model-facing bytes without double framing,
+   truncation or provider-server configuration changes. (c) Pair construction
+   `/2` declares explicit wire mapping, supported plain/Tools modes, reference
+   normalization and a positive request-output default. That default is not a
+   duplicate hard cap. Qualify authored cases **and** the native no-submit SDK
+   corpus (system joining, history, and declared Tool continuations) using the
+   real bounded tokenizer. The corpus deliberately stops before HTTP submission;
+   no fabricated success or model-provided counts qualify it. (d) Pin the measured
+   leading token-ID fingerprint on each generation, alongside exact prefix bytes;
+   check both in one complete encoding for every actual request. Shared Pair
+   approval must not contain a generation-specific prefix fingerprint. Unknown
+   context, mode, mapping, assets or binding blocks the guarded request.
+
+   Remaining gates for this step: qualify the physical provider's default
+   rendering/prompt-affecting defaults and applicable cache behavior against the
+   retained assets; operator default-contract attestation and local SDK/tokenizer
+   agreement do not prove remote-server parity. Connect ordinary Generate/
+   Regenerate's source-only output to the checked target-envelope producer and
+   existing acceptance/activation APIs, retaining the exact reviewed candidate.
+   Complete explicit Recipe-selected and qualified PrefixFree workflow selection
+   through the existing retained-policy owner, without bypassing the final guard
+   or inventing another renderer/settings store. Qualify any additional transports
+   or modalities before enabling them. Keep the full step open until those gates
+   and its applicable product acceptance pass; do not repeat the now-passing
+   native-binding/caller work merely because the broader step remains open.
 7. **Implement accepted model/design selection (C/C3; §5.3).** Extend the existing
    model specification/proposal owners with validated runtime evidence, acceptance
-   and profile/consumer bindings. Specify supported budget ranges, mandatory whole
+   and profile/consumer bindings. Complete the concrete caller migration recorded
+   in §5.3 and consume the same pinned accepted design in compiler and Kohai;
+   metadata/proposal storage alone is not runtime design selection.
+   Specify supported budget ranges, mandatory whole
    units/dependency groups, optional priorities/ties, rendering/teaching/citations
    and adapter fingerprints. Bootstrap reviewed supported designs without a model
    call. Exit: two different model designs, same-name/different-target isolation,
    missing/incompatible/unsupported-budget states and immutable accepted revisions.
+   Implement the private draft-evaluation path **before writing acceptance**:
+   V145 already requires an actual retained candidate generation for each design
+   acceptance. Reuse the stage graph from step 8 with pinned unaccepted proposal,
+   canonical target policy, current sources and exact artifacts; retain its
+   quarantined candidate and validation evidence through the existing generation
+   and admission owners. Qualify this draft operation explicitly; do not require
+   its proposed design to have been accepted already, invent a placeholder
+   generation, or create a second runner/store. Ordinary Generate must still
+   require accepted design bindings. Acceptance references the exact reviewed
+   draft candidate and publishes that artifact without a second unpinned compile,
+   as the Redesign contract below already requires.
+   The reusable `select-prefix-design-by-measurement` candidate Recipe now supplies
+   deterministic whole-unit preparation and measured reference selection. Its
+   `brassclaw-prefix-unit-design/1` contract validates all declared size bands,
+   dependencies and stable priorities; exact full-candidate tokenization selects
+   the fullest fitting candidate without assuming monotonic token counts.
+   Connect this existing stage to accepted model/profile bindings and trusted
+   canonical policy/source/artifact resolution; do not create another selector
+   or treat its candidate definitions as approved/activated components. New source
+   units and changed unit identities still require authoritative coverage checks.
+   Treat its unit design as a resolved per-build plan. Reuse the implemented
+   `brassclaw-prefix-generation-rules/1` resolver: reconcile current source/component
+   coverage through exact/namespace/complete-unit selectors and required coverage,
+   derive group membership and pin accepted-rule and resolved-plan hashes
+   separately. Normal target Generate must bind these reusable rules, not mistake
+   a fixed unit-index snapshot for a reusable template. A new component can change the latter without
+   changing the accepted generation design. The existing proposal owner now
+   parses historical v1 and the versioned v2 `whole-unit-reference/1` declaration,
+   retaining its nested generation rules as an **unaccepted** proposal under the
+   original model specification. Native source-independent shape/graph checks
+   cover every band; actual source matching and coverage remain Recipe work.
+   The legacy complete-reference measurement explicitly rejects v2 before
+   admission, and its WebUI explains the exclusion. Four declaration/proposal
+   tests, two actual Monty/tokenizer integrations, the real HTTP/PostgreSQL caller
+   and ten affected UI tests pass, together with strict affected lints. Exact
+   shared run-6 evidence and its raw-log limitation are recorded in the
+   [successor validation](../validation/2026-10-24-prefix-budget-selection.md#versioned-proposal-successor--24-october-2026).
+   Complete
+   accepted model/profile/consumer and qualification bindings through this same
+   owner; declaration retention is neither design acceptance nor ordinary Generate.
+   V2 carries no copied hard limits or legacy reserve setting. Do not introduce
+   another design registry or duplicate model-limit fields.
+   The [original-policy successor](../validation/2026-10-27-prefix-model-policy.md)
+   now verifies the model specification's recorded configuration facts against
+   its exact retained provider revision through the existing owner. A matching
+   snapshot hash alone cannot substitute another namespace, protocol, context or
+   token-limit policy. Capture/read/catalogue and lost-response retry share this
+   check; historical snapshots stay byte-identical after later provider edits.
+   Earlier records with neither limit field remain readable and Unknown, never
+   backfilled from the current definition; partial owner/value pairs fail.
+   This closes recorded-configuration integrity, not canonical build admission.
+   The [budgeted captured-selection successor](../validation/2026-10-28-prefix-budget-generation.md)
+   now resolves verified immutable model-policy inputs with explicit build
+   reservations through that same specification owner and reuses the pure budget
+   planner as the first step of a third variant of the existing captured Recipe.
+   Its complete captured receipt retains the planning inputs/result and selected
+   or blocked source evidence. The native singleton runs all ten scenarios with
+   discretionary token budgets disabled; unknown limits/context reject planning,
+   and requested size cannot increase canonical caps. The existing dispatch
+   compatibility fence also rejects removal of previously captured limits.
+   This is private candidate execution, not ordinary Generate admission or a
+   complete final-request guard; no extra limit store, endpoint or role setting
+   is introduced. Old variants and their retained component bodies remain.
+   Next, the draft/Generate owner must resolve and pin the applicable canonical
+   target policy and pass its explicit limits/reservations to the existing pure
+   budget planner, retaining the original revision and planning result. Unknown
+   mandatory limits must block that operation; they are not zero or model-position
+   defaults. Final dispatch still checks the applicable live technical limits.
+   The Python dependency/closure implementation now scales through adjacency and
+   sorted ready waves, preserving the previous rendering order. Its
+   [scoped scaling acceptance](../validation/2026-10-25-prefix-graph-scaling.md)
+   covers 15 Python regressions, all 4,096 four-group edge subsets, the actual
+   Monty 1,001-group chain, both retained variants and strict affected/default
+   checks. Complete candidate banks/texts/probes match the archived implementation
+   for three differential fixtures. This is graph scalability, not completion of
+   step 2's authoritative >1,000-record capture or a whole-model/cache benchmark.
+   Compare proposed and resolved coverage with the independent authoritative
+   profile/source floor; a provider's own `required_coverage` declaration is not
+   evidence that its design preserves all mandatory knowledge. Source capture
+   completeness and current-source eligibility remain prerequisite checks.
+   The shared pure library now supplies a `coverage` phase comparing canonical
+   `brassclaw-prefix-coverage-floor/1` input with every generation-rule size band's
+   mandatory dependency closure. It retains exact comparison inputs and resolves
+   namespace selectors against current whole units. This is supplied-data
+   comparison, not authentication of the floor or source hashes. Wire the floor
+   from the independent installation/profile owner into the private evaluation
+   and accepted Generate graphs; do not let the design provider supply or weaken
+   it. The existing six-step candidate Recipe still lacks that trusted resolver
+   and is not eligible for ordinary activation. See the
+   [comparison contract](../reborn/prefix-budget-design.md#execution-and-output).
+   Its scoped successor passes 13 standalone cases, three actual utility-worker
+   operations, both actual Monty/tokenizer/retained-assembly integration cases and
+   strict affected Composition/Skills lints. The
+   [raw acceptance and cleanup/reconciliation limits](../validation/2026-10-24-prefix-budget-selection.md#independent-coverage-floor-comparison-successor)
+   do not close the trusted-floor resolver or accepted Generate/activation work.
+   A follow-on pure `design-inputs` stage in the existing compiler library now
+   derives that floor from `prefix_prepare`'s existing per-profile requirements
+   and produces the included design-source inventory from its exact native
+   digest batch. It retains the original complete snapshot, including excluded
+   records, and accepts no model-provided mandatory list or edited compiler
+   state. The typed constructor and actual native projection now have shared
+   successor acceptance: all three Prefix integration cases, four compiler and
+   13 selection Python cases, strict Root/Composition/Skills/default lints and
+   the full HTTP/PostgreSQL Prefix caller pass. Its 319-source, 8,970,577-byte
+   capture retains originals; the oversized 372,043-token Sempai diagnostic stays
+   `fit=false`, without replay or activation. See the
+   [exact successor scope and receipts](../validation/2026-10-24-prefix-budget-selection.md#profile-derived-design-inputs--shared-successor-acceptance).
+   The [installed captured-source successor](../validation/2026-10-27-prefix-captured-design.md)
+   now retains/inspects this exact graph and executes its complete captured variant
+   with owner-captured core sources, native digest/encoding journals and the
+   independent every-band floor on the already-running instance service. It
+   preserves the original snapshot/comparison for selected and capacity-blocked
+   outcomes and rejects weakened current or unused bands before candidate encoding.
+   This closes the scoped private execution prerequisite, not ordinary admission.
+   Installation-owned workflow qualification and target-aware draft/Generate
+   admission remain pending: authenticate and pin canonical target policy,
+   proposal/artifact/source eligibility and the complete native observations;
+   retain the actual eligible candidate through the existing generation owner.
+   The independent floor comes from the existing profile owner, never the model.
+   Ordinary Generate must still consume accepted design/profile bindings.
 8. **Build the ordinary target-aware Generate Recipe (C).** Reuse source-only
    admission/compiler/Retain, rather than replacing them. Pin trusted current
    sources, canonical policy and accepted design; use pure budget planning, accepted
@@ -172,8 +736,41 @@ are ready. Do not block model-free source builds on optional provider-assisted w
    Publish the exact validated quarantined target artifact with a correlated durable
    receipt. Exit: zero model calls, deterministic repeats, capacity/coverage blocked
    failures with preserved evidence, cancellation, reconnect and no effect replay.
+   Reuse the reference-selection stage from step 7. Its `reference-selected`
+   result is not a final target artifact: perform real composite/chat partition
+   checks before retention as an eligible target generation. Retain its original
+   source inventory, full measurements and per-unit omission dispositions.
+   Connect captured-source evaluation by extending the existing candidate Recipe,
+   not by cloning its measurement/selection workflow: source preparation ->
+   explicit original UTF-8 digest usage -> profile-derived floor/inventory ->
+   every-band independent comparison -> reused candidate preparation/digest/
+   encoding/selection. Bind candidate inputs to the successful comparison's
+   exact output. Return the comparison and complete original snapshot alongside
+   either `reference-selected` or `capacity-blocked`; failure to fit must not
+   discard excluded originals or the coverage evidence. The original diagnostic
+   variant is not a substitute for this captured-source gate. The existing
+   `captured_design_selection_drafts` constructor preserves that diagnostic
+   variant alongside three explicit native usages in the captured variant.
+   The [earlier assembly acceptance](../validation/2026-10-25-prefix-captured-selection-and-sources.md)
+   establishes both retained preloads and their truthful nonempty producer contracts.
+   The [installed execution successor](../validation/2026-10-27-prefix-captured-design.md)
+   now reuses exact source/compiler/native revisions, retaining only the candidate's
+   complete dependency closure without advertising it in the active catalogue.
+   Four private candidate scenarios run through the existing singleton and its
+   acknowledged live resource policy; no second worker or fixed small-fixture
+   limit is used for the full corpus. Original snapshot, coverage comparison,
+   selection/dispositions and actual native journal handoffs are checked.
+   Three actual Rust tests pass (one four-scenario candidate test and two existing
+   Pair regressions), zero ignored, with affected-feature strict lint evidence.
+   This is not an installation-qualified or activated target-aware Generate
+   workflow. Next, qualify the exact graph and wire trusted canonical policy,
+   accepted pair/profile design, eligible sources/artifacts, durable draft/Generate
+   admission, candidate retention and final target-specific formatting/geometry.
+   Reuse existing owners and the same Recipe; do not add a competing selector,
+   queue, model-limit setting or per-task VM.
 9. **Complete composite generation under that operation (C; §9).** Build/reuse
-   eligible immutable parents and base-plus-domain/base-plus-Sempai composites,
+   eligible immutable parents and composites explicitly required by the selected
+   consumer content contract, without compulsory base inheritance for all roles,
    preserving evidence IDs/origins and recomputing final geometry. Retain child
    run references and reconcile completed children. Use qualified iteration only
    if the graph actually requires it. Exit: one-click missing/stale/reused-parent,
@@ -208,7 +805,7 @@ are ready. Do not block model-free source builds on optional provider-assisted w
     specialized prefix Rust workflows. Version strict review claim/request schemas
     to carry both targets' trusted limits/identity; update producer/parser/persona/
     transport together, retaining old readers. Preserve full roles, Tool/effect
-    evidence and authorized edits. Qualify the fitted base-plus-Sempai reference,
+    evidence and authorized edits. Qualify the fitted role-specific Sempai reference and any explicitly required composite,
     artifact-first decoder, lossless sink and current component authoring/validation
     rules. Exit: held-out prompt repair and actual validation-candidate Recipes,
     malformed/adversarial/summary disagreement cases, no selfapproval or Tier-0
@@ -244,6 +841,18 @@ are ready. Do not block model-free source builds on optional provider-assisted w
     Preserve auth/CSRF, translations, keyboard/focus and accessible neutral/error
     states. Exit: real facade/HTTP/browser matrix, navigate/reconnect without job
     loss, duplicate clicks, races/failures and no success badge from metadata alone.
+    Sources state must also belong to its exact profile and selected generation:
+    no foreign generation request, stale source list or read error during a profile
+    switch. A delayed registration result may clear only its original unchanged
+    draft; preserve edits made while saving, and keep registration errors separate
+    from inventory errors. Three regressions reproduce these failures in the
+    baseline component. The correction is now applied and passes the five existing/
+    new component tests and corresponding isolated real-browser comparisons with
+    shipped React; settings transport is controlled in that fixture. Strict
+    Root/Composition/Skills/default source-package checks also pass in the
+    [same successor receipt](../validation/2026-10-25-prefix-captured-selection-and-sources.md).
+    Backend availability checks and production deployment are not supplied by
+    this UI correction.
 18. **Qualify knowledge at supported model sizes (C1/C3/E).** Evaluate quarantined
     immutable candidates with pinned suites/decoding/adapter/runtime and coverage
     contracts. Test supported budget bands and transfer to unseen tasks across
@@ -262,14 +871,15 @@ are ready. Do not block model-free source builds on optional provider-assisted w
     serving cutover. Exit: fresh/offline/no-provider setup, upgrade/reseed,
     missing-artifact/unknown-policy and restart readback without boot network/GPU
     dependency or incompatible raw DB writes.
-20. **Perform coordinated product cutover and recovery (A1/C2/§12).** Use the one
-    migration owner: dry-run inventory, stop admission/drain or reconcile, verified
-    backup/restore, compatible schema/binary/seeds and global Ready-before-producers.
-    Verify authenticated operator, ordinary Recipe, both model consumers and hard
-    guards; enable only accepted actions. Retire legacy sweep/scope fallback after
-    all callers move and retained tasks release references. Exit: interrupted
-    migration/restart/restore and explicit rollback receipts. External inference
-    infrastructure remains operator-owned and unchanged by these workflows.
+20. **Join the shared product cutover (A1/C2/§12).** [simplified Phase 6](../../simplified_v3.md#phase-6--datenbank--dateisystem--und-secret-migration) and [simplified Phase 8](../../simplified_v3.md#phase-8--cutover-und-entfernung-des-legacy-modells)
+    implement the one upgrade/backup/restore coordinator; [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben)
+    owns runtime draining, recovery and Ready-before-producers. Supply the prefix
+    inventory/migrations/artifact-retention hooks and consumer smoke checks from
+    §12; do not implement another cutover command, recovery service or startup gate.
+    Enable only accepted prefix actions and retire prefix-specific legacy sweep/
+    serving fallbacks after migration and reference release. Exit: shared cutover
+    receipts plus prefix-specific restart/restore/rollback acceptance. External
+    inference infrastructure remains operator-owned and unchanged.
 21. **Close the full plan through the final matrix (§12).** Run every row below
     through actual facade/ingress/global Recipe/browser/consumer paths, map exact
     receipts to current applicable sources/configuration and account for every
@@ -287,48 +897,127 @@ permission to activate first and test the configured cache later. Model-free Gen
 must not wait for optional Redesign, while an unsupported budget is never silently
 redesigned by a model call. See §5.3 for always-on hard limits and both-target checks.
 
+#### Open definition, teaching and consumer successors from K4
+
+This open Remaining-sequence successor governs new A1/C1/C2/Serving/upgrade
+consumers (Exact D01–D03/D05–D07/D09–D11); implemented Phase-B/C journals, earlier
+Phase-A/source/§5 requirements and their receipts remain untouched. Reuse current
+retained exports, source capture, jobs and settings rather than rebuilding them.
+
+New teaching/compilation must distinguish preload definitions, pinned invocation
+and standalone probe bodies. The [single definition/reference successor](monty.composition.implementation.md#open-definition-and-example-successors-from-k4)
+provides actual parser factory/bindings/closure and a separately unapproved pure
+preview design. Its source-inspection report is JSON text, not a Dict or verdict.
+Numbered previews retain selection/coverage metadata and cannot replace complete
+raw originals. Source text is legitimate declared data; command grammar and
+raw-value conversion still reject unsupported representations before effects.
+
+Publicly matched Recipes retain recipe.md's public intent/negative coverage;
+private source/compiler/reviewer work qualifies real typed admission, selected
+variant/inputs and result custody instead. MCP publication remains optional and
+separate: advertisement pins a listed command, actual chat capture pins the task.
+Stale incompatible publication rejects before capture; captured tasks keep their
+exact selection. No direct MCP execution path or new exposure registry.
+
+Keep pre-call correction of the already formatted dynamic Kohai prompt separate
+from completed-turn analysis of eligible No-Match evidence. The former returns
+only the final dynamic prompt; Kohai adds its intended unchanged prefix once and
+checks the full send. The latter returns analysis/unreviewed proposals and cannot
+alter or replay the completed answer. Reuse existing transport/guards without
+merging these response schemas or introducing reviewer recursion/bypass flags.
+
+Changed embedded guides/teaching are new exact package inputs, not updates to old
+receipts. Integrate with the existing writer's bounded validation window; preserve
+originals/overrides and use existing immutable seed/revision/upgrade owners. Check
+actual consumer uptake under K5/K6 before claiming installed use. The teaching
+manifest/verification must identify the same source bytes; keep old receipts as
+historical evidence, never relabel them. Unchanged program probes may be reused
+only for their unchanged semantic scope. No new provider call solely for prose.
+
+These additions are source/design guidance. General pure approval and future
+compiler/Serving activation keep their existing gates; actual current bugs get
+concrete owner work. The document update adds no global freeze or K8.
+
 ### Shared infrastructure ownership — reconciled 2026-10-22
 
-Read this plan together with [Sempai v3.5](sempai_v3.5.md) and
-[Simplify connections v3.5](simplify_connections_v3.5.md). Their consolidation
-work supplies shared infrastructure; prefix work must not create a second review
-consumer, provider registry, connection builder, Monty transport, executor,
-claim authority or universal recovery ledger. Similar record names do not make
-generation jobs, invocation effects and provider accounting interchangeable.
+**Concurrent delivery contract:** implement this plan alongside `simplified_v3.md`.
+The owner in the following table implements each shared mechanism exactly once;
+this plan contributes prefix requirements and integrates that implementation.
+This assignment overrides older imperative shared-infrastructure descriptions
+and dated implementation notes below. Existing accepted owners are extended,
+not replaced. A missing prerequisite remains an explicit dependency, never a
+reason to create a prefix-local substitute.
 
-| Responsibility | Reuse owner / current evidence | Prefix-specific work still required |
+| Shared mechanism | Implementation owner | Prefix contribution and integration boundary |
 | --- | --- | --- |
-| Workflow selection / execution | Installed/authored Monty catalogue, retained preload/export qualification and the global service | Qualify the generation Recipe and exact compiler adapter; do not start another VM or Rust workflow loop. |
-| Component proposal retention / activation | Existing submission stores and [component deployment](../reborn/component-deployment.md); real operator/PG/global-Monty acceptance passed | Use these paths for executable proposals. Prefix generation/design publication is a distinct operation and is not implemented by component activation. |
-| Review/accounting custody | Existing completed-turn delivery and [native reconciliation](../reborn/post-turn-review-reconciliation.md) | Preserve native release predicates. Sempai evidence/proposal/iteration conversion remains owned by sempai_v3.5; do not duplicate it in prefix jobs. |
-| Model calls / messages / evidence | Existing gateway plus the reusable usages planned in sempai_v3.5 | Redesign uses shared message/evidence/model-call components with prefix-specific instructions supplied as pinned data. No separate design-provider transport or review sink. |
-| Database / network / IPC | Instance-injected PgPool, existing network/egress services and Monty transport actor; consolidation owned by simplify_connections_v3.5 | Extend owning stores only for demonstrated prefix records. No per-profile pools, caller-local reconnect loops or parallel pipe readers. |
-| Admission / events / retries | Existing turns/global-task admission, retained invocation records and durable event projection contracts | Store prefix stage/artifact metadata linked to actual runs/invocations. Observer reconnect reads status/cursors; it never resubmits effects. Generic crash resume remains unproven until its actual contract passes. |
-| Operator settings / APIs | Existing RebornServicesApi, authenticated v2 ingress and revisioned settings owners | Extend Prefix settings rather than building another management surface or authority path. |
+| Operator identity, scope/role removal, protected management | [simplified Phase 1](../../simplified_v3.md#phase-1--einzige-instanz--und-betreiberidentität), [simplified Phase 2](../../simplified_v3.md#phase-2--autorisierungsscopes-entfernen-daten-ids-entkoppeln) and [simplified Phase 5](../../simplified_v3.md#phase-5--webui-auf-eine-betreiberoberfläche-reduzieren) | Use the shared caller/context, authenticated facade and CSRF/origin enforcement for Prefix routes; supply prefix data-key migration cases. No prefix identity, grants or management stack. |
+| Current Tool policy, alias identity and technical enforcement | [simplified Phase 3](../../simplified_v3.md#phase-3--eine-feste-runtime--und-sicherheitsrichtlinie) | Register compiler/source/publication primitives through the same host boundary; exercise live blocking through prefix Recipes. No stored bind-time permission or prefix policy engine. |
+| Global Monty boot, admission, task/child scheduling, cancellation and transport | [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) | Supply generation/design/Sources Recipes and typed payloads to existing admission. No second VM, durable queue, worker-claim authority, Inbox or Recipe executor. |
+| Task selection, typed bindings, retained native artifacts and review consumption | [simplified Phase 0a](../../simplified_v3.md#phase-0a--ground-truth-komponentenverträge-implementieren) and [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) integrate the shared component contracts | Use exact selected workflow/native references. Validator owns review writers/general pure approval; composition owns canonical library migration. Prefix adds only its own usages/graphs, not another loader, manifest store or approval route. |
+| Invocation intent/count, effect custody, waits and crash reconciliation | [simplified Phase 0a](../../simplified_v3.md#phase-0a--ground-truth-komponentenverträge-implementieren) items 9–10 and [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) | Provide operation-specific compiler/publication artifact/status adapters; retain links to original run/invocation records. Prefix job stages are projections, not a second recovery ledger or scheduler. |
+| Runtime resources, discretionary budget switch and live settings publication | [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) with [simplified Phase 3](../../simplified_v3.md#phase-3--eine-feste-runtime--und-sicherheitsrichtlinie) | Consume effective revisions and bounds for compiler jobs. Prefix §5.3 owns target-specific size semantics; it extends existing model/provider fields rather than duplicating runtime resource/settings ownership. |
+| Provider catalogue, DB-only readers, reload, deactivate/reactivate and legacy-file retirement | [simplified §10.1](../../simplified_v3.md#101-umsetzung-und-entfernung) | Consume the existing provider map/revision/API; add only prefix model-capacity/design/injection integration. No provider registry, reader fallback, parallel lifecycle coordinator or second mutable policy source. |
+| Shared seed/upgrade boot sequence, data migration and secret preservation | [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben), [simplified Phase 6](../../simplified_v3.md#phase-6--datenbank--dateisystem--und-secret-migration) and [simplified Phase 8](../../simplified_v3.md#phase-8--cutover-und-entfernung-des-legacy-modells) | Supply exact prefix source/compiler/profile/design seed payloads and additive migrations, preserve overrides/IDs, and plug them into the one initializer. No prefix bootstrap/migration runner. |
+| Backup/restore, compatible binary/schema transition and runtime rollback | [simplified Phase 6](../../simplified_v3.md#phase-6--datenbank--dateisystem--und-secret-migration) and [simplified Phase 8](../../simplified_v3.md#phase-8--cutover-und-entfernung-des-legacy-modells) | Supply prefix generation/design/source/native references and restoration assertions; do not run a second stop/backup/restart procedure. Prefix selection rollback remains its own product operation. |
+| Combined product and cross-platform acceptance | [simplified Phase 7](../../simplified_v3.md#phase-7--tests-architekturverträge-und-dokumentation-bereinigen) and [simplified Phase 8](../../simplified_v3.md#phase-8--cutover-und-entfernung-des-legacy-modells) | Supply prefix facade/global Recipe/browser/consumer and restore cases; reuse applicable shared receipts once. Passing either plan's local slice is not combined cutover acceptance. |
+
+Prefix retains ownership of source capture/coverage and diagnostics, compiler
+profiles/artifacts, model specifications and accepted designs, immutable generations,
+composites, desired/effective prefix selections, Sources/Generate/Redesign/Warm UX,
+and the exact rendering/partition measurement and final model-request size guard
+in §5.3. [simplified remaining-work ownership](../../simplified_v3.md#remaining-implementation--consolidated-2026-10-22) explicitly consumes those results;
+do not delegate them back and form a circular prerequisite. Prefix snapshots of
+provider facts are immutable evidence, never a second mutable provider catalogue.
+
+Coordinate shared boundary changes before writing competing implementations:
+record the existing owner and required contract/consumer in the current status or
+validation record, then implement the mechanism in its owning plan. Prefix may
+wire/test a supported contract concurrently. If it is not ready, keep only the
+affected action blocked and continue independent source/compiler/schema/UI work.
+The runtime must still boot/manage the instance without a generated prefix or
+configured model; optional provider-assisted work must not block model-free work.
+Qualification follows the graph's actual requirements, not completion of every
+unrelated phase. Never widen an existing narrow bootstrap exception to bypass a gap.
+
+Read this plan with [Sempai v3.5](sempai_v3.5.md) and
+[Simplify connections v3.5](simplify_connections_v3.5.md). Their existing owners
+retain Sempai business sequencing, shared model/evidence/accounting semantics and
+connection/facility consolidation. Use the instance-injected PgPool, network/egress
+services and Monty transport actor. No per-profile pools, reconnect/pipe-reader
+loops, review consumer or universal recovery journal is introduced here.
 
 Completed infrastructure is reusable evidence for its exact scope, not a blanket
 Gate A1 certificate. Named registry, immutable generation storage, installed source
 capture, qualified source-only compiler jobs and durable measurements already exist.
-Continue from them. Ordinary Generate still uses the legacy base path, and named
-consumer activation/resolution, accepted model designs, full source jobs, assisted
-design/custom creation and runtime hard-limit guards remain incomplete. Minimal
-scope-store fallbacks are compatibility behavior, not an accepted final resolver.
+Continue from those owners and their receipts. Generation/design publication stays
+distinct from executable-component activation; prefix jobs link to actual executions
+without claiming metadata registration or source observations are approval.
 
-Use the remaining-work sequence above for execution. Extend existing stores and
-qualified Recipe/native closures only where the successor contract needs it; do
-not repeat migrations or recreate completed jobs/qualification infrastructure.
-Local source manifests are build inputs, not another authoritative installed
-catalogue or approval store. The shared Sempai/connections/v3.5 owners retain their
-responsibilities; prefix work does not absorb their remaining implementation.
+### Current development builds and historical evidence
+
+Follow [the development policy](../development-policy.md#shared-source-and-build-ownership-2026-10-22)
+for all new work. On this host, use the common repository-root checkout and
+configured `/Users/ollama/brassclaw-target`, serializing Cargo under
+`/private/tmp/brassclaw-target-cargo.lock`. Invoke Cargo directly with its inherited
+configuration; no inline target override, shell wrapper, target2 or mutable build
+mirror. Keep the mandatory disk-space rules and preserve needed evidence before
+cleanup. Coordinate relevant source edits during validation; a build lock alone
+does not freeze source. Other hosts use their configured canonical target.
+
+Dated source/binary/receipt archives below remain valid only for their recorded
+claims and inputs. Do not rebuild from them, restore them over current source or
+rewrite an old receipt to describe the new build environment. Reuse applicable
+evidence, complete coherent changes, and validate only the remaining affected
+requirements; final integration/cutover gates still apply.
 
 ### Historical boundary summary
 
 The former 2026-10-21 summary is superseded by the current delivery table and
 remaining-work sequence above. Retain the dated Phase B/C entries below for exact
 implementation/evidence history. Their whole-plan completion limits still apply.
-All builds for this chat use `/Users/ollama/brassclaw-target2`; concurrent work owns
-target1. No target-capacity result authorizes inference-service changes, hidden
-source removal or declaring the complete plan implemented.
+Historical builds used `/Users/ollama/brassclaw-target2` while concurrent work
+used target1; that split is retired and must not be recreated. No target-capacity
+result authorizes inference-service changes, hidden source removal or declaring the complete plan implemented.
 
 ## 1. Recipe-first workflow and intended result
 
@@ -373,8 +1062,10 @@ Redesign / Create prefix (separate Tier-1 Recipes)
 Generate is a durable, model-free build workflow, not direct invocation of a
 developer script. For a selected registered target it produces a reproducible,
 source-backed, capacity-checked artifact suitable for the declared consumer. For
-Kohai/Sempai that means the required base-plus-domain/reviewer composite, not just
-a parent reference requiring an undocumented second manual build. Orchestrate
+Kohai/Sempai that means the complete selected domain/reviewer artifact, including
+a composite only where its explicit coverage contract requires one, not a parent
+reference requiring an undocumented second manual build. Default selection uses
+base; specific role/domain selection does not automatically append base. Orchestrate
 missing/outdated parents and composite compilation as separate reusable Recipe
 tasks under one visible operation; reuse eligible immutable parents. Pin a coherent
 source/parent selection and retain child job references. Never secretly activate,
@@ -537,14 +1228,79 @@ stage, with its own network permissions, recorded revisions and failure outcomes
 
 ### 4.1 Production compiler contract and artifact layout
 
-Extract a library/worker interface consuming only immutable registered inputs:
+**Required migration under the corrected prefix/prompt ownership:**
+
+The compiler changes below must connect to the existing callers identified in
+§5.3's source-only caller audit. An accepted generated artifact alone does not
+replace the installed catalogue's current prefix source or qualify the existing
+interceptor's review/recomposition order. Implement those consumer changes through
+their owning runtime/transport/design stores, without a parallel reader or loop.
+
+1. Inventory `prefix_template.py.inject_reference`,
+   `prefix_reference_components.rs::template_adapter_draft`, measurement capture/
+   Recipes, exporters/package validators and UI/CLI guidance that generate or
+   require `vllm_prefix_template.jinja` or `--chat-template`. Preserve legacy
+   originals/readers/receipts, but remove provider-file installation and global
+   role-template selection from the production path. **Do not remove local
+   provider/model-specific prefix generation.**
+2. Extend the existing versioned package/manifest with the finished target-specific
+   prefix payload, exact text/UTF-8 hash, role/task/composite, explicit selected
+   provider/model (including inactive role targets), accepted prefix-format/design,
+   tokenizer/default-format evidence, canonical policy and the joining contract.
+   Migrate producer, validators, stores, seeded Recipe handoffs and consumers
+   together through existing owners. Required role knowledge belongs in that
+   payload, not an assumed provider-side Sempai template. No parallel registry.
+3. Use shared reusable PythonCode/Recipe compilation stages with accepted
+   provider/model-specific prefix rendering. Produce the fixed exact payload at
+   generation time. Independently, Kohai's existing adapter formats only the
+   Orchestrator's dynamic prompt at runtime before optional Sempai review. If
+   connected/enabled, Sempai receives that formatted prompt, uses its own finished
+   reviewer prefix/design for its call and returns the final dynamic prompt.
+   Kohai's assembler then reads the intended pinned prefix and adds it unchanged
+   once before that returned final dynamic prompt, without invoking the formatter
+   again. Sempai's reviewer prefix stays in its own request and is not part of
+   that returned dynamic prompt. No runtime prefix rendering,
+   template reinterpretation, normalization, newline rewriting or source rebuild.
+   Define framing/separators at the correct target layer before qualifying the
+   join; neither side may silently add a second set of model control markers.
+4. Use the explicit selected target for generation/redesign/budget planning even
+   when another model is active. Qualification previews reuse the **join** and
+   dynamic-prompt formatting contracts; they consume the already formatted
+   prefix rather than treating it as semantic input to a whole-request formatter.
+   Keep prefix payload hash, dynamic-input/format identity, assembled-request
+   identity, current policy and real token-attribution receipts separate. Unknown
+   capacity/format is blocked, never replaced with the active model's defaults.
+   Mandatory overflow stays Capacity blocked with originals intact.
+5. Expose no production provider-config/template-install/restart action. Keep
+   historical exports readable as labelled evidence. Production cannot require
+   access to provider files, Compose, systemd, host environments or SSH.
+6. Test byte/character equality of the generated prefix before and after preview,
+   dynamic prompt formatting, joining, lossless transport encoding, final mapping
+   and resumption. Cover Unicode, CRLF/newlines, quotes/backslashes and model
+   delimiters, separate fixed artifacts for two models, same-model role switching
+   without leakage, inactive WebUI generation targets, no double injection, and
+   real prefix/prompt/total/output boundaries with zero sends on violations.
+   Qualify the exact prefix-first join before using `leading_prefix_chat` as
+   evidence for that target. Generic physical-span measurements remain useful
+   diagnostics, but they cannot authorize a reordered dynamic-tools-before-prefix
+   serving path. Unsupported default/transport mapping blocks the target until
+   the adapter preserves the required join. Cache reuse needs its own evidence;
+   existing custom-template receipts cannot qualify this production path.
+
+Extract a library/worker interface consuming immutable registered inputs:
 profile/policy revision, coherent source export, exact component dependencies,
-verified teaching package where applicable, model configuration, tokenizer files,
-chat-template adapter and target capability revision. Paths are internal artifact
-handles. Build-time refresh, model calls and live host/process inspection are
-excluded; the scripts' synthesis/doctor/run/reset modes are not production build
-entry points. Test the real build with provider/network access unavailable, not
-merely a declared offline flag. Imports must not start clients or fetch sources.
+verified teaching package where applicable, selected provider/model specification,
+accepted **prefix** format/design, canonical ceilings and pinned model/tokenizer/
+default-format facts. Its result is the complete target-specific prefix text and
+provenance, not a runtime-neutral document that Kohai subsequently reformats.
+The dynamic-prompt formatter and prefix assembler have their own versioned
+contracts; measurement connects their final combined output without merging the
+ownership of the two formatting stages. Obtain model facts through supported
+metadata or authorized versioned official/operator imports, never provider-host
+configuration access. Paths are BrassClaw artifact handles. Build-time refresh,
+inference calls and live host/process inspection are excluded. Synthesis/doctor/
+run/reset modes are not production build entry points. Test fixed-snapshot builds
+without provider/network access; imports must not start clients or fetch sources.
 
 Specify supported Python/library versions, installed dependencies, CPU/RAM/disk/
 time limits, bounded child-process/output handling, cancellation, stage checkpoints
@@ -558,7 +1314,8 @@ Resume verified stages; never publish a killed compiler's incomplete export.
 | Input manifest | Canonical release/catalogue/source/policy/compiler/tokenizer/template identities and all pinned dependencies. |
 | Raw source package | Complete original bytes, source disposition, selected/omitted whole-unit map and licensing metadata. |
 | Evidence index | Stable IDs, original ranges/fields/revisions, original, display and rendered hashes, the pinned transformation/mapping manifest, applicability and navigation. |
-| Model input | Stable reference text and registered client/server rendering adapter; no job IDs, live conversation or fetch timestamps. |
+| Finished target-specific prefix | Immutable provider/model-specific formatted text for the selected role/task/composite, containing required knowledge/instructions/contracts and exact character/UTF-8 identity. No live history, job IDs or per-turn timestamps; no server configuration file. |
+| Prompt/join/measurement handoff | Kohai first formats only the Orchestrator's dynamic prompt for its target pair. A connected/enabled Sempai corrects that already formatted prompt with its own reviewer prefix/target design and returns the final dynamic prompt. Kohai then inserts the intended pinned prefix unchanged exactly once, with no second formatting of the return or prefix. Retain separate prefix, initially formatted dynamic prompt, review request/result, target join, assembled request and whole-request token identities. |
 | Token manifest | Actual reference/shared/full-envelope token counts and leading-token hashes across supported variants; runtime cache assumptions separate. |
 | Build validation receipt | Coverage, artifact integrity, source/teacher checks, capacity, deterministic reproduction and specific blocked/error reasons. |
 | Quality/cache observations | Append-only receipts bound to generation and actual validator/provider/runtime revisions; never substituted for originals. |
@@ -671,6 +1428,13 @@ and relevant runtime schema/capability definitions. Inventory every candidate an
 record whether it is included, superseded, historical, development-only or private.
 Curated inclusion rules must have reviewable reasons, not silent omissions.
 
+Treat `docs/reborn/model-token-limits.md`'s shared selection/design/assembly and
+generation-dialog contracts as current architecture reference candidates in that
+inventory. Reconcile inclusion with the existing release-document/embed owner and
+simplified K5 before claiming installed compiler uptake. Merely linking this guide
+from an embedded document does not prove its content was seeded. These documentation
+changes do not modify old generations or close source-package/runtime acceptance.
+
 Archive material and implementation plans are not current runtime truth. Preserve
 their provenance where useful, but label historical examples and unimplemented
 targets. `prefix_plan2.md`, `docs/archive/prefix_V3.md` and this upgrade plan must not
@@ -678,6 +1442,30 @@ become evidence that a target feature is already implemented. Keep development-o
 rules separate from runtime operator guidance. Exclude `LOCAL_TEST_ENV.md`, secrets,
 attachments, private deployment details, build products and patient data from the
 shipped reference package.
+
+### Skill knowledge and optional MCP publication
+
+A complete Skill needs no dedicated Recipe or command. Distinguish its reusable
+function contract, actual consuming/test workflows and optional MCP publication.
+The current `catalogue_source_export.rs` projects selected workflow closures (plus
+its explicit private-prefix source scope), not all independently approved unused
+library rows. Include every selected Skill regardless of missing MCP declaration;
+do not filter it as incomplete. A future broader library inventory needs explicit
+owner-derived selection/approval semantics, not a raw-row scan or a second registry.
+
+Extend source/render/knowledge acceptance with: a complete Skill without MCP,
+the same usage in two consumers, a reference Recipe without public exposure and a
+known Skill that is not an available model-call command. Optional `mcp_call` belongs
+to the immutable Recipe revision; malformed declared contracts still fail closed.
+Keep existing Retain/Read/Encoding/Digest/private compilation workflows and their
+exact evidence. "Canonical" in their names identifies that concrete workflow,
+not an existence requirement or ownership edge for every reused Skill.
+
+Changed packaged guides or generated Skill prose change source/package checksums.
+Keep historical receipts and captured tasks; qualify new source/seed revisions via
+the existing integrity/bootstrap/upgrade path before claiming serving uptake. Do
+not rewrite frozen teaching/probe archives. Regenerated prefixes and future quality
+probes must teach the corrected distinction without implying new executable APIs.
 
 ### Components themselves
 
@@ -699,7 +1487,9 @@ to understand them, not just `prior_knowledge_content`:
   real classes and full relevant bodies/metadata. Do not invent separate tables for
   classes 10/50 or describe classes 1–3 as a leaf/domain hierarchy.
 
-Include the complete eligible library. Retired/pending/rejected records are retained
+Target: include the complete eligible library once its broader owner-derived
+inventory is supported; current selected-closure export is not that full inventory.
+Retired/pending/rejected records are retained
 in their proper source/history stores but not presented as current callable usages.
 Consumer tags remain routing metadata, never validation evidence. Reject incomplete
 required associations/references and surface unsupported schema/version features.
@@ -750,7 +1540,8 @@ requires review; no greedy truncation or keyword-only coverage substitute. Recor
 source applicability and distinguish targets from observed runtime/older examples.
 Preserve every mandatory contract and negative requirement. Do not include live conversations,
 credentials or patient data in the seeded reusable reference. Add current installed
-component catalogue context through the base-plus-Sempai composite; deduplicate
+component catalogue context through Sempai's own declared content/coverage profile;
+compose shared sources explicitly where needed and deduplicate
 identical original evidence while retaining provenance and complete required content.
 
 The procedure teaches two related tasks:
@@ -788,7 +1579,7 @@ the current `proposed_components` transport or introduce unsupported insert fiel
 The standalone compiler's citation `--mode run` is a factual benchmark only and
 cannot replace the production reviewer/proposal response schema.
 
-Bind the base-plus-Sempai composite to the Sempai consumer independently of Kohai's
+Bind the Sempai generation (or its explicitly required composite) independently of Kohai's
 selected domain. Keep both provider selections DB-only and pin review generation
 and target request metadata through continuations. Add no Sempai model invocation
 solely because a deterministic Tier-0 task completed. Reference readiness, review
@@ -1128,7 +1919,11 @@ Use the accepted DB-only provider gateway and actual sink contracts; introduce n
 special Rust workflow executor or guessed API. The design provider may differ from
 the target model: pin both identities and capabilities explicitly.
 
-A Redesign task updates both design and knowledge: collect the current eligible
+A profile Redesign updates its content rules and knowledge under the selected pair
+design. Changes to shared format/limits compatibility require an explicit proposed
+pair-design successor and a visible impact review for all affected profiles; do not
+create a private Sempai/domain format design or change manual limits through model
+output. Collect the current eligible
 approved component catalogue, release/architecture documents and applicable model/
 cache evidence under the configured refresh/review policy. Preserve newly collected
 unreviewed sources in quarantine and report the prerequisite rather than treating
@@ -1150,7 +1945,8 @@ Use the existing host secret/data handling before export to the design provider;
 credentials and unrelated conversations never enter the review packet. User goals
 and imported content remain typed task data, not Python source or trusted authority.
 
-Provider output is a structured draft design: purpose/consumer, proposed source
+Provider output distinguishes shared pair-format/design changes from profile/content
+changes, with separate references/diffs. The profile draft contains purpose/consumer, proposed source
 registrations, coverage requirements, whole-unit selection and canonical ordering,
 section/rendering rules, teaching/validation requirements, target compatibility,
 expected tradeoffs and supported shared-engine options. Preserve the raw output,
@@ -1166,7 +1962,8 @@ requires new executable components, route them through separate supported author
 Q1/behavioral review/human Q2 and registration; do not treat the popup as approval.
 
 Compile a complete quarantined candidate generation with the current pinned sources
-and proposed model-specific design, including required base/domain composites; require
+and proposed pair-format/profile-content revisions, including composites only where
+the consumer explicitly requires them; require
 evidence preservation, coverage, formatting, capacity and reproducibility checks.
 Optional provider evaluations are explicit child jobs with first-pass/repair/transfer
 results and cache correctness separated. Show Unsupported, Capacity blocked or
@@ -1194,6 +1991,39 @@ reviewed bootstrap reference first; do not fall back to an ungrounded model call
 
 ### 5.3 Database-owned model specifications and model-specific designs
 
+#### Source-only caller audit — 26 October 2026; migration still required
+
+- V145 defines model specifications, design proposals and acceptance storage.
+  `prefix_model_designs.rs::PgPrefixModelDesigns::catalogue` still reports
+  `design_generation_available = false`. These records do not establish accepted
+  design generation, serving selection or Kohai's use of that design.
+- Ordinary skills-db `runtime.rs` wires `InstalledMontyCatalogue` as
+  `SystemBundleSource`; its `get_system_bundle_for_run` returns the retained
+  `task.view.prefix`. That is a task-pinned catalogue source, not evidence of a
+  stored provider/model design lookup or a finished target-specific artifact.
+- The wired `InterceptingModelGateway` currently captures an already assembled
+  request before optional review and then recomposes its messages. Preserving
+  an existing system basis during review does not prove a separate Sempai target
+  design/prefix or final-target prefix insertion only after correction.
+  Migrate this existing boundary instead of wrapping it in another workflow loop.
+- `PgKohaiPort` explicitly describes its routing path as having no Sempai wired;
+  do not mistake a direct test of that path for ordinary-runtime review/design
+  qualification or use it as a second implementation of the workflow.
+
+Steps 6/7, §4.1 and serving must therefore wire and qualify the existing owners:
+original Orchestrator prompt → Kohai formats only the dynamic prompt using the
+**same saved, accepted, pinned target design as the generator** → optional
+connected/enabled Sempai optimizes/corrects that formatted prompt and returns the
+final dynamic prompt → Kohai joins the intended final-target prefix unchanged
+exactly once, without formatting that return again → complete-request guard →
+submission. The review request resolves the design for Sempai's selected
+pair (the same design when the pair is shared) and its separately generated
+finished reviewer prefix; never copy the final provider prefix into editable review
+data. Reuse the existing design store, catalogue/task retention, Recipe orchestration
+and provider preparation/custody boundaries. Do not add a second design registry,
+prefix reader, provider client or loop. These observations are source-only and
+do not certify the required migration or runtime behavior.
+
 #### Budget-aware design and generation contract (2026-10-22)
 
 **Always-on hard limits, including when budgeting is disabled (operator
@@ -1206,6 +2036,12 @@ for deployed context and output constraints. Unknown required limits/tokenizatio
 block a model-facing dispatch with a setup/measurement reason; do not guess a
 character-to-token ratio or depend on the provider rejecting the request.
 
+The planning term "prompt reserve" means space reserved for the canonical
+`max_prompt_tokens` ceiling; it is not a separately editable or optional setting.
+Generate always consumes both canonical ceilings, even with discretionary token
+budgets disabled. Removing an already captured model-limit entry must invalidate
+old text-client work rather than turn that work into an unbounded request.
+
 Kohai must receive two separately identified, host-resolved limit/geometry bundles:
 the active answer provider/model and the configured Sempai provider/model. A bundle
 pins canonical policy revision, prefix generation/design, injection adapter,
@@ -1216,24 +2052,34 @@ Do not send Sempai only its own limit while withholding the target answer limit.
 
 The pre-call review/prompt-optimization Recipe must implement this sequence:
 
-1. Build the exact Sempai request, including its own base-plus-Sempai prefix,
-   trusted instructions, original-target limits, reviewable prompt/evidence/history,
+1. Kohai formats only the dynamic Orchestrator prompt for the final answer
+   provider/model using the same saved accepted pair-design revision as its prefix
+   generator, with the actual retained history/tools. Preserve that formatted
+   dynamic prompt separately from the finished prefix. If Sempai is disabled,
+   this is already the final dynamic prompt; proceed directly to the prefix join.
+2. If Sempai is connected/enabled, build its exact request around that already
+   formatted dynamic prompt as review data, including its own target-specific
+   Sempai prefix (or explicitly required composite), trusted instructions,
+   original-target limits, reviewable prompt/evidence/history,
    tools and provider framing. Check Sempai's prefix and non-prefix prompt ceilings
    independently and complete sequence plus output against its deployed context
    **before** dispatch. Knowledge already present in a verified identical prefix
    need not be duplicated, but a hash/reference to absent evidence does not mean
    Sempai inspected it. Use only qualified evidence views or multi-stage inspection
    with explicit coverage; otherwise report Capacity blocked and preserve originals.
-2. Retain the exact Sempai request/result and coverage. Treat its revised prompt as
-   untrusted candidate data, keeping immutable prefix/tool protocol/user constraints
-   intact. Enforce the selected review-result schema and allowed-edit contract.
-3. Reassemble the **final** answer-provider request after applying the allowed edit
-   and adding actual retained history, tools, role framing and the prefix exactly
-   once. Re-tokenize/check the effective provider layout against that target's
+3. Retain the exact Sempai request/result and coverage. Sempai returns the final
+   dynamic prompt to Kohai. Treat that return as untrusted candidate data while
+   keeping the immutable prefix, target format/design, Tool protocol and user
+   constraints intact. Validate the selected result schema, permitted edits and
+   compatibility with the retained final-target format; validation does not
+   reformat or normalize the returned dynamic prompt.
+4. Kohai joins the intended already generated fixed target prefix unchanged exactly
+   once before the final dynamic prompt. Do not format Sempai's return again.
+   Re-tokenize/check the effective provider layout against that target's
    prefix and non-prefix prompt ceilings and full context/output. A smaller draft
    or Sempai's approval does not establish the final request fits. This check also
    runs when review is disabled, returns unchanged text or produces no edit.
-4. Perform the same unconditional check at the shared last pre-dispatch boundary,
+5. Perform the same unconditional check at the shared last pre-dispatch boundary,
    after provider transforms and before any real request/retry/tool continuation.
    Detect changed target/policy/envelope identities; no stale check, hidden replay,
    silent history truncation or fallback to the original oversized prompt. A bounded
@@ -1286,13 +2132,14 @@ Prefix-Maker, and to Generate, Regenerate, Redesign and Generate model design:
    policy or geometry is an explicit prerequisite for a target-facing build;
    source-only compilation and diagnostic measurements may still proceed.
 2. Derive the rendering budget from the smaller of the configured prefix ceiling,
-   the design's requested size and deployed context minus the permitted dynamic
+   the profile generation request's requested size and deployed context minus the permitted dynamic
    prompt, required output and any separately accounted technical framing.
    Account for framing exactly once. Configuration position capacity is an
    additional compatibility bound, never evidence of deployed capacity. Reject
    impossible reservations; do not silently reduce the promised prompt/output.
    A design request is immutable build input, not another model-limit setting.
-3. The accepted declarative design must specify budget-dependent presentation:
+3. The accepted profile/content rules, bound to the shared pair-format design, must
+   specify budget-dependent presentation:
    mandatory coverage, whole-unit/dependency groups, optional-unit priorities and
    stable tie-breaking, navigation/citation overhead, deduplication rules and
    qualified render/selection strategy. Every supported budget band must preserve
@@ -1312,8 +2159,8 @@ Prefix-Maker, and to Generate, Regenerate, Redesign and Generate model design:
    including smaller/larger supported bands. No permission to increase settings,
    alter vLLM, omit mandatory knowledge or accept the provider's fit assertion.
    Redesign returns the complete updated candidate and reviewed design together.
-6. Exact measurement must check the complete base-plus-domain composite for that
-   consumer, with prefix injection once, actual tools/history/role framing and
+6. Exact measurement must check the complete selected prefix/generation or explicit
+   composite for that consumer, with prefix injection once, actual tools/history/role framing and
    output reservation. Use a qualified adapter-defined prefix/dynamic boundary;
    token counts of separate text snippets are not generally additive. An LCP
    across arbitrary probes proves shared tokens, not a semantic prefix size.
@@ -1432,18 +2279,190 @@ define migrations/DTOs explicitly where current storage lacks these records.
 | --- | --- |
 | Model specification revision | Stable registered model identity plus exact weights/config/tokenizer/template identities, technical context/output limits, supported roles/tools/thinking/grammar, architecture and attention/recurrent-state facts with versioned evidence and Unknown where unavailable. Display name alone is not identity. |
 | Target runtime/cache revision | DB provider/model binding, injection adapter, actual deployment/backend/KV and recurrent dtypes, group/page/chunk/checkpoint layout, effective limits and capability/qualification receipts. Model architecture and deployment-specific cache settings remain separate. |
-| Model design revision | Immutable formatting/ordering/whole-unit selection, evidence-view transformation and audit/procedure revisions, teaching/rendering rules, explicit prefix-capacity/reserve contract and supported compiler-adapter revision/options. Pin consumer envelope and optional planner schemas, property order, fingerprints and decoder constraints separately from factual sources. Link exact model specification and compatible target runtime revisions, Prefix-Maker proposal/review evidence and schema/hash. |
-| Profile/model design selection | Revision-checked mapping from profile and consumer to an accepted model design/coverage revision and compatible target; profile requirements remain independent of reusable model formatting defaults. |
+| Model design revision | Immutable provider/model-pair design primarily defining supported prefix and dynamic-prompt formatting standards, framing/join rules, tokenizer/cache compatibility and references to canonical prefix/prompt limits and context/output facts. Record supported whole-unit compilation/teaching options and their compiler revisions without embedding role knowledge. Generator, Kohai and Sempai use the same accepted pair-design revision when targeting the same pair; Kohai applies its dynamic-prompt format before optional review and its exact-prefix join after Sempai returns the final dynamic prompt, without reformatting that return. No role-specific duplicate design, mutable formatter store or editable limit copy. Prefix representation is resolved at generation. Link exact model specification, provenance, compatible runtime evidence and Prefix-Maker proposal/review/schema/hash. |
+| Profile/model design selection | Revision-checked mapping from a role/content profile to its provider/model-pair design and coverage requirements. Different role prefixes for one pair share the pair design; content selection does not create another copy of limits or formatting. |
 
-A model can have multiple historical designs and profile-specific overrides; do not
-make one global prefix token target apply to every profile/model. Shared defaults
-are immutable reusable references with explicit overrides, not copied mutable blobs.
+A provider/model pair can have multiple historical design revisions. Profile-specific
+coverage/content choices and smaller generation targets do not override the pair's
+formatting contract or hard ceilings. Do not make one global token target apply
+to every pair or copy a pair design for each role. Shared defaults are immutable
+reusable references, not copied mutable blobs.
 Record measured counts and full-envelope/output allowance; token budgets disabled
 does not remove model context limits. A supported chunk-alignment strategy may be
 part of a target-specific design, but changing runtime cache settings invalidates its
 compatibility evidence without inventing different underlying model architecture.
 
-Add a Tier-1 Generate model design Recipe: select an active registered model/target,
+**2026-10-26 source-reader prerequisite completed:** the existing artifact GET and
+inspector now expose exact template alternatives, original-file and decoded-template
+hashes, tokenizer/special-token declarations and declared memory/window fields.
+See the [scoped acceptance](../validation/2026-10-26-prefix-format-sources.md).
+This does not derive a default, fill/accept a design or prove current serving/cache
+facts. The [shipped Prefix-Maker teaching successor](../validation/2026-10-26-prefix-maker-construction-teaching.md)
+now reconciles the old server-injection/adjusted-template instructions and has exact
+offline export plus actual native packaged-reference/import/sourcejob acceptance.
+The then-qualified teaching described the earlier review-before-format order;
+the operator's later correction supersedes that directive: Kohai formats the
+dynamic prompt first, optional Sempai returns its corrected final dynamic prompt,
+then Kohai joins the unchanged prefix without reformatting the return. Historical
+teaching receipts retain their exact old bytes; revised teaching requires its own
+applicability check. Neither receipt implements those runtime consumers. The [V180 draft successor](../validation/2026-10-26-prefix-pair-construction.md)
+now extends that same proposal owner with a role-independent, retained-artifact-bound
+construction format, actual operator API/UI import and strict literal worked cases.
+It preserves historical profile v1/v2 records and the old acceptance FK; it does not
+supply an accepted formatter or machine-ready runtime design. The
+[complete-case successor](../validation/2026-10-26-prefix-pair-cases.md) adds the
+source-owned operator GET `/api/webchat/v2/prefix-model-designs/proposals/{specification}/{proposal}/cases`
+and canonical `brassclaw-prefix-pair-case-packet/1`: retain all cases, original
+ordered context JSON and literal expected prefix/full-render strings. Whole-packet
+capacity failures block export; never omit or shorten cases. The candidate Recipe
+`compare-prefix-pair-default-template-cases` prepares that packet, dispatches the
+existing UTF-8 digest usage and existing original-template encoding usage in
+separate binding/executable steps, then compares complete rendered hashes/token
+IDs and fixed-prefix token partitions in reusable pure PythonCode. It supplies no
+replacement template. The four-context independent HF/native/Monty evidence checks
+these stages and the inspected Recipe graph. The subsequent
+[whole-Recipe/journal prerequisite](../validation/2026-10-26-prefix-pair-journal.md)
+now executes that complete graph through the actual contained global Python root,
+registered native usages, kernel and PostgreSQL journal. Its source-owned capture
+and receipt verifier compare exact native selection/arguments/answers/attempts,
+all pure/native input-result handoffs using each step's captured limits, and the
+acknowledged worker/preparation identity. A valid text mismatch completes with a
+negative result; a missing leading prefix fails at encoding before comparison.
+Forged receipts, unrelated runs, foreign source namespaces and wrong preparation
+revisions are rejected. These checks are test-only development prerequisites,
+not installed/bootstrap workflow qualification or an ordinary admitted public job.
+
+**Bootstrap prerequisite completed with scoped R4 acceptance:** the strict
+missing-leading-prefix oracle now follows the actual `InputEncode` →
+`InvalidInput` mapping. The exact packaged six-case qualification, retained
+journal/source/step-bound checks, forged-record and incomplete-intent rejection,
+no-replay readback and existing full native Prefix integration pass. See the
+[acceptance and preserved R1–R3 failures](../validation/2026-10-26-prefix-pair-bootstrap.md).
+This removes the attester startup blocker. It enables no public Pair job or
+provider/model design by itself; the ordinary private caller remains the next
+implementation step at that baseline. The later [private admission](../validation/2026-10-27-prefix-pair-private-admission.md)
+and [operator diagnostic](../validation/2026-10-27-prefix-pair-operator.md) receipts
+now close that private/public diagnostic wiring. They retain the separate
+model-design/serving gates.
+
+**Grouped model declarations — scoped inspector acceptance:** the
+[validated successor](../validation/2026-10-26-prefix-grouped-quantization.md) closes
+the earlier projection gap: direct AWQ-style quantization fields alone
+omitted `compressed-tensors` group parameters. The frozen Ornith configuration
+declares that format, four-bit weights in named groups, explicit excluded weights
+and 24 linear/8 full-attention layers. The existing read-only inspector now
+retains source-resolvable group pointers,
+targets, weight/activation parameters and exclusions. Preserve missing versus
+null and exact original hashes; never infer effective attention-KV/recurrent
+precision or serving capacity from these declarations. Validate grouped and
+nested configurations, escaped group identifiers and exclusion of unrelated
+fields through the existing projection/caller checks. The guarded single-file
+successor now passes all nine focused tests, including group/nested/pointer cases
+and actual frozen-original PostgreSQL readback, using the combined emitted image
+and applicable strict lint. It is separately scoped from Pair bootstrap R4 and
+from the other chat's overall Auth/Secret acceptance. Accepted designs, compiler/
+Kohai consumers and effective runtime/cache evidence remain open.
+
+Before exposing a case-check action or consuming its result for acceptance:
+
+1. **Completed for the exact packaged graph:** installation-owned noncircular
+   bootstrap now qualifies its Recipe, pure-export/dependency closure and existing
+   usage/native combinations. Reuse that qualified program and its exact proof;
+   changed/authored graphs need their own required qualification. Preserve installed
+   overrides and retained task selections; this is not general pure approval.
+2. Continue from the [V181 pair-target metadata prerequisite](../validation/2026-10-26-prefix-pair-job-targets.md),
+   which is implemented in the existing immutable job owner. Rust represents
+   Profile and Pair explicitly; only `check_cases` with target mode permits both
+   profile columns to be absent. Existing profile/FK/positive-revision and
+   immutable-row contracts remain enforced. Pair request metadata references exact
+   specification/proposal IDs; initial capture must equal the complete source-owned
+   packet. Same-ID/request retries retain the first program/input, changed explicit
+   inputs conflict, and concurrent distinct targets yield one original/one conflict.
+   No profile sentinel or settings copy is needed. Metadata is not admission:
+   the previously accepted metadata path did not execute Pair. The new seven-file
+   successor now connects private Pair admission/selection/receipt handling in
+   source, but awaits compilation and actual native acceptance. Profile inspection
+   still rejects Pair and no public pair-job route is enabled. Qualify the same
+   private ResultOnly admission/selector/settlement path, then expose pair-aware status through
+   the existing facade/read projections, validating original pair identity/namespace.
+   Retain the original captured selection/input/result on reconnect. Do not replace
+   these completed storage contracts, accept partial caller packets, copy limits,
+   or introduce a public matching/queue/VM alternative.
+3. Promote/reuse the exact tested source-owned capture and journal verifier in
+   that qualified caller, preserving its integrity scope rather than moving
+   preparation/comparison decisions into Rust. Verify actual retained digest and
+   original-template encoding dispatch journals, exact inputs/results with each
+   step's captured bounds, worker and acknowledged preparation revision before
+   trusting the comparison. The pure comparison JSON alone proves no native
+   provenance. Preserve resource/unknown/cancelled outcomes; no truncation, fallback,
+   limit increase or replay to manufacture success. A mismatched literal remains a
+   failed case; a template/preparation failure remains a failed measurement.
+4. Retain complete per-case results with their original job; reconnect/readback
+   never redispatches completed work. Expose the scoped `retained-template-cases-only`
+   qualification. This does not prove final provider wire, full-prefix fit, live
+   memory/cache behavior or answer quality; those retain their own gates.
+
+Broader provider/documentation archive bindings, deterministic registered
+construction options, final provider-envelope checks and trusted acceptance also
+remain prerequisites. Implement them in this same owner before enabling
+model-design generation, then
+connect the accepted pair revision to compiler and Kohai. Keep role knowledge and
+role-prefix candidates separate, preserve historical records, and do not copy
+mutable limits or pair formats into each role. Do not replace these remaining
+consumer steps with another research-note store or treat draft import/inspection as
+model-design generation or serving acceptance.
+
+**Primary design-generation requirement:** fill the formatting parts with the
+[concrete construction specification](../reborn/model-token-limits.md#formatting-design-must-contain-construction-instructions).
+A format label/standards name plus limits is not an accepted design. Acquire the
+selected provider's exposed defaults/facts and research the exact model/tokenizer/
+default-template and backend/cache documentation through existing preparation
+usages. Preserve immutable source bytes/revisions/hashes and map each saved rule
+to that evidence. Base-model or quantized-derivative claims require exact target
+matching; public defaults do not prove the currently effective endpoint mapping.
+
+Implement the planned Generate model design Recipe through the existing admission
+and component owners, ordering discovery/research/archive →
+evidence/target reconciliation → Prefix-Maker derivation of supported declarative
+prefix and dynamic-prompt construction rules → exact case/token/envelope checks →
+retained proposal/acceptance/binding. Include literal delimiters/framing ownership,
+template branches for tools/history/reasoning/multimodal inputs, exact join rules,
+capacity references and evidenced memory/cache packing constraints with units.
+Record actual architecture/cache differences and Unknowns, not assumed generic
+ChatML or INT4 KV geometry. Model-generated rules cannot install arbitrary code,
+change server settings or enable unsupported adapters. Explicitly qualify any
+missing schema/store/formatter support in the existing owners before accepting a
+filled design. Profile knowledge-selection rules remain separate from pair format.
+
+Acceptance requires complete usable construction cases and traceability, not
+nonempty text or an LLM assertion. Show template matching, input fit, cache behavior
+and held-out answer quality separately. The compiler and Kohai must actually consume
+the accepted saved construction instructions; storing research notes without those
+consumer paths does not close model design or serving. Normal Generate uses the
+saved design deterministically and performs no hidden research/provider call.
+
+Populate the pair design from provider-supplied metadata and supported API discovery
+where available, plus versioned official model/provider documentation. Record each
+fact's origin, observed revision and whether it is reported, operator-supplied or
+independently verified. Do not assume a model-list endpoint supplies tokenizer,
+formatting standards, cache geometry or both input ceilings. Missing facts can be
+filled manually through the existing model/design settings; unknown facts remain
+visible and block only operations requiring them. Refresh produces a reviewed
+successor and never silently overwrites manual settings or changes an active design.
+
+Expose manual edits of `max_prefix_tokens` and `max_prompt_tokens` for **every
+registered provider/model pair**, including inactive pairs, through the existing
+provider revision/CAS endpoint and shared settings query described above. Both
+Inference and Prefix/model-design views edit that same canonical map entry; design
+views show linked current policy plus their historical pinned policy, not another
+editable limit record. Validate edits against known physical constraints; raising
+a configured ceiling does not enlarge the provider's actual context. A policy edit
+must visibly mark affected artifacts/design compatibility for revalidation and
+generation/regeneration as needed; never mutate fixed prefix characters in place.
+Running tasks retain design/artifact pins but still respect live hard-limit checks.
+
+Add a Tier-1 Generate model design Recipe: select an explicitly registered model/target
+(including an inactive role target),
 collect verified architecture/runtime evidence, use a fresh compatible Prefix-Maker
 on the design provider, retain the proposed declarative design, validate supported
 rendering/capacity options and trial examples, then expose it for acceptance. This
@@ -1487,8 +2506,11 @@ to reconstruct the base prefix.
    current document inventory, full text, release/commit identity, checksums,
    compiler/profile revisions, source classifications and licenses where needed.
    Existing first-party executable component seeding remains authoritative.
-2. Add reference-source registration to `initialize_runtime_components`, after
-   migrations and required component seeding, before integrity/readiness completes.
+2. Supply reference-source registration as a seed participant to the one
+   `initialize_runtime_components` sequence owned by [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben)
+   (boot prerequisites). That owner performs ordering after migrations/component
+   seeding and before integrity/readiness; do not add a second initializer or a
+   WebUI-only seeding/startup path.
    Reuse `reborn_docus` and its supported interfaces for compatible document records;
    add reviewed schema support for release/provenance/immutable revisions rather
    than inventing fields that current constructors do not accept.
@@ -1530,11 +2552,11 @@ not existing tables/API fields:
 | Record | Required content |
 | --- | --- |
 | Prefix profile | Stable profile ID, display metadata, registered compiler/version/checksum, source/coverage policy, model targets and supported validation adapters. |
-| Design revision/proposal | Model-specific declarative design/schema revision and checksum, profile/consumer bindings, predecessor, pinned Prefix-Maker/design-provider/model-specification/source/target references, raw proposal, diff, exact updated candidate generation and validation/acceptance evidence. Draft proposals never become accepted designs by a status label alone. |
+| Design revision/proposal | Shared pair-format revision and separate profile-content rule references/checksums, explicit predecessor/bindings, pinned Prefix-Maker/design-provider/model-specification/source/target references, raw proposal, scoped impact/diff, exact candidate generation and acceptance evidence. Existing profile-bound proposal storage requires a compatible owning-layer migration, not duplicated mutable pair settings. A draft/status label is not acceptance. |
 | Model specification/design selection | DB-owned versioned records and mappings from section 5.3, with explicit compatibility/Unknown states and retained revisions; no browser-only model-formatting configuration. |
 | Source registration/observation | Versioned profile-source identities and applicability/review state plus separate append-only availability/content-check receipts from section 8.1. Generation manifests pin used revisions; transient observations do not alter source or generation identity. |
 | Prefix generation | Content-addressed ID, profile ID, compiler/input snapshot identities, full bundle text, evidence cards, immutable source/dependency manifest, model/tokenizer/template hashes, exact token counts and quality results. |
-| Generation job | Durable request/run ID, profile, pinned input references, state/stage, timestamps, logical step-invocation references, execution attempts, cancellation/fencing, checkpoints/artifacts and classified errors. |
+| Generation job | Prefix request/profile, pinned source/design/target references, stage/artifact progress and original shared admission/run/invocation references. Execution attempt, cancellation/fencing, durable counts and effect certainty come from the runtime owner; any displayed copies are non-authoritative projections. Prefix compiler artifacts are not VM continuation checkpoints. |
 | Active selection | Provider/model/consumer binding to one immutable generation or explicitly compiled composite; desired/effective state and revision for compare-and-swap. |
 | Cache observation | Provider process/model identity, generation/token-prefix hash, runtime/cache-layout fingerprint and salt policy, expected-content checks, native/extra-external hits, warm/reload measurements and time; never confused with generation success. |
 
@@ -1556,26 +2578,29 @@ disconnect does not cancel admitted work. Deduplicate repeated submissions and
 serialize conflicting profile/target mutations, while allowing independent builds
 within configured resources.
 
-Job submission deduplication is distinct from Tool-invocation retry safety. Reuse
-the runtime's durable invocation/effect records, not a second permanent turn queue
-or persisted BuildInstruction. Each logical step invocation retains its positive
-dispatch count, including the initial dispatch, across waits, reclaims, process
-restarts and replacement attempts. Before effects, persist dispatch intent, pinned
-workflow/implementation references, required argument identity and any stable
-deduplication key; failed persistence prevents dispatch. Persist completion/effect
-status against that invocation before advancing the Recipe.
+Use [simplified Phase 0a](../../simplified_v3.md#phase-0a--ground-truth-komponentenverträge-implementieren) items 9–10 for the shared failure/invocation
+contract and [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) for its admission, cancellation, durable
+intent/count/effect records and recovery implementation. Prefix must not add its
+own turn queue, permanent claim/retry ledger, persisted BuildInstruction or
+supervisor. A generation job stores product stages/artifact references linked to
+those original executions. Browser reconnect reads that status; it never admits
+another run or resets an invocation. A request UUID deduplicates operator job
+submission, not uncertain Tool effects.
 
-Apply skills.md's exact failure contract and simplified-v3 Phase 0a items 9–10.
-Retry only explicitly eligible outcomes with trusted read-only or tested durable
-deduplication evidence. Reuse the same key and arguments throughout a continuation;
-a new worker attempt does not reset the logical invocation count. A timeout or
-missing result is unknown completion, never proof of no effect. Recipes reconcile
-compiler artifacts/publication status through existing primitives before deciding
-whether a permitted retry is safe; unresolved effects stop with a classified error.
-Recheck cancellation, claim fencing, live Tool policy, auth and resource constraints
-before every permitted retry. Never rerun confirmed effects because output checking,
-reply delivery or a later step failed. No DB-plus-provider/filesystem atomicity is
-assumed; define durable reconciliation for effects outside the DB transaction.
+Prefix-specific work is to provide operation status/artifact lookup and publication
+receipts under the existing runtime contract, defining how an already-built artifact
+or committed generation is reconciled without repeating the effect. Persist prefix
+records and their original execution links through supported transactions; no
+DB-plus-provider/filesystem atomicity is assumed. The shared owner retains counts,
+keys, pinned selections and confirmed/unresolved effect certainty across recovery.
+Unknown outcomes stay unresolved until that supported reconciliation establishes
+what happened; output/reply/warm failure never permits publication/build replay.
+
+Until the shared durable retry adapter is implemented and qualified, ordinary
+retained prefix usages remain `stop`/`max_attempts: 1`. Safe read-only/deduplication
+evidence alone cannot enable retries. Consume the shared live policy/settings and
+attempt-freshness checks before dispatch, including after a wait; do not implement
+retry loops in compiler adapters, prefix Recipes or UI reconnect handlers.
 
 Publish only after all required evidence/coverage/token checks pass. Publication is
 atomic; a separate selection change is independently atomic and revision-checked.
@@ -1631,8 +2656,11 @@ knowledge plus a model-specific design and complete updated candidate generation
 review, with no active prefix changed. Offer Cancel and Confirm redesign;
 Escape/cancel makes no job or provider call. Revalidate prerequisites and exact
 revisions server-side on confirmation. If they changed, require confirmation of the
-updated request. Persist confirmed request identity/idempotency before dispatch so
-double clicks, reconnects or recovery do not create duplicate confirmed effects.
+updated request. Persist the prefix-specific confirmed request identity and
+link it to shared admission's idempotent request/run before dispatch; consume
+[simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) for claims, execution fencing and recovery. Double clicks or
+reconnects read the original request/run; prefix must not introduce a second
+execution claim or retry mechanism to prevent duplicate effects.
 This is the requested UX confirmation, not a per-Tool authorization lease; current
 global policy, external authentication and technical limits still apply independently.
 
@@ -1659,8 +2687,13 @@ generation and activation remain distinct. Seed upgrades cannot overwrite custom
 profiles/designs; removed drafts cannot break retained job/artifact references.
 
 Add a **Model Designs** area/tab in the same Prefix settings section. Its selector
-lists active DB-registered provider/model targets, explicitly identifying the model
-being designed for and the separate provider doing the design. **Generate model
+lists eligible DB-registered provider/model targets, including models not currently
+selected for any active role. Explicitly identify the design target, whether it
+is active, its retained/unknown format/limits and the separate design provider.
+Selection of an inactive role target is sufficient for offline generation when
+its required pinned inputs exist; it never activates a model/provider. Disabled
+or deleted providers remain unavailable for inference, while retained artifacts
+can remain inspectable/offline inputs under their existing eligibility contract. **Generate model
 design** opens a confirmation summary, then admits the section 5.3 Tier-1 Recipe.
 List already generated model designs, including retained designs for inactive models,
 with model/provider identity, specification/design revision, formatting summary,
@@ -1678,8 +2711,11 @@ deployment change or active selection mutation. The list comes from persisted re
 and survives reload/restart, including historical designs and their receipts.
 
 The primary Generate action uses a registered saved build specification: profile,
-consumer, optional target revision, accepted source-refresh policy and reviewed
-coverage/teaching policy. Operators do not compose shell flags or choose packing
+consumer/role/task contract, explicit connected or WebUI-selected target/model
+revision, default-format request adapter, canonical token-policy revision,
+accepted source-refresh policy and reviewed coverage/teaching policy. A general
+source-only build may explicitly have no target; a target-aware build may not
+silently borrow the active model when the selected target is inactive. Operators do not compose shell flags or choose packing
 algorithms. Missing choices are explicit setup prerequisites. Snapshot-only offline
 building remains available without a provider. Advanced parent/composite actions
 are not mandatory hidden steps for normal target-aware generation.
@@ -1820,6 +2856,49 @@ remain separate steps. Define real store/adapter contracts before authoring comp
 rows. Record positive/negative intent cases and exact errors/retries; the UI opening
 calls the admitted workflow through the facade, not a second browser/server executor.
 
+### Required generation dialogs — operator clarification, 2026-10-26
+
+These dialogs are the interactive projection of existing shared readiness/admission
+contracts, not a WebUI-only model-call exception. Headless callers get structured
+readiness/remedy and remain guarded. A held task's generation/selection must remain
+compatible with its original retained catalogue/design; new global sources cannot
+silently replace its pins. Qualify pre-dispatch wait/repair and already-pinned
+incompatibility cases in the existing runtime owner before enabling resume.
+
+Implement the [shared OK/Cancel dialog contract](../reborn/model-token-limits.md#generation-prompts-missing-selection-and-model-use)
+through existing Prefix jobs and provider selection surfaces:
+
+1. An explicitly selected prefix that is missing/incompatible triggers a dialog
+   naming profile and provider/model pair. OK starts the supported Generate/
+   Regenerate operation; Cancel starts no job/model call. Keep the original
+   request unsent at the supported preparation/wait boundary, with a visible
+   not-sent/cancelled result on Cancel, not base fallback or Tier-2 replay.
+2. Every successful provider/model **Use** click shows "Generate the base prompt
+   for <provider / model>?" with OK/Cancel. Use the committed selection and
+   refreshed current revision, also for Sempai selection. Existing compatible base
+   means an explicit regenerate offer, not an omitted dialog or forced rebuild.
+   Trigger from the actual Use action/receipt, not render, catalogue refetch or
+   an unrelated limit edit. Lost Use acknowledgements use existing original-ID
+   readback, not another selection mutation or duplicate popup/job.
+   This operation generates base; it does not replace a role-specific selection.
+3. OK uses existing canonical target policy, accepted pair design and profile
+   content. Missing design/adapter support or mandatory-content overflow produces
+   an actionable prerequisite, not an endless generation loop or hidden Redesign.
+4. Cancel after Use declines generation, not the committed provider selection.
+   Desired/effective readiness remains visible; dependent model calls remain
+   blocked until their selected prefix is compatible. Management/model-free work
+   remains available, with a later Generate action.
+5. Reuse generation operation IDs, progress/readback and shared refresh/cancellation
+   owners. Deduplicate repeated confirmations/reconnects. Stale pair/design/policy
+   is rechecked before admission; do not generate for an obsolete Use response.
+   Generated, validated, published and Effective are distinct. Offer existing
+   qualified Activate/readiness where required; no unreviewed automatic activation.
+6. Resume only through the existing retained pre-dispatch selection/wait contract,
+   binding the exact ready artifact before the first provider attempt. Preserve
+   old pinned selections and original input/effect accounting. No parallel modal
+   runner, resubmitted chat, fresh matching or replay of already attempted calls.
+   Qualify any missing wait/selection adapter in its existing runtime owner.
+
 ## 9. Serving, large-prefix capacity and hybrid cache
 
 Provider definitions and active configuration come exclusively from PostgreSQL
@@ -1842,27 +2921,77 @@ compatibility and never silently restores previous selections. A DB error is a
 technical error; absent configuration is Unconfigured. Neither triggers fallback.
 Operator management and model-independent Tier-0 tasks remain available.
 
-Choose a serving mode per registered provider target:
+Use **request-owned prefix injection for every production target**. Resolve
+the role/task's immutable base/domain/reviewer composite and add its complete
+required instructions/knowledge exactly once through that protocol/model's
+supported request slot. Sempai, Kohai/domain and other roles may share one model
+endpoint without sharing a role prefix. The provider uses its default rendering;
+BrassClaw neither reads/writes its host configuration files nor installs a
+role-specific server template. There is no alternate server-owned mode, dedicated
+template-install route, service edit or template override setting in the product.
 
-- **Client-owned prefix:** BrassClaw sends the selected immutable context before
-  role-specific instructions/history/task. This is the default for per-request
-  domain selection on a shared endpoint. The provider must not inject another
-  large reference automatically.
-- **Server-owned prefix:** a dedicated or otherwise verified endpoint injects the
-  exact selected generation through its registered template. BrassClaw sends no
-  duplicate prefix and verifies the effective token prefix. A setting in the UI
-  alone cannot change a provider's automatic injection behavior.
+Pin the finished provider/model-specific prefix payload, Kohai dynamic-prompt
+formatter, target joining contract, default-format/model evidence and canonical
+policy through the existing task/continuation selection. The concrete current
+catalogue/interceptor callers in §5.3 must be migrated and behaviorally qualified;
+their present pinned system basis is not this serving contract. Resolve and consume the
+same accepted provider/model design revision used to generate the selected prefix;
+the Sempai review call resolves its pair's design and separately generated reviewer
+prefix. A shared provider/model pair uses the same design revision for both roles.
+For the final provider request, Kohai first formats only the Orchestrator's
+dynamic prompt with the final target's design. A connected/enabled Sempai then
+optimizes/corrects that formatted prompt and returns the final dynamic prompt.
+Kohai adds the intended final-target fixed prefix unchanged exactly once before
+it; there is no second formatter call after Sempai's return. Never include that prefix in the editable review payload.
+For the Sempai review request, format its dynamic review packet using its own
+pinned design, then add its fixed reviewer prefix unchanged. Preview
+and runtime reuse that exact join, not whole-prefix reformatting. Freeze and
+measure the actual combined request and effective output reservation before
+cache return/submission; lossless transport/default mapping must preserve the
+prefix's exact characters and expose its real measured boundaries. A separate `/tokenize` probe
+does not alone authenticate the later request. Qualify supported API/format/model
+bindings and default rendering without depending on provider filesystem access.
+If exact tokenization or output capacity cannot be established, retain an explicit
+unsupported/unknown state for that guarded target; never invent server settings.
 
-Server-owned mode additionally requires an enforceable generation contract: either
-route to an immutable generation-specific endpoint retained for its pinned tasks,
-or use a provider API that atomically checks the requested generation and renders
-that exact prefix in the completion operation. Retain the endpoint/template binding
-through continuations and retries; a restart must restore the same binding or fail
-closed. A separate `/tokenize` request is diagnostic evidence, not protection
-against a template change between verification and completion. Mutable shared
-endpoints without atomic enforcement are ineligible for server-owned pinning; use
-client-owned injection with automatic reference injection disabled, or block the
-target. Do not alter deployment services automatically to establish compatibility.
+The required assembly is **finished fixed prefix + already formatted Orchestrator
+prompt**, with dynamic tools/history in that formatted prompt part. A provider
+default or SDK path that would subsequently move those dynamic parts before the
+prefix, reformat it, or inject it twice is incompatible until its adapter supports
+the correct joining contract. Do not accept span-only accounting as permission to
+change that ordering or introduce a second whole-request render. Actual complete
+measurement must verify exact prefix text/token identity, both input ceilings and
+total context/output fit. The large-prefix allocation stays intact; an LCP is not
+its size limit, and the 2,179-token diagnostic fixture is not a 100,000-token
+capacity or cache test. Changing tools within the trailing formatted prompt does
+not by itself prove loss of the fixed prefix's reuse. Measure backend token/cache
+behavior separately, without unverified promises or provider configuration edits.
+
+**Historical serving observation, 2026-10-24 (superseded configuration):** that
+Ornith endpoint reported a 131,072-token context and rendered a minimal
+single-user request as 113,600 input tokens; an explicit short system message
+rendered as 113,613. The corresponding completion usage agrees. Evidence is in
+`target/accepted-evidence/k3-role-selection-20261024/run-2/operator-model-*-facts.json`.
+These are complete rendered-request counts, **not** authenticated semantic prefix
+lengths, a new model limit, cache-hit proof or identification of the injected
+generation. Capture/qualify the actual effective template and managed-prefix
+boundary before attributing tokens to either hard ceiling. These counts do not describe the current test setup after the operator-reported
+26 October removal of the Sempai override. Preserve their diagnostic evidence but
+requalify default-template request-owned injection and actual capacity through
+supported APIs before serving. Do not layer client content over an independently
+detected unresolved automatic reference, or assume downloaded assets alone prove
+the deployed renderer. Unknown/unexpected injection is an incompatible target
+state to report, never permission to modify the provider or trim knowledge.
+
+Capacity and quality checks must reserve output for reasoning as well as visible
+answer tokens. In the same observed minimal request, the explicit 256-token test
+limit was fully consumed by reasoning (`finish_reason=length`, no visible content).
+Without that artificial fixture limit, the request completed with 770 output
+tokens, including 614 reasoning tokens, and nonempty content. Preserve both
+outcomes and the SDK's empty-response error; do not call the capped case a Prefix
+quality failure or suppress it as a production fix. Production reservations still
+come from the canonical target policy and actual remaining context, not these
+diagnostic numbers or an unbounded-output assumption.
 
 Rollback uses the same freshness, compatibility and generation-enforcement checks
 as activation. A retained older generation is not automatically eligible for new
@@ -1874,17 +3003,20 @@ and volatile state remain distinct from the common evidence corpus. Route-specif
 Kohai and Sempai prefixes/warm states are independent. A deterministic Tier-0 task
 still needs no model call merely because a prefix exists.
 
-For BrassClaw Kohai/Sempai consumers, domain/reviewer selection selects an explicitly compiled
-base-plus-domain composite; it does not replace the required BrassClaw base knowledge.
-The seeded and registered custom UI profiles remain independently buildable source generations. Composite
-records pin the exact base/domain generations, rendering policy and token manifest;
-the active selection points to the composite. Standalone domain generations remain
-usable by separately registered domain-only consumers. If a required composite
-cannot fit, leave it Capacity blocked rather than activating a domain-only substitute.
+Select the prefix specified by the retained Recipe, Orchestrator or role; if none
+is specified, select the target-specific `base-prompt`. A domain/reviewer prefix
+uses its own required knowledge and does not automatically receive the whole base
+prefix. Shared BrassClaw knowledge is included through explicit content coverage.
+Seeded/custom profiles remain independently buildable. Where a consumer explicitly
+requires a composite, its records pin the exact parents, pair design, content rules
+and token manifest and the active selection points to that complete artifact.
+A missing/incompatible specific prefix or required composite is blocked; never
+substitute base or a domain-only artifact merely to make it fit.
 
 ### Composite generation workflow
 
-Add a reusable composite-building Recipe with typed inputs: exact base/domain
+Add a reusable composite-building Recipe only for explicit consumer coverage
+requirements, with typed inputs: exact declared parent
 generation IDs, registered target ID and registered rendering/coverage policy ID.
 Resolve immutable parent source exports/evidence through existing store primitives,
 pin the DB target revision and local tokenizer/template artifacts, run the shared
@@ -2083,9 +3215,10 @@ for enabled external cache paths. Missing telemetry alone does not block a valid
 provider. Verify a second
 request's reuse only when observable; otherwise report Cache reuse unverified and
 disable unsupported verification actions without blocking valid inference. Token
-inspection is also capability-specific: client-owned mode verifies exact outbound
-content/manifest and uses accepted adapter/tokenizer capacity evidence; server-owned
-mode still requires its enforceable completion-time generation contract. Do not
+inspection is also capability-specific: request-owned injection verifies exact
+outbound content/manifest and uses qualified default-format adapter/tokenizer
+capacity evidence. No server-owned role template or provider-file installation
+is offered as an alternative. Do not
 claim exact server token/cache observations when the provider does not expose them.
 Record full-attention KV and recurrent-state support honestly where applicable.
 LMCache external persistence is a separate optional adapter capability. Test reload
@@ -2200,32 +3333,37 @@ reuse it for that exact graph. The general production successor must still satis
 the applicable gates below. Do not mark every prerequisite missing merely because
 normal Generate is incomplete, or infer general approval from the closed slice.
 
-Track these as explicit dependencies with implementation references and passing
-production-caller receipts, not as documentation-only completion:
+Track the [shared ownership table](#shared-infrastructure-ownership--reconciled-2026-10-22)
+as explicit dependencies with exact implementation references and applicable
+passing production-caller receipts. This gate consumes those owners; it does not
+commission their mechanisms again:
 
-- Consistent immutable catalogue selection, transitive revision/checksum pinning,
-  exact Skill-association approval and retention for suspended tasks.
-- Actual selected Tool implementations retained as immutable executable artifacts
-  or handles, with checked content identity and adapter/ABI compatibility, following
-  simplified-v3 Phase 0a item 5. Metadata checksums plus a mutable file/latest handler
-  do not pass. Preserve artifacts through child execution, waits, retries and
-  continuations; missing/incompatible implementations fail before effects. Drain
-  or reconcile open work before an incompatible host/binary upgrade.
-- Typed input/result binding without source substitution, task-owned intermediate
-  state, isolated attempts and preserved child/wait/resume selections.
-- The exact per-invocation failure/retry and durable dispatch/effect contract from
-  Phase 0a items 9–10, including pre-effect persistence, durable counters, stable
-  keys/arguments, eligible outcomes and unknown-completion reconciliation.
-- Exact Recipe admission, no Tier-2 fallback, durable job/attempt cancellation and
-  current global Tool-policy rechecks. Trusted Tier-1 admission is additionally
-  required before offering a shell/Tier-1 variant; it does not block the accepted
-  model-free baseline solely because an optional variant is unavailable.
-- Accepted non-shell, zero-model-call generation/composite execution through the
-  registered deterministic compiler adapter, so first build and invalidation recovery
-  do not depend on the prefix being built. Shell variants retain Tier-1 requirements.
-- The simplified-v3 Phase-3a Monty upgrade and global startup/readiness gate,
-  including required caller compatibility, continuation, resource and recovery
-  acceptance. Reuse its accepted implementation; this feature does not replace it.
+- [simplified Phase 0a](../../simplified_v3.md#phase-0a--ground-truth-komponentenverträge-implementieren) supplies coherent selected contracts, typed layouts,
+  association approval consumption and actual Tool artifact/ABI retention. Review
+  evidence comes from its validator owner; canonical usage migration comes from
+  composition. The prefix graph must retain the exact supported closure.
+- [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) supplies the one global service, Ready handshake, bounded
+  task/child admission, cancellation, live resources and supported continuation/
+  invocation recovery. Its owner implements missing shared gaps; a prefix job
+  must not bypass them with another VM, queue, shell runner or Rust loop.
+- [simplified Phase 1](../../simplified_v3.md#phase-1--einzige-instanz--und-betreiberidentität), [simplified Phase 2](../../simplified_v3.md#phase-2--autorisierungsscopes-entfernen-daten-ids-entkoppeln) and [simplified Phase 3](../../simplified_v3.md#phase-3--eine-feste-runtime--und-sicherheitsrichtlinie) supply operator identity,
+  instance-wide Tool policy and technical enforcement. Prefix exercises those
+  checks through its actual compiler/source/publication calls, including live block.
+- [simplified §10.1](../../simplified_v3.md#101-umsetzung-und-entfernung) supplies the DB-only provider lifecycle before model-facing
+  production actions. Missing provider configuration does not block an otherwise
+  qualified provider-free source build or instance management.
+- **Prefix-owned graph acceptance:** use an accepted non-shell, zero-model-call
+  compiler adapter for Generate/composites; qualify source/coverage/artifact/output
+  checks and the exact publication receipt through the global Recipe caller. The
+  first build cannot require its own already-generated prefix. Shell/assisted
+  variants additionally need supported Tier-1 admission; they do not block the
+  qualified deterministic baseline.
+
+No prerequisite is passed by a Markdown contract, metadata path or helper-only
+receipt. Scope evidence to the selected graph and supported lifecycle: missing
+shared safety/recovery support blocks affected production exposure, not unrelated
+safe development. Do not repeat the global Monty version migration or reconstruct
+completed loader/approval infrastructure to qualify another prefix profile.
 
 Phase B's offline compiler/source-package work and Phase C's storage/migration
 development may proceed while these dependencies are outstanding. Production
@@ -2239,7 +3377,7 @@ Gate A1. Label intermediate artifacts and surfaces as development/unavailable.
 | --- | --- |
 | Phase A / Gate A1 | Phase 0 inventory, Phase 0a component/binding/artifact/retry contracts, applicable Phase 1–3 operator/policy paths, and Phase 3a upgrade/global lifecycle. |
 | Phase B | Offline compiler work may proceed independently; installed seeding/upgrade follows shared integrity boot and Phase 6 migration contracts. |
-| Phase C | Phase 0a durable execution/selection contracts and Phase 6 versioned storage, reference preservation and recovery. |
+| Phase C | Consume shared Phase 0a/3a execution/selection/recovery; prefix implements only its product records and additive migrations within Phase 6. |
 | Phase C1 | Sempai reviewer reference/packet/proposal contracts, Phase 0a authoring validation and human Q2, with consumer wiring accepted in C2. |
 | Phase C2 | §10 DB-only provider lifecycle, live global policy and applicable Phase 7 production-caller acceptance. |
 | Phase C3 | Accepted Gate A1/C/C2 paths plus DB model specifications/designs/bindings, immutable proposal/current-content generation contracts and Prefix-Maker bootstrap; authored executable changes follow Phase 0a Q1/human Q2 and registration. |
@@ -2271,7 +3409,7 @@ shared boot. Preserve original documents/code and complete structured records.
 Package the dedicated Sempai compiler/procedure and full authoring/validation source
 inventory in the same release process. Its standalone allowlisted checkout adapter
 must become an installed immutable source-package adapter; installation cannot
-depend on the developer checkout. Measure the complete rendered Sempai/base composite
+depend on the developer checkout. Measure the complete selected Sempai generation or explicitly required composite
 against the selected model before promising readiness. If mandatory originals exceed
 capacity, report the exact requirement and keep inputs intact; no automatic guide
 truncation or implicit lower coverage is accepted.
@@ -2482,11 +3620,12 @@ fail-closed older API responses. Compilation against the actual cached tokenizer
 still measures 119,212 rendered tokens plus an 8,192-token reserve; this establishes
 local capacity for that tested package, not complete-library fit or cache readiness.
 
-Validation for this chat uses the operator-requested
-`/Users/ollama/brassclaw-target2` with its own lock and disk checks; it never cleans
-or locks the other chat's target. The frozen source/receipt identifies exact tested
-bytes; subsequent concurrent edits need their own applicable evidence. This slice
-changes no inference deployment and does not enable production named-prefix jobs.
+Historical validation used the then operator-requested
+`/Users/ollama/brassclaw-target2` with a separate lock. This records the old
+environment only; it does not authorize another current target or build tree.
+The frozen source/receipt identifies the exact tested bytes; subsequent relevant
+edits need their own applicable evidence under the current development policy.
+This historical slice changed no inference deployment and does not enable production named-prefix jobs.
 
 ### Phase C storage — immutable compiler artifacts and source registry (2026-10-12)
 
@@ -2942,11 +4081,12 @@ An intended pure rejection may follow a cooperative compute-slice yield; requiri
 only the initial Start command would incorrectly reject that valid observation.
 These checks do not enable Generate.
 
-Validation builds for this work use only `/Users/ollama/brassclaw-target2`.
-Immutable source captures preserve concurrent changes without changing the other
-chat's target or reserving shared build windows. A preserved dependency freeze
-cannot establish compatibility with newer shared interfaces: capture the current
-merged code when those interfaces change and report its actual check results.
+This historical batch used `/Users/ollama/brassclaw-target2` and immutable
+source captures to identify its tested inputs. That target/build arrangement is
+retired. Preserve the source/binary/receipt archives as evidence, not as new build
+inputs. A preserved dependency freeze does not establish compatibility with newer
+shared interfaces. For new validation, compile the current common checkout using
+the configured canonical target and report the actual relevant check results.
 The compiler oracle's transport capacity must use the largest individual exchange,
 not the concatenation of all independently saved oracle stages.
 
@@ -3882,7 +5022,7 @@ non-followed redirects, missing responses, body overflow and live policy blockin
 This supersedes the earlier dispatch-pending status, not its retained failures.
 
 Remaining work is exact bootstrap/graph qualification, trusted observation
-projection, admitted source jobs, generation-original adapters and UI uptake.
+projection, admitted source jobs, qualified indexed-original integration and UI uptake.
 Source checking remains unavailable until that complete path is qualified.
 
 The registered-source storage prerequisite now has a draft implementation in
@@ -3904,6 +5044,43 @@ authoritative availability facts.
 This prerequisite covers registered sources only. Generation-original observations
 must use their exact existing generation/artifact owner; do not force logical paths
 into the registration foreign key or repeatedly read a full package once per row.
+
+#### Registered-source diagnostic Recipe (closed native candidate validated)
+
+`prefix_registered_source_components.rs` adds a `registered` variant to the existing
+HTTP source-check Recipe. Its 16 explicit component steps reuse the canonical
+source read, HTTP GET, UTF-8 digest and source observation usages. Each real call
+has its own binding/executable pair; four pure Python exports parse, resolve,
+serialize and return data. Rust constructs definitions; it adds no workflow Tool,
+storage owner, queue, endpoint or approval path. Source bindings are copied from
+the actual canonical Recipes, preserving host aliases independently of display
+names. Existing direct diagnostics retain their original Steps/layout/invocations.
+
+The only task input is canonical JSON containing the exact registration identity,
+response byte limit and timeout. The native read supplies the URL. A caller cannot
+substitute a URL, claimed response or expected content hash. Registration identity
+and content identity are separate: this fresh-registration variant has no retained
+content baseline, so a successful fetch remains neutral/unverified. HTTP 200 never
+creates approved knowledge or an Available indicator. Unknown types/identities and
+non-web registrations fail before network dispatch.
+
+The diagnostic stores compact classification/response metadata and a complete-text
+hash, with the native immutable observation receipt. It does not squeeze the whole
+HTTP response into the existing observation-row cap. The native test processes a
+complete response larger than that cap, verifies exact raw content and independently
+recomputes its UTF-8 hash, then verifies exact stored diagnostic bytes/checksum.
+Collection/archive/review of new content remains a separate workflow; this metadata
+record does not make fetched content eligible for the next prefix build.
+
+[Seven fresh Rust cases and strict checks](../validation/2026-10-25-prefix-registered-source-check.md)
+cover retained candidate execution in actual Monty, native kernel HTTP/digest/source
+handlers and real PostgreSQL, plus 404, wrong pin, overflow/live blocking without
+follow-up observations, override/qualification rejection, existing direct
+classification and storage immutability. These private test executions do not
+provide ordinary durable job admission/effect settlement, trusted observation
+projection, system-seed bootstrap, association approval, availability publication
+or serving activation. Consume the shared owners for those remaining boundaries;
+do not widen the closed source-compiler approval exception.
 
 #### Native Sempai target measurement (native caller validation passed)
 
@@ -3988,8 +5165,8 @@ implemented; a fitted accepted reviewer composite and production knowledge/contr
 uptake remain open. Follow remaining steps 5–9/13/16/18 and the shared v3.5 owners.
 
 Complete Sempai compiler/source/procedure qualification from the existing seeds.
-Extend the shared compiler adapters and Recipe jobs to generate it and the
-base-plus-Sempai composite. Wire the typed review packet and actual reviewer persona/
+Extend the shared compiler adapters and Recipe jobs to generate the target-specific
+Sempai prefix and any composite explicitly required by its coverage contract. Wire the typed review packet and actual reviewer persona/
 response schema through the existing interceptor ports, forensic storage, gateway
 and proposal sink. Preserve input identity, target-provider metadata and effect
 history. Keep pre-call review and post-response learning separate and avoid a
@@ -4034,7 +5211,9 @@ through the selected production Monty host/ABI: effect-free loading, dependency
 order/export resolution, isolated mutable state, complete returned results and
 retained task selections. Upstream Monty pure-logic probes do not certify that loader,
 kernel binding or private transport. Include current MCP discovery/ordinary-chat
-contracts as source-backed knowledge checks, without inventing an external Python
+contracts as source-backed knowledge checks. Require correct answers that Skills
+need no dedicated Recipe, reference workflows are not ownership and known Skills
+are not automatically MCP-callable. These checks do not invent an external Python
 execution API or treating documented targets as implemented support. Include correct
 answers with unrelated valid citation IDs and wrong-but-verbatim quotes as failures;
 source resolution, quotation fidelity and semantic support remain separate gates.
@@ -4048,20 +5227,31 @@ activation and unconditional runtime guards are not accepted. Remaining steps
 apply with budgeting off; Kohai checks both Sempai and final answer envelopes as
 specified in §5.3, with zero provider calls on a pre-dispatch size violation.
 
-Wire immutable selections into Kohai and Sempai independently. Implement task and
-continuation pinning, atomic freshness admission, explicit injection mode,
-duplicate-prefix prevention and base-plus-domain composite selection/capacity checks.
-Include the base-plus-Sempai reviewer composite and its separately resolved provider.
-Enforce the server-owned endpoint contract above and retain old routing bindings
-while pinned tasks need them. Implement activation/rollback and minimal warm/reuse
+Wire immutable prefix selections into Kohai and Sempai independently through
+[simplified Phase 0a](../../simplified_v3.md#phase-0a--ground-truth-komponentenverträge-implementieren) / [simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben) task snapshot/admission contracts.
+The shared owner implements task/child/continuation pinning and execution fencing;
+this phase adds prefix generation/design/provider references and freshness checks
+to that existing boundary. Implement only prefix-specific atomic selection,
+request-owned insertion, duplicate-prefix prevention, default/specific prefix
+selection and capacity checks for explicitly required composites; no second task manifest/admission service.
+Include the role-specific Sempai prefix and any explicitly required composite,
+using its separately resolved provider/model pair and that pair's shared design.
+Enforce the request-owned/default-template contract above and retain historical
+task/artifact evidence without enabling template installation or a server-owned
+fallback. New dispatch may not depend on a removed global role override. Implement activation/rollback and minimal warm/reuse
 operations through the existing facade and provider seams before enabling their UI.
-Require the DB-only provider contract and its relevant migration/reload acceptance
-before this phase's production gate; no prefix-specific provider registry is allowed.
+Consume the DB-only provider contract and migration/reload implementation from
+[simplified §10.1](../../simplified_v3.md#101-umsetzung-und-entfernung) before this phase's model-facing production gate. That
+owner implements definition readers, CLI/management lifecycle and notification
+publication; this phase consumes its revision stream and tests prefix selection/
+design/guard uptake. No prefix registry, lifecycle resolver or copied provider
+configuration is allowed; §5.3's prefix/model settings extend the existing owner.
 
 Acceptance: production model requests use the selected generation exactly once;
 source activation races block/queue new tasks rather than serving outdated context;
-ordinary replacement preserves old continuations; revocation is classified; mutable
-server templates cannot change an admitted request's generation. Test restart,
+ordinary replacement preserves compatible old continuations; revocation or an
+incompatible changed provider format is classified. The selected role artifact
+cannot be substituted, duplicated or leaked into another role's request. Test restart,
 concurrent activation, both consumers, incompatible/capacity-blocked composites,
 effective injection/capacity evidence and adapter-specific exact token observations
 where available. Require a second-request native reuse observation only for adapters
@@ -4069,10 +5259,13 @@ declaring observable reuse; adapters without telemetry must pass inference/pinni
 acceptance with Cache reuse unverified. `/tokenize` alone does not satisfy
 completion-time generation enforcement. Gate A1 and Phase C
 must pass before enabling this production resolver.
-Test DB-only targets without file/Env fallback, provider URL/model/context changes,
-revision-aware reload, deactivation/removal including the last provider, continuation
-dispatch after deactivation, explicit reactivation without restored selections,
-DB failure versus Unconfigured, and usable operator management/Tier-0 paths.
+Reuse [simplified §10.1](../../simplified_v3.md#101-umsetzung-und-entfernung) DB-only/management/CLI lifecycle receipts; add only
+the prefix-consumer matrix here: provider URL/model/context changes invalidate or
+retain selections as specified; deactivation (including the last provider) prevents
+new model dispatch without deleting generation history; reactivation does not
+restore a selection implicitly. Verify prefix continuation/guard behavior and
+DB failure versus Unconfigured through the shared provider owner, while ordinary
+management and qualified provider-free work remain usable.
 Test a provider without cache telemetry and ensure activation/inference remain
 available while unsupported warm/verification actions and observations are honest.
 For targets serving hybrid external hits, section 9.1 is an acceptance prerequisite,
@@ -4159,6 +5352,20 @@ disabled actions with their missing prerequisite; enforce the same gate server-s
 Redesign/Create/model-design generation/acceptance require the accepted Phase C3 path; their absence must
 not disable the model-free Generate workflow.
 
+Wire the new generation prompts through `provider-card.js` and the existing
+`useProviderManagementActions.js::handleUse` / `handleUseSempai` and their
+provider-state setters, not a parallel provider writer. Their current success
+messages/boolean are not sufficient target receipts: consume the actual committed
+selection identity and refresh the canonical current snapshot before confirming a
+base job. Preserve desired/effective provider acknowledgement; a persisted Use is
+not runtime uptake or prefix readiness. Reuse the design-system `Modal` with
+OK/Cancel, keyboard/Escape/focus handling and localized target/profile text, plus
+existing Prefix job controls for progress/reconnect and later activation.
+Qualify both the missing-specific-prefix dialog and the post-Use base dialog,
+including Cancel with zero generation/model calls, duplicate OK, failed Use,
+changed target before OK, an existing compatible base, unavailable design/worker,
+capacity/activation failure and no original-message replay.
+
 Acceptance: real composed-route tests and browser checks for first Generate,
 Regenerate, refresh/reconnect, cancellation, per-profile failures, unavailable
 worker/provider, rate limiting, stale source and compatible/incompatible activation.
@@ -4173,7 +5380,8 @@ Exercise popup cancel/Escape (zero admission/provider calls), explicit confirmat
 changed prerequisites, double-submit/reconnect, provider unavailable, stale/rejected
 proposals, new-profile creation and custom profiles surviving reseed. Verify keyboard
 focus and accessible dialog/tab labels. No button or popup implicitly accepts a model
-proposal, approves a component or activates a prefix. Verify active-model selection,
+proposal, approves a component or activates a prefix. Verify explicit registered-target selection
+including models not active for a role,
 separate design-provider selection, generated model-design history after reload,
 validation/acceptance and explicit bindings, switch readiness for both consumers,
 and Redesign returning a complete current-content generation rather than design only.
@@ -4242,41 +5450,44 @@ migrated. Update current docs, seeds and checksums together through supported pa
 
 ### Coordinated upgrade and recovery
 
-Use simplified-v3 Phases 6 and 8 for installed schema/binary cutover, with exactly
-one management/migration owner. The required sequence is:
+The system-wide procedure is implemented once by [simplified Phase 6](../../simplified_v3.md#phase-6--datenbank--dateisystem--und-secret-migration) and [simplified Phase 8](../../simplified_v3.md#phase-8--cutover-und-entfernung-des-legacy-modells),
+with runtime drain/fencing/reconciliation and Ready-before-producers from
+[simplified Phase 3a](../../simplified_v3.md#phase-3a--globalen-monty-beim-boot-starten-und-dauerhaft-betreiben). Prefix joins that procedure; it does not implement another
+upgrade command, migration scheduler, backup/restore service, runtime supervisor
+or shutdown/startup sequence. Use the shared owner's actual execution receipts
+for these mechanisms, supplemented by the prefix integration cases below.
 
-1. Run a configuration/data dry-run: inventory legacy bundles, provider selections,
-   source/approval provenance, scope-key collisions, running jobs and task/artifact
-   references. Report ambiguities for operator resolution before data changes.
-2. Stop admission; drain or durably reconcile outstanding tasks/jobs/effects, then
-   stop the orchestrator/workers. Do not claim old RAM/dump state is portable across
-   an incompatible Monty or binary upgrade.
-3. Take a consistent backup of DB, required source/compiler/Tool artifacts, provider
-   routing references and protected key material. Verify a restore and reference/
-   artifact availability before migration; never expose secrets in migration output.
-4. Apply versioned, idempotent/resumable migrations through that owner. Preserve
-   stable IDs, exact approvals, workflow/continuation links and invocation/effect
-   records; resolve collisions explicitly. Verify source/selection/secret references
-   and load the compatible binary/seeder. Run repair only when explicitly requested,
-   preserving operator edits; historical migrations/checksums remain unchanged.
-5. Verify component integrity and the Phase-8 component-cutover gate, then start
-   the single global Monty to its Ready handshake before workers/turn ingress.
-   Verify the DB-only provider catalogue and applicable prefix gates. No mixed
-   old/new orchestrator operation or legacy permission fallback is permitted.
-6. Perform authenticated management, Recipe, prefix selection and provider smoke
-   checks. Only then enable accepted production actions and remove obsolete paths.
+Prefix supplies:
 
-Keep Embedded-PG available under the migration owner's exclusive coordination for
-backup/migration; stop it last during final shutdown. Read-only diagnosis and
-authenticated management remain recoverable when a cutover gate fails.
+1. **Inventory and additive data migration.** Register legacy bundles, named
+   generations/selections/designs, sources, provider routing references, jobs and
+   compiler/Tool artifacts with the shared dry-run and forward-migration owner.
+   Identify scope-key collisions and unknown provenance explicitly; preserve
+   stable IDs, overrides, exact approvals and references used by retained tasks.
+   Do not rewrite applied migrations or silently choose an ambiguous owner.
+2. **Retention and reconciliation adapters.** Supply required immutable prefix
+   artifacts, operation receipts and reference checks to the shared drain/backup/
+   restore procedure. Product job stages cannot stand in for run/effect records;
+   unknown build/publication outcomes are reconciled through the original shared
+   invocation, never automatically resubmitted by a prefix recovery worker.
+3. **Post-restore and cutover cases.** Verify complete originals, accepted designs,
+   compiler/native artifacts, generation IDs, old task/prefix references and both
+   consumer selections. Supply authenticated Prefix facade/Recipe/guard smoke
+   cases and interrupted-migration/restore scenarios to the one Phase-7/8 matrix.
+   Remove only prefix-specific legacy consumers after their replacements and
+   reference retention pass. Shared provider-file/scope/auth removal remains
+   with simplified's owners; prefix supplies its affected-consumer checks.
+4. **Product rollback.** Prefix-generation rollback changes an eligible immutable
+   selection through §9's compatibility/freshness checks. An incompatible binary/
+   database rollback instead invokes the shared Phase-8 restore procedure and
+   compatible artifacts; a prefix pointer change never rolls back the schema or VM.
 
-Prefix-generation rollback changes an eligible selection under section 9's checks.
-Binary/database rollback is a separate recovery operation: restore the verified
-pre-upgrade backup and compatible binary/artifacts when the new schema is not
-backward compatible. Document this procedure and test interrupted migration,
-restart, reference/approval preservation and restore; switching a prefix pointer
-does not undo a schema or Monty upgrade. This runbook governs BrassClaw upgrades,
-not replacement of the operator's external vLLM/Compose deployment.
+Keep failure diagnosis and authenticated management recoverable under the shared
+runtime contract. Embedded-PG shutdown order, exclusive migration ownership and
+secret/key handling are implemented/accepted by simplified, not redefined here.
+External vLLM/Compose deployment remains operator-owned. Prefix-specific acceptance
+cannot close a missing shared upgrade/recovery gate, and shared runtime acceptance
+cannot establish prefix fit, source correctness or serving readiness.
 
 Completion means all six seeded profiles and approved custom profiles can be generated/regenerated through the UI,
 base-prefix inputs contain the complete approved current docs/components, source and
@@ -4300,6 +5511,8 @@ or report their explicit readiness prerequisite rather than serving mismatched c
 | Generate without a provider | A valid source artifact or explicit missing-local-artifact prerequisite; model quality/cache readiness remain Unmeasured/Unverified. |
 | Edit model limits from Inference, Prefix settings or CLI | One provider/model record and revisioned endpoint; all surfaces converge on readback, stale writes conflict, unrelated values survive, and budgeting off/restart does not remove the hard limits. |
 | Review then send an answer with budgeting off | Kohai resolves both targets; oversized complete Sempai input makes zero review calls, and an edited prompt that overflows only after history/tools/prefix assembly makes zero final calls. Exact transformed partition/context/output checks remain unconditional. |
+| Format then correct then insert | Cover distinct provider/model pairs and one pair shared by generator/Kohai/Sempai. Shared pairs use the same saved accepted design revision with separately generated role prefixes; distinct pairs use their respective designs. Assert Kohai formats only the dynamic Orchestrator prompt before review; Sempai receives that formatted prompt as review data, uses its own correctly generated reviewer prefix/design and returns the final dynamic prompt; Kohai then inserts the intended exact prefix once before it. Assert no second formatter call or return normalization after review. Record event order and original/formatted/review-return/prefix/assembled payload hashes. Reject missing/incompatible design bindings before dispatch. Disabled/unchanged review and resumed/tool continuations retain this ordering and pinned identities. |
+| Populate and manually edit pair design settings | Capture available provider metadata with provenance and fill unavailable format/capability facts manually. Edit either hard input ceiling from Inference and Prefix/model-design views, including inactive targets; verify one provider map entry/revision and immediate shared-query refresh, stale-CAS conflict handling and no role-specific duplicate values. Discovery cannot overwrite operator settings silently. Show affected artifact compatibility and required regeneration/revalidation without mutating retained prefix bytes or changing provider server configuration. |
 | Regenerate after changing a model's size limits | Accepted deterministic budget rules select a valid supported view with full provenance; unsupported bands require Redesign and mandatory overflow blocks. No implicit model call, silent source loss or metadata churn inside the stable prefix. |
 | Repeat or reconnect during Generate | Durable deduplication, progress and retained child references; no repeated confirmed publication or automatic activation. |
 | Change sources/target, cancel, or exceed context | Classified stale/blocked/cancelled outcome, preserved originals and last-good selection; no silent partial knowledge or unreviewed replacements. |
@@ -4312,9 +5525,16 @@ or report their explicit readiness prerequisite rather than serving mismatched c
 | Accept a redesign | Exact reviewed model-specific design and its validated updated generation are recorded/published without another Generate click; later Generate reuses the accepted design and production activation remains separate. |
 | Create a new prefix | Same-section Create Prefix tab yields a validated draft and human-accepted registered custom profile; it appears with Generate/Redesign and survives reseeding. |
 | Redesign Prefix-Maker itself | Previous approved fresh generation reviews a quarantined successor; bootstrap and approval never depend on that unvalidated successor. |
-| Generate model design | Active registered target and separate design provider yield a persisted, validated proposal with model-specific formatting/capacity rules; acceptance and profile binding are explicit. |
+| Generate model design | An explicitly selected registered target, including a not-active role model, and a separate eligible design provider yield a persisted validated proposal for the pair's shared prefix/prompt format and canonical-limit references, with separate profile-content rule bindings. Generation changes no active selection; runtime joining preserves exact prefix text. Acceptance and profile binding are explicit. |
 | Change Kohai/Sempai provider or model | Resolve exact compatible model/profile/consumer design and generation, or report Needs design/generation/Incompatible; no old mismatched prefix or hidden redesign call. |
 | Reopen Model Designs | Generated and historical model designs, evidence, acceptance and bindings survive reload/restart and reseeding. |
+| Generate a usable formatting design | Provider facts and researched model/default-template/backend references are retained with immutable provenance. The accepted design contains exact supported compiler/prompt/join instructions and independently verified construction cases, not just labels/limits. Unknown effective template/cache facts remain explicit; no generic format or architecture guessing, server edits or hidden browsing during Generate. |
+| Missing/incompatible selected prefix dialog | Show exact target/profile and OK/Cancel. OK admits the existing supported generation; Cancel starts zero jobs/model calls. No base substitute, hidden redesign or original-message replay. Missing design/coverage support shows the actual prerequisite. |
+| Use then base generation dialog | After each successful Use, including Sempai, show the base generation/regeneration question for the committed/current pair. Cancel preserves selection and exposes readiness; OK generates base without replacing the role prefix. Failed/stale Use responses do not trigger obsolete jobs. |
+| Dialog progress/reconnect/readiness | Repeated OK/reconnect shares the original durable job. Show generation/validation/publication/activation separately; bind exact compatible artifact before first dispatch and never resume an attempted call by replay. |
+| No specific prefix selected | Match or No-Match without a specific Recipe/Orchestrator/role prefix selects compatible base for the target pair; no Tier-2-only restriction. A specific role/domain selection does not implicitly append base. |
+| Specific selection missing/conflicting | Missing or incompatible explicitly selected prefix blocks the affected call; a declared selection conflict is reported, never silently resolved by base or a new priority. |
+| Separate shared design from role content | Same pair uses one accepted format design with distinct profile rules/generations; changing one profile's knowledge does not duplicate or silently modify the shared pair format or canonical hard limits. |
 | Open Sources | Manifest-backed used sources and pending registrations appear; bounded per-source checks report green/red/neutral with reasons and timestamps, without changing archived evidence or active prefixes. |
 | Save a source | Versioned registration persists, is collected/reviewed for the next eligible Redesign/Generate, and remains visibly unused until included in a validated generation. |
 
@@ -4323,8 +5543,13 @@ browser path. Script-only success or a screenshot of buttons does not close the 
 
 ## Kohai final prefix stage and MCP provider lifecycle
 
-After composing history/query and adding the selected complete prefix as the final
-prompt composition step, Kohai obtains the coherent listing derived from approved
+Kohai first formats only the dynamic Orchestrator prompt with the stored accepted
+target-pair design. If Sempai is connected/enabled, it optimizes/corrects that
+already formatted prompt using its own generated reviewer prefix/design for its
+own call and returns the final dynamic prompt to Kohai. Kohai then adds the
+intended finished prefix unchanged exactly once before that final dynamic prompt,
+without another formatting stage. Use base only
+when no specific Recipe/Orchestrator/role prefix is selected. Kohai then obtains the coherent listing derived from approved
 mcp-call-skill-recipes, establishes the provider's supported MCP connection and
 advertises it immediately before sending the prompt. Do not reconnect by starting
 a server or compile a prefix merely to establish that connection. The one MCP
@@ -4339,3 +5564,426 @@ Monty/Rust invocations. See [the exact lifecycle contract](monty.composition.md#
 This is lifecycle adapter planning only. Verify actual provider MCP configuration
 and normal chat APIs before implementation; no endpoint/SDK field or runtime
 acceptance is inferred from these instructions.
+
+
+### 2026-10-24 — Budget-dependent reference-selection prerequisite
+
+Implemented the reusable pure selection stages and
+`select-prefix-design-by-measurement` Recipe constructor in
+`prefix_design_components.rs` / `prefix_design_selection.py`. The existing JSON
+and original-template encoding usages remain the only native operations.
+Validated size bands, mandatory dependency closure, optional priorities and exact
+whole-candidate counts replace estimated/additive packing. Complete originals,
+unit ranges, ancestor context and omission reasons remain available. Unsupported
+bands fail; no fitting candidate returns Capacity blocked without an empty
+success artifact. All candidates are checked because token counts need not be
+monotonic. Set membership and buffered rendering avoid avoidable quadratic work.
+
+[The scoped validation record](../validation/2026-10-24-prefix-budget-selection.md)
+covers eight Python regressions and two actual Monty/Rust-tokenizer/retained-graph
+integration tests. Targeted Clippy completes with the existing parallel catalogue
+warning; strict lint remains blocked by that warning and is not called passed.
+Earlier failures and exact accepted source/executable identities are retained.
+
+This closes the pure reference-selection building block, not steps 7/8 as a
+whole. The resolved unit plan is distinct from the immutable accepted generation
+rules. Their model/profile/consumer and authoritative-source bindings,
+qualification and ordinary Generate integration remain open. Raw reference fit
+is not semantic composite/chat fit, quality, cache restore or serving activation.
+No provider/model hard-limit store, inference service or deployment changed.
+
+
+#### Fixed rules with automatically refreshed content — successor
+
+The same reusable component now also resolves immutable
+`brassclaw-prefix-generation-rules/1` against current captured sources. Rules
+select exact paths, namespace prefixes and complete-unit first lines; there is
+no provider call or runtime code generation. Required coverage is checked against
+the mandatory dependency closure in every supported band. Added components under
+a declared namespace are included without editing rules, hashes or code. Missing
+selectors and newly uncovered required units fail before hashing/encoding.
+The original rules, source snapshot and resolved unit plan have separate exact
+identities. A content refresh therefore need not be Redesign.
+
+The [successor acceptance](../validation/2026-10-24-prefix-budget-selection.md#fixed-rulecurrent-content-resolution-successor)
+records eleven final-source Python cases and two actual integration cases,
+including new-component resolution in Monty. The selected-target lint completes
+with the unrelated catalogue warning. Reuse this resolver in step 7 and the
+ordinary Generate Recipe; do not build another competing rules engine. Accepted
+model/profile/consumer bindings, independent authoritative coverage checks and
+bootstrap qualification are still required. No WebUI or serving activation is
+claimed by these candidate-stage checks.
+
+## Open K3-2 follow-up from K4 — Use, model design, prefix Q1/Q2 and retention
+
+**New open follow-up; not implemented by this document patch.** Existing completed
+sections and original acceptance criteria remain unchanged. This section carries
+only the relevant future-consumer delta from [Exact K3-2](Exact_V3_definition_update_at_K3-2.md) and the
+[shared selection/lifecycle contract](../reborn/model-token-limits.md#open-k3-2-successor--retained-prefix-selection-and-prefix-free-construction-workflows).
+It does not reopen K0–K3, replace a current owner's work or create a parallel
+implementation. Original sections are read references; no code activation is claimed.
+
+- Replace the unconditional Use→Base behavior for future consumers: compatible
+  accepted design offers Base generation; otherwise navigate to design settings.
+  Admit original-ID-bound configuration discovery with optional prefix-free B1/B2,
+  showing context and editable canonical ceilings before any design Generate.
+- Reuse the original artifact inspector and registered protocol/formatter adapters.
+  Prefer deterministic design construction; model interpretation is optional and
+  must use actual sources. Prefix-Maker-prefix readiness is no current prerequisite.
+- Extend existing RecipeModelPrefix/resolver with Default, Selected and deliberate
+  PrefixFreeWorkflow through capture, native capability, response evidence, recursive
+  child/review execution and the final request guard. Exact §5.2 names the current
+  concrete source owners; Inline/FinalBoundary is insertion timing, not omission.
+- Existing Pair/Profile/Generation acceptance, target package and CAS selection
+  owners are reused. Generate includes its complete Prefix-Q1; only explicit human
+  Q2 activates the published candidate. No mandatory review-navigation click or
+  repeated identical mechanical Q1 at approval/activation.
+- Future GC must address target/source payloads and their real FK/audit/living
+  references. The two-predecessor rule does not authorize deleting an active task's
+  artefact. The operator has explicitly confirmed reference protection until the
+  live references are released; collect eligible older payloads automatically then.
+- Keep ordinary model serving unchanged until its coherent successor is qualified.
+  No hidden template/service edit, second guard, copied mutable limit store or
+  automatic replay. New functionality has no acceptance merely from this text.
+
+
+### K3-2 successor acceptance matrix — not yet executed
+
+The complete cross-owner cases remain in [Exact §14](Exact_V3_definition_update_at_K3-2.md#14-abnahmematrix-für-die-spätere-implementierung).
+This additional matrix qualifies the new consumer delta; it neither edits the
+original matrix nor broadens previous scoped acceptance.
+
+| Trigger / case | Required observation through the actual owner |
+| --- | --- |
+| First Use without accepted design | Committed original Use remains; one durable discovery workflow; design dialog navigates to the exact pair without requiring Base or Prefix-Maker. |
+| Use with compatible accepted design | Base Generate/Regenerate dialog; no implicit Redesign or activation. Incompatible design takes the design branch. |
+| Use failure, read failure, late result, reconnect, cancel | Failed Use starts no discovery; read error is not “design missing”; obsolete results do not affect the new pair; reconnect retains original IDs without model replay. Dialog Cancel preserves Use and starts no Base/design job. Discovery has its own visible cancellation. |
+| Concurrent Kohai/Sempai selection | Separate original role/pair correlation; no global last-selection modal or implicit reviewer replacement. |
+| Native metadata/artifacts suffice | No B1/B2 model call. Unknown limits stay unknown; canonical manual values remain intact. Context and editable prefix/prompt ceilings appear before Generate. |
+| B1/B2 needed | Exact fixed instructions, captured source/option packet, prefix-free native dispatch and deterministic strict parsing; no repair inference. Format, correlation, evidence and import eligibility remain distinct. |
+| Malformed or ungrounded answer | Reject duplicate/extra keys, wrong types/echoes, foreign source/option, unresolved pointers or false quotes. Text-only semantics remain a candidate; no canonical value/acceptance write. |
+| Alternate design executor, inactive/offline target | Explicit route captured before effects; default is the target pair. Reload preserves the explicit executor. Children never acquire current global bindings to replace inherited absence. |
+| Default and explicit Selected | Default pins its resolved generation; Selected resolves exactly or fails. Neither missing metadata, resolver error nor incompatible selection becomes prefix-free. |
+| Qualified PrefixFreeWorkflow | No Base/reviewer/catalogue/Prefix-Maker insertion and no accepted-prefix lookup; original workflow/instruction/route binding reaches required recursive child/review calls. |
+| Independent normal chat/review at the same time | Keeps its own normal selected prefix; no shared client mode or context residue after cancellation. Legacy records keep their original meaning. |
+| Actual prefix-free SDK body | Same mandatory final guard and actual complete request encoding; fixed instructions, sources, history, tools and framing count as prompt input. Missing measurement or hard-limit violation prevents submission. |
+| Design Generate and acceptance | Deterministic construction first; real required gates enable direct approval. Failed gates keep it disabled with errors; readable View/Review remains optional. No production activation. |
+| Profile Generate/Regenerate/Redesign | All required checks are generation-internal Prefix-Q1. Publish the exact qualified artifact; no second Q1 job, repair inference, automatic activation or repeated completed effect. |
+| Human Prefix-Q2 | Explicit activation CAS uses the same published qualification and live compatibility checks; stale/failed Q1 cannot activate. Component/Recipe/code approval is unaffected. |
+| Regeneration of an archive group | Only two distinct successful predecessors plus protected older live references. Failed candidates do not consume predecessor slots. Shared source/target payloads and actual FKs remain valid. |
+| Final reference release / concurrent capture | Reconcile through the existing retain/GC owner; collect eligible old payloads without breaking new pins, resumable tasks or immutable audit hashes. No hidden trigger disable or permanent payload protection solely from a terminal audit link. |
+| No installation/serving shortcut | Qualified successor seeds and original-package integrity are required; docs, pure tests, imported source-only packages or contained candidate tests do not establish serving activation. |
+
+
+### Original request-output producer — scoped prerequisite accepted, 2026-10-30
+
+The [BUILD-005 report](../validation/2026-10-30-original-model-output.md) and
+[exact receipt](../validation/2026-10-30-original-model-output.json) establish the
+bounded output-setting prerequisite described in [Exact §17.8](Exact_V3_definition_update_at_K3-2.md).
+The finite prompt's optional positive u32 setting reaches the SDK through original
+PG invocation arguments and existing response custody. Missing preserves a valid
+native fallback; invalid explicit values fail. Enabled limits reject rather than
+clamp. Cost estimates and accepted Prefix defaults remain distinct from the
+original setting. The pure bootstrap candidate requires its typed input; its I1
+admitted producer is still open.
+
+The global Recipe fixture proves retained arguments and SDK transport with 37/79
+and discretionary budgets disabled, using its existing static-route fixture.
+The separate captured-provider fixture proves native PG/custody/SDK and production
+final-counter rejection. These fixtures do not jointly prove a qualified Free
+workflow or required child/review closure. A separate Sempai review can precede
+primary rejection. The receipt records 70 fresh plus four unchanged reused tests,
+0 ignored, final strict checks and the failed earlier attempts without rewriting
+their outcomes.
+
+This closes only that prerequisite. The successor matrix above remains open for
+Use/discovery, successful Free qualification and its original evidence/required
+review handoffs, design generation/acceptance, Prefix-Q1/Q2 and reference-safe GC.
+Strict raw-answer parsing is a separate pending primitive/usage qualification;
+legacy JSON parsing gains no strictness claim here. No historical completed section,
+serving activation or whole-plan acceptance is changed. Future work uses Root's
+final fifteen-source receipt, current source preconditions and the
+[permanent central build owner](../development-build-queue.md), not the private
+proposal's earlier bytes or a new Cargo window.
+
+
+### Strict JSON primitive — scoped prerequisite accepted, 2026-10-30
+
+The [BUILD-006 report](../validation/2026-10-30-native-strict-json.md) and
+[receipt](../validation/2026-10-30-native-strict-json.json) establish the separate
+native prerequisite still pending in the preceding progress record; see
+[Exact §17.9](Exact_V3_definition_update_at_K3-2.md). The existing `builtin.json`
+now offers explicit `parse_strict` through its existing bounded common reader.
+The original v1 schema/operations remain unchanged; a disjoint v2 branch requires
+actual text and no extra arguments, with one current-schema selection owner.
+
+Eleven fresh tests, 0 ignored, formatting and affected connected/default strict
+checks pass. Actual native registration/retention/live policy and captured bounds
+are exercised, including nested/escaped duplicate keys and legacy preservation.
+The initial test-only descriptor/manifest projection error remains a failed
+attempt; its repair uses existing native schema/identity APIs. The new native
+Tool artifact is verified separately from the unchanged worker.
+
+This supplies no activated strict usage/association, complete B1/B2 workflow,
+Free root/child/review qualification or approval/import permission. Later combined
+qualification must use the current native artifact; BUILD-005 images retain their
+earlier scope. The open successor matrix, shared admission/review/serving work,
+Prefix-Q1/Q2 and reference-safe retention remain open. No completed historical
+section or whole-plan/platform acceptance is rewritten.
+
+
+### Internal model ResultOnly admission — scoped prerequisite accepted, 2026-10-30
+
+The [BUILD-004 report](../validation/2026-10-30-internal-model-admission.md) and
+[corrected receipt](../validation/2026-10-30-internal-model-admission.json), SHA-256
+`682c7c94f06d43dd9eeff1d6fd347f38ba741858dbb0b756c1886d7db001e370`,
+establish thirty-source/V191 runtime acceptance with twelve distinct cases,
+zero ignored, and connected/default strict checks; see [Exact §17.10](Exact_V3_definition_update_at_K3-2.md).
+Original claimed source determines ResultOnly independently of the preserved
+model prohibition for deterministic internal work. Existing host/admission/driver/
+result-evidence paths consume it without a new executor or public permission flag.
+The real global-service case exercises seven retained model usages, actual SDK
+protocol transport, original PG arguments/three-stage custody and durable exit
+application without assistant publication or No-Match learning.
+
+V191 preserves unknown historical origins as NULL and immutable original identity.
+Only its derived projection is excluded from the old BEFORE-trigger whole-record
+comparison; catalogue/model/phase/settlement guards remain. Actual old guards,
+start/no-op/settlement and negative origins are tested. The existing bootstrap
+admission accepts an optional actual HostFactory and deliberately remains unstarted
+until its original task references are captured; failed host preparation closes
+the original effect-free claim. It supplies no independent contained capture pipeline.
+
+The receipt corrects an overbroad unchanged-dependency claim: archived worker227a
+was actually tested, but Host Resources depends on changed PG migration inputs.
+This is older-worker evidence, not a fresh V191 worker build. BUILD-007 centrally
+rebuilds that worker and checks the integrated standalone strict JSON usage; this
+next batch has no passing claim here. Original bytes and failed attempts remain.
+Shared contained capture/native binding and required mid-turn Sempai custody stay
+with their existing owners. No sealed successful Free proof, B1/B2 approval,
+activation, serving qualification, prefix Q1/Q2 or reference-safe GC is established.
+Historical monty_control capture consumers and the open successor matrix still need
+their current migrations; no completed historical section is rewritten.
+
+
+### Standalone strict JSON usage — scoped prerequisite accepted, 2026-10-31
+
+The [BUILD-007 report](../validation/2026-10-31-standalone-strict-json.md) and
+[receipt](../validation/2026-10-31-standalone-strict-json.json), SHA-256
+`9af1b0643393e838c4daf43282fbb633f3b0187e6155f97e8414451ced8cdaaf`,
+close the usage execution check pending above; see [Exact §17.11](Exact_V3_definition_update_at_K3-2.md).
+Three current sources, 38 fresh distinct cases, zero ignored, formatting and
+connected/default strict checks pass. One reusable Skill calls existing parse_strict
+once and returns explicitly serialized text. It needs no dedicated Recipe; the
+contained test consumer independently checks original input, native payload and
+export text, real negative native errors and live denial without new approval rows.
+The global ResultOnly/SDK regression and 34 actual service cases also pass.
+
+The canonical worker was freshly built from current sources and remains byte-identical
+to227a. This establishes current build identity; older BUILD-004 observations and
+the corrected dependency limitation remain historical facts. Unapproved drafts/test
+execution are not association/pure/workflow qualification, activation, Free proof,
+model-design or serving acceptance. Shared contained capture/native binding, the
+real closed B1/B2 subject/evidence owner and required mid-turn Sempai custody stay
+open, as do the successor matrix, prefix Q1/Q2 and reference-safe retention.
+Pre-readiness/development contained workers must not become parallel live VMs;
+ordinary live work stays on the existing global service. No historical completed
+section or whole-plan acceptance is rewritten.
+
+
+### Shared native task-model capture — scoped handoff accepted, 2026-10-31
+
+The [BUILD-008 report](../validation/2026-10-31-shared-model-capture.md) and
+[receipt](../validation/2026-10-31-shared-model-capture.json), SHA-256
+`b323f61288d73b5cc2b267da3499a27849e0cf23d8315a02ea7b700dd4afb81f`,
+establish the bounded shared capture handoff pending above; see
+[Exact §17.12](Exact_V3_definition_update_at_K3-2.md). Six current Composition
+sources, nine fresh distinct cases, zero ignored, format/compilation and
+connected/default strict checks pass. One existing capture/metadata owner now
+serves the global factory and pre-readiness/development contained model path.
+Actual original host/admission/source and persisted root lineage are checked
+before capture/native binding, then the unstarted claim is rechecked after awaits.
+No public lineage field, duplicate snapshot query or replacement admission.
+
+Real PG/kernel/SDK cases cover capture-before-binding, foreign admission/re-entry
+rejection, global identity/ResultOnly, ordinary/default/selected routing, inherited
+children and pure observers. Original failed Run1 diagnostics remain recorded;
+repairs keep the original admission Arc, safe error classification and private
+persisted-parent inspector. The fresh BUILD-007 worker is reused unchanged.
+
+This supplies no sealed successful/contained Free proof, component approval,
+activation, serving acceptance or full I1/I2 closure. The actual B1/B2 subject,
+independent oracle/evidence reader/native carrier and separate mid-turn Sempai
+custody remain open with their owners, along with the successor matrix, prefix
+Q1/Q2 and reference-safe retention. The loopback fixture proves protocol behavior,
+not inference quality. Contained execution stays pre-readiness/development only;
+ordinary live jobs retain the existing global service. No completed historical
+section or whole-plan acceptance is rewritten.
+
+
+### Native PRE-primary Sempai custody — scoped prerequisite accepted, 2026-10-31
+
+The [BUILD-011 report](../validation/2026-10-31-related-model-custody.md) and
+[receipt](../validation/2026-10-31-related-model-custody.json), SHA-256
+`67060dd4fe05937006ffd8b5872f73fa89953a3a080279a59d4e09916b8f4472`,
+establish eleven-source/V192 acceptance with ten fresh distinct positive cases,
+zero ignored in Run2, format/compilation and connected/default/neutral strict checks;
+see [Exact §17.13](Exact_V3_definition_update_at_K3-2.md). V192 is actually assigned,
+not a placeholder. Related native work retains the original invocation, actual
+host request and selected reviewer route/Prefix, distinct work/fence and unchanged
+wire/provider/loop payloads. It cannot overwrite Kohai or reuse post-turn identities.
+Reviewer output is independent of explicit Kohai37/79 and accounting estimates.
+
+Original complete requests remain immutable in PG with only checked digests in RAM.
+The existing owner retains related pending observations through primary failure or
+cancellation and repeatedly reconciles them without resubmission; durable payload
+buffers are released. Actual SDK/PG tests exercise all three stages, route retention,
+failed review/no primary send, original-write failure and recovery after real
+cancellation. Related records have no parent/store Arc cycle. The actually rebuilt
+worker remains227a; unchanged Run2 inputs/images are explicitly verified.
+
+The earlier broad selector's ignored explicit live-inference gate stays recorded
+and unverified; precise positive Run2 coverage does not claim inference quality or
+Serving. This is the current PRE-primary review, not POST-primary preparation or
+post-turn integration. Confirmed-unsubmitted review-budget reconciliation remains
+a separate open BUILD-012 accounting repair; unknown effects retain their holds.
+Actual sealed Free/required-edge qualification, B1/B2 subjects, full I1/I2 and the
+open successor matrix, prefix Q1/Q2 and reference-safe retention stay open. No
+historical completed section or whole-plan/platform acceptance is rewritten.
+
+
+### Native unsubmitted review accounting — scoped repair accepted, 2026-10-31
+
+The [BUILD-012 report](../validation/2026-10-31-review-unsubmitted.md) and
+[receipt](../validation/2026-10-31-review-unsubmitted.json), SHA-256
+`1ae4bb26e00871bcdf0319ae03bc3320f9851e683a8442d1376da78305aa9380`,
+close the specific accounting repair pending above; see
+[Exact §17.14](Exact_V3_definition_update_at_K3-2.md). Two sources, five fresh
+distinct cases, zero ignored, compilation/format and connected/default strict
+checks pass. Actual confirmed-unsubmitted evidence is retained before gateway
+error conversion and reaches the existing accountant's supported reconciliation.
+Unknown effects retain holds; an error category is not evidence of no submission.
+
+Actual Governor/PG/native/SDK cases distinguish a preparation BudgetExceeded
+without any SDK request (separate primary/review reservations released) from a
+BudgetExceeded after an actual Length response (only unsubmitted primary released;
+review reservation and original provider evidence retained). No fabricated spend,
+new ledger or retry. Existing custody/output/protocol regressions pass; unchanged
+BUILD-011 worker inputs are verified for reuse.
+
+This is actual caller accounting with the in-memory governor, not durable governor
+crash recovery, billing verification, remote inference or Free/Serving approval.
+Original technical discovery/B1/B2 packet sources, sealed workflow qualification,
+full I1/I2 and the open successor matrix, prefix Q1/Q2 and reference-safe retention
+remain open. No completed historical section or whole-plan acceptance is rewritten.
+
+
+### Model-host compatibility in its actual owner — scoped acceptance, 2026-10-31
+
+The [BUILD-009 report](../validation/2026-10-31-model-host-compatibility.md) and
+[receipt](../validation/2026-10-31-model-host-compatibility.json), SHA-256
+`ebf79a0837fe78aef49dbb52d9ec22f3255bf2afff6e32b4946e4b4ba9e652ae`,
+accept the current Composition-owned compatibility successor; see
+[Exact §17.15](Exact_V3_definition_update_at_K3-2.md). Final Run6 covers 31 changed/
+moved/deleted paths, fresh compilation and 24 distinct cases, zero ignored.
+All 22 original cases remain, with one native reply-negative case and one separate
+model-metadata case. Format, CI YAML/scope, Composition lib/tests strict and isolated
+Monty workspace all-targets strict pass. The actual 248-path reviewed-root hash is
+`06e246dd76f24a30ca5b1ed85a17b884620c4a767d7f2c6b73d56e1696b29419`.
+
+Tests/fixtures now consume their actual Composition owner and current prepare/bind
+contracts. The unchanged capture observation record/parser is shared once via
+`task_model_capture_record.rs`; it remains data, separate from the opaque native
+capture. The unchanged task-model capture query belongs to the actual admission
+lifecycle. No duplicate parser, dummy caller, fallback, new suppression or Free/
+approval extension is introduced. Exact worker227a inputs and artifact reuse are
+verified. Failed runs remain preserved. All-targets Clippy does not certify a
+rerun of the entire isolated runtime suite; recording model fixtures do not prove
+live inference, final Free/Serving or deployment.
+
+Original Use/ModelSetup transaction interfaces remain private/unintegrated.
+General Pure/review qualification consumes the existing validator Steps3/8–10 and
+V149/V150 original submission/preparation owners, never an expanded generation
+exception or second review queue. Original executor configuration/model/credential
+identity and live dispatch checks remain required. Full I1/I2, Use/design flow,
+prefix Q1/Q2, reference-safe retention, durable recovery and BUILD-010 remain open.
+Historical completed sections and old evidence stay unchanged. BUILD-009 source
+freeze has ended; permanent central Cargo ownership remains in force.
+
+
+### Bootstrap Python test entrypoint — scoped source correction accepted, 2026-10-31
+
+BUILD-013 moves the existing unittest.main below both classes, preserving all
+23 test bodies. The actual repository command
+`python3 -B scripts/prefix/test_bootstrap_answer.py` passes23/0skipped, including
+the eight Prefill cases previously bypassed by direct script execution. See
+[Exact §17.16](Exact_V3_definition_update_at_K3-2.md),
+[build queue](../development-build-queue.md) and [handoff](../development-handoff.md).
+This is source-only Python evidence; no Cargo/product/native/Q1/Pure/Free change.
+Original BUILD-009 evidence and all prior plan bytes remain unchanged. Actual
+review/pure approval and Original Use/ModelSetup integration stay open.
+
+
+### Review model selection, A/S target and offline oracle — scoped successors, 2026-10-31
+
+[Exact §17.17–17.19](Exact_V3_definition_update_at_K3-2.md) records the following
+bounded successors; previous bytes/evidence stay unchanged:
+
+- BUILD-014 [receipt](../validation/2026-10-31-review-model-selection.json), SHA-256
+  `347be24f5ae84c02360a84769d44d50ff6cbaf45a7b951fe6153248dd299ec6e`:
+  five sources, compilation, nine distinct tests/0ignored and format/connected/
+  default strict. One existing model-input serializer feeds Engine and V150.
+  Original Recipe/variant comparison preserves absent versus explicit Default,
+  Selected profiles and Free declarations; checksum-correct forgeries fail and
+  originals restore after successors. Preparation metadata grants no dispatch,
+  Q1/Pure/Free or Use-bootstrap authority.
+- BUILD-015 [receipt](../validation/2026-10-31-validation-target-documents.json), SHA-256
+  `b78e1f69bf5a92f4fac3da2242f75c8d9a1d905a9b583ddca41e77fab2cc6a10`:
+  21 text paths, compilation, three native cases/0ignored and connected strict,
+  actual baseline/reference/deployment with319 release sources. Integrated target:
+  authored A uses own function approvals/shared Skill-code subject and proven
+  compatible successors without unchanged-consumer reapproval; shipped S retains
+  controlled exact usage/prerequisite qualification without installed Q2. Actual
+  joint-subject/writer/compatibility/publication and independent S support remain
+  open in existing owners. Do not build an obsolete generic A closure-reapproval
+  engine or expand the narrow generation exception. The receipt retains its
+  original Python warning; only the next successor addresses it.
+- BUILD-016/017 [receipt](../validation/2026-10-31-model-oracle-runtime.json), SHA-256
+  `dc2da85e0b2d9299eb4bcfa83cdc97dff80c454511ac50931c40c0f6a83f0f90`:
+  four explicitly run offline Rust/HF cases plus the actual native/global base/
+  Sempai consumer, five distinct/0ignored. Exact unchanged compilation/strict
+  reused; isolated pinned test interpreter and actual HF backend count without
+  padding/truncation. Original model/template/tokenizer/context remain unchanged;
+  oversized measurements still fail the native context guard. No warning filter,
+  production renderer, server change, inference or platform deployment claim.
+  Two factual model-input metadata texts are included without new API/authority.
+
+Prefix-owned B1/B2/Packet/schema/Goldenbytes are unchanged. Workflow-scoped Free,
+original executor/configuration/credential/finalguard requirements, complete I1/I2,
+independent pre-prefix Design release, prefix Q1/Q2, reference-safe retention and
+recovery remain open. These scoped documents/tests activate none of them. Source
+freeze ended; central Cargo ownership remains permanent. No historical section is
+rewritten or whole-plan/platform acceptance claimed.
+
+
+### Joint function subject — retention successor accepted, 2026-10-31
+
+BUILD-018 [report](../validation/2026-10-31-joint-function-subject.md) and
+[receipt](../validation/2026-10-31-joint-function-subject.json), SHA-256
+`6ad7eea42eb374a09d05c48055f794045467cca477bb715ca4fee13f5c2e06a5`,
+accept the existing review owner's strict submission/3 and actual V193 upgrade.
+Sixteen sources, fresh compilation,15 distinct native/0ignored,7 UI/0skipped,
+format and connected strict pass. See [Exact §17.20](Exact_V3_definition_update_at_K3-2.md).
+Optional function_partner retains two changed Skill/code roots or one changed root
+with exact unchanged context, per-root base/head CAS and one V149 intent. Staging
+is atomic; second-root conflict rolls back the first. Original /1-/2 bytes remain.
+Typed subject/2 preserves both sources/bases; legacy single-class preparation
+rejects the new joint subject at Engine and Store, preventing partial validation.
+
+This is original subject/context retention, not actual complete function rules,
+Q1, human Q2, atomic own approvals, compatibility publication or S/Pure/Free
+qualification. Context retention itself grants no partner approval. Next work
+uses the existing Validator Steps3/8–10 owner and real run/attempt/interpreter/
+settlement, without another queue/subject/store or generation exception. Full
+Use/ModelSetup/design/prefix lifecycle remains open. B1/B2/Packet/Golden and all
+historical plan bytes remain unchanged. Batch freeze ended; Root retains Cargo.

@@ -19,10 +19,13 @@ pub(crate) enum Error {
     #[error("prefix job storage unavailable")]
     Unavailable,
 }
+#[path = "prefix_job_target.rs"]
+mod target;
+pub(crate) use target::Target;
+
 pub(crate) struct Definition {
     pub(crate) id: Uuid,
-    pub(crate) profile: String,
-    pub(crate) revision: u64,
+    pub(crate) target: Target,
     pub(crate) operation: String,
     pub(crate) mode: String,
     pub(crate) request: Value,
@@ -34,8 +37,7 @@ pub(crate) struct Definition {
 }
 pub(crate) struct Reservation<'a> {
     pub(crate) id: Uuid,
-    pub(crate) profile: &'a str,
-    pub(crate) revision: u64,
+    pub(crate) target: &'a Target,
     pub(crate) operation: &'a str,
     pub(crate) mode: &'a str,
     pub(crate) request: &'a Value,
@@ -47,8 +49,7 @@ pub(crate) struct Reservation<'a> {
 }
 pub(crate) struct Header {
     pub(crate) id: Uuid,
-    pub(crate) profile: String,
-    pub(crate) revision: u64,
+    pub(crate) target: Target,
     pub(crate) operation: String,
     pub(crate) mode: String,
     pub(crate) scope: TurnScope,
@@ -62,6 +63,13 @@ pub(crate) struct Store {
     pool: Arc<PgPool>,
 }
 const COLUMNS: &str = "job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by";
+
+#[cfg(test)]
+#[path = "prefix_job_input_identity_tests.rs"]
+mod input_identity_tests;
+#[cfg(test)]
+#[path = "prefix_pair_job_target_tests.rs"]
+mod pair_target_tests;
 fn sha(value: &str) -> String {
     hex::encode(Sha256::digest(value.as_bytes()))
 }
@@ -112,12 +120,14 @@ fn decode(row: tokio_postgres::Row) -> Result<Definition, Error> {
     let thread_scope =
         serde_json::from_value(row.get::<_, Value>(12)).map_err(|_| Error::Invalid)?;
     validate_scope(&scope, &thread_scope, &row.get::<_, String>(13))?;
+    let operation: String = row.get(3);
+    let mode: String = row.get(4);
+    let target = Target::from_columns(row.get(1), row.get(2), &operation, &mode, &request)?;
     Ok(Definition {
         id: row.get(0),
-        profile: row.get(1),
-        revision: u64::try_from(row.get::<_, i64>(2)).map_err(|_| Error::Invalid)?,
-        operation: row.get(3),
-        mode: row.get(4),
+        target,
+        operation,
+        mode,
         request,
         program_bytes,
         input,
@@ -126,6 +136,17 @@ fn decode(row: tokio_postgres::Row) -> Result<Definition, Error> {
         created_by: row.get(13),
     })
 }
+fn same_request(existing: &Definition, r: &Reservation<'_>) -> bool {
+    existing.request == *r.request
+        && existing.input == *r.input
+        && existing.target == *r.target
+        && existing.operation == r.operation
+        && existing.mode == r.mode
+        && existing.created_by == r.created_by
+        && existing.scope == *r.scope
+        && existing.thread_scope == *r.thread_scope
+}
+
 impl Store {
     pub(crate) fn new(pool: Arc<PgPool>) -> Self {
         Self { pool }
@@ -133,17 +154,27 @@ impl Store {
     /// Small read projection; status polling never reloads compiler/source blobs.
     pub(crate) async fn header(&self, id: Uuid) -> Result<Option<Header>, Error> {
         let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
-        let Some(row) = client.query_opt("SELECT job_id,profile_name,profile_revision,operation,mode,scope,thread_scope,created_by,created_at,request_checksum,program_checksum,input_checksum FROM brassclaw_prefix_job_definitions WHERE job_id=$1", &[&id]).await.map_err(|_| Error::Unavailable)? else { return Ok(None); };
+        let Some(row) = client.query_opt("SELECT job_id,profile_name,profile_revision,operation,mode,scope,thread_scope,created_by,created_at,request_checksum,program_checksum,input_checksum,request_bytes FROM brassclaw_prefix_job_definitions WHERE job_id=$1", &[&id]).await.map_err(|_| Error::Unavailable)? else { return Ok(None); };
         let scope = serde_json::from_value(row.get::<_, Value>(5)).map_err(|_| Error::Invalid)?;
         let thread = serde_json::from_value(row.get::<_, Value>(6)).map_err(|_| Error::Invalid)?;
         let actor: String = row.get(7);
         validate_scope(&scope, &thread, &actor)?;
+        let operation: String = row.get(3);
+        let mode: String = row.get(4);
+        let request = parse(
+            &row.get::<_, String>(12),
+            &row.get::<_, String>(9),
+            brassclaw_skills::value_contract::ContractLimits {
+                max_bytes: 65536,
+                ..brassclaw_skills::component_revision::REVISION_LIMITS
+            },
+        )?;
+        let target = Target::from_columns(row.get(1), row.get(2), &operation, &mode, &request)?;
         Ok(Some(Header {
             id: row.get(0),
-            profile: row.get(1),
-            revision: u64::try_from(row.get::<_, i64>(2)).map_err(|_| Error::Invalid)?,
-            operation: row.get(3),
-            mode: row.get(4),
+            target,
+            operation,
+            mode,
             scope,
             created_by: actor,
             created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(8).to_rfc3339(),
@@ -168,22 +199,40 @@ impl Store {
     /// after a concurrent catalogue/profile change. It never starts or retries a
     /// run. The caller submits that retained definition through normal ingress.
     pub(crate) async fn reserve(&self, r: Reservation<'_>) -> Result<Definition, Error> {
-        if r.id.is_nil()
-            || r.created_by.is_empty()
-            || r.created_by.len() > 512
-            || !matches!(
-                r.operation,
-                "generate" | "redesign" | "model_design" | "create" | "measure"
-            )
-            || !matches!(r.mode, "source_only" | "target")
-        {
+        if r.id.is_nil() || r.created_by.is_empty() || r.created_by.len() > 512 {
             return Err(Error::Invalid);
         }
         validate_scope(r.scope, r.thread_scope, r.created_by)?;
-        let revision = i64::try_from(r.revision)
-            .ok()
-            .filter(|value| *value > 0)
-            .ok_or(Error::Invalid)?;
+        let (profile, revision) = r.target.columns(r.operation, r.mode, r.request)?;
+        if let Target::Pair {
+            specification,
+            proposal,
+        } = r.target
+        {
+            // A reconnect needs only its original immutable definition. Never
+            // recollect sources or replace a previously selected program/input.
+            if let Some(existing) = self.get(r.id).await? {
+                if !same_request(&existing, &r) {
+                    return Err(Error::Conflict);
+                }
+                return Ok(existing);
+            }
+            let packet = crate::prefix_model_designs::PgPrefixModelDesigns::new(
+                self.pool.clone(),
+                r.scope.tenant_id.as_str().into(),
+            )
+            .case_packet(specification, proposal)
+            .await
+            .map_err(|error| match error {
+                brassclaw_product_workflow::InterceptorConfigServiceError::Unavailable => {
+                    Error::Unavailable
+                }
+                _ => Error::Invalid,
+            })?;
+            if *r.input != serde_json::json!({"case_packet_bytes":packet.case_packet_bytes}) {
+                return Err(Error::Invalid);
+            }
+        }
         let request_bytes = serde_json::to_string(r.request).map_err(|_| Error::Invalid)?;
         let request_checksum = sha(&request_bytes);
         let mut client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
@@ -197,30 +246,24 @@ impl Store {
             .map_err(|_| Error::Unavailable)?
         {
             let existing = decode(row)?;
-            if existing.request != *r.request
-                || existing.profile != r.profile
-                || existing.revision != r.revision
-                || existing.operation != r.operation
-                || existing.mode != r.mode
-                || existing.created_by != r.created_by
-                || existing.scope != *r.scope
-                || existing.thread_scope != *r.thread_scope
-            {
+            if !same_request(&existing, &r) {
                 return Err(Error::Conflict);
             }
             tx.commit().await.map_err(|_| Error::Unavailable)?;
             return Ok(existing);
         }
-        let current = tx
-            .query_opt(
-                "SELECT revision FROM reborn_prefix_profiles WHERE name=$1 FOR SHARE",
-                &[&r.profile],
-            )
-            .await
-            .map_err(|_| Error::Unavailable)?
-            .ok_or(Error::Invalid)?;
-        if current.get::<_, i64>(0) != revision {
-            return Err(Error::Conflict);
+        if profile.is_some() {
+            let current = tx
+                .query_opt(
+                    "SELECT revision FROM reborn_prefix_profiles WHERE name=$1 FOR SHARE",
+                    &[&profile],
+                )
+                .await
+                .map_err(|_| Error::Unavailable)?
+                .ok_or(Error::Invalid)?;
+            if Some(current.get::<_, i64>(0)) != revision {
+                return Err(Error::Conflict);
+            }
         }
         // Inspecting/binding is mechanical; it cannot turn a draft into an
         // approved pipeline. Actual admission revalidates trusted provenance.
@@ -262,7 +305,7 @@ impl Store {
         )?;
         let scope = serde_json::to_value(r.scope).map_err(|_| Error::Invalid)?;
         let thread_scope = serde_json::to_value(r.thread_scope).map_err(|_| Error::Invalid)?;
-        tx.execute("INSERT INTO brassclaw_prefix_job_definitions(job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT(job_id) DO NOTHING",&[&r.id,&r.profile,&revision,&r.operation,&r.mode,&request_bytes,&request_checksum,&program_bytes,&sha(&program_bytes),&input_bytes,&sha(&input_bytes),&scope,&thread_scope,&r.created_by]).await.map_err(|_| Error::Unavailable)?;
+        tx.execute("INSERT INTO brassclaw_prefix_job_definitions(job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT(job_id) DO NOTHING",&[&r.id,&profile,&revision,&r.operation,&r.mode,&request_bytes,&request_checksum,&program_bytes,&sha(&program_bytes),&input_bytes,&sha(&input_bytes),&scope,&thread_scope,&r.created_by]).await.map_err(|_| Error::Unavailable)?;
         let row = tx
             .query_one(
                 &format!("SELECT {COLUMNS} FROM brassclaw_prefix_job_definitions WHERE job_id=$1"),
@@ -271,15 +314,7 @@ impl Store {
             .await
             .map_err(|_| Error::Unavailable)?;
         let stored = decode(row)?;
-        if stored.request != *r.request
-            || stored.profile != r.profile
-            || stored.revision != r.revision
-            || stored.operation != r.operation
-            || stored.mode != r.mode
-            || stored.created_by != r.created_by
-            || stored.scope != *r.scope
-            || stored.thread_scope != *r.thread_scope
-        {
+        if !same_request(&stored, &r) {
             return Err(Error::Conflict);
         }
         tx.commit().await.map_err(|_| Error::Unavailable)?;
@@ -342,12 +377,15 @@ pub(super) async fn assert_metadata_only(
     let input = json!({"profile":"base-prompt","revision":revision.to_string(),"snapshot_bytes":crate::prefix_generations::canonical(fixture.snapshot()).unwrap()});
     let request =
         json!({"profile":"base-prompt","expected_revision":revision,"mode":"source_only"});
+    let target = Target::Profile {
+        name: "base-prompt".into(),
+        revision: revision as u64,
+    };
     macro_rules! reserve {
         ($id:expr,$request:expr,$input:expr) => {
             Reservation {
                 id: $id,
-                profile: "base-prompt",
-                revision: revision as u64,
+                target: &target,
                 operation: "generate",
                 mode: "source_only",
                 request: $request,
@@ -363,7 +401,10 @@ pub(super) async fn assert_metadata_only(
     let first = store.reserve(reserve!(id, &request, &input)).await.unwrap();
     let stored = store.get(id).await.unwrap().unwrap();
     assert_eq!(stored.id, id);
-    assert_eq!(stored.profile, "base-prompt");
+    assert_eq!(
+        stored.target.profile(),
+        Some(("base-prompt", revision as u64))
+    );
     assert_eq!(stored.input, input);
     assert_eq!(
         stored.program_bytes,
@@ -383,15 +424,23 @@ pub(super) async fn assert_metadata_only(
         serde_json::to_value(&stored.thread_scope).unwrap(),
         serde_json::to_value(&thread_scope).unwrap()
     );
-    // Retry captures retain the first input, even if a caller now offers
-    // different source data under the same unchanged transport request.
+    // Explicit offered input belongs to request identity. A reconnect that
+    // supplies no new data uses get(); it does not submit a changed reservation.
     let mut offered = input.clone();
     offered["snapshot_bytes"] = json!("a newer capture must not replace the first");
-    let duplicate = store
-        .reserve(reserve!(id, &request, &offered))
-        .await
-        .unwrap();
+    assert!(matches!(
+        store.reserve(reserve!(id, &request, &offered)).await,
+        Err(Error::Conflict)
+    ));
+    let duplicate = store.reserve(reserve!(id, &request, &input)).await.unwrap();
     assert_eq!(duplicate.input, first.input);
+    assert_eq!(duplicate.program_bytes, first.program_bytes);
+    input_identity_tests::assert_input_identity(
+        catalogue.pool.clone(),
+        reserve!(id, &request, &input),
+        catalogue._generation_candidates[0].as_ref(),
+    )
+    .await;
     let changed = json!({"profile":"base-prompt","expected_revision":revision,"mode":"target"});
     assert!(matches!(
         store.reserve(reserve!(id, &changed, &input)).await,

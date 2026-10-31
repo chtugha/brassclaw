@@ -21,7 +21,7 @@ import {
 const EXECUTION_FIELDS = [
   "utility_worker_memory_bytes", "max_native_artifact_bytes",
   "max_catalogue_recipes", "max_catalogue_components_per_recipe", "max_catalogue_variants_per_recipe", "max_catalogue_bytes", "max_catalogue_actor_bytes",
-  "max_http_client_cache_entries", "max_mcp_inflight_calls", "max_mcp_request_bytes", "max_mcp_response_bytes", "default_http_request_timeout_millis", "default_http_response_body_bytes", "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes",
+  "max_http_client_cache_entries", "max_mcp_inflight_calls", "max_mcp_request_bytes", "max_mcp_response_bytes", "default_http_request_timeout_millis", "default_http_response_body_bytes", "oauth_token_timeout_millis", "oauth_token_response_body_bytes", "oauth_dcr_timeout_millis", "oauth_dcr_response_body_bytes", "oauth_dcr_metadata_cache_ttl_secs", "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes",
   "max_coding_read_bytes",
   "max_coding_write_bytes",
   "max_coding_patch_bytes",
@@ -46,6 +46,7 @@ const EXECUTION_FIELDS = [
   "max_source_bytes", "max_compiled_source_bytes", "max_feeds", "max_stdout_bytes",
   "execution_slice_millis", "max_value_depth", "max_value_nodes", "max_value_bytes",
 ];
+const ZERO_EXECUTION_FIELDS = ["worker_adapter_reserve_bytes", "max_http_client_cache_entries", "default_coding_read_lines", "default_coding_directory_depth", "default_coding_head_lines", "coding_diff_context_lines", "oauth_dcr_metadata_cache_ttl_secs"];
 const pendingSettings = (status, desiredRevision) => status.state === "running" &&
   ((Number.isSafeInteger(desiredRevision) && status.task_budget?.desired_revision < desiredRevision) ||
     status.execution_limits?.ipc_frame_capacity_pending_reduction === true ||
@@ -66,7 +67,7 @@ const U32_EXECUTION_FIELDS = [
   "max_catalogue_recipes", "max_catalogue_components_per_recipe",
   "max_catalogue_variants_per_recipe", "max_catalogue_actor_bytes",
   "max_http_client_cache_entries", "max_mcp_inflight_calls",
-  "max_mcp_request_bytes", "max_mcp_response_bytes", "model_quote_output_tokens",
+  "max_mcp_request_bytes", "max_mcp_response_bytes", "model_quote_output_tokens", "oauth_token_timeout_millis", "oauth_dcr_timeout_millis", "oauth_dcr_metadata_cache_ttl_secs",
   "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes",
   "max_workers", "max_recipe_contexts", "max_pending_host_calls",
   "max_queued_tasks", "max_pending_settings", "max_retained_attempts",
@@ -205,7 +206,7 @@ export function MontyVmTab({ searchQuery = "" }) {
       for (const key of EXECUTION_FIELDS) {
         if (String(settings.execution_limits?.[key] ?? "").trim() === "") throw new Error(t("montyVm.executionLimitsInvalid"));
         const value = Number(settings.execution_limits?.[key]);
-        if (!Number.isSafeInteger(value) || value < (["worker_adapter_reserve_bytes", "max_http_client_cache_entries", "default_coding_read_lines", "default_coding_directory_depth", "default_coding_head_lines", "coding_diff_context_lines"].includes(key) ? 0 : 1)) throw new Error(t("montyVm.executionLimitsInvalid"));
+        if (!Number.isSafeInteger(value) || value < (ZERO_EXECUTION_FIELDS.includes(key) ? 0 : 1)) throw new Error(t("montyVm.executionLimitsInvalid"));
         if (U32_EXECUTION_FIELDS.includes(key) && value > 4294967295) throw new Error(t("montyVm.executionLimitsInvalid"));
         if (key === "status_poll_interval_millis" && value > 2147483647) throw new Error(t("montyVm.statusPollInvalid"));
         executionLimits[key] = value;
@@ -569,7 +570,7 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
               <label htmlFor=${`monty-${key}`} className="text-sm">${t(`montyVm.execution.${key}`)}</label>
               <p id=${`monty-${key}-help`} className="mt-1 text-xs text-[var(--v2-text-muted)]">${t(`montyVm.executionHelp.${key}`)}</p>
             </div>
-            <input id=${`monty-${key}`} type="number" min=${["worker_adapter_reserve_bytes", "max_http_client_cache_entries", "default_coding_read_lines", "default_coding_directory_depth", "default_coding_head_lines", "coding_diff_context_lines"].includes(key) ? "0" : "1"} step="1"
+            <input id=${`monty-${key}`} type="number" min=${ZERO_EXECUTION_FIELDS.includes(key) ? "0" : "1"} step="1"
               aria-describedby=${`monty-${key}-help`}
               className="col-span-2 rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 font-mono text-sm"
               value=${settings.execution_limits?.[key] ?? ""} disabled=${isSaving}

@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeSet, sync::Arc};
 
-const LIMITS: ContractLimits = ContractLimits {
+pub(super) const LIMITS: ContractLimits = ContractLimits {
     max_depth: 64,
     max_nodes: 2_000_000,
     max_bytes: 64 * 1024 * 1024,
@@ -247,6 +247,10 @@ fn validate_archived_source_input(
 /// Strict, self-contained package integrity, not a source/teacher/cache verdict.
 pub(crate) fn validate_package(profile: &str, bytes: &str) -> Result<(), Error> {
     let package = strict_json(bytes, LIMITS).map_err(|_| bad())?;
+    if package["format"] == super::prefix_generation_binding::TARGET_FORMAT {
+        super::prefix_generation_binding::read(profile, &sha(bytes.as_bytes()), bytes)?;
+        return Ok(());
+    }
     let object = package.as_object().ok_or_else(bad)?;
     if object.len() != 3
         || package["format"] != "brassclaw-prefix-generation-package/1"
@@ -733,6 +737,17 @@ impl PgPrefixGenerations {
     ) -> Result<PrefixGenerationDetail, Error> {
         validate_package(profile, &request.generation_bytes)?;
         let generation = sha(request.generation_bytes.as_bytes());
+        let target = if strict_json(&request.generation_bytes, LIMITS).map_err(|_| bad())?["format"]
+            == super::prefix_generation_binding::TARGET_FORMAT
+        {
+            Some(super::prefix_generation_binding::read(
+                profile,
+                &generation,
+                &request.generation_bytes,
+            )?)
+        } else {
+            None
+        };
         let revision = i64::try_from(request.expected_profile_revision)
             .ok()
             .filter(|n| *n > 0)
@@ -759,7 +774,22 @@ impl PgPrefixGenerations {
         if row.get::<_, i64>(0) != revision {
             return Err(Error::Conflict);
         }
-        tx.execute("INSERT INTO reborn_prefix_generations(profile_name,generation_id,profile_revision,generation_kind,generation_bytes) VALUES($1,$2,$3,'compiler-package',$4) ON CONFLICT DO NOTHING",&[&profile,&generation,&revision,&request.generation_bytes]).await.map_err(|_|Error::Unavailable)?;
+        if let Some(target) = &target {
+            let source = tx.query_opt("SELECT generation_kind,generation_bytes FROM reborn_prefix_generations WHERE profile_name=$1 AND generation_id=$2",
+                &[&profile,&target.source_generation]).await.map_err(|_| Error::Unavailable)?.ok_or_else(bad)?;
+            if source.get::<_, String>(0) != "compiler-package"
+                || source.get::<_, String>(1) != target.source_package_bytes
+            {
+                return Err(bad());
+            }
+        }
+        let kind = if target.is_some() {
+            "model-target"
+        } else {
+            "compiler-package"
+        };
+        let source = target.as_ref().map(|t| &t.source_generation);
+        tx.execute("INSERT INTO reborn_prefix_generations(profile_name,generation_id,profile_revision,generation_kind,generation_bytes,source_generation) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING",&[&profile,&generation,&revision,&kind,&request.generation_bytes,&source]).await.map_err(|_|Error::Unavailable)?;
         let row=tx.query_one("SELECT generation_bytes,profile_revision FROM reborn_prefix_generations WHERE profile_name=$1 AND generation_id=$2",&[&profile,&generation]).await.map_err(|_|Error::Unavailable)?;
         if row.get::<_, String>(0) != request.generation_bytes {
             return Err(Error::Conflict);
@@ -792,14 +822,37 @@ impl PgPrefixGenerations {
     ) -> Result<PrefixGenerationDetail, Error> {
         hash(&Value::String(generation.into()))?;
         let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
-        let row=client.query_opt("SELECT generation_id,profile_revision,generation_kind,created_at,generation_bytes FROM reborn_prefix_generations WHERE profile_name=$1 AND generation_id=$2",&[&profile,&generation]).await.map_err(|_|Error::Unavailable)?.ok_or(Error::GenerationNotFound)?;
+        let row=client.query_opt("SELECT generation_id,profile_revision,generation_kind,created_at,generation_bytes,source_generation FROM reborn_prefix_generations WHERE profile_name=$1 AND generation_id=$2",&[&profile,&generation]).await.map_err(|_|Error::Unavailable)?.ok_or(Error::GenerationNotFound)?;
         let bytes: String = row.get(4);
         if sha(bytes.as_bytes()) != generation {
             return Err(Error::Unavailable);
         }
         let summary = summary(profile, &row)?;
-        if summary.kind == "compiler-package" {
+        if matches!(summary.kind.as_str(), "compiler-package" | "model-target") {
+            let kind =
+                strict_json(&bytes, LIMITS).map_err(|_| Error::Unavailable)?["format"].clone();
+            if kind
+                != if summary.kind == "model-target" {
+                    super::prefix_generation_binding::TARGET_FORMAT
+                } else {
+                    "brassclaw-prefix-generation-package/1"
+                }
+            {
+                return Err(Error::Unavailable);
+            }
             validate_package(profile, &bytes)?;
+        }
+        if summary.kind == "model-target" {
+            let target = super::prefix_generation_binding::read(profile, generation, &bytes)?;
+            if row.get::<_, Option<String>>(5).as_ref() != Some(&target.source_generation) {
+                return Err(Error::Unavailable);
+            }
+            let source=client.query_opt("SELECT generation_kind,generation_bytes FROM reborn_prefix_generations WHERE profile_name=$1 AND generation_id=$2",&[&profile,&target.source_generation]).await.map_err(|_|Error::Unavailable)?.ok_or(Error::Unavailable)?;
+            if source.get::<_, String>(0) != "compiler-package"
+                || source.get::<_, String>(1) != target.source_package_bytes
+            {
+                return Err(Error::Unavailable);
+            }
         }
         Ok(PrefixGenerationDetail {
             summary,

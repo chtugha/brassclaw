@@ -31,7 +31,9 @@ const TENANT_BETA_IDENTITY: &str = "Alice beta tenant identity: likes neon orchi
 async fn reborn_identity_tenant_scope_isolation_parity() {
     const ROOM: &str = "room-tenant-identity-shared";
 
-    let shared_storage = RebornHarnessSharedStorage::new().expect("shared storage");
+    let shared_storage = RebornHarnessSharedStorage::new()
+        .await
+        .expect("shared storage");
     let identity_source = Arc::new(TenantIdentitySource::default());
     let tenant_alpha = test_product_scope(
         "tenant-alpha-identity-e2e",

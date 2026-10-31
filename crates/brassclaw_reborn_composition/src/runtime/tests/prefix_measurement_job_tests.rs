@@ -42,6 +42,54 @@ pub(super) async fn assert_durable_measurement(
             "design":{"adapter":"ornith-qwen-system/1","evidence_view":design["evidence_view"],"source_selection":"complete-mandatory","reserve_tokens":8192},
             "rationale":"Offline diagnostic only; no model, design or cache acceptance."}).to_string(),
     }).await.unwrap();
+    let rule_bytes = json!({"format":"brassclaw-prefix-design-proposal/2",
+        "profile":profile,"specification":specification,
+        "design":{"adapter":"whole-unit-reference/1","generation_rules":{
+            "format":"brassclaw-prefix-generation-rules/1","profile":profile,
+            "header":"Preserve complete contracts and cite original evidence.",
+            "required_coverage":[{"path":"catalogue/components/","match":"prefix","first_lines":[]}],
+            "bands":[{"minimum_tokens":0,"maximum_tokens":100000,"groups":[{
+                "id":"contracts","required":true,"priority":0,"dependencies":[],
+                "selectors":[{"path":"catalogue/components/","match":"prefix","first_lines":[]}]}]}]}},
+        "rationale":"Unaccepted reusable reference rules; no serving or source-coverage claim."}).to_string();
+    let rule_request = json!({"specification":specification,"proposal_bytes":rule_bytes});
+    let route = format!("/api/webchat/v2/prefixes/{profile}/design-proposals");
+    let (status, rule_proposal) = post(app, &route, &rule_request, true).await;
+    assert_eq!(status, axum::http::StatusCode::OK, "{rule_proposal}");
+    assert_eq!(rule_proposal["proposal_bytes"], rule_bytes);
+    assert_eq!(rule_proposal["qualification"], "unaccepted-proposal");
+    assert_eq!(
+        post(app, &route, &rule_request, true,).await.1,
+        rule_proposal,
+        "identical retention returns the immutable original"
+    );
+    let rule_id = rule_proposal["id"].as_str().unwrap();
+    let retained_rule = proposals.get_proposal(profile, rule_id).await.unwrap();
+    assert_eq!(retained_rule.proposal_bytes, rule_bytes);
+    assert_eq!(
+        proposals
+            .get_proposal(profile, &proposal.id)
+            .await
+            .unwrap()
+            .proposal_bytes,
+        proposal.proposal_bytes,
+        "legacy proposals stay byte-for-byte readable"
+    );
+    let mut invalid_rule: Value = serde_json::from_str(&rule_bytes).unwrap();
+    invalid_rule["design"]["generation_rules"]["bands"][0]["groups"][0]["dependencies"] =
+        json!(["contracts"]);
+    assert_eq!(
+        post(
+            app,
+            &route,
+            &json!({"specification":specification,
+            "proposal_bytes":invalid_rule.to_string()}),
+            true,
+        )
+        .await
+        .0,
+        axum::http::StatusCode::BAD_REQUEST
+    );
     let client = pool.get().await.unwrap();
     let revision: i64 = client
         .query_one(
@@ -73,12 +121,19 @@ pub(super) async fn assert_durable_measurement(
     };
     let store = crate::prefix_job_definitions::Store::new(pool.clone());
     // Invalid captures cannot create either an immutable definition or a run.
-    for field in ["generation", "proposal", "artifact_set", "probes"] {
+    for field in [
+        "generation",
+        "proposal",
+        "artifact_set",
+        "probes",
+        "rule-proposal",
+    ] {
         let mut invalid = request.clone();
         match field {
             "generation" => invalid.generation = "f".repeat(64),
             "proposal" => invalid.proposal = "f".repeat(64),
             "artifact_set" => invalid.artifact_set = "f".repeat(64),
+            "rule-proposal" => invalid.proposal = rule_id.into(),
             _ => invalid.probes_json = r#"[{"kind":"text","text":"template bypass"},{"kind":"text","text":"template bypass"}]"#.into(),
         }
         let id = Uuid::new_v4();
@@ -147,10 +202,7 @@ pub(super) async fn assert_durable_measurement(
     } else {
         // Independent HF rendering/encoding of the actual dispatched arguments,
         // not a second native measurement or a simulated success receipt.
-        use std::{
-            io::Write,
-            process::{Command, Stdio},
-        };
+        use std::{io::Write, process::Stdio};
         let originals = std::path::PathBuf::from(
             std::env::var_os("BRASSCLAW_TEST_MODEL_ARTIFACT_ROOT").unwrap(),
         );
@@ -173,7 +225,7 @@ pub(super) async fn assert_durable_measurement(
                 "tokenizer_config_json":std::fs::read_to_string(originals.join("tokenizer_config.json")).unwrap(),
                 "chat_template":arguments["template_utf8"]},
             "probes":serde_json::from_str::<Value>(arguments["probes_json"].as_str().unwrap()).unwrap()});
-        let mut oracle = Command::new("python3")
+        let mut oracle = oracle_python()
             .arg(
                 std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../brassclaw_model_encoding/tests/huggingface_oracle.py"),
@@ -240,12 +292,31 @@ pub(super) async fn assert_durable_measurement(
         post(app, &path, &request, true).await.0,
         axum::http::StatusCode::OK
     );
-    let mut conflict = request;
-    conflict.reserved_additional_input_tokens += 1;
-    assert_eq!(
-        post(app, &path, &conflict, true).await.0,
-        axum::http::StatusCode::BAD_REQUEST
-    );
+    for field in [
+        "revision",
+        "generation",
+        "proposal",
+        "artifact_set",
+        "probes",
+        "context",
+        "reserve",
+    ] {
+        let mut conflict = request.clone();
+        match field {
+            "revision" => conflict.expected_profile_revision += 1,
+            "generation" => conflict.generation = "e".repeat(64),
+            "proposal" => conflict.proposal = "e".repeat(64),
+            "artifact_set" => conflict.artifact_set = "e".repeat(64),
+            "probes" => conflict.probes_json.push(' '),
+            "context" => conflict.context_window_tokens += 1,
+            _ => conflict.reserved_additional_input_tokens += 1,
+        }
+        assert_eq!(
+            post(app, &path, &conflict, true).await.0,
+            axum::http::StatusCode::CONFLICT,
+            "changed explicit {field}"
+        );
+    }
     assert_eq!(
         runtime
             .inspect_prefix_job(profile, id)
@@ -278,7 +349,7 @@ pub(super) async fn assert_durable_measurement(
 async fn post(
     app: &axum::Router,
     path: &str,
-    request: &MeasurePrefixRequest,
+    request: &impl serde::Serialize,
     authenticated: bool,
 ) -> (axum::http::StatusCode, Value) {
     use tower::ServiceExt;

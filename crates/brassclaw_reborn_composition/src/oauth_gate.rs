@@ -3,25 +3,37 @@ use std::fmt;
 use std::sync::Arc;
 
 use brassclaw_auth::{
-    AuthChallenge, AuthContinuationRef, AuthFlowId, AuthFlowKind, AuthFlowManager,
-    AuthFlowOwnerScope, AuthFlowRecord, AuthFlowRecordSource, AuthGateRef, AuthProductError,
-    AuthProductScope, AuthProviderId, AuthSurface, CredentialAccountLabel,
-    GoogleOAuthCallbackState, NewAuthFlow, PkceVerifierSecret, ProviderScope,
-    TurnGateAuthFlowQuery, TurnRunRef, build_google_authorization_url, opaque_state_hash,
-    pkce_s256_challenge, pkce_verifier_hash,
+    AuthChallenge, AuthContinuationRef, AuthFlowId, AuthFlowManager, AuthFlowOwnerScope,
+    AuthFlowRecord, AuthFlowRecordSource, AuthGateRef, AuthProductError, AuthProductScope,
+    AuthProviderId, AuthSurface, CredentialAccountLabel, GoogleOAuthCallbackState,
+    PkceVerifierSecret, ProviderScope, TurnGateAuthFlowQuery, TurnRunRef,
+    build_google_authorization_url, opaque_state_hash, pkce_s256_challenge, pkce_verifier_hash,
 };
 use brassclaw_host_api::{
     InvocationId, ResourceScope, RuntimeCredentialAuthRequirement, SecretHandle,
 };
 use brassclaw_product_adapters::AuthPromptChallengeKind;
-use brassclaw_secrets::{SecretMaterial, SecretStore};
+use brassclaw_secrets::SecretStore;
 use brassclaw_turns::{TurnRunId, TurnScope};
 use chrono::{Duration as ChronoDuration, Utc};
 use secrecy::SecretString;
-use tokio::sync::Mutex as AsyncMutex;
 
 use crate::auth_prompt::AuthChallengeView;
 use crate::input::OAuthClientConfig;
+
+#[path = "oauth_gate_client_material.rs"]
+mod client_material;
+#[path = "oauth_gate_original.rs"]
+mod original;
+#[cfg(all(test, feature = "postgres"))]
+pub(crate) use original::tests::verify_native_private_runtime;
+pub(crate) use original::{GoogleSetupDeadline, GoogleSetupRequest};
+
+pub(crate) fn owned_google_refresh_material_handles(
+    refresh: &SecretHandle,
+) -> Result<Vec<SecretHandle>, AuthProductError> {
+    client_material::owned_refresh_material_handles(refresh)
+}
 
 const GATE_FLOW_TTL_SECONDS: i64 = 600;
 
@@ -58,6 +70,7 @@ impl GoogleOAuthGateProviderRegistry {
 
     pub(crate) async fn pkce_verifier_for_flow(
         &self,
+        flow_manager: &Arc<dyn AuthFlowManager>,
         scope: &AuthProductScope,
         provider: &AuthProviderId,
         flow_id: AuthFlowId,
@@ -65,7 +78,17 @@ impl GoogleOAuthGateProviderRegistry {
         let Some(provider) = self.providers.get(provider.as_str()) else {
             return Ok(None);
         };
-        provider.pkce_verifier_for_flow(scope, flow_id).await
+        provider
+            .pkce_verifier_for_flow(flow_manager, scope, flow_id)
+            .await
+    }
+
+    pub(crate) fn google_provider(
+        &self,
+    ) -> Result<&Arc<GoogleOAuthGateProvider>, AuthProductError> {
+        self.providers
+            .get(brassclaw_auth::GOOGLE_PROVIDER_ID)
+            .ok_or(AuthProductError::BackendUnavailable)
     }
 }
 
@@ -92,7 +115,6 @@ pub(crate) struct OAuthGateChallengeRequest<'a> {
 pub(crate) struct GoogleOAuthGateProvider {
     client: OAuthClientConfig,
     secret_store: Arc<dyn SecretStore>,
-    setup_lock: Arc<AsyncMutex<()>>,
 }
 
 impl GoogleOAuthGateProvider {
@@ -100,8 +122,20 @@ impl GoogleOAuthGateProvider {
         Self {
             client,
             secret_store,
-            setup_lock: Arc::new(AsyncMutex::new(())),
         }
+    }
+
+    pub(crate) fn verify_route_configuration(
+        &self,
+        target: &brassclaw_auth::GoogleOAuthRouteConfig,
+    ) -> Result<(), AuthProductError> {
+        if target.client_id() != &self.client.client_id
+            || target.redirect_uri() != &self.client.redirect_uri
+            || target.hosted_domain_hint() != self.client.hosted_domain_hint.as_deref()
+        {
+            return Err(AuthProductError::BackendConflict);
+        }
+        Ok(())
     }
 
     fn provider_id(&self) -> &'static str {
@@ -113,159 +147,101 @@ impl GoogleOAuthGateProvider {
         request: OAuthGateChallengeRequest<'_>,
         requirement: &RuntimeCredentialAuthRequirement,
     ) -> Result<AuthChallengeView, AuthProductError> {
-        let auth_scope = auth_scope_for_blocked_turn(request.scope, request.owner_user_id);
+        let mut auth_scope = auth_scope_for_blocked_turn(request.scope, request.owner_user_id);
         let turn_run_ref = TurnRunRef::new(request.run_id.to_string())?;
-        let query = turn_gate_query(&auth_scope, request.scope, &turn_run_ref, request.gate_ref);
-
-        let _setup_guard = self.setup_lock.lock().await;
-        if let Some(existing) = self
-            .reusable_flow_for_query(request.flow_manager, request.flow_source, query.clone())
+        let mut query =
+            turn_gate_query(&auth_scope, request.scope, &turn_run_ref, request.gate_ref);
+        query.include_terminal = true;
+        let mut prior = request
+            .flow_source
+            .flows_for_owner(query.owner.clone())
             .await?
-        {
-            return challenge_view_from_flow(&existing);
+            .into_iter()
+            .filter(|flow| {
+                brassclaw_auth::flow_matches_turn_gate_query(flow, &query)
+                    && flow.provider.as_str() == self.provider_id()
+            })
+            .collect::<Vec<_>>();
+        prior.sort_by_key(|flow| flow.id);
+        let mut active = prior
+            .iter()
+            .filter(|flow| !brassclaw_auth::is_terminal_status(flow.status));
+        let existing = active.next();
+        if active.next().is_some() {
+            return Err(AuthProductError::BackendConflict);
         }
-
-        let flow_id = AuthFlowId::new();
         let scopes = provider_scopes(&requirement.provider_scopes)?;
-        let prepared = self.prepare_flow(&auth_scope, flow_id, scopes).await?;
-        let expires_at = Utc::now() + ChronoDuration::seconds(GATE_FLOW_TTL_SECONDS);
-        self.store_pkce_verifier(
-            &auth_scope.resource,
-            flow_id,
-            prepared.pkce_verifier.clone(),
-        )
-        .await?;
-        let flow = match request
-            .flow_manager
-            .create_flow(NewAuthFlow {
-                id: Some(flow_id),
-                scope: auth_scope.clone(),
-                kind: AuthFlowKind::IntegrationCredential,
-                provider: AuthProviderId::new(self.provider_id())?,
-                challenge: AuthChallenge::OAuthUrl {
-                    authorization_url: prepared.authorization_url,
-                    expires_at,
-                },
+        if let Some(existing) = existing {
+            if existing.expires_at > Utc::now() {
+                let original = request
+                    .flow_manager
+                    .read_oauth_setup(&existing.scope, existing.id)
+                    .await?
+                    .ok_or(AuthProductError::CredentialMissing)?;
+                if original.original.definition.requested_scopes != scopes {
+                    return Err(AuthProductError::BackendConflict);
+                }
+                return challenge_view_from_flow(&original.flow);
+            }
+            // Preserve the terminal predecessor. The next identity captures
+            // the complete sorted predecessor set, without assuming wall-clock
+            // order or choosing an arbitrary old UUID as the latest flow.
+            request
+                .flow_manager
+                .cancel_flow(&existing.scope, existing.id)
+                .await?;
+        }
+        let id = stable_gate_identity(
+            &auth_scope,
+            request.run_id,
+            request.gate_ref,
+            &prior.iter().map(|flow| flow.id).collect::<Vec<_>>(),
+        )?;
+        let flow_id = AuthFlowId::from_uuid(id);
+        auth_scope.resource.invocation_id = InvocationId::from_uuid(id);
+        let original = self
+            .prepare_setup_original(GoogleSetupRequest {
+                scope: auth_scope,
+                flow_id,
+                account_label: CredentialAccountLabel::new("google")?,
+                requested_scopes: scopes,
                 continuation: AuthContinuationRef::TurnGateResume {
                     turn_run_ref,
                     gate_ref: request.gate_ref.clone(),
                 },
+                requirement_setup: None,
                 update_binding: None,
-                opaque_state_hash: Some(prepared.opaque_state_hash),
-                pkce_verifier_hash: Some(prepared.pkce_verifier_hash),
-                expires_at,
+                update_account_snapshot: None,
+                deadline: GoogleSetupDeadline::GateDefault,
             })
-            .await
-        {
-            Ok(flow) => flow,
-            Err(AuthProductError::BackendConflict) => {
-                self.cleanup_pkce_verifier(&auth_scope.resource, flow_id)
-                    .await;
-                self.reusable_flow_for_query(request.flow_manager, request.flow_source, query)
-                    .await?
-                    .ok_or(AuthProductError::BackendConflict)?
-            }
-            Err(error) => {
-                self.cleanup_pkce_verifier(&auth_scope.resource, flow_id)
-                    .await;
-                return Err(error);
-            }
-        };
-
-        challenge_view_from_flow(&flow)
-    }
-
-    async fn reusable_flow_for_query(
-        &self,
-        flow_manager: &Arc<dyn AuthFlowManager>,
-        flow_source: &Arc<dyn AuthFlowRecordSource>,
-        query: TurnGateAuthFlowQuery,
-    ) -> Result<Option<AuthFlowRecord>, AuthProductError> {
-        let Some(existing) = flow_source.flow_for_turn_gate(query).await? else {
-            return Ok(None);
-        };
-        if existing.expires_at > Utc::now() {
-            return Ok(Some(existing));
-        }
-        flow_manager
-            .cancel_flow(&existing.scope, existing.id)
-            .await
-            .map(|_| None)
-    }
-
-    async fn prepare_flow(
-        &self,
-        scope: &AuthProductScope,
-        flow_id: AuthFlowId,
-        scopes: Vec<ProviderScope>,
-    ) -> Result<PreparedOAuthGateFlow, AuthProductError> {
-        let account_label = CredentialAccountLabel::new("google")?;
-        let state =
-            GoogleOAuthCallbackState::new(flow_id, scope.clone(), account_label, scopes.clone())?
-                .encode()?;
-        let opaque_state_hash = opaque_state_hash(state.as_str())?;
-        let pkce_verifier = SecretString::from(brassclaw_common::pkce::generate_code_verifier());
-        let pkce_secret = PkceVerifierSecret::new(pkce_verifier.clone())?;
-        let pkce_verifier_hash = pkce_verifier_hash(&pkce_secret)?;
-        let pkce_challenge = pkce_s256_challenge(&pkce_secret);
-        let authorization_url = build_google_authorization_url(
-            self.client.client_id.as_str(),
-            self.client.redirect_uri.as_str(),
-            state.as_str(),
-            &pkce_challenge,
-            &scopes,
-            self.client.hosted_domain_hint.as_deref(),
-        )?;
-        Ok(PreparedOAuthGateFlow {
-            authorization_url,
-            opaque_state_hash,
-            pkce_verifier_hash,
-            pkce_verifier,
-        })
-    }
-
-    async fn store_pkce_verifier(
-        &self,
-        scope: &ResourceScope,
-        flow_id: AuthFlowId,
-        material: SecretMaterial,
-    ) -> Result<(), AuthProductError> {
-        self.secret_store
-            .put(scope.clone(), pkce_secret_handle(flow_id)?, material)
-            .await
-            .map(|_| ())
-            .map_err(|_| AuthProductError::BackendUnavailable)
-    }
-
-    async fn cleanup_pkce_verifier(&self, scope: &ResourceScope, flow_id: AuthFlowId) {
-        let Ok(handle) = pkce_secret_handle(flow_id) else {
-            return;
-        };
-        if self.secret_store.delete(scope, &handle).await.is_err() {
-            tracing::warn!(
-                provider = self.provider_id(),
-                flow_id = %flow_id,
-                "failed to clean up OAuth gate PKCE verifier after flow creation failure"
-            );
-        }
+            .await?;
+        let prepared = self
+            .restore_setup_original(request.flow_manager, original, None)
+            .await?;
+        challenge_view_from_flow(&prepared.flow)
     }
 
     async fn pkce_verifier_for_flow(
         &self,
+        flow_manager: &Arc<dyn AuthFlowManager>,
         scope: &AuthProductScope,
         flow_id: AuthFlowId,
     ) -> Result<Option<SecretString>, AuthProductError> {
-        let handle = pkce_secret_handle(flow_id)?;
-        let lease = match self.secret_store.lease_once(&scope.resource, &handle).await {
-            Ok(lease) => lease,
-            Err(error) if error.is_unknown_secret() => return Ok(None),
-            Err(_) => return Err(AuthProductError::BackendUnavailable),
+        let Some(state) = flow_manager.read_oauth_setup(scope, flow_id).await? else {
+            // Legacy verifiers without captured client bytes cannot establish
+            // the first client configuration. Explicit reauthorization is needed.
+            return Ok(None);
         };
-        self.secret_store
-            .consume(&scope.resource, lease.id)
-            .await
-            .map(Some)
-            .map_err(|_| AuthProductError::BackendUnavailable)
+        if state.flow.expires_at <= Utc::now()
+            || brassclaw_auth::is_terminal_status(state.flow.status)
+        {
+            return Err(AuthProductError::UnknownOrExpiredFlow);
+        }
+        let (original, payload) = self
+            .original_private_material(&scope.resource, flow_id)
+            .await?;
+        state.original.verify(&original)?;
+        Ok(Some(payload.pkce))
     }
 }
 
@@ -279,12 +255,26 @@ impl fmt::Debug for GoogleOAuthGateProvider {
     }
 }
 
-#[derive(Debug)]
-struct PreparedOAuthGateFlow {
-    authorization_url: brassclaw_auth::OAuthAuthorizationUrl,
-    opaque_state_hash: brassclaw_auth::OpaqueStateHash,
-    pkce_verifier_hash: brassclaw_auth::PkceVerifierHash,
-    pkce_verifier: SecretString,
+fn stable_gate_identity(
+    scope: &AuthProductScope,
+    run: TurnRunId,
+    gate: &AuthGateRef,
+    predecessors: &[AuthFlowId],
+) -> Result<uuid::Uuid, AuthProductError> {
+    let key = serde_json::json!({
+        "format":"google-gate-setup-identity/1",
+        "tenant":scope.resource.tenant_id,
+        "user":scope.resource.user_id,
+        "agent":scope.resource.agent_id,
+        "project":scope.resource.project_id,
+        "thread":scope.resource.thread_id,
+        "run":run.to_string(),
+        "gate":gate,
+        "predecessors":predecessors,
+    });
+    let bytes = serde_json::to_vec(&key).map_err(|_| AuthProductError::BackendUnavailable)?;
+    let hash = brassclaw_common::hashing::sha256_hex(&bytes);
+    uuid::Uuid::parse_str(&hash[..32]).map_err(|_| AuthProductError::BackendUnavailable)
 }
 
 fn auth_scope_for_blocked_turn(
@@ -347,17 +337,12 @@ fn challenge_view_from_flow(flow: &AuthFlowRecord) -> Result<AuthChallengeView, 
     }
 }
 
-fn pkce_secret_handle(flow_id: AuthFlowId) -> Result<SecretHandle, AuthProductError> {
-    SecretHandle::new(format!("google-oauth-gate-flow-pkce-{flow_id}"))
-        .map_err(|_| AuthProductError::BackendUnavailable)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use brassclaw_auth::{
-        AuthFlowStatus, GOOGLE_CALENDAR_READONLY_SCOPE, InMemoryAuthProductServices,
-        OAuthAuthorizationUrl,
+        AuthFlowKind, AuthFlowStatus, GOOGLE_CALENDAR_READONLY_SCOPE, InMemoryAuthProductServices,
+        NewAuthFlow, OAuthAuthorizationUrl,
     };
     use brassclaw_host_api::{
         AgentId, ExtensionId, RuntimeCredentialAccountProviderId, TenantId, ThreadId, UserId,
@@ -372,6 +357,7 @@ mod tests {
         fixture
             .flow_manager
             .create_flow(NewAuthFlow {
+                requirement_setup: None,
                 id: Some(expired_flow_id),
                 scope: expired_scope.clone(),
                 kind: AuthFlowKind::IntegrationCredential,
@@ -424,6 +410,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn google_gate_independent_owners_converge_without_process_local_locks() {
+        let fixture = GateFixture::new(None);
+        let independent = GoogleOAuthGateProvider::new(
+            OAuthClientConfig::new(
+                "other-google-client",
+                "https://other.example/google/callback",
+                None,
+            )
+            .unwrap(),
+            fixture.provider.secret_store.clone(),
+        );
+        let requirements = vec![fixture.requirement.clone()];
+        let (first, second) = tokio::join!(
+            fixture.challenge(),
+            independent.challenge_for_blocked_gate(
+                OAuthGateChallengeRequest {
+                    flow_manager: &fixture.flow_manager,
+                    flow_source: &fixture.flow_source,
+                    requirements: &requirements,
+                    scope: &fixture.scope,
+                    owner_user_id: &fixture.owner_user_id,
+                    run_id: fixture.run_id,
+                    gate_ref: &fixture.gate_ref,
+                },
+                &fixture.requirement,
+            )
+        );
+        let second = second.unwrap();
+        assert_eq!(first.authorization_url, second.authorization_url);
+        assert_eq!(first.expires_at, second.expires_at);
+        assert_eq!(fixture.active_gate_flows().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn google_gate_new_owner_keeps_first_client_challenge_and_expiry() {
+        let fixture = GateFixture::new(None);
+        let first = fixture.challenge().await;
+        let changed = GoogleOAuthGateProvider::new(
+            OAuthClientConfig::new("later-client", "https://later.example/callback", None).unwrap(),
+            fixture.provider.secret_store.clone(),
+        );
+        let requirements = vec![fixture.requirement.clone()];
+        let second = changed
+            .challenge_for_blocked_gate(
+                OAuthGateChallengeRequest {
+                    flow_manager: &fixture.flow_manager,
+                    flow_source: &fixture.flow_source,
+                    requirements: &requirements,
+                    scope: &fixture.scope,
+                    owner_user_id: &fixture.owner_user_id,
+                    run_id: fixture.run_id,
+                    gate_ref: &fixture.gate_ref,
+                },
+                &fixture.requirement,
+            )
+            .await
+            .unwrap();
+        assert_eq!(first.authorization_url, second.authorization_url);
+        assert_eq!(first.expires_at, second.expires_at);
+        assert_eq!(fixture.active_gate_flows().await.len(), 1);
+    }
+
+    #[tokio::test]
     async fn google_oauth_gate_authorization_url_keeps_hosted_domain_hint() {
         let fixture = GateFixture::new(Some("example.com"));
 
@@ -444,6 +493,7 @@ mod tests {
         let registry =
             GoogleOAuthGateProviderRegistry::new(vec![Arc::new(fixture.provider.clone())]);
         let unsupported_requirement = RuntimeCredentialAuthRequirement {
+            requirement: None,
             provider: RuntimeCredentialAccountProviderId::new("github").unwrap(),
             requester_extension: ExtensionId::new("github").unwrap(),
             provider_scopes: Vec::new(),
@@ -512,6 +562,7 @@ mod tests {
                 run_id: TurnRunId::new(),
                 gate_ref: AuthGateRef::new("gate:google-auth").unwrap(),
                 requirement: RuntimeCredentialAuthRequirement {
+                    requirement: None,
                     provider: RuntimeCredentialAccountProviderId::new("google").unwrap(),
                     requester_extension: ExtensionId::new("google-calendar").unwrap(),
                     provider_scopes: vec![GOOGLE_CALENDAR_READONLY_SCOPE.to_string()],

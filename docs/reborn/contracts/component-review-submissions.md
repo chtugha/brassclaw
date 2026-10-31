@@ -6,7 +6,14 @@ declared dependency graph. It reuses `ComponentRevisionDraft` and
 This infrastructure is not IBS, a validator executor, an active catalogue or a
 Tool grant. Q1/behavior/human Q2 and coherent activation remain separate.
 
-## Operator API
+## Operator API and versioned function subjects
+
+The original single-root interface remains supported. Its dependency list does
+not make another component a changed review root. The additive function-subject
+path below retains actual changed roots and exact partner context in this same
+owner; retention approves neither. Complete joint checks, trusted own verdicts,
+human Q2 and coherent new-profile publication remain separate open work.
+
 
 `POST /api/webchat/v2/component-review-submissions` accepts:
 
@@ -59,6 +66,16 @@ reference and existing retained Recipe selection bytes/checksum; later validator
 drafts do not replace it. Inspection reads subject and selection in one coherent
 read-only snapshot. No selection is created by GET or inferred from latest rows.
 
+The V150 reader accepts the existing compiler-emitted optional
+`model_input_binding` in that retained Recipe selection and checks its exact
+value against the original immutable Recipe document and selected variant.
+Historical absence is not explicit Default; another profile, purpose or format
+cannot be substituted by recomputing a checksum. The
+[actual preparation roundtrip acceptance](../../validation/2026-10-31-review-model-selection.md)
+covers retention/restoration without creating Q1/Q2, task admission, PrefixFree
+qualification or Tool dispatch authority. This describes existing nested metadata,
+not a new submission API field or a changed `/1` format.
+
 Its explicit `scope="preparation-only"` does not mean that a validator is approved,
 admitted, executed or complete. The review owner must independently verify the
 active approved private route, full class requirements, retained implementations,
@@ -84,6 +101,58 @@ a latest-revision selector, approval or active-version view. Read the counter
 after selecting the candidate identity and keep it unchanged with an uncertain
 request. A new package draft must not force an operator to adopt that draft as
 the review base.
+
+## Skill/implementation function subjects (`/3`)
+
+A request may add `function_partner` and must then provide the primary root's
+`expected_previous_version`. Exactly one primary/partner is a Skill (class1–3)
+and the other is its actual associated PythonCode (class22), with distinct UUIDs.
+The stored Skill association must point to that code UUID; arbitrary dependency
+membership, names or prose do not select an implementation.
+
+The strict partner object is one of:
+
+- `{"role":"changed","candidate_bytes":"…","base":null,"expected_previous_version":0}`:
+  retain a second changed revision. For an edit, give its own exact base and
+  observed allocation head; neither candidate must already be approved merely
+  to submit it for review.
+- `{"role":"context","reference":{"uuid":"…","class_code":1,"version":1,"checksum":"…"}}`:
+  retain an exact unchanged partner as comparison/usage context. It receives no
+  new revision or approval from this submission. Its valid prior approval still
+  must be established by the later trusted review/publication owner.
+
+Omit the partner from `dependencies`; that array contains all other exact
+transitive references. Both changed roots stage through the existing revision
+store, in UUID lock order, inside one repeatable-read transaction with one
+immutable submission and V149 intent. Any root's base/head/graph conflict rolls
+back all candidate allocations. Exact original retries recover the whole subject
+before allocating again. The receipt adds `function_partner` with `reference`,
+`changed` and `base`. GET returns all original selected bytes even after heads
+advance. No approval, catalogue generation or Tool effect is written here.
+
+V193 accepts `component-review-submission/3` without rewriting `/1` or `/2` rows.
+Its insert trigger verifies the exact retained partner revision and actual Skill
+association, plus the changed partner's bytes, base and allocation. Existing
+immutable guards remain. The typed input reader emits
+`component-validator-subject/2` for `/3`, retaining the primary source/base and
+an explicit `function_partner` containing its role, complete component envelope
+and historical base comparison when changed. The partner is not duplicated in
+its dependency list. All existing captured preparation limits still apply to
+the complete input, including both bases; nothing is truncated.
+
+The existing single-class `component-validator-selection/1` path explicitly
+rejects function subjects at both the Engine coverage and PostgreSQL preparation
+boundaries. It cannot review only the anchor and approve half a function. This
+is a deliberate support boundary while the owning Validator plan connects full
+joint rule coverage, actual run/attempt custody, trusted own verdicts and atomic
+human Q2. It does not create a second review queue or obsolete generic A
+combination-reapproval stage. Existing single-root preparations keep their exact
+format and original supported behavior.
+
+The WebUI advanced editor provides the optional partner JSON field with usage
+help. It validates browser-safe partner allocation counters and keeps both
+changes/context locked with the original request after uncertain responses.
+Source remains text data; this editor does not start validation or activation.
 
 ## Retry and capacity
 
@@ -163,3 +232,43 @@ Validator selection, constrained draft execution, actual trusted evidence and
 activation cannot be inferred from a retained subject. Normal global startup,
 resource/continuation wiring and the original seven composition failures remain
 open; these persistence/HTTP regressions cannot certify that cutover.
+
+## Remaining joint Skill/implementation review and publication
+
+After accepted BUILD-014, the existing Validator Steps2/3/8–10 owner uses the
+own-function target in
+[skills.md](../../../skills.md#own-functional-approval-and-successor-compatibility)
+for remaining open work. It replaces blanket A combination-review obligations;
+completion of that old design is not an input dependency. The original API,
+subject bytes, durable request/selection IDs and accepted scopes above remain.
+
+The `/3` submission path above retains the actual changed Skill/code roots,
+distinct physical revisions, base/allocation CAS and immutable partner context.
+Both new roots can be submitted together without mutual preapproval. Complete
+joint checking and approval are still open: only changed roots receive own new
+approvals; an unchanged approved counterpart keeps its approval. Approved Tool/ToolSkill/helpers remain prerequisites. Shared
+code changes cover every needed public export contract without reapproving
+unchanged Skills. Standalone pure code retains its own function route.
+
+Reuse the actual author transaction, original-ID reconciliation, V149 durable
+review intent, frozen V150 validator selection, existing outbox/admission and
+trusted settlement/Q2 owners. Extend their supported subject relationship rather
+than creating a queue or bypass flag. A complete shared rule/behavior run and
+exact human view bind all changed roots. Changed partner/base/selection, foreign
+observations, incomplete rules or unverified settlement cannot approve a subset.
+Record own approvals atomically; retry an uncertain commit with original IDs and
+bytes. Approval grouping does not permanently couple compatible runtime versions.
+
+Before new-profile publication, connect actual writers, inspection/Q2 views,
+prepare/activation/task/private-review/child/restore readers through existing
+owners. A compatible dependency update leaves unchanged consumer revisions and
+approvals valid. Historical exact evidence is not rewritten as an individually
+proved property it never covered. Unsupported new semantics remains explicit
+work while valid old profiles continue in their prior scope.
+
+S is the controlled installation path, not a request mode flag or normal authored
+queue job. Preserve noncircular qualification and exact Skill-usage evidence with
+independent prerequisite approvals, without installed human Q2. Class50 gains
+no new joint/standalone route or protected privilege; historical decoding and
+valid old pins remain, class10/root protection is unchanged. The next open
+Validator/Composition approval/production gate consumes this subject successor.

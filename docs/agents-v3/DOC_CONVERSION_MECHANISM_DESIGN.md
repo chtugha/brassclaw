@@ -140,8 +140,14 @@ part of that idle-time loop** (Answer 4): it is **event-driven** — it runs
 only when a source `docs/agents-v3/*.md` file changes on disk or a
 `reborn_docus` row changes in the DB (§5). The Sempai-Kohai system's only
 role here is that, when the `by-llm-compress` variant runs and a Sempai is
-connected, the Sempai reviews the compression prompt before shipment
-(`09-sempai-kohai.md`); without a Sempai, only the deterministic
+connected/enabled, Kohai first formats the dynamic compression prompt for the
+final provider/model pair. Sempai then corrects that formatted prompt using its
+own generated prefix and target-pair design and returns the final dynamic prompt.
+Kohai inserts the intended finished prefix unchanged exactly once before it,
+without reformatting the return. Follow the
+[shared pair-design and handoff contract](../reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests),
+including the same accepted design revision for generator, Kohai and same-pair
+Sempai. Without a Sempai, only the deterministic
 `by-extract` variant runs.
 
 ---

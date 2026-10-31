@@ -81,15 +81,8 @@ where
             &mut resolved_view,
             runtime_http_body_store_unauthorized_error,
         )?;
-        let (_path, grant) = view
-            .resolve_with_grant(&target.path)
-            .map_err(runtime_http_body_store_unauthorized_error)?;
-        if !grant.permissions.write {
-            return Err(RuntimeHttpBodyStoreError::Unauthorized {
-                reason: "write permission denied".to_string(),
-            });
-        }
-        Ok(())
+        block_on_filesystem(self.check_byte_write_with_mount_view(view, &target.path))
+            .map_err(runtime_http_body_store_unauthorized_error)
     }
 
     fn write_body(

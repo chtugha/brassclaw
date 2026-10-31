@@ -284,9 +284,11 @@ where
                 .await
                 .map_err(fs_error)
         }
-        CasExpectation::Version(_) => Err(TurnError::Unavailable {
-            reason: "checkpoint state backend cannot honor versioned CAS".to_string(),
-        }),
+        CasExpectation::Version(_) | CasExpectation::VersionAndBody { .. } => {
+            Err(TurnError::Unavailable {
+                reason: "checkpoint state backend cannot honor versioned CAS".to_string(),
+            })
+        }
     }
 }
 

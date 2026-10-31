@@ -6,8 +6,8 @@ use brassclaw_host_api::VirtualPath;
 use crate::backend::{EventRecord, StorageTxn};
 use crate::{
     BackendCapabilities, BackendId, BackendKind, Capability, CasExpectation, ContentKind, DirEntry,
-    Entry, EntryIndexMetadata, EntryMetadata, FileStat, FilesystemError, Filter, IndexKey,
-    IndexPolicy, IndexSpec, Page, RecordVersion, RootFilesystem, SeqNo, StorageClass,
+    Entry, EntryBodyChecksum, EntryIndexMetadata, EntryMetadata, FileStat, FilesystemError, Filter,
+    IndexKey, IndexPolicy, IndexSpec, Page, RecordVersion, RootFilesystem, SeqNo, StorageClass,
     VersionedEntry, path_prefix_matches,
 };
 
@@ -166,6 +166,8 @@ fn validate_mount_capabilities(
         Capability::EntryMetadata,
         Capability::EntryIndexMetadata,
         Capability::OpaqueWrite,
+        Capability::EntryBodyCas,
+        Capability::ConditionalEntryDelete,
     ];
     let mut shortfalls: Vec<Capability> = NEW_AXES
         .iter()
@@ -376,6 +378,18 @@ impl RootFilesystem for CompositeRootFilesystem {
 
     async fn stat(&self, path: &VirtualPath) -> Result<FileStat, FilesystemError> {
         self.matching_mount(path)?.backend.stat(path).await
+    }
+
+    async fn delete_if_snapshot(
+        &self,
+        path: &VirtualPath,
+        version: RecordVersion,
+        body_checksum: EntryBodyChecksum,
+    ) -> Result<bool, FilesystemError> {
+        self.matching_mount(path)?
+            .backend
+            .delete_if_snapshot(path, version, body_checksum)
+            .await
     }
 
     async fn delete(&self, path: &VirtualPath) -> Result<(), FilesystemError> {

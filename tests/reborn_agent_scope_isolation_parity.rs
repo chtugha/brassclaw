@@ -17,7 +17,9 @@ async fn reborn_agent_scope_isolation_parity() {
     const ROOM: &str = "room-agent-shared";
     const EVENT: &str = "event-agent-shared";
 
-    let shared_storage = RebornHarnessSharedStorage::new().expect("shared storage");
+    let shared_storage = RebornHarnessSharedStorage::new()
+        .await
+        .expect("shared storage");
     let agent_a_scope = test_product_scope(
         "tenant-agent-e2e",
         "host-user",

@@ -362,6 +362,7 @@ pub(super) async fn execute(
             pool.clone(),
             "bootstrap-prefix-measurement",
             &reference,
+            None,
         ))
         .await?;
         let tools = crate::installed_monty_catalogue::bootstrap_measurement_tools(

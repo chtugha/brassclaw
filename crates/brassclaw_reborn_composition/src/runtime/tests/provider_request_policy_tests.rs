@@ -17,6 +17,8 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
         calls: AtomicUsize,
         mode: AtomicU8,
         failures: AtomicUsize,
+        notify_failures: std::sync::atomic::AtomicBool,
+        failure_seen: tokio::sync::Notify,
     }
     async fn endpoint(
         State(state): State<Arc<Endpoint>>,
@@ -32,6 +34,9 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
                 })
                 .is_ok() =>
             {
+                if state.notify_failures.load(Ordering::SeqCst) {
+                    state.failure_seen.notify_one();
+                }
                 return (
                     StatusCode::SERVICE_UNAVAILABLE,
                     [("retry-after", "2")],
@@ -130,9 +135,10 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
         rig.pool.clone(),
         tenant,
     ));
-    let service = crate::RebornLlmConfigService::new(keys, rig.pool.clone(), repo.clone(), tenant)
-        .with_reload_trigger(reload)
-        .with_sempai_swappable(sempai.clone());
+    let service =
+        crate::RebornLlmConfigService::new(keys.clone(), rig.pool.clone(), repo.clone(), tenant)
+            .with_reload_trigger(reload)
+            .with_sempai_swappable(sempai.clone());
     let caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
         brassclaw_host_api::TenantId::new(tenant).unwrap(),
         brassclaw_host_api::UserId::new("request-operator").unwrap(),
@@ -151,7 +157,7 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
             .unwrap()
             .unwrap()
             .revision;
-        service.upsert_provider(caller,serde_json::from_value(serde_json::json!({"id":"request-provider","expected_revision":revision,"adapter":"open_ai_completions","request_policy":policy})).unwrap()).await.unwrap()
+        service.upsert_provider(caller,serde_json::from_value(serde_json::json!({"mutation_id":uuid::Uuid::new_v4(),"id":"request-provider","expected_revision":revision,"adapter":"open_ai_completions","request_policy":policy})).unwrap()).await.unwrap()
     }
     let snapshot = publish(&service, &repo, caller.clone(), initial).await;
     assert_eq!(
@@ -164,6 +170,10 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
         initial
     );
     let retained = primary.retained_selection();
+    let publication = primary.publication();
+    assert!(primary.set_model("mutable-client-retarget").is_err());
+    assert_eq!(primary.publication(), publication);
+    assert_eq!(retained.provider.active_model_name(), "request-model");
     let request = || {
         CompletionRequest::new(vec![brassclaw_llm::ChatMessage::user(
             "native request policy",
@@ -179,10 +189,15 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
     publish(&service, &repo, caller.clone(), short).await;
     assert!(primary.complete(request()).await.is_err());
     assert!(sempai.complete(request()).await.is_err());
+    let before = state.calls.load(Ordering::SeqCst);
     assert!(
-        retained.provider.complete(request()).await.is_ok(),
-        "already retained clients keep their admitted deadline"
+        matches!(
+            retained.provider.complete(request()).await,
+            Err(brassclaw_llm::LlmError::ConfigurationChanged { .. })
+        ),
+        "retained clients cannot ignore a newly tightened transport deadline"
     );
+    assert_eq!(state.calls.load(Ordering::SeqCst), before);
     state.mode.store(2, Ordering::SeqCst);
     let retry = ProviderRequestPolicy {
         max_retries: 1,
@@ -244,8 +259,8 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
         primary.complete(request()).await.is_ok(),
         "configured recovery wait admits a trial request"
     );
-    // A complete old client remains usable while both newly selected role
-    // chains take the finite body limit. Capacity failure must not trigger retry.
+    // Both selected roles take the finite body limit. Retained clients cannot
+    // bypass it; capacity failure must not trigger retry.
     let bounded = ProviderRequestPolicy {
         max_response_bytes: Some(128),
         max_retries: 2,
@@ -268,7 +283,12 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
         }
     }
     state.mode.store(0, Ordering::SeqCst);
-    assert!(retained.provider.complete(request()).await.is_ok());
+    let before = state.calls.load(Ordering::SeqCst);
+    assert!(matches!(
+        retained.provider.complete(request()).await,
+        Err(brassclaw_llm::LlmError::ConfigurationChanged { .. })
+    ));
+    assert_eq!(state.calls.load(Ordering::SeqCst), before);
     publish(
         &service,
         &repo,
@@ -291,7 +311,7 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
         timeout_secs: 0,
         ..initial
     };
-    assert!(service.upsert_provider(caller.clone(),serde_json::from_value(serde_json::json!({"id":"request-provider","expected_revision":before.revision,"adapter":"open_ai_completions","request_policy":invalid})).unwrap()).await.is_err());
+    assert!(service.upsert_provider(caller.clone(),serde_json::from_value(serde_json::json!({"mutation_id":uuid::Uuid::new_v4(),"id":"request-provider","expected_revision":before.revision,"adapter":"open_ai_completions","request_policy":invalid})).unwrap()).await.is_err());
     assert_eq!(
         repo.get_revision("request-provider", false)
             .await
@@ -300,7 +320,7 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
             .revision,
         before.revision
     );
-    let preserved = service.upsert_provider(caller.clone(),serde_json::from_value(serde_json::json!({"id":"request-provider","expected_revision":before.revision,"adapter":"open_ai_completions","name":"policy retained without override"})).unwrap()).await.unwrap();
+    let preserved = service.upsert_provider(caller.clone(),serde_json::from_value(serde_json::json!({"mutation_id":uuid::Uuid::new_v4(),"id":"request-provider","expected_revision":before.revision,"adapter":"open_ai_completions","name":"policy retained without override"})).unwrap()).await.unwrap();
     assert_eq!(
         preserved
             .providers
@@ -310,7 +330,92 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
             .request_policy,
         circuit
     );
-    assert!(serde_json::from_value::<brassclaw_product_workflow::UpsertLlmProviderRequest>(serde_json::json!({"id":"request-provider","adapter":"open_ai_completions","request_policy":null})).is_err());
+    assert!(serde_json::from_value::<brassclaw_product_workflow::UpsertLlmProviderRequest>(serde_json::json!({"mutation_id":uuid::Uuid::new_v4(),"id":"request-provider","adapter":"open_ai_completions","request_policy":null})).is_err());
+    // External writers do not call the settings reload path. The real
+    // retained factory still checks compatibility before any HTTP/cache use.
+    publish(&service, &repo, caller.clone(), initial).await;
+    state.mode.store(0, Ordering::SeqCst);
+    let pinned = primary.retained_selection();
+    let mut current = repo
+        .get_revision("request-provider", false)
+        .await
+        .unwrap()
+        .unwrap()
+        .definition;
+    current.description = "external description-only successor".into();
+    repo.upsert(current.clone()).await.unwrap();
+    assert!(
+        pinned.provider.complete(request()).await.is_ok(),
+        "compatible descriptive edits preserve old targets"
+    );
+    let before = state.calls.load(Ordering::SeqCst);
+    let mut tightened = current.clone();
+    tightened.context_window_tokens = Some(8);
+    repo.upsert(tightened).await.unwrap();
+    assert!(matches!(
+        pinned.provider.complete(request()).await,
+        Err(brassclaw_llm::LlmError::ConfigurationChanged { .. })
+    ));
+    assert_eq!(
+        state.calls.load(Ordering::SeqCst),
+        before,
+        "tightening blocks before sending even the output bound"
+    );
+    let mut moved = current.clone();
+    moved.default_base_url = Some(format!("http://{address}/moved/v1"));
+    repo.upsert(moved).await.unwrap();
+    assert!(matches!(
+        pinned.provider.complete(request()).await,
+        Err(brassclaw_llm::LlmError::ConfigurationChanged { .. })
+    ));
+    assert_eq!(
+        state.calls.load(Ordering::SeqCst),
+        before,
+        "no endpoint substitution under a retained target"
+    );
+    repo.upsert(current).await.unwrap();
+    keys.put(
+        "request-provider",
+        secrecy::SecretString::from("actual-native-successor-key"),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        pinned.provider.complete(request()).await,
+        Err(brassclaw_llm::LlmError::ConfigurationChanged { .. })
+    ));
+    assert_eq!(
+        state.calls.load(Ordering::SeqCst),
+        before,
+        "key-only rotation fences the old credential"
+    );
+    publish(&service, &repo, caller.clone(), retry).await;
+    assert!(
+        primary.complete(request()).await.is_ok(),
+        "new work uses the authenticated successor"
+    );
+    state.mode.store(2, Ordering::SeqCst);
+    state.failures.store(1, Ordering::SeqCst);
+    state.notify_failures.store(true, Ordering::SeqCst);
+    let before = state.calls.load(Ordering::SeqCst);
+    let waiting = {
+        let primary = primary.clone();
+        let request = request();
+        tokio::spawn(async move { primary.complete(request).await })
+    };
+    tokio::time::timeout(Duration::from_secs(5), state.failure_seen.notified())
+        .await
+        .unwrap();
+    repo.delete("request-provider").await.unwrap();
+    assert!(matches!(
+        waiting.await.unwrap(),
+        Err(brassclaw_llm::LlmError::ConfigurationChanged { .. })
+    ));
+    assert_eq!(
+        state.calls.load(Ordering::SeqCst),
+        before + 1,
+        "deactivation during retry wait prevents the second dispatch"
+    );
     stop.cancel();
     server.await.unwrap();
 }

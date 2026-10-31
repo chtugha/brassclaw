@@ -41,7 +41,7 @@ fn host_capability_port_composition_rejects_external_raw_construction() {
         if should_skip(path) {
             return;
         }
-        let src = std::fs::read_to_string(path).unwrap_or_default();
+        let src = std::fs::read_to_string(path).expect("read architecture source file");
         if src.contains("HostRuntimeLoopCapabilityPort::new(")
             || src.contains("HostRuntimeLoopCapabilityPort {")
         {
@@ -436,11 +436,15 @@ fn dispatch_trust_decision() -> TrustDecision {
 }
 
 fn visit_rs_files(root: &Path, visit: &mut impl FnMut(&Path)) {
-    let Ok(entries) = std::fs::read_dir(root) else {
-        return;
-    };
-    for entry in entries.flatten() {
+    let entries = std::fs::read_dir(root).expect("read architecture source directory");
+    for entry in entries {
+        let entry = entry.expect("read architecture directory entry");
         let path = entry.path();
+        // Prune before traversal: filtering files afterwards still walks the
+        // complete target/evidence tree, including every archived source copy.
+        if should_skip(&path) {
+            continue;
+        }
         if path.is_dir() {
             visit_rs_files(&path, visit);
         } else if path.extension().is_some_and(|extension| extension == "rs") {

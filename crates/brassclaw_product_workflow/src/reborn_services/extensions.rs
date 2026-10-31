@@ -407,6 +407,7 @@ mod tests {
             visible_capability_ids: Vec::new(),
             visible_read_only_capability_ids: Vec::new(),
             credential_requirements: vec![LifecycleExtensionCredentialRequirement {
+                runtime_requirement: None,
                 name: "fixture_token".to_string(),
                 provider: "fixture".to_string(),
                 required: true,

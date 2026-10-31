@@ -13,7 +13,10 @@ use brassclaw_host_api::InvocationId;
 use brassclaw_reborn::monty_model_capability::{
     KOHAI_COMPLETE_CAPABILITY_ID, RecipeModelResponseRecord, RecipeModelResponseStore,
 };
-use brassclaw_turns::run_profile::{AgentLoopHostError, AgentLoopHostErrorKind, LoopModelResponse};
+use brassclaw_turns::run_profile::{
+    AgentLoopHostError, AgentLoopHostErrorKind, LoopModelResponse, LoopTaskModelSelection,
+    ModelWorkId, ModelWorkRequest,
+};
 use serde_json::Value;
 
 use super::{
@@ -24,6 +27,9 @@ use brassclaw_skills::{
     component_revision::REVISION_LIMITS,
     value_contract::{ContractLimits, strict_json},
 };
+
+#[path = "pg_monty_related_model_response.rs"]
+mod related;
 
 fn error() -> AgentLoopHostError {
     AgentLoopHostError::new(
@@ -36,24 +42,37 @@ fn error() -> AgentLoopHostError {
 /// A successful task may release it only after every received response is durable.
 pub(crate) struct PgRecipeModelResponses {
     admission: Arc<PgMontyAdmission>,
-    prefix_reference: String,
+    prefix_reference: ExpectedPrefix,
+    model_selection: Option<Arc<dyn LoopTaskModelSelection>>,
     records: Mutex<HashMap<InvocationId, Arc<Record>>>,
+}
+enum ExpectedPrefix {
+    Exact(String),
+    Selected(brassclaw_reborn::monty_model_capability::RecipeModelPrefix),
 }
 impl PgRecipeModelResponses {
     pub(crate) fn new(admission: Arc<PgMontyAdmission>, prefix_reference: String) -> Self {
         Self {
             admission,
-            prefix_reference,
+            prefix_reference: ExpectedPrefix::Exact(prefix_reference),
+            model_selection: None,
             records: Mutex::new(HashMap::new()),
         }
     }
 }
 struct Record {
     invocation: PgMontyInvocation,
-    prefix_reference: String,
+    input_reference: brassclaw_turns::run_profile::LoopModelInputReference,
+    requested_output_tokens: Option<std::num::NonZeroU32>,
+    model_selection: Option<Arc<dyn LoopTaskModelSelection>>,
+    related_work: Option<related::RelatedModelWork>,
+    // Children retain copied native invocation data, never an Arc back to this
+    // record/store. Pending originals survive a dropped review future.
+    related: Mutex<HashMap<ModelWorkId, Arc<Record>>>,
     wire: Observation<Value>,
     provider: Observation<Value>,
     response: Observation<Box<LoopModelResponse>>,
+    submission_reserved: AtomicBool,
 }
 
 /// Separate immutable stages: original HTTP bytes, adapter DTO and validated
@@ -106,7 +125,12 @@ impl<T: serde::Serialize + Send + Sync> Observation<T> {
         };
         record
             .invocation
-            .record_model_evidence(kind, &record.prefix_reference, &bytes)
+            .record_model_evidence(
+                kind,
+                &record.input_reference.reference,
+                &bytes,
+                record.related_work.as_ref(),
+            )
             .await?;
         // Release potentially large completed data after the immutable durable
         // write; retain only the observation fence and persisted state.
@@ -148,9 +172,15 @@ impl RecipeModelResponseStore for PgRecipeModelResponses {
             .lock()
             .map(|records| {
                 records.values().any(|r| {
-                    r.wire.pending.load(Ordering::Acquire)
-                        || r.provider.pending.load(Ordering::Acquire)
-                        || r.response.pending.load(Ordering::Acquire)
+                    r.has_pending_observations()
+                        || r.related
+                            .lock()
+                            .map(|related| {
+                                related
+                                    .values()
+                                    .any(|record| record.has_pending_observations())
+                            })
+                            .unwrap_or(true)
                 })
             })
             .unwrap_or(true)
@@ -172,6 +202,21 @@ impl RecipeModelResponseStore for PgRecipeModelResponses {
             .persist(&record, EvidenceKind::Provider)
             .await?;
         record.response.persist(&record, EvidenceKind::Loop).await?;
+        let related: Vec<_> = record
+            .related
+            .lock()
+            .map_err(|_| error())?
+            .values()
+            .cloned()
+            .collect();
+        for record in related {
+            record.wire.persist(&record, EvidenceKind::Wire).await?;
+            record
+                .provider
+                .persist(&record, EvidenceKind::Provider)
+                .await?;
+            record.response.persist(&record, EvidenceKind::Loop).await?;
+        }
         Ok(())
     }
 
@@ -181,9 +226,22 @@ impl RecipeModelResponseStore for PgRecipeModelResponses {
         arguments: &Value,
         prefix_reference: &str,
     ) -> Result<Box<dyn RecipeModelResponseRecord>, AgentLoopHostError> {
+        let input_reference = match &self.prefix_reference {
+            ExpectedPrefix::Selected(source) => source.resolve().await?.input_reference(),
+            ExpectedPrefix::Exact(reference) => {
+                brassclaw_turns::run_profile::LoopModelInputReference {
+                    selection: brassclaw_turns::run_profile::RecipePrefixSelection::Selected,
+                    reference: reference.clone(),
+                }
+            }
+        };
         if invocation.as_uuid().is_nil()
             || prefix_reference.is_empty()
-            || prefix_reference != self.prefix_reference
+            || prefix_reference != input_reference.reference
+            // The historical /1 evidence writer is present-prefix only. A
+            // qualified workflow needs its own versioned native evidence path;
+            // structural construction never reinterprets /1 as prefix-free.
+            || input_reference.selection == brassclaw_turns::run_profile::RecipePrefixSelection::PrefixFreeWorkflow
         {
             return Err(error());
         }
@@ -218,6 +276,13 @@ impl RecipeModelResponseStore for PgRecipeModelResponses {
             return Err(error());
         }
         let key: [u8; 32] = row.get::<_, Vec<u8>>(0).try_into().map_err(|_| error())?;
+        // Read from the exact verified original bytes, never from a later
+        // request, current settings or a model-provided response value.
+        let original_arguments =
+            strict_json(&row.get::<_, String>(2), limits).map_err(|_| error())?;
+        let requested_output_tokens =
+            brassclaw_reborn::monty_model_capability::model_output_reservation(&original_arguments)
+                .map_err(|_| error())?;
         self.admission
             .verify_claim(&tx)
             .await
@@ -231,10 +296,15 @@ impl RecipeModelResponseStore for PgRecipeModelResponses {
                 key,
                 data_limits: limits,
             },
-            prefix_reference: prefix_reference.to_owned(),
+            input_reference,
+            requested_output_tokens,
+            model_selection: self.model_selection.clone(),
+            related_work: None,
+            related: Mutex::new(HashMap::new()),
             wire: Observation::new(),
             provider: Observation::new(),
             response: Observation::new(),
+            submission_reserved: AtomicBool::new(false),
         });
         let mut records = self.records.lock().map_err(|_| error())?;
         if records.contains_key(&invocation) {
@@ -248,6 +318,59 @@ impl RecipeModelResponseStore for PgRecipeModelResponses {
 
 #[async_trait]
 impl RecipeModelResponseRecord for Handle {
+    async fn prepare_related_model_work(
+        &self,
+        work: &ModelWorkRequest,
+        request_bytes: &str,
+    ) -> Result<Arc<dyn RecipeModelResponseRecord>, AgentLoopHostError> {
+        self.prepare_related_record(work, request_bytes).await
+    }
+    fn requested_output_tokens(&self) -> Option<std::num::NonZeroU32> {
+        self.0.requested_output_tokens
+    }
+    fn retained_model_input_reference(
+        &self,
+    ) -> &brassclaw_turns::run_profile::LoopModelInputReference {
+        &self.0.input_reference
+    }
+    async fn before_provider_submission(&self) -> Result<(), AgentLoopHostError> {
+        let record = &self.0;
+        if record.submission_reserved.load(Ordering::Acquire) {
+            return Err(error());
+        }
+        let admission = &record.invocation.admission;
+        let mut client = admission.pool.get().await.map_err(|_| error())?;
+        let tx = client.transaction().await.map_err(|_| error())?;
+        admission.preflight_claim(&tx).await.map_err(|_| error())?;
+        let row = tx.query_opt(
+            "SELECT phase FROM brassclaw_monty_tool_invocations
+             WHERE invocation_id=$1 AND run_id=$2 AND admission_key=$3 AND invocation_key=$4 FOR UPDATE",
+            &[&record.invocation.id, &admission.attempt.run_id.as_uuid(),
+              &&admission.key[..], &&record.invocation.key[..]],
+        ).await.map_err(|_| error())?.ok_or_else(error)?;
+        if row.get::<_, &str>(0) != "dispatch_intent"
+            || record.wire.observed.load(Ordering::Acquire)
+            || record.provider.observed.load(Ordering::Acquire)
+            || record.response.observed.load(Ordering::Acquire)
+        {
+            return Err(error());
+        }
+        if let Some(work) = &record.related_work {
+            record
+                .invocation
+                .reserve_related_submission(&tx, work)
+                .await?;
+        }
+        admission.verify_claim(&tx).await.map_err(|_| error())?;
+        // Never release this reservation for a retry, including an ambiguous
+        // COMMIT. No external submission has occurred if this check fails.
+        record
+            .submission_reserved
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| error())?;
+        tx.commit().await.map_err(|_| error())?;
+        Ok(())
+    }
     fn receive_provider_wire_observation(&self, response: Value) -> Result<(), AgentLoopHostError> {
         if response["format"] != "provider-wire-observation/1"
             || response["provider_id"].as_str().is_none_or(str::is_empty)
@@ -260,6 +383,7 @@ impl RecipeModelResponseRecord for Handle {
         {
             return Err(error());
         }
+        self.0.check_related_provider_identity(&response)?;
         self.0.wire.receive(response)
     }
     async fn persist_provider_wire_observation(&self) -> Result<(), AgentLoopHostError> {
@@ -281,6 +405,7 @@ impl RecipeModelResponseRecord for Handle {
         {
             return Err(error());
         }
+        self.0.check_related_provider_identity(&response)?;
         self.0.provider.receive(response)
     }
     async fn persist_provider_observation(&self) -> Result<(), AgentLoopHostError> {
@@ -292,6 +417,11 @@ impl RecipeModelResponseRecord for Handle {
             .map(|_| ())
     }
     fn receive_response(&self, response: LoopModelResponse) -> Result<(), AgentLoopHostError> {
+        if self.0.related_work.as_ref().is_some_and(|work| {
+            response.effective_model_profile_id != work.request.model_profile_id
+        }) {
+            return Err(error());
+        }
         if !self.0.provider.observed.load(Ordering::Acquire)
             || self.0.provider.pending.load(Ordering::Acquire)
         {
@@ -314,7 +444,13 @@ impl PgMontyInvocation {
         kind: EvidenceKind,
         prefix: &str,
         bytes: &str,
+        related_work: Option<&related::RelatedModelWork>,
     ) -> Result<(), AgentLoopHostError> {
+        if let Some(work) = related_work {
+            return self
+                .record_related_evidence(work, kind, prefix, bytes)
+                .await;
+        }
         let mut client = self.admission.pool.get().await.map_err(|_| error())?;
         let tx = client.transaction().await.map_err(|_| error())?;
         // This is evidence for the original effect, including its late answer.
@@ -364,6 +500,18 @@ impl PgMontyInvocation {
 }
 
 impl PgMontyAdmission {
+    pub(crate) fn selected_model_response_store(
+        self: &Arc<Self>,
+        prefix: brassclaw_reborn::monty_model_capability::RecipeModelPrefix,
+        model_selection: Option<Arc<dyn LoopTaskModelSelection>>,
+    ) -> Arc<dyn RecipeModelResponseStore> {
+        Arc::new(PgRecipeModelResponses {
+            admission: self.clone(),
+            prefix_reference: ExpectedPrefix::Selected(prefix),
+            model_selection,
+            records: Mutex::new(HashMap::new()),
+        })
+    }
     pub(crate) fn model_response_store(
         self: &Arc<Self>,
         prefix_reference: String,

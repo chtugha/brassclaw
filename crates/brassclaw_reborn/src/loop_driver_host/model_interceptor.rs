@@ -22,7 +22,9 @@ use brassclaw_loop_support::{
     HostManagedModelMessage, HostManagedModelMessageRole, HostManagedModelRequest,
     HostManagedModelResponse, HostManagedToolResultContent,
 };
-use brassclaw_turns::run_profile::{LoopCapabilityPort, LoopRunContext, ParentLoopOutput};
+use brassclaw_turns::run_profile::{
+    LoopCapabilityPort, LoopModelResponseCustodian, LoopRunContext, ParentLoopOutput,
+};
 #[cfg(feature = "root-llm-provider")]
 use brassclaw_turns::{
     LoopMessageRef,
@@ -45,18 +47,111 @@ pub(super) struct InterceptingModelGateway<G: HostManagedModelGateway + ?Sized> 
     #[cfg(feature = "root-llm-provider")]
     pub(super) mode: Option<SharedInterceptorMode>,
     #[cfg(feature = "root-llm-provider")]
+    pub(super) task_selection:
+        Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+    #[cfg(feature = "root-llm-provider")]
     pub(super) accountant: Option<Arc<dyn LoopModelBudgetAccountant>>,
     #[cfg(feature = "root-llm-provider")]
     pub(super) policy_guard: Arc<dyn LoopModelPolicyGuard>,
 }
 
 #[async_trait]
-impl<G: HostManagedModelGateway + ?Sized> HostManagedModelGateway for InterceptingModelGateway<G> {
-    fn retain_model_selection(
+impl<G: HostManagedModelGateway + ?Sized + 'static> HostManagedModelGateway
+    for InterceptingModelGateway<G>
+{
+    async fn preflight_task_model_usage(
+        &self,
+        input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
+    ) -> Result<(), HostManagedModelError> {
+        self.gateway.preflight_task_model_usage(input).await?;
+        #[cfg(feature = "root-llm-provider")]
+        if let Some(gateway) = &self.sempai_gateway {
+            // This declaration selects the Kohai Recipe usage. Ordinary
+            // interceptor review retains its own original Sempai role contract.
+            // A qualified Free workflow must reach the review owner unchanged;
+            // that owner independently verifies its own original model binding.
+            // It must never silently downgrade to an ordinary Sempai prefix.
+            let review_input = input.filter(|input| {
+                input.selection
+                    == brassclaw_turns::run_profile::RecipePrefixSelection::PrefixFreeWorkflow
+            });
+            gateway.preflight_task_model_usage(review_input).await?;
+        }
+        Ok(())
+    }
+
+    async fn capture_task_model_selection(
+        &self,
+        parent: Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
+        capture: Option<Arc<dyn brassclaw_turns::run_profile::LoopModelCaptureContext>>,
+    ) -> Result<Option<brassclaw_loop_support::HostManagedTaskModelSelection>, HostManagedModelError>
+    {
+        let Some(selected) = self
+            .gateway
+            .capture_task_model_selection(parent, capture.clone())
+            .await?
+        else {
+            return Ok(None);
+        };
+        #[cfg(feature = "root-llm-provider")]
+        let (sempai_gateway, mode) = if selected.binding.role_configured("sempai") {
+            let gateway = self.sempai_gateway.as_ref().ok_or_else(|| {
+                HostManagedModelError::safe(
+                    HostManagedModelErrorKind::ConfigurationError,
+                    "selected Sempai gateway is unavailable",
+                )
+            })?;
+            let sempai = gateway
+                .capture_task_model_selection(Some(selected.binding.clone()), capture.clone())
+                .await?
+                .ok_or_else(|| {
+                    HostManagedModelError::safe(
+                        HostManagedModelErrorKind::ConfigurationError,
+                        "selected Sempai binding is unavailable",
+                    )
+                })?;
+            if !Arc::ptr_eq(&selected.binding, &sempai.binding) {
+                return Err(HostManagedModelError::safe(
+                    HostManagedModelErrorKind::ConfigurationError,
+                    "selected Sempai binding conflicts",
+                ));
+            }
+            let mode = SharedInterceptorMode::new();
+            mode.set_rerouting();
+            (Some(sempai.gateway), Some(mode))
+        } else {
+            (None, None)
+        };
+        Ok(Some(
+            brassclaw_loop_support::HostManagedTaskModelSelection {
+                binding: selected.binding.clone(),
+                gateway: Arc::new(InterceptingModelGateway {
+                    gateway: selected.gateway,
+                    run_context: self.run_context.clone(),
+                    store: self.store.clone(),
+                    next_iteration: self.next_iteration.clone(),
+                    #[cfg(feature = "root-llm-provider")]
+                    proposal_sink: self.proposal_sink.clone(),
+                    #[cfg(feature = "root-llm-provider")]
+                    sempai_gateway,
+                    #[cfg(feature = "root-llm-provider")]
+                    mode,
+                    #[cfg(feature = "root-llm-provider")]
+                    task_selection: Some(selected.binding),
+                    #[cfg(feature = "root-llm-provider")]
+                    accountant: self.accountant.clone(),
+                    #[cfg(feature = "root-llm-provider")]
+                    policy_guard: self.policy_guard.clone(),
+                }),
+            },
+        ))
+    }
+
+    async fn retain_model_selection(
         &self,
         request: &HostManagedModelRequest,
     ) -> Result<Option<Arc<dyn HostManagedModelGateway>>, HostManagedModelError> {
-        let Some(gateway) = self.gateway.retain_model_selection(request)? else {
+        let Some(gateway) = self.gateway.retain_model_selection(request).await? else {
             return Ok(None);
         };
         Ok(Some(Arc::new(InterceptingModelGateway {
@@ -70,6 +165,8 @@ impl<G: HostManagedModelGateway + ?Sized> HostManagedModelGateway for Intercepti
             sempai_gateway: self.sempai_gateway.clone(),
             #[cfg(feature = "root-llm-provider")]
             mode: self.mode.clone(),
+            #[cfg(feature = "root-llm-provider")]
+            task_selection: self.task_selection.clone(),
             #[cfg(feature = "root-llm-provider")]
             accountant: self.accountant.clone(),
             #[cfg(feature = "root-llm-provider")]
@@ -87,7 +184,7 @@ impl<G: HostManagedModelGateway + ?Sized> HostManagedModelGateway for Intercepti
         custodian: Arc<dyn brassclaw_turns::run_profile::LoopModelResponseCustodian>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
         let (request, packet) = self
-            .prepare(request)
+            .prepare(request, Some(&custodian))
             .await
             .map_err(HostManagedModelError::before_provider_dispatch)?;
         // The observer belongs to this Kohai operation only. A Sempai review
@@ -109,7 +206,7 @@ impl<G: HostManagedModelGateway + ?Sized> HostManagedModelGateway for Intercepti
         request: HostManagedModelRequest,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
         let (request, packet) = self
-            .prepare(request)
+            .prepare(request, None)
             .await
             .map_err(HostManagedModelError::before_provider_dispatch)?;
         let result = self.gateway.stream_model(request).await;
@@ -123,7 +220,7 @@ impl<G: HostManagedModelGateway + ?Sized> HostManagedModelGateway for Intercepti
         capabilities: Arc<dyn LoopCapabilityPort>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
         let (request, packet) = self
-            .prepare(request)
+            .prepare(request, None)
             .await
             .map_err(HostManagedModelError::before_provider_dispatch)?;
         // Forward the exact filtered capability port, not the factory surface.
@@ -140,6 +237,7 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
     async fn prepare(
         &self,
         request: HostManagedModelRequest,
+        _custodian: Option<&Arc<dyn LoopModelResponseCustodian>>,
     ) -> Result<(HostManagedModelRequest, ForensicPacket), HostManagedModelError> {
         if request.run_id != self.run_context.run_id || request.turn_id != self.run_context.turn_id
         {
@@ -186,7 +284,7 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
         if let (Some(gateway), Some(mode)) = (self.sempai_gateway.as_ref(), self.mode.as_ref())
             && mode.get() == brassclaw_interceptor::InterceptorMode::Rerouting
         {
-            let review = match self.review(&request, &packet, gateway).await {
+            let review = match self.review(&request, &packet, gateway, _custodian).await {
                 Ok(review) => review,
                 Err(error) => {
                     self.record_failure(packet, "sempai_preparation", &error)
@@ -622,6 +720,7 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
         request: &HostManagedModelRequest,
         packet: &ForensicPacket,
         gateway: &Arc<dyn HostManagedModelGateway>,
+        custodian: Option<&Arc<dyn LoopModelResponseCustodian>>,
     ) -> Result<SempaiReviewOutcome, HostManagedModelError> {
         let base_length = request
             .messages
@@ -671,6 +770,7 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
                     run_id: request.run_id,
                     turn_id: request.turn_id,
                 },
+                custodian,
             )
             .await?;
         let text = match response.output {
@@ -748,15 +848,25 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
     async fn accounted_review(
         &self,
         gateway: &Arc<dyn HostManagedModelGateway>,
-        request: HostManagedModelRequest,
+        mut request: HostManagedModelRequest,
+        custodian: Option<&Arc<dyn LoopModelResponseCustodian>>,
     ) -> Result<LoopModelResponse, HostManagedModelError> {
+        if let Some(selected) = &self.task_selection {
+            request.resolved_model_route =
+                Some(selected.role_model_route("sempai").map_err(|_| {
+                    HostManagedModelError::safe(
+                        HostManagedModelErrorKind::ConfigurationError,
+                        "selected Sempai route is unavailable",
+                    )
+                })?);
+        }
         let accountant = self.accountant.as_ref().ok_or_else(|| {
             HostManagedModelError::new(
                 HostManagedModelErrorKind::ConfigurationError,
                 "isolated Sempai accounting unavailable",
             )
         })?;
-        let selected_gateway = gateway.retain_model_selection(&request)?;
+        let selected_gateway = gateway.retain_model_selection(&request).await?;
         let gateway = selected_gateway.as_ref().unwrap_or(gateway);
         let chars = request
             .messages
@@ -782,6 +892,19 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
             .check_model_work_policy(&self.run_context, &work)
             .await
             .map_err(review_work_error)?;
+        let response_owner = match custodian {
+            Some(parent) => Some(
+                parent
+                    .prepare_related_model_work(&work, &request_snapshot(&request)?)
+                    .await
+                    .map_err(|error| {
+                        review_work_error(super::model_gateway::host_error_to_model_gateway_error(
+                            error,
+                        ))
+                    })?,
+            ),
+            None => None,
+        };
         accountant
             .pre_model_work(&self.run_context, &work)
             .await
@@ -796,9 +919,22 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
         accountant
             .model_work_dispatching(&self.run_context, &work)
             .map_err(review_work_error)?;
-        let result = gateway
-            .stream_model(request)
-            .await
+        let gateway_result = match &response_owner {
+            Some(owner) => {
+                gateway
+                    .stream_model_observed(request, None, owner.clone())
+                    .await
+            }
+            None => gateway.stream_model(request).await,
+        };
+        // Preserve actual native submission evidence before the error adapter
+        // drops it. A category such as BudgetExceeded also occurs after a
+        // provider response and must never establish that nothing was sent.
+        let confirmed_unsubmitted = gateway_result
+            .as_ref()
+            .err()
+            .is_some_and(HostManagedModelError::confirmed_unsubmitted);
+        let result = gateway_result
             .map(|response| LoopModelResponse {
                 chunks: response
                     .safe_text_deltas
@@ -811,17 +947,44 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
                 usage: response.usage,
             })
             .map_err(review_provider_error);
+        // Persist the review's own originals before accounting or interpreting
+        // its content. A failed write still accounts the actual provider result
+        // and retains the observation with the original native owner.
+        let custody_result = match (&result, &response_owner) {
+            (Ok(response), Some(owner)) => match owner.receive_response(response) {
+                Ok(()) => owner.persist_response().await,
+                Err(error) => Err(error),
+            },
+            _ => Ok(()),
+        };
         let outcome = match &result {
             Ok(response) => ModelCallOutcome::Success(response),
             Err(error) => ModelCallOutcome::Failure(error),
         };
-        let recorded = accountant
-            .post_model_work_result(&self.run_context, &work, outcome)
-            .await;
+        let unsubmitted = if confirmed_unsubmitted {
+            accountant
+                .reconcile_unsubmitted_model_work(&self.run_context, &work)
+                .await
+        } else {
+            None
+        };
+        let recorded = match unsubmitted {
+            Some(recorded) => recorded,
+            None => {
+                accountant
+                    .post_model_work_result(&self.run_context, &work, outcome)
+                    .await
+            }
+        };
         // A failed reconcile retains its actual reservation for recovery. Do
         // not release known completed spend merely because recording failed.
         guard.armed = false;
         recorded.map_err(review_work_error)?;
+        custody_result.map_err(|error| {
+            review_work_error(super::model_gateway::host_error_to_model_gateway_error(
+                error,
+            ))
+        })?;
         result.map_err(review_work_error)
     }
 }

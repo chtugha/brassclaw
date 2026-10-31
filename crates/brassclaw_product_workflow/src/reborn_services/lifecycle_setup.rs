@@ -26,6 +26,12 @@ pub(super) async fn setup_extension(
     request: WebUiSetupExtensionRequest,
 ) -> Result<RebornSetupExtensionResponse, RebornServicesError> {
     let action = setup_action(&request)?;
+    if action == SetupAction::View && request.payload.is_some() {
+        return Err(validation_error(
+            "payload",
+            WebUiInboundValidationCode::InvalidValue,
+        ));
+    }
     let scope = setup_scope(&caller, &package_ref);
     let extension_id = ExtensionId::new(package_ref.id.as_str())
         .map_err(|_| RebornServicesError::internal_invariant())?;
@@ -35,27 +41,20 @@ pub(super) async fn setup_extension(
         agent_id: caller.agent_id,
         project_id: caller.project_id,
     });
-    let lifecycle = project_package(facade, context.clone(), package_ref.clone()).await?;
+    let lifecycle = project_package(facade, context, package_ref).await?;
     let requirements = extension_setup_credentials::requirements(&lifecycle);
-    if action == SetupAction::Submit {
-        extension_setup_credentials::submit_manual_tokens(
-            extension_credentials,
-            scope.clone(),
-            &extension_id,
-            &requirements,
-            request,
-        )
-        .await?;
-        let refreshed = project_package(facade, context, package_ref).await?;
-        let refreshed_requirements = extension_setup_credentials::requirements(&refreshed);
-        return setup_extension_response(
-            extension_credentials,
-            scope,
-            &extension_id,
-            refreshed,
-            &refreshed_requirements,
-        )
-        .await;
+    // The current facade advertises no editable nonsecret fields. Never claim
+    // to persist an unimplemented field or replay saved credential operations.
+    if action == SetupAction::Submit
+        && request
+            .payload
+            .as_ref()
+            .is_some_and(|payload| !payload.fields.is_empty())
+    {
+        return Err(validation_error(
+            "fields",
+            WebUiInboundValidationCode::InvalidValue,
+        ));
     }
     setup_extension_response(
         extension_credentials,
@@ -67,7 +66,7 @@ pub(super) async fn setup_extension(
     .await
 }
 
-async fn project_package(
+pub(super) async fn project_package(
     facade: &dyn LifecycleProductFacade,
     context: LifecycleProductContext,
     package_ref: LifecyclePackageRef,
@@ -108,7 +107,7 @@ async fn setup_extension_response(
     })
 }
 
-fn setup_scope(
+pub(super) fn setup_scope(
     caller: &WebUiAuthenticatedCaller,
     package_ref: &LifecyclePackageRef,
 ) -> AuthProductScope {

@@ -44,6 +44,9 @@ pub mod pure_component_contract;
 /// do not establish review provenance, activation or Tool authority.
 pub mod component_revision;
 
+/// Strict retained Recipe/variant model-input declarations; no approval or grant.
+pub mod recipe_model_input;
+
 /// Strict post-turn proposal decoding; parsing never approves or activates.
 pub mod completed_turn_analysis;
 
@@ -58,11 +61,17 @@ pub mod validator_components;
 pub mod global_bootstrap_components;
 /// Canonical single-usage offline encoding drafts; qualification is separate.
 pub mod model_encoding_components;
+/// Pure bootstrap prompt/answer drafts; qualification and activation are separate.
+pub mod prefix_bootstrap_components;
 /// Pure reusable source-compiler stages; qualification and activation are separate.
 pub mod prefix_compiler_components;
+pub mod prefix_design_components;
 /// Reusable immutable-generation usages; runtime bootstrap/activation are separate.
 pub mod prefix_generation_components;
+pub mod prefix_generation_original_components;
+pub mod prefix_generation_rules;
 pub mod prefix_measurement_components;
+pub mod prefix_pair_case_components;
 /// Shared effect-free prefix rendering draft; qualification and activation are separate.
 pub mod prefix_reference_components;
 /// One reusable ordered UTF-8 hashing usage of the existing JSON Tool.
@@ -71,9 +80,13 @@ pub mod utf8_digest_components;
 /// Typed explicit model usage and its finite JSON command-input profile.
 pub mod model_completion_components;
 
+/// Standalone strict JSON usage over the existing primitive; qualification is separate.
+pub mod strict_json_components;
+
 /// Typed successor drafts for the existing bounded HTTP GET usage.
 pub mod http_get_components;
 /// Pure exact-content source-check projections; provenance/storage are separate.
+pub mod prefix_registered_source_components;
 pub mod prefix_source_check_components;
 pub mod prefix_source_components;
 

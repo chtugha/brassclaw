@@ -1,0 +1,375 @@
+{
+  "format": "brassclaw-exact-native-preparation/1",
+  "status": "scoped-infrastructure-accepted-exact-incomplete",
+  "capture_run": "/private/tmp/brassclaw-exact-capture-seam-validation-20261029/run-7",
+  "capture_source_manifest_sha256": "cdac5f9f8d4824649530d62b38c828d1b2dbac5d4fe593d35a01b6c41aeb5e8d",
+  "capture": {
+    "status": "passed",
+    "runner_pid": 7567,
+    "process_pid": null,
+    "results": [
+      {
+        "stage": "composition-image",
+        "exit_code": 0,
+        "seconds": 152.53834141697735,
+        "log_sha256": "2d42173081c552d982d4907d9e46f30afd3c03d3b729ab06a9c36a8d5fd98f9b"
+      },
+      {
+        "stage": "case-1",
+        "exit_code": 0,
+        "seconds": 84.33816808299161,
+        "log_sha256": "4c88f757bca50be26a87451c871763edb26869f3012e22fd64ee45ab3727826c",
+        "case": "runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match",
+        "passed": 1
+      },
+      {
+        "stage": "case-2",
+        "exit_code": 0,
+        "seconds": 43.891858332790434,
+        "log_sha256": "e9e41bcff70013e5027b23989bf7ddd267e9caff01c0aee171b96c1d639344d4",
+        "case": "runtime::tests::child_task_execution_tests::native_child_uses_claimed_parent_old_catalogue_and_same_global_vm",
+        "passed": 1
+      },
+      {
+        "stage": "case-3",
+        "exit_code": 0,
+        "seconds": 39.06253574998118,
+        "log_sha256": "98ad24b1a22fcc15d0abdaf97132fd63832c172b2ff7b222e3c0040186a16b0e",
+        "case": "runtime::tests::child_task_execution_tests::parent_recipe_tests::native_complete_parent_recipe_delegates_on_the_instance_global_vm",
+        "passed": 1
+      },
+      {
+        "stage": "case-4",
+        "exit_code": 0,
+        "seconds": 2.6167689168360084,
+        "log_sha256": "a0c4d97c1d819b901af24084ab040402c11749fc1b673a9f1ed004f976ce01c9",
+        "case": "task_model_provider::tests::native_task_selection_retains_original_and_child_before_first_model_after_role_edit",
+        "passed": 1
+      },
+      {
+        "stage": "case-5",
+        "exit_code": 0,
+        "seconds": 2.3207269578706473,
+        "log_sha256": "38ddc3053181a738b54aab8f7d380b65ae552414d26cdbcad5b14f4ced6029b4",
+        "case": "task_model_provider::tests::native_task_model_selection_is_persisted_with_original_admission_and_cannot_be_rebound",
+        "passed": 1
+      },
+      {
+        "stage": "case-6",
+        "exit_code": 0,
+        "seconds": 377.1298135831021,
+        "log_sha256": "b961121408da2c8d4708818dff29f9a8cf0088ae71c9f65be231103495eb3df5",
+        "case": "runtime::tests::authored_catalogue_tests::component_deployment_tests::native_component_deployment_preserves_recipes_and_pins_review_subjects",
+        "passed": 1
+      },
+      {
+        "stage": "case-7",
+        "exit_code": 0,
+        "seconds": 40.77882150001824,
+        "log_sha256": "037240df5fa714337475dad28bdf0f7a846d3f003f401299af66eaec1c94f3d1",
+        "case": "runtime::tests::prefix_pair_case_execution_tests::native_pair_bootstrap_qualifies_exact_recipe_and_checks_retained_journal_without_replay",
+        "passed": 1
+      },
+      {
+        "stage": "composition-strict",
+        "exit_code": 0,
+        "seconds": 91.37506466615014,
+        "log_sha256": "7c4dc15de91937677e59ea866d1c701697661882090e625b61107a265eb7a990"
+      },
+      {
+        "stage": "composition-default-strict",
+        "exit_code": 0,
+        "seconds": 22.578718750039116,
+        "log_sha256": "5e6024379c5037f0a7b58d1dcfbdd8e554eb5792ccf921df63a8835981f7a875"
+      },
+      {
+        "stage": "auth-reader-strict",
+        "exit_code": 0,
+        "seconds": 3.84863775013946,
+        "log_sha256": "75ee2bd32fa14c2550b30c51b63183392c4605ce322fb0f1643cb31fe8c4a40c"
+      }
+    ],
+    "scope": "One native retained catalogue/model preparation before runtime binding: ordinary, internal and child. No PrefixFreeWorkflow policy or activation and no Auth8 functional acceptance.",
+    "stage": "terminal",
+    "command": [
+      "cargo",
+      "+1.96.0",
+      "clippy",
+      "-p",
+      "brassclaw_auth",
+      "--lib",
+      "--tests",
+      "--locked",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "image": {
+      "path": "/private/tmp/brassclaw-exact-capture-seam-validation-20261029/run-7/composition-tests",
+      "sha256": "796ea647a3646aec28ebf2596941e7303569412e1ba3d724f130e94069e94f84",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-f3f60267b1e4e468",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    },
+    "worker": {
+      "path": "/private/tmp/brassclaw-exact-capture-seam-validation-20261029/run-7/monty_worker",
+      "sha256": "91a2165fa396dfd9513d15e886eaba2ed692f1a5b9ac472ef3fb734391e47343",
+      "original": "/Users/ollama/brassclaw-target/debug/monty_worker"
+    },
+    "model_assets": {
+      "source": "/Volumes/SSDE/brassclaw/target/validation/prefix-model-source-cacik5n7",
+      "provenance_sha256": "03774b905c00ff5fb55cd2214c304887c30d2f5cdc3dfc22a7e5120b553143d6",
+      "retained": "/private/tmp/brassclaw-exact-capture-seam-validation-20261029/run-7/model-artifacts",
+      "files": {
+        "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+        "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+        "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+        "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+        "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+        "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+      }
+    }
+  },
+  "changed_sources": {
+    "crates/brassclaw_skills/src/prefix_bootstrap_components.rs": "06accea14ce09edf6e477c7166153fa820990fde6291ad25e11a61bfe9fd6c04",
+    "crates/brassclaw_skills/src/lib.rs": "7f7a965dc814043e28dd4fcd262fbb2692e0c46351ef48ae15dfcf1a661ce8b3",
+    "crates/brassclaw_reborn_composition/src/final_model_encoding.rs": "a6b5cb440c4ac4d83f6ccddfc5f578b8851c91007bd65e8e46c48a459fbc072c",
+    "crates/brassclaw_reborn_composition/src/final_model_encoding_tests.rs": "7d3e3e35b3d56080c7094818fe6970d9592fd90c3157137abb186c0ba1aca97e",
+    "crates/brassclaw_reborn_composition/src/global_task_factory.rs": "be7c7814a6746c48faca7b030f759e7a4498c8bcb80fa938b5ff8c047b85e20a",
+    "crates/brassclaw_reborn_composition/src/global_recipe_ports.rs": "9dd1c33af2e09e9c151212292f1c165ac56443d8851f600625d96ce1817006d6",
+    "crates/brassclaw_reborn_composition/src/task_catalogue_binding.rs": "ccef7634ad16d9909c808f4a4a16f91b0ae031d57161d83b4e3ad9927b54dfef",
+    "crates/brassclaw_reborn_composition/src/installed_monty_catalogue.rs": "cb637803044335eecc92faad0ced8e3a278e435f3751f46b9dfdfb8b4729f79b",
+    "crates/brassclaw_reborn_composition/src/monty_child_tasks.rs": "6fe2708670228d427545c8368c1aae4a7b802d99e646ab504f96b79e16561c8d",
+    "crates/brassclaw_reborn_composition/src/prefix_job_execution.rs": "b5ebd75a76f2194090542b952103df31ddee766641d6dd0e5fb992138a1f2719",
+    "crates/brassclaw_reborn_composition/src/prefix_measurement_capture.rs": "f32ca74d2511de7329a58803fbf214af21ae77cc25bc73ac637c0a7c92d1aa3e",
+    "crates/brassclaw_reborn_composition/src/prefix_pair_case_capture.rs": "9d2bc72c2f0bf64fee9cd1e033de771dbdfee37cff3bccfd77b9c5dae8e72082",
+    "crates/brassclaw_reborn_composition/src/pg_monty_admission_core.rs": "85930c61ec8de0bf157763651d542307690e5e13e9e3c3c62f52c4f4eaefff2d",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/child_parent_recipe_tests.rs": "e23f7725c52fde4037476e02eef9625430cd4cc0723aff52082398a5ada4c424",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/prefix_pair_construction_tests.rs": "c0162831a4f30c2b0b8ade6ddf222a52922a5784b876ac323d5a7f384d38e17d",
+    "crates/brassclaw_reborn_composition/src/credential_requirement_custody_tests.rs": "c84f9e4f36955ad428532e11d15ec21b6d433edd56df572d36bff4f904618d09",
+    "scripts/prefix/bootstrap/v1/answer.schema.json": "1f893486ff764663f5d4144e2bae8ff1968d36d6f9215231b4e707b1b73dd530",
+    "scripts/prefix/bootstrap/v1/extract_bootstrap_facts.txt": "82f2bf08aa66363cfd55a1df78ca924ff7e30902decaa45f62203896c405daad",
+    "scripts/prefix/bootstrap/v1/manifest.json": "d9244add93ff91fbe0bd7f96b77742999d0dd0433e0ed026975d2f1231740323",
+    "scripts/prefix/bootstrap/v1/select_bootstrap_prefill.txt": "8d8be57f90d6673b435428731575e20868c924dbd65112a8b3d7f95fdfd46d89",
+    "scripts/prefix/bootstrap/v1/system.txt": "1d8e30e4adc755394d1ec05cb2ac99df1981994472a607152b3b95b15a04cedb",
+    "scripts/prefix/bootstrap_answer.py": "30f07ff72d6c434c441fe13f18fef52342d38f77cfd68bf36577c3f0ddb5fb1b"
+  },
+  "bootstrap_and_counter_receipt": {
+    "path": "/private/tmp/brassclaw-exact-bootstrap-validation-20261029/partial-package.json",
+    "sha256": "c947eb0cdc27c6e654de0dff1da2a678291412b04bdf616e15c878d7e9a260c6",
+    "record": {
+      "format": "brassclaw-exact-bootstrap-workflow-counter/1",
+      "status": "partial-api-acceptance-not-workflow-activation",
+      "runs": {
+        "r1": {
+          "status": "passed",
+          "runner_pid": 2711,
+          "process_pid": null,
+          "results": [
+            {
+              "stage": "draft-tests",
+              "exit_code": 0,
+              "log_sha256": "6edede2a7283ba37c1ea98bffc8d000bdf9848f546fa50b406d6de7d12f1692e"
+            },
+            {
+              "stage": "skills-strict",
+              "exit_code": 0,
+              "log_sha256": "a72dd92e454fb2727464eda6f919a50135aca7a32f0c0db9ccb0cc3e3bb83d01"
+            }
+          ],
+          "scope": "Pure bootstrap prompt and answer ComponentRevisionDraft construction, strict-reader rejection and affected skills lint only. No serving/workflow activation.",
+          "stage": "terminal",
+          "command": [
+            "cargo",
+            "+1.96.0",
+            "clippy",
+            "-p",
+            "brassclaw_skills",
+            "--lib",
+            "--tests",
+            "--locked",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "manifest_sha256": "e3f58be412e3e019acde944d54a9fd26efe4affaa5bce79575973398c1dda893"
+        },
+        "r2": {
+          "status": "failed",
+          "runner_pid": 3076,
+          "process_pid": null,
+          "results": [
+            {
+              "stage": "native-counter",
+              "exit_code": 101,
+              "log_sha256": "2aaca37ff31771d72ef9921fed9b8267306df7a9a8af0bd0142c247e9923bfab"
+            }
+          ],
+          "scope": "Existing final counter extended with typed prefix-free workflow encoding; real PG, retained assets/worker and canonical live caps. Fixture verifier is not production workflow qualification. No active workflow/dispatch binding or full Exact acceptance.",
+          "stage": "native-counter",
+          "command": [
+            "cargo",
+            "+1.96.0",
+            "test",
+            "-p",
+            "brassclaw_reborn_composition",
+            "--lib",
+            "--features",
+            "skills-db,test-support,tracing-test/no-env-filter",
+            "final_model_encoding::tests::native_counter_uses_retained_assets_original_worker_and_actual_guard_counts",
+            "--locked",
+            "--",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1"
+          ],
+          "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-exact-workflow-encoding-validation.py\", line 33, in <module>\n    run('native-counter',['cargo','+1.96.0','test','-p','brassclaw_reborn_composition','--lib','--features','skills-db,test-support,tracing-test/no-env-filter','final_model_encoding::tests::native_counter_uses_retained_assets_original_worker_and_actual_guard_counts','--locked','--','--exact','--nocapture','--test-threads=1'])\n  File \"/private/tmp/brassclaw-exact-workflow-encoding-validation.py\", line 29, in run\n    assert code==0,(label,code)\nAssertionError: ('native-counter', 101)\n",
+          "manifest_sha256": "ae3aa9ed91f0efce1b59afe6566e72d8e19f2d55e7dee2106f1051bd0e9cfd75"
+        },
+        "r3": {
+          "status": "passed",
+          "runner_pid": 3258,
+          "process_pid": null,
+          "results": [
+            {
+              "stage": "native-counter",
+              "exit_code": 0,
+              "log_sha256": "946c4a6a913b50d221567750ad645f54121f8c5f3b8c008781d1c35018c8d62b"
+            },
+            {
+              "stage": "composition-strict",
+              "exit_code": 0,
+              "log_sha256": "1849cad5603d66beb5062e2d30b2aa22dbc5359f42129b0eb16cc003bbecadb5"
+            }
+          ],
+          "scope": "Existing final counter extended with typed prefix-free workflow encoding; real PG, retained assets/worker and canonical live caps. Fixture verifier is not production workflow qualification. No active workflow/dispatch binding or full Exact acceptance.",
+          "stage": "terminal",
+          "command": [
+            "cargo",
+            "+1.96.0",
+            "clippy",
+            "-p",
+            "brassclaw_reborn_composition",
+            "--lib",
+            "--tests",
+            "--features",
+            "skills-db,test-support,tracing-test/no-env-filter",
+            "--locked",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "manifest_sha256": "9d16af730e665f4c39633d5fe11a0dedda3290c0e5f463ce08772040be0b7e5b"
+        },
+        "r4": {
+          "status": "passed",
+          "runner_pid": 3471,
+          "process_pid": null,
+          "results": [
+            {
+              "stage": "composition-default-strict",
+              "exit_code": 0,
+              "log_sha256": "b60a97946878a04aa076df5795f22e1471547f3081ba4523934bc0164f9925b6"
+            }
+          ],
+          "scope": "Existing final counter extended with typed prefix-free workflow encoding; real PG, retained assets/worker and canonical live caps. Fixture verifier is not production workflow qualification. No active workflow/dispatch binding or full Exact acceptance.",
+          "stage": "terminal",
+          "command": [
+            "cargo",
+            "+1.96.0",
+            "clippy",
+            "-p",
+            "brassclaw_reborn_composition",
+            "--lib",
+            "--locked",
+            "--",
+            "-D",
+            "warnings"
+          ]
+        }
+      },
+      "images": {
+        "r1": {
+          "path": "/private/tmp/brassclaw-exact-bootstrap-validation-20261029/r1/brassclaw_skills-c00ad6206061e429",
+          "sha256": "4e56870face6089fe523355f94de0f9f2a59880b0fdb5748e42b9c5bf3edbeaf",
+          "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_skills-c00ad6206061e429"
+        },
+        "r3": {
+          "path": "/private/tmp/brassclaw-exact-bootstrap-validation-20261029/r3/brassclaw_reborn_composition-f3f60267b1e4e468",
+          "sha256": "051e3a3294baa47e66648ed8c95c4018c9e98224a11a432990fbbc7e0d37548c",
+          "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-f3f60267b1e4e468"
+        }
+      },
+      "changed_source": {
+        "crates/brassclaw_skills/src/lib.rs": "7f7a965dc814043e28dd4fcd262fbb2692e0c46351ef48ae15dfcf1a661ce8b3",
+        "crates/brassclaw_skills/src/prefix_bootstrap_components.rs": "06accea14ce09edf6e477c7166153fa820990fde6291ad25e11a61bfe9fd6c04",
+        "crates/brassclaw_reborn_composition/src/final_model_encoding.rs": "a6b5cb440c4ac4d83f6ccddfc5f578b8851c91007bd65e8e46c48a459fbc072c",
+        "crates/brassclaw_reborn_composition/src/final_model_encoding_tests.rs": "7d3e3e35b3d56080c7094818fe6970d9592fd90c3157137abb186c0ba1aca97e"
+      }
+    }
+  },
+  "answer_evaluations": {
+    "worker_sha256": "91a2165fa396dfd9513d15e886eaba2ed692f1a5b9ac472ef3fb734391e47343",
+    "source_sha256": "30f07ff72d6c434c441fe13f18fef52342d38f77cfd68bf36577c3f0ddb5fb1b",
+    "cases": 15,
+    "native_evaluations": 53,
+    "errors": 0,
+    "failures": 0,
+    "rejected_calls": 40,
+    "rejection_diagnostics": [
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    bootstrap_answer_stage(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 26, in bootstrap_answer_stage\n    canonical = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False)\n                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\nValueError: Out of range float values are not JSON compliant: nan",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    bootstrap_answer_stage(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 28, in bootstrap_answer_stage\n    raise ValueError('canonical typed bootstrap stage input required')\nValueError: canonical typed bootstrap stage input required",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    bootstrap_answer_stage(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 34, in bootstrap_answer_stage\n    raise ValueError('unknown bootstrap stage')\nValueError: unknown bootstrap stage",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    check_bootstrap_evidence(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 200, in check_bootstrap_evidence\n    raise ValueError('uncaptured bootstrap source')\nValueError: uncaptured bootstrap source",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    check_bootstrap_evidence(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 205, in check_bootstrap_evidence\n    raise ValueError('bootstrap quote is not an exact substring')\nValueError: bootstrap quote is not an exact substring",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    check_bootstrap_evidence(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 208, in check_bootstrap_evidence\n    raise ValueError('bootstrap proposed identity differs from native string')\nValueError: bootstrap proposed identity differs from native string",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    check_bootstrap_evidence(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 214, in check_bootstrap_evidence\n    raise ValueError('bootstrap scalar quote differs')\nValueError: bootstrap scalar quote differs",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    check_bootstrap_evidence(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 217, in check_bootstrap_evidence\n    raise ValueError('bootstrap proposed value differs from native scalar')\nValueError: bootstrap proposed value differs from native scalar",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    check_bootstrap_evidence(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 219, in check_bootstrap_evidence\n    raise ValueError('bootstrap evidence must point to a supported scalar')\nValueError: bootstrap evidence must point to a supported scalar",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    resolve_bootstrap_pointer(args[0], args[1])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 153, in resolve_bootstrap_pointer\n    raise ValueError('source-view JSON pointer required')\nValueError: source-view JSON pointer required",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    resolve_bootstrap_pointer(args[0], args[1])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 160, in resolve_bootstrap_pointer\n    raise ValueError('invalid JSON pointer escape')\nValueError: invalid JSON pointer escape",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    resolve_bootstrap_pointer(args[0], args[1])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 172, in resolve_bootstrap_pointer\n    raise ValueError('source-view index out of range')\nValueError: source-view index out of range",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    resolve_bootstrap_pointer(args[0], args[1])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 175, in resolve_bootstrap_pointer\n    raise ValueError('source-view pointer does not resolve')\nValueError: source-view pointer does not resolve",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 101, in validate_bootstrap_answer\n    raise ValueError('duplicate bootstrap issue')\nValueError: duplicate bootstrap issue",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 105, in validate_bootstrap_answer\n    raise ValueError('unknown bootstrap candidate')\nValueError: unknown bootstrap candidate",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 113, in validate_bootstrap_answer\n    bootstrap_fields(fact, ['field', 'scope', 'status', 'value', 'evidence'])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 13, in bootstrap_fields\n    raise ValueError('bootstrap object fields differ')\nValueError: bootstrap object fields differ",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 120, in validate_bootstrap_answer\n    raise ValueError('unknown facts cannot supply a value or evidence')\nValueError: unknown facts cannot supply a value or evidence",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 129, in validate_bootstrap_answer\n    raise ValueError('positive exact token integer required')\nValueError: positive exact token integer required",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 139, in validate_bootstrap_answer\n    bootstrap_fields(item, ['source_id', 'locator', 'quote'])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 13, in bootstrap_fields\n    raise ValueError('bootstrap object fields differ')\nValueError: bootstrap object fields differ",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 146, in validate_bootstrap_answer\n    raise ValueError('bootstrap facts must cover each requirement exactly once')\nValueError: bootstrap facts must cover each requirement exactly once",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 86, in validate_bootstrap_answer\n    bootstrap_fields(answer, ['schema', 'task', 'request_id', 'input_sha256', 'result'])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 13, in bootstrap_fields\n    raise ValueError('bootstrap object fields differ')\nValueError: bootstrap object fields differ",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 90, in validate_bootstrap_answer\n    raise ValueError('bootstrap answer contract or echo mismatch')\nValueError: bootstrap answer contract or echo mismatch",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 92, in validate_bootstrap_answer\n    bootstrap_fields(result, ['facts', 'issues'] if task == 'extract_bootstrap_facts'\n                     else ['candidate_id', 'issues'])\n  File \"utility.py\", line 13, in bootstrap_fields\n    raise ValueError('bootstrap object fields differ')\nValueError: bootstrap object fields differ",
+      "Traceback (most recent call last):\n  File \"utility.py\", line 233, in <module>\n    validate_bootstrap_answer(args[0])\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  File \"utility.py\", line 99, in validate_bootstrap_answer\n    raise ValueError('unknown bootstrap issue')\nValueError: unknown bootstrap issue"
+    ]
+  },
+  "prompt_evaluations": {
+    "constructor_source_sha256": "06accea14ce09edf6e477c7166153fa820990fde6291ad25e11a61bfe9fd6c04",
+    "emitted_source_sha256": "5f92be35cf4cbc2b69b02076c2d8a4060fd85d3a0e25f32611bec384b9a0e6b8",
+    "worker_sha256": "91a2165fa396dfd9513d15e886eaba2ed692f1a5b9ac472ef3fb734391e47343",
+    "native_evaluations": 12,
+    "passed": 12,
+    "scope": "Actual constructor format-literal emission tested in utility worker; Rust constructor itself not compiled."
+  },
+  "limits": [
+    "No qualified PrefixFreeWorkflow dispatch, three-state selection, native workflow verifier or child/review propagation implemented yet.",
+    "No Use-discovery/import, early design acceptance, UI integration, integrated Q1/Q2 lifecycle or reference-safe GC acceptance.",
+    "No live provider call, public activation, deployment or complete Exact I-package.",
+    "Original ignored real-model operator-selected case excluded, not counted as passed.",
+    "Root Auth Reader functional proof is separate; auth strict here is compile/lint only."
+  ],
+  "failure_history": {
+    "run-1": "Root8 fixture used nonexistent Cancelled variant; corrected to existing Canceled without Auth behavior change.",
+    "run-2": "Private retained executable lacked monty_worker companion; runner fixed, no product discovery fallback.",
+    "run-3": "Premature cancellation check during passive child binding blocked native ack; removed there, actual dispatch checks unchanged.",
+    "run-4": "Pre-existing ignored operator-selected real-model case not configured; excluded from package, not counted.",
+    "run-5": "Missing offline model-artifact fixture env for broader deployment case; original hashed assets supplied.",
+    "run-6": "Obsolete fixture assumed one acceptances-to-proposals two-column FK; V183 has two. Repaired exact profile FK shape check and native scope/profile rejection assertion.",
+    "counter-r2": "Fixture reused stale policy after changing canonical zero prefix cap; new request now captures fresh policy; production guard unchanged."
+  }
+}

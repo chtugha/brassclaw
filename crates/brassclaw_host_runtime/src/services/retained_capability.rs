@@ -46,6 +46,7 @@ where
     registry: Arc<SharedExtensionRegistry>,
     registrations: Arc<FirstPartyCapabilityRegistry>,
     kernel: DefaultHostRuntime,
+    builtin_obligations: crate::BuiltinObligationHandler,
     filesystem: Arc<F>,
     governor: Arc<G>,
     services: Arc<dyn InvocationServicesResolver>,
@@ -104,8 +105,65 @@ where
     F: RootFilesystem + 'static,
     G: ResourceGovernor + 'static,
 {
-    /// Bind the acknowledged instance task-settings source without exposing the
-    /// captured governor or changing a retained implementation/authority grant.
+    /// Trusted host composition of already captured credential service views.
+    /// The supplied views must retain/fence the original task/invocation and
+    /// selected source generations themselves. Binding captures/executes no
+    /// credential, proves no lineage and grants no authority. The immutable
+    /// registration, native artifact, policy, staging and substrate stay fixed.
+    /// Service placement/access still resolves through the original resolver.
+    pub fn with_bound_credential_services(
+        &self,
+        secret_store: Arc<dyn brassclaw_secrets::SecretStore>,
+        accounts: Arc<dyn crate::RuntimeCredentialAccountResolver>,
+        guard: Arc<dyn crate::RuntimeCredentialUseGuard>,
+    ) -> Self {
+        let builtin_obligations =
+            self.builtin_obligations
+                .retain_credential_views(secret_store.clone(), accounts, guard);
+        Self {
+            registry: self.registry.clone(),
+            registrations: self.registrations.clone(),
+            kernel: self
+                .kernel
+                .clone()
+                .with_obligation_handler(Arc::new(builtin_obligations.clone())),
+            builtin_obligations,
+            filesystem: self.filesystem.clone(),
+            governor: self.governor.clone(),
+            services: Arc::new(super::retained_credentials::CredentialBoundServices::new(
+                self.services.clone(),
+                secret_store,
+            )),
+            policy: self.policy.clone(),
+            events: self.events.clone(),
+        }
+    }
+
+    /// Bind the original raw-handle source/fence without changing registration,
+    /// policy, placement or staging. Missing original secret ports stay missing.
+    pub fn with_bound_raw_secret_source(
+        &self,
+        source: Arc<dyn crate::RuntimeRawSecretSource>,
+    ) -> Self {
+        let builtin_obligations = self.builtin_obligations.retain_raw_secret_source(source);
+        Self {
+            registry: self.registry.clone(),
+            registrations: self.registrations.clone(),
+            kernel: self
+                .kernel
+                .clone()
+                .with_obligation_handler(Arc::new(builtin_obligations.clone())),
+            builtin_obligations,
+            filesystem: self.filesystem.clone(),
+            governor: self.governor.clone(),
+            services: self.services.clone(),
+            policy: self.policy.clone(),
+            events: self.events.clone(),
+        }
+    }
+
+    /// Bind acknowledged task settings without exposing the captured governor
+    /// or changing a retained implementation/authority grant.
     pub fn bind_task_budget_settings(
         &self,
         settings: brassclaw_resources::LiveMontyTaskSettings,
@@ -125,6 +183,7 @@ where
             registry: self.registry.clone(),
             registrations: self.registrations.clone(),
             kernel: self.kernel.retain_authorizer(authorizer),
+            builtin_obligations: self.builtin_obligations.clone(),
             filesystem: self.filesystem.clone(),
             governor: self.governor.clone(),
             services: self.services.clone(),
@@ -150,6 +209,7 @@ where
             registry: self.registry.clone(),
             registrations: self.registrations.clone(),
             kernel: self.kernel.retain_authorizer(authorizer),
+            builtin_obligations: self.builtin_obligations.clone(),
             filesystem: self.filesystem.clone(),
             governor: self.governor.clone(),
             services: Arc::new(crate::child_task_port::ChildTaskBoundServices::new(
@@ -201,6 +261,7 @@ where
                 .kernel
                 .retain_authorizer(authorizer)
                 .with_trust_policy_dyn(trust),
+            builtin_obligations: self.builtin_obligations.clone(),
             filesystem: self.filesystem.clone(),
             governor: self.governor.clone(),
             services: self.services.clone(),
@@ -214,6 +275,60 @@ where
         &self,
         capability: &CapabilityId,
     ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError> {
+        let (descriptor, selected) = self.declared_binding(capability)?;
+        let native = selected.native_registration();
+        let handlers = Arc::new(
+            FirstPartyCapabilityRegistry::new()
+                .with_handler(capability.clone(), Arc::new(selected)),
+        );
+        let mut dispatcher = RuntimeDispatcher::from_shared_registry(
+            self.registry.clone(),
+            self.filesystem.clone(),
+            self.governor.clone(),
+        )
+        .with_runtime_policy(self.policy.clone())
+        .with_runtime_adapter_arc(
+            RuntimeKind::FirstParty,
+            Arc::new(FirstPartyRuntimeAdapter::from_registry(
+                handlers,
+                self.services.clone(),
+            )),
+        );
+        if let Some(events) = &self.events {
+            dispatcher = dispatcher.with_event_sink_arc(events.clone());
+        }
+        Ok(RetainedFirstPartyCapability {
+            descriptor,
+            native,
+            runtime: Arc::new(
+                self.kernel
+                    .retain_dispatch(self.registry.clone(), Arc::new(dispatcher)),
+            ),
+        })
+    }
+
+    /// Inspect the exact registered declaration before capturing its credential
+    /// sources. Does not construct a consumer runtime or resolve any service.
+    pub fn native_descriptor(
+        &self,
+        capability: &CapabilityId,
+        expected: crate::NativeImplementationRef,
+    ) -> Result<CapabilityDescriptor, RetainedCapabilityError> {
+        let (descriptor, selected) = self.declared_binding(capability)?;
+        let native = selected
+            .native_registration()
+            .ok_or(RetainedCapabilityError::MissingNativeRegistration)?;
+        if native.reference() != expected {
+            return Err(RetainedCapabilityError::NativeIdentity);
+        }
+        Ok(descriptor)
+    }
+
+    fn declared_binding(
+        &self,
+        capability: &CapabilityId,
+    ) -> Result<(CapabilityDescriptor, crate::RetainedFirstPartyBinding), RetainedCapabilityError>
+    {
         let registry = self.registry.snapshot();
         let descriptor = registry
             .get_capability(capability)
@@ -245,34 +360,7 @@ where
         {
             return Err(RetainedCapabilityError::NativeIdentity);
         }
-        let handlers = Arc::new(
-            FirstPartyCapabilityRegistry::new()
-                .with_handler(capability.clone(), Arc::new(selected)),
-        );
-        let mut dispatcher = RuntimeDispatcher::from_shared_registry(
-            self.registry.clone(),
-            self.filesystem.clone(),
-            self.governor.clone(),
-        )
-        .with_runtime_policy(self.policy.clone())
-        .with_runtime_adapter_arc(
-            RuntimeKind::FirstParty,
-            Arc::new(FirstPartyRuntimeAdapter::from_registry(
-                handlers,
-                self.services.clone(),
-            )),
-        );
-        if let Some(events) = &self.events {
-            dispatcher = dispatcher.with_event_sink_arc(events.clone());
-        }
-        Ok(RetainedFirstPartyCapability {
-            descriptor: descriptor.clone(),
-            native,
-            runtime: Arc::new(
-                self.kernel
-                    .retain_dispatch(self.registry.clone(), Arc::new(dispatcher)),
-            ),
-        })
+        Ok((descriptor.clone(), selected))
     }
 
     /// Select the exact registered native implementation expected by immutable
@@ -317,10 +405,12 @@ where
         let registry = Arc::new(SharedExtensionRegistry::from_snapshot(
             self.registry.snapshot(),
         ));
+        let builtin_obligations = self.builtin_obligation_handler();
         Ok(FirstPartyCapabilitySnapshot {
             registry,
             registrations,
-            kernel: self.build_host_runtime(),
+            kernel: self.build_host_runtime_with_obligations(builtin_obligations.clone()),
+            builtin_obligations,
             filesystem: self.filesystem.clone(),
             governor: self.governor.clone(),
             services: self.invocation_services_resolver(),

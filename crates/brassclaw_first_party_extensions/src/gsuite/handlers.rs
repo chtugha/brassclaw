@@ -100,20 +100,9 @@ impl GsuiteExecutor {
             CapabilityExecutionOutcome::AuthExpired {
                 network_egress_bytes,
             } => {
-                self.resolver
-                    .refresh(
-                        request.scope,
-                        &credential.account_scope,
-                        &extension,
-                        credential.account_id,
-                    )
-                    .await
-                    .map_err(|error| {
-                        add_network_usage(map_credential_error(error), network_egress_bytes)
-                    })?;
                 let refreshed = self
                     .resolver
-                    .resolve_account(
+                    .refresh(
                         request.scope,
                         &credential.account_scope,
                         &extension,
@@ -1174,6 +1163,7 @@ mod tests {
                     provider: brassclaw_auth::AuthProviderId::new("google").unwrap(),
                     label: brassclaw_auth::CredentialAccountLabel::new("Google").unwrap(),
                     status: brassclaw_auth::CredentialAccountStatus::Configured,
+                    access_expires_at: None,
                     ownership: brassclaw_auth::CredentialOwnership::UserReusable,
                     owner_extension: None,
                     granted_extensions: Vec::new(),
@@ -1199,6 +1189,7 @@ mod tests {
                 provider: brassclaw_auth::AuthProviderId::new("google").unwrap(),
                 label: brassclaw_auth::CredentialAccountLabel::new("Google").unwrap(),
                 status: brassclaw_auth::CredentialAccountStatus::Configured,
+                access_expires_at: None,
                 ownership: brassclaw_auth::CredentialOwnership::UserReusable,
                 owner_extension: None,
                 granted_extensions: Vec::new(),

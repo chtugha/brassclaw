@@ -33,6 +33,10 @@ use crate::{RebornProductAuthServicePorts, RebornRuntimeProcessBinding};
 
 use super::{RebornRuntime, build_reborn_runtime};
 
+#[cfg(feature = "skills-db")]
+#[path = "manual_token_browser.rs"]
+mod manual_token_browser;
+
 #[derive(Debug)]
 struct UnusedModelGateway;
 
@@ -68,7 +72,14 @@ async fn local_dev_runtime_auth_interactions_use_flow_record_source() {
     );
     let actor = TurnActor::new(runtime.actor_user_id.clone());
     let gate_ref = GateRef::new("gate:runtime-auth-read-model").expect("gate");
-    let run_id = submit_and_block_auth_run(&runtime, scope.clone(), actor.clone(), &gate_ref).await;
+    let run_id = submit_and_block_auth_run(
+        &runtime,
+        scope.clone(),
+        actor.clone(),
+        &gate_ref,
+        Vec::new(),
+    )
+    .await;
     create_auth_flow(&runtime, &scope, &actor, run_id, &gate_ref).await;
 
     let pending = runtime
@@ -88,6 +99,12 @@ async fn local_dev_runtime_auth_interactions_use_flow_record_source() {
     assert_eq!(view.run_id, run_id);
     assert_eq!(view.auth_request_ref, gate_ref);
 
+    #[cfg(feature = "skills-db")]
+    let runtime = {
+        let runtime = Arc::new(runtime);
+        manual_token_browser::run_if_requested(runtime.clone()).await;
+        Arc::try_unwrap(runtime).unwrap_or_else(|_| panic!("browser runtime owners released"))
+    };
     runtime.shutdown().await.expect("runtime shutdown");
 }
 
@@ -138,6 +155,93 @@ async fn local_dev_runtime_auth_interactions_are_unavailable_without_flow_record
     runtime.shutdown().await.expect("runtime shutdown");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_manual_completion_resumes_the_runtime_coordinator() {
+    use crate::{RebornManualTokenSetupRequest, RebornManualTokenSubmitRequest};
+    use brassclaw_auth::{CredentialAccountLabel, ManualTokenSetupIdentity};
+    use brassclaw_turns::{GetRunStateRequest, TurnStatus};
+
+    let root = tempfile::tempdir().expect("tempdir");
+    let rig = super::test_pg::pg_rig().await;
+    let _db_guard = rig.lock_db().await;
+    let runtime = build_runtime(&rig, "auth-native-runtime-resume", root.path(), None)
+        .await
+        .expect("runtime builds");
+    super::test_pg::stop_worker_for_state_fixture(&runtime).await;
+    let conversation = runtime.new_conversation().await.expect("conversation");
+    let scope = TurnScope::new_with_owner(
+        runtime.thread_scope.tenant_id.clone(),
+        Some(runtime.thread_scope.agent_id.clone()),
+        runtime.thread_scope.project_id.clone(),
+        conversation.0,
+        Some(runtime.actor_user_id.clone()),
+    );
+    let actor = TurnActor::new(runtime.actor_user_id.clone());
+    let gate = GateRef::new("gate:native-runtime-auth-resume").unwrap();
+    let run =
+        submit_and_block_auth_run(&runtime, scope.clone(), actor.clone(), &gate, Vec::new()).await;
+    let auth_scope = auth_scope_for_turn(&scope, &actor);
+    let auth = runtime.services.product_auth.as_ref().unwrap();
+    let identity = ManualTokenSetupIdentity::default();
+    auth.request_original_manual_token_setup(
+        identity,
+        RebornManualTokenSetupRequest::new(
+            auth_scope.clone(),
+            AuthProviderId::new("native-runtime-provider").unwrap(),
+            CredentialAccountLabel::new("Native runtime continuation").unwrap(),
+            AuthContinuationRef::TurnGateResume {
+                turn_run_ref: TurnRunRef::new(run.to_string()).unwrap(),
+                gate_ref: AuthGateRef::new(gate.as_str()).unwrap(),
+            },
+            Utc::now() + chrono::Duration::minutes(5),
+        ),
+    )
+    .await
+    .unwrap();
+    let submitted = auth
+        .submit_original_manual_token(
+            identity,
+            RebornManualTokenSubmitRequest::new(
+                auth_scope.clone(),
+                identity.interaction_id,
+                secrecy::SecretString::from("native-runtime-test-token-sentinel".to_owned()),
+            ),
+        )
+        .await
+        .expect("completed credentials resume through the actual runtime coordinator");
+    let actual = runtime
+        .webui_turn_coordinator()
+        .get_run_state(GetRunStateRequest {
+            scope: scope.clone(),
+            run_id: run,
+        })
+        .await
+        .unwrap();
+    assert_eq!(actual.status, TurnStatus::Queued);
+    assert!(actual.gate_ref.is_none());
+    let flow = auth
+        .flow_manager()
+        .get_flow(&auth_scope, identity.flow_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(flow.credential_account_id, Some(submitted.account_id));
+    assert!(flow.continuation_emitted_at.is_some());
+    // Reference replay reads the original result and does not create another run.
+    let replay = auth
+        .continue_original_manual_token(&auth_scope, identity)
+        .await
+        .unwrap();
+    assert_eq!(replay.account_id, submitted.account_id);
+    let after = runtime
+        .webui_turn_coordinator()
+        .get_run_state(GetRunStateRequest { scope, run_id: run })
+        .await
+        .unwrap();
+    assert_eq!(after, actual);
+    runtime.shutdown().await.expect("runtime shutdown");
+}
+
 async fn build_runtime(
     rig: &super::test_pg::PgRig,
     owner: &str,
@@ -173,6 +277,7 @@ async fn submit_and_block_auth_run(
     scope: TurnScope,
     actor: TurnActor,
     gate_ref: &GateRef,
+    credential_requirements: Vec<brassclaw_host_api::RuntimeCredentialAuthRequirement>,
 ) -> TurnRunId {
     let turn_state = brassclaw_turns::PgTurnStateStore::new(
         Arc::clone(
@@ -191,8 +296,11 @@ async fn submit_and_block_auth_run(
             SubmitTurnRequest {
                 scope: scope.clone(),
                 actor,
-                accepted_message_ref: AcceptedMessageRef::new("message-runtime-auth-read-model")
-                    .expect("message ref"),
+                accepted_message_ref: AcceptedMessageRef::new(format!(
+                    "message-{}",
+                    gate_ref.as_str()
+                ))
+                .expect("message ref"),
                 source_binding_ref: SourceBindingRef::new("source-runtime-auth-read-model")
                     .expect("source ref"),
                 reply_target_binding_ref: ReplyTargetBindingRef::new(
@@ -200,7 +308,7 @@ async fn submit_and_block_auth_run(
                 )
                 .expect("reply ref"),
                 requested_run_profile: Some(RunProfileRequest::new("default").expect("profile")),
-                idempotency_key: IdempotencyKey::new("submit-runtime-auth-read-model")
+                idempotency_key: IdempotencyKey::new(format!("submit-{}", gate_ref.as_str()))
                     .expect("idempotency key"),
                 received_at: Utc::now(),
                 requested_run_id: None,
@@ -235,7 +343,7 @@ async fn submit_and_block_auth_run(
                 .expect("checkpoint ref"),
             reason: BlockedReason::Auth {
                 gate_ref: gate_ref.clone(),
-                credential_requirements: Vec::new(),
+                credential_requirements,
             },
         })
         .await
@@ -257,6 +365,7 @@ async fn create_auth_flow(
         .expect("product auth")
         .flow_manager()
         .create_flow(NewAuthFlow {
+            requirement_setup: None,
             id: None,
             scope: auth_scope_for_turn(scope, actor),
             kind: AuthFlowKind::IntegrationCredential,

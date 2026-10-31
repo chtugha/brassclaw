@@ -2,21 +2,11 @@
 
 use brassclaw_threads::{
     SessionThreadError, SessionThreadService, SubmittedTurnInput, SubmittedUserMessageRequest,
-    ThreadMessageId, ThreadScope,
+    ThreadMessageId,
 };
 use brassclaw_turns::{AcceptedMessageRef, AgentLoopDriverError, TurnId, TurnRunId, TurnScope};
 
-pub(crate) fn thread_scope_from_turn_scope(scope: &TurnScope) -> ThreadScope {
-    ThreadScope {
-        tenant_id: scope.tenant_id.clone(),
-        agent_id: scope
-            .agent_id
-            .clone()
-            .unwrap_or_else(|| brassclaw_host_api::AgentId::from_trusted("default".to_string())),
-        project_id: scope.project_id.clone(),
-        owner_user_id: scope.explicit_owner_user_id().cloned(),
-    }
-}
+use crate::pg_transcript_admission::thread_scope_from_turn_scope;
 
 /// Read only the input admitted for this run, with all eligible predecessors.
 /// Conversation IDs remain opaque. The transcript service enforces scope,

@@ -99,7 +99,12 @@ pub(super) async fn accounts_refresh_handler(
         .map_err(|_| ProductAuthRouteFailure::invalid_request())?;
     let account_id = parse_credential_account_id(&request.account_id)?;
 
-    let mut refresh_request = CredentialRefreshRequest::new(scope, provider, account_id);
+    let refresh_id = brassclaw_auth::CredentialRefreshId::from_uuid(
+        uuid::Uuid::parse_str(&request.refresh_id)
+            .map_err(|_| ProductAuthRouteFailure::invalid_request())?,
+    );
+    let mut refresh_request =
+        CredentialRefreshRequest::new(scope, provider, account_id).with_id(refresh_id);
     if let Some(extension_id) = parse_optional_extension(request.requester_extension.as_deref())? {
         refresh_request = refresh_request.for_extension(extension_id);
     }

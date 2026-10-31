@@ -364,7 +364,17 @@ follow-up `continue`.
   `InterceptorStage` (step 7/11) is the chokepoint.
 - **Prefix/base-prompt** (`10-prefix-base-prompt.md`) — `PromptStage` assembles
   the per-turn bundle; the base prompt is pre-assembled via
-  `SystemBundleSource::get_system_bundle` (`do_assemble_bundle`).
+  `SystemBundleSource::get_system_bundle` (`do_assemble_bundle`) on that historical
+  path. Current selection uses a specific Recipe/Orchestrator/role prefix or base
+  if none; generation finishes its immutable formatting for the provider/model
+  pair. Generator, Kohai and same-pair Sempai use the same stored accepted design
+  revision. Kohai first formats only the dynamic Orchestrator prompt. Optional
+  connected/enabled Sempai corrects that already formatted prompt using its own
+  prefix generated for its target-pair design and returns the final dynamic
+  prompt. Kohai then inserts the intended finished prefix unchanged exactly once
+  before it, without formatting the return again, and checks/sends the complete
+  request. See the [pair-design contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26);
+  this legacy stage description does not qualify the current runtime cutover.
 - **Intent system** (`02-intent-system.md`) — drives the retrieval that feeds
   `RecipeStage` (`resolve_intent` inside `PostgresSource::fetch_for_turn`).
 - **Kernel/composition** (`16-kernel-composition.md`) — `RebornLoopDriverHost`
@@ -407,3 +417,19 @@ activated as the composed-program runner (`host.run_program`) in C.5/C.6 — the
 Orchestrator/Executioner split where Monty drives the Rust executioner via
 `host.<tool>(...)`. `RamSource` + the engine `ThreadManager` are deleted in
 Phase K.3.
+
+## Open K3-2 consumer successor — prefix selection and construction requests
+
+For new affected consumers, use the operator-confirmed
+[shared K3-2 selection/lifecycle contract](../reborn/model-token-limits.md#open-k3-2-successor--retained-prefix-selection-and-prefix-free-construction-workflows)
+and [Exact §5.2](../plans/Exact_V3_definition_update_at_K3-2.md#52-bestehende-retained-prefixbindung-um-drei-auswahlzustände-erweitern).
+This explicit successor replaces earlier unconditional Use→Base and required
+Prefix-Maker-prefix instructions for construction workflows, without rewriting
+historical behavior or claiming current runtime uptake.
+
+Default follows declared role/Recipe rules; explicit Selected never silently
+falls back; PrefixFreeWorkflow intentionally omits generated prefixes throughout
+required child/review work. Independent ordinary chat/Sempai reviews keep their
+normal selection. FinalBoundary defers insertion and does not mean prefix-free.
+Generation includes all Prefix-Q1 checks; publication leaves human Q2 activation
+outstanding. A future v3.5 Prefix-Maker prefix is not a present dependency.

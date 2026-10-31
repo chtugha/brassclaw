@@ -59,23 +59,24 @@ mod inner {
     /// Metadata + bundle row returned from `reborn_basic_prompt_store`.
     #[derive(Debug, Clone)]
     pub(crate) struct BasicPromptEntry {
-        #[allow(dead_code)]
-        pub id: uuid::Uuid,
         /// The assembled bundle text (from `bundle_json` JSONB string value).
         /// Empty when no assembly has run yet.
         pub bundle: String,
         /// `sha256(bundle_text)` for staleness detection.
+        #[cfg(feature = "root-llm-provider")]
         pub fingerprint: String,
         /// `true` when a Q2 graduation has occurred since the last assembly.
         pub is_stale: bool,
+        #[cfg(feature = "root-llm-provider")]
         pub assembled_at: Option<chrono::DateTime<chrono::Utc>>,
+        #[cfg(feature = "root-llm-provider")]
         pub prewarm_last_at: Option<chrono::DateTime<chrono::Utc>>,
-        #[allow(dead_code)]
-        pub updated_at: chrono::DateTime<chrono::Utc>,
         /// Wall-clock milliseconds the last bundle assembly took (V083).
         /// `None` for rows written before V083 was applied.
+        #[cfg(feature = "root-llm-provider")]
         pub generation_ms: Option<i64>,
         /// Request UUID that wrote this generation (V085).
+        #[cfg(feature = "root-llm-provider")]
         pub generation_id: Option<uuid::Uuid>,
     }
 
@@ -178,21 +179,26 @@ mod inner {
                     }
                 }
             };
-            let (row, schema_version) = row;
+            #[cfg(feature = "root-llm-provider")]
+            let schema_version = row.1;
+            let row = row.0;
 
             Ok(row.map(|r| {
                 // bundle_json is a JSONB string value — extract the inner string.
                 let bundle_raw: String = r.get(1);
                 let bundle = extract_jsonb_string(&bundle_raw);
                 BasicPromptEntry {
-                    id: r.get(0),
                     bundle,
+                    #[cfg(feature = "root-llm-provider")]
                     fingerprint: r.get(2),
                     is_stale: r.get(3),
+                    #[cfg(feature = "root-llm-provider")]
                     assembled_at: r.get(4),
+                    #[cfg(feature = "root-llm-provider")]
                     prewarm_last_at: r.get(5),
-                    updated_at: r.get(6),
+                    #[cfg(feature = "root-llm-provider")]
                     generation_ms: if schema_version >= 1 { r.get(7) } else { None },
+                    #[cfg(feature = "root-llm-provider")]
                     generation_id: if schema_version >= 2 { r.get(8) } else { None },
                 }
             }))
@@ -204,6 +210,7 @@ mod inner {
         /// - Sets `prewarm_last_at = now()` when `with_prewarm = true`.
         /// - Computes `fingerprint = sha256(bundle)` before writing.
         /// - Persists `generation_ms` when provided (V083).
+        #[cfg(any(test, feature = "root-llm-provider"))]
         pub(crate) async fn store(
             &self,
             user_id: &str,
@@ -495,7 +502,7 @@ mod inner {
     }
 }
 
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+pub(crate) use inner::minimal_base_prompt_fallback;
 #[cfg(feature = "postgres")]
-pub(crate) use inner::{
-    PgBasicPromptStore, compute_fingerprint, get_system_bundle, minimal_base_prompt_fallback,
-};
+pub(crate) use inner::{PgBasicPromptStore, compute_fingerprint, get_system_bundle};

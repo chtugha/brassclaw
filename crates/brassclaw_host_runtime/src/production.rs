@@ -566,13 +566,15 @@ impl HostRuntime for DefaultHostRuntime {
                 match error {
                     CapabilityInvocationError::AuthorizationRequiresAuth {
                         capability,
+                        boundary,
                         required_secrets,
                         credential_requirements,
-                    } => Ok(auth_required_outcome(
+                    } => auth_required_outcome(
                         capability,
                         required_secrets,
                         credential_requirements,
-                    )),
+                        boundary,
+                    ),
                     other => Ok(RuntimeCapabilityOutcome::Failed(failure_from(
                         other,
                         capability_id,
@@ -664,19 +666,20 @@ impl HostRuntime for DefaultHostRuntime {
                     idempotency_key = idempotency_key.as_deref().unwrap_or(""),
                     "capability spawn resume failed"
                 );
-                // Mirror resume_capability: AuthorizationRequiresAuth must return
-                // AuthRequired, not Failed. Without this arm a spawned capability
-                // that needs re-auth after an approval resume silently fails.
+                // Preserve native dispatch evidence just as resume_capability does.
+                // Consumers may resume only a proven before-dispatch auth pause.
                 match error {
                     CapabilityInvocationError::AuthorizationRequiresAuth {
                         capability,
+                        boundary,
                         required_secrets,
                         credential_requirements,
-                    } => Ok(auth_required_outcome(
+                    } => auth_required_outcome(
                         capability,
                         required_secrets,
                         credential_requirements,
-                    )),
+                        boundary,
+                    ),
                     other => Ok(RuntimeCapabilityOutcome::Failed(failure_from(
                         other,
                         capability_id,
@@ -1045,13 +1048,15 @@ impl DefaultHostRuntime {
             }
             CapabilityInvocationError::AuthorizationRequiresAuth {
                 capability,
+                boundary,
                 required_secrets,
                 credential_requirements,
-            } => Ok(auth_required_outcome(
+            } => auth_required_outcome(
                 capability,
                 required_secrets,
                 credential_requirements,
-            )),
+                boundary,
+            ),
             other => {
                 let should_fail_dispatch_run =
                     matches!(other, CapabilityInvocationError::Dispatch { .. });
@@ -1354,21 +1359,23 @@ fn auth_required_outcome(
     capability_id: CapabilityId,
     required_secrets: Vec<SecretHandle>,
     credential_requirements: Vec<brassclaw_host_api::RuntimeCredentialAuthRequirement>,
-) -> RuntimeCapabilityOutcome {
-    RuntimeCapabilityOutcome::AuthRequired(RuntimeAuthGate {
-        gate_id: stable_auth_gate_id(&capability_id, &required_secrets, &credential_requirements),
+    boundary: brassclaw_host_api::AuthDispatchBoundary,
+) -> Result<RuntimeCapabilityOutcome, HostRuntimeError> {
+    Ok(RuntimeCapabilityOutcome::AuthRequired(RuntimeAuthGate {
+        boundary,
+        gate_id: stable_auth_gate_id(&capability_id, &required_secrets, &credential_requirements)?,
         capability_id,
         reason: RuntimeBlockedReason::AuthRequired,
         required_secrets,
         credential_requirements,
-    })
+    }))
 }
 
 fn stable_auth_gate_id(
     capability_id: &CapabilityId,
     required_secrets: &[SecretHandle],
     credential_requirements: &[RuntimeCredentialAuthRequirement],
-) -> RuntimeGateId {
+) -> Result<RuntimeGateId, HostRuntimeError> {
     let mut parts = Vec::new();
     parts.push(format!("capability={}", capability_id.as_str()));
 
@@ -1386,21 +1393,46 @@ fn stable_auth_gate_id(
         .map(|requirement| {
             let mut scopes = requirement.provider_scopes.clone();
             scopes.sort();
-            format!(
+            let legacy = format!(
                 "credential={}:{}:{}",
                 requirement.provider.as_str(),
                 requirement.requester_extension.as_str(),
                 scopes.join(",")
-            )
+            );
+            if let Some(exact) = &requirement.requirement {
+                if !exact.matches_dispatch(
+                    &exact.requirement().handle,
+                    &requirement.provider,
+                    &requirement.provider_scopes,
+                    &requirement.requester_extension,
+                ) {
+                    return Err(HostRuntimeError::invalid_request(
+                        "auth requirement declaration differs",
+                    ));
+                }
+                let reference = exact.reference().map_err(|_| {
+                    HostRuntimeError::unavailable("auth requirement identity unavailable")
+                })?;
+                // Exact declarations have a separate namespace. Appending a
+                // suffix to the legacy scope string lets that same suffix be
+                // supplied as a historical scope and aliases the two gates.
+                // The reference hashes the complete canonical structured
+                // declaration, including provider, requester and scopes.
+                Ok(format!("credential/1={reference}"))
+            } else {
+                // Historical records retain their original gate address; this
+                // is not evidence of a selected account or generation.
+                Ok(legacy)
+            }
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, HostRuntimeError>>()?;
     requirements.sort();
     parts.extend(requirements);
 
     let digest = sha256_digest_token(parts.join("\n").as_bytes());
     let suffix = digest.strip_prefix("sha256:").unwrap_or(&digest);
     RuntimeGateId::from_stable_suffix(&format!("auth-{suffix}"))
-        .unwrap_or_else(|_| RuntimeGateId::new())
+        .map_err(|_| HostRuntimeError::unavailable("auth gate identity unavailable"))
 }
 
 fn spawned_process_outcome_from(
@@ -1631,6 +1663,7 @@ mod tests {
 
     fn auth_requirement(scopes: &[&str]) -> RuntimeCredentialAuthRequirement {
         RuntimeCredentialAuthRequirement {
+            requirement: None,
             provider: RuntimeCredentialAccountProviderId::new("notion").unwrap(),
             requester_extension: ExtensionId::new("notion").unwrap(),
             provider_scopes: scopes.iter().map(|scope| scope.to_string()).collect(),
@@ -1690,14 +1723,52 @@ output_schema_ref = "schemas/test.output.json"
     }
 
     #[test]
+    fn auth_gate_retains_native_boundary_without_inferring_it_from_gate_identity() {
+        use brassclaw_host_api::AuthDispatchBoundary;
+        let mut gate_id = None;
+        for boundary in [
+            AuthDispatchBoundary::BeforeDispatch,
+            AuthDispatchBoundary::DispatchAttempted,
+            AuthDispatchBoundary::Unproven,
+        ] {
+            let RuntimeCapabilityOutcome::AuthRequired(gate) = auth_required_outcome(
+                cap(),
+                Vec::new(),
+                vec![auth_requirement(&["read"])],
+                boundary,
+            )
+            .unwrap() else {
+                panic!("expected explicit auth outcome");
+            };
+            assert_eq!(gate.boundary, boundary);
+            if let Some(original) = &gate_id {
+                assert_eq!(&gate.gate_id, original);
+            } else {
+                gate_id = Some(gate.gate_id);
+            }
+        }
+    }
+
+    #[test]
     fn auth_required_outcome_uses_stable_gate_for_identical_requirements() {
         let capability_id = cap();
         let secrets = vec![SecretHandle::new("notion-token").unwrap()];
         let requirements = vec![auth_requirement(&["read", "write"])];
 
-        let first =
-            auth_required_outcome(capability_id.clone(), secrets.clone(), requirements.clone());
-        let second = auth_required_outcome(capability_id, secrets, requirements);
+        let first = auth_required_outcome(
+            capability_id.clone(),
+            secrets.clone(),
+            requirements.clone(),
+            brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
+        )
+        .unwrap();
+        let second = auth_required_outcome(
+            capability_id,
+            secrets,
+            requirements,
+            brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
+        )
+        .unwrap();
 
         let RuntimeCapabilityOutcome::AuthRequired(first_gate) = first else {
             panic!("expected auth gate");
@@ -1715,8 +1786,20 @@ output_schema_ref = "schemas/test.output.json"
 
     #[test]
     fn auth_required_outcome_changes_gate_when_requirements_change() {
-        let first = auth_required_outcome(cap(), Vec::new(), vec![auth_requirement(&["read"])]);
-        let second = auth_required_outcome(cap(), Vec::new(), vec![auth_requirement(&["write"])]);
+        let first = auth_required_outcome(
+            cap(),
+            Vec::new(),
+            vec![auth_requirement(&["read"])],
+            brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
+        )
+        .unwrap();
+        let second = auth_required_outcome(
+            cap(),
+            Vec::new(),
+            vec![auth_requirement(&["write"])],
+            brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
+        )
+        .unwrap();
 
         let RuntimeCapabilityOutcome::AuthRequired(first_gate) = first else {
             panic!("expected auth gate");
@@ -1725,6 +1808,131 @@ output_schema_ref = "schemas/test.output.json"
             panic!("expected auth gate");
         };
         assert_ne!(first_gate.gate_id, second_gate.gate_id);
+    }
+
+    #[test]
+    fn exact_auth_gates_do_not_merge_same_provider_usages() {
+        use brassclaw_host_api::{
+            NetworkTargetPattern, RuntimeCredentialAccountRequirement,
+            RuntimeCredentialAccountSetup, RuntimeCredentialRequirement,
+            RuntimeCredentialRequirementSource, RuntimeCredentialTarget,
+        };
+        let declaration = RuntimeCredentialRequirement {
+            handle: SecretHandle::new("first-slot").unwrap(),
+            source: RuntimeCredentialRequirementSource::ProductAuthAccount {
+                provider: RuntimeCredentialAccountProviderId::new("notion").unwrap(),
+                setup: RuntimeCredentialAccountSetup::ManualToken,
+            },
+            provider_scopes: vec!["read".into()],
+            audience: NetworkTargetPattern {
+                scheme: None,
+                host_pattern: "api.example.com".into(),
+                port: None,
+            },
+            target: RuntimeCredentialTarget::Header {
+                name: "Authorization".into(),
+                prefix: Some("Bearer ".into()),
+            },
+            required: true,
+        };
+        let gate = |declaration| {
+            let mut requirement = auth_requirement(&["read"]);
+            requirement.requirement = Some(
+                RuntimeCredentialAccountRequirement::new(
+                    requirement.requester_extension.clone(),
+                    declaration,
+                )
+                .unwrap(),
+            );
+            let serialized = serde_json::to_value(&requirement).unwrap();
+            let original: RuntimeCredentialAuthRequirement =
+                serde_json::from_value(serialized).unwrap();
+            let RuntimeCapabilityOutcome::AuthRequired(outcome) = auth_required_outcome(
+                cap(),
+                Vec::new(),
+                vec![original],
+                brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
+            )
+            .unwrap() else {
+                panic!("expected actual auth gate");
+            };
+            outcome.gate_id
+        };
+        let original = gate(declaration.clone());
+        let exact = RuntimeCredentialAccountRequirement::new(
+            auth_requirement(&["read"]).requester_extension,
+            declaration.clone(),
+        )
+        .unwrap();
+        let historical_scope = format!("read:requirement={}", exact.reference().unwrap());
+        let historical = auth_requirement(&[&historical_scope]);
+        let RuntimeCapabilityOutcome::AuthRequired(historical_gate) = auth_required_outcome(
+            cap(),
+            Vec::new(),
+            vec![historical],
+            brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch,
+        )
+        .unwrap() else {
+            panic!("expected historical auth gate");
+        };
+        assert_ne!(original, historical_gate.gate_id);
+        let mut other = declaration.clone();
+        other.handle = SecretHandle::new("second-slot").unwrap();
+        assert_ne!(gate(other), original);
+        let mut other = declaration.clone();
+        other.audience.host_pattern = "different.example.com".into();
+        assert_ne!(gate(other), original);
+        let mut other = declaration.clone();
+        other.target = RuntimeCredentialTarget::QueryParam {
+            name: "token".into(),
+        };
+        assert_ne!(gate(other), original);
+        assert_eq!(gate(declaration), original);
+    }
+
+    #[test]
+    fn auth_gate_rejects_conflicting_retained_declaration_instead_of_new_identity() {
+        use brassclaw_host_api::{
+            NetworkTargetPattern, RuntimeCredentialAccountRequirement,
+            RuntimeCredentialAccountSetup, RuntimeCredentialRequirement,
+            RuntimeCredentialRequirementSource, RuntimeCredentialTarget,
+        };
+        let mut requirement = auth_requirement(&["read"]);
+        let declaration = RuntimeCredentialRequirement {
+            handle: SecretHandle::new("slot").unwrap(),
+            source: RuntimeCredentialRequirementSource::ProductAuthAccount {
+                provider: requirement.provider.clone(),
+                setup: RuntimeCredentialAccountSetup::ManualToken,
+            },
+            provider_scopes: requirement.provider_scopes.clone(),
+            audience: NetworkTargetPattern {
+                scheme: None,
+                host_pattern: "api.example.com".into(),
+                port: None,
+            },
+            target: RuntimeCredentialTarget::Header {
+                name: "Authorization".into(),
+                prefix: None,
+            },
+            required: true,
+        };
+        requirement.requirement = Some(
+            RuntimeCredentialAccountRequirement::new(
+                requirement.requester_extension.clone(),
+                declaration,
+            )
+            .unwrap(),
+        );
+        requirement.requester_extension = ExtensionId::new("different-extension").unwrap();
+        assert!(
+            auth_required_outcome(
+                cap(),
+                Vec::new(),
+                vec![requirement],
+                brassclaw_host_api::AuthDispatchBoundary::BeforeDispatch
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -8,6 +8,18 @@
 
 # Prefix Plan 2 — Bundle Assembly via Recipe (Architecture-Correct v11)
 
+> **Prefix contract precedence — 27 October 2026:** this earlier assembly plan
+> is historical where it differs from the [Prefix implementation owner](docs/plans/prefix_v3_upgrade.md)
+> and its [four binding rules](docs/reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26).
+> Generate and immutably store the finished prefix for the exact provider/model
+> pair. Generator, Kohai and same-pair Sempai use the same stored accepted design
+> revision. Kohai formats only the dynamic Orchestrator prompt first; optional
+> connected/enabled Sempai corrects it using its own target-specific generated
+> prefix/design and returns the final dynamic prompt. Kohai then inserts the
+> intended finished prefix unchanged exactly once before it, without formatting
+> that return again. Implement these stages once in the owning plan; old bundle,
+> placeholder and reviewer-schema examples below are not alternate requirements.
+
 ## Binding preloadable Skill interface (v3)
 
 A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
@@ -23,7 +35,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Native Extension original setup</title>
+<script type="importmap" nonce="__FIXTURE_NONCE__">__IMPORT_MAP__</script>
+</head><body><div id="root"></div>
+<script nonce="__FIXTURE_NONCE__">
+sessionStorage.setItem("brassclaw_token","__FIXTURE_BEARER__");
+localStorage.setItem("brassclaw_language","en");
+window.extensionOriginalAudit=JSON.parse(sessionStorage.getItem("native-extension-audit")||"[]");
+const saveAudit=()=>sessionStorage.setItem("native-extension-audit",JSON.stringify(window.extensionOriginalAudit));
+const originalFetch=window.fetch.bind(window);
+window.fetch=async(path,options)=>{
+  const pathname=new URL(path,location.origin).pathname;
+  if(!pathname.startsWith("/api/webchat/v2/extensions/nearai/setup/manual-token/"))return originalFetch(path,options);
+  const body=JSON.parse(options.body);
+  const originals=Object.entries(sessionStorage).filter(([key])=>key.startsWith("brassclaw:extension-manual-token-original:")).map(([,value])=>JSON.parse(value));
+  const record={path:pathname,keys:Object.keys(body).sort(),identity:body.identity,invocation_id:body.invocation_id,
+    token_present:Object.hasOwn(body,"token"),token_matches_input:Object.hasOwn(body,"token")?body.token===document.querySelector('input[type="password"]').value:null,
+    retained_before_transport:originals.some(value=>!value.closed&&value.identity.interaction_id===body.identity.interaction_id&&value.identity.flow_id===body.identity.flow_id&&value.invocationId===body.invocation_id)};
+  window.extensionOriginalAudit.push(record);saveAudit();
+  const response=await originalFetch(path,options);record.http_status=response.status;
+  if(response.ok){const reply=await response.clone().json();record.reply={identity:reply.identity,invocation_id:reply.invocation_id,status:reply.status,expires_at:reply.expires_at};}
+  saveAudit();return response;
+};
+</script>
+<script type="module" nonce="__FIXTURE_NONCE__">
+import {html} from "/js/lib/html.js";
+import {createRoot} from "react-dom/client";
+import {QueryClientProvider} from "@tanstack/react-query";
+import {queryClient} from "/js/lib/query-client.js";
+import {I18nProvider} from "/js/lib/i18n.js";
+import "/js/i18n/en.js";import "/js/i18n/de.js";
+import {ConfigureModal} from "/js/pages/extensions/components/configure-modal.js";
+createRoot(document.getElementById("root")).render(html`<${QueryClientProvider} client=${queryClient}><${I18nProvider}>
+  <${ConfigureModal} extension=${{packageRef:{kind:"extension",id:"nearai"},displayName:"NEAR AI"}} onClose=${()=>{}} onActivate=${()=>{}} />
+<//><//>`);
+</script></body></html>

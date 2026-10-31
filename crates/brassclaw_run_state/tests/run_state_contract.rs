@@ -305,7 +305,7 @@ async fn in_memory_run_state_hides_records_from_other_tenants_and_users() {
 
 #[tokio::test]
 async fn filesystem_run_state_store_persists_records_under_run_state_alias() {
-    let fs = Arc::new(engine_filesystem());
+    let fs = Arc::new(brassclaw_filesystem::InMemoryBackend::new());
     let scoped = scoped_run_state_fs(fs);
     let store = FilesystemRunStateStore::new(Arc::clone(&scoped));
     let invocation_id = InvocationId::new();
@@ -1154,4 +1154,44 @@ fn approval_request(invocation_id: InvocationId) -> ApprovalRequest {
         reason: format!("approval for {invocation_id}"),
         reusable_scope: None,
     }
+}
+
+#[tokio::test]
+async fn local_byte_only_run_and_approval_updates_preserve_original_records() {
+    let backend = Arc::new(engine_filesystem());
+    let scoped = scoped_run_state_fs(backend);
+    let runs = FilesystemRunStateStore::new(scoped.clone());
+    let approvals = FilesystemApprovalRequestStore::new(scoped);
+    let invocation_id = InvocationId::new();
+    let scope = sample_scope(invocation_id, "tenant1", "user1");
+    let original_run = runs
+        .start(RunStart {
+            invocation_id,
+            scope: scope.clone(),
+            capability_id: CapabilityId::new("echo.say").unwrap(),
+        })
+        .await
+        .unwrap();
+    let original_approval = approvals
+        .save_pending(scope.clone(), approval_request(invocation_id))
+        .await
+        .unwrap();
+    assert!(runs.complete(&scope, invocation_id).await.is_err());
+    assert_eq!(
+        runs.get(&scope, invocation_id).await.unwrap(),
+        Some(original_run)
+    );
+    assert!(
+        approvals
+            .approve(&scope, original_approval.request.id)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        approvals
+            .get(&scope, original_approval.request.id)
+            .await
+            .unwrap(),
+        Some(original_approval)
+    );
 }

@@ -40,6 +40,30 @@ explicitly with offline Python Transformers/tokenizers installed. It compares
 complete rendered hashes, token counts/IDs and common-prefix hashes against an
 independent Hugging Face renderer. Tests never download model data.
 
+Use one isolated Python environment with the test-only versions declared in
+`tests/requirements-oracle.txt`. The retained Qwen3.5 model configuration requires
+newer Transformers support than 5.1; the oracle loads its real `AutoConfig` and
+refuses an unsupported configuration instead of using a generic fallback.
+The PyTorch dependency provides the supported local Transformers backend; no
+model weights or GPU runtime are needed. On Linux/Windows, install the matching
+CPU-only PyTorch wheel using the [official installation selector](https://pytorch.org/get-started/locally/) before the remaining
+requirements, so pip reuses that build. Install prebuilt dependencies in the
+environment with:
+
+```sh
+python -m pip install --only-binary=:all: -r crates/brassclaw_model_encoding/tests/requirements-oracle.txt
+```
+
+Set `BRASSCLAW_TEST_PYTHON` to that environment's Python executable before running
+the tests. This selects the same interpreter for the standalone and native
+Composition oracle callers; it does not select a model or change provider
+configuration. Without an explicit path, tests use `python` on Windows and
+`python3` elsewhere. An explicit missing/invalid path fails without falling back.
+Keep `BRASSCLAW_ENCODING_MODEL_ORIGINALS` pointed at the unchanged retained model
+files, with offline loading and remote model code disabled. Cargo continues to
+use its configured canonical target and is invoked directly. These tests do not
+need or modify provider-server configuration files or chat templates.
+
 Compatibility is explicitly pinned: `vendor/minijinja-compat` preserves eager
 indexable sequence concatenation, and the environment corrects the iterable test
 for None. Template bytes are not rewritten to conceal a renderer mismatch.

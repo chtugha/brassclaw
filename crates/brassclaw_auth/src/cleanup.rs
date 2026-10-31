@@ -14,6 +14,9 @@ pub enum SecretCleanupAction {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SecretCleanupRequest {
+    /// Select the existing stable account owner across setup/request invocation
+    /// IDs and surfaces. Keep declared thread/session restrictions. Exact flow
+    /// and selected secret identities remain unchanged by this lifecycle event.
     pub scope: AuthProductScope,
     pub extension_id: ExtensionId,
     pub action: SecretCleanupAction,

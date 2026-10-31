@@ -34,6 +34,17 @@ pub(super) fn interaction_path(
     ))
 }
 
+pub(super) fn requirement_selection_path(
+    scope: &brassclaw_auth::AuthProductScope,
+    key: &brassclaw_auth::CredentialRequirementKey,
+) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
+        "{}/requirement-selections/{}.json",
+        product_auth_base_root(&scope.resource),
+        key.as_str()
+    ))
+}
+
 pub(super) fn account_path(
     scope: &brassclaw_auth::AuthProductScope,
     account_id: CredentialAccountId,
@@ -105,7 +116,22 @@ pub(super) fn manual_token_secret_handle(
 pub(super) fn fs_error(error: FilesystemError) -> AuthProductError {
     match error {
         // CAS precondition failure — callers can detect and retry on BackendConflict.
-        FilesystemError::VersionMismatch { .. } => AuthProductError::BackendConflict,
+        FilesystemError::VersionMismatch { .. } | FilesystemError::SnapshotMismatch { .. } => {
+            AuthProductError::BackendConflict
+        }
         _ => AuthProductError::BackendUnavailable,
     }
+}
+
+/// Stable original intent/result location. Only the account envelope's matching
+/// final receipt certifies publication; original request facts never change.
+pub(super) fn refresh_action_path(
+    original: &brassclaw_auth::CredentialRefreshOriginal,
+) -> Result<ScopedPath, AuthProductError> {
+    Ok(ScopedPath::from_trusted(format!(
+        "{}/refresh-actions/{}/{}.json",
+        product_auth_root(&original.scope),
+        original.scope_ref()?,
+        original.id
+    )))
 }

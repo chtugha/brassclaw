@@ -12,14 +12,21 @@ use brassclaw_host_runtime::{
     RuntimeCredentialAccountResolver,
 };
 
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod captured;
+
 #[derive(Clone)]
 pub(crate) struct ProductAuthRuntimeCredentialResolver {
     accounts: Arc<dyn RuntimeCredentialAccountSelectionService>,
+    secrets: Arc<dyn brassclaw_secrets::SecretStore>,
 }
 
 impl ProductAuthRuntimeCredentialResolver {
-    pub(crate) fn new(accounts: Arc<dyn RuntimeCredentialAccountSelectionService>) -> Self {
-        Self { accounts }
+    pub(crate) fn new(
+        accounts: Arc<dyn RuntimeCredentialAccountSelectionService>,
+        secrets: Arc<dyn brassclaw_secrets::SecretStore>,
+    ) -> Self {
+        Self { accounts, secrets }
     }
 }
 
@@ -35,6 +42,7 @@ pub(crate) struct RuntimeCredentialAccountSelectionRequest {
     lookup: CredentialAccountSelectionRequest,
     runtime_scope: AuthProductScope,
     provider_scopes: Vec<ProviderScope>,
+    requirement: Option<brassclaw_host_api::RuntimeCredentialAccountRequirement>,
 }
 
 impl RuntimeCredentialAccountSelectionRequest {
@@ -47,7 +55,16 @@ impl RuntimeCredentialAccountSelectionRequest {
             lookup,
             runtime_scope,
             provider_scopes,
+            requirement: None,
         }
+    }
+
+    pub(crate) fn with_requirement(
+        mut self,
+        requirement: Option<&brassclaw_host_api::RuntimeCredentialAccountRequirement>,
+    ) -> Self {
+        self.requirement = requirement.cloned();
+        self
     }
 }
 
@@ -76,6 +93,54 @@ impl RuntimeCredentialAccountSelectionService for ProductAuthRuntimeCredentialAc
         &self,
         request: RuntimeCredentialAccountSelectionRequest,
     ) -> Result<CredentialAccount, AuthProductError> {
+        if let Some(requirement) = &request.requirement {
+            let declaration = requirement.requirement();
+            let scopes = request
+                .provider_scopes
+                .iter()
+                .map(|scope| scope.as_str().to_owned())
+                .collect::<Vec<_>>();
+            let provider = brassclaw_host_api::RuntimeCredentialAccountProviderId::new(
+                request.lookup.provider.as_str(),
+            )
+            .map_err(|_| AuthProductError::BackendConflict)?;
+            let requester = request
+                .lookup
+                .requester_extension
+                .as_ref()
+                .ok_or(AuthProductError::BackendConflict)?;
+            if !requirement.matches_dispatch(&declaration.handle, &provider, &scopes, requester) {
+                return Err(AuthProductError::BackendConflict);
+            }
+            let selected = self
+                .accounts
+                .requirement_selection(&request.runtime_scope, requirement)
+                .await?
+                .ok_or(AuthProductError::CredentialMissing)?;
+            selected.verify_requested(&request.runtime_scope, requirement)?;
+            let account = self
+                .accounts
+                .account_record(selected.original_scope(), selected.account().id)
+                .await?
+                .ok_or(AuthProductError::CredentialMissing)?;
+            if account.id != selected.account().id
+                || account.provider != request.lookup.provider
+                || account.scope != selected.account().scope
+            {
+                return Err(AuthProductError::BackendConflict);
+            }
+            if account.effective_status() != CredentialAccountStatus::Configured
+                || !account_has_provider_scopes(&account, &request.provider_scopes)
+            {
+                return Err(AuthProductError::CredentialMissing);
+            }
+            if !account_visible_from_runtime_scope(&account, &request.runtime_scope)
+                || !account.is_authorized_for_requester(Some(requester))
+            {
+                return Err(AuthProductError::CrossScopeDenied);
+            }
+            return Ok(account);
+        }
         let configured = self
             .accounts
             .accounts_for_owner(&request.lookup.scope)
@@ -83,7 +148,7 @@ impl RuntimeCredentialAccountSelectionService for ProductAuthRuntimeCredentialAc
             .into_iter()
             .filter(|account| {
                 account.provider == request.lookup.provider
-                    && account.status == CredentialAccountStatus::Configured
+                    && account.effective_status() == CredentialAccountStatus::Configured
                     && account_has_provider_scopes(account, &request.provider_scopes)
                     && account_visible_from_runtime_scope(account, &request.runtime_scope)
             })
@@ -100,8 +165,10 @@ impl RuntimeCredentialAccountSelectionService for ProductAuthRuntimeCredentialAc
         match selectable.as_slice() {
             [] => Err(AuthProductError::CrossScopeDenied),
             [account] => Ok(account.clone()),
-            _ => select_latest_duplicate_user_reusable_account(&selectable)
-                .ok_or(AuthProductError::AccountSelectionRequired),
+            // Labels, recency and identical ownership are not an account
+            // selection. The existing setup owner must retain an explicit
+            // requirement/account binding before runtime can disambiguate.
+            _ => Err(AuthProductError::AccountSelectionRequired),
         }
     }
 }
@@ -153,11 +220,12 @@ impl RuntimeCredentialAccountResolver for ProductAuthRuntimeCredentialResolver {
                         .for_extension(request.requester_extension.clone()),
                     AuthProductScope::new(request.scope.clone(), AuthSurface::Api),
                     provider_scopes,
-                ),
+                )
+                .with_requirement(request.requirement),
             )
             .await
             .map_err(map_account_error)?;
-        if account.status != CredentialAccountStatus::Configured {
+        if account.effective_status() != CredentialAccountStatus::Configured {
             return Err(CredentialStageError::AuthRequired);
         }
         // A Configured account missing access_secret indicates data corruption,
@@ -167,10 +235,13 @@ impl RuntimeCredentialAccountResolver for ProductAuthRuntimeCredentialResolver {
         // the handle), so this branch can only fire on corrupt state. Return
         // Backend so the caller does not loop through re-auth.
         let handle = account.access_secret.ok_or(CredentialStageError::Backend)?;
-        Ok(RuntimeCredentialAccessSecret {
-            scope: account.scope.resource,
+        RuntimeCredentialAccessSecret::capture(
+            self.secrets.as_ref(),
+            account.scope.resource,
             handle,
-        })
+            account.access_expires_at,
+        )
+        .await
     }
 }
 
@@ -187,58 +258,20 @@ fn account_visible_from_runtime_scope(
     account: &CredentialAccount,
     runtime_scope: &AuthProductScope,
 ) -> bool {
+    let account_resource = &account.scope.resource;
+    let runtime_resource = &runtime_scope.resource;
+    if account_resource.tenant_id != runtime_resource.tenant_id
+        || account_resource.user_id != runtime_resource.user_id
+        || account_resource.agent_id != runtime_resource.agent_id
+        || account_resource.project_id != runtime_resource.project_id
+    {
+        return false;
+    }
     if account.ownership == CredentialOwnership::UserReusable {
         return true;
     }
-    let account_resource = &account.scope.resource;
-    let runtime_resource = &runtime_scope.resource;
-    account_resource.tenant_id == runtime_resource.tenant_id
-        && account_resource.user_id == runtime_resource.user_id
-        && account_resource.agent_id == runtime_resource.agent_id
-        && account_resource.project_id == runtime_resource.project_id
-        && account_resource.thread_id == runtime_resource.thread_id
+    account_resource.thread_id == runtime_resource.thread_id
         && account.scope.session_id == runtime_scope.session_id
-}
-
-/// Runtime "default account" rule for the credential gate.
-///
-/// The runtime auth gate has no interactive account picker: when a capability
-/// needs a provider credential the engine must resolve to exactly one account
-/// or it raises an auth gate. When more than one reusable account matches
-/// (which happens because the OAuth `account_label` historically encoded the
-/// triggering capability — "gmail google", "google-calendar google", "google"
-/// — so the same login produced several rows), we deterministically select the
-/// **most-recently-used** account rather than failing with
-/// `AccountSelectionRequired` (→ `AuthRequired`), which re-prompted the user on
-/// every capability call (#auth-gate-reuse).
-///
-/// Recency *is* the default: the setup-time account picker controls which
-/// account wins at runtime by touching it (overwrite bumps `updated_at`;
-/// create-new starts a fresh, now-latest account). Account *selection* between
-/// genuinely distinct logins is a setup-time concern; at runtime we always have
-/// a usable default.
-///
-/// We still restrict to the *reusable, unbound* class — `UserReusable`, no
-/// `owner_extension`, no `granted_extensions`, `access_secret` present — so this
-/// never auto-selects across extension-owned or requester-bound accounts; those
-/// keep their explicit binding semantics.
-fn select_latest_duplicate_user_reusable_account(
-    accounts: &[CredentialAccount],
-) -> Option<CredentialAccount> {
-    let first = accounts.first()?;
-    if !accounts.iter().all(|account| {
-        account.provider == first.provider
-            && account.ownership == CredentialOwnership::UserReusable
-            && account.owner_extension.is_none()
-            && account.granted_extensions.is_empty()
-            && account.access_secret.is_some()
-    }) {
-        return None;
-    }
-    accounts
-        .iter()
-        .max_by_key(|account| (account.updated_at, account.created_at, account.id))
-        .cloned()
 }
 
 fn runtime_account_owner_scope(
@@ -271,6 +304,37 @@ mod tests {
 
     use super::*;
 
+    async fn source_material_for_accounts(
+        accounts: &dyn CredentialAccountRecordSource,
+        scope: &ResourceScope,
+    ) -> Arc<dyn brassclaw_secrets::SecretStore> {
+        let store = Arc::new(brassclaw_secrets::InMemorySecretStore::new());
+        for account in accounts
+            .accounts_for_owner(&AuthProductScope::new(
+                runtime_account_owner_scope(scope),
+                AuthSurface::Api,
+            ))
+            .await
+            .unwrap()
+        {
+            if account.effective_status() != CredentialAccountStatus::Configured {
+                continue;
+            }
+            if let Some(handle) = account.access_secret {
+                brassclaw_secrets::SecretStore::put_with_expiry(
+                    store.as_ref(),
+                    account.scope.resource,
+                    handle,
+                    "runtime credential fixture".into(),
+                    account.access_expires_at,
+                )
+                .await
+                .unwrap();
+            }
+        }
+        store
+    }
+
     #[tokio::test]
     async fn resolver_returns_configured_product_auth_access_secret() {
         let accounts = Arc::new(InMemoryAuthProductServices::new());
@@ -289,17 +353,21 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(access_secret.clone()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: Vec::new(),
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
 
         let resolved = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &scope,
                 provider: &RuntimeCredentialAccountProviderId::new("github").unwrap(),
                 provider_scopes: &[],
@@ -310,6 +378,47 @@ mod tests {
 
         assert_eq!(resolved.handle, access_secret);
         assert_eq!(resolved.scope, scope);
+    }
+
+    #[tokio::test]
+    async fn resolver_rechecks_issuer_expiry_of_a_raw_configured_account() {
+        let accounts = Arc::new(InMemoryAuthProductServices::new());
+        let scope =
+            ResourceScope::local_default(UserId::new("alice").unwrap(), InvocationId::new())
+                .unwrap();
+        accounts
+            .create_account(NewCredentialAccount {
+                scope: AuthProductScope::new(scope.clone(), AuthSurface::Api),
+                provider: AuthProviderId::new("github").unwrap(),
+                label: CredentialAccountLabel::new("expired github").unwrap(),
+                status: CredentialAccountStatus::Configured,
+                ownership: CredentialOwnership::UserReusable,
+                owner_extension: None,
+                granted_extensions: vec![],
+                access_secret: Some(SecretHandle::new("expired-github-access").unwrap()),
+                access_expires_at: Some(chrono::Utc::now() - chrono::Duration::seconds(1)),
+                refresh_secret: None,
+                scopes: vec![],
+            })
+            .await
+            .unwrap();
+        let secrets = source_material_for_accounts(accounts.as_ref(), &scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
+        assert!(matches!(
+            resolver
+                .resolve_access_secret(RuntimeCredentialAccountRequest {
+                    requirement: None,
+                    scope: &scope,
+                    provider: &RuntimeCredentialAccountProviderId::new("github").unwrap(),
+                    provider_scopes: &[],
+                    requester_extension: &ExtensionId::new("github").unwrap(),
+                })
+                .await,
+            Err(CredentialStageError::AuthRequired)
+        ));
     }
 
     #[tokio::test]
@@ -332,17 +441,21 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(access_secret.clone()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: Vec::new(),
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &runtime_scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
 
         let resolved = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &runtime_scope,
                 provider: &RuntimeCredentialAccountProviderId::new("github").unwrap(),
                 provider_scopes: &[],
@@ -376,17 +489,21 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(access_secret.clone()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: Vec::new(),
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &runtime_scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
 
         let resolved = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &runtime_scope,
                 provider: &RuntimeCredentialAccountProviderId::new("github").unwrap(),
                 provider_scopes: &[],
@@ -418,17 +535,21 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(access_secret.clone()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: Vec::new(),
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &runtime_scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
 
         let resolved = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &runtime_scope,
                 provider: &RuntimeCredentialAccountProviderId::new("github").unwrap(),
                 provider_scopes: &[],
@@ -461,17 +582,21 @@ mod tests {
                 owner_extension: Some(ExtensionId::new("github").unwrap()),
                 granted_extensions: Vec::new(),
                 access_secret: Some(SecretHandle::new("github_manual_access").unwrap()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: Vec::new(),
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &runtime_scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
 
         let error = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &runtime_scope,
                 provider: &RuntimeCredentialAccountProviderId::new("github").unwrap(),
                 provider_scopes: &[],
@@ -486,15 +611,17 @@ mod tests {
     #[tokio::test]
     async fn resolver_maps_missing_account_to_auth_required() {
         let accounts = Arc::new(InMemoryAuthProductServices::new());
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            Arc::new(brassclaw_secrets::InMemorySecretStore::new()),
+        );
         let scope =
             ResourceScope::local_default(UserId::new("alice").unwrap(), InvocationId::new())
                 .unwrap();
 
         let error = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &scope,
                 provider: &RuntimeCredentialAccountProviderId::new("github").unwrap(),
                 provider_scopes: &[],
@@ -523,6 +650,7 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(SecretHandle::new("google_manual_access").unwrap()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![
                     ProviderScope::new("https://www.googleapis.com/auth/gmail.send").unwrap(),
@@ -530,13 +658,16 @@ mod tests {
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
         let required_scopes = vec!["https://www.googleapis.com/auth/drive".to_string()];
 
         let error = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &scope,
                 provider: &RuntimeCredentialAccountProviderId::new("google").unwrap(),
                 provider_scopes: &required_scopes,
@@ -565,17 +696,21 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: None,
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: Vec::new(),
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
 
         let error = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &scope,
                 provider: &RuntimeCredentialAccountProviderId::new("github").unwrap(),
                 provider_scopes: &[],
@@ -604,17 +739,21 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: None, // Configured but missing secret — data corruption
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: Vec::new(),
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
 
         let error = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &scope,
                 provider: &RuntimeCredentialAccountProviderId::new("github").unwrap(),
                 provider_scopes: &[],
@@ -630,13 +769,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolver_uses_most_recent_account_across_multiple_reusable_logins() {
-        // Runtime default rule (#auth-gate-reuse): when several reusable,
-        // unbound accounts match the same provider — even under different
-        // labels — the gate has no interactive picker, so the resolver selects
-        // the most-recently-used account rather than failing with
-        // `AccountSelectionRequired` (which re-prompted on every call). The
-        // setup-time picker controls which one wins by bumping its recency.
+    async fn resolver_requires_selection_across_multiple_reusable_logins() {
         let accounts = Arc::new(InMemoryAuthProductServices::new());
         let scope =
             ResourceScope::local_default(UserId::new("alice").unwrap(), InvocationId::new())
@@ -644,7 +777,7 @@ mod tests {
         let auth_scope = AuthProductScope::new(scope.clone(), AuthSurface::Api);
         let latest_secret = SecretHandle::new("work-token").unwrap();
         // Two reusable accounts for the same provider under distinct labels.
-        // The second one is created later, so it is the most-recently-used.
+        // The newer account must not silently replace the first selection.
         accounts
             .create_account(NewCredentialAccount {
                 scope: auth_scope.clone(),
@@ -655,6 +788,7 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(SecretHandle::new("personal-token").unwrap()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: Vec::new(),
             })
@@ -671,30 +805,34 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(latest_secret.clone()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: Vec::new(),
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
 
-        let resolved = resolver
+        let error = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &scope,
                 provider: &RuntimeCredentialAccountProviderId::new("github").unwrap(),
                 provider_scopes: &[],
                 requester_extension: &ExtensionId::new("github").unwrap(),
             })
             .await
-            .expect("runtime must resolve to the most-recent reusable account, not re-prompt");
+            .expect_err("newer same-provider credentials require an explicit selection");
 
-        assert_eq!(resolved.handle, latest_secret);
+        assert_eq!(error, CredentialStageError::AuthRequired);
     }
 
     #[tokio::test]
-    async fn resolver_uses_latest_duplicate_user_reusable_account() {
+    async fn resolver_does_not_treat_identical_labels_as_one_credential() {
         let accounts = Arc::new(InMemoryAuthProductServices::new());
         let scope =
             ResourceScope::local_default(UserId::new("alice").unwrap(), InvocationId::new())
@@ -712,6 +850,7 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(first_secret),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: Vec::new(),
             })
@@ -728,36 +867,153 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(latest_secret.clone()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: Vec::new(),
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
 
-        let resolved = resolver
+        let error = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &scope,
                 provider: &RuntimeCredentialAccountProviderId::new("github").unwrap(),
                 provider_scopes: &[],
                 requester_extension: &ExtensionId::new("github").unwrap(),
             })
             .await
-            .unwrap();
+            .expect_err("identical labels do not prove an identical credential selection");
 
-        assert_eq!(resolved.handle, latest_secret);
+        assert_eq!(error, CredentialStageError::AuthRequired);
     }
 
-    /// Direct reproduction of the reported bug (#auth-gate-reuse): a single
-    /// Google login authenticated through different gate/setup surfaces ends up
-    /// stored as multiple reusable accounts under capability-derived labels
-    /// ("gmail google", "google-calendar google"). The runtime resolver must
-    /// pick the most-recent usable credential instead of returning
-    /// `AuthRequired`, which re-prompted the user on every gmail/calendar call.
+    #[cfg(feature = "skills-db")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn native_ambiguous_accounts_require_binding_and_keep_both_originals() {
+        use crate::pg_auth_product_services::{PgAuthProductServices, run_auth_migrations};
+        use brassclaw_auth::{CredentialAccountChoiceRequest, CredentialAccountLookupRequest};
+
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        run_auth_migrations(&rig.pool).await.unwrap();
+        let secrets = Arc::new(
+            brassclaw_secrets::PgSecretStore::new(
+                rig.pool.as_ref().clone(),
+                "native-credential-ambiguity-master-key-2026".into(),
+                "native-runtime-ambiguity",
+            )
+            .unwrap(),
+        );
+        let accounts = Arc::new(PgAuthProductServices::new(
+            rig.pool.clone(),
+            secrets.clone(),
+        ));
+        let scope =
+            ResourceScope::local_default(UserId::new("alice").unwrap(), InvocationId::new())
+                .unwrap();
+        let auth_scope = AuthProductScope::new(scope.clone(), AuthSurface::Api);
+        let provider = AuthProviderId::new("github").unwrap();
+        let mut originals = Vec::new();
+        for label in ["personal", "work"] {
+            let mut account_scope = auth_scope.clone();
+            if label == "work" {
+                account_scope.resource.invocation_id = InvocationId::new();
+            }
+            originals.push(
+                accounts
+                    .create_account(NewCredentialAccount {
+                        scope: account_scope,
+                        provider: provider.clone(),
+                        label: CredentialAccountLabel::new(label).unwrap(),
+                        status: CredentialAccountStatus::Configured,
+                        ownership: CredentialOwnership::UserReusable,
+                        owner_extension: None,
+                        granted_extensions: Vec::new(),
+                        access_secret: Some(SecretHandle::new(format!("{label}-token")).unwrap()),
+                        access_expires_at: None,
+                        refresh_secret: None,
+                        scopes: Vec::new(),
+                    })
+                    .await
+                    .unwrap(),
+            );
+        }
+        let selector = Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(
+            accounts.clone(),
+        ));
+        let unbound = selector
+            .select_unique_configured_runtime_account(
+                RuntimeCredentialAccountSelectionRequest::new(
+                    CredentialAccountSelectionRequest::new(auth_scope.clone(), provider.clone()),
+                    auth_scope.clone(),
+                    Vec::new(),
+                ),
+            )
+            .await;
+        assert!(
+            matches!(unbound, Err(AuthProductError::AccountSelectionRequired)),
+            "visible owner accounts require an explicit choice, not an invocation-based guess"
+        );
+        let resolver = ProductAuthRuntimeCredentialResolver::new(selector, secrets);
+        let runtime_provider = RuntimeCredentialAccountProviderId::new("github").unwrap();
+        let requester = ExtensionId::new("github").unwrap();
+        for lookup_only in [false, true] {
+            if lookup_only {
+                // This port returns a validated projection; it does not persist
+                // a requirement binding or authorize changing runtime's target.
+                let selected = accounts
+                    .select_configured_account(CredentialAccountChoiceRequest::new(
+                        auth_scope.clone(),
+                        provider.clone(),
+                        originals[0].id,
+                    ))
+                    .await
+                    .unwrap();
+                assert_eq!(selected.id, originals[0].id);
+            }
+            assert_eq!(
+                resolver
+                    .resolve_access_secret(RuntimeCredentialAccountRequest {
+                        requirement: None,
+                        scope: &scope,
+                        provider: &runtime_provider,
+                        provider_scopes: &[],
+                        requester_extension: &requester,
+                    })
+                    .await
+                    .unwrap_err(),
+                CredentialStageError::AuthRequired,
+            );
+        }
+        for original in originals {
+            let current = accounts
+                .get_account(CredentialAccountLookupRequest::new(
+                    original.scope.clone(),
+                    original.id,
+                ))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                current, original,
+                "selection must not touch either account's recency"
+            );
+            assert_eq!(
+                current.snapshot_ref().unwrap(),
+                original.snapshot_ref().unwrap()
+            );
+        }
+    }
+
+    /// Capability-like labels do not establish that two accounts came from the
+    /// same login, or bind either credential to the requested capability.
     #[tokio::test]
-    async fn resolver_resolves_google_capability_labeled_duplicates() {
+    async fn resolver_requires_selection_for_capability_labeled_accounts() {
         let accounts = Arc::new(InMemoryAuthProductServices::new());
         let scope =
             ResourceScope::local_default(UserId::new("alice").unwrap(), InvocationId::new())
@@ -776,6 +1032,7 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(SecretHandle::new("gmail-surface-token").unwrap()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![gmail_scope.clone()],
             })
@@ -792,26 +1049,30 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(latest_secret.clone()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![gmail_scope.clone()],
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
 
-        let resolved = resolver
+        let error = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &scope,
                 provider: &RuntimeCredentialAccountProviderId::new("google").unwrap(),
                 provider_scopes: &[gmail_scope.as_str().to_string()],
                 requester_extension: &ExtensionId::new("gmail").unwrap(),
             })
             .await
-            .expect("capability-labeled google duplicates must resolve, not re-prompt");
+            .expect_err("capability-like labels cannot select an account");
 
-        assert_eq!(resolved.handle, latest_secret);
+        assert_eq!(error, CredentialStageError::AuthRequired);
     }
 
     #[tokio::test]
@@ -834,6 +1095,7 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(SecretHandle::new("reusable-token").unwrap()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![google_scope.clone()],
             })
@@ -849,17 +1111,21 @@ mod tests {
                 owner_extension: Some(requester.clone()),
                 granted_extensions: Vec::new(),
                 access_secret: Some(SecretHandle::new("extension-token").unwrap()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![google_scope.clone()],
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
 
         let error = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &scope,
                 provider: &RuntimeCredentialAccountProviderId::new("google").unwrap(),
                 provider_scopes: &[google_scope.as_str().to_string()],
@@ -891,6 +1157,7 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(SecretHandle::new("reusable-token").unwrap()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![google_scope.clone()],
             })
@@ -906,17 +1173,21 @@ mod tests {
                 owner_extension: None,
                 granted_extensions: vec![requester.clone()],
                 access_secret: Some(SecretHandle::new("shared-token").unwrap()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: vec![google_scope.clone()],
             })
             .await
             .unwrap();
-        let resolver = ProductAuthRuntimeCredentialResolver::new(Arc::new(
-            ProductAuthRuntimeCredentialAccountSelector::new(accounts),
-        ));
+        let secrets = source_material_for_accounts(accounts.as_ref(), &scope).await;
+        let resolver = ProductAuthRuntimeCredentialResolver::new(
+            Arc::new(ProductAuthRuntimeCredentialAccountSelector::new(accounts)),
+            secrets,
+        );
 
         let error = resolver
             .resolve_access_secret(RuntimeCredentialAccountRequest {
+                requirement: None,
                 scope: &scope,
                 provider: &RuntimeCredentialAccountProviderId::new("google").unwrap(),
                 provider_scopes: &[google_scope.as_str().to_string()],

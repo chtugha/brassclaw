@@ -13,6 +13,7 @@
 
 use brassclaw_llm::ProviderDefinition;
 use brassclaw_pg::PgPool;
+use sha2::{Digest as _, Sha256};
 use thiserror::Error;
 
 /// Postgres-backed provider repository.
@@ -30,6 +31,7 @@ pub struct PgProviderRepo {
 pub(crate) struct ProviderDefinitionRevision {
     pub definition: ProviderDefinition,
     pub revision: u64,
+    pub definition_checksum: String,
     pub is_builtin: bool,
     pub inactive: bool,
 }
@@ -62,9 +64,53 @@ impl PgProviderRepo {
         include_inactive: bool,
     ) -> Result<Option<ProviderDefinitionRevision>, PgProviderRepoError> {
         let client = self.pool.get().await?;
+        self.get_revision_from_client(&**client, id, include_inactive)
+            .await
+    }
+
+    pub(crate) async fn get_revision_from_client<C: tokio_postgres::GenericClient + Sync>(
+        &self,
+        client: &C,
+        id: &str,
+        include_inactive: bool,
+    ) -> Result<Option<ProviderDefinitionRevision>, PgProviderRepoError> {
         let row = client.query_opt(
             "SELECT id, definition, revision, is_builtin, deleted_at IS NOT NULL AS inactive FROM brassclaw_llm_providers WHERE tenant_id = $1 AND id = $2 AND ($3 OR deleted_at IS NULL)",
             &[&self.tenant_id, &id, &include_inactive],
+        ).await?;
+        row.map(decode_provider_revision).transpose()
+    }
+
+    /// Load the original immutable document, never today's handler definition.
+    /// Inactive history stays readable; live dispatch policy is checked separately.
+    pub(crate) async fn read_retained_revision<C: tokio_postgres::GenericClient + Sync>(
+        &self,
+        client: &C,
+        id: &str,
+        revision: u64,
+    ) -> Result<Option<ProviderDefinitionRevision>, PgProviderRepoError> {
+        let revision = i64::try_from(revision)
+            .ok()
+            .filter(|value| *value > 0)
+            .ok_or_else(|| PgProviderRepoError::Parse {
+                reason: "retained provider revision is invalid".into(),
+            })?;
+        let row = client.query_opt(
+            "SELECT provider_id AS id, definition, revision, is_builtin, deleted_at IS NOT NULL AS inactive FROM brassclaw_llm_provider_revisions WHERE tenant_id=$1 AND provider_id=$2 AND revision=$3",
+            &[&self.tenant_id, &id, &revision],
+        ).await?;
+        row.map(decode_provider_revision).transpose()
+    }
+
+    pub(crate) async fn lock_active_revision(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        id: &str,
+    ) -> Result<Option<ProviderDefinitionRevision>, PgProviderRepoError> {
+        let row = transaction.query_opt(
+            "SELECT id,definition,revision,is_builtin,deleted_at IS NOT NULL AS inactive \
+             FROM brassclaw_llm_providers WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL FOR SHARE",
+            &[&self.tenant_id,&id],
         ).await?;
         row.map(decode_provider_revision).transpose()
     }
@@ -74,6 +120,18 @@ impl PgProviderRepo {
         client: &C,
     ) -> Result<Vec<ProviderDefinitionRevision>, PgProviderRepoError> {
         client.query("SELECT id, definition, revision, is_builtin, deleted_at IS NOT NULL AS inactive FROM brassclaw_llm_providers WHERE tenant_id=$1 ORDER BY is_builtin DESC, id", &[&self.tenant_id]).await?
+            .into_iter().map(decode_provider_revision).collect()
+    }
+
+    /// A task selects only the current active catalogue. Corrupt historical or
+    /// inactive definitions must not masquerade as active dependency failures.
+    pub(crate) async fn load_active_revisions_from_client<
+        C: tokio_postgres::GenericClient + Sync,
+    >(
+        &self,
+        client: &C,
+    ) -> Result<Vec<ProviderDefinitionRevision>, PgProviderRepoError> {
+        client.query("SELECT id, definition, revision, is_builtin, false AS inactive FROM brassclaw_llm_providers WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY id", &[&self.tenant_id]).await?
             .into_iter().map(decode_provider_revision).collect()
     }
 
@@ -385,19 +443,6 @@ impl PgProviderRepo {
         self.deactivate(id, None).await
     }
 
-    pub(crate) async fn delete_revision(
-        &self,
-        id: &str,
-        revision: u64,
-    ) -> Result<bool, PgProviderRepoError> {
-        let revision =
-            i64::try_from(revision).map_err(|_| PgProviderRepoError::RevisionConflict)?;
-        if revision <= 0 {
-            return Err(PgProviderRepoError::RevisionConflict);
-        }
-        self.deactivate(id, Some(revision)).await
-    }
-
     async fn deactivate(
         &self,
         id: &str,
@@ -405,6 +450,21 @@ impl PgProviderRepo {
     ) -> Result<bool, PgProviderRepoError> {
         let mut client = self.pool.get().await?;
         let transaction = client.transaction().await?;
+        let removed = self
+            .deactivate_in_transaction(&transaction, id, expected)
+            .await?;
+        transaction.commit().await?;
+        Ok(removed)
+    }
+
+    /// Reuse exactly the existing deactivation/role cleanup in an original
+    /// operator mutation's transaction; never commit before its receipt.
+    pub(crate) async fn deactivate_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        id: &str,
+        expected: Option<i64>,
+    ) -> Result<bool, PgProviderRepoError> {
         let maybe_row = transaction
             .query_opt(
                 "SELECT definition, revision FROM brassclaw_llm_providers \
@@ -432,32 +492,13 @@ impl PgProviderRepo {
             .chain(&definition.aliases)
             .map(|identity| identity.to_lowercase())
             .collect();
-        let selections = transaction
-            .query(
-                "SELECT key FROM brassclaw_config WHERE tenant_id = $1 \
-             AND (key LIKE 'llm.%.provider_id' OR key = 'embedding.provider_id') \
-             AND lower(value) = ANY($2) FOR UPDATE",
-                &[&self.tenant_id, &identities],
-            )
-            .await?;
-        let mut keys = Vec::new();
-        for selection in selections {
-            let key: String = selection.try_get("key")?;
-            let prefix =
-                key.strip_suffix("provider_id")
-                    .ok_or_else(|| PgProviderRepoError::Parse {
-                        reason: "provider selection key is invalid".into(),
-                    })?;
-            for field in ["provider_id", "model", "base_url", "api_key_env"] {
-                keys.push(format!("{prefix}{field}"));
-            }
-        }
-        transaction
-            .execute(
-                "DELETE FROM brassclaw_config WHERE tenant_id = $1 AND key = ANY($2)",
-                &[&self.tenant_id, &keys],
-            )
-            .await?;
+        crate::db_config::clear_provider_model_selections_in_transaction(
+            transaction,
+            &self.tenant_id,
+            &identities,
+        )
+        .await
+        .map_err(|error| PgProviderRepoError::Db(error.to_string()))?;
         let rows = transaction
             .execute(
                 "UPDATE brassclaw_llm_providers
@@ -466,7 +507,6 @@ impl PgProviderRepo {
                 &[&self.tenant_id, &id],
             )
             .await?;
-        transaction.commit().await?;
         Ok(rows > 0)
     }
 }
@@ -474,10 +514,23 @@ impl PgProviderRepo {
 fn decode_provider_revision(
     row: tokio_postgres::Row,
 ) -> Result<ProviderDefinitionRevision, PgProviderRepoError> {
-    let definition: ProviderDefinition = serde_json::from_value(row.try_get("definition")?)
-        .map_err(|_| PgProviderRepoError::Parse {
+    let mut document: serde_json::Value = row.try_get("definition")?;
+    // Exact complete stored JSON, including unknown retained metadata. Keep the
+    // digest independent of JSONB/preserve_order object ordering.
+    document.sort_all_objects();
+    let definition_checksum = format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&document).map_err(|_| {
+            PgProviderRepoError::Parse {
+                reason: "provider document identity is unavailable".into(),
+            }
+        })?)
+    );
+    let definition: ProviderDefinition =
+        serde_json::from_value(document).map_err(|_| PgProviderRepoError::Parse {
             reason: "stored provider definition is invalid".into(),
         })?;
+
     let id: String = row.try_get("id")?;
     let revision = u64::try_from(row.try_get::<_, i64>("revision")?).map_err(|_| {
         PgProviderRepoError::Parse {
@@ -492,6 +545,7 @@ fn decode_provider_revision(
     Ok(ProviderDefinitionRevision {
         definition,
         revision,
+        definition_checksum,
         is_builtin: row.try_get("is_builtin")?,
         inactive: row.try_get("inactive")?,
     })

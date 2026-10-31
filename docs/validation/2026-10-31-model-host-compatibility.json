@@ -1,0 +1,389 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-009",
+  "status": "passed",
+  "package": "/private/tmp/brassclaw-model-host-compatibility-20261031-f75rk4zj",
+  "package_after_sha256": "77bf064a96052d32250faab939f97f2d0d5c6dc255ed763b35a631d2f93f3084",
+  "sources": {
+    ".github/workflows/reborn-tests.yml": "7028d05d00c78183a03088a2b2d2061e4574aaa0f0ceacc9abda01daebb171a8",
+    "crates/brassclaw_reborn_composition/src/runtime.rs": "ef51b9ed6c0e7ad494023a3f23763627ada34fcc3d7872d27b3679c13643c55d",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_compatibility.rs": "e234b62293e6be761ee21582c8ed5ef10f7a4c8d167dc1975c240eb3356f85fd",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/admission_integrity.rs": "942b5773e6494d18c891a0211b4bff40ab69b56d313bfc90b3589a661c47b98d",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/child_recipe_entry.rs": "c29d046197bc342620668c097cd96a7e3e6eaffda1bdb4aff15eb718b0bc7ee7",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/recipe_capacity.rs": "56ec8338d168f88914354887696ba0bd9333810a50bbc7e899f3e5cc64c3ef32",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/reply_kernel.rs": "5cbc8bf3bea73818f57b1fb2b521238914d3efdc12375369f54957a861633c1a",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/reply_programs.rs": "cbaa4a053d988fd2e94e73618ba609e30a7cce2fc4c264961d87ff97358e3232",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/reply_workflows.rs": "b4887c2b8242413870278d711437f7c22f8a0574195f2113ed00c03dafaee646",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/task_catalogue.rs": "5b403791cb8d3145e961e01d933e4f33093240c59ca79b2e9884079bbfca34d6",
+    "scripts/ci/test-classify-test-scope.sh": "f2075e8462e50c703fb7b437b9c62a6766f4ddbd716085e0adc3287c8bcefe6d",
+    "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/catalogue_capture.rs": "6fc9b173966ce952131ee62e9c7875bbcd3a4110841a945a0f126211d9495d42",
+    "tests/monty_control/tests/support/capabilities.rs": "610ebbd6aaddc9652e3469d2bb90c14f0abaadf5f68cbb7d7b516fabd8efa380",
+    "tests/monty_control/tests/support/q1_review_fixture.rs": "a824c6469ef063be2b6891fca0737d583caf25dbbf054ed870cf8483d156650e",
+    "tests/monty_control/tests/support/retained_kernel.rs": "4da47fab48183e282b2f196ca1a22612c9efd1fbda1c7619c8d11da13edd086e",
+    "tests/monty_control/tests/support/retained_program.rs": "6a6afbccb6014c2a3b28d94b700369e406e1b579ab7bd5e7801bc34089f9c34c",
+    "crates/brassclaw_reborn_composition/src/lib.rs": "2f5e484daa7b4a6debdb89311e3b7ac6a80b0002bbd5a3662b8d89a8ef6b12c0",
+    "crates/brassclaw_reborn_composition/src/task_model_capture.rs": "2309f5c2ce70eb8ba8445c4b423d11b0731d506c9a64a76a5a74484a580c3291",
+    "crates/brassclaw_reborn_composition/src/task_model_capture_record.rs": "85a353ac552169be661260b68e66c31ab81e75b648ee405d45b89ca5ed102a8a",
+    "crates/brassclaw_reborn_composition/src/pg_monty_admission_core.rs": "fe3ba0089ff0b20791e7afbca82d55802ad694ac3fdb209454848eb8f7e01d1a",
+    "tests/monty_control/tests/retained_execution.rs": "8aafece8038eb5afbe9029806478f0e425898e7b2ed5b0a9a4c1befc79c3b7fb",
+    "tests/monty_control/tests/q1_review_host.rs": "c688d4aa45328cbfb190d2c774024fe45b082b7e1e356ec7b682f739fcdd7f02",
+    "crates/brassclaw_reborn_composition/src/pg_monty_admission_lifecycle.rs": "bf49d8a007d86ec13242d02322a9b214684a30f17bba65a09e549b6b95d1a59b"
+  },
+  "deleted_sources": {
+    "tests/monty_control/tests/model_host.rs": "27e180b775b4410ee2e5648b9beeaccf4348e2fddd03f09bd2c7662b67267413",
+    "tests/monty_control/tests/support/admission_integrity.rs": "46fa35fff9158a262a15e45f3347f92e3a71030a7e43ada0874e1ddcfa345b57",
+    "tests/monty_control/tests/support/child_recipe_entry.rs": "1c392c07bb0f83bfef8a654fc06e55fcb8a00607d3596dcc0a76fc69dd967643",
+    "tests/monty_control/tests/support/recipe_capacity.rs": "798daaacec5bb23da6e15a11263e3e55730f3ce81b7a46ba7c963fcf940ee0c6",
+    "tests/monty_control/tests/support/reply_kernel.rs": "86e057432d616be8aae4d6dc27a42463f3144b2215015f77cdf6ac9083c2d984",
+    "tests/monty_control/tests/support/reply_programs.rs": "edf515b4e830ed298d4d2b4dd3abaa782d800f39e93af3ba2f2428a3cb398000",
+    "tests/monty_control/tests/support/reply_workflows.rs": "a31e429d66b5fc1e27a0b1fc41efb4eab5ee52828fc9c9ddf16f565256f6e795",
+    "tests/monty_control/tests/support/task_catalogue.rs": "fd5e35d88f60317933d86095f88747c069eb37177880249f9ce369983408dc7d"
+  },
+  "moves": {
+    "tests/monty_control/tests/model_host.rs": "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_compatibility.rs",
+    "tests/monty_control/tests/support/admission_integrity.rs": "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/admission_integrity.rs",
+    "tests/monty_control/tests/support/child_recipe_entry.rs": "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/child_recipe_entry.rs",
+    "tests/monty_control/tests/support/recipe_capacity.rs": "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/recipe_capacity.rs",
+    "tests/monty_control/tests/support/reply_kernel.rs": "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/reply_kernel.rs",
+    "tests/monty_control/tests/support/reply_programs.rs": "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/reply_programs.rs",
+    "tests/monty_control/tests/support/reply_workflows.rs": "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/reply_workflows.rs",
+    "tests/monty_control/tests/support/task_catalogue.rs": "crates/brassclaw_reborn_composition/src/runtime/tests/model_host_support/task_catalogue.rs"
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-model-host-compatibility-validation-20261031/run-6/source.json",
+    "sha256": "b62423e68d1a9684b0854a138bf719bb5e6f0eb987a38d20a208b2b7f694a266",
+    "entries": 7995,
+    "present": 7987,
+    "deleted": 8,
+    "reviewed_root": "/private/tmp/brassclaw-model-host-compatibility-20261031-f75rk4zj/current-root-inputs-model-host-compatibility.json",
+    "reviewed_root_sha256": "06e246dd76f24a30ca5b1ed85a17b884620c4a767d7f2c6b73d56e1696b29419",
+    "reviewed_root_paths": 248
+  },
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-model-host-compatibility-validation-20261031/run-1",
+      "status": "failed",
+      "progress_sha256": "28b5a40ce6c0821f77765052dfc3be3946baaaad8b77c4504d8ee746e8dd28dc",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.2985250831115991,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "scope-classifier",
+          "exit_code": 0,
+          "seconds": 0.39240758307278156,
+          "log_sha256": "ad3c5e2a8e145c3d22f1930179a474d020e93370560f233b797d75eaac194e77"
+        },
+        {
+          "stage": "composition-image",
+          "exit_code": 101,
+          "seconds": 131.69970470899716,
+          "log_sha256": "5cdaca4c281cbfe11623c0b2c85cb6fafdb4c06cf400d544417714bd05d6c6cf"
+        }
+      ],
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-model-host-compatibility-validation-20261031/runner.py\", line 107, in <module>\n    run('composition-image',['cargo','+1.96.0','test','-p','brassclaw_reborn_composition','--lib','--features',features,'--no-run','--locked','--message-format=json'],True)\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-model-host-compatibility-validation-20261031/runner.py\", line 72, in run\n    assert code==0,(label,code)\n           ^^^^^^^\nAssertionError: ('composition-image', 101)\n"
+    },
+    "run-2": {
+      "path": "/private/tmp/brassclaw-model-host-compatibility-validation-20261031/run-2",
+      "status": "failed",
+      "progress_sha256": "727b4847f025fea699c95d7fcdad2b774bb200e2fb1353735865884ce084b977",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.32267166720703244,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "scope-classifier",
+          "exit_code": 0,
+          "seconds": 0.40728995809331536,
+          "log_sha256": "ad3c5e2a8e145c3d22f1930179a474d020e93370560f233b797d75eaac194e77"
+        },
+        {
+          "stage": "composition-image",
+          "exit_code": 0,
+          "seconds": 163.3308147911448,
+          "log_sha256": "d5c748d93fe7b0ea0f086169674734b1326c48ff4829d413d0b5f9257b8ad1f9"
+        },
+        {
+          "stage": "actual-model-host-compatibility",
+          "exit_code": 0,
+          "seconds": 74.51068412512541,
+          "log_sha256": "217f477459445c48799c1a302a8fd5cfce63d3506584f21ee07d1f9e8688d548",
+          "passed": 23
+        },
+        {
+          "stage": "connected-strict",
+          "exit_code": 101,
+          "seconds": 92.72751362505369,
+          "log_sha256": "b93f221211162f1fc9e1074c958e580353116181066690584431f758f82d4710"
+        }
+      ],
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-model-host-compatibility-validation-20261031/runner.py\", line 117, in <module>\n    run('connected-strict',['cargo','+1.96.0','clippy','-p','brassclaw_reborn_composition','--lib','--tests','--features',features,'--locked','--','-D','warnings'])\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-model-host-compatibility-validation-20261031/runner.py\", line 72, in run\n    assert code==0,(label,code)\n           ^^^^^^^\nAssertionError: ('connected-strict', 101)\n"
+    },
+    "run-3": {
+      "path": "/private/tmp/brassclaw-model-host-compatibility-validation-20261031/run-3",
+      "status": "failed",
+      "progress_sha256": "8a1031fda5c30389336bdce59b1dd5f3f5ddc4b69400c6b6847db9785eb38844",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.31464879191480577,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "scope-classifier",
+          "exit_code": 0,
+          "seconds": 0.4034328330308199,
+          "log_sha256": "ad3c5e2a8e145c3d22f1930179a474d020e93370560f233b797d75eaac194e77"
+        },
+        {
+          "stage": "ci-yaml",
+          "exit_code": 0,
+          "seconds": 0.24731912510469556,
+          "log_sha256": "9b97498d61074ad68f017329c86237c88b4ce992ff364aa0d3d122f1189ea072"
+        },
+        {
+          "stage": "composition-image",
+          "exit_code": 0,
+          "seconds": 164.88585279113613,
+          "log_sha256": "eb9140ed15d2c4b568b717c83d701a73d63aca48cf49973d297c20b86845ab7c"
+        },
+        {
+          "stage": "actual-model-host-compatibility",
+          "exit_code": 0,
+          "seconds": 74.30446916609071,
+          "log_sha256": "e8e5d097e2bb85e478a81e8eff762ae02702354771bb9a258e7ce2569464e0a1",
+          "passed": 23
+        }
+      ],
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-model-host-compatibility-validation-20261031/runner.py\", line 118, in <module>\n    run('connected-strict',['cargo','+1.96.0','clippy','-p','brassclaw_reborn_composition','--lib','--tests','--features',features,'--locked','--','-D','warnings'])\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-model-host-compatibility-validation-20261031/runner.py\", line 42, in run\n    assert int(disk.splitlines()[-1].split()[4].rstrip('%')) <= 90\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n"
+    },
+    "run-4": {
+      "path": "/private/tmp/brassclaw-model-host-compatibility-validation-20261031/run-4",
+      "status": "failed",
+      "progress_sha256": "845d312f37c40382cf8b8a3db49c88ccbdc10e181dc180b9ce9be807e95e6b58",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.34081520792096853,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "scope-classifier",
+          "exit_code": 0,
+          "seconds": 0.40133587503805757,
+          "log_sha256": "ad3c5e2a8e145c3d22f1930179a474d020e93370560f233b797d75eaac194e77"
+        },
+        {
+          "stage": "ci-yaml",
+          "exit_code": 0,
+          "seconds": 0.24892187514342368,
+          "log_sha256": "9b97498d61074ad68f017329c86237c88b4ce992ff364aa0d3d122f1189ea072"
+        },
+        {
+          "stage": "composition-cache-clean",
+          "exit_code": 0,
+          "seconds": 1.1588039170019329,
+          "log_sha256": "def05093ec2d2775ade33fa6442bf5b4f0fb1fd8cda1e40dfb5fbf41573821cf"
+        },
+        {
+          "stage": "connected-strict",
+          "exit_code": 0,
+          "seconds": 88.72201945795678,
+          "log_sha256": "f41a0b1e596ecbad930aa4c07890ee30c6451f75a5e55c576c3ac95f092a4f51"
+        },
+        {
+          "stage": "standalone-consumers-strict",
+          "exit_code": 101,
+          "seconds": 28.199450541986153,
+          "log_sha256": "7dac27ada12f1bac7e2b17938039edd3cabf9b42ce319f81051c430e08ee080c"
+        }
+      ],
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-model-host-compatibility-validation-20261031/runner-strict-reuse.py\", line 130, in <module>\n    run('standalone-consumers-strict',['cargo','+1.96.0','clippy','--manifest-path','tests/monty_control/Cargo.toml','--locked','--all-targets','--','-D','warnings'])\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-model-host-compatibility-validation-20261031/runner-strict-reuse.py\", line 72, in run\n    assert code==0,(label,code)\n           ^^^^^^^\nAssertionError: ('standalone-consumers-strict', 101)\n"
+    },
+    "run-5": {
+      "path": "/private/tmp/brassclaw-model-host-compatibility-validation-20261031/run-5",
+      "status": "failed",
+      "progress_sha256": "f17b5ef2a9b50846d52e206008160d7bc6120273dbd108adfee77188484845ea",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.3296735000330955,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "scope-classifier",
+          "exit_code": 0,
+          "seconds": 0.39975020894780755,
+          "log_sha256": "ad3c5e2a8e145c3d22f1930179a474d020e93370560f233b797d75eaac194e77"
+        },
+        {
+          "stage": "ci-yaml",
+          "exit_code": 0,
+          "seconds": 0.2395199160091579,
+          "log_sha256": "9b97498d61074ad68f017329c86237c88b4ce992ff364aa0d3d122f1189ea072"
+        },
+        {
+          "stage": "composition-image",
+          "exit_code": 0,
+          "seconds": 242.47014916688204,
+          "log_sha256": "2d50cc315161943877b506becad022842e03c89b6d7a689c376ccfe446846e35"
+        },
+        {
+          "stage": "actual-model-host-compatibility",
+          "exit_code": 0,
+          "seconds": 72.81175395799801,
+          "log_sha256": "a90bfecc2e021f3b7fd21b761c9c4f9c8958ffc9ff5660b4155e2f4b04f022b2",
+          "passed": 23
+        },
+        {
+          "stage": "actual-model-metadata",
+          "exit_code": 0,
+          "seconds": 2.2993421668652445,
+          "log_sha256": "f38dcbde5b9914342bc8817682d64de7c98c7a831ffa38355e8263e396bb5bbc",
+          "passed": 1
+        },
+        {
+          "stage": "connected-strict",
+          "exit_code": 0,
+          "seconds": 88.5630589579232,
+          "log_sha256": "5969f031708cf77634572ea389ffb303b3f141059c20d0b042463529309f2a89"
+        },
+        {
+          "stage": "standalone-consumers-strict",
+          "exit_code": 101,
+          "seconds": 1.93792733293958,
+          "log_sha256": "4a6e47ea158b62a50e5c115e91b4f7132942f1827b84481e88190f3f5a8d24c1"
+        }
+      ],
+      "diagnostic": "Traceback (most recent call last):\n  File \"/private/tmp/brassclaw-model-host-compatibility-validation-20261031/runner-final-data-owner.py\", line 120, in <module>\n    run('standalone-consumers-strict',['cargo','+1.96.0','clippy','--manifest-path','tests/monty_control/Cargo.toml','--locked','--all-targets','--','-D','warnings'])\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/brassclaw-model-host-compatibility-validation-20261031/runner-final-data-owner.py\", line 72, in run\n    assert code==0,(label,code)\n           ^^^^^^^\nAssertionError: ('standalone-consumers-strict', 101)\n"
+    },
+    "run-6": {
+      "path": "/private/tmp/brassclaw-model-host-compatibility-validation-20261031/run-6",
+      "status": "passed",
+      "progress_sha256": "a0aae3aade2e9010846ad5c77dbad45e879e27f90448807cedccc89c324e9ec5",
+      "results": [
+        {
+          "stage": "format",
+          "exit_code": 0,
+          "seconds": 0.3384907089639455,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "scope-classifier",
+          "exit_code": 0,
+          "seconds": 0.41209508408792317,
+          "log_sha256": "ad3c5e2a8e145c3d22f1930179a474d020e93370560f233b797d75eaac194e77"
+        },
+        {
+          "stage": "ci-yaml",
+          "exit_code": 0,
+          "seconds": 0.24875379097647965,
+          "log_sha256": "9b97498d61074ad68f017329c86237c88b4ce992ff364aa0d3d122f1189ea072"
+        },
+        {
+          "stage": "standalone-consumers-strict",
+          "exit_code": 0,
+          "seconds": 1.2792202080599964,
+          "log_sha256": "42daa7e2555cc829b966a9336f95292cd6506b41d3faab6e8b14caec86799454"
+        },
+        {
+          "stage": "composition-image",
+          "exit_code": 0,
+          "seconds": 241.3249050839804,
+          "log_sha256": "f093313fc3784f42e4e62d86d0f92c230f2e843e26762478ea3cee9ec2105d61"
+        },
+        {
+          "stage": "actual-model-host-compatibility",
+          "exit_code": 0,
+          "seconds": 71.43122854200192,
+          "log_sha256": "7a06cde44c29579f7e071c90694e4443315f708c88f2195ece6e8b48a1a65cb9",
+          "passed": 23
+        },
+        {
+          "stage": "actual-model-metadata",
+          "exit_code": 0,
+          "seconds": 2.2916860829573125,
+          "log_sha256": "f38dcbde5b9914342bc8817682d64de7c98c7a831ffa38355e8263e396bb5bbc",
+          "passed": 1
+        },
+        {
+          "stage": "connected-strict",
+          "exit_code": 0,
+          "seconds": 90.92919887485914,
+          "log_sha256": "839d7eebd6dbc4b6fafcccdc8d226917ecce920fd5eb1ef6acf0f27d00a61d2c"
+        }
+      ],
+      "diagnostic": null
+    }
+  },
+  "images": {
+    "brassclaw_reborn_composition": {
+      "path": "/private/tmp/brassclaw-model-host-compatibility-validation-20261031/run-6/brassclaw_reborn_composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-7a32f5faf18eef18",
+      "sha256": "4701238536632c1534032f29dbf24b5416454a4ad04341d583f8de170b1fb340",
+      "features": [
+        "default",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ]
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-model-host-compatibility-validation-20261031/run-6/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "227a4b2c3880e51bda63b3a9c68c6e27271454d3e5cd7fa779d6d9fc71d5e624",
+    "build_evidence": "/private/tmp/brassclaw-review-unsubmitted-validation-20261031/run-1/progress.json",
+    "build_evidence_sha256": "183516323bb13c531f67b992b4fc1835d359c94c8655d03cbfa63a5e8298288b",
+    "reason": "Exact actual worker227a4b; Composition-only data record extraction/imports and test/CI changes cannot affect the lower Monty worker owner; all worker inputs unchanged."
+  },
+  "tests": {
+    "fresh_distinct": 24,
+    "ignored": 0,
+    "preserved_original_model_host_cases": 22,
+    "model_host_cases": 23,
+    "inventory": "/private/tmp/brassclaw-model-host-compatibility-validation-20261031/run-6/compatibility-inventory.json",
+    "inventory_sha256": "043dfe36dde38efddd6a895c424b832e4f4a9d6d81db2253827c5081586fb64e"
+  },
+  "exact_source_comparisons": {
+    "metadata_parser": {
+      "observation_record_and_parser_normalized_sha256": "79fb2cebdae32232cdf0297b2431ccd0d8019157d3d2b8c88ba51c17294c66c0",
+      "native_capture_suffix_sha256": "62bef0b303b7056a172d03ae75d9343e4e0c238df2fd96b27a5e43b72a108c19",
+      "data_record_only_change": "field visibility inside same crate; exact serde fields/order/attributes, validation conditions and native opaque capture body unchanged",
+      "new_owner": "crates/brassclaw_reborn_composition/src/task_model_capture_record.rs",
+      "old_owner": "crates/brassclaw_reborn_composition/src/task_model_capture.rs",
+      "status": "independent exact source comparison, not Free qualification or runtime acceptance"
+    },
+    "lifecycle_query": {
+      "method_sha256": "2f7cc6d093587825847d2d9d1f2ad951f943ed5c518aeb992f7bfa6f7beb7231",
+      "from": "crates/brassclaw_reborn_composition/src/pg_monty_admission_core.rs",
+      "to": "crates/brassclaw_reborn_composition/src/pg_monty_admission_lifecycle.rs",
+      "scope": "Exact unchanged construction-order query belongs with its real production lifecycle callers, absent from standalone journal-only core. No stub/use/suppression."
+    }
+  },
+  "scope": [
+    "Actual Composition owner imports production modules; five real prepare/bind catalogue providers; matching and exact graph selection share one RR transaction.",
+    "Named reply/history are selected before binding; no Tool dispatch probes during binding; all22 owned cases preserved and malformed native replies remain tested.",
+    "Existing data record/parser shared once with isolated retained/Q1 admission consumers; serde fields, bytes and validation unchanged; native capture seal stays separate.",
+    "Production-only capture query moved unchanged into existing lifecycle; current model metadata persists once and cannot be rebound.",
+    "Current PostgreSQL/Monty/kernel/transcript/cancellation/rejection/child and capacity paths exercised; CI source/YAML/classifier and connected/standalone all-targets strict pass."
+  ],
+  "limits": [
+    "Existing recording model fixtures do not establish live inference, real provider SDK/final Free/Serving qualification or new activation.",
+    "Standalone all-targets Clippy is compilation/lint evidence; the whole standalone runtime suite was not rerun.",
+    "BUILD-010 legacy v2/DocType migration and preexisting deprecation suppressions remain open; no new suppression introduced.",
+    "No general pure approval, full I1/I2, durable recovery, Linux/Windows deployment, complete library/plans or release acceptance.",
+    "Earlier failed runs retained; R3 disk guard stopped before strict, R4 package-only clean preserved needed images. No whole target clean, Rust-loop fallback, lost cases or altered historical bytes."
+  ]
+}

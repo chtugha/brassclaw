@@ -1,0 +1,126 @@
+{
+  "scope": "Exact D01-D12 documentation/teaching source delivery; not runtime activation or installed uptake",
+  "files": [
+    {
+      "path": ".claude/rules/skills.md",
+      "before_sha256": "18fede6598dc7c41c04205e1a1860f33d9d08cbd001c0ddf820320c006de0b7b",
+      "sha256": "e2c468271900330dc57e0c4cd7f98bf6d16c83b1399f67b58d81d81809d4b6fd"
+    },
+    {
+      "path": "recipe.md",
+      "before_sha256": "97cfd61df64639c150b12b64dd67dcd085773508a75af7d9acb9d86b5cf9d9a5",
+      "sha256": "8ab3589fad21c52c00f0026119710aa61612ed01480fce5bf1ca997047023a66"
+    },
+    {
+      "path": "crates/AGENTS.md",
+      "before_sha256": "4908e01bae56594aa52c62629589051d3ccde897b26d79162d0a20c07c0d3593",
+      "sha256": "de6b858541d843e884440a85d65783c9d1b13314f1fba5cfcc3991b465a9c1c5"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "before_sha256": "19ec87dde51e991c1d68e32e494aa21a2a5a20b2fdf9d50abbddf6bdf7099fd9",
+      "sha256": "6f1ecaf37172887a7226b8258f816f5df1082024775cee7ad2d8410694f5e27f"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "before_sha256": "f24cf1814ea8ed32014f190b422b37c5384a7059a1743d3cd13fad0e1ff63f35",
+      "sha256": "1ba9c7e9d5f6c5c000f1e4d92748f4b0a68e57ebf0cb88724497f5fc2bb8acf2"
+    },
+    {
+      "path": "scripts/prefix/sempai-monty-compatibility.md",
+      "before_sha256": "ab488298068d586a6b2dd4c3e0c06f3d5ad615043ab333009525fe8afe517d8d",
+      "sha256": "ec3439a2e61ffddae85fbde49ae90aa840a81f97c43df06a3c72874e0177b5bb"
+    },
+    {
+      "path": "docs/plans/simplify_connections_v3.5.md",
+      "before_sha256": "6eb5c1aeba769443cd66378a9c6344bb6f2abe3d6925a94cecf76834785b68b8",
+      "sha256": "c0b68d6e941ad9b9f4130250b252ca066a216231c7bfe3d6699cdd4f4eb732ca"
+    },
+    {
+      "path": "docs/plans/sempai_v3.5.md",
+      "before_sha256": "ae3ead7c1839b31175b4b8da9fcca0aa0d1b7e700e0d001277cddff0051c70e7",
+      "sha256": "2b6aed0d4e3986fd62827b4e29d482c7ccb4186dacf561b7b6c0e3ed53883264"
+    },
+    {
+      "path": "AGENTS.md",
+      "before_sha256": "80421f24c193ee1d3c43623494aabd507d358cc020cd5026c40e45364147ceb2",
+      "sha256": "045ec0e38f327fc4870ad03b72a787354d377630f860fa8b4a01231ef2017cd5"
+    },
+    {
+      "path": "simplified_v3.md",
+      "before_sha256": "f7a1b7e5c2ec26d44099d0892431d5feac3b592dc17aa229b268112cf5f36b60",
+      "sha256": "8be7e67f0b630a6a7bca6653b7b9fa740221149452b51a449af22225bd3cee39"
+    },
+    {
+      "path": "docs/plans/monty.composition.md",
+      "before_sha256": "754aea2552dbb9a4f42c3c7cc23ceb092d680278632131e3a1e68ee66f7461f1",
+      "sha256": "d4c1cdeb1de7801790d1707599df6cc1573d1412ba0a4c27c49281d56e5127b5"
+    },
+    {
+      "path": "docs/plans/monty.composition.implementation.md",
+      "before_sha256": "8d2a734b4626f53254a030fafbfe2eb18b4fd7a2d4b34c801ea9548c4029f62b",
+      "sha256": "670fdc646d82bc716c83ea4f4c356ba904452ae613349ae3d3cd0f23f0025b22"
+    },
+    {
+      "path": "validator_v3.md",
+      "before_sha256": "b02ba639b2711c8be79b4078b60a104d6ba479b1fb2cfbe4bce887d1a7b5afa2",
+      "sha256": "5c91e1f2e889392d001bca81b692f53e082aa5073ca9ab14bd9d0c3270334f32"
+    },
+    {
+      "path": "docs/plans/prefix_v3_upgrade.md",
+      "before_sha256": "6d499978c3cc86887250c88f92dcc9eb230abe487e8c671bb84f0e1b9ddbcca1",
+      "sha256": "83f6fb6e3d8e11cafde70d2535435f32ae1bef3df3ae3eafdd8c9475d99229ae",
+      "identity_scope": "Observed whole-file identity includes concurrent Prefix-owner SDK status/history updates outside this package; Exact-owned delta is solely its new open successor."
+    },
+    {
+      "path": "docs/reborn/source-inspection.md",
+      "before_sha256": "d799754df783086cfb3c9968cf2b1b050b705ddd6f8c252b2296998a7c2d6353",
+      "sha256": "907cb7a0cca70f752cffb666b04f4c0275f723791128b4d681e068f5444885b6"
+    },
+    {
+      "path": "path_to_v3.5.md",
+      "before_sha256": "c772f8e0c416970dcf5cbd321c2d18bc9459957586dc98c1d6d6ef1c25fa434d",
+      "sha256": "8cb299eb4670f73aab735316fde5983a39e962af99641972984f676997815648"
+    },
+    {
+      "path": "crates/brassclaw_engine/AGENTS.md",
+      "before_sha256": "84363a626a4117ea388ecb26b624f74528d223d5e62fd5711bfe134a4ae88ab6",
+      "sha256": "0243d39f597966adeb73b4246303a70d3773752e235908f00d6e7c6555129ca0"
+    },
+    {
+      "path": "crates/brassclaw_engine/CLAUDE.md",
+      "before_sha256": "f79cd78f5e566c0c4ba3027c1bac6baa8b27be08f86629cd97f8274c4c5a7f17",
+      "sha256": "cc3f13a88b618438f5812fc82694f1b537670d981d90806ebc60ea8545a70094"
+    },
+    {
+      "path": "skills.md",
+      "before_sha256": "37a05996002678773855008699c80a0eceb8c7f97107bd052a86dbb91a85eea9",
+      "sha256": "ff7c6df38bbf5d8965b4f3360cf852a7ab01e65cb8ef27ae31194143ba6ff309"
+    },
+    {
+      "path": "CLAUDE.md",
+      "before_sha256": "be80a3d47fc6b2b20da6c2b519215e3a1759a1fff397cab9ba486f209bff0a3e",
+      "sha256": "7b8fccd4ccdaf73eac88a5b0b9a639cba49b3bf3347d38f74505e63ff0fa8318"
+    },
+    {
+      "path": "crates/brassclaw_reborn_composition/AGENTS.md",
+      "before_sha256": "70c11f60f7a4c18b62d141ce20de6bbbc54da845b01b13a146da00624813cb96",
+      "sha256": "5274653b839ab06539bd83f6d3155118416d0e5e87a58b91566183875d739254"
+    },
+    {
+      "path": "crates/brassclaw_reborn_composition/CLAUDE.md",
+      "before_sha256": "e191b81e5239fb3f4b7c285933bee6f8a282893e571f45dfd9872c8a4476e9f1",
+      "sha256": "868f6d6c3a958108cdfc41281f80d3f7820245a607bf017347f72e2710e31554"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.json",
+      "before_sha256": "40dbf72cc37bed73d2e38da4f2677ee8d0db6ff27954b61e8ac22765e887c3f9",
+      "sha256": "7869af7d10f80a5b56fd02b622810ee6c68f6bbcefecc8c558525428972166cc"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.receipt.json",
+      "before_sha256": "9981dd64d40ab42da1a9f2500f40a006d3026e3aeefd722e74715e5497fef29c",
+      "sha256": "0a0c16d112e73892c29b7b6cff62e0d34e43d76d88ddc975f9f7426f09c33c83"
+    }
+  ]
+}

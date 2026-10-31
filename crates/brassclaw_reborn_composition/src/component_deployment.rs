@@ -166,6 +166,8 @@ pub(crate) async fn prepare(
 ) -> Result<ComponentDeploymentPlan, RecipeStoreError> {
     id(&request.activation_id)?;
     let expected = id(&request.expected_generation)?;
+    let _serial = owner.activation.lock().await;
+    owner.reconcile_committed_runtime_locked().await?;
     let policy = owner.preparation_policy().await.map_err(|_| {
         RecipeStoreError::Unavailable("acknowledged catalogue settings unavailable".into())
     })?;
@@ -194,7 +196,7 @@ pub(crate) async fn prepare(
         .await
         .map_err(storage)?
         .get(0);
-    if expected != current {
+    if expected != current || owner.active.read().await.generation != current {
         return Err(RecipeStoreError::Conflict(
             "catalogue generation changed; prepare again".into(),
         ));

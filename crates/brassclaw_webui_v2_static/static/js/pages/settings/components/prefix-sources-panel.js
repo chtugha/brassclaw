@@ -3,16 +3,24 @@ import { Button } from "../../../design-system/button.js";
 import { Modal } from "../../../design-system/modal.js";
 import { fetchPrefixSources, fetchPrefixGenerations, registerPrefixSource } from "../lib/settings-api.js";
 
+function emptySourceDraft(profile) {
+  return { profile, reference: "", title: "", applicability: "", required: false };
+}
+
 export function PrefixSourcesPanel({ entry, t }) {
   const [open, setOpen] = React.useState(false);
-  const [generation, setGeneration] = React.useState("");
-  const [generations, setGenerations] = React.useState([]);
-  const [inventory, setInventory] = React.useState(null);
-  const [reference, setReference] = React.useState("");
-  const [title, setTitle] = React.useState("");
-  const [applicability, setApplicability] = React.useState("");
-  const [required, setRequired] = React.useState(false);
-  const [error, setError] = React.useState(null);
+  const [selection, setSelection] = React.useState({ profile: entry.name, generation: "" });
+  const generation = selection.profile === entry.name ? selection.generation : "";
+  const [retained, setGenerations] = React.useState({ profile: entry.name, items: [] });
+  const generations = retained.profile === entry.name ? retained.items : [];
+  const [inventoryRecord, setInventory] = React.useState(null);
+  const inventory = inventoryRecord?.profile === entry.name && inventoryRecord.generation === generation ? inventoryRecord.data : null;
+  const [storedDraft, setDraft] = React.useState(() => emptySourceDraft(entry.name));
+  const draft = storedDraft.profile === entry.name ? storedDraft : emptySourceDraft(entry.name);
+  const { reference, title, applicability, required } = draft;
+  const [errorRecord, setError] = React.useState(null);
+  const [saveError, setSaveError] = React.useState(null);
+  const error = errorRecord?.profile === entry.name && errorRecord.generation === generation ? errorRecord.message : saveError?.profile === entry.name ? saveError.message : null;
   const [saving, setSaving] = React.useState(false);
   const [tick, setTick] = React.useState(0);
   const busy = React.useRef(false);
@@ -20,17 +28,23 @@ export function PrefixSourcesPanel({ entry, t }) {
     if (!open) return;
     let stopped = false; setInventory(null); setError(null);
     Promise.all([fetchPrefixSources(entry.name, generation), fetchPrefixGenerations(entry.name)])
-      .then(([sources, retained]) => { if (!stopped) { setInventory(sources); setGenerations(retained); } })
-      .catch(err => { if (!stopped) setError(err.message); });
+      .then(([sources, items]) => { if (!stopped) { setInventory({ profile: entry.name, generation, data: sources }); setGenerations({ profile: entry.name, items }); } })
+      .catch(err => { if (!stopped) setError({ profile: entry.name, generation, message: err.message }); });
     return () => { stopped = true; };
   }, [open, generation, entry.name, tick]);
+  function editDraft(field, value) {
+    setDraft(current => ({ ...(current.profile === entry.name ? current : emptySourceDraft(entry.name)), [field]: value }));
+  }
   async function save(event) {
     event.preventDefault(); if (busy.current) return;
-    busy.current = true; setSaving(true); setError(null);
+    busy.current = true; setSaving(true); setSaveError(null);
     try {
       await registerPrefixSource(entry.name, { reference, title: title || reference, applicability: applicability || entry.description, required });
-      setReference(""); setTitle(""); setApplicability(""); setTick(value => value + 1);
-    } catch (err) { setError(err.message); }
+      // A completion belongs to this exact submitted draft. Edits and profile
+      // changes made during the request must not be cleared by its late reply.
+      setDraft(current => current === draft ? emptySourceDraft(entry.name) : current);
+      setTick(value => value + 1);
+    } catch (err) { setSaveError({ profile: entry.name, message: err.message }); }
     finally { busy.current = false; setSaving(false); }
   }
   return html`<${React.Fragment}>
@@ -39,7 +53,7 @@ export function PrefixSourcesPanel({ entry, t }) {
       <section className="space-y-4 overflow-auto p-5 text-sm">
         ${error && html`<p role="alert" className="text-red-300">${error}</p>`}
         <label>${t("prefix.sourceGeneration")}
-          <select value=${generation} onChange=${event => setGeneration(event.target.value)} className="ml-2 bg-transparent">
+          <select value=${generation} onChange=${event => setSelection({ profile: entry.name, generation: event.target.value })} className="ml-2 bg-transparent">
             <option value="">${t("prefix.registeredOnly")}</option>
             ${generations.map(g => html`<option key=${g.generation} value=${g.generation}>${g.generation} (${g.qualification})</option>`)}
           </select>
@@ -64,10 +78,10 @@ export function PrefixSourcesPanel({ entry, t }) {
         </div>`}
         <form onSubmit=${save} className="space-y-2 border-t border-[var(--v2-panel-border)] pt-3">
           <p>${t("prefix.sourceSaveNotice")}</p>
-          <label className="block">${t("prefix.addSource")}<input required value=${reference} onChange=${event => setReference(event.target.value)} className="block w-full rounded border bg-transparent p-2" /></label>
-          <label className="block">${t("prefix.sourceTitle")}<input value=${title} onChange=${event => setTitle(event.target.value)} className="block w-full rounded border bg-transparent p-2" /></label>
-          <label className="block">${t("prefix.sourceApplicability")}<input value=${applicability} onChange=${event => setApplicability(event.target.value)} className="block w-full rounded border bg-transparent p-2" /></label>
-          <label><input type="checkbox" checked=${required} onChange=${event => setRequired(event.target.checked)} /> ${t("prefix.sourceRequired")}</label>
+          <label className="block">${t("prefix.addSource")}<input required value=${reference} onChange=${event => editDraft("reference", event.target.value)} className="block w-full rounded border bg-transparent p-2" /></label>
+          <label className="block">${t("prefix.sourceTitle")}<input value=${title} onChange=${event => editDraft("title", event.target.value)} className="block w-full rounded border bg-transparent p-2" /></label>
+          <label className="block">${t("prefix.sourceApplicability")}<input value=${applicability} onChange=${event => editDraft("applicability", event.target.value)} className="block w-full rounded border bg-transparent p-2" /></label>
+          <label><input type="checkbox" checked=${required} onChange=${event => editDraft("required", event.target.checked)} /> ${t("prefix.sourceRequired")}</label>
           <${Button} type="submit" size="sm" disabled=${saving || !reference.trim()}>${t("prefix.saveSource")}<//>
         </form>
       </section>

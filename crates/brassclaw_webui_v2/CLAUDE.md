@@ -15,7 +15,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -119,6 +121,8 @@ browser-reachable.
 | `webui.v2.get_extension_setup` | GET | `/api/webchat/v2/extensions/{package_id}/setup` | None | `ProjectionOnly` |
 | `webui.v2.setup_extension` | POST | `/api/webchat/v2/extensions/{package_id}/setup` | None | `ProductWorkflow` |
 | `webui.v2.get_llm_config` | GET | `/api/webchat/v2/llm/providers` | None | `ProjectionOnly` |
+| `webui.v2.get_llm_mutation` | GET | `/api/webchat/v2/llm/mutations/{mutation_id}` | None | `ProjectionOnly` |
+| `webui.v2.reconcile_llm_mutation` | POST | `/api/webchat/v2/llm/mutations/{mutation_id}/reconcile` | None | `ProductWorkflow` |
 | `webui.v2.upsert_llm_provider` | POST | `/api/webchat/v2/llm/providers` | None | `ProductWorkflow` |
 | `webui.v2.delete_llm_provider` | POST | `/api/webchat/v2/llm/providers/{provider_id}/delete` | None | `ProductWorkflow` |
 | `webui.v2.set_active_llm` | POST | `/api/webchat/v2/llm/active` | None | `ProductWorkflow` |
@@ -129,6 +133,19 @@ All routes require `BearerToken` auth with `AuthenticatedCaller`
 scope source. The host's bearer middleware is responsible for
 constructing the `WebUiAuthenticatedCaller` and injecting it as an
 axum `Extension` before the handler runs.
+
+Provider upsert, deactivation and role-selection payloads carry their original
+`mutation_id`; retries preserve both that ID and the complete explicit payload.
+An immutable receipt confirms the exact committed provider revision, selected role and role
+projection even if a later writer has changed the current snapshot. Readback
+does not resubmit a write. Reference-only reconciliation has no body and loads
+the affected role's current desired configuration without restoring the original
+selection or replacing unrelated role clients. A known commit remains distinct
+from failed runtime reconciliation and permits an explicit corrective edit;
+identical repeats keep the original reference. Provider/prefix views refresh
+through their canonical readers rather than installing old mutation snapshots.
+It does not itself establish revision-aware client or generated-prefix uptake;
+the rest of K3 remains open until that separate integration is qualified.
 
 The LLM configuration routes are operator-wide. Host composition must only
 mount them only when an instance-operator bearer is supported and authenticate

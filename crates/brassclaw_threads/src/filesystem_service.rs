@@ -40,8 +40,8 @@ use std::{
 
 use async_trait::async_trait;
 use brassclaw_filesystem::{
-    CasExpectation, ContentType, Entry, FileType, FilesystemError, FilesystemOperation,
-    RecordVersion, RootFilesystem, ScopedFilesystem,
+    CasExpectation, ContentType, Entry, FileType, FilesystemError, RecordVersion, RootFilesystem,
+    ScopedFilesystem,
 };
 use brassclaw_host_api::{HostApiError, InvocationId, ResourceScope, ScopedPath, ThreadId};
 use futures::{StreamExt, future::join_all};
@@ -2020,15 +2020,9 @@ fn summary_covers_redacted_or_deleted_content(
     })
 }
 
-// ── CAS-aware put with `Unsupported`→`Any` fallback ────────────
-//
-// Mirrors the run-state / authorization / outbound stores: every
-// multi-step transition is implemented with
-// `put(_, _, CasExpectation::Version)` + retry on
-// `FilesystemError::VersionMismatch`. Byte-only backends (LocalFilesystem)
-// do not expose record versions. Legacy versioned updates use the per-path
-// single-instance lock for their Any compatibility path. New inbound receipt
-// claims bypass this helper and require the backend's actual atomic Absent.
+// ── CAS-aware put ─────────────────────────────────────────────
+// Every caller keeps its exact precondition. Backend CAS supplies atomicity;
+// local locks only reduce contention among cooperating callers.
 
 /// Local error classification for the CAS-aware put helper.
 enum PutError {
@@ -2049,41 +2043,16 @@ async fn put_with_cas<F>(
 where
     F: RootFilesystem,
 {
-    let fallback_entry = entry.clone();
     match filesystem.put(scope, path, entry, cas).await {
         Ok(_) => Ok(()),
         Err(FilesystemError::VersionMismatch { .. }) => Err(PutError::VersionMismatch),
-        Err(FilesystemError::Unsupported {
-            operation: FilesystemOperation::WriteFile,
-            ..
-        }) => {
-            if matches!(cas, CasExpectation::Absent) {
-                let existing = filesystem
-                    .get(scope, path)
-                    .await
-                    .map_err(|error| PutError::Other(error.into()))?;
-                if existing.is_some() {
-                    return Err(PutError::VersionMismatch);
-                }
-            }
-            filesystem
-                .put(scope, path, fallback_entry, CasExpectation::Any)
-                .await
-                .map(|_| ())
-                .map_err(|error| PutError::Other(error.into()))
-        }
         Err(error) => Err(PutError::Other(error.into())),
     }
 }
 
-// ── Per-path async serialization (Unsupported→Any fallback) ────
-//
-// Backends without per-record versioning (LocalFilesystem) take the
-// `CasExpectation::Any` fallback path. The per-path mutex below is the
-// process-local ordering guarantee that fills in for CAS in that case.
-// Values are `Weak<Mutex<()>>` so the map does not pin lock entries alive
-// once all in-flight operations on a path have released their `Arc`
-// clones — mirrors the run-state store's lock map.
+// ── Per-path async serialization ──────────────────────────────
+// These locks reduce same-process contention; they never replace backend CAS.
+// Weak values allow unused path entries to be pruned.
 
 type FilesystemRecordLock = Arc<tokio::sync::Mutex<()>>;
 

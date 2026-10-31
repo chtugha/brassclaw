@@ -170,10 +170,15 @@ When `host.resolve_intent` returns `NoMatch`, the Orchestrator builds an LLM
 prompt (head + body) and obtains the answer:
 
 - **body** = chat message + history + selected memories/components.
-- **head** = the pre-compiled `base-prompt` (in the vLLM KV-cache). Composition
-  inserts a single `base-prompt` line; the Sempai-Kohai system substitutes the
-  real pre-compiled content at the very end of prompt creation, just before
-  tokenizing (f6).
+- **head** = the finished target-specific prefix selected by Recipe, Orchestrator
+  or role, with base-prompt as default if none is specified. Same-pair generator/
+  Kohai/Sempai share the saved accepted format/limit design with separate content.
+  Kohai first formats only the body for the final target pair. Optional connected
+  Sempai corrects that formatted body using its own generated reviewer prefix and
+  target-pair design, then returns the final dynamic prompt. Kohai adds the intended
+  finished head unchanged exactly once before it, without formatting the return
+  again, and checks the complete request before send. Historical placeholder/cache
+  descriptions do not qualify this path; follow the [shared contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26).
 - `host.assemble_prior_knowledge` + `host.non_match_llm_answer` carry the
   retrieval + LLM-call work; `host.post_reply` emits the answer.
 

@@ -24,8 +24,12 @@
 use std::sync::Arc;
 
 mod auth;
+mod auth_dcr_custody;
+mod auth_dcr_retirement;
 #[cfg(test)]
 mod auth_dcr_tests;
+mod auth_flow_custody;
+mod auth_oauth_setup_custody;
 mod auth_prompt;
 mod automation;
 mod available_extensions;
@@ -41,6 +45,9 @@ mod completed_turn_review;
 mod component_boot;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub mod component_import;
+mod credential_cleanup_custody;
+#[cfg(test)]
+mod credential_cleanup_custody_tests;
 pub mod db_config;
 mod default_system_prompt;
 // Ownership candidate remains isolated until the global-hosting lifecycle gate.
@@ -52,6 +59,12 @@ mod extension_lifecycle;
 mod extension_lifecycle_capabilities;
 mod extension_lifecycle_command;
 mod factory;
+#[cfg(all(
+    feature = "postgres",
+    feature = "root-llm-provider",
+    feature = "skills-db"
+))]
+pub mod final_model_encoding;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod global_root_seed;
 mod google_oauth;
@@ -90,6 +103,12 @@ mod oauth_provider_client;
 mod orchestrator_effect_executor;
 #[cfg(feature = "root-llm-provider")]
 pub mod pg_provider_repo;
+#[cfg(all(
+    feature = "postgres",
+    feature = "root-llm-provider",
+    feature = "skills-db"
+))]
+mod prefix_acceptances;
 mod product_auth_durable;
 mod product_auth_providers;
 mod product_auth_runtime_credentials;
@@ -101,6 +120,11 @@ mod projection;
 pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 #[cfg(feature = "postgres")]
 pub mod builtin_bootstrap;
+#[cfg(test)]
+#[path = "../../brassclaw_auth/tests/support/credential_expiry.rs"]
+mod credential_expiry_test_support;
+#[cfg(test)]
+mod credential_requirement_custody_tests;
 /// Phase P Step 9: doc-sync file-watcher + PG listener.
 #[cfg(feature = "postgres")]
 pub(crate) mod doc_sync_watcher;
@@ -174,7 +198,10 @@ pub(crate) mod pg_token_settings_store;
 pub(crate) mod pg_tool_skill_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_tool_store;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
+#[cfg(all(
+    feature = "postgres",
+    any(feature = "skills-db", feature = "test-support")
+))]
 mod pg_transcript_admission;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_user_preference_store;
@@ -183,6 +210,10 @@ pub(crate) mod plan_library;
 mod provider_admin;
 #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 mod provider_admin_product_command;
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+mod provider_dispatch;
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+mod provider_mutation;
 mod readiness;
 pub mod recipe_outcome_listener;
 #[cfg(feature = "postgres")]
@@ -200,6 +231,14 @@ pub mod seed_builtin_host;
 pub(crate) mod sempai_proposal_sink;
 #[cfg(feature = "postgres")]
 pub(crate) mod system_seed;
+#[cfg(all(feature = "root-llm-provider", feature = "skills-db"))]
+mod task_memory_embeddings;
+#[cfg(feature = "skills-db")]
+mod task_model_capture;
+#[cfg(feature = "skills-db")]
+mod task_model_capture_record;
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+mod task_model_provider;
 #[cfg(feature = "test-support")]
 pub mod test_support;
 mod tier_zero_llm_guard;
@@ -233,10 +272,10 @@ pub mod validation_queue;
 
 pub use auth::{
     RebornAuthContinuationDispatcher, RebornAuthProductError, RebornCredentialLifecycleError,
-    RebornManualTokenChallenge, RebornManualTokenError, RebornManualTokenSetupRequest,
-    RebornManualTokenSubmitRequest, RebornManualTokenSubmitResponse, RebornOAuthCallbackError,
-    RebornOAuthCallbackOutcome, RebornOAuthCallbackRequest, RebornOAuthCallbackResponse,
-    RebornProductAuthServicePorts, RebornProductAuthServices,
+    RebornManualTokenChallenge, RebornManualTokenError, RebornManualTokenSetupReceipt,
+    RebornManualTokenSetupRequest, RebornManualTokenSubmitRequest, RebornManualTokenSubmitResponse,
+    RebornOAuthCallbackError, RebornOAuthCallbackOutcome, RebornOAuthCallbackRequest,
+    RebornOAuthCallbackResponse, RebornProductAuthServicePorts, RebornProductAuthServices,
 };
 pub use automation::RebornWebuiAutomationFacade;
 pub use brassclaw_auth::GoogleOAuthRouteConfig;
@@ -1090,6 +1129,8 @@ mod bootstrap_generation_validation;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_measurement_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_pair_approval;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_recipe_flow;
 #[cfg(feature = "skills-db")]
 mod bootstrap_reply_approval;
@@ -1097,6 +1138,8 @@ mod bootstrap_reply_approval;
 mod bootstrap_reply_validation;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_validation;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_workflow_evidence;
 #[cfg(feature = "skills-db")]
 mod public_recipe_population;
 
@@ -1128,6 +1171,9 @@ mod source_inspection_components;
 mod installed_monty_catalogue;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod task_tool_credentials;
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod authored_monty_catalogue;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod catalogue_source_export;
@@ -1148,10 +1194,14 @@ mod pg_prefix_generation_backend;
 mod pg_prefix_source_backend;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_compiler_candidates;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_design_candidates;
 #[cfg(feature = "skills-db")]
 mod prefix_encoding_candidates;
 #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
 mod prefix_generation_behavior_tests;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_generation_binding;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_generation_candidates;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
@@ -1169,9 +1219,19 @@ mod prefix_model_configuration;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_model_designs;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_pair_candidates;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_pair_case_capture;
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+mod prefix_pair_cases_tests;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_pair_construction;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_profile_seeds;
 #[cfg(all(test, feature = "skills-db"))]
 mod prefix_reference_tests;
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+mod prefix_registered_source_tests;
 #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
 mod prefix_source_storage_tests;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
@@ -1187,6 +1247,8 @@ mod validator_preload_tests;
 mod validator_python_contract_tests;
 #[cfg(all(test, feature = "skills-db"))]
 mod validator_recursive_contract_tests;
+#[cfg(all(test, feature = "skills-db"))]
+mod validator_skill_interface_tests;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod global_monty_startup;
@@ -1220,3 +1282,19 @@ mod native_admission_fixture;
     feature = "root-llm-provider"
 ))]
 mod native_model_usage_tests;
+
+#[cfg(all(test, feature = "skills-db"))]
+#[path = "native_secret_reference_tests.rs"]
+mod native_secret_reference_tests;
+
+#[cfg(all(test, feature = "skills-db"))]
+#[path = "native_entry_delete_tests.rs"]
+mod native_entry_delete_tests;
+
+#[cfg(all(test, feature = "skills-db"))]
+#[path = "native_secret_custody_tests.rs"]
+mod native_secret_custody_tests;
+
+/// Shared manual-token setup/publication and confirmed continuation boundary.
+#[doc(hidden)]
+pub use manual_token_flow::RebornManualTokenFlowService;

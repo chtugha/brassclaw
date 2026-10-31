@@ -252,6 +252,7 @@ async fn local_dev_product_auth_entrypoint_redacts_manual_token_submit() {
 
     let challenge = product_auth
         .request_manual_token_setup(RebornManualTokenSetupRequest {
+            requirement_setup: None,
             scope: scope.clone(),
             provider: provider.clone(),
             label: label.clone(),

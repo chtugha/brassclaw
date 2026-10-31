@@ -6,6 +6,19 @@ remaining experiments and production prerequisites. This plan extends
 [the prefix v3 upgrade plan](prefix_v3_upgrade.md), especially phases C1/C2;
 [recipe.md](../../recipe.md) and [skills.md](../../skills.md) remain authoritative.
 
+Current target clarification (2026-10-26): apply the
+[shared pair-design/selection contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26).
+Same-pair roles share the design but have separately generated prefixes. Base is
+the default only without a specific selection; it is not compulsory Sempai content.
+The same stored accepted revision serves generator, Kohai and same-pair Sempai.
+Kohai first formats only the dynamic Orchestrator prompt for the final target;
+connected/enabled Sempai may then correct it using its own generated reviewer
+prefix/design and returns the final dynamic prompt. Kohai inserts the intended
+finished immutable prefix unchanged exactly once before that return, with no
+second formatting stage. Evaluate prompt-review examples against this order.
+The override/template/cache experiments recorded below are historical evidence,
+not instructions to change the provider server or replace current canonical limits.
+
 ## 1. Recipe-first workflow
 
 Express the production improvement workflow through reusable components:

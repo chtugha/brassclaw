@@ -15,7 +15,9 @@ binding and current kernel checks still apply before every actual dispatch.
 Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
-Each real Skill has a canonical execution Recipe with a matching command.
+A Skill needs no dedicated Recipe or matching command to exist or be complete.
+Many Recipes may reuse the same approved usage. MCP exposure requires a separately
+qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
 MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
 Skill rows. Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
@@ -52,7 +54,7 @@ remain subject to the documented runtime implementation gaps.
 
 ## Start Here
 
-- Read `CLAUDE.md` first; it is the crate-local guardrail file (five primitives, thread state machine, execution loop, capability leases, data-retention rule).
+- Read `CLAUDE.md` first for current Monty boundaries and the explicitly historical engine-v2 inventory. Its five-primitive/lease model is not a new v3 component or Tool-grant contract.
 - Read `MONTY.md` before touching Tier-1 CodeAct/scripting; it documents the embedded Python interpreter's pin and supported-feature limits.
 - Read `Cargo.toml` for the actual dependencies and feature gates and note the ReDoS guardrail at the top of `src/lib.rs`: do not add `fancy-regex` without redesigning `executor/orchestrator.rs::__regex_match__`.
 - Full roadmap: `docs/plans/2026-03-20-engine-v2-architecture.md`; per-project sandbox: `docs/plans/2026-04-10-engine-v2-sandbox.md`.

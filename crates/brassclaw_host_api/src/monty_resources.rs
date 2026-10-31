@@ -56,6 +56,22 @@ pub struct MontyExecutionLimits {
     pub default_http_request_timeout_millis: u64,
     #[serde(default = "default_http_response_body_bytes")]
     pub default_http_response_body_bytes: u64,
+    /// Bounds captured together before an OAuth token exchange or refresh.
+    /// These are independent of ordinary host HTTP defaults.
+    #[serde(default = "default_oauth_token_timeout")]
+    pub oauth_token_timeout_millis: u32,
+    #[serde(default = "default_oauth_token_response_bytes")]
+    pub oauth_token_response_body_bytes: u64,
+    /// HTTP bounds for OAuth server discovery, dynamic client registration and
+    /// its explicit cleanup. Independent of token exchange/refresh bounds.
+    #[serde(default = "default_oauth_token_timeout")]
+    pub oauth_dcr_timeout_millis: u32,
+    #[serde(default = "default_oauth_dcr_response_bytes")]
+    pub oauth_dcr_response_body_bytes: u64,
+    /// Maximum age of discovered OAuth server metadata. Zero disables reuse.
+    /// This never changes an accepted Auth flow's expiry or registration.
+    #[serde(default = "default_oauth_dcr_metadata_cache_ttl")]
+    pub oauth_dcr_metadata_cache_ttl_secs: u32,
     /// Memory tree depth used when the caller omits it, and the exact largest
     /// permitted request. The resulting value still obeys typed-value limits.
     #[serde(default = "default_memory_tree_depth")]
@@ -197,6 +213,11 @@ impl Default for MontyExecutionLimits {
             resource_store_timeout_millis: default_resource_store_timeout(),
             default_http_request_timeout_millis: default_http_request_timeout(),
             default_http_response_body_bytes: default_http_response_body_bytes(),
+            oauth_token_timeout_millis: default_oauth_token_timeout(),
+            oauth_token_response_body_bytes: default_oauth_token_response_bytes(),
+            oauth_dcr_timeout_millis: default_oauth_token_timeout(),
+            oauth_dcr_response_body_bytes: default_oauth_dcr_response_bytes(),
+            oauth_dcr_metadata_cache_ttl_secs: default_oauth_dcr_metadata_cache_ttl(),
             default_memory_tree_depth: default_memory_tree_depth(),
             max_memory_tree_depth: default_memory_tree_max_depth(),
             max_coding_read_bytes: default_max_coding_read_bytes(),
@@ -295,6 +316,12 @@ impl MontyExecutionLimits {
             || self.model_quote_output_tokens == 0
             || self.resource_store_timeout_millis == 0
             || self.default_http_request_timeout_millis == 0
+            || self.oauth_token_timeout_millis == 0
+            || self.oauth_token_response_body_bytes == 0
+            || self.oauth_token_response_body_bytes > isize::MAX as u64
+            || self.oauth_dcr_timeout_millis == 0
+            || self.oauth_dcr_response_body_bytes == 0
+            || self.oauth_dcr_response_body_bytes > isize::MAX as u64
             || self.default_memory_tree_depth == 0
             || self.default_memory_tree_depth > self.max_memory_tree_depth
             || self.default_http_response_body_bytes == 0
@@ -386,6 +413,21 @@ fn default_model_quote_output_tokens() -> u32 {
 
 fn default_resource_store_timeout() -> u64 {
     2000
+}
+
+fn default_oauth_token_timeout() -> u32 {
+    30_000
+}
+fn default_oauth_token_response_bytes() -> u64 {
+    16 * 1024
+}
+
+fn default_oauth_dcr_response_bytes() -> u64 {
+    32 * 1024
+}
+
+fn default_oauth_dcr_metadata_cache_ttl() -> u32 {
+    600
 }
 
 fn default_http_request_timeout() -> u64 {

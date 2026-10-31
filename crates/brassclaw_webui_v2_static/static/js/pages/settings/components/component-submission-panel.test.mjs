@@ -53,3 +53,38 @@ test("candidate changes require a new observed counter", async () => {
 test("unsafe numeric head cannot be rounded into an authoring request", async () => {
   const f = fixture({ head: 9007199254740992 }); fill(f); await prop(button(f.render(), "componentSubmission.readHead"), "onClick")(); await prop(button(f.render(), "componentSubmission.submit"), "onClick")(); assert.equal(f.calls.length, 0);
 });
+
+test("a joint function request retains both original edits after an uncertain commit", async () => {
+  const f = fixture({ loseFirst: true }); fill(f);
+  const partner = { role: "changed", candidate_bytes: '{"uuid":"implementation","content":"ä猫"}', base: null, expected_previous_version: 0 };
+  field(f, "componentSubmission.partner", JSON.stringify(partner));
+  await prop(button(f.render(), "componentSubmission.readHead"), "onClick")();
+  await prop(button(f.render(), "componentSubmission.submit"), "onClick")();
+  assert.equal(JSON.stringify(f.calls[0].function_partner), JSON.stringify(partner));
+  const first = JSON.stringify(f.calls[0]);
+  assert.equal(prop(button(f.render(), "componentSubmission.readHead"), "disabled"), true);
+  await prop(button(f.render(), "componentSubmission.retry"), "onClick")();
+  assert.equal(JSON.stringify(f.calls[1]), first);
+});
+
+test("context is sent as an exact partner, while null preserves the old request", async () => {
+  const f = fixture(); fill(f);
+  const partner = { role: "context", reference: { uuid: "skill", version: 1, checksum: "exact" } };
+  field(f, "componentSubmission.partner", JSON.stringify(partner));
+  await prop(button(f.render(), "componentSubmission.readHead"), "onClick")();
+  await prop(button(f.render(), "componentSubmission.submit"), "onClick")();
+  assert.equal(JSON.stringify(f.calls[0].function_partner), JSON.stringify(partner));
+  const old = fixture(); fill(old);
+  await prop(button(old.render(), "componentSubmission.readHead"), "onClick")();
+  await prop(button(old.render(), "componentSubmission.submit"), "onClick")();
+  assert.equal(Object.hasOwn(old.calls[0], "function_partner"), false);
+});
+
+test("invalid or rounded partner input makes no request", async () => {
+  for (const partner of ["{", JSON.stringify({ role: "changed", expected_previous_version: 9007199254740992 }), JSON.stringify({ role: "changed", expected_previous_version: -1 })]) {
+    const f = fixture(); fill(f); field(f, "componentSubmission.partner", partner);
+    await prop(button(f.render(), "componentSubmission.readHead"), "onClick")();
+    await prop(button(f.render(), "componentSubmission.submit"), "onClick")();
+    assert.equal(f.calls.length, 0);
+  }
+});

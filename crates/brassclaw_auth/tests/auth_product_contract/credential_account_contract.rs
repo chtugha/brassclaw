@@ -2,6 +2,14 @@ use crate::common::*;
 use brassclaw_auth::CredentialAccountRecordSource;
 use brassclaw_host_api::ThreadId;
 
+#[path = "../support/credential_expiry.rs"]
+mod issuer_expiry;
+
+#[tokio::test]
+async fn elapsed_issuer_expiry_projects_recovery_without_mutating_memory_account_snapshot() {
+    issuer_expiry::verify(&InMemoryAuthProductServices::new(), scope("issuer-expiry")).await;
+}
+
 #[tokio::test]
 async fn credential_setup_updates_only_explicit_authorized_account() {
     let services = InMemoryAuthProductServices::new();
@@ -16,6 +24,7 @@ async fn credential_setup_updates_only_explicit_authorized_account() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: None,
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         }))
@@ -34,6 +43,7 @@ async fn credential_setup_updates_only_explicit_authorized_account() {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(access_secret.clone()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: provider_scopes(&["repo"]),
             },
@@ -58,6 +68,7 @@ async fn credential_setup_updates_only_explicit_authorized_account() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: None,
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         }))
@@ -77,6 +88,7 @@ async fn credential_setup_updates_only_explicit_authorized_account() {
                 owner_extension: Some(ExtensionId::new("attacker").unwrap()),
                 granted_extensions: Vec::new(),
                 access_secret: Some(SecretHandle::new("github-takeover").unwrap()),
+                access_expires_at: None,
                 refresh_secret: None,
                 scopes: provider_scopes(&["repo"]),
             },
@@ -232,6 +244,7 @@ async fn credential_account_list_filters_by_requester_authority() {
             owner_extension: Some(github_extension.clone()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-extension-owned").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -247,6 +260,7 @@ async fn credential_account_list_filters_by_requester_authority() {
             owner_extension: None,
             granted_extensions: vec![github_extension.clone()],
             access_secret: Some(SecretHandle::new("github-shared").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -300,6 +314,7 @@ async fn credential_account_lookup_filters_by_requester_authority() {
             owner_extension: Some(github_extension.clone()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-extension-owned").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -353,6 +368,7 @@ async fn credential_account_selection_requires_user_choice_for_multiple_configur
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-expired").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -377,6 +393,7 @@ async fn credential_account_selection_requires_user_choice_for_multiple_configur
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-work").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -401,6 +418,7 @@ async fn credential_account_selection_requires_user_choice_for_multiple_configur
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-personal").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -433,6 +451,7 @@ async fn credential_account_selection_filters_by_requester_authority() {
             owner_extension: Some(github_extension.clone()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-extension-owned").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -479,6 +498,7 @@ async fn credential_account_selection_filters_by_requester_authority() {
             owner_extension: None,
             granted_extensions: vec![github_extension.clone()],
             access_secret: Some(SecretHandle::new("github-shared").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -509,6 +529,7 @@ async fn owner_record_source_can_find_reusable_accounts_from_any_thread() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-work").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -595,6 +616,7 @@ async fn credential_recovery_projection_distinguishes_recoverable_states() {
                 owner_extension: None,
                 granted_extensions: Vec::new(),
                 access_secret: Some(SecretHandle::new(format!("github-{user}-access")).unwrap()),
+                access_expires_at: None,
                 refresh_secret: Some(SecretHandle::new(format!("github-{user}-refresh")).unwrap()),
                 scopes: provider_scopes(&["repo"]),
             })
@@ -636,6 +658,7 @@ async fn credential_recovery_projection_returns_redacted_authorized_choices() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-work-secret").unwrap()),
+            access_expires_at: None,
             refresh_secret: Some(SecretHandle::new("github-work-refresh-secret").unwrap()),
             scopes: provider_scopes(&["repo"]),
         })
@@ -651,6 +674,7 @@ async fn credential_recovery_projection_returns_redacted_authorized_choices() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-personal-secret").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: provider_scopes(&["gist"]),
         })
@@ -738,6 +762,7 @@ async fn credential_recovery_projection_returns_redacted_authorized_choices() {
             owner_extension: None,
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-expired-secret").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -820,6 +845,7 @@ async fn extension_owned_credential_recovery_filters_by_owner_extension() {
             owner_extension: Some(github_extension.clone()),
             granted_extensions: Vec::new(),
             access_secret: Some(SecretHandle::new("github-extension-owned").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: Vec::new(),
         })
@@ -869,6 +895,7 @@ async fn shared_admin_managed_credentials_require_explicit_grants() {
             owner_extension: None,
             granted_extensions: vec![github_extension.clone()],
             access_secret: Some(SecretHandle::new("github-shared-secret").unwrap()),
+            access_expires_at: None,
             refresh_secret: None,
             scopes: provider_scopes(&["repo"]),
         })

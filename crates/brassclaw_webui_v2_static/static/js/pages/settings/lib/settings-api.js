@@ -1,3 +1,4 @@
+import { submitProviderMutation } from "./provider-mutations.js";
 import { apiFetch } from "../../../lib/api.js";
 
 // Settings endpoints depend on v1 `/api/settings/*`, `/api/llm/*`,
@@ -31,25 +32,14 @@ export function importSettings(_payload) {
 export function fetchLlmProviders() {
   return apiFetch("/api/webchat/v2/llm/providers");
 }
-export async function upsertLlmProvider(payload) {
-  const snapshot = await apiFetch("/api/webchat/v2/llm/providers", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  if (typeof globalThis.dispatchEvent === "function" && typeof globalThis.Event === "function") globalThis.dispatchEvent(new Event("brassclaw-provider-settings-changed"));
-  return snapshot;
+export function upsertLlmProvider(payload) {
+  return submitProviderMutation("upsert", payload.id, "/api/webchat/v2/llm/providers", payload);
 }
 export function deleteLlmProvider(providerId, expectedRevision) {
-  return apiFetch(`/api/webchat/v2/llm/providers/${encodeURIComponent(providerId)}/delete`, {
-    method: "POST",
-    body: JSON.stringify({ expected_revision: expectedRevision }),
-  });
+  return submitProviderMutation("deactivate", providerId, `/api/webchat/v2/llm/providers/${encodeURIComponent(providerId)}/delete`, { expected_revision: expectedRevision });
 }
 export function setActiveLlm(payload) {
-  return apiFetch("/api/webchat/v2/llm/active", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return submitProviderMutation("select", payload.role || "kohai", "/api/webchat/v2/llm/active", payload);
 }
 export function testLlmProviderConnection(payload) {
   return apiFetch("/api/webchat/v2/llm/test-connection", {
@@ -63,8 +53,8 @@ export function listLlmProviderModels(payload) {
     body: JSON.stringify(payload),
   });
 }
-// Begin NEAR AI browser login. Returns { auth_url } to open; a background task
-// stores the session token and makes NEAR AI active once the user authorizes.
+// Begin NEAR AI browser login. Returns { auth_url, mutation_id }; the callback
+// commits encrypted credentials and selection. Inspect the original receipt.
 export function startNearaiLogin(payload) {
   return apiFetch("/api/webchat/v2/llm/nearai/login", {
     method: "POST",
@@ -72,6 +62,19 @@ export function startNearaiLogin(payload) {
   });
 }
 
+
+// Sign the exact server challenge with an external NEAR wallet. Completion is
+// one POST only; on an uncertain response, read/reconcile its original mutation.
+export function startNearaiWalletLogin(payload = {}) {
+  return apiFetch("/api/webchat/v2/llm/nearai/wallet/start", {
+    method: "POST", body: JSON.stringify(payload),
+  });
+}
+export function completeNearaiWalletLogin(payload) {
+  return apiFetch("/api/webchat/v2/llm/nearai/wallet", {
+    method: "POST", body: JSON.stringify(payload),
+  });
+}
 
 // Begin an OpenAI Codex (ChatGPT subscription) device-code login. Returns
 // { user_code, verification_uri } to display; a background task polls for
@@ -396,6 +399,9 @@ export function fetchCatalogueActivationStatus() {
 export function prepareComponentDeployment(request) {
   return apiFetch("/api/webchat/v2/component-deployment", { method: "POST", body: JSON.stringify(request) });
 }
+export function reconcileCataloguePublication(activation) {
+  return apiFetch(`/api/webchat/v2/catalogue/${encodeURIComponent(activation)}/reconcile`, { method: "POST" });
+}
 export function activateComponentDeployment(request) {
   return apiFetch("/api/webchat/v2/catalogue", { method: "POST", body: JSON.stringify(request) });
 }
@@ -424,11 +430,32 @@ export function registerPrefixSource(profile, request) {
 export function fetchPrefixModelDesigns() {
   return apiFetch("/api/webchat/v2/prefix-model-designs");
 }
+export function fetchPrefixModelSetupDraft(specification, revision = null) {
+  const query = revision === null ? "" : `?revision=${encodeURIComponent(revision)}`;
+  return apiFetch(`/api/webchat/v2/prefix-model-specifications/${encodeURIComponent(specification)}/setup-draft${query}`);
+}
+export function updatePrefixModelSetupDraft(specification, request) {
+  return apiFetch(`/api/webchat/v2/prefix-model-specifications/${encodeURIComponent(specification)}/setup-draft`, { method: "PUT", body: JSON.stringify(request) });
+}
 export function capturePrefixModel(request) {
   return apiFetch("/api/webchat/v2/prefix-model-specifications", { method: "POST", body: JSON.stringify(request) });
 }
 export function retainPrefixModelArtifacts(request) {
   return apiFetch("/api/webchat/v2/prefix-model-artifacts", { method: "POST", body: JSON.stringify(request) });
+}
+
+export function retainPrefixPairConstruction(request) {
+  return apiFetch("/api/webchat/v2/prefix-model-designs/proposals", { method: "POST", body: JSON.stringify(request) });
+}
+
+function prefixPairJobPath(specification, proposal, job) {
+  return `/api/webchat/v2/prefix-model-designs/proposals/${encodeURIComponent(specification)}/${encodeURIComponent(proposal)}/jobs/${encodeURIComponent(job)}`;
+}
+export function checkPrefixPairCases(specification, proposal, job) {
+  return apiFetch(prefixPairJobPath(specification, proposal, job), { method: "POST" });
+}
+export function fetchPrefixPairJob(specification, proposal, job) {
+  return apiFetch(prefixPairJobPath(specification, proposal, job));
 }
 
 export function retainPrefixDesignProposal(profile, request) {

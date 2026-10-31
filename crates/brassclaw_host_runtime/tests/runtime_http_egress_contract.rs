@@ -36,6 +36,9 @@ use std::{
 };
 use tempfile::tempdir;
 
+#[path = "runtime_http_egress_contract/sensitive_save.rs"]
+mod sensitive_save;
+
 #[test]
 fn tool_call_http_egress_returns_sanitized_partial_response_for_model_visible_output() {
     let network = RecordingNetwork::err(NetworkHttpError::ResponseBodyLimit {
@@ -848,10 +851,13 @@ async fn mcp_http_client_consumes_product_auth_staged_credential_on_first_sessio
     let capability_id = CapabilityId::new("mcp.search").unwrap();
     let account_access_handle = SecretHandle::new("mcp_account_access").unwrap();
     let runtime_slot_handle = SecretHandle::new("mcp_runtime_token").unwrap();
-    let services = test_obligation_services().with_credential_account_resolver(Arc::new(
+    let services = test_obligation_services();
+    let store = services.secret_store();
+    let services = services.with_credential_account_resolver(Arc::new(
         SourceScopedCredentialAccountResolver {
             source_scope: source_scope.clone(),
             handle: account_access_handle.clone(),
+            store,
         },
     ));
     services
@@ -876,6 +882,7 @@ async fn mcp_http_client_consumes_product_auth_staged_credential_on_first_sessio
                     policy: sample_policy(),
                 },
                 Obligation::InjectCredentialAccountOnce {
+                    requirement: None,
                     handle: runtime_slot_handle.clone(),
                     provider: RuntimeCredentialAccountProviderId::new("mcp").unwrap(),
                     provider_scopes: Vec::new(),
@@ -1904,7 +1911,13 @@ async fn host_http_egress_fails_closed_when_real_scoped_filesystem_write_fails()
         Arc::new(root),
         MountView::new(Vec::new()).unwrap(),
     ));
-    fs::write(temp.path().join("dir"), b"blocking file").unwrap();
+    // The preflight sees an absent parent. Its replacement happens during the
+    // real transport boundary, so the second check must retain network usage.
+    let blocking_parent = temp.path().join("dir");
+    let network = BeforeResponseNetwork {
+        inner: network,
+        before_response: move || fs::write(&blocking_parent, b"blocking file").unwrap(),
+    };
     let service = request_policy_staging_egress_with_body_store(network, scoped_filesystem);
     let mounts = MountView::new(vec![MountGrant::new(
         MountAlias::new("/workspace").unwrap(),
@@ -1948,6 +1961,70 @@ async fn host_http_egress_fails_closed_when_real_scoped_filesystem_write_fails()
         fs::read(temp.path().join("dir")).unwrap(),
         b"blocking file".to_vec()
     );
+}
+
+#[tokio::test]
+async fn host_http_egress_cannot_replace_a_structured_entry_with_downloaded_bytes() {
+    use brassclaw_filesystem::{CasExpectation, Entry, RecordKind};
+
+    let body = b"downloaded body";
+    let network = RecordingNetwork::ok(NetworkHttpResponse {
+        status: 200,
+        headers: vec![],
+        body: body.to_vec(),
+        usage: NetworkUsage {
+            request_bytes: 0,
+            response_bytes: body.len() as u64,
+            resolved_ip: None,
+        },
+    });
+    let requests = network.requests.clone();
+    let root = Arc::new(InMemoryBackend::new());
+    let path = VirtualPath::new("/projects/workspace/record.json").unwrap();
+    let entry = Entry::record(
+        RecordKind::new("test_record").unwrap(),
+        &json!({"keep": true}),
+    )
+    .unwrap();
+    root.put(&path, entry, CasExpectation::Absent)
+        .await
+        .unwrap();
+    let original = root.get(&path).await.unwrap().unwrap();
+    let mounts = MountView::new(vec![MountGrant::new(
+        MountAlias::new("/workspace").unwrap(),
+        VirtualPath::new("/projects/workspace").unwrap(),
+        MountPermissions::read_write(),
+    )])
+    .unwrap();
+    let scoped = Arc::new(ScopedFilesystem::with_fixed_view(
+        Arc::clone(&root),
+        MountView::default(),
+    ));
+    let service = request_policy_staging_egress_with_body_store(network, scoped);
+    let error = service
+        .execute(RuntimeHttpEgressRequest {
+            runtime: RuntimeKind::FirstParty,
+            scope: sample_scope(),
+            capability_id: sample_capability_id(),
+            method: NetworkMethod::Get,
+            url: "https://api.example.test/v1/run".into(),
+            headers: vec![],
+            body: vec![],
+            network_policy: sample_policy(),
+            credential_injections: vec![],
+            response_body_limit: Some(4096),
+            save_body_to: Some(save_target_with_mount("/workspace/record.json", &mounts)),
+            timeout_ms: None,
+        })
+        .await
+        .expect_err("a download cannot convert a structured record into a file");
+    assert!(matches!(
+        error,
+        RuntimeHttpEgressError::Request { reason, request_bytes: 0, response_bytes: 0 }
+        if reason == "response_body_store_unauthorized"
+    ));
+    assert!(requests.lock().unwrap().is_empty());
+    assert_eq!(root.get(&path).await.unwrap().unwrap(), original);
 }
 
 #[tokio::test]
@@ -2010,6 +2087,22 @@ async fn host_http_egress_saves_redacted_response_body() {
 struct RecordingNetwork {
     response: Result<NetworkHttpResponse, NetworkHttpError>,
     requests: Arc<Mutex<Vec<NetworkHttpRequest>>>,
+}
+
+struct BeforeResponseNetwork<F> {
+    inner: RecordingNetwork,
+    before_response: F,
+}
+
+#[async_trait::async_trait]
+impl<F: Fn() + Send + Sync> NetworkHttpEgress for BeforeResponseNetwork<F> {
+    async fn execute(
+        &self,
+        request: NetworkHttpRequest,
+    ) -> Result<NetworkHttpResponse, NetworkHttpError> {
+        (self.before_response)();
+        self.inner.execute(request).await
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2275,10 +2368,15 @@ struct RequestPolicyStagingEgress {
     inner: Arc<dyn RuntimeHttpEgress>,
 }
 
-#[derive(Debug)]
 struct SourceScopedCredentialAccountResolver {
     source_scope: ResourceScope,
     handle: SecretHandle,
+    store: Arc<dyn brassclaw_secrets::SecretStore>,
+}
+impl std::fmt::Debug for SourceScopedCredentialAccountResolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SourceScopedCredentialAccountResolver")
+    }
 }
 
 #[async_trait::async_trait]
@@ -2287,10 +2385,13 @@ impl RuntimeCredentialAccountResolver for SourceScopedCredentialAccountResolver 
         &self,
         _request: RuntimeCredentialAccountRequest<'_>,
     ) -> Result<RuntimeCredentialAccessSecret, CredentialStageError> {
-        Ok(RuntimeCredentialAccessSecret {
-            scope: self.source_scope.clone(),
-            handle: self.handle.clone(),
-        })
+        RuntimeCredentialAccessSecret::capture(
+            self.store.as_ref(),
+            self.source_scope.clone(),
+            self.handle.clone(),
+            None,
+        )
+        .await
     }
 }
 

@@ -1,6 +1,6 @@
 //! Loopback protocol fixtures shared by native provider acceptance tests.
 //! Production ingress remains owned by its host; this module cannot ship.
-#![cfg(test)]
+#![cfg(all(test, feature = "postgres", feature = "skills-db"))]
 
 use std::future::Future;
 

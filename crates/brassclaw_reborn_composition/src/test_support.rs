@@ -19,6 +19,21 @@ use brassclaw_loop_support::{
 };
 use brassclaw_turns::run_profile::{LoopCapabilityPort, LoopModelUsage};
 
+/// Construct the native turn store with the same transcript commit participant
+/// wired by `factory::build_pg_runtime_stores` on the skills-db production path.
+/// Tests only: this exposes no new production store handle or admission policy.
+/// The caller must retain the migrated PostgreSQL owner for the store's lifetime.
+#[cfg(feature = "postgres")]
+pub fn postgres_turn_state_with_transcript(
+    pool: Arc<brassclaw_pg::PgPool>,
+    tenant: &str,
+) -> brassclaw_turns::PgTurnStateStore {
+    brassclaw_turns::PgTurnStateStore::new(Arc::clone(&pool), tenant)
+        .with_admission_commit_participant(Arc::new(
+            crate::pg_transcript_admission::PgTranscriptAdmission::new(pool, tenant),
+        ))
+}
+
 /// One scripted reply from the mock LLM.
 ///
 /// `usage` is forwarded into [`HostManagedModelResponse::usage`] so the
