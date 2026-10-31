@@ -194,6 +194,8 @@ pub(crate) mod inner {
     /// `list_settings_*` method overrides in `RebornServices`.
     #[derive(Clone)]
     pub(crate) struct PgSettingsListingService {
+        #[cfg(feature = "skills-db")]
+        catalogue: Option<Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>>,
         pool: Arc<PgPool>,
         tenant_id: String,
     }
@@ -201,9 +203,20 @@ pub(crate) mod inner {
     impl PgSettingsListingService {
         pub(crate) fn new(pool: Arc<PgPool>, tenant_id: impl Into<String>) -> Self {
             Self {
+                #[cfg(feature = "skills-db")]
+                catalogue: None,
                 pool,
                 tenant_id: tenant_id.into(),
             }
+        }
+
+        #[cfg(feature = "skills-db")]
+        pub(crate) fn with_catalogue(
+            mut self,
+            catalogue: Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
+        ) -> Self {
+            self.catalogue = Some(catalogue);
+            self
         }
 
         /// Fail loud with [`SettingsListingError::MissingTable`] when the
@@ -712,10 +725,25 @@ pub(crate) mod inner {
             brassclaw_product_workflow::SettingsComponentDetail,
             brassclaw_product_workflow::SettingsListingError,
         > {
-            let (class_code, component) = self
+            let (class_code, mut component) = self
                 .get(spec_for(component_type), id)
                 .await
                 .map_err(map_listing_error)?;
+            if component_type == brassclaw_product_workflow::SettingsComponentType::Recipes {
+                component["retained_catalogue"] = serde_json::Value::Null;
+                #[cfg(feature = "skills-db")]
+                if let Some(catalogue) = &self.catalogue {
+                    let uuid = uuid::Uuid::parse_str(id).map_err(|_| {
+                        brassclaw_product_workflow::SettingsListingError::InvalidId(id.into())
+                    })?;
+                    component["retained_catalogue"] =
+                        catalogue.retained_recipe_detail(uuid).await.map_err(|_| {
+                            brassclaw_product_workflow::SettingsListingError::Unavailable(
+                                "retained Recipe catalogue detail unavailable".into(),
+                            )
+                        })?;
+                }
+            }
             Ok(brassclaw_product_workflow::SettingsComponentDetail {
                 id: id.to_string(),
                 class_code: class_code as u16,
@@ -880,6 +908,17 @@ pub(crate) mod inner {
                 assert_eq!(detail.id, id);
                 assert_eq!(detail.class_code, 21);
                 assert_eq!(detail.component["name"], "detail-recipe");
+                assert!(
+                    detail
+                        .component
+                        .as_object()
+                        .unwrap()
+                        .contains_key("retained_catalogue")
+                );
+                assert!(
+                    detail.component["retained_catalogue"].is_null(),
+                    "missing catalogue owner never claims Default"
+                );
                 // The class-specific column the list row cannot carry.
                 assert_eq!(detail.component["steps"]["llm_call_required"], false);
             }

@@ -1,4 +1,143 @@
-## Latest —040–044 accepted; checkpoint publication in progress
+## Latest —045–051 accepted; next compatible bundle ready
+
+Original72982 is gone by actual ps. Root independently acquired the common Cargo
+lock and verified3315 terminal source hashes, both copied images and B6 worker.
+Scoped receipt docs/validation/2026-10-31-settings-catalogue-facades.json
+SHAef73a537caf4df451e8890c04eae7fe3e37fa8edabab926f150a7f99f7d63dcd:
+21 native Composition,28 static,32 architecture,42 Node; no selected ignored.
+One successful shared compile248.7s; final connected/default strict54.7s/50.3s pass.
+Keep all run1–6 artifacts under /private/tmp/brassclaw-details-toolskills-validation-20261031.
+Run3 had a ZERO-MATCH refresh selector (not a passed test); run4 used actual
+compiled listing and completed6 refresh+1 queue-race+1 missing-owner, then lint.
+Run4/5 lint failures fixed without native recompilation: same concrete Transaction
+auto-deref and equivalent exact decimal JSON-string assertion. Receipt records
+old native and final lint source identities explicitly. No numeric-wire change,
+warning suppression or fresh-native-image claim for those two style bytes.
+
+Source freeze released; Root retains all serial Cargo. New plan/status prose is
+after local receipt, including two embedded plans; future CI must compile final
+package prose. Existing full CI41197330030 still in progress on preceding pushed
+2522569198…; this new bundle has not yet been committed at this entry. No tag,
+release, full-plan/approval/Serving/platform/deployed claim.
+
+NEXT: review/integrate compatible052+053 before ONE next build.052 full replacing
+re-review patch /private/tmp/brassclaw-recipe-rereview-r2-svwaj1y1/candidate.patch
+SHA1bcf4ae9…; both runtime/test afterbytes already reviewed, three accurate caller
+comments added. No Q4/Queue reset, only actual manual rejected→pending+tag atomicity.
+053 /private/tmp/brassclaw-standalone-oauth-lifetimes-20261031/READY.md and
+changes.patch SHA6a7efae6…;16 paths,15 existing beforehashes, new SQL deliberately
+UNNUMBERED. Review remaining current consumer/type/import/upgrade assumptions,
+assign next migration only at integration, real PG/global/browser checks still
+required.16 private Node cases and7 syntax checks pass, not native acceptance.
+
+Prefix chat is coding full privateI1 (/private/tmp/brassclaw-exact-use-bootstrap-I1-20261031),
+using003/005. Both Use and Upsert.set_active included. Root approved ONE non-Serde
+Preparation result in existing llm_catalog with Retained/Draft origins, actual
+resolved config/model and credential source. Returned real stored revision binds
+only after exact prepared/returned comparison; no revision0/old role capture.
+One provider mutation/spec/setup/job transaction, then ordinary admission after
+commit; real technical Recipe/ResultOnly, optional original bootstrap_target in
+receipt, ModelSetup branch in EXISTING inspection owner. One corresponding target
+route is allowed if needed; prohibition was an extra mutation→job second lookup.
+No fake Profile/Pair key, dummy job, assumed accepted design or broad Free gate.
+
+Root036 now has PRIVATE native-refresh-setup draft e4d009e3… and head-binding/
+provider_codex_credentials.rs plus read-only-head-comparison.patch. Native Account
+is System OWNED but keeps the REAL original installer/operator SetupAdmin scope
+(no session/agent/project/thread/extension). This avoids new System-sentinel codec
+or fabricated user; generic requester/source guards remain strict. Global binding
+is dedicated encrypted *_oauth System-scope handle, nonsecret typed descriptor,
+never session JSON as APIkey. Existing immutable provider mutation retains same
+binding; actual newest native login provider revision must authenticate against
+EXACT original encrypted head, mismatch never selects older/current role/File.
+No new binding table/column/format/migration. read-only exact-secret comparison
+is private existing-store support, not raw decrypt or authority. Still unmounted,
+uncompiled and untested; no partial SDK cutover.
+
+Definition chat now implements036 DEVICE-login original/flow/action/issuer result
+custody privately (/private/tmp/brassclaw-device-login036-tuat3wbj). Existing actual
+protocol is nonstandard: issuer returns code+challenge+verifier AFTER polling;
+no opaque state may be fabricated for OAuthCallbackOriginal. Use SAME AuthFlow/
+SecretStore, raw response originals and once-committed claims; no DB tx over I/O,
+unknown never permits issuer replay. ONE shared Auth NativeDeviceOAuthClient with
+same four JSON fields and pure url2 validation/redactedDebug; Rootbinding imports
+it (old duplicate private client struct removed). Core Auth gets no reqwest/LLM
+cycle. Existing SDK protocol parser/transport helpers may be extracted once for
+File/native reuse. Ready returns exact authenticated RawTokenResult source,
+actual hashes, request start/first expiry and original destinations selected ONCE
+via existing callback convention before exchange; Root alone commits account/
+head/provider/role/receipt and wires immutable per-request guards/all consumers.
+Do not copy legacy60s native poll cap or create a new login ID on retry. Source/
+Raw-ACK uncertainty is never absent effect or permission to clean originals.
+
+Older current-run notes below are historical where superseded. Goal remains
+active and very incomplete; commit/push is a checkpoint, not a stopping point.
+
+## Latest — one detached seven-package build, foreground work continues
+
+Actual Screen brassclaw-bundle-045-051 is detached; original runner69479 and
+Cargo69486 were observed running connected-images. Progress/source manifest:
+/private/tmp/brassclaw-details-toolskills-validation-20261031/run-2/.
+3315 actual inputs are frozen. No other Cargo or edits to those inputs until
+this original is terminal. Root retains Cargo; private next patches may continue.
+
+045–049,050 R2+R3 and051 share ONE Composition/Static compilation. R3's exact
+two-path b6a79089… patch coordinates absent-queue inspection and insertion in the
+existing Queue owner with one transaction-bound key; public submit holds the
+same transaction through COMMIT. The genuine pg_locks-driven two-actor case is
+selected. No new registry, approval route, retry or component-first lock.
+
+051 integrates the already reviewed existing Auth refresh transaction extraction
+and its caller-rollback extension. The original public refresh operation invokes
+the same helper and retains its behavior. Six existing durable-refresh cases are
+selected, including the extended real PG rollback case. This is a complete
+bounded transaction-reuse change, not SDK036/native Codex hosting or approval.
+The private SDK/System-subject/full credential bridge remain unintegrated.
+
+Exactly42 Node cases are reused from run1 after verifying all captured inputs
+except the seven explicitly allowed Rust/changelog deltas are unchanged. All
+native, architecture and connected/default strict results for this successor are
+PENDING. The changelog was updated BEFORE capture; this batch includes its bytes.
+Full GitHub run41197330030 is separately in progress on pushed2522569198…,
+verified via GitHub API, not the current uncommitted bundle. Earlier notes below
+are historical where superseded. The full goal/plans remain incomplete.
+
+## Previous preparation — compatible batch after terminal build failure
+
+Checkpoint2522569198daf2d1c842142a6374d8af394f43e8 is on main and origin/main.
+Full GitHub run41197330030 targets that exact checkpoint; its final outcome has
+not yet been established here. This is not a release or full-plan completion.
+
+BUILD045–049 are integrated. Original Screen runner68635/Cargo68644 are gone
+(actual ps), and the common lock was acquired independently before integration.
+Run1 in /private/tmp/brassclaw-details-toolskills-validation-20261031 failed
+Rust compilation with E0425 at authored_catalogue_tests.rs:1031: the routing
+test's new call used an unavailable pool variable. Root corrected it to rig.pool.
+All42 Node cases passed before that failure; all logs and exact inputs remain.
+No native or strict acceptance is claimed for045–049 yet.
+
+Instead of compiling the one-line repair alone, Root integrated the reviewed
+three-path Recipe-rejection R2 patch28ee0f62… as BUILD050. It preserves manual
+pre-Q1 rejection, uses one transaction for eligible queue/row changes, keeps a
+rejected upgrade's live bytes, and exposes statement/commit failures. R1 was
+rejected and never integrated. A real public QueueStore::submit(Some(payload))
+can race an absent queue read; its minimal shared-owner coordination repair is
+being prepared before the next combined compilation. Do not silently close that
+finding or start a compile before reviewing the successor.
+
+Prepared successor runner validate-r2.py/run-2 reuses the unchanged42 Node cases
+by exact captured-input verification; one Composition/Static compilation covers
+the six packages, followed by selected native Recipe/ToolSkill/queue cases,
+embedded assets, architecture and connected/default strict checks. It has NOT
+been launched at this entry. Root retains serial Cargo permanently. Other chats
+keep captured-input changes private; no alternate source tree or Cargo target.
+
+The user's workflow correction is already binding in development-policy.md:
+collect ready compatible work before compilation, detach Screen, then continue
+the next implementation in the foreground. Preserve original failures and reuse
+applicable results; no per-patch rebuild or unchanged-progress polling loop.
+
+## Historical checkpoint preparation —040–044 accepted
 
 Original65594/65597/66547 exited, verified by actual ps and independent common
 lock acquisition. All3315 captured inputs matched at terminal. Run3 warning-free

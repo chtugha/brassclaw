@@ -1,0 +1,287 @@
+{
+  "format": "development-validation/1",
+  "request": [
+    "BUILD045",
+    "BUILD046",
+    "BUILD047",
+    "BUILD048",
+    "BUILD049",
+    "BUILD050",
+    "BUILD051"
+  ],
+  "date": "2026-10-31",
+  "git_base": "2522569198daf2d1c842142a6374d8af394f43e8",
+  "status": "passed-local-scoped",
+  "source": {
+    "path": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-6/source.json",
+    "sha256": "d86b4db3a0bbc8480308d4bba9bc1eeaf5f56708e4727f7f7e97775badf38921",
+    "files": 3315,
+    "native_before_lint_style_manifest": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3/source.json",
+    "native_before_lint_style_sha256": "816982c263b1124d5f0f75c7f33b7b987b81e95f843ed69845c4fc06376d1045"
+  },
+  "checks": [
+    {
+      "stage": "node-connected-consumers",
+      "exit_code": 0,
+      "seconds": 0.2270327911246568,
+      "log_sha256": "b79a57b364a5f26450c1552e9d89a3e4b535c1d06e20bd339d1e16aaa17edf12",
+      "warnings": [],
+      "passed": 42,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-1/node-connected-consumers.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-1"
+    },
+    {
+      "stage": "connected-images",
+      "exit_code": 0,
+      "seconds": 248.73160095792264,
+      "log_sha256": "b7a39f69476c6b92e35a602da8961886a26d6b86f0f64a4e3cea232dbb2e569d",
+      "warnings": [],
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3/connected-images.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3"
+    },
+    {
+      "stage": "native-toolskill-reads-and-errors",
+      "exit_code": 0,
+      "seconds": 7.074086582986638,
+      "log_sha256": "aa2b63a6e27b476b595899204989571eeddfe0604e13090e68508c4f1e81a228",
+      "warnings": [],
+      "passed": 2,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3/native-toolskill-reads-and-errors.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3"
+    },
+    {
+      "stage": "native-retained-recipe-http",
+      "exit_code": 0,
+      "seconds": 69.9315097918734,
+      "log_sha256": "f5b94a353cc6d136b61f80ad80eb454eb93bd34c3d062d50d28cd81b11a0ad74",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3/native-retained-recipe-http.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3"
+    },
+    {
+      "stage": "native-disabled-recipe-http",
+      "exit_code": 0,
+      "seconds": 117.45017474982888,
+      "log_sha256": "86833254e53643a38432cd85de90774091c484b6b891053487f39af0bb4ec9ca",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3/native-disabled-recipe-http.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3"
+    },
+    {
+      "stage": "native-recipe-manual-rejection",
+      "exit_code": 0,
+      "seconds": 2.0803723342251033,
+      "log_sha256": "a1d339ae720b67f7dde8d3ae1a03dfe4d68bea607f794d3e80993735a6555c84",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3/native-recipe-manual-rejection.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3"
+    },
+    {
+      "stage": "native-recipe-rejection-rollback",
+      "exit_code": 0,
+      "seconds": 2.069869958097115,
+      "log_sha256": "41d9bfbaaa2c58a692289644ba6db163f0f7c765f59c8f87aa1ec91d7853670e",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3/native-recipe-rejection-rollback.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3"
+    },
+    {
+      "stage": "native-queue-rejection-threshold",
+      "exit_code": 0,
+      "seconds": 4.066413833992556,
+      "log_sha256": "02575a5d3417da16cd6e205c4254fe5d51643920d07c243b4dafed32d08dbcbf",
+      "warnings": [],
+      "passed": 2,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3/native-queue-rejection-threshold.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3"
+    },
+    {
+      "stage": "native-queue-graduation",
+      "exit_code": 0,
+      "seconds": 7.965469209011644,
+      "log_sha256": "48697e3c005f9d26e99957b23d1deadac58bd9f8d54ec395fc5b4f74e60eb4a8",
+      "warnings": [],
+      "passed": 4,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3/native-queue-graduation.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3"
+    },
+    {
+      "stage": "native-queue-rejection-approval-race",
+      "exit_code": 0,
+      "seconds": 2.040566708892584,
+      "log_sha256": "818b9004bd08e25947e03e7d5f4bb2f1499d580d9f411257f9fbcbe2a84052d8",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3/native-queue-rejection-approval-race.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3"
+    },
+    {
+      "stage": "native-refresh-existing-custody",
+      "exit_code": 0,
+      "seconds": 12.793527874862775,
+      "log_sha256": "d77017c1e2d45b0483290689cf60f8d81dc5782253a19797d34d80b91cdf026d",
+      "warnings": [],
+      "passed": 6,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-4/native-refresh-existing-custody.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-4"
+    },
+    {
+      "stage": "native-queue-absence-concurrency",
+      "exit_code": 0,
+      "seconds": 2.1352837500162423,
+      "log_sha256": "df2cb9d62d49a79e245bf92f2d459644df18c3fec9b09548403b4052236542bb",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-4/native-queue-absence-concurrency.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-4"
+    },
+    {
+      "stage": "native-recipe-missing-owner",
+      "exit_code": 0,
+      "seconds": 2.138023750158027,
+      "log_sha256": "8408188831e2aa6f92726719e7508ff885119271aa86101f9916d86cd491a611",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-4/native-recipe-missing-owner.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-4"
+    },
+    {
+      "stage": "embedded-static",
+      "exit_code": 0,
+      "seconds": 0.3604630420450121,
+      "log_sha256": "42a869d477a4a426d952cc72dad04f812716954203758e941c9f8ede7e78635c",
+      "warnings": [],
+      "passed": 28,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-4/embedded-static.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-4"
+    },
+    {
+      "stage": "architecture",
+      "exit_code": 0,
+      "seconds": 2.692632915917784,
+      "log_sha256": "8f155acb19d55f119dba815ac284e28b5f25f62f1ef899ced97ca62460b91ccb",
+      "warnings": [],
+      "passed": 32,
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-4/architecture.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-4"
+    },
+    {
+      "stage": "connected-strict",
+      "exit_code": 0,
+      "seconds": 54.70065883290954,
+      "log_sha256": "a505bf834d7f98e31d467caf10cd3c6eaca8cc60e28cf9fe2bf407ff7d00a085",
+      "warnings": [],
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-6/connected-strict.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-6"
+    },
+    {
+      "stage": "default-composition-strict",
+      "exit_code": 0,
+      "seconds": 50.2578882498201,
+      "log_sha256": "4608e0418f63ceac17ae9370da04e3959706c5101d60caed70fcc6981a5f57e5",
+      "warnings": [],
+      "log": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-6/default-composition-strict.log",
+      "original_run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-6"
+    }
+  ],
+  "counts": {
+    "native_composition": 21,
+    "embedded_static": 28,
+    "architecture": 32,
+    "node": 42,
+    "ignored_selected": 0
+  },
+  "images": {
+    "brassclaw_webui_v2_static": {
+      "path": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3/brassclaw_webui_v2_static-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_webui_v2_static-5f64f22aed8d3a89",
+      "sha256": "bdfaa6e936e91c3dbc7207a336775ce16a47fc502ccd6fe7c2ca853d174cf912",
+      "features": [],
+      "is_test": true
+    },
+    "brassclaw_reborn_composition": {
+      "path": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3/brassclaw_reborn_composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-cde394fcf1f47f30",
+      "sha256": "57e70f76b296c4ba8d03f4a9042c1ca649eafb8ce59b2874f4af8cf66a142ace",
+      "features": [
+        "default",
+        "migrate-from-libsql",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ],
+      "is_test": true
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-6/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "b6d1101c3b58c9103368097336116ec0b9c9196a1067fc4cfdf1d77d1af05ae6",
+    "status": "B6 retained worker unchanged; only Composition/Static callers change, absent from worker normal/build closure"
+  },
+  "source_applicability_deltas": [
+    {
+      "path": "crates/brassclaw_reborn_composition/src/validation_queue.rs",
+      "before_sha256": "892384e8b0cf8368f999d238c6cc6ce122be0963e1933ba25a7442e0667b0f60",
+      "after_sha256": "dfb2712639798a70e626697f364aeea6738b25853e0e244eb89a49a78f2b8243",
+      "old": "Self::submit_on(&*tx, scope, component_id, component_class, None)",
+      "new": "Self::submit_on(&tx, scope, component_id, component_class, None)",
+      "scope": "Clippy explicit_auto_deref; concrete Transaction argument uses the same native reference; no runtime operation/branch/SQL changes"
+    },
+    {
+      "path": "crates/brassclaw_reborn_composition/src/runtime/tests/authored_catalogue_tests.rs",
+      "before_sha256": "0c08d762255fe4e0b8578d3bbe6ce22df518cc8cec68de4a81e1c236dce8f780",
+      "after_sha256": "2410d762df800113960c73db880a62d85ed586855164c1a75373f0416c7e84be",
+      "old": "        let actual = selections\n            .iter()\n            .find(|entry| {\n                entry[\"reference\"][\"version\"] == reference.version.to_string()",
+      "new": "        let expected_version = reference.version.to_string();\n        let actual = selections\n            .iter()\n            .find(|entry| {\n                entry[\"reference\"][\"version\"].as_str() == Some(expected_version.as_str())",
+      "scope": "Test cmp_owned repair, version is STILL required to be the exact decimal JSON string; no production change or numeric-wire expectation"
+    }
+  ],
+  "reuse": "Native/Node/static/architecture images and logs are exact original results. Only the two explicitly recorded nonbehavioral Clippy repairs distinguish the final lint tree: the same concrete transaction reference and the equivalent exact decimal JSON-string assertion. Both current feature configurations pass strict lint. No fresh native binary is claimed for those style bytes.",
+  "failed_attempts": [
+    {
+      "run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-1",
+      "status": "failed",
+      "progress_sha256": "978d2dd0e40e090bc1a53c414cde752fd8386767c6791369a917803ae3079d8c"
+    },
+    {
+      "run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-2",
+      "status": "failed",
+      "progress_sha256": "a8c4b1531c430c968a192fcbaef572cf00b84949ec10bee5f5ae1322b2120eb7"
+    },
+    {
+      "run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-3",
+      "status": "failed",
+      "progress_sha256": "4e4b705fa9737a6fe9dc2ef8f9d30289eeeab5bc0196fae5f6379c9ad4318525"
+    },
+    {
+      "run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-4",
+      "status": "failed",
+      "progress_sha256": "0bdac388bd1c316589903203b1673f1465d674ee718ea991b068788c0868c3b6"
+    },
+    {
+      "run": "/private/tmp/brassclaw-details-toolskills-validation-20261031/run-5",
+      "status": "failed",
+      "progress_sha256": "25e546001fa93f244672edd0772739233678866bf5a81472c686d734d6235fef"
+    }
+  ],
+  "scope": [
+    "Real scoped ToolSkill inventory/detail/backend failures and visible unsupported writes without status/queue/evidence mutation.",
+    "Both real current-catalogue Recipe detail routes, exact original revisions/variants/model inputs, unactivated successor and disabled-routing retention.",
+    "Actual Recipe rejection metadata/Q2/upgrade atomicity, statement/deferred-commit rollback, exact absence/insert serialization and existing graduation/rejection concurrency.",
+    "Existing Auth durable-refresh caller transaction rollback and six custody cases; no SDK/native Codex cutover.",
+    "Sources/measurement state fences have42 Node cases, not newly qualified Chromium behavior."
+  ],
+  "not_claimed": [
+    "General joint functional Q1/Q2, pure/seed/class routes or full-plan completion.",
+    "Full immutable component editing/activation or actual writer support for class13 functional review.",
+    "New durable UI pending-original recovery across genuine unmount/restart.",
+    "Native Codex credential/issuer/session consumer cutover, serving/design/platform/release/deployed support."
+  ],
+  "terminal": "Original72982 absent by actual ps; common Cargo lock acquired independently; all3315 current captured source hashes and copied images/worker verified before later documentation changes."
+}

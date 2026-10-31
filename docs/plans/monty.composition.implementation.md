@@ -17,6 +17,14 @@ replace historical bodies with declared preload exports, bind typed inputs and
 qualify each exact graph/native implementation through the existing stores and
 runner. Reuse compatible helpers; do not create a second copy for every consumer.
 
+The current detail-reader prerequisite is implemented once in Composition:
+[BUILD045–051](../validation/2026-10-31-settings-catalogue-facades.md) projects
+actual retained Recipe revisions/originals/variants/model-input declarations
+through both existing HTTP ports. Consume its exact identities when implementing
+the remaining editor/Use consumers; a legacy draft, allocated successor or view
+alone grants no approval or execution. This appendix does not own another
+catalogue-detail reader, immutable review writer or activation path.
+
 **Current review prerequisite (2026-10-31):** consume the binding
 [own A function / S qualification target](../../skills.md#own-functional-approval-and-successor-compatibility)
 and its existing [Validator successor](../../validator_v3.md#open-exact-validation-successor--own-a-functions-s-qualification-and-workflow-scope).

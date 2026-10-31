@@ -19,17 +19,25 @@ export function PrefixSourcesPanel({ entry, t }) {
   const draft = storedDraft.profile === entry.name ? storedDraft : emptySourceDraft(entry.name);
   const { reference, title, applicability, required } = draft;
   const [errorRecord, setError] = React.useState(null);
+  const [generationErrorRecord, setGenerationError] = React.useState(null);
   const [saveError, setSaveError] = React.useState(null);
-  const error = errorRecord?.profile === entry.name && errorRecord.generation === generation ? errorRecord.message : saveError?.profile === entry.name ? saveError.message : null;
+  const inventoryError = errorRecord?.profile === entry.name && errorRecord.generation === generation ? errorRecord.message : null;
+  const generationError = generationErrorRecord?.profile === entry.name && generationErrorRecord.generation === generation ? generationErrorRecord.message : null;
+  const saveMessage = saveError?.profile === entry.name ? saveError.message : null;
   const [saving, setSaving] = React.useState(false);
   const [tick, setTick] = React.useState(0);
   const busy = React.useRef(false);
   React.useEffect(() => {
     if (!open) return;
-    let stopped = false; setInventory(null); setError(null);
-    Promise.all([fetchPrefixSources(entry.name, generation), fetchPrefixGenerations(entry.name)])
-      .then(([sources, items]) => { if (!stopped) { setInventory({ profile: entry.name, generation, data: sources }); setGenerations({ profile: entry.name, items }); } })
+    let stopped = false; setInventory(null); setError(null); setGenerationError(null);
+    // These independent reads must not discard each other's successful data.
+    // Missing inventory is never replaced with invented source/status rows.
+    fetchPrefixSources(entry.name, generation)
+      .then(sources => { if (!stopped) setInventory({ profile: entry.name, generation, data: sources }); })
       .catch(err => { if (!stopped) setError({ profile: entry.name, generation, message: err.message }); });
+    fetchPrefixGenerations(entry.name)
+      .then(items => { if (!stopped) setGenerations({ profile: entry.name, items }); })
+      .catch(err => { if (!stopped) setGenerationError({ profile: entry.name, generation, message: err.message }); });
     return () => { stopped = true; };
   }, [open, generation, entry.name, tick]);
   function editDraft(field, value) {
@@ -51,14 +59,16 @@ export function PrefixSourcesPanel({ entry, t }) {
     <${Button} size="sm" variant="ghost" onClick=${() => setOpen(true)}>${t("prefix.sources")}<//>
     ${open && html`<${Modal} open=${open} onClose=${() => setOpen(false)} size="xl" title=${t("prefix.sources") + " — " + (entry.label || entry.name)}>
       <section className="space-y-4 overflow-auto p-5 text-sm">
-        ${error && html`<p role="alert" className="text-red-300">${error}</p>`}
+        ${inventoryError && html`<p role="alert" className="text-red-300">${inventoryError}</p>`}
+        ${generationError && html`<p role="alert" className="text-red-300">${generationError}</p>`}
+        ${saveMessage && html`<p role="alert" className="text-red-300">${saveMessage}</p>`}
         <label>${t("prefix.sourceGeneration")}
           <select value=${generation} onChange=${event => setSelection({ profile: entry.name, generation: event.target.value })} className="ml-2 bg-transparent">
             <option value="">${t("prefix.registeredOnly")}</option>
             ${generations.map(g => html`<option key=${g.generation} value=${g.generation}>${g.generation} (${g.qualification})</option>`)}
           </select>
         </label>
-        ${!inventory && !error && html`<p role="status">${t("common.loading")}</p>`}
+        ${!inventory && !inventoryError && html`<p role="status">${t("common.loading")}</p>`}
         ${inventory && html`<div className="space-y-3">
           <h4>${t("prefix.usedSources")}</h4>
           ${inventory.used.length === 0 && html`<p>${t("prefix.noUsedSources")}</p>`}

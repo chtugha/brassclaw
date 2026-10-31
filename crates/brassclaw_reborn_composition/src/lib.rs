@@ -1236,6 +1236,8 @@ mod prefix_registered_source_tests;
 mod prefix_source_storage_tests;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_sources;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod recipe_catalogue_detail;
 #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
 #[path = "../tests/common/loopback_http.rs"]
 mod test_loopback_http;

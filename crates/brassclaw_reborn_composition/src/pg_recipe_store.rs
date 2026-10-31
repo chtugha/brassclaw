@@ -81,6 +81,17 @@ fn map_pool(e: deadpool_postgres::PoolError) -> PgRecipeStoreError {
     }
 }
 
+fn map_rejection_queue_error(error: ValidationQueueError) -> PgRecipeStoreError {
+    match error {
+        ValidationQueueError::Pool { reason } | ValidationQueueError::Db { reason } => {
+            PgRecipeStoreError::Db { reason }
+        }
+        other => PgRecipeStoreError::Invalid {
+            reason: other.to_string(),
+        },
+    }
+}
+
 fn map_pg(e: tokio_postgres::Error) -> PgRecipeStoreError {
     PgRecipeStoreError::Db {
         // Constraint details can contain the entire private proposed row.
@@ -531,7 +542,22 @@ impl PgRecipeStore {
         update: RecipeValidationStatusUpdate<'_>,
     ) -> Result<(), PgRecipeStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
-        client
+        let scope = ComponentScope {
+            tenant_id: tenant_id.into(),
+            user_id: user_id.into(),
+            agent_id: agent_id.into(),
+            project_id: project_id.into(),
+        };
+        Self::update_validation_status_on(&**client, &scope, id, update).await
+    }
+
+    async fn update_validation_status_on(
+        client: &(impl tokio_postgres::GenericClient + Sync),
+        scope: &ComponentScope,
+        id: Uuid,
+        update: RecipeValidationStatusUpdate<'_>,
+    ) -> Result<(), PgRecipeStoreError> {
+        let updated = client
             .execute(
                 "UPDATE reborn_recipes
                  SET validation_status = $1,
@@ -542,15 +568,113 @@ impl PgRecipeStore {
                 &[
                     &update.validation_status,
                     &id,
-                    &tenant_id,
-                    &user_id,
-                    &agent_id,
-                    &project_id,
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
                 ],
             )
             .await
             .map_err(map_pg)?;
+        if updated != 1 {
+            return Err(PgRecipeStoreError::NotFound { id: id.to_string() });
+        }
         Ok(())
+    }
+
+    /// Preserve manual legacy metadata rejection without requiring Q1. When
+    /// an eligible Q2 review exists, commit its transition with the projection.
+    /// A proposed upgrade is queue-only and never changes the live row.
+    async fn reject_review(
+        &self,
+        queue: &ValidationQueueStore,
+        scope: &ComponentScope,
+        id: Uuid,
+        feedback: &str,
+    ) -> Result<(String, String), PgRecipeStoreError> {
+        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let tx = client.transaction().await.map_err(map_pg)?;
+        // Preserve the existing scoped NotFound contract without a component
+        // row lock; actual writes still take queue-before-component locks.
+        if tx
+            .query_opt(
+                "SELECT 1 FROM reborn_recipes
+             WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5",
+                &[
+                    &id,
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                ],
+            )
+            .await
+            .map_err(map_pg)?
+            .is_none()
+        {
+            return Err(PgRecipeStoreError::NotFound { id: id.to_string() });
+        }
+        let queued = queue
+            .lock_for_rejection(&tx, scope, id)
+            .await
+            .map_err(map_rejection_queue_error)?;
+        if queued.as_ref().is_some_and(|row| row.component_class != 21) {
+            return Err(PgRecipeStoreError::Invalid {
+                reason: "Recipe review queue class mismatch".into(),
+            });
+        }
+        let is_upgrade = queued
+            .as_ref()
+            .is_some_and(|row| row.proposed_payload.is_some());
+        // Manual metadata rejection is supported with no queue or before Q1.
+        // Only an actual state-2 ticket receives Q2 counter/feedback changes.
+        // A proposed upgrade always belongs to that stricter queue operation:
+        // pending/rejected proposals cannot become a new cancellation route.
+        if is_upgrade
+            || queued
+                .as_ref()
+                .is_some_and(|row| row.state == crate::validation_queue::STATE_Q1_PASSED)
+        {
+            queue
+                .reject_in_transaction(&tx, scope, id, feedback)
+                .await
+                .map_err(map_rejection_queue_error)?;
+        }
+        let current = tx
+            .query_opt(
+                "SELECT validation_status FROM reborn_recipes
+             WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5
+             FOR UPDATE",
+                &[
+                    &id,
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                ],
+            )
+            .await
+            .map_err(map_pg)?
+            .ok_or_else(|| PgRecipeStoreError::NotFound { id: id.to_string() })?;
+        let previous_status: String = current.get(0);
+        let new_status = if is_upgrade {
+            previous_status.clone()
+        } else {
+            if previous_status != "rejected" {
+                Self::update_validation_status_on(
+                    &*tx,
+                    scope,
+                    id,
+                    RecipeValidationStatusUpdate {
+                        validation_status: "rejected",
+                    },
+                )
+                .await?;
+            }
+            "rejected".to_string()
+        };
+        tx.commit().await.map_err(map_pg)?;
+        Ok((previous_status, new_status))
     }
 
     /// Increment outcome counters and recompute Wilson lower bound + tier label.
@@ -986,6 +1110,7 @@ pub(crate) struct PgRecipeStoreFacade {
     #[cfg(feature = "skills-db")]
     catalogue: Option<Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>>,
     inner: PgRecipeStore,
+    tool_skills: crate::pg_tool_skill_store::PgToolSkillStore,
     tenant_id: String,
     agent_id: String,
     /// Used by `update_recipe_validation_status` to call `approve()` when the
@@ -1005,6 +1130,7 @@ impl PgRecipeStoreFacade {
         Self {
             #[cfg(feature = "skills-db")]
             catalogue: None,
+            tool_skills: crate::pg_tool_skill_store::PgToolSkillStore::new(Arc::clone(&pool)),
             inner: PgRecipeStore::new(pool),
             tenant_id: tenant_id.into(),
             agent_id: agent_id.into(),
@@ -1054,6 +1180,18 @@ fn map_pg_recipe_error(e: PgRecipeStoreError) -> brassclaw_product_workflow::Rec
         }
         PgRecipeStoreError::Serialize { reason } => {
             brassclaw_product_workflow::RecipeStoreError::Internal(reason)
+        }
+    }
+}
+
+#[cfg(feature = "postgres")]
+fn map_pg_tool_skill_error(
+    error: crate::pg_tool_skill_store::PgToolSkillStoreError,
+) -> brassclaw_product_workflow::RecipeStoreError {
+    use crate::pg_tool_skill_store::PgToolSkillStoreError;
+    match error {
+        PgToolSkillStoreError::Pool { reason } | PgToolSkillStoreError::Db { reason } => {
+            brassclaw_product_workflow::RecipeStoreError::Unavailable(reason)
         }
     }
 }
@@ -1407,18 +1545,16 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
 
     async fn list_tool_skills(
         &self,
-        _user_id: &str,
-        _project_id: &str,
+        user_id: &str,
+        project_id: &str,
     ) -> Result<
         Vec<brassclaw_product_workflow::ToolSkillSummary>,
         brassclaw_product_workflow::RecipeStoreError,
     > {
-        // ToolSkills have their own table (V037, Phase 5).  Until that migration
-        // lands, return empty so the WebUI shows no tool skills rather than erroring.
-        tracing::debug!(
-            "PgRecipeStoreFacade::list_tool_skills: V037 not yet applied — returning empty"
-        );
-        Ok(vec![])
+        self.tool_skills
+            .list_summaries(&self.tenant_id, user_id, &self.agent_id, project_id)
+            .await
+            .map_err(map_pg_tool_skill_error)
     }
 
     async fn get_recipe(
@@ -1440,23 +1576,36 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
             .get(&self.tenant_id, user_id, &self.agent_id, project_id, uuid)
             .await
             .map_err(map_pg_recipe_error)?;
-        Ok(row.as_ref().map(recipe_to_detail))
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let mut detail = recipe_to_detail(&row);
+        detail.recipe["retained_catalogue"] = serde_json::Value::Null;
+        #[cfg(feature = "skills-db")]
+        if let Some(catalogue) = &self.catalogue {
+            detail.recipe["retained_catalogue"] = catalogue.retained_recipe_detail(uuid).await?;
+        }
+        Ok(Some(detail))
     }
 
     async fn get_tool_skill(
         &self,
-        _user_id: &str,
-        _project_id: &str,
-        _skill_id: &str,
+        user_id: &str,
+        project_id: &str,
+        skill_id: &str,
     ) -> Result<
         Option<brassclaw_product_workflow::ToolSkillDetail>,
         brassclaw_product_workflow::RecipeStoreError,
     > {
-        // V037 not yet applied.
-        tracing::debug!(
-            "PgRecipeStoreFacade::get_tool_skill: V037 not yet applied — returning None"
-        );
-        Ok(None)
+        let id: Uuid = skill_id.parse().map_err(|e| {
+            brassclaw_product_workflow::RecipeStoreError::Invalid(format!(
+                "invalid skill_id UUID: {e}"
+            ))
+        })?;
+        self.tool_skills
+            .get_detail(&self.tenant_id, user_id, &self.agent_id, project_id, id)
+            .await
+            .map_err(map_pg_tool_skill_error)
     }
 
     async fn list_validation_queue(
@@ -1598,6 +1747,31 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 "invalid recipe_id UUID: {e}"
             ))
         })?;
+        if new_status == "rejected" {
+            let scope = ComponentScope {
+                tenant_id: self.tenant_id.clone(),
+                user_id: user_id.to_string(),
+                agent_id: self.agent_id.clone(),
+                project_id: project_id.to_string(),
+            };
+            let (previous_status, new_status) = self
+                .inner
+                .reject_review(
+                    &self.queue_store,
+                    &scope,
+                    uuid,
+                    feedback.unwrap_or_default(),
+                )
+                .await
+                .map_err(map_pg_recipe_error)?;
+            return Ok(brassclaw_product_workflow::UpdateValidationStatusResponse {
+                id: recipe_id.to_string(),
+                item_type: brassclaw_product_workflow::RecipeKind::Recipe,
+                previous_status,
+                new_status,
+                review_attempts: 0,
+            });
+        }
         // Fetch current status for the response.
         let current = self
             .inner
@@ -1632,35 +1806,7 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                     }
                 })?;
         } else {
-            if new_status == "rejected" {
-                // Q2 rejection: the operator's reason lives on the queue row
-                // (`reborn_validation_queue.review_feedback`) — the component
-                // table no longer carries that column (V077). `reject` also
-                // performs the state 2 → 3 transition and bumps the counter.
-                // A queue row that is absent or not Q1-passed must not block
-                // the operator's manual status flip, so the error is soft.
-                let scope = ComponentScope {
-                    tenant_id: self.tenant_id.clone(),
-                    user_id: user_id.to_string(),
-                    agent_id: self.agent_id.clone(),
-                    project_id: project_id.to_string(),
-                };
-                if let Err(e) = self
-                    .queue_store
-                    .reject(&scope, uuid, feedback.unwrap_or_default())
-                    .await
-                {
-                    debug!(
-                        component_id = %uuid,
-                        error = %e,
-                        "update_recipe_validation_status: queue reject failed, \
-                         falling back to direct status update"
-                    );
-                }
-            }
-            // Non-validated status transitions (rejected, pending, etc.) also
-            // flip `validation_status` on the component row itself — `reject`
-            // only owns the queue row.
+            // Other legacy non-approval transitions use the existing status writer.
             self.inner
                 .update_validation_status(
                     &self.tenant_id,
@@ -1688,26 +1834,39 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
 
     async fn update_skill_validation_status(
         &self,
-        _user_id: &str,
-        _project_id: &str,
+        user_id: &str,
+        project_id: &str,
         skill_id: &str,
-        _new_status: &str,
+        new_status: &str,
         _feedback: Option<&str>,
     ) -> Result<
         brassclaw_product_workflow::UpdateValidationStatusResponse,
         brassclaw_product_workflow::RecipeStoreError,
     > {
-        // V037 not yet applied — no-op.
-        tracing::debug!(
-            "PgRecipeStoreFacade::update_skill_validation_status: V037 not yet applied"
-        );
-        Ok(brassclaw_product_workflow::UpdateValidationStatusResponse {
-            id: skill_id.to_string(),
-            item_type: brassclaw_product_workflow::RecipeKind::ToolSkill,
-            previous_status: "unknown".to_string(),
-            new_status: "unknown".to_string(),
-            review_attempts: 0,
-        })
+        let id: Uuid = skill_id.parse().map_err(|e| {
+            brassclaw_product_workflow::RecipeStoreError::Invalid(format!(
+                "invalid skill_id UUID: {e}"
+            ))
+        })?;
+        if !matches!(new_status, "validated" | "rejected" | "review_requested") {
+            return Err(brassclaw_product_workflow::RecipeStoreError::Invalid(
+                "unsupported ToolSkill review transition".into(),
+            ));
+        }
+        self.tool_skills
+            .get_detail(&self.tenant_id, user_id, &self.agent_id, project_id, id)
+            .await
+            .map_err(map_pg_tool_skill_error)?
+            .ok_or_else(|| {
+                brassclaw_product_workflow::RecipeStoreError::NotFound(skill_id.to_string())
+            })?;
+        // The old queue can graduate mutable class-13 projections, but it is
+        // not the connected own-functional-review/immutable approval writer.
+        // Do not acknowledge a no-op or substitute a legacy status flip for
+        // that missing owner. All existing service actions share this error.
+        Err(brassclaw_product_workflow::RecipeStoreError::Unavailable(
+            "ToolSkill functional review transitions are not connected".into(),
+        ))
     }
 
     async fn update_component_validation_status(

@@ -11,7 +11,7 @@ function fixture(options = {}) {
     useEffect(effect,deps){if(JSON.stringify(deps)!==dependencies){cleanup?.();dependencies=JSON.stringify(deps);effects.push(()=>{cleanup=effect();});}},
   },html:(strings,...values)=>({strings:[...strings],values}),Button:"Button",Modal:"Modal",
     fetchPrefixSources:async(profile,generation)=>{calls.push({profile,generation});if(options.sources)return options.sources(profile,generation);return{used:generation?[{reference:"archived.md",disposition:"included",reason:"original",checksum:"exact",archived:true}]:[],registered:[{id:"source",title:"Pending source",reference:"https://example.org/v3",availability:"not-checked"}],checks_available:false,check_blocked_reason:"prefix.sourceCheckPrerequisites"};},
-    fetchPrefixGenerations:async()=>[{generation:"retained-generation",qualification:"quarantined"}],
+    fetchPrefixGenerations:async profile=>options.generations?options.generations(profile):[{generation:"retained-generation",qualification:"quarantined"}],
     registerPrefixSource:async(profile,request)=>{saved.push({profile,request});if(options.save)return options.save(profile,request);await Promise.resolve();return{};},
   };
   const source=readFileSync(new URL("./prefix-sources-panel.js",import.meta.url),"utf8").split("\n").filter(line=>!line.startsWith("import ")).join("\n").replace("export function","function");
@@ -92,4 +92,52 @@ test("source save uses typed metadata and suppresses repeated submission",async(
   assert.equal(f.saved[0].request.reference,"https://example.org/reference?v=3");
   assert.equal(f.saved[0].request.required,false);
   assert.equal(f.saved[0].request.applicability,"Sempai sources");
+});
+
+function shows(f, text) { return nodes(f.render()).some(node=>node.values.includes(text)); }
+test("a generation-list failure preserves successful source inventory and neutral availability",async()=>{
+  const f=fixture({generations:async()=>{throw new Error("generation list unavailable");}});
+  attribute(f.render(),"onClick")();f.render();await new Promise(setImmediate);
+  assert.ok(shows(f,"Pending source"));
+  assert.ok(shows(f,"prefix.sourceAvailability.not-checked"));
+  assert.ok(shows(f,"generation list unavailable"));
+  assert.ok(!shows(f,"common.loading"));
+  assert.ok(!shows(f,"prefix.sourceAvailability.available"));
+  assert.ok(!shows(f,"prefix.sourceAvailability.unavailable"));
+  assert.ok(shows(f,"prefix.sourceCheckPrerequisites"));
+});
+test("sources display before a pending generation list and retain exact archive selection",async()=>{
+  let finish;
+  const f=fixture({generations:()=>new Promise(resolve=>{finish=resolve;})});
+  attribute(f.render(),"onClick")();f.render();await new Promise(setImmediate);
+  assert.ok(shows(f,"Pending source"));
+  assert.ok(!shows(f,"common.loading"));
+  finish([{generation:"retained-generation",qualification:"quarantined"}]);await new Promise(setImmediate);
+  attribute(dialog(f),"onChange")({target:{value:"retained-generation"}});f.render();await new Promise(setImmediate);
+  assert.equal(f.calls.at(-1).profile,"sempai");
+  assert.equal(f.calls.at(-1).generation,"retained-generation");
+  assert.ok(shows(f,"archived.md"));
+  assert.ok(shows(f,"common.yes"));
+});
+test("inventory failure retains the generation selector without inventing source rows",async()=>{
+  const f=fixture({sources:async()=>{throw new Error("source inventory unavailable");}});
+  attribute(f.render(),"onClick")();f.render();await new Promise(setImmediate);
+  assert.ok(shows(f,"retained-generation"));
+  assert.ok(shows(f,"source inventory unavailable"));
+  assert.ok(!shows(f,"prefix.noUsedSources"));
+  assert.ok(!shows(f,"prefix.sourceAvailability.not-checked"));
+  assert.ok(!shows(f,"prefix.sourceAvailability.available"));
+  assert.ok(!shows(f,"prefix.sourceAvailability.unavailable"));
+  assert.ok(!shows(f,"common.loading"));
+});
+test("both independent read failures remain visible and an old-profile failure stays hidden",async()=>{
+  const f=fixture({sources:async profile=>{if(profile==="sempai")throw new Error("old source failure");return{used:[],registered:[],checks_available:false};},
+    generations:async profile=>{throw new Error(profile+" generation failure");}});
+  attribute(f.render(),"onClick")();f.render();await new Promise(setImmediate);
+  assert.ok(shows(f,"old source failure"));
+  assert.ok(shows(f,"sempai generation failure"));
+  f.render({name:"homeassistant",description:"HA"});await new Promise(setImmediate);
+  assert.ok(!shows(f,"old source failure"));
+  assert.ok(!shows(f,"sempai generation failure"));
+  assert.ok(shows(f,"homeassistant generation failure"));
 });

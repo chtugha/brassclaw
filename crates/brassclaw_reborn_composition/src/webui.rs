@@ -407,6 +407,8 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         let tenant_id = runtime.webui_tenant_id();
         let listing_svc =
             crate::pg_settings_listing::PgSettingsListingService::new(Arc::clone(pool), tenant_id);
+        #[cfg(feature = "skills-db")]
+        let listing_svc = listing_svc.with_catalogue(runtime.installed_catalogue.clone());
         api = api
             .with_settings_listing_service(Arc::new(listing_svc)
                 as Arc<dyn brassclaw_product_workflow::SettingsListingService>);

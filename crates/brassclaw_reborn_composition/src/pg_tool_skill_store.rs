@@ -16,10 +16,6 @@
 //!
 //! Compiles behind the `postgres` feature (mirrors `pg_recipe_store`).
 
-// Phase-C.2 store — the insert/lookup surface is exercised by the boot seed
-// (`seed_builtin_host_components`). Mirrors the `pg_tool_store` lean-insert
-// pattern; full CRUD lands later if a non-seed authoring path needs it.
-#![allow(dead_code)]
 #![forbid(unsafe_code)]
 
 use std::sync::Arc;
@@ -36,8 +32,6 @@ pub(crate) enum PgToolSkillStoreError {
     Pool { reason: String },
     #[error("database error: {reason}")]
     Db { reason: String },
-    #[error("tool_skill not found: {name}")]
-    NotFound { name: String },
 }
 
 fn map_pool(e: deadpool_postgres::PoolError) -> PgToolSkillStoreError {
@@ -96,6 +90,108 @@ pub(crate) struct PgToolSkillStore {
 impl PgToolSkillStore {
     pub(crate) fn new(pool: Arc<PgPool>) -> Self {
         Self { pool }
+    }
+
+    /// Administrative inventory, with the same exact scope as the Recipe facade.
+    /// Pending/rejected rows remain visible here; this is not execution admission.
+    pub(crate) async fn list_summaries(
+        &self,
+        tenant_id: &str,
+        user_id: &str,
+        agent_id: &str,
+        project_id: &str,
+    ) -> Result<Vec<brassclaw_product_workflow::ToolSkillSummary>, PgToolSkillStoreError> {
+        let client = self.pool.get().await.map_err(map_pool)?;
+        let rows = client
+            .query(
+                "SELECT id, name, tool_name, description,
+                        COALESCE(prior_knowledge_content, content) AS token_content,
+                        usage_count, success_count, failure_count, wilson_lower,
+                        tier, validation_status, source, created_at, updated_at
+                 FROM reborn_tool_skills
+                 WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
+                 ORDER BY prompt_uid ASC, id ASC",
+                &[&tenant_id, &user_id, &agent_id, &project_id],
+            )
+            .await
+            .map_err(map_pg)?;
+        rows.iter()
+            .map(|row| {
+                let id: Uuid = row.try_get("id").map_err(map_pg)?;
+                let tool_name: Option<String> = row.try_get("tool_name").map_err(map_pg)?;
+                let content: String = row.try_get("token_content").map_err(map_pg)?;
+                let usage: i32 = row.try_get("usage_count").map_err(map_pg)?;
+                let success: i32 = row.try_get("success_count").map_err(map_pg)?;
+                let failure: i32 = row.try_get("failure_count").map_err(map_pg)?;
+                let created: chrono::DateTime<chrono::Utc> =
+                    row.try_get("created_at").map_err(map_pg)?;
+                let updated: chrono::DateTime<chrono::Utc> =
+                    row.try_get("updated_at").map_err(map_pg)?;
+                // V037 has no category/token-count columns. Use the component
+                // kind and shared estimator, not invented persisted values or caps.
+                let tokens = brassclaw_loop_support::estimate_tokens_from_chars(&content).as_u64();
+                Ok(brassclaw_product_workflow::ToolSkillSummary {
+                    id: id.to_string(),
+                    name: row.try_get("name").map_err(map_pg)?,
+                    tool_name: tool_name.unwrap_or_default(),
+                    description: row.try_get("description").map_err(map_pg)?,
+                    category: "tool_skill".into(),
+                    estimated_tokens: u32::try_from(tokens).unwrap_or(u32::MAX),
+                    usage_count: usage.max(0) as u64,
+                    success_count: success.max(0) as u64,
+                    failure_count: failure.max(0) as u64,
+                    wilson_lower: row.try_get("wilson_lower").map_err(map_pg)?,
+                    tier: row.try_get("tier").map_err(map_pg)?,
+                    validation_status: row.try_get("validation_status").map_err(map_pg)?,
+                    source: row.try_get("source").map_err(map_pg)?,
+                    created_at: created.to_rfc3339(),
+                    updated_at: updated.to_rfc3339(),
+                })
+            })
+            .collect()
+    }
+
+    /// Return actual class-13 metadata, without treating text as executable code
+    /// or manufacturing the legacy engine ToolSkill's absent schema fields.
+    pub(crate) async fn get_detail(
+        &self,
+        tenant_id: &str,
+        user_id: &str,
+        agent_id: &str,
+        project_id: &str,
+        id: Uuid,
+    ) -> Result<Option<brassclaw_product_workflow::ToolSkillDetail>, PgToolSkillStoreError> {
+        let client = self.pool.get().await.map_err(map_pool)?;
+        let row = client
+            .query_opt(
+                "SELECT jsonb_build_object(
+                    'id', id, 'name', name, 'description', description, 'content', content,
+                    'prior_knowledge_content', prior_knowledge_content,
+                    'override_prompt_creation', override_prompt_creation,
+                    'tool_name', tool_name, 'param_schema', param_schema,
+                    'param_template', param_template, 'class_code', class_code,
+                    'prompt_uid', prompt_uid, 'consumer_tags', consumer_tags,
+                    'intent_examples', intent_examples, 'includes', includes,
+                    'dependency_registry', dependency_registry,
+                    'formatted_content', formatted_content, 'tier', tier,
+                    'usage_count', usage_count, 'success_count', success_count,
+                    'failure_count', failure_count, 'wilson_lower', wilson_lower,
+                    'validation_status', validation_status, 'source', source,
+                    'content_hash', content_hash, 'content_checksum', content_checksum,
+                    'created_at', created_at, 'updated_at', updated_at) AS tool_skill
+                 FROM reborn_tool_skills
+                 WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5",
+                &[&id, &tenant_id, &user_id, &agent_id, &project_id],
+            )
+            .await
+            .map_err(map_pg)?;
+        row.map(|row| {
+            Ok(brassclaw_product_workflow::ToolSkillDetail {
+                id: id.to_string(),
+                tool_skill: row.try_get("tool_skill").map_err(map_pg)?,
+            })
+        })
+        .transpose()
     }
 
     /// Store the caller's requested review state exactly. A system source label

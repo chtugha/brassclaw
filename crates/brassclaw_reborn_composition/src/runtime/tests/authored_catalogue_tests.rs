@@ -592,6 +592,16 @@ async fn native_authored_catalogue_activates_validated_usage_without_revalidatio
     let selected = catalogue.active.read().await.clone();
     assert_eq!(old.programs.len(), 0);
     assert_eq!(selected.programs.len(), 2);
+    verify_retained_recipe_details(
+        &catalogue,
+        &pool,
+        &app,
+        runtime.webui_tenant_id(),
+        new_id,
+        true,
+        false,
+    )
+    .await;
     let chat = runtime.new_conversation().await.unwrap();
     let reply = runtime
         .send_user_message(&chat, "authored reply quoted ' ü {{literal}}")
@@ -1016,6 +1026,16 @@ async fn native_catalogue_routing_choices_survive_restart_and_reactivation() {
     drop(client);
     let (status, disabled) = call(&app, "POST", Some(&disable), true).await;
     assert_eq!(status, StatusCode::OK, "{disabled}");
+    verify_retained_recipe_details(
+        &catalogue,
+        &rig.pool,
+        &app,
+        runtime.webui_tenant_id(),
+        new_id,
+        false,
+        true,
+    )
+    .await;
     release.notify_one();
     let old = pending.await.unwrap();
     assert_eq!(old.status, TurnStatus::Completed);
@@ -1510,3 +1530,141 @@ async fn native_catalogue_matching_retains_more_than_eight_thousand_templates() 
 
 #[path = "component_deployment_tests.rs"]
 mod component_deployment_tests;
+
+// Reuses actual already-published catalogue fixtures and their HTTP facade.
+// A mutable legacy row and an allocated successor are NOT the active selection.
+async fn verify_retained_recipe_details(
+    catalogue: &Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
+    pool: &Arc<brassclaw_pg::PgPool>,
+    app: &axum::Router,
+    tenant: &str,
+    id: Uuid,
+    allocate_successor: bool,
+    disabled: bool,
+) {
+    let view = catalogue.active.read().await.clone();
+    let programs: Vec<_> = view
+        .programs
+        .iter()
+        .filter(|p| p.program().inputs().instruction().recipe().uuid == id)
+        .collect();
+    assert!(!programs.is_empty());
+    let client = pool.get().await.unwrap();
+    client.execute("INSERT INTO reborn_recipes(id,tenant_id,user_id,agent_id,project_id,name,description,steps,class_code,variants) VALUES($1,$2,'catalogue-operator','default','default',$3,'editable legacy row; not retained selection',$4,21,$5)", &[&id,&tenant,&format!("legacy-detail-{id}"),&json!({"llm_call_required":false}),&json!([{"variant_key":"legacy-only"}])]).await.unwrap();
+    drop(client);
+    let settings = format!("/api/settings/recipes/{id}");
+    let recipe = format!("/api/webchat/v2/recipes/default/{id}");
+    for path in [&settings, &recipe] {
+        assert_eq!(
+            component_deployment_tests::at(app, "GET", path, None, false)
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    let (status, settings_view) =
+        component_deployment_tests::at(app, "GET", &settings, None, true).await;
+    assert_eq!(status, StatusCode::OK, "{settings_view}");
+    let (status, recipe_view) =
+        component_deployment_tests::at(app, "GET", &recipe, None, true).await;
+    assert_eq!(status, StatusCode::OK, "{recipe_view}");
+    assert_eq!(
+        settings_view["component"]["description"],
+        "editable legacy row; not retained selection"
+    );
+    assert_eq!(
+        recipe_view["recipe"]["description"],
+        settings_view["component"]["description"]
+    );
+    let projected = &settings_view["component"]["retained_catalogue"];
+    assert_eq!(
+        *projected, recipe_view["recipe"]["retained_catalogue"],
+        "both actual HTTP ports reuse the SAME native projector"
+    );
+    assert_eq!(projected["generation"], view.generation.to_string());
+    let selections = projected["selections"].as_array().unwrap();
+    let revisions: std::collections::BTreeSet<_> = programs
+        .iter()
+        .map(|program| {
+            let r = program.program().inputs().instruction().recipe();
+            (r.version, r.checksum)
+        })
+        .collect();
+    assert_eq!(
+        selections.len(),
+        revisions.len(),
+        "separate exact revisions, originals not duplicated per variant"
+    );
+    assert_eq!(
+        selections
+            .iter()
+            .map(|entry| entry["variants"].as_array().unwrap().len())
+            .sum::<usize>(),
+        programs.len()
+    );
+    for program in &programs {
+        let instruction = program.program().inputs().instruction();
+        let reference = instruction.recipe();
+        let original = &instruction.snapshot().revisions()[&id];
+        let expected_version = reference.version.to_string();
+        let actual = selections
+            .iter()
+            .find(|entry| {
+                entry["reference"]["version"].as_str() == Some(expected_version.as_str())
+                    && entry["reference"]["checksum"] == hex::encode(reference.checksum)
+            })
+            .unwrap();
+        assert_eq!(actual["reference"]["uuid"], id.to_string());
+        assert_eq!(actual["component_bytes"], original.draft().exact_bytes());
+        assert_eq!(
+            actual["declaration_present"],
+            original
+                .draft()
+                .document()
+                .get("model_input_bindings")
+                .is_some()
+        );
+        let variant = actual["variants"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["variant_key"] == instruction.variant().variant_key)
+            .unwrap();
+        assert_eq!(variant["step_link"], json!(instruction.variant().step_link));
+        assert_eq!(variant["routing_enabled"], !disabled);
+        assert_eq!(
+            variant["model_input"],
+            serde_json::to_value(instruction.model_input()).unwrap()
+        );
+    }
+    if allocate_successor {
+        let instruction = programs[0].program().inputs().instruction();
+        let original = &instruction.snapshot().revisions()[&id];
+        let mut document = original.draft().document().clone();
+        document["description"] = json!("allocated only; never activated");
+        let draft=ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":id,"class_code":21,"document":document,"dependencies":original.draft().dependencies(),"association":null}).to_string()).unwrap();
+        let next = PgComponentRevisionStore::new(pool.clone())
+            .stage(&draft, original.reference().version)
+            .await
+            .unwrap();
+        assert!(next.version > original.reference().version);
+        for (path, field) in [(&settings, "component"), (&recipe, "recipe")] {
+            let (status, after) =
+                component_deployment_tests::at(app, "GET", path, None, true).await;
+            assert_eq!(status, StatusCode::OK, "{after}");
+            assert_eq!(
+                after[field]["retained_catalogue"], *projected,
+                "allocated successor cannot silently replace current exact pins"
+            );
+        }
+    }
+    let none = catalogue
+        .retained_recipe_detail(Uuid::new_v4())
+        .await
+        .unwrap();
+    assert_eq!(none["generation"], view.generation.to_string());
+    assert!(
+        none["selections"].as_array().unwrap().is_empty(),
+        "unselected UUID has no synthetic Default"
+    );
+}

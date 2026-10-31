@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Reuse the existing credential-refresh publication in a caller-owned transaction;
+  rollbacks preserve the retained response and original account for reconciliation.
+- Commit Recipe rejection and eligible Q2 queue changes together; preserve
+  manual rejection before Q1 and leave a rejected upgrade's live Recipe intact.
+  Surface database and commit failures without publishing partial changes.
+- Show actual current catalogue Recipe revisions, variants and model-input
+  declarations beside editable drafts, with complete original documents and one
+  shared native reader for both existing detail routes.
+- Connect ToolSkill inventory/detail routes to their real scoped store. Return
+  visible errors for unconnected functional-review actions instead of reporting
+  successful no-ops; remove the store's blanket dead-code suppression.
+- Keep successful source inventory reads visible when the independent generation
+  list fails or is slow, and display their errors separately.
+- Fence measurement status replies by original profile, generation, job and
+  observation order, preserving uncertain requests and exact retry identity.
+
 - Preserve exact Prefix provider/profile revision identities across browser JSON
   using decimal strings, with compatible inbound legacy integers and unchanged
   native serialization, original artifacts and retained Skill contracts.

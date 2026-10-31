@@ -17,6 +17,16 @@ rather than early descriptions of an absent loader/activation path. The seven
 original failures were resolved in their recorded scope; full library migration
 and this plan's acceptance remain open.
 
+[BUILD045–051](../validation/2026-10-31-settings-catalogue-facades.md) adds one
+read-only current-catalogue Recipe projector used by both existing detail routes:
+exact generation, retained revision/checksum/original bytes, selected variants
+and native model-input declarations. The legacy editable row remains separate;
+allocation heads and unactivated successors cannot masquerade as current task
+selection. Actual global/PG/HTTP catalogue and routing-disabled cases pass.
+This supplies presentation of existing selections, not immutable editing,
+activation, Free qualification or the family migrations below. Consume this
+reader rather than introducing a second catalogue or latest-row lookup.
+
 [BUILD-009](../validation/2026-10-31-model-host-compatibility.md) separately accepts
 the current model-host compatibility callers through actual Composition owners:
 coherent prepare/bind, retained named selections and shared admission/parser

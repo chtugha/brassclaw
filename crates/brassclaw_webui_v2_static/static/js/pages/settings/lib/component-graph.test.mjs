@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
 
 import {
   classOf,
@@ -199,4 +201,38 @@ test("recipeOutcomeStats is null when the row carries no counters", () => {
   assert.equal(recipeOutcomeStats({}), null);
   assert.equal(recipeOutcomeStats(null), null);
   assert.equal(recipeOutcomeStats({ usage_count: "12" }), null);
+});
+
+
+test("Recipe catalogue details preserve supplied pins and distinguish absent declaration from absent port", () => {
+  const source = readFileSync(new URL("../components/component-detail-pane.js", import.meta.url), "utf8")
+    .replace(/^import[\s\S]*?;\s*$/gm, "").replaceAll("export function", "function");
+  const context = {useT:()=>key=>key,Section:"Section",html:(strings,...values)=>({strings:[...strings],values})};
+  vm.createContext(context);vm.runInContext(source+"\nglobalThis.retained=RetainedRecipeCatalogue;",context);
+  function nodes(root) {const out=[];function walk(v){if(Array.isArray(v))v.forEach(walk);else if(v?.strings){out.push(v);v.values.forEach(walk);}}walk(root);return out;}
+  const texts = root => nodes(root).flatMap(node=>node.values.filter(value=>typeof value==="string"));
+  for(const value of [undefined,null]) {
+    const result=texts(context.retained({value}));
+    assert.ok(result.includes("componentDetail.retained.unavailable"));
+    assert.ok(!result.includes("componentDetail.retained.defaultAbsent"));
+  }
+  const empty=texts(context.retained({value:{generation:"current",selections:[]}}));
+  assert.ok(empty.includes("current"));assert.ok(empty.includes("componentDetail.retained.notSelected"));
+  const original=' {"integer":18446744073709551615}\r\n<script>literal</script> ';
+  const defaults=[
+    {declaration_present:false,variant_entry_present:false,model_input:{selection:"default"}},
+    {declaration_present:true,variant_entry_present:true,model_input:{selection:"default"}},
+    {declaration_present:true,variant_entry_present:false,model_input:{selection:"default"}},
+    {declaration_present:true,variant_entry_present:true,model_input:{selection:"selected",profile:"<profile>"}},
+    {declaration_present:true,variant_entry_present:true,model_input:{selection:"prefix_free_workflow",purpose:"prefix_generation"}},
+  ];
+  const value={generation:"coherent-generation",selections:defaults.map((binding,index)=>({declaration_present:binding.declaration_present,reference:{uuid:"recipe",version:String(9007199254740993n+BigInt(index)),checksum:"hash-"+index},component_bytes:original,variants:[{...binding,variant_key:"variant-"+index,step_link:"0:1-0:E",routing_enabled:index%2===0}]}))};
+  value.selections[0].variants.push({...value.selections[0].variants[0],variant_key:"second-variant-same-revision"});
+  const snapshot=JSON.stringify(value), tree=context.retained({value}), shown=texts(tree);
+  for(const key of ["defaultAbsent","defaultExplicit","defaultVariantAbsent","selectedProfile","prefixFree","routingEnabled","routingDisabled"]) assert.ok(shown.includes("componentDetail.retained."+key),key);
+  for(const text of ["coherent-generation","9007199254740993","<profile>","prefix_generation",original]) assert.ok(shown.includes(text),text);
+  assert.equal(shown.filter(text=>text===original).length,5,"full originals are shown once per exact revision, not duplicated per variant");
+  assert.ok(shown.includes("second-variant-same-revision"));
+  assert.equal(JSON.stringify(value),snapshot,"display cannot rewrite originals or selections");
+  assert.ok(nodes(tree).every(node=>node.strings.every(text=>!text.includes("onClick=")&&!text.includes("dangerouslySetInnerHTML"))),"display creates no authoring, approval or activation action");
 });

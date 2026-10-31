@@ -1532,3 +1532,849 @@ async fn native_http_class50_admission_is_visible_and_historical_readback_stays_
         (1, 1, 1, 1)
     );
 }
+
+/// The mounted operator path must expose real ToolSkill rows and distinguish
+/// an empty scoped inventory, an unknown ID, invalid input and a broken backend.
+#[tokio::test]
+async fn native_http_tool_skill_inventory_reads_real_scoped_rows_and_backend_errors() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let app = app(rig.pool.clone());
+    let list_uri = "/api/webchat/v2/tool-skills?project_id=toolskill-project";
+    let (status, body) = send(&app, "GET", list_uri, None, true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["tool_skills"], json!([]));
+    assert_eq!(
+        send(&app, "GET", list_uri, None, false).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let client = rig.pool.get().await.unwrap();
+    let mut ids = Vec::new();
+    for (tenant, user, agent, project, name, tool_name, state, content) in [
+        (
+            "submission-test-instance",
+            "submission-test-operator",
+            "default",
+            "toolskill-project",
+            "first",
+            Some("ls"),
+            "pending",
+            "你好世界a",
+        ),
+        (
+            "submission-test-instance",
+            "submission-test-operator",
+            "default",
+            "toolskill-project",
+            "second",
+            None,
+            "rejected",
+            "",
+        ),
+        (
+            "other-instance",
+            "submission-test-operator",
+            "default",
+            "toolskill-project",
+            "other-tenant",
+            Some("ls"),
+            "pending",
+            "foreign",
+        ),
+        (
+            "submission-test-instance",
+            "other-operator",
+            "default",
+            "toolskill-project",
+            "other-user",
+            Some("ls"),
+            "pending",
+            "foreign",
+        ),
+        (
+            "submission-test-instance",
+            "submission-test-operator",
+            "other-agent",
+            "toolskill-project",
+            "other-agent",
+            Some("ls"),
+            "pending",
+            "foreign",
+        ),
+        (
+            "submission-test-instance",
+            "submission-test-operator",
+            "default",
+            "other-project",
+            "other-project",
+            Some("ls"),
+            "pending",
+            "foreign",
+        ),
+    ] {
+        let id: Uuid = client.query_one(
+            "INSERT INTO reborn_tool_skills
+             (tenant_id,user_id,agent_id,project_id,name,description,content,tool_name,
+              param_schema,param_template,validation_status,source,usage_count,success_count,
+              failure_count,wilson_lower,consumer_tags)
+             VALUES ($1,$2,$3,$4,$5,'real binding metadata',$6,$7,
+                     '{\"type\":\"object\"}'::jsonb,'{\"all\":true}'::jsonb,$8,'authored',7,5,2,0.25,
+                     ARRAY['00:rusty']) RETURNING id",
+            &[&tenant,&user,&agent,&project,&name,&content,&tool_name,&state],
+        ).await.unwrap().get(0);
+        ids.push(id);
+    }
+    let (status, body) = send(&app, "GET", list_uri, None, true).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = body["tool_skills"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["id"], ids[0].to_string());
+    assert_eq!(rows[0]["name"], "first");
+    assert_eq!(rows[0]["tool_name"], "ls");
+    assert_eq!(rows[0]["category"], "tool_skill");
+    assert_eq!(rows[0]["estimated_tokens"], 2);
+    assert_eq!(rows[0]["usage_count"], 7);
+    assert_eq!(rows[0]["success_count"], 5);
+    assert_eq!(rows[0]["failure_count"], 2);
+    assert_eq!(rows[0]["wilson_lower"], 0.25);
+    assert_eq!(rows[0]["validation_status"], "pending");
+    assert!(rows[0]["created_at"].as_str().unwrap().contains('T'));
+    assert_eq!(rows[1]["id"], ids[1].to_string());
+    assert_eq!(rows[1]["tool_name"], "");
+    assert_eq!(rows[1]["estimated_tokens"], 0);
+    assert_eq!(rows[1]["validation_status"], "rejected");
+    let detail_uri = format!("/api/webchat/v2/tool-skills/toolskill-project/{}", ids[0]);
+    let (status, body) = send(&app, "GET", &detail_uri, None, true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["id"], ids[0].to_string());
+    let detail = &body["tool_skill"];
+    assert_eq!(detail["content"], "你好世界a");
+    assert_eq!(detail["class_code"], 13);
+    assert_eq!(detail["param_schema"], json!({"type":"object"}));
+    assert_eq!(detail["param_template"], json!({"all":true}));
+    assert_eq!(detail["consumer_tags"], json!(["00:rusty"]));
+    assert_eq!(detail["includes"], json!([]));
+    assert!(detail["prior_knowledge_content"].is_null());
+    assert!(detail.get("tenant_id").is_none());
+    assert!(detail.get("code_snippet").is_none());
+    for id in ids
+        .iter()
+        .skip(2)
+        .copied()
+        .chain(std::iter::once(Uuid::new_v4()))
+    {
+        let uri = format!("/api/webchat/v2/tool-skills/toolskill-project/{id}");
+        assert_eq!(
+            send(&app, "GET", &uri, None, true).await.0,
+            StatusCode::NOT_FOUND
+        );
+    }
+    assert_eq!(
+        send(
+            &app,
+            "GET",
+            "/api/webchat/v2/tool-skills/toolskill-project/not-a-uuid",
+            None,
+            true
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    // Prior-knowledge override is the stored display/estimate source; it must
+    // not be silently replaced by the raw content or become an execution cap.
+    client
+        .execute(
+            "UPDATE reborn_tool_skills SET prior_knowledge_content=$2 WHERE id=$1",
+            &[&ids[0], &"abcdefghi"],
+        )
+        .await
+        .unwrap();
+    let (status, body) = send(&app, "GET", list_uri, None, true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["tool_skills"][0]["estimated_tokens"], 3);
+    let (status, body) = send(&app, "GET", &detail_uri, None, true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["tool_skill"]["content"], "你好世界a");
+    assert_eq!(body["tool_skill"]["prior_knowledge_content"], "abcdefghi");
+    let nullable_uri = format!("/api/webchat/v2/tool-skills/toolskill-project/{}", ids[1]);
+    let (status, body) = send(&app, "GET", &nullable_uri, None, true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["tool_skill"]["tool_name"].is_null());
+    // This native rig owns its database. A missing migration is not an empty
+    // inventory; both existing HTTP read routes must report backend failure.
+    client
+        .batch_execute("ALTER TABLE reborn_tool_skills RENAME TO unavailable_tool_skills")
+        .await
+        .unwrap();
+    assert_eq!(
+        send(&app, "GET", list_uri, None, true).await.0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(
+        send(&app, "GET", &detail_uri, None, true).await.0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    client
+        .batch_execute("ALTER TABLE unavailable_tool_skills RENAME TO reborn_tool_skills")
+        .await
+        .unwrap();
+    drop(client);
+    rig.pool.close();
+    assert_eq!(
+        send(&app, "GET", list_uri, None, true).await.0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(
+        send(&app, "GET", &detail_uri, None, true).await.0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+}
+
+/// Sealed legacy queue state is not a substitute for the missing connected
+/// ToolSkill functional-review writer. No existing action may acknowledge a no-op.
+#[tokio::test]
+async fn native_http_tool_skill_review_actions_fail_visibly_without_any_write() {
+    use brassclaw_engine::memory::retrieval_source::ComponentScope;
+    use brassclaw_product_workflow::{
+        RebornServicesApi, UpdateValidationStatusRequest, WebUiAuthenticatedCaller,
+    };
+
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let app = app(rig.pool.clone());
+    let scope = ComponentScope {
+        tenant_id: "submission-test-instance".into(),
+        user_id: "submission-test-operator".into(),
+        agent_id: "default".into(),
+        project_id: "toolskill-review".into(),
+    };
+    let queue = crate::validation_queue::ValidationQueueStore::new(rig.pool.clone());
+    let client = rig.pool.get().await.unwrap();
+    let id: Uuid = client
+        .query_one(
+            "INSERT INTO reborn_tool_skills
+         (tenant_id,user_id,agent_id,project_id,name,description,content,tool_name,
+          source,consumer_tags)
+         VALUES ($1,$2,$3,$4,'review-target','actual ToolSkill','binding metadata','ls',
+                 'authored',ARRAY['00:rusty','05:validator']) RETURNING id",
+            &[
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+            ],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let request = json!({"feedback":"operator review context"});
+    for stage in 0..4 {
+        match stage {
+            1 => queue.submit(&scope, id, 13, None).await.unwrap(),
+            // Queue lifecycle fixture, not execution of production Q1 or a
+            // functional pass: even a sealed legacy queue cannot bypass this gap.
+            2 => queue.gate1_pass(&scope, id, &[]).await.unwrap(),
+            3 => {
+                client.execute(
+                    "UPDATE reborn_tool_skills SET content='changed since legacy Q1' WHERE id=$1",
+                    &[&id],
+                ).await.unwrap();
+            }
+            _ => {}
+        }
+        let before: String = client
+            .query_one(
+                "SELECT to_jsonb(c)::text FROM reborn_tool_skills c WHERE id=$1",
+                &[&id],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        let queued: Option<String> = client
+            .query_opt(
+                "SELECT to_jsonb(q)::text FROM reborn_validation_queue q WHERE component_id=$1",
+                &[&id],
+            )
+            .await
+            .unwrap()
+            .map(|row| row.get(0));
+        for action in ["validate", "reject", "send-to-revision"] {
+            let uri = format!(
+                "/api/webchat/v2/components/13/{id}/{action}?project_id={}",
+                scope.project_id,
+            );
+            let (status, body) = send(&app, "PUT", &uri, Some(&request), true).await;
+            assert_eq!(
+                status,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "{action} stage {stage}: {body}"
+            );
+            assert!(body.get("new_status").is_none());
+            let after: String = client
+                .query_one(
+                    "SELECT to_jsonb(c)::text FROM reborn_tool_skills c WHERE id=$1",
+                    &[&id],
+                )
+                .await
+                .unwrap()
+                .get(0);
+            assert_eq!(after, before);
+            let after_queue: Option<String> = client
+                .query_opt(
+                    "SELECT to_jsonb(q)::text FROM reborn_validation_queue q WHERE component_id=$1",
+                    &[&id],
+                )
+                .await
+                .unwrap()
+                .map(|row| row.get(0));
+            assert_eq!(after_queue, queued);
+            let receipts: i64 = client.query_one(
+                "SELECT count(*) FROM reborn_component_graduation_receipts WHERE component_id=$1",
+                &[&id],
+            ).await.unwrap().get(0);
+            assert_eq!(receipts, 0);
+        }
+    }
+    // The three older service actions use the same facade method as the
+    // generalized mounted routes; they must also return errors, not unknowns.
+    let services = RebornServices::new(
+        Arc::new(PgSessionThreadService::new(
+            rig.pool.clone(),
+            &scope.tenant_id,
+        )),
+        Arc::new(DefaultTurnCoordinator::new(Arc::new(
+            PgTurnStateStore::new(rig.pool.clone(), &scope.tenant_id),
+        ))),
+    )
+    .with_recipe_store(Arc::new(crate::pg_recipe_store::PgRecipeStoreFacade::new(
+        rig.pool.clone(),
+        &scope.tenant_id,
+        &scope.agent_id,
+    )));
+    let caller = WebUiAuthenticatedCaller::new(
+        TenantId::new(&scope.tenant_id).unwrap(),
+        UserId::new(&scope.user_id).unwrap(),
+        None,
+        None,
+    );
+    let review_request = || UpdateValidationStatusRequest {
+        feedback: Some("operator review context".into()),
+    };
+    assert!(
+        services
+            .validate_tool_skill(
+                caller.clone(),
+                &scope.project_id,
+                &id.to_string(),
+                review_request()
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        services
+            .reject_tool_skill(
+                caller.clone(),
+                &scope.project_id,
+                &id.to_string(),
+                review_request()
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        services
+            .request_tool_skill_review(caller, &scope.project_id, &id.to_string(), review_request())
+            .await
+            .is_err()
+    );
+    let uri = |value: &str, project: &str| {
+        format!("/api/webchat/v2/components/13/{value}/validate?project_id={project}")
+    };
+    assert_eq!(
+        send(
+            &app,
+            "PUT",
+            &uri(&id.to_string(), &scope.project_id),
+            Some(&request),
+            false
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(
+            &app,
+            "PUT",
+            &uri("not-a-uuid", &scope.project_id),
+            Some(&request),
+            true
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        send(
+            &app,
+            "PUT",
+            &uri(&Uuid::new_v4().to_string(), &scope.project_id),
+            Some(&request),
+            true
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        send(
+            &app,
+            "PUT",
+            &uri(&id.to_string(), "other-project"),
+            Some(&request),
+            true
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    client
+        .batch_execute("ALTER TABLE reborn_tool_skills RENAME TO unavailable_tool_skills")
+        .await
+        .unwrap();
+    assert_eq!(
+        send(
+            &app,
+            "PUT",
+            &uri(&id.to_string(), &scope.project_id),
+            Some(&request),
+            true
+        )
+        .await
+        .0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    client
+        .batch_execute("ALTER TABLE unavailable_tool_skills RENAME TO reborn_tool_skills")
+        .await
+        .unwrap();
+}
+
+/// Real legacy candidate/queue fixtures for atomic rejection tests. These seals
+/// exercise custody, not production functional Q1 or immutable own approval.
+async fn recipe_rejection_candidate(
+    pool: &Arc<PgPool>,
+    name: &str,
+    upgrade: bool,
+) -> (
+    Uuid,
+    brassclaw_engine::memory::retrieval_source::ComponentScope,
+) {
+    use brassclaw_engine::memory::retrieval_source::ComponentScope;
+    let scope = ComponentScope {
+        tenant_id: "submission-test-instance".into(),
+        user_id: "submission-test-operator".into(),
+        agent_id: "default".into(),
+        project_id: "recipe-rejection".into(),
+    };
+    let status = if upgrade { "validated" } else { "pending" };
+    let id = pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "INSERT INTO reborn_recipes
+         (tenant_id,user_id,agent_id,project_id,name,description,validation_status)
+         VALUES ($1,$2,$3,$4,$5,'original Recipe',$6) RETURNING id",
+            &[
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+                &name,
+                &status,
+            ],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    (id, scope)
+}
+
+async fn recipe_rejection_snapshot(pool: &PgPool, id: Uuid) -> (String, Option<String>) {
+    let client = pool.get().await.unwrap();
+    let recipe = client
+        .query_one(
+            "SELECT to_jsonb(c)::text FROM reborn_recipes c WHERE id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let queue = client
+        .query_opt(
+            "SELECT to_jsonb(q)::text FROM reborn_validation_queue q WHERE component_id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap()
+        .map(|row| row.get(0));
+    (recipe, queue)
+}
+
+#[tokio::test]
+async fn native_http_recipe_manual_rejection_preserves_non_q2_queue_and_upgrade_live_row() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let app = app(rig.pool.clone());
+    let queue = crate::validation_queue::ValidationQueueStore::new(rig.pool.clone());
+    let request = json!({"feedback":"needs revision"});
+    for name in ["no-queue", "pending-queue", "q2-queue"] {
+        let (id, scope) = recipe_rejection_candidate(&rig.pool, name, false).await;
+        if name != "no-queue" {
+            queue.submit(&scope, id, 21, None).await.unwrap();
+        }
+        if name == "q2-queue" {
+            queue.gate1_pass(&scope, id, &[]).await.unwrap();
+        }
+        let before = recipe_rejection_snapshot(&rig.pool, id).await;
+        let uri = format!(
+            "/api/webchat/v2/components/21/{id}/reject?project_id={}",
+            scope.project_id
+        );
+        let (status, body) = send(&app, "PUT", &uri, Some(&request), true).await;
+        assert_eq!(status, StatusCode::OK, "{name}: {body}");
+        assert_eq!(body["previous_status"], "pending");
+        assert_eq!(body["new_status"], "rejected");
+        let after = recipe_rejection_snapshot(&rig.pool, id).await;
+        let recipe: Value = serde_json::from_str(&after.0).unwrap();
+        assert_eq!(recipe["validation_status"], "rejected");
+        if name == "q2-queue" {
+            let rejected: Value = serde_json::from_str(after.1.as_ref().unwrap()).unwrap();
+            assert_eq!(rejected["state"], 3);
+            assert_eq!(rejected["counter"], 1);
+            assert_eq!(rejected["review_feedback"], "needs revision");
+        } else {
+            assert_eq!(
+                after.1, before.1,
+                "manual metadata action must not manufacture Q2"
+            );
+        }
+        // Repeated manual metadata rejection is idempotent; an existing state3
+        // ticket gets no extra Q2 rejection/counter/feedback write.
+        assert_eq!(
+            send(&app, "PUT", &uri, Some(&request), true).await.0,
+            StatusCode::OK
+        );
+        assert_eq!(recipe_rejection_snapshot(&rig.pool, id).await, after);
+        let receipts: i64 = rig
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT count(*) FROM reborn_component_graduation_receipts WHERE component_id=$1",
+                &[&id],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(receipts, 0);
+    }
+    let (id, scope) = recipe_rejection_candidate(&rig.pool, "upgrade-recipe", true).await;
+    queue
+        .submit(
+            &scope,
+            id,
+            21,
+            Some(json!({"description":"proposed upgrade"})),
+        )
+        .await
+        .unwrap();
+    let uri = format!(
+        "/api/webchat/v2/components/21/{id}/reject?project_id={}",
+        scope.project_id
+    );
+    let before = recipe_rejection_snapshot(&rig.pool, id).await;
+    // No premature Q2 or invented cancellation of a pending upgrade proposal.
+    assert_eq!(
+        send(&app, "PUT", &uri, Some(&request), true).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(recipe_rejection_snapshot(&rig.pool, id).await, before);
+    queue.gate1_pass(&scope, id, &[]).await.unwrap();
+    let before = recipe_rejection_snapshot(&rig.pool, id).await;
+    let client = rig.pool.get().await.unwrap();
+    client
+        .execute(
+            "UPDATE reborn_validation_queue SET component_class=13 WHERE component_id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap();
+    let wrong_class = recipe_rejection_snapshot(&rig.pool, id).await;
+    assert_eq!(
+        send(&app, "PUT", &uri, Some(&request), true).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(recipe_rejection_snapshot(&rig.pool, id).await, wrong_class);
+    client
+        .execute(
+            "UPDATE reborn_validation_queue SET component_class=21 WHERE component_id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap();
+    let (status, body) = send(&app, "PUT", &uri, Some(&request), true).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["previous_status"], "validated");
+    assert_eq!(body["new_status"], "validated");
+    let after = recipe_rejection_snapshot(&rig.pool, id).await;
+    assert_eq!(
+        after.0, before.0,
+        "live upgrade bytes must be preserved exactly"
+    );
+    let rejected: Value = serde_json::from_str(after.1.as_ref().unwrap()).unwrap();
+    assert_eq!(rejected["state"], 3);
+    assert_eq!(rejected["counter"], 1);
+    assert_eq!(rejected["review_feedback"], "needs revision");
+    assert_eq!(
+        rejected["proposed_payload"],
+        json!({"description":"proposed upgrade"})
+    );
+    assert_eq!(
+        send(&app, "PUT", &uri, Some(&request), true).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(recipe_rejection_snapshot(&rig.pool, id).await, after);
+}
+
+#[tokio::test]
+async fn native_http_recipe_rejection_rolls_back_late_statement_and_commit_failures() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let app = app(rig.pool.clone());
+    let queue = crate::validation_queue::ValidationQueueStore::new(rig.pool.clone());
+    let client = rig.pool.get().await.unwrap();
+    client
+        .batch_execute(
+            "CREATE FUNCTION fail_recipe_reject() RETURNS trigger LANGUAGE plpgsql AS $$
+         BEGIN RAISE EXCEPTION 'private rejection diagnostic' USING ERRCODE='23514'; END $$;",
+        )
+        .await
+        .unwrap();
+    for mode in ["no-queue", "pending-queue", "q2-queue", "upgrade-queue"] {
+        let upgrade = mode == "upgrade-queue";
+        let (id, scope) =
+            recipe_rejection_candidate(&rig.pool, &format!("failure-{mode}"), upgrade).await;
+        if mode != "no-queue" {
+            queue
+                .submit(
+                    &scope,
+                    id,
+                    21,
+                    upgrade.then(|| json!({"description":"proposed upgrade"})),
+                )
+                .await
+                .unwrap();
+        }
+        if mode == "q2-queue" || upgrade {
+            queue.gate1_pass(&scope, id, &[]).await.unwrap();
+        }
+        let before = recipe_rejection_snapshot(&rig.pool, id).await;
+        let uri = format!(
+            "/api/webchat/v2/components/21/{id}/reject?project_id={}",
+            scope.project_id
+        );
+        let request = json!({"feedback":"rejected atomically"});
+        // A real queue-table failure is never treated like expected absence or
+        // non-Q2 state, including the otherwise supported manual row action.
+        client
+            .batch_execute(
+                "ALTER TABLE reborn_validation_queue RENAME TO unavailable_rejection_queue",
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            send(&app, "PUT", &uri, Some(&request), true).await.0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        client
+            .batch_execute(
+                "ALTER TABLE unavailable_rejection_queue RENAME TO reborn_validation_queue",
+            )
+            .await
+            .unwrap();
+        assert_eq!(recipe_rejection_snapshot(&rig.pool, id).await, before);
+        let (table, condition) = if upgrade {
+            ("reborn_validation_queue", "NEW.state IN (3,4)")
+        } else {
+            ("reborn_recipes", "NEW.validation_status='rejected'")
+        };
+        for deferred in [false, true] {
+            let ddl = if deferred {
+                format!(
+                    "CREATE CONSTRAINT TRIGGER recipe_reject_fault AFTER UPDATE ON {table} DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN ({condition}) EXECUTE FUNCTION fail_recipe_reject()"
+                )
+            } else {
+                format!(
+                    "CREATE TRIGGER recipe_reject_fault BEFORE UPDATE ON {table} FOR EACH ROW WHEN ({condition}) EXECUTE FUNCTION fail_recipe_reject()"
+                )
+            };
+            client.batch_execute(&ddl).await.unwrap();
+            let (status, body) = send(&app, "PUT", &uri, Some(&request), true).await;
+            assert_eq!(
+                status,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "{mode}, deferred={deferred}: {body}"
+            );
+            assert!(!body.to_string().contains("private rejection diagnostic"));
+            assert_eq!(recipe_rejection_snapshot(&rig.pool, id).await, before);
+            client
+                .batch_execute(&format!("DROP TRIGGER recipe_reject_fault ON {table}"))
+                .await
+                .unwrap();
+        }
+        // Explicit retry after removing the fault commits only supported work.
+        assert_eq!(
+            send(&app, "PUT", &uri, Some(&request), true).await.0,
+            StatusCode::OK
+        );
+        let after = recipe_rejection_snapshot(&rig.pool, id).await;
+        let recipe: Value = serde_json::from_str(&after.0).unwrap();
+        if upgrade {
+            assert_eq!(after.0, before.0);
+            assert_eq!(recipe["validation_status"], "validated");
+        } else {
+            assert_eq!(recipe["validation_status"], "rejected");
+        }
+        if mode == "q2-queue" || upgrade {
+            let rejected: Value = serde_json::from_str(after.1.as_ref().unwrap()).unwrap();
+            assert_eq!(rejected["state"], 3);
+            assert_eq!(rejected["counter"], 1);
+            assert_eq!(rejected["review_feedback"], "rejected atomically");
+        } else {
+            assert_eq!(
+                after.1, before.1,
+                "manual action must leave non-Q2 queue intact"
+            );
+        }
+    }
+}
+
+/// Observe the contender waiting on this transaction's exact advisory key.
+/// Completion is driven by actual PostgreSQL lock state, never a sleep race.
+async fn observe_queue_key_waiter(holder: &tokio_postgres::Transaction<'_>) {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let waiting: bool = holder
+                .query_one(
+                    "SELECT EXISTS (
+                    SELECT 1 FROM pg_locks waiting JOIN pg_locks mine
+                    ON waiting.database=mine.database AND waiting.classid=mine.classid
+                       AND waiting.objid=mine.objid AND waiting.objsubid=mine.objsubid
+                    WHERE mine.locktype='advisory' AND waiting.locktype='advisory'
+                      AND mine.pid=pg_backend_pid() AND mine.granted
+                      AND NOT waiting.granted AND waiting.pid<>mine.pid)",
+                    &[],
+                )
+                .await
+                .unwrap()
+                .get(0);
+            if waiting {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("actual competing owner waits for this transaction's exact queue key");
+}
+
+#[tokio::test]
+async fn native_pg_queue_absence_and_upgrade_insert_share_transaction_key() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let app = app(rig.pool.clone());
+    let queue = crate::validation_queue::ValidationQueueStore::new(rig.pool.clone());
+    let (id, scope) = recipe_rejection_candidate(&rig.pool, "held-absence", true).await;
+    let mut holder_client = rig.pool.get().await.unwrap();
+    let holder = holder_client.transaction().await.unwrap();
+    assert!(
+        queue
+            .lock_for_rejection(&holder, &scope, id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // First ordering: an actual empty queue read holds its key until transaction
+    // end. The public submit operation must not autocommit its lock prematurely.
+    let (submitted, ()) = tokio::join!(
+        queue.submit(
+            &scope,
+            id,
+            21,
+            Some(json!({"description":"queued after reader"}))
+        ),
+        async {
+            observe_queue_key_waiter(&holder).await;
+            let visible: i64 = holder
+                .query_one(
+                    "SELECT count(*) FROM reborn_validation_queue WHERE component_id=$1",
+                    &[&id],
+                )
+                .await
+                .unwrap()
+                .get(0);
+            assert_eq!(visible, 0);
+            holder.commit().await.unwrap();
+        },
+    );
+    submitted.unwrap();
+    let inserted = recipe_rejection_snapshot(&rig.pool, id).await;
+    let row: Value = serde_json::from_str(inserted.1.as_ref().unwrap()).unwrap();
+    assert_eq!(
+        row["proposed_payload"],
+        json!({"description":"queued after reader"})
+    );
+    // Second ordering: the actual transaction-taking submission holds its key
+    // before commit. The mounted rejection blocks, then sees that exact proposal
+    // instead of caching a false absence and marking the live Recipe rejected.
+    let (id, scope) = recipe_rejection_candidate(&rig.pool, "held-upgrade", true).await;
+    let original = recipe_rejection_snapshot(&rig.pool, id).await;
+    let holder = holder_client.transaction().await.unwrap();
+    queue
+        .submit_in_transaction(
+            &holder,
+            &scope,
+            id,
+            21,
+            Some(json!({"description":"exact concurrent proposal"})),
+        )
+        .await
+        .unwrap();
+    let uri = format!(
+        "/api/webchat/v2/components/21/{id}/reject?project_id={}",
+        scope.project_id
+    );
+    let request = json!({"feedback":"concurrent manual rejection"});
+    let ((status, body), ()) = tokio::join!(send(&app, "PUT", &uri, Some(&request), true), async {
+        observe_queue_key_waiter(&holder).await;
+        holder.commit().await.unwrap();
+    },);
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "pending upgrade uses existing strict Q2 contract: {body}"
+    );
+    let after = recipe_rejection_snapshot(&rig.pool, id).await;
+    assert_eq!(
+        after.0, original.0,
+        "no live mutation after stale empty-queue read"
+    );
+    let proposal: Value = serde_json::from_str(after.1.as_ref().unwrap()).unwrap();
+    assert_eq!(proposal["state"], 1);
+    assert_eq!(proposal["counter"], 0);
+    assert!(proposal["review_feedback"].is_null());
+    assert_eq!(
+        proposal["proposed_payload"],
+        json!({"description":"exact concurrent proposal"})
+    );
+}

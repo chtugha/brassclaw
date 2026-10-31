@@ -198,31 +198,51 @@ impl PgAuthProductServices {
             return Ok(original_action);
         }
         let original = CredentialRefreshOriginal::from(request);
-        let (tenant, scope_ref, id) = key(&original)?;
         let mut client = self.pool.get().await.map_err(pool_err)?;
         let transaction = client.transaction().await.map_err(db_err)?;
+        let (action, changed) = self
+            .reconcile_refresh_action_in_transaction(&transaction, &original)
+            .await?;
+        if changed {
+            transaction.commit().await.map_err(db_err)?;
+        } else {
+            transaction.rollback().await.map_err(db_err)?;
+        }
+        Ok(action)
+    }
+
+    /// Existing account -> action publication in a caller-owned transaction.
+    /// The trusted instance adapter can add its exact descriptor-head CAS before
+    /// committing this SAME transaction. This grants no refresh/instance authority
+    /// and makes no HTTP request; callers must authenticate the selected subject.
+    pub(crate) async fn reconcile_refresh_action_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        original: &CredentialRefreshOriginal,
+    ) -> Result<(Option<CredentialRefreshAction>, bool), AuthProductError> {
+        let (tenant, scope_ref, id) = key(original)?;
         // Account then action is the same order as admission. The result-only
         // writer locks no account and cannot form the inverse lock order.
-        let (mut account, account_revision) = account_for_update(&transaction, &original).await?;
+        let (mut account, account_revision) = account_for_update(transaction, original).await?;
         let Some(row)=transaction.query_opt(
             "SELECT data,revision FROM brassclaw_product_auth_refreshes WHERE tenant_id=$1 AND scope_ref=$2 AND id=$3 FOR UPDATE",
             &[&tenant,&scope_ref,&id],
         ).await.map_err(db_err)? else {
-            transaction.rollback().await.map_err(db_err)?;
-            return Ok(None);
+            return Ok((None, false));
         };
         let mut action = decode_action(&row)?;
-        action.original.verify(request)?;
+        if action.original != *original {
+            return Err(AuthProductError::BackendConflict);
+        }
         let action_revision: i64 = row.get(1);
         let before_action = action.clone();
         let before_account = account.clone();
         action.publish(&mut account, Utc::now())?;
         if action == before_action {
-            transaction.rollback().await.map_err(db_err)?;
-            return Ok(Some(action));
+            return Ok((Some(action), false));
         }
         if account != before_account {
-            update_account(&transaction, &account, account_revision).await?;
+            update_account(transaction, &account, account_revision).await?;
         }
         let json =
             serde_json::to_value(&action).map_err(|_| AuthProductError::BackendUnavailable)?;
@@ -234,8 +254,7 @@ impl PgAuthProductServices {
             return Err(AuthProductError::BackendConflict);
         }
         // Final account and its applied/superseded receipt are one transaction.
-        transaction.commit().await.map_err(db_err)?;
-        Ok(Some(action))
+        Ok((Some(action), true))
     }
     pub(super) async fn complete_refresh_action(
         &self,

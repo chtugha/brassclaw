@@ -208,15 +208,11 @@ impl ValidationQueueStore {
         component_class: i32,
         proposed_payload: Option<Value>,
     ) -> Result<(), ValidationQueueError> {
-        let client = self.pool.get().await.map_err(map_pool)?;
-        Self::submit_on(
-            &**client,
-            scope,
-            component_id,
-            component_class,
-            proposed_payload,
-        )
-        .await
+        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let tx = client.transaction().await.map_err(map_pg)?;
+        Self::submit_on(&tx, scope, component_id, component_class, proposed_payload).await?;
+        tx.commit().await.map_err(map_pg)?;
+        Ok(())
     }
 
     /// Retain a missing legacy review request, without a Q1 verdict or Q2.
@@ -231,7 +227,7 @@ impl ValidationQueueStore {
     ) -> Result<bool, ValidationQueueError> {
         let mut client = self.pool.get().await.map_err(map_pool)?;
         let tx = client.transaction().await.map_err(map_pg)?;
-        let created = match Self::submit_on(&*tx, scope, component_id, component_class, None).await
+        let created = match Self::submit_on(&tx, scope, component_id, component_class, None).await
         {
             Ok(()) => true,
             Err(ValidationQueueError::AlreadyQueued { .. }) => false,
@@ -282,12 +278,13 @@ impl ValidationQueueStore {
     }
 
     async fn submit_on(
-        client: &(impl tokio_postgres::GenericClient + Sync),
+        client: &tokio_postgres::Transaction<'_>,
         scope: &ComponentScope,
         component_id: Uuid,
         component_class: i32,
         proposed_payload: Option<Value>,
     ) -> Result<(), ValidationQueueError> {
+        Self::lock_queue_key(client, scope, component_id).await?;
         if let Some(payload) = &proposed_payload {
             validate_upgrade_payload(component_class, component_id, payload)?;
         }
@@ -374,10 +371,90 @@ impl ValidationQueueStore {
         component_id: Uuid,
         feedback: &str,
     ) -> Result<(), ValidationQueueError> {
-        let client = self.pool.get().await.map_err(map_pool)?;
+        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let tx = client.transaction().await.map_err(map_pg)?;
+        self.reject_in_transaction(&tx, scope, component_id, feedback)
+            .await?;
+        tx.commit().await.map_err(map_pg)?;
+        Ok(())
+    }
+
+    /// Serialize absence/insert for the actual unique queue key. Existing
+    /// row locks still own review state; this lock creates no row or authority.
+    async fn lock_queue_key(
+        client: &tokio_postgres::Transaction<'_>,
+        scope: &ComponentScope,
+        component_id: Uuid,
+    ) -> Result<(), ValidationQueueError> {
+        // Reuse the existing encoded-tuple/hashtextextended convention. Scope
+        // parts cannot alias through separators; collisions only serialize
+        // unrelated work, while SQL selection still checks every actual key.
+        let key = serde_json::to_string(&(
+            "brassclaw.validation-queue",
+            &scope.tenant_id,
+            &scope.user_id,
+            &scope.agent_id,
+            &scope.project_id,
+            component_id,
+        ))
+        .map_err(|_| ValidationQueueError::Db {
+            reason: "queue lock key encoding failed".into(),
+        })?;
+        client
+            .query_one(
+                "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+                &[&key],
+            )
+            .await
+            .map_err(map_pg)?;
+        Ok(())
+    }
+
+    /// Inspect the existing review under the same queue-before-component lock
+    /// order as Q2. Absence/non-Q2 state is data for the manual metadata owner,
+    /// not a backend failure and not permission to manufacture a Q2 transition.
+    pub(crate) async fn lock_for_rejection(
+        &self,
+        client: &tokio_postgres::Transaction<'_>,
+        scope: &ComponentScope,
+        component_id: Uuid,
+    ) -> Result<Option<QueueRow>, ValidationQueueError> {
+        Self::lock_queue_key(client, scope, component_id).await?;
+        client
+            .query_opt(
+                "SELECT id, component_id, component_class, state, counter,
+                    review_feedback, validation_errors, proposed_payload,
+                    submitted_at, updated_at, q2_actor
+             FROM reborn_validation_queue
+             WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
+               AND component_id=$5 FOR UPDATE",
+                &[
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                    &component_id,
+                ],
+            )
+            .await
+            .map_err(map_pg)?
+            .map(decode_queue_row)
+            .transpose()
+    }
+
+    /// Shared rejection operation for owners that must commit the queue and
+    /// component together. The caller owns commit/rollback and must lock the
+    /// queue before the component, as approval/invalidation/purge already do.
+    pub(crate) async fn reject_in_transaction(
+        &self,
+        client: &tokio_postgres::Transaction<'_>,
+        scope: &ComponentScope,
+        component_id: Uuid,
+        feedback: &str,
+    ) -> Result<QueueRow, ValidationQueueError> {
         let threshold = i32::from(self.reject_threshold);
         let updated = client
-            .execute(
+            .query_opt(
                 "UPDATE reborn_validation_queue
                  SET state = CASE WHEN counter + 1 >= $7 THEN 4 ELSE 3 END,
                      counter = counter + 1,
@@ -386,7 +463,10 @@ impl ValidationQueueStore {
                  WHERE tenant_id = $1 AND user_id = $2
                    AND agent_id = $3 AND project_id = $4
                    AND component_id = $5
-                   AND state = 2",
+                   AND state = 2
+                 RETURNING id, component_id, component_class, state, counter,
+                           review_feedback, validation_errors, proposed_payload,
+                           submitted_at, updated_at, q2_actor",
                 &[
                     &scope.tenant_id,
                     &scope.user_id,
@@ -399,7 +479,7 @@ impl ValidationQueueStore {
             )
             .await
             .map_err(map_pg)?;
-        if updated == 0 {
+        if updated.is_none() {
             // Not in state 2 — read the current state for a precise error.
             let cur = client
                 .query_opt(
@@ -427,7 +507,8 @@ impl ValidationQueueStore {
         }
         // Promotion and rejection commit in one row update, so an invalidation
         // cannot be overwritten by a later unguarded state-4 update.
-        Ok(())
+        let row = updated.ok_or(ValidationQueueError::NotFound { component_id })?;
+        decode_queue_row(row)
     }
 
     /// Q2 approval = graduation.

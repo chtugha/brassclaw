@@ -36,35 +36,62 @@ export function PrefixMeasurementPanel({ entry, generation, t }) {
   const [context, setContext] = React.useState("");
   const [additional, setAdditional] = React.useState("0");
   const [probes, setProbes] = React.useState(exampleProbes);
-  const [trackingId, setTrackingId] = React.useState(() => remembered(storageKey));
-  const [job, setJob] = React.useState(null);
-  const [pending, setPending] = React.useState(null);
+  const [tracking, setTracking] = React.useState(() => ({ key: storageKey, id: remembered(storageKey) }));
+  const trackingId = tracking.key === storageKey ? tracking.id : "";
+  const [jobRecord, setJob] = React.useState(null);
+  const job = jobRecord?.key === storageKey && jobRecord.id === trackingId ? jobRecord.data : null;
+  const [pendingRecord, setPending] = React.useState(null);
+  const pending = pendingRecord?.key === storageKey && pendingRecord.id === trackingId ? pendingRecord : null;
   const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState(null);
+  const [errorRecord, setError] = React.useState(null);
+  const error = errorRecord?.key === storageKey && (errorRecord.id === null || errorRecord.id === trackingId) ? errorRecord.message : null;
   const inFlight = React.useRef(false);
   const mounted = React.useRef(true);
-  React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const active = React.useRef(null);
+  const observation = React.useRef(0);
+  React.useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; active.current = null; observation.current++; };
+  }, []);
+  React.useLayoutEffect(() => {
+    const id = tracking.key === storageKey ? tracking.id : remembered(storageKey);
+    active.current = { key: storageKey, id };
+    if (tracking.key !== storageKey) setTracking({ key: storageKey, id });
+    return () => { active.current = null; observation.current++; };
+  }, [storageKey]);
+  const current = (key, id, epoch) => mounted.current && active.current?.key === key && active.current.id === id && observation.current === epoch;
   React.useEffect(() => {
     if (!open) return;
     let stopped = false;
     fetchPrefixModelDesigns().then(value => { if (!stopped) setCatalogue(value); })
-      .catch(err => { if (!stopped) setError(err.message || String(err)); });
+      .catch(err => { if (!stopped && mounted.current && active.current?.key === storageKey) setError({ key: storageKey, id: null, message: err.message || String(err) }); });
     return () => { stopped = true; };
   }, [open, entry.name]);
   React.useEffect(() => {
     if (!open || !trackingId || terminal.has(job?.run_status)) return;
     let stopped = false, timer;
     async function poll() {
+      if (!mounted.current || active.current?.key !== storageKey || active.current.id !== trackingId) return;
+      const epoch = ++observation.current;
       try {
         const value = await fetchPrefixJob(entry.name, trackingId);
         if (stopped) return;
-        setJob(value); setPending(null);
+        if (!current(storageKey, trackingId, epoch)) {
+          if (mounted.current && active.current?.key === storageKey && active.current.id === trackingId) timer = setTimeout(poll, 2000);
+          return;
+        }
+        if (value?.job_id !== trackingId) throw Error(t("prefix.measureUnknown"));
+        setJob({ key: storageKey, id: trackingId, data: value });
+        setPending(previous => previous?.key === storageKey && previous.id === trackingId ? null : previous);
         if (!terminal.has(value.run_status)) timer = setTimeout(poll, 2000);
-      } catch (err) { if (!stopped) setError(err.message || String(err)); }
+      } catch (err) {
+        if (!stopped && current(storageKey, trackingId, epoch)) setError({ key: storageKey, id: trackingId, message: err.message || String(err) });
+        else if (!stopped && mounted.current && active.current?.key === storageKey && active.current.id === trackingId) timer = setTimeout(poll, 2000);
+      }
     }
     timer = setTimeout(poll, 2000);
     return () => { stopped = true; clearTimeout(timer); };
-  }, [open, entry.name, trackingId, job?.run_status]);
+  }, [open, storageKey, trackingId, job?.run_status]);
   const profileProposals = (catalogue?.proposals || []).filter(value => value.profile === entry.name);
   const proposals = profileProposals.filter(completeReferenceProposal);
   const proposal = proposals.find(value => value.id === proposalId);
@@ -79,32 +106,50 @@ export function PrefixMeasurementPanel({ entry, generation, t }) {
     } catch { /* Unknown limits require an explicit operator assumption. */ }
   }
   async function submit() {
-    if (inFlight.current) return;
+    if (inFlight.current || !mounted.current || active.current?.key !== storageKey) return;
     inFlight.current = true; setBusy(true); setError(null);
+    let id = trackingId, epoch = null;
     try {
       let attempt = pending;
       if (!attempt) {
         if (!proposal || !artifacts.some(value => value.id === artifactId)) throw Error("prefix.measureSelectInputs");
         const parsed = JSON.parse(probes);
         if (!Array.isArray(parsed) || parsed.length < 2 || parsed.length > 64 || parsed.some(value => value?.kind !== "chat" || typeof value.context_json !== "string")) throw Error("prefix.measureInvalidProbes");
-        attempt = { id: clientActionId(), request: {
+        attempt = { key: storageKey, profile: entry.name, id: clientActionId(), request: {
           expected_profile_revision: entry.profile_revision, generation: generation.generation,
           proposal: proposal.id, artifact_set: artifactId, probes_json: probes,
           context_window_tokens: integer(context, 1), reserved_additional_input_tokens: integer(additional, 0),
         } };
-        setPending(attempt); setJob(null); setTrackingId(attempt.id); remember(storageKey, attempt.id);
+        setPending(attempt); setJob(null); setTracking({ key: storageKey, id: attempt.id });
+        active.current = { key: storageKey, id: attempt.id };
+        remember(storageKey, attempt.id);
       }
-      const value = await measurePrefix(entry.name, attempt.id, attempt.request);
-      if (mounted.current) { setJob(value); setPending(null); }
+      id = attempt.id; epoch = ++observation.current;
+      const value = await measurePrefix(attempt.profile, attempt.id, attempt.request);
+      if (current(storageKey, id, epoch)) {
+        if (value?.job_id !== id) throw Error(t("prefix.measureUnknown"));
+        setJob({ key: storageKey, id, data: value });
+        setPending(previous => previous === attempt ? null : previous);
+      }
     } catch (err) {
-      if (mounted.current) setError(err.message?.startsWith("prefix.") ? t(err.message) : err.message || String(err));
+      if (mounted.current && active.current?.key === storageKey && (epoch === null || current(storageKey, id, epoch))) {
+        setError({ key: storageKey, id: epoch === null ? null : id,
+          message: err.message?.startsWith("prefix.") ? t(err.message) : err.message || String(err) });
+      }
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
   }
   async function refresh() {
+    if (!trackingId || !mounted.current || active.current?.key !== storageKey || active.current.id !== trackingId) return;
+    const epoch = ++observation.current;
     try {
       const value = await fetchPrefixJob(entry.name, trackingId);
-      if (mounted.current) { setJob(value); setPending(null); setError(null); }
-    } catch (err) { if (mounted.current) setError(err.message || String(err)); }
+      if (current(storageKey, trackingId, epoch)) {
+        if (value?.job_id !== trackingId) throw Error(t("prefix.measureUnknown"));
+        setJob({ key: storageKey, id: trackingId, data: value });
+        setPending(previous => previous?.key === storageKey && previous.id === trackingId ? null : previous);
+        setError(null);
+      }
+    } catch (err) { if (current(storageKey, trackingId, epoch)) setError({ key: storageKey, id: trackingId, message: err.message || String(err) }); }
   }
   let comparison = null;
   try {

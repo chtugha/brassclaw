@@ -133,6 +133,17 @@ gezielt erweitern statt einen zweiten Aktivierungstestpfad zu bauen.
 
 ### K3 — Bestehende Provideränderungen bis zu ihren Verbrauchern quittieren
 
+**Begrenzte zusätzliche Abnahme, 31.10.2026:**
+[BUILD045–051](docs/validation/2026-10-31-settings-catalogue-facades.md)
+belegt aktuelle Recipe-/ToolSkill-Leseports, atomare Legacy-Recipe-Ablehnung
+einschließlich Queue-Konkurrenz und wiederverwendbare Auth-Refresh-Publikation
+in einer Aufrufertransaktion. Die bisherigen Original-/Refresh-Zustände bleiben
+erhalten; dies ist noch kein nativer Codex-Credential-/Login-/Dispatch-Cutover.
+Dieser bleibt in K3/Schritt6 beim bestehenden Provider-/Auth-Owner. Eigenständige
+OAuth-Default-/Maximallaufzeiten sind als privates zusammenhängendes Settings-
+Paket vorbereitet, aber hier noch nicht integriert oder abgenommen. Kein neuer
+Settings-, Credential-, Workflow- oder Queue-Owner und kein K3-Abschluss.
+
 **Belegte Übergabelücke; Owner:** §10.1/Phase 3a; Prefix und Composition liefern
 Verbraucherfälle. [PgProviderRepo](crates/brassclaw_reborn_composition/src/pg_provider_repo.rs)
 hat revisioniertes CAS und atomare Deaktivierung/Auswahlbereinigung.

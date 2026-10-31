@@ -1047,6 +1047,34 @@ mod durable_refresh_custody {
         ));
         client.batch_execute("DROP TRIGGER reject_refresh_result ON brassclaw_product_auth_accounts; DROP FUNCTION reject_refresh_result();").await.unwrap();
         drop(client);
+        // A caller may couple publication to its own existing transaction.
+        // Rolling it back must preserve the independently retained response
+        // and both original account/action revisions for later reconciliation.
+        let mut client = rig.pool.get().await.unwrap();
+        let transaction = client.transaction().await.unwrap();
+        let (staged, changed) = first
+            .reconcile_refresh_action_in_transaction(&transaction, &retained.original)
+            .await
+            .unwrap();
+        assert!(changed);
+        assert!(staged.unwrap().receipt().unwrap().confirmed_refresh());
+        transaction.rollback().await.unwrap();
+        drop(client);
+        assert_eq!(account_revision(&rig.pool, &account).await, 0);
+        assert_eq!(
+            service(&rig.pool).refresh_action(&request).await.unwrap(),
+            Some(retained)
+        );
+        assert_eq!(
+            first
+                .get_account(CredentialAccountLookupRequest::new(
+                    owner.clone(),
+                    account.id
+                ))
+                .await
+                .unwrap(),
+            Some(account.clone())
+        );
         // Recreate the owner and read/reconcile only the original ID; the
         // response passed to the first call is no longer needed or supplied.
         drop(completion);

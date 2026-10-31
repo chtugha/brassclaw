@@ -1,3 +1,33 @@
+## 2026-10-31 — catalogue/settings facades and existing custody accepted locally
+
+[BUILD045–051](validation/2026-10-31-settings-catalogue-facades.md) establishes21
+native Composition cases,28 embedded asset cases,32 architecture cases and42
+Node cases, with no ignored selected cases. The shared test build and connected/
+default strict Clippy pass. The exact receipt preserves earlier compiler/selector/
+lint failures, reused images and the two nonbehavioral final lint-source deltas.
+
+Both Recipe detail routes now share the current installed catalogue's exact
+revision/variant/model-input projection, with original document bytes beside
+the separately editable legacy row. ToolSkill administration reads actual scoped
+rows; unconnected functional-review writes return errors without changing queue,
+status or approval evidence. This supplies readers, not missing approval writers.
+
+Recipe rejection commits eligible Q2 queue and row changes together, preserves
+manual pre-Q1 rejection and rejected-upgrade live bytes, and serializes actual
+queue absence/insertion. Real statement/deferred-commit and two-actor cases pass.
+Existing Auth refresh publication can join its caller's transaction; rollback
+preserves its independently retained original response and account. Native Codex
+credential/issuer/consumer cutover remains private036 work.
+
+Sources independent reads and measurement observation/original fences have Node
+coverage; this is not new Chromium or durable unmount/restart qualification.
+Current-catalogue presentation neither edits immutable components nor grants
+approval. General joint/Pure/S/class routes, remaining K3–K7, component migrations,
+full Prefix/Serving/platform/installed/release and complete plans remain open.
+Plan prose updates after this receipt change embedded references; a later GitHub
+run must cover those final package bytes. CI41197330030 remains in progress on
+the preceding pushed2522569198… checkpoint, not this bundle.
+
 ## 2026-10-31 — validator/CLI/admission bundle accepted locally; checkpoint CI next
 
 [BUILD040–043](validation/2026-10-31-validator-cli-admission.md) establishes14

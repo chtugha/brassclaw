@@ -177,6 +177,40 @@ function toRecipeStep(step, groupLabel, key) {
   };
 }
 
+// Native-supplied current catalogue context, deliberately separate from the
+// editable legacy row. No declaration is inferred from an absent port/field.
+function RetainedRecipeCatalogue({ value }) {
+  const t = useT();
+  if (!value || !Array.isArray(value.selections)) {
+    return html`<${Section} title=${t("componentDetail.retained.title")}><p>${t("componentDetail.retained.unavailable")}</p><//>`;
+  }
+  return html`<${Section} title=${t("componentDetail.retained.title")}>
+    <p className="text-xs text-[var(--v2-text-muted)]">${t("componentDetail.retained.scope")}</p>
+    <p>${t("componentDetail.retained.generation")}: <code className="break-all">${value.generation}</code></p>
+    ${value.selections.length === 0 && html`<p>${t("componentDetail.retained.notSelected")}</p>`}
+    ${value.selections.map((entry, index) => html`<div key=${index} className="space-y-2 rounded border p-2">
+      <dl className="text-xs break-all">
+        <dt>${t("componentDetail.retained.reference")}</dt><dd><code>${entry.reference?.uuid} · ${entry.reference?.version} · ${entry.reference?.checksum}</code></dd>
+      </dl>
+      ${(entry.variants || []).map((variant, index) => html`<div key=${index} className="space-y-1 border-l pl-2">
+        <dl className="text-xs break-all">
+          <dt>${t("componentDetail.recipe.variants")}</dt><dd>${variant.variant_key}</dd>
+          <dt>${t("componentDetail.recipe.stepLink")}</dt><dd>${variant.step_link}</dd>
+        </dl>
+        <p>${t(variant.routing_enabled === true ? "componentDetail.retained.routingEnabled" : "componentDetail.retained.routingDisabled")}</p>
+        ${variant.model_input?.selection === "default" ? html`<p>${t(!entry.declaration_present ? "componentDetail.retained.defaultAbsent" : variant.variant_entry_present ? "componentDetail.retained.defaultExplicit" : "componentDetail.retained.defaultVariantAbsent")}</p>`
+          : variant.model_input?.selection === "selected" ? html`<p>${t("componentDetail.retained.selectedProfile")}: <code>${variant.model_input.profile}</code></p>`
+          : variant.model_input?.selection === "prefix_free_workflow" ? html`<p>${t("componentDetail.retained.prefixFree")}: <code>${variant.model_input.purpose}</code></p>`
+          : html`<p>${t("componentDetail.retained.unavailable")}</p>`}
+      </div>`)}
+      <details>
+        <summary>${t("componentDetail.retained.original")}</summary>
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all text-xs">${entry.component_bytes}</pre>
+      </details>
+    </div>`)}
+  <//>`;
+}
+
 function RecipeDetail({ row, graph }) {
   const t = useT();
   const llmCallRequired =
@@ -190,6 +224,7 @@ function RecipeDetail({ row, graph }) {
 
   return html`
     <div className="space-y-5">
+      <${RetainedRecipeCatalogue} value=${row.retained_catalogue} />
       <div className="flex flex-wrap items-center gap-2">
         <${TierBadge} llmCallRequired=${llmCallRequired} />
         ${row.trigger &&

@@ -16,6 +16,16 @@ single global service. The [support index](docs/implementation-status.md) record
 those bounded capabilities. The following are the remaining gates for the existing
 Steps 1–12; the legacy three-field checker does not close any class route.
 
+**Scoped reader/failure repair, 2026-10-31:**
+[BUILD045–051](docs/validation/2026-10-31-settings-catalogue-facades.md) connects
+actual ToolSkill inventory/detail readers and makes its still-unconnected
+functional-review actions visibly unavailable, without status/queue/evidence
+mutation. Existing Recipe rejection now commits applicable queue/row changes
+atomically and preserves live upgrade bytes, with real failure/concurrency cases.
+Neither change implements ordinary immutable Q1 scheduling, own functional
+approval, a class route or activation. Steps3/6/8–12 below remain their owners;
+do not replace the error with successful legacy metadata approval.
+
 As of 2026-10-23, complete pure-source views, strict untrusted declarations and
 sealed subject/selection identities exist. Independent executable steps cannot
 borrow coverage from usage dependencies, including during retained restoration.
