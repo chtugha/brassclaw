@@ -78,9 +78,72 @@ pub(crate) struct PreparedPrefixReview {
     checksum: String,
 }
 impl PreparedPrefixReview {
+    pub(crate) fn pair_view(
+        self,
+        selection: brassclaw_product_workflow::PrefixPairAcceptanceSelection,
+    ) -> Result<brassclaw_product_workflow::PrefixPairAcceptanceView, Error> {
+        super::prefix_model_designs::hash(&selection.pair.specification)?;
+        super::prefix_model_designs::hash(&selection.pair.pair_proposal)?;
+        if self.target.contract.specification != selection.pair.specification
+            || self.target.contract.pair_proposal != selection.pair.pair_proposal
+            || self.target.profile != selection.evaluation.profile
+            || self.target.generation != selection.evaluation.generation
+        {
+            return Err(Error::Conflict);
+        }
+        Ok(brassclaw_product_workflow::PrefixPairAcceptanceView {
+            selection,
+            review: serde_json::from_value(self.view()).map_err(|_| Error::Unavailable)?,
+            release_blocked_reason: "prefix.qualifiedDesignWorkflowRequired".into(),
+        })
+    }
     pub(crate) fn view(&self) -> serde_json::Value {
         serde_json::json!({"review":self.target,"review_checksum":self.checksum})
     }
+}
+
+// Existing accepted human-action domains, shared by all native writes.
+fn valid_human_action(actor: &str, semantic_review: &str) -> bool {
+    !actor.trim().is_empty()
+        && actor.len() <= 2048
+        && !semantic_review.trim().is_empty()
+        && semantic_review.len() <= 16_384
+}
+
+fn pair_receipt(
+    original: Accepted,
+    evidence_checksum: String,
+) -> Result<brassclaw_product_workflow::PrefixPairAcceptanceReceipt, Error> {
+    use brassclaw_product_workflow::*;
+    let review = serde_json::from_value(
+        serde_json::json!({"review":&original.review,"review_checksum":&original.review_checksum}),
+    )
+    .map_err(|_| Error::Unavailable)?;
+    Ok(PrefixPairAcceptanceReceipt {
+        pair_acceptance: original.id,
+        evidence_checksum,
+        selection: PrefixPairAcceptanceSelection {
+            pair: PrefixPairAcceptanceReference {
+                specification: original.review.contract.specification,
+                pair_proposal: original.review.contract.pair_proposal,
+            },
+            evaluation: PrefixAcceptanceSelection {
+                profile: original.review.profile,
+                generation: original.review.generation,
+            },
+        },
+        review,
+        actor: original.actor,
+        semantic_review: original.semantic_review,
+        evidence: PrefixPairAcceptanceEvidence::LegacyNativeReview,
+    })
+}
+
+fn pair_identity(proposal: &str) -> Uuid {
+    Uuid::new_v5(
+        &Uuid::NAMESPACE_OID,
+        format!("brassclaw:accepted-prefix-pair:{proposal}").as_bytes(),
+    )
 }
 
 impl PgPrefixAcceptances {
@@ -159,6 +222,89 @@ impl PgPrefixAcceptances {
         tx.commit().await.map_err(|_| Error::Unavailable)?;
         u64::try_from(revision).map_err(|_| Error::Unavailable)
     }
+    /// Missing exact Pair is None; corrupt or incompatible retained evidence is
+    /// an error. Scope-less/legacy-profile rows are never promoted to Pair.
+    pub(crate) async fn pair_original(
+        &self,
+        pair: &brassclaw_product_workflow::PrefixPairAcceptanceReference,
+    ) -> Result<Option<brassclaw_product_workflow::PrefixPairAcceptanceReceipt>, Error> {
+        super::prefix_model_designs::hash(&pair.specification)?;
+        super::prefix_model_designs::hash(&pair.pair_proposal)?;
+        let id = pair_identity(&pair.pair_proposal);
+        let mut client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
+        // Existence and complete original reader share one coherent view.
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .map_err(|_| Error::Unavailable)?;
+        // Unknown/malformed proposal is not "no acceptance". Resolve the same
+        // exact immutable Pair through its existing namespace/parser owner.
+        super::prefix_model_designs::PgPrefixModelDesigns::new(
+            self.pool.clone(),
+            self.namespace.clone(),
+        )
+        .get_pair_proposal_on(&tx, &pair.specification, &pair.pair_proposal)
+        .await?;
+        let exists=tx.query_one("SELECT EXISTS(SELECT 1 FROM reborn_prefix_design_acceptances WHERE acceptance_id=$1)",&[&id]).await.map_err(|_|Error::Unavailable)?.get::<_,bool>(0);
+        if !exists {
+            tx.commit().await.map_err(|_| Error::Unavailable)?;
+            return Ok(None);
+        }
+        let (original, bytes) = self.read_record_on(&tx, id).await?;
+        if original.scope != "pair"
+            || original.pair_parent.is_some()
+            || original.profile_parent.is_some()
+            || original.review.contract.specification != pair.specification
+            || original.review.contract.pair_proposal != pair.pair_proposal
+        {
+            return Err(Error::Conflict);
+        }
+        let receipt = pair_receipt(original, checksum(bytes.as_bytes()))?;
+        tx.commit().await.map_err(|_| Error::Unavailable)?;
+        Ok(Some(receipt))
+    }
+    pub(crate) async fn original_pair_view(
+        &self,
+        selection: &brassclaw_product_workflow::PrefixPairAcceptanceSelection,
+    ) -> Result<Option<brassclaw_product_workflow::PrefixPairAcceptanceView>, Error> {
+        let Some(original) = self.pair_original(&selection.pair).await? else {
+            return Ok(None);
+        };
+        if original.selection.evaluation.profile != selection.evaluation.profile
+            || original.selection.evaluation.generation != selection.evaluation.generation
+        {
+            return Err(Error::Conflict);
+        }
+        Ok(Some(brassclaw_product_workflow::PrefixPairAcceptanceView {
+            selection: original.selection,
+            review: original.review,
+            release_blocked_reason: "prefix.qualifiedDesignWorkflowRequired".into(),
+        }))
+    }
+    /// This operation has no preparation, encoding or approval effects. It is
+    /// valid after lost replies and settings/provider/runtime changes; original
+    /// actor, semantic action, evaluation and review remain exact.
+    pub(crate) async fn reconcile_pair(
+        &self,
+        decision: &brassclaw_product_workflow::PrefixPairAcceptanceDecision,
+        actor: &str,
+    ) -> Result<Option<brassclaw_product_workflow::PrefixPairAcceptanceReceipt>, Error> {
+        let Some(original) = self.pair_original(&decision.selection.pair).await? else {
+            return Ok(None);
+        };
+        if original.selection.evaluation.profile != decision.selection.evaluation.profile
+            || original.selection.evaluation.generation != decision.selection.evaluation.generation
+            || original.review.review_checksum != decision.review_checksum
+            || original.actor != actor
+            || original.semantic_review != decision.semantic_review
+        {
+            return Err(Error::Conflict);
+        }
+        Ok(Some(original))
+    }
     pub(crate) async fn approved_retry(
         &self,
         decision: &brassclaw_product_workflow::PrefixAcceptanceDecision,
@@ -198,21 +344,11 @@ impl PgPrefixAcceptances {
             || reviewed_checksum != prepared.checksum
             || prepared.target.namespace != self.namespace
             || checksum(prepared.bytes.as_bytes()) != prepared.checksum
-            || actor.trim().is_empty()
-            || actor.len() > 2048
-            || semantic_review.trim().is_empty()
-            || semantic_review.len() > 16_384
+            || !valid_human_action(actor, semantic_review)
         {
             return Err(Error::Conflict);
         }
-        let pair_id = Uuid::new_v5(
-            &Uuid::NAMESPACE_OID,
-            format!(
-                "brassclaw:accepted-prefix-pair:{}",
-                prepared.target.contract.pair_proposal
-            )
-            .as_bytes(),
-        );
+        let pair_id = pair_identity(&prepared.target.contract.pair_proposal);
         let profile_id = Uuid::new_v5(&pair_id, prepared.target.profile_proposal.as_bytes());
         let mut client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
         let tx = client
@@ -255,44 +391,56 @@ impl PgPrefixAcceptances {
                 actor: actor.into(),
                 semantic_review: semantic_review.into(),
             };
-            let bytes = serde_json::to_string(&evidence).map_err(|_| Error::Unavailable)?;
-            // A larger review cannot partially insert the parents and then fail.
-            if bytes.len() > super::prefix_model_designs::PROPOSAL_LIMITS.max_bytes {
-                return Err(Error::Conflict);
-            }
-            tx.execute("INSERT INTO reborn_prefix_design_acceptances(acceptance_id,proposal_id,candidate_profile,candidate_generation,evidence_bytes,checksum,acceptance_scope,pair_acceptance_ref,profile_acceptance_ref) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(acceptance_id) DO NOTHING",
-                &[&accepted_id,proposal,&prepared.target.profile,&prepared.target.generation,&bytes,&checksum(bytes.as_bytes()),&scope,&pair_parent,&profile_parent])
-                .await.map_err(|_| Error::Conflict)?;
-            let old = tx.query_one("SELECT evidence_bytes,checksum FROM reborn_prefix_design_acceptances WHERE acceptance_id=$1", &[&accepted_id])
-                .await.map_err(|_| Error::Unavailable)?;
-            let original: String = old.get(0);
-            if checksum(original.as_bytes()) != old.get::<_, String>(1) {
-                return Err(Error::Unavailable);
-            }
-            let old: Accepted = serde_json::from_value(
-                strict_json(&original, super::prefix_model_designs::PROPOSAL_LIMITS)
-                    .map_err(|_| Error::Unavailable)?,
-            )
-            .map_err(|_| Error::Unavailable)?;
-            // Reusing an immutable accepted parent does not approve a new
-            // design, reapprove unchanged dependencies or rewrite old evidence.
-            if old.format != FORMAT
-                || old.id != accepted_id
-                || old.scope != scope
-                || old.review.namespace != self.namespace
-                || old.review.contract != prepared.target.contract
-                || old.pair_parent != pair_parent
-                || old.profile_parent != profile_parent
-                || (scope != "pair"
-                    && (old.review.profile != prepared.target.profile
-                        || old.review.profile_proposal != prepared.target.profile_proposal))
-                || (scope == "generation" && original != bytes)
-            {
-                return Err(Error::Conflict);
-            }
+            self.write_acceptance(&tx, &evidence, proposal).await?;
         }
         tx.commit().await.map_err(|_| Error::Unavailable)?;
         Ok(id)
+    }
+
+    /// One immutable INSERT/readback for both the existing combined operation
+    /// and independent Pair release. Reuse never rewrites an original review.
+    async fn write_acceptance(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+        evidence: &Accepted,
+        proposal: &str,
+    ) -> Result<Accepted, Error> {
+        if !valid_human_action(&evidence.actor, &evidence.semantic_review)
+            || evidence.review.namespace != self.namespace
+            || evidence.id.is_nil()
+        {
+            return Err(Error::Conflict);
+        }
+        let accepted_id = evidence.id;
+        let scope = evidence.scope.as_str();
+        let pair_parent = evidence.pair_parent;
+        let profile_parent = evidence.profile_parent;
+        let bytes = serde_json::to_string(evidence).map_err(|_| Error::Unavailable)?;
+        // A larger review cannot partially insert the parents and then fail.
+        if bytes.len() > super::prefix_model_designs::PROPOSAL_LIMITS.max_bytes {
+            return Err(Error::Conflict);
+        }
+        tx.execute("INSERT INTO reborn_prefix_design_acceptances(acceptance_id,proposal_id,candidate_profile,candidate_generation,evidence_bytes,checksum,acceptance_scope,pair_acceptance_ref,profile_acceptance_ref) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(acceptance_id) DO NOTHING",
+            &[&accepted_id,proposal,&evidence.review.profile,&evidence.review.generation,&bytes,&checksum(bytes.as_bytes()),&scope,&pair_parent,&profile_parent])
+            .await.map_err(|_| Error::Conflict)?;
+        let (old, original) = self.read_record_on(tx, accepted_id).await?;
+        // Reusing an immutable accepted parent does not approve a new
+        // design, reapprove unchanged dependencies or rewrite old evidence.
+        if old.format != FORMAT
+            || old.id != accepted_id
+            || old.scope != scope
+            || old.review.namespace != self.namespace
+            || old.review.contract != evidence.review.contract
+            || old.pair_parent != pair_parent
+            || old.profile_parent != profile_parent
+            || (scope != "pair"
+                && (old.review.profile != evidence.review.profile
+                    || old.review.profile_proposal != evidence.review.profile_proposal))
+            || (scope == "generation" && original != bytes)
+        {
+            return Err(Error::Conflict);
+        }
+        Ok(old)
     }
 
     /// Mechanical Q1/behavior checks over immutable data, using one operation
@@ -654,10 +802,26 @@ impl PgPrefixAcceptances {
     }
 
     async fn record(&self, id: Uuid) -> Result<Accepted, Error> {
+        let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
+        self.record_on(&**client, id).await
+    }
+    async fn record_on<C: tokio_postgres::GenericClient + Sync>(
+        &self,
+        client: &C,
+        id: Uuid,
+    ) -> Result<Accepted, Error> {
+        self.read_record_on(client, id)
+            .await
+            .map(|(record, _)| record)
+    }
+    async fn read_record_on<C: tokio_postgres::GenericClient + Sync>(
+        &self,
+        client: &C,
+        id: Uuid,
+    ) -> Result<(Accepted, String), Error> {
         if id.is_nil() {
             return Err(Error::Conflict);
         }
-        let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
         let row = client.query_opt(
             "SELECT a.evidence_bytes,a.checksum,a.acceptance_scope,a.proposal_id,a.candidate_profile,a.candidate_generation,a.pair_acceptance_ref,a.profile_acceptance_ref FROM reborn_prefix_design_acceptances a JOIN reborn_prefix_design_proposals p ON p.proposal_id=a.proposal_id JOIN reborn_prefix_model_specifications s ON s.specification_id=p.specification_id WHERE a.acceptance_id=$1 AND s.provider_namespace=$2",
             &[&id,&self.namespace],
@@ -696,7 +860,7 @@ impl PgPrefixAcceptances {
         {
             return Err(Error::Unavailable);
         }
-        Ok(accepted)
+        Ok((accepted, bytes))
     }
 
     /// IDs are captured by the task's existing native selection owner. There is

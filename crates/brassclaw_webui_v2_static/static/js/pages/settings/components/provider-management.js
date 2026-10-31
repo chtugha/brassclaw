@@ -1,3 +1,4 @@
+import { ProviderBootstrapStatus } from "./provider-bootstrap-status.js";
 import { Button } from "../../../design-system/button.js";
 import { Select } from "../../../design-system/input.js";
 import { Card } from "../../../design-system/card.js";
@@ -56,6 +57,7 @@ export function ProviderManagement({ settings, gatewayStatus, searchQuery = "" }
   return html`
     <${Card} className="p-4 sm:p-6">
       <${ProviderMutationStatus} t=${t} />
+      <${ProviderBootstrapStatus} t=${t} />
       ${!state.error && !state.isLoading && html`<${ProviderRuntimeStatus} rows=${state.providerPublications} t=${t} />`}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>

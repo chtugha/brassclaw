@@ -46,8 +46,11 @@ pub(crate) struct PrefixBuildReservations {
     pub(crate) additional_framing_tokens: u64,
 }
 
+#[path = "prefix_bootstrap_packet.rs"]
+mod bootstrap_packet;
 #[path = "prefix_model_setup.rs"]
 mod setup;
+pub(crate) use bootstrap_packet::{BootstrapPacketInput, BootstrapPacketTask};
 
 pub(crate) struct PgPrefixModelDesigns {
     pool: Arc<PgPool>,
@@ -180,27 +183,53 @@ impl PgPrefixModelDesigns {
         if retained.revision != request.expected_provider_revision {
             return Err(Error::Conflict);
         }
+        let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
+        self.capture_original(&**client, &retained, &request.model)
+            .await
+    }
+
+    /// Only a real owner-retained provider revision may enter this historical
+    /// writer. Shared caller transaction owns all selection/spec/setup effects.
+    pub(crate) async fn capture_original<C: tokio_postgres::GenericClient + Sync>(
+        &self,
+        client: &C,
+        retained: &crate::pg_provider_repo::ProviderDefinitionRevision,
+        model: &str,
+    ) -> Result<PrefixModelSpecification, Error> {
+        if model.is_empty() || model.chars().count() > 2048 {
+            return Err(bad());
+        }
+        let original = PgProviderRepo::new((*self.pool).clone(), self.namespace.clone())
+            .read_retained_revision(client, &retained.definition.id, retained.revision)
+            .await
+            .map_err(|_| Error::Unavailable)?
+            .ok_or(Error::Conflict)?;
+        if original.revision != retained.revision
+            || serde_json::to_value(&original.definition).map_err(|_| Error::Unavailable)?
+                != serde_json::to_value(&retained.definition).map_err(|_| Error::Unavailable)?
+        {
+            return Err(Error::Conflict);
+        }
         let revision = i64::try_from(retained.revision).map_err(|_| bad())?;
-        let context = if request.model == retained.definition.default_model {
+        let context = if model == retained.definition.default_model {
             retained.definition.context_window_tokens
         } else {
             None
         };
-        let bytes=json!({"format":"brassclaw-prefix-model-specification/1","provider_namespace":self.namespace,"provider_id":request.provider_id,"provider_revision":revision,"model":request.model,"protocol":retained.definition.protocol,
+        let bytes=json!({"format":"brassclaw-prefix-model-specification/1","provider_namespace":self.namespace,"provider_id":retained.definition.id,"provider_revision":revision,"model":model,"protocol":retained.definition.protocol,
             "configured_context_window":context,"context_evidence":"provider-configuration-only",
-            "model_token_limits":retained.definition.model_token_limits.0.get(&request.model),
+            "model_token_limits":retained.definition.model_token_limits.0.get(model),
             "model_token_limits_owner":"provider-definition-revision",
             "weights_identity":null,"config_identity":null,"tokenizer_identity":null,"template_identity":null,
             "architecture":null,"attention_recurrent_state":null,"runtime_cache":null,
             "qualification":"configured-model-contract-only"}).to_string();
         let id = sha(bytes.as_bytes());
-        let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
-        client.execute("INSERT INTO reborn_prefix_model_specifications(specification_id,provider_namespace,provider_id,provider_revision,model,specification_bytes) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING",&[&id,&self.namespace,&request.provider_id,&revision,&request.model,&bytes]).await.map_err(|_|Error::Unavailable)?;
+        client.execute("INSERT INTO reborn_prefix_model_specifications(specification_id,provider_namespace,provider_id,provider_revision,model,specification_bytes) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING",&[&id,&self.namespace,&retained.definition.id,&revision,&model,&bytes]).await.map_err(|_|Error::Unavailable)?;
         let row=client.query_one("SELECT specification_id,provider_id,provider_revision,model,specification_bytes FROM reborn_prefix_model_specifications WHERE specification_id=$1",&[&id]).await.map_err(|_|Error::Unavailable)?;
         if row.get::<_, String>(4) != bytes {
             return Err(Error::Conflict);
         }
-        self.verified_specifications(&**client, std::slice::from_ref(&row))
+        self.verified_specifications(client, std::slice::from_ref(&row))
             .await?
             .pop()
             .ok_or(Error::Unavailable)
@@ -285,8 +314,20 @@ impl PgPrefixModelDesigns {
         hash(specification)?;
         hash(proposal_id)?;
         let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
+        self.get_pair_proposal_on(&**client, specification, proposal_id)
+            .await
+    }
+    /// Immutable Pair reference resolution within the caller's coherent read.
+    /// Same namespace/hash/parser owner; no new model/design registry.
+    pub(crate) async fn get_pair_proposal_on<C: tokio_postgres::GenericClient + Sync>(
+        &self,
+        client: &C,
+        specification: &str,
+        proposal_id: &str,
+    ) -> Result<PrefixPairConstructionProposal, Error> {
+        hash(specification)?;
+        hash(proposal_id)?;
         let row=client.query_opt("SELECT p.proposal_id,p.specification_id,p.proposal_bytes FROM reborn_prefix_design_proposals p JOIN reborn_prefix_model_specifications s ON s.specification_id=p.specification_id WHERE p.proposal_id=$1 AND p.specification_id=$2 AND p.profile_name IS NULL AND s.provider_namespace=$3",&[&proposal_id,&specification,&self.namespace]).await.map_err(|_|Error::Unavailable)?.ok_or(Error::Conflict)?;
-        drop(client);
         pair_proposal(&row)
     }
     pub(crate) async fn case_packet(

@@ -157,7 +157,12 @@ impl InstalledMontyCatalogue {
         let capture = json!({"format":"brassclaw-prefix-source-snapshot/1","profile":profile,"release":release,"header":design[if release_documents { "release_header" } else { "header" }],"evidence_view":design["evidence_view"],"sources":sources,
             "procedures":{"compiler/entry.py":brassclaw_skills::prefix_compiler_components::COMPILER_SOURCE,"compiler/prefix_render.py":brassclaw_skills::prefix_reference_components::REFERENCE_RENDER_SOURCE,"compiler/prefix_units.py":brassclaw_skills::prefix_compiler_components::UNIT_SOURCE}});
         let bytes = crate::prefix_generations::canonical(&capture).map_err(|_| invalid())?;
-        crate::prefix_job_execution::validate_snapshot(profile, &bytes).map_err(|_| invalid())?;
+        let input_limits = crate::prefix_job_definitions::captured_input_limits(
+            self.preparation_policy().await.map_err(|_| invalid())?,
+        )
+        .map_err(|_| invalid())?;
+        crate::prefix_job_execution::validate_snapshot(profile, &bytes, input_limits)
+            .map_err(|_| invalid())?;
         Ok(bytes)
     }
 }

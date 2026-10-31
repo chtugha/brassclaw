@@ -1,6 +1,19 @@
 //! Original operator publication identity, inside the existing provider commit.
 //! No event bus, alternative catalogue, execution authority or client-uptake claim.
 
+/// Exact optional links recorded in the ONE provider mutation INSERT.
+/// Missing credential_head_ref means no native login binding; a hex-64 value
+/// ties this login publication to its immutable native credential head.
+#[derive(Default)]
+pub(crate) struct ProviderMutationLinks {
+    pub(crate) bootstrap_job_id: Option<uuid::Uuid>,
+    /// SHA-256 hex-64 of the native credential head. Only set by Root's native
+    /// Codex publication path after the token is authenticated. Callers that do
+    /// not own native publication always pass None; the DB CHECK enforces the
+    /// codex-device-login/1 kind constraint independently.
+    pub(crate) credential_head_ref: Option<String>,
+}
+
 use brassclaw_product_workflow::{
     LlmConfigServiceError, ProviderMutationReceipt, UpsertLlmProviderRequest,
 };
@@ -107,7 +120,7 @@ impl ProviderMutation {
         keys: &crate::LlmKeyStore,
     ) -> Result<Option<ProviderMutationReceipt>, LlmConfigServiceError> {
         let Some(row) = transaction.query_opt(
-            "SELECT mutation_id,operation,request,provider_id,provider_revision,role_selections \
+            "SELECT mutation_id,operation,request,provider_id,provider_revision,role_selections,actor_id,bootstrap_job_id,credential_head_ref \
              FROM brassclaw_llm_provider_mutations WHERE tenant_id=$1 AND mutation_id=$2",
             &[&tenant, &self.id],
         ).await.map_err(|_| LlmConfigServiceError::Unavailable)? else { return Ok(None) };
@@ -126,7 +139,7 @@ impl ProviderMutation {
         {
             return Err(LlmConfigServiceError::Conflict { reason:"Mutation ID belongs to a different original request; inspect that original before submitting a new change.".into() });
         }
-        decode(row).map(Some)
+        decode(transaction, tenant, row).await.map(Some)
     }
 
     pub(crate) async fn record(
@@ -137,6 +150,30 @@ impl ProviderMutation {
         provider: Option<(&str, u64)>,
         keys: &crate::LlmKeyStore,
     ) -> Result<ProviderMutationReceipt, LlmConfigServiceError> {
+        self.record_with_links(
+            transaction,
+            tenant,
+            actor,
+            provider,
+            keys,
+            ProviderMutationLinks::default(),
+        )
+        .await
+    }
+
+    #[cfg(feature = "skills-db")]
+    pub(crate) fn id(&self) -> uuid::Uuid {
+        self.id
+    }
+    pub(crate) async fn record_with_links(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        tenant: &str,
+        actor: &str,
+        provider: Option<(&str, u64)>,
+        keys: &crate::LlmKeyStore,
+        links: ProviderMutationLinks,
+    ) -> Result<ProviderMutationReceipt, LlmConfigServiceError> {
         let (provider_id, revision) = match provider {
             Some((id, revision)) => (
                 Some(id),
@@ -144,6 +181,13 @@ impl ProviderMutation {
             ),
             None => (None, None),
         };
+        // credential_head_ref must be hex-64 when supplied; the DB CHECK enforces
+        // the kind/provider/revision constraints independently.
+        if let Some(head) = &links.credential_head_ref
+            && (head.len() != 64 || !head.chars().all(|c| c.is_ascii_hexdigit()))
+        {
+            return Err(LlmConfigServiceError::Unavailable);
+        }
         let roles = crate::db_config::provider_role_selections(transaction, tenant)
             .await
             .map_err(|_| LlmConfigServiceError::Unavailable)?;
@@ -153,11 +197,11 @@ impl ProviderMutation {
             .map_err(|_| LlmConfigServiceError::Unavailable)?;
         let row = transaction.query_one(
             "INSERT INTO brassclaw_llm_provider_mutations \
-             (tenant_id,mutation_id,operation,request,actor_id,provider_id,provider_revision,role_selections) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING mutation_id,operation,request,provider_id,provider_revision,role_selections",
-            &[&tenant,&self.id,&self.operation,&self.request,&actor,&provider_id,&revision,&roles],
+             (tenant_id,mutation_id,operation,request,actor_id,provider_id,provider_revision,role_selections,bootstrap_job_id,credential_head_ref) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING mutation_id,operation,request,provider_id,provider_revision,role_selections,actor_id,bootstrap_job_id,credential_head_ref",
+            &[&tenant,&self.id,&self.operation,&self.request,&actor,&provider_id,&revision,&roles,&links.bootstrap_job_id,&links.credential_head_ref],
         ).await.map_err(|_| LlmConfigServiceError::Unavailable)?;
-        decode(row)
+        decode(transaction, tenant, row).await
     }
 }
 
@@ -166,15 +210,21 @@ pub(crate) async fn read_original(
     tenant: &str,
     id: uuid::Uuid,
 ) -> Result<ProviderMutationReceipt, LlmConfigServiceError> {
-    let row = client.query_opt("SELECT mutation_id,operation,request,provider_id,provider_revision,role_selections FROM brassclaw_llm_provider_mutations WHERE tenant_id=$1 AND mutation_id=$2", &[&tenant,&id])
+    let row = client.query_opt("SELECT mutation_id,operation,request,provider_id,provider_revision,role_selections,actor_id,bootstrap_job_id,credential_head_ref FROM brassclaw_llm_provider_mutations WHERE tenant_id=$1 AND mutation_id=$2", &[&tenant,&id])
         .await.map_err(|_| LlmConfigServiceError::Unavailable)?.ok_or(LlmConfigServiceError::NotFound)?;
-    decode(row)
+    decode(client, tenant, row).await
 }
 
-fn decode(row: tokio_postgres::Row) -> Result<ProviderMutationReceipt, LlmConfigServiceError> {
+async fn decode<C: tokio_postgres::GenericClient + Sync>(
+    client: &C,
+    tenant: &str,
+    row: tokio_postgres::Row,
+) -> Result<ProviderMutationReceipt, LlmConfigServiceError> {
     let error = |_| LlmConfigServiceError::Unavailable;
     let revision: Option<i64> = row.try_get("provider_revision").map_err(error)?;
-    let roles: Value = row.try_get("role_selections").map_err(error)?;
+    let roles: std::collections::BTreeMap<String, String> =
+        serde_json::from_value(row.try_get::<_, Value>("role_selections").map_err(error)?)
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
     let operation: String = row.try_get("operation").map_err(error)?;
     let request: Value = row.try_get("request").map_err(error)?;
     let selected_role = if operation == "select" {
@@ -190,7 +240,86 @@ fn decode(row: tokio_postgres::Row) -> Result<ProviderMutationReceipt, LlmConfig
     } else {
         None
     };
+    let bootstrap_job_id: Option<uuid::Uuid> = row.try_get("bootstrap_job_id").map_err(error)?;
+    #[cfg(feature = "skills-db")]
+    let bootstrap_target = if let Some(job_id) = bootstrap_job_id {
+        let job = crate::prefix_job_definitions::Store::get_on(client, job_id)
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?
+            .ok_or(LlmConfigServiceError::Unavailable)?;
+        let actor: String = row.try_get("actor_id").map_err(error)?;
+        let mutation_id: uuid::Uuid = row.try_get("mutation_id").map_err(error)?;
+        let provider_id: Option<String> = row.try_get("provider_id").map_err(error)?;
+        let original = brassclaw_skills::value_contract::strict_json(
+            job.input["capture_bytes"]
+                .as_str()
+                .ok_or(LlmConfigServiceError::Unavailable)?,
+            job.original_input_limits,
+        )
+        .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        let target = &original["packet"]["payload"]["target"];
+        // Compare with the actual saved ORIGINAL role values, not request.model
+        // echoes, guessed defaults or today's role. Reuse the role owner's key
+        // grammar rather than duplicating configuration names in this reader.
+        let role = match selected_role {
+            Some(brassclaw_llm::ProviderRole::Kohai) => "kohai",
+            Some(brassclaw_llm::ProviderRole::Sempai) => "sempai",
+            None if operation == "upsert" && request["set_active"] == true => "kohai",
+            _ => return Err(LlmConfigServiceError::Unavailable),
+        };
+        let role_keys = crate::db_config::model_role_keys(role)
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+
+        let crate::prefix_job_definitions::Target::ModelSetup {
+            specification,
+            setup_revision,
+        } = &job.target
+        else {
+            return Err(LlmConfigServiceError::Unavailable);
+        };
+        if job.id != job_id
+            || job.operation != "bootstrap_setup"
+            || job.mode != "target"
+            || job.created_by != actor
+            || job.scope.tenant_id.as_str() != tenant
+            || job.request["origin_mutation"] != mutation_id.to_string()
+            || original["origin_mutation"] != mutation_id.to_string()
+            || original["job_id"] != job_id.to_string()
+            || target["specification"] != *specification
+            || target["provider_id"].as_str() != provider_id.as_deref()
+            || target["provider_revision"].as_u64() != revision.and_then(|v| u64::try_from(v).ok())
+            || target["provider_id"].as_str() != roles.get(role_keys[0]).map(String::as_str)
+            || target["model"].as_str() != roles.get(role_keys[1]).map(String::as_str)
+            || roles.contains_key(role_keys[2])
+            || roles.contains_key(role_keys[3])
+            || original["packet"]["payload"]["executing_pair"] != *target
+            || original["setup"]["revision"].as_u64() != Some(*setup_revision)
+            || original["setup"]["specification"] != *specification
+            || job.request["executing_specification"] != *specification
+            || !((operation == "select"
+                && matches!(request["role"].as_str(), Some("kohai" | "sempai")))
+                || (operation == "upsert" && request["set_active"] == true))
+        {
+            return Err(LlmConfigServiceError::Unavailable);
+        }
+        Some(brassclaw_product_workflow::PrefixJobTarget::ModelSetup {
+            specification: specification.clone(),
+            setup_revision: *setup_revision,
+        })
+    } else {
+        None
+    };
+    #[cfg(not(feature = "skills-db"))]
+    let bootstrap_target = {
+        if bootstrap_job_id.is_some() {
+            return Err(LlmConfigServiceError::Unavailable);
+        }
+        let _ = (client, tenant);
+        None
+    };
     Ok(ProviderMutationReceipt {
+        bootstrap_job_id,
+        bootstrap_target,
         mutation_id: row.try_get("mutation_id").map_err(error)?,
         operation,
         selected_role,
@@ -199,8 +328,7 @@ fn decode(row: tokio_postgres::Row) -> Result<ProviderMutationReceipt, LlmConfig
             .map(u64::try_from)
             .transpose()
             .map_err(|_| LlmConfigServiceError::Unavailable)?,
-        role_selections: serde_json::from_value(roles)
-            .map_err(|_| LlmConfigServiceError::Unavailable)?,
+        role_selections: roles,
     })
 }
 

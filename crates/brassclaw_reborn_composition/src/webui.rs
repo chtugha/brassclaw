@@ -140,6 +140,12 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     // after the V047/V048 migration.
     #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
     if let Some(configuration) = runtime.webui_llm_configuration() {
+        #[cfg(feature = "skills-db")]
+        configuration
+            .attach_prefix_bootstrap(Arc::downgrade(&runtime))
+            .map_err(|_| RebornBuildError::InvalidConfig {
+                reason: "prefix bootstrap runtime attachment failed".into(),
+            })?;
         api = api.with_llm_config_service(configuration);
     }
 

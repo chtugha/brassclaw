@@ -107,14 +107,14 @@ where
 
 impl UserCodeResponse {
     /// Get the expiry duration in seconds, from either `expires_in` or `expires_at`.
-    fn expires_in_secs(&self) -> Result<u64, LlmError> {
+    fn expires_in_secs_at(&self, now: DateTime<Utc>) -> Result<u64, LlmError> {
         if let Some(secs) = self.expires_in {
             return Ok(secs);
         }
         if let Some(ref ts) = self.expires_at {
             let dt =
                 chrono::DateTime::parse_from_rfc3339(ts).map_err(|_| invalid_oauth_response())?;
-            let remaining = dt.signed_duration_since(Utc::now()).num_seconds();
+            let remaining = dt.signed_duration_since(now).num_seconds();
             return Ok(remaining.max(0) as u64);
         }
         Ok(SECS_15_MINUTES) // default only when the issuer supplies no expiry
@@ -161,6 +161,13 @@ impl TokenResponse {
         self,
         previous: Option<(&str, DateTime<Utc>)>,
     ) -> Result<OpenAiCodexSession, LlmError> {
+        self.into_session_at(previous, Utc::now())
+    }
+    fn into_session_at(
+        self,
+        previous: Option<(&str, DateTime<Utc>)>,
+        now: DateTime<Utc>,
+    ) -> Result<OpenAiCodexSession, LlmError> {
         if self.access_token.is_empty()
             || HeaderValue::from_str(&format!("Bearer {}", self.access_token)).is_err()
             || (!self.token_type.is_empty() && !self.token_type.eq_ignore_ascii_case("bearer"))
@@ -177,7 +184,6 @@ impl TokenResponse {
             i64::try_from(seconds).map_err(|_| invalid_oauth_response())?,
         )
         .ok_or_else(invalid_oauth_response)?;
-        let now = Utc::now();
         let expires_at = now
             .checked_add_signed(duration)
             .ok_or_else(invalid_oauth_response)?;
@@ -201,7 +207,7 @@ impl TokenResponse {
 /// `user_code` + `verification_uri` to the user, then passes this back to
 /// [`OpenAiCodexSessionManager::complete_device_code`] to poll for completion.
 /// Internal polling state (device id, interval, expiry) is opaque to callers.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DeviceCodeStart {
     device_auth_id: String,
     /// Code the user enters at `verification_uri`.
@@ -210,6 +216,130 @@ pub struct DeviceCodeStart {
     pub verification_uri: String,
     interval_secs: u64,
     expires_secs: u64,
+}
+
+impl std::fmt::Debug for DeviceCodeStart {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DeviceCodeStart([REDACTED])")
+    }
+}
+impl DeviceCodeStart {
+    /// One-shot native consumption after the host authenticates encrypted raw
+    /// result custody. This accessor grants no transport or credential authority.
+    pub fn into_native_parts(self) -> (SecretString, SecretString, String, u64, u64) {
+        (
+            self.device_auth_id.into(),
+            self.user_code.into(),
+            self.verification_uri,
+            self.interval_secs,
+            self.expires_secs,
+        )
+    }
+}
+/// Issuer-returned PKCE material, not a client-generated/fake callback state.
+/// Neither this nor the token result implements serde or secret-bearing Debug.
+pub struct CodexDeviceAuthorization {
+    pub authorization_code: SecretString,
+    pub code_challenge: String,
+    pub code_verifier: SecretString,
+}
+impl std::fmt::Debug for CodexDeviceAuthorization {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CodexDeviceAuthorization([REDACTED])")
+    }
+}
+pub struct CodexDeviceTokens {
+    pub access_token: SecretString,
+    pub refresh_token: SecretString,
+    pub expires_at: DateTime<Utc>,
+}
+impl std::fmt::Debug for CodexDeviceTokens {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CodexDeviceTokens([REDACTED])")
+    }
+}
+/// Actual OpenAI wire parser shared by the legacy File manager and native host.
+/// The provided first observation time must be retained; re-reading originals
+/// cannot create a fresh expiry. HTTP/body/egress admission belongs to the host.
+pub fn parse_codex_device_start(
+    body: &[u8],
+    observed_at: DateTime<Utc>,
+) -> Result<DeviceCodeStart, LlmError> {
+    Ok(parse_codex_device_start_with_issuer_expiry(body, observed_at)?.0)
+}
+/// Preserve whether the issuer actually supplied an expiry. Native setup uses
+/// its captured configurable host deadline when neither wire expiry exists;
+/// only the legacy File manager retains the historical 15-minute fallback.
+pub fn parse_codex_device_start_with_issuer_expiry(
+    body: &[u8],
+    observed_at: DateTime<Utc>,
+) -> Result<(DeviceCodeStart, Option<DateTime<Utc>>), LlmError> {
+    let device: UserCodeResponse =
+        serde_json::from_slice(body).map_err(|_| invalid_oauth_response())?;
+    if device.device_auth_id.is_empty() || device.user_code.is_empty() {
+        return Err(invalid_oauth_response());
+    }
+    let expires_secs = device.expires_in_secs_at(observed_at)?;
+    let issuer_expiry = if let Some(seconds) = device.expires_in {
+        let duration = chrono::Duration::try_seconds(
+            i64::try_from(seconds).map_err(|_| invalid_oauth_response())?,
+        )
+        .ok_or_else(invalid_oauth_response)?;
+        Some(
+            observed_at
+                .checked_add_signed(duration)
+                .ok_or_else(invalid_oauth_response)?,
+        )
+    } else if let Some(value) = &device.expires_at {
+        Some(
+            chrono::DateTime::parse_from_rfc3339(value)
+                .map_err(|_| invalid_oauth_response())?
+                .with_timezone(&Utc),
+        )
+    } else {
+        None
+    };
+    Ok((
+        DeviceCodeStart {
+            device_auth_id: device.device_auth_id,
+            user_code: device.user_code,
+            verification_uri: device.verification_uri,
+            interval_secs: device.interval.max(default_interval()),
+            expires_secs,
+        },
+        issuer_expiry,
+    ))
+}
+pub fn parse_codex_device_authorization(body: &[u8]) -> Result<CodexDeviceAuthorization, LlmError> {
+    let value: DeviceAuthCodeResponse =
+        serde_json::from_slice(body).map_err(|_| invalid_oauth_response())?;
+    if value.authorization_code.is_empty()
+        || value.code_challenge.is_empty()
+        || value.code_verifier.is_empty()
+    {
+        return Err(invalid_oauth_response());
+    }
+    Ok(CodexDeviceAuthorization {
+        authorization_code: value.authorization_code.into(),
+        code_challenge: value.code_challenge,
+        code_verifier: value.code_verifier.into(),
+    })
+}
+pub fn parse_codex_device_tokens(
+    body: &[u8],
+    request_started_at: DateTime<Utc>,
+) -> Result<CodexDeviceTokens, LlmError> {
+    let value: TokenResponse =
+        serde_json::from_slice(body).map_err(|_| invalid_oauth_response())?;
+    let session = value.into_session_at(None, request_started_at)?;
+    Ok(CodexDeviceTokens {
+        access_token: session.access_token.into(),
+        refresh_token: session.refresh_token.into(),
+        expires_at: session.expires_at,
+    })
+}
+pub fn codex_device_minimum_interval_secs() -> u64 {
+    default_interval()
 }
 
 /// Manages OpenAI Codex OAuth sessions with persistence and auto-refresh.
@@ -389,24 +519,7 @@ impl OpenAiCodexSessionManager {
                 reason: format!("Failed to read device code response: {}", e),
             })?;
         tracing::debug!("Device code response received ({} bytes)", body_text.len());
-        let device: UserCodeResponse =
-            serde_json::from_str(&body_text).map_err(|_| LlmError::SessionRenewalFailed {
-                provider: "openai_codex".to_string(),
-                reason: format!(
-                    "Failed to parse device code response ({} bytes)",
-                    body_text.len()
-                ),
-            })?;
-
-        let interval_secs = device.interval.max(5);
-        let expires_secs = device.expires_in_secs()?;
-        Ok(DeviceCodeStart {
-            device_auth_id: device.device_auth_id,
-            user_code: device.user_code,
-            verification_uri: device.verification_uri,
-            interval_secs,
-            expires_secs,
-        })
+        parse_codex_device_start(body_text.as_bytes(), Utc::now())
     }
 
     /// Step 2-3 of the device code flow: poll for authorization, then exchange
@@ -477,20 +590,14 @@ impl OpenAiCodexSessionManager {
 
             let status = resp.status();
             if status.is_success() {
-                let code_resp: DeviceAuthCodeResponse =
-                    resp.json()
-                        .await
-                        .map_err(|_| LlmError::SessionRenewalFailed {
-                            provider: "openai_codex".to_string(),
-                            reason: "Failed to parse auth code response".into(),
-                        })?;
-                if code_resp.authorization_code.is_empty()
-                    || code_resp.code_challenge.is_empty()
-                    || code_resp.code_verifier.is_empty()
-                {
-                    return Err(invalid_oauth_response());
-                }
-                break code_resp;
+                let bytes = resp.bytes().await.map_err(|_| invalid_oauth_response())?;
+                let parsed = parse_codex_device_authorization(&bytes)?;
+                use secrecy::ExposeSecret;
+                break DeviceAuthCodeResponse {
+                    authorization_code: parsed.authorization_code.expose_secret().to_owned(),
+                    code_challenge: parsed.code_challenge,
+                    code_verifier: parsed.code_verifier.expose_secret().to_owned(),
+                };
             }
 
             // 403 = authorization_pending, keep polling
@@ -818,3 +925,35 @@ mod tests {
 #[cfg(test)]
 #[path = "openai_codex_session_native_tests.rs"]
 mod native_tests;
+
+#[cfg(test)]
+mod shared_native_protocol_tests {
+    use super::*;
+    #[test]
+    fn shared_device_expiry_distinguishes_issuer_origin_and_keeps_legacy_default_only_in_legacy_result()
+     {
+        let first = Utc::now();
+        let absent = br#"{"device_auth_id":"device","user_code":"user"}"#;
+        let (legacy, issuer) = parse_codex_device_start_with_issuer_expiry(absent, first).unwrap();
+        assert!(issuer.is_none());
+        assert_eq!(legacy.expires_secs, SECS_15_MINUTES);
+        let body =
+            br#"{"device_auth_id":"device","user_code":"user","expires_in":120,"interval":"8"}"#;
+        let (parsed, issuer) = parse_codex_device_start_with_issuer_expiry(body, first).unwrap();
+        assert_eq!(issuer, Some(first + chrono::Duration::seconds(120)));
+        assert_eq!(parsed.interval_secs, 8);
+        assert!(!format!("{parsed:?}").contains("user"));
+        let tokens=br#"{"access_token":"actual-access","refresh_token":"actual-refresh","expires_in":60,"token_type":"Bearer"}"#;
+        let request_started = first - chrono::Duration::hours(2);
+        let parsed = parse_codex_device_tokens(tokens, request_started).unwrap();
+        assert_eq!(
+            parsed.expires_at,
+            request_started + chrono::Duration::seconds(60)
+        );
+        assert!(!format!("{parsed:?}").contains("actual-access"));
+        assert!(
+            parse_codex_device_tokens(br#"{"access_token":"bad\nheader","expires_in":60}"#, first)
+                .is_err()
+        );
+    }
+}

@@ -155,6 +155,14 @@ impl PgPrefixModelDesigns {
             .pop()
             .ok_or_else(unavailable)
     }
+    pub(crate) async fn specification_in_transaction(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+        id: &str,
+    ) -> Result<PrefixModelSpecification, Error> {
+        hash(id)?;
+        self.setup_specification(tx, id, false).await
+    }
     /// None reads the current draft; Some pins the exact original revision.
     /// Explicit zero is the original untouched view. Missing positive revisions
     /// fail instead of falling back to a different historical/current view.
@@ -163,13 +171,34 @@ impl PgPrefixModelDesigns {
         specification: &str,
         revision: Option<u64>,
     ) -> Result<PrefixModelSetupDraft, Error> {
+        let client = self.pool.get().await.map_err(|_| unavailable())?;
+        self.read_setup_draft(&**client, specification, revision, false)
+            .await
+    }
+
+    pub(crate) async fn setup_draft_in_transaction(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+        specification: &str,
+        revision: Option<u64>,
+    ) -> Result<PrefixModelSetupDraft, Error> {
+        self.read_setup_draft(tx, specification, revision, true)
+            .await
+    }
+
+    async fn read_setup_draft<C: tokio_postgres::GenericClient + Sync>(
+        &self,
+        client: &C,
+        specification: &str,
+        revision: Option<u64>,
+        locked: bool,
+    ) -> Result<PrefixModelSetupDraft, Error> {
         hash(specification)?;
         if revision.is_some_and(|revision| revision > PREFIX_SETUP_MAX_EXACT_INTEGER) {
             return Err(bad());
         }
-        let client = self.pool.get().await.map_err(|_| unavailable())?;
         let specification = self
-            .setup_specification(&**client, specification, false)
+            .setup_specification(client, specification, locked)
             .await?;
         let basis = initial(&specification)?;
         let row = if let Some(revision) = revision {
@@ -184,6 +213,15 @@ impl PgPrefixModelDesigns {
         row.as_ref()
             .map(|row| decode(row, &basis).map(|stored| stored.draft))
             .unwrap_or(Ok(basis))
+    }
+    pub(crate) async fn retained_setup_in_transaction(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+        specification: &str,
+        revision: u64,
+    ) -> Result<PrefixModelSetupDraft, Error> {
+        self.read_setup_draft(tx, specification, Some(revision), false)
+            .await
     }
     pub(crate) async fn update_setup_draft(
         &self,

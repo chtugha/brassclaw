@@ -62,8 +62,8 @@ export function pendingSetupDraft(specification) {
   const original = pending.get(specification);
   return original ? { basis: structuredClone(original.basis), request: structuredClone(original.request), busy: !!original.promise } : null;
 }
-export async function loadSetupDraft(specification) {
-  return parseSetupDraft(await fetchPrefixModelSetupDraft(specification), specification);
+export async function loadSetupDraft(specification, revision = null) {
+  return parseSetupDraft(await fetchPrefixModelSetupDraft(specification, revision), specification);
 }
 async function settle(original) {
   const specification = original.basis.specification;

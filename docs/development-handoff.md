@@ -17,7 +17,8 @@ V197 supplies live standalone OAuth600/600 default/maximum settings and coherent
 upgrade of missing partners, preserving existing originals. Browser target is
 captured before settings/recovery awaits; two account-switch regressions pass.
 Manual Recipe re-review commits status/tag atomically, without queue reset or
-new approval. These source changes and the scoped receipt await checkpoint commit.
+new approval. These source changes and the scoped receipt are pushed as checkpoint
+33e49b32554df2a1004cfc65832c8af3047650a3; continue implementation after push.
 
 Next: collect the connected I1 successor and native036 Device-login/Root bridge
 before selecting the next shared build. I1 original43-path proposal is NOT ready
@@ -29,6 +30,36 @@ new reservations capture acknowledged limits once, originals precede new reads.
 No new settings/parser/snapshot owner. Fixed metadata/selection format caps
 remain an explicit inventory item, not resolved by this change. Root must review
 all connected runtime/store/inspection/UI/native cases before integration.
+
+Root036 private head-binding/ now also contains pg_auth_codex_access.rs and
+pg_auth_codex_publication.rs. Existing PgAuth consumes selected access only after
+lease-consumption COMMIT ACK; immutable token guard checks actual account digest,
+head and post-legacy-upgrade secret ref AFTER the effect-free Provider guard wait,
+plus both account/secret expiry. Publication fragment reuses actual NativeReady,
+raw token consumption, account owner and atomic create-only token/head writes.
+All remain unmounted/uncompiled; reviewer prepares genuine PG cases. The new
+expiry-cas.patch delegates to existing put_checked_in_transaction, avoiding
+read-then-unconditional-write races. Native Flow finish is assigned to its owner.
+
+Concrete correction: V138 does NOT bump unchanged provider definitions during
+re-login. Native reader now selects exact credential_head_ref, not provider
+revision/timestamp order. native-head-migration.UNNUMBERED.sql adds this nullable
+unique link to the EXISTING immutable Mutation owner. Root provider_mutation.rs
+is incremental against I1-R2 proposal SHA1c6773df… (base manifest alongside it):
+record_with_links accepts ProviderMutationLinks {bootstrap_job_id,credential_head_ref},
+ONE INSERT, original request/proof unchanged. Apply after connected I1-R2; adapt
+its two record_with_bootstrap callers once. No new table or artificial definition
+bump. Reader/test fixtures must include two logins with the SAME provider revision.
+
+Device owner found actual RuntimeHttpEgress sanitizes before return. Root approved
+one trusted asynchronous Original-Custody sink in EXISTING Host pipeline before
+sanitizing, returning only normal sanitized response. No raw getter/flag/second
+client or Auth dependency cycle; exact bytes in encrypted one-shot custody,
+actual claim/request binding before transport. Capture/sanitizer failures after
+transport reconcile known originals or stay unknown; never replay. Concrete API
+and implementation are private/in progress, not production acceptance. Root also
+requested publication of already known nonexpired token originals remain possible
+after setup deadline without permitting new issuer requests or extending expiry.
 
 036 Device protocol/custody and its separate900s setup setting remain private.
 Do not integrate SDK-only or disconnected settings. Root owns native encrypted

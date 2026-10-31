@@ -26,6 +26,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use axum::Router;
 use axum::body::{Body, to_bytes};
+use axum::http::header;
 use axum::http::{Method, Request, StatusCode};
 use brassclaw_host_api::{
     AgentId, CapabilityId, ExtensionId, InvocationId, ProjectId, RuntimeKind, TenantId, ThreadId,
@@ -112,6 +113,9 @@ fn service_unavailable_error(retryable: bool) -> RebornServicesError {
 
 #[derive(Default)]
 struct StubServices {
+    pair_acceptance_calls: Mutex<Vec<(WebUiAuthenticatedCaller, String, serde_json::Value)>>,
+
+    setup_job_calls: Mutex<Vec<(WebUiAuthenticatedCaller, String, u64, String)>>,
     create_thread_calls: Mutex<Vec<WebUiCreateThreadRequest>>,
     delete_thread_calls: Mutex<Vec<RebornDeleteThreadRequest>>,
     submit_turn_calls: Mutex<Vec<WebUiSendMessageRequest>>,
@@ -129,6 +133,8 @@ struct StubServices {
     activate_extension_calls: Mutex<Vec<String>>,
     remove_extension_calls: Mutex<Vec<String>>,
     get_llm_config_calls: Mutex<usize>,
+    start_codex_calls: Mutex<Vec<SetActiveLlmRequest>>,
+    codex_status_calls: Mutex<Vec<uuid::Uuid>>,
     upsert_llm_provider_calls: Mutex<Vec<String>>,
     delete_llm_provider_calls: Mutex<Vec<String>>,
     set_active_llm_calls: Mutex<Vec<ActiveLlmSelectionCall>>,
@@ -209,6 +215,69 @@ impl StubServices {
 
 #[async_trait]
 impl RebornServicesApi for StubServices {
+    async fn get_prefix_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        pair: brassclaw_product_workflow::PrefixPairAcceptanceReference,
+    ) -> Result<Option<brassclaw_product_workflow::PrefixPairAcceptanceReceipt>, RebornServicesError>
+    {
+        self.pair_acceptance_calls.lock().unwrap().push((
+            caller,
+            "get".into(),
+            serde_json::to_value(&pair).unwrap(),
+        ));
+        if pair.specification == "0".repeat(64) {
+            return Err(service_unavailable_error(false));
+        }
+        Ok(None)
+    }
+    async fn reconcile_prefix_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        decision: brassclaw_product_workflow::PrefixPairAcceptanceDecision,
+    ) -> Result<Option<brassclaw_product_workflow::PrefixPairAcceptanceReceipt>, RebornServicesError>
+    {
+        self.pair_acceptance_calls.lock().unwrap().push((
+            caller.clone(),
+            "reconcile".into(),
+            serde_json::to_value(&decision).unwrap(),
+        ));
+        Ok(Some(
+            brassclaw_product_workflow::PrefixPairAcceptanceReceipt {
+                pair_acceptance: uuid::Uuid::from_u128(1),
+                evidence_checksum: "e".repeat(64),
+                selection: decision.selection,
+                review: brassclaw_product_workflow::PrefixAcceptanceView {
+                    review_checksum: decision.review_checksum,
+                    review: serde_json::json!({"fixture":"original native review, no independent design seal"}),
+                },
+                actor: caller.user_id.to_string(),
+                semantic_review: decision.semantic_review,
+                evidence:
+                    brassclaw_product_workflow::PrefixPairAcceptanceEvidence::LegacyNativeReview,
+            },
+        ))
+    }
+    async fn prepare_prefix_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        selection: brassclaw_product_workflow::PrefixPairAcceptanceSelection,
+    ) -> Result<brassclaw_product_workflow::PrefixPairAcceptanceView, RebornServicesError> {
+        self.pair_acceptance_calls.lock().unwrap().push((
+            caller,
+            "review".into(),
+            serde_json::to_value(&selection).unwrap(),
+        ));
+        Ok(brassclaw_product_workflow::PrefixPairAcceptanceView {
+            selection,
+            review: brassclaw_product_workflow::PrefixAcceptanceView {
+                review_checksum: "c".repeat(64),
+                review: serde_json::json!({"fixture":"native review"}),
+            },
+            release_blocked_reason: "prefix.qualifiedDesignWorkflowRequired".into(),
+        })
+    }
+
     async fn create_thread(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -575,6 +644,8 @@ impl RebornServicesApi for StubServices {
         Ok(NearAiWalletLoginResult {
             active: true,
             mutation_receipt: ProviderMutationReceipt {
+                bootstrap_job_id: None,
+                bootstrap_target: None,
                 mutation_id: id,
                 operation: "upsert".into(),
                 selected_role: None,
@@ -583,6 +654,43 @@ impl RebornServicesApi for StubServices {
                 role_selections: Default::default(),
             },
         })
+    }
+
+    async fn start_codex_login(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        request: SetActiveLlmRequest,
+    ) -> Result<brassclaw_product_workflow::CodexLoginStart, RebornServicesError> {
+        let mutation_id = request.mutation_id;
+        self.start_codex_calls.lock().unwrap().push(request);
+        Ok(brassclaw_product_workflow::CodexLoginStart {
+            mutation_id,
+            expires_at: "2026-10-31T12:00:00Z".parse().unwrap(),
+            poll_interval_millis: 713,
+            user_code: Some("CONTROLLED_CODE".into()),
+            verification_uri: Some("https://issuer.example/device".into()),
+        })
+    }
+    async fn codex_login_status(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        id: uuid::Uuid,
+    ) -> Result<brassclaw_product_workflow::CodexLoginStatus, RebornServicesError> {
+        self.codex_status_calls.lock().unwrap().push(id);
+        Ok(serde_json::from_value(serde_json::json!({
+            "mutation_id":id,
+            "status":"completed",
+            "expires_at":"2026-10-31T12:00:00Z",
+            "error":null,
+            "poll_interval_millis":713,
+            "mutation_receipt":{
+                "mutation_id":id,"operation":"upsert","provider_id":"clicked-codex",
+                "provider_revision":7,
+                "role_selections":{"llm.sempai.provider_id":"clicked-codex","llm.sempai.model":"clicked-model"},
+                "bootstrap_job_id":"00000000-0000-4000-8000-000000000009",
+                "bootstrap_target":{"target_kind":"model_setup","specification":"a".repeat(64),"setup_revision":0}
+            }
+        })).unwrap())
     }
 
     async fn get_llm_config(
@@ -1085,6 +1193,41 @@ impl RebornServicesApi for StubServices {
         })
     }
 
+    async fn get_prefix_model_setup_job(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        revision: u64,
+        job: &str,
+    ) -> Result<brassclaw_product_workflow::PrefixJobDetail, RebornServicesError> {
+        self.setup_job_calls.lock().unwrap().push((
+            caller,
+            specification.into(),
+            revision,
+            job.into(),
+        ));
+        Ok(brassclaw_product_workflow::PrefixJobDetail {
+            job_id: job.into(),
+            thread_id: "original-conversation".into(),
+            target: brassclaw_product_workflow::PrefixJobTarget::ModelSetup {
+                specification: specification.into(),
+                setup_revision: revision,
+            },
+            operation: "bootstrap_setup".into(),
+            mode: "target".into(),
+            created_at: "date".into(),
+            request_sha256: "r".into(),
+            program_sha256: "p".into(),
+            input_sha256: "i".into(),
+            run_status: None,
+            admission_phase: None,
+            answered_tool_calls: 0,
+            pending_tool_calls: 0,
+            failure_kind: None,
+            internal_receipt: Some("original literal result".into()),
+            result_ref: None,
+        })
+    }
     async fn list_interceptor_prefixes(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -4234,4 +4377,241 @@ async fn wallet_challenge_and_completion_preserve_server_identity_and_signed_pay
         .unwrap();
     assert_eq!(rejected.status(), StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(services.complete_wallet_calls.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn original_model_setup_job_route_passes_zero_and_exact_revision_to_existing_facade() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+    for revision in [
+        0,
+        brassclaw_product_workflow::PREFIX_SETUP_MAX_EXACT_INTEGER,
+    ] {
+        let response=router.clone().oneshot(Request::builder().method(Method::GET).uri(format!("/api/webchat/v2/prefix-model-designs/{}/setups/{revision}/jobs/original-job","a".repeat(64))).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let value = read_json(response).await;
+        assert_eq!(value["target_kind"], "model_setup");
+        assert_eq!(value["setup_revision"], revision.to_string());
+        assert_eq!(value["internal_receipt"], "original literal result");
+    }
+    let calls = services.setup_job_calls.lock().unwrap();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].0, caller());
+    assert_eq!(calls[0].1, "a".repeat(64));
+    assert_eq!(calls[0].2, 0);
+    assert_eq!(
+        calls[1].2,
+        brassclaw_product_workflow::PREFIX_SETUP_MAX_EXACT_INTEGER
+    );
+    assert_eq!(calls[0].3, "original-job");
+}
+
+#[tokio::test]
+async fn codex_login_http_retains_original_set_active_payload_and_reads_only_requested_status() {
+    let services = Arc::new(StubServices::default());
+    let app = router_with(services.clone());
+    let id = uuid::Uuid::new_v4();
+    let payload = serde_json::json!({"mutation_id":id,"provider_id":"clicked-codex","expected_revision":7,
+        "expected_selection_ref":"b".repeat(64),"model":"clicked-model","role":"sempai"});
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/llm/codex/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert_eq!(body["mutation_id"], id.to_string());
+    assert_eq!(body["poll_interval_millis"], 713);
+    {
+        let calls = services.start_codex_calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        let call = &calls[0];
+        assert_eq!(call.mutation_id, id);
+        assert_eq!(call.provider_id, "clicked-codex");
+        assert_eq!(call.expected_revision, Some(7));
+        assert_eq!(call.expected_selection_ref, Some("b".repeat(64)));
+        assert_eq!(call.model.as_deref(), Some("clicked-model"));
+        assert_eq!(
+            call.role,
+            Some(brassclaw_product_workflow::ProviderRole::Sempai)
+        );
+    }
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(format!("/api/webchat/v2/llm/codex/login/{id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert_eq!(body["mutation_id"], id.to_string());
+    assert_eq!(body["mutation_receipt"]["mutation_id"], id.to_string());
+    assert_eq!(
+        body["mutation_receipt"]["bootstrap_target"]["setup_revision"],
+        "0"
+    );
+    assert_eq!(
+        services.codex_status_calls.lock().unwrap().as_slice(),
+        &[id]
+    );
+    assert_eq!(
+        services.start_codex_calls.lock().unwrap().len(),
+        1,
+        "GET must not start/resume a flow"
+    );
+}
+
+#[tokio::test]
+async fn codex_login_http_rejects_missing_or_extra_request_fields_without_facade_call() {
+    let services = Arc::new(StubServices::default());
+    let app = router_with(services.clone());
+    for payload in [
+        serde_json::json!({}),
+        serde_json::json!({"mutation_id":uuid::Uuid::new_v4(),"provider_id":"p","token":"not-a-request-field"}),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/webchat/v2/llm/codex/login")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    assert!(services.start_codex_calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn pair_acceptance_http_retains_exact_original_identity_and_blocked_summary() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+    let pair = serde_json::json!({"specification":"a".repeat(64),"pair_proposal":"b".repeat(64)});
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/webchat/v2/prefix-model-designs/proposals/{}/{}/acceptance",
+                    "a".repeat(64),
+                    "b".repeat(64)
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(read_json(response).await.is_null());
+    let selection = serde_json::json!({"pair":pair,"evaluation":{"profile":"base-prompt","generation":"d".repeat(64)}});
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/prefix-model-designs/pair-acceptance/review")
+                .header("content-type", "application/json")
+                .body(Body::from(selection.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let summary = read_json(response).await;
+    assert_eq!(summary["selection"], selection);
+    assert_eq!(
+        summary["release_blocked_reason"],
+        "prefix.qualifiedDesignWorkflowRequired"
+    );
+    let decision = serde_json::json!({"selection":selection,"review_checksum":"c".repeat(64),"semantic_review":"original explicit operator statement"});
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/prefix-model-designs/pair-acceptance/reconcile")
+                .header("content-type", "application/json")
+                .body(Body::from(decision.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let original = read_json(response).await;
+    assert_eq!(original["selection"], selection);
+    assert_eq!(original["actor"], caller().user_id.to_string());
+    assert_eq!(original["evidence"], "legacy_native_review");
+    assert!(original.get("generation_qualification").is_none());
+    assert!(original.get("serving_activated").is_none());
+    let mut forged = decision.clone();
+    forged["approved"] = serde_json::json!(true);
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/prefix-model-designs/pair-acceptance/reconcile")
+                .header("content-type", "application/json")
+                .body(Body::from(forged.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/webchat/v2/prefix-model-designs/proposals/{}/{}/acceptance",
+                    "0".repeat(64),
+                    "b".repeat(64)
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "reader errors cannot become no design"
+    );
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/prefix-model-designs/pair-acceptance/approve")
+                .header("content-type", "application/json")
+                .body(Body::from(decision.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "no test-only or unqualified release endpoint"
+    );
+    let calls = services.pair_acceptance_calls.lock().unwrap();
+    assert_eq!(calls.len(), 4);
+    assert!(calls.iter().all(|(who, _, _)| who == &caller()));
+    assert_eq!(calls[0].2, pair);
+    assert_eq!(calls[1].2, selection);
+    assert_eq!(calls[2].2, decision);
 }

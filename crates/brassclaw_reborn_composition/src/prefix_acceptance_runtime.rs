@@ -40,6 +40,17 @@ impl RebornRuntime {
             )
             .await
     }
+    pub(crate) async fn prepare_prefix_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        selection: brassclaw_product_workflow::PrefixPairAcceptanceSelection,
+    ) -> Result<brassclaw_product_workflow::PrefixPairAcceptanceView, Error> {
+        // Same actual encoder/preparation as the old generation review. The
+        // resulting Pair summary explicitly cannot supply a design seal.
+        self.prepare_prefix_review(&caller, &selection.evaluation)
+            .await?
+            .pair_view(selection)
+    }
     pub(crate) async fn prepare_prefix_acceptance(
         &self,
         caller: WebUiAuthenticatedCaller,

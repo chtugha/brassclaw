@@ -1,6 +1,19 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("de", {
+  "onboarding.codexSignInSempai": "Für Sempai anmelden",
+  "onboarding.codexNewConfirm": "Eine neue Anmeldung für diesen Provider und diese Rolle starten? Die bisherige Anmeldung bleibt gespeichert.",
+  "onboarding.codexResume": "Ursprüngliche Anmeldung fortsetzen",
+  "onboarding.codexStatusError": "Fehler: {code}",
+  "onboarding.codexStatus.pending": "Anmeldung ausstehend",
+  "onboarding.codexStatus.awaiting_user": "Warte auf deine Autorisierung",
+  "onboarding.codexStatus.callback_received": "Autorisierung empfangen",
+  "onboarding.codexStatus.completing": "Ursprüngliche Anmeldung wird abgeschlossen",
+  "onboarding.codexStatus.completed": "Ursprüngliche Anmeldung abgeschlossen",
+  "onboarding.codexStatus.failed": "Ursprüngliche Anmeldung fehlgeschlagen",
+  "onboarding.codexStatus.expired": "Ursprüngliche Anmeldung abgelaufen",
+  "onboarding.codexStatus.canceled": "Ursprüngliche Anmeldung abgebrochen",
+
   "extensions.oauth.reconcile": "Ursprüngliche Bereinigung abgleichen",
   "extensions.oauth.cleanupHttp": "HTTP-Status der Provider-Bereinigung:",
   "extensions.oauth.cleanupError": "Unbestätigtes Bereinigungsergebnis:",
@@ -1202,4 +1215,11 @@ registerPack("de", {
   "prefix.pairMatches": "Alle gespeicherten Fälle stimmen überein; das Design bleibt ungeprüft.",
   "prefix.pairMismatch": "Gespeicherte Fälle weichen ab; das protokollierte Ergebnis prüfen.",
   "prefix.pairNewCheck": "Neuen Vergleichsauftrag starten",
+  "prefix.bootstrapTitle": "Ursprüngliches Modell-Setup",
+  "prefix.bootstrapHelp": "Konfiguration für diese Auswahl erfasst. Ursprüngliches Setup:",
+  "prefix.bootstrapInspect": "Bootstrap-Ergebnis lesen",
+  "prefix.bootstrapOpen": "Ursprüngliche Setup-Einstellungen öffnen",
+  "prefix.bootstrapScopedResult": "Konfigurationswerte sind verfügbar. Endpoint-Prüfung und Verknüpfung der eigenständigen Designfreigabe stehen noch aus.",
+  "prefix.bootstrapOriginal": "Vollständiges technisches Ergebnis",
+  "prefix.bootstrapInvalid": "Ursprüngliches Bootstrap-Ziel oder Ergebnis ist inkonsistent.",
 });

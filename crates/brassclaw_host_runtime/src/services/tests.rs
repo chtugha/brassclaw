@@ -1516,3 +1516,88 @@ async fn registered_runtime_health_returns_empty_when_all_required_available() {
         "expected no missing kinds; got {missing:?}"
     );
 }
+
+/// Actual builder/port dispatch test; a getter or pointer alone is not evidence.
+#[tokio::test]
+async fn product_native_original_port_dispatches_same_network_and_staged_policy_as_normal_port() {
+    struct Custodian {
+        policy: NetworkPolicy,
+        original: Arc<Mutex<Option<SecretMaterial>>>,
+    }
+    #[async_trait]
+    impl crate::HostHttpOriginalCustody for Custodian {
+        async fn authenticate_request(
+            &mut self,
+            request: &RuntimeHttpEgressRequest,
+        ) -> Result<(), crate::HostHttpOriginalCustodyError> {
+            if request.network_policy != self.policy {
+                return Err(crate::HostHttpOriginalCustodyError);
+            }
+            Ok(())
+        }
+        async fn retain(
+            self: Box<Self>,
+            original: SecretMaterial,
+        ) -> Result<(), crate::HostHttpOriginalCustodyError> {
+            *self.original.lock().unwrap() = Some(original);
+            Ok(())
+        }
+    }
+    let network = RecordingNetwork::ok();
+    let requests = network.requests.clone();
+    let services = test_services()
+        .with_secret_store(Arc::new(InMemorySecretStore::new()))
+        .try_with_host_http_egress(network)
+        .unwrap();
+    let scope = sample_scope();
+    let capability = sample_capability_id();
+    let policy = staged_policy();
+    services
+        .network_policy_store
+        .insert(&scope, &capability, policy.clone());
+    let ports = services.product_auth_provider_runtime_ports().unwrap();
+    let request = request_without_credentials(scope, capability);
+    let normal = ports
+        .runtime_http_egress()
+        .execute(request.clone())
+        .await
+        .unwrap();
+    let original = Arc::new(Mutex::new(None));
+    let native = ports
+        .original_http_egress()
+        .unwrap()
+        .execute_with_original_custody(
+            request,
+            Box::new(Custodian {
+                policy: policy.clone(),
+                original: original.clone(),
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(normal, native);
+    let material = original.lock().unwrap();
+    let value: Value = serde_json::from_str(material.as_ref().unwrap().expose_secret()).unwrap();
+    assert_eq!(value["body"], json!(br#"{"ok":true}"#.to_vec()));
+    let observed = requests.lock().unwrap();
+    assert_eq!(observed.len(), 2);
+    assert!(observed.iter().all(|request| request.policy == policy));
+    drop(observed);
+    drop(material);
+    // Replacing generic egress cannot silently retain a stale original port.
+    let replacement =
+        services.with_runtime_http_egress(Arc::new(crate::HostHttpEgressService::production(
+            RecordingNetwork::ok(),
+            InMemorySecretStore::new(),
+            Arc::new(NetworkObligationPolicyStore::new()),
+            Arc::new(RuntimeSecretInjectionStore::new()),
+            Arc::new(crate::http_body::UnsupportedRuntimeHttpBodyStore),
+        )));
+    assert!(
+        replacement
+            .product_auth_provider_runtime_ports()
+            .unwrap()
+            .original_http_egress()
+            .is_none()
+    );
+}

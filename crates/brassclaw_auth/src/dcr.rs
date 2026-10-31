@@ -361,6 +361,7 @@ impl AuthFlowCustody {
                 requirement_setup,
                 requirement_selection: None,
                 requirement_source: None,
+                device_login: None,
             },
         ))
     }

@@ -10,6 +10,12 @@
 //! pending maps, V1 extension manager authority, or V1 secret stores.
 
 mod callback;
+mod device;
+pub use device::{
+    NativeDeviceLoginAction, NativeDeviceLoginDefinition, NativeDeviceLoginOriginal,
+    NativeDeviceOAuthClient, NativeDeviceOutcome, NativeDeviceRequest, NativeDeviceRequestKind,
+    NativeDeviceTransportOriginal,
+};
 mod cleanup;
 mod credential;
 mod dcr;

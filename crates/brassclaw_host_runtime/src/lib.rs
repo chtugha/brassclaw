@@ -74,7 +74,8 @@ pub use child_task_port::{
 };
 pub use dynamic_tool_loader::{CdylibLoadDirective, DynamicToolLoader, DynamicToolLoaderError};
 pub use egress::{
-    HostHttpEgressService, HostRuntimeCredentialMaterial, HostRuntimeHttpEgressPort,
+    HostHttpEgressService, HostHttpOriginalCustody, HostHttpOriginalCustodyError,
+    HostHttpOriginalEgress, HostRuntimeCredentialMaterial, HostRuntimeHttpEgressPort,
     HostRuntimeHttpEgressRequest, RuntimeSecretMaterialStager, RuntimeSecretStageError,
 };
 pub use extension_contracts::{

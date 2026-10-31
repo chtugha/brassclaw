@@ -31,6 +31,7 @@ pub(crate) struct Definition {
     pub(crate) request: Value,
     pub(crate) program_bytes: String,
     pub(crate) input: Value,
+    pub(crate) original_input_limits: brassclaw_skills::value_contract::ContractLimits,
     pub(crate) scope: TurnScope,
     pub(crate) thread_scope: ThreadScope,
     pub(crate) created_by: String,
@@ -43,6 +44,7 @@ pub(crate) struct Reservation<'a> {
     pub(crate) request: &'a Value,
     pub(crate) program: &'a InspectedRetainedProgram,
     pub(crate) input: &'a Value,
+    pub(crate) original_input_limits: brassclaw_skills::value_contract::ContractLimits,
     pub(crate) scope: &'a TurnScope,
     pub(crate) thread_scope: &'a ThreadScope,
     pub(crate) created_by: &'a str,
@@ -62,7 +64,61 @@ pub(crate) struct Header {
 pub(crate) struct Store {
     pool: Arc<PgPool>,
 }
-const COLUMNS: &str = "job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by";
+const COLUMNS: &str = "job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by,original_input_limits";
+
+// Frozen V167 input-codec domain. SQL NULL denotes only that historical format,
+// never today's settings or a future value of EXECUTION_DATA_LIMITS. Request
+// metadata (65536 bytes) and selected-program metadata (REVISION_LIMITS) remain
+// separately versioned format constraints, not executing task-data limits.
+pub(crate) const LEGACY_INPUT_LIMITS: brassclaw_skills::value_contract::ContractLimits =
+    brassclaw_skills::value_contract::ContractLimits {
+        max_depth: 64,
+        max_nodes: 262_144,
+        max_bytes: 67_108_864,
+    };
+fn decode_input_limits(
+    value: Option<Value>,
+) -> Result<brassclaw_skills::value_contract::ContractLimits, Error> {
+    let Some(value) = value else {
+        return Ok(LEGACY_INPUT_LIMITS);
+    };
+    let object = value
+        .as_object()
+        .filter(|v| v.len() == 3)
+        .ok_or(Error::Invalid)?;
+    let count = |name| {
+        object
+            .get(name)
+            .and_then(Value::as_u64)
+            .and_then(|v| usize::try_from(v).ok())
+            .filter(|v| *v > 0)
+            .ok_or(Error::Invalid)
+    };
+    let limits = brassclaw_skills::value_contract::ContractLimits {
+        max_depth: count("max_depth")?,
+        max_nodes: count("max_nodes")?,
+        max_bytes: count("max_bytes")?,
+    };
+    u32::try_from(limits.max_depth).map_err(|_| Error::Invalid)?;
+    Ok(limits)
+}
+fn encode_input_limits(
+    limits: brassclaw_skills::value_contract::ContractLimits,
+) -> Result<Value, Error> {
+    let value = serde_json::json!({"max_depth":limits.max_depth,"max_nodes":limits.max_nodes,"max_bytes":limits.max_bytes});
+    decode_input_limits(Some(value.clone()))?;
+    Ok(value)
+}
+/// Convert only the three effective, already validated existing settings fields.
+/// This is data capture, not another settings authority or task/resource grant.
+pub(crate) fn captured_input_limits(
+    policy: brassclaw_host_api::MontyExecutionLimits,
+) -> Result<brassclaw_skills::value_contract::ContractLimits, Error> {
+    policy.validate().map_err(|_| Error::Invalid)?;
+    decode_input_limits(Some(
+        serde_json::json!({"max_depth":policy.max_value_depth,"max_nodes":policy.max_value_nodes,"max_bytes":policy.max_value_bytes}),
+    ))
+}
 
 #[cfg(test)]
 #[path = "prefix_job_input_identity_tests.rs"]
@@ -110,11 +166,12 @@ fn decode(row: tokio_postgres::Row) -> Result<Definition, Error> {
         &row.get::<_, String>(8),
         brassclaw_skills::component_revision::REVISION_LIMITS,
     )?;
+    let original_input_limits = decode_input_limits(row.try_get(14).map_err(|_| Error::Invalid)?)?;
     let input_bytes: String = row.get(9);
     let input = parse(
         &input_bytes,
         &row.get::<_, String>(10),
-        brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
+        original_input_limits,
     )?;
     let scope = serde_json::from_value(row.get::<_, Value>(11)).map_err(|_| Error::Invalid)?;
     let thread_scope =
@@ -131,6 +188,7 @@ fn decode(row: tokio_postgres::Row) -> Result<Definition, Error> {
         request,
         program_bytes,
         input,
+        original_input_limits,
         scope,
         thread_scope,
         created_by: row.get(13),
@@ -145,6 +203,8 @@ fn same_request(existing: &Definition, r: &Reservation<'_>) -> bool {
         && existing.created_by == r.created_by
         && existing.scope == *r.scope
         && existing.thread_scope == *r.thread_scope
+    // Original codec meaning remains fixed when a retry arrives after a
+    // live settings edit. Offered new limits cannot reinterpret old bytes.
 }
 
 impl Store {
@@ -154,7 +214,8 @@ impl Store {
     /// Small read projection; status polling never reloads compiler/source blobs.
     pub(crate) async fn header(&self, id: Uuid) -> Result<Option<Header>, Error> {
         let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
-        let Some(row) = client.query_opt("SELECT job_id,profile_name,profile_revision,operation,mode,scope,thread_scope,created_by,created_at,request_checksum,program_checksum,input_checksum,request_bytes FROM brassclaw_prefix_job_definitions WHERE job_id=$1", &[&id]).await.map_err(|_| Error::Unavailable)? else { return Ok(None); };
+        let Some(row) = client.query_opt("SELECT job_id,profile_name,profile_revision,operation,mode,scope,thread_scope,created_by,created_at,request_checksum,program_checksum,input_checksum,request_bytes,original_input_limits FROM brassclaw_prefix_job_definitions WHERE job_id=$1", &[&id]).await.map_err(|_| Error::Unavailable)? else { return Ok(None); };
+        decode_input_limits(row.try_get(13).map_err(|_| Error::Invalid)?)?;
         let scope = serde_json::from_value(row.get::<_, Value>(5)).map_err(|_| Error::Invalid)?;
         let thread = serde_json::from_value(row.get::<_, Value>(6)).map_err(|_| Error::Invalid)?;
         let actor: String = row.get(7);
@@ -185,6 +246,22 @@ impl Store {
     }
     pub(crate) async fn get(&self, id: Uuid) -> Result<Option<Definition>, Error> {
         let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
+        Self::get_on(&**client, id).await
+    }
+
+    /// Read the original immutable job with the caller's transaction. Mutation
+    /// custody never acquires a second pooled connection while holding locks.
+    pub(crate) async fn get_in_transaction(
+        tx: &tokio_postgres::Transaction<'_>,
+        id: Uuid,
+    ) -> Result<Option<Definition>, Error> {
+        Self::get_on(tx, id).await
+    }
+
+    pub(crate) async fn get_on<C: tokio_postgres::GenericClient + Sync>(
+        client: &C,
+        id: Uuid,
+    ) -> Result<Option<Definition>, Error> {
         client
             .query_opt(
                 &format!("SELECT {COLUMNS} FROM brassclaw_prefix_job_definitions WHERE job_id=$1"),
@@ -203,7 +280,7 @@ impl Store {
             return Err(Error::Invalid);
         }
         validate_scope(r.scope, r.thread_scope, r.created_by)?;
-        let (profile, revision) = r.target.columns(r.operation, r.mode, r.request)?;
+        r.target.columns(r.operation, r.mode, r.request)?;
         if let Target::Pair {
             specification,
             proposal,
@@ -233,23 +310,41 @@ impl Store {
                 return Err(Error::Invalid);
             }
         }
-        let request_bytes = serde_json::to_string(r.request).map_err(|_| Error::Invalid)?;
-        let request_checksum = sha(&request_bytes);
         let mut client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
         let tx = client.transaction().await.map_err(|_| Error::Unavailable)?;
-        if let Some(row) = tx
-            .query_opt(
-                &format!("SELECT {COLUMNS} FROM brassclaw_prefix_job_definitions WHERE job_id=$1"),
-                &[&r.id],
-            )
-            .await
-            .map_err(|_| Error::Unavailable)?
-        {
-            let existing = decode(row)?;
+        let stored = Self::reserve_prepared_in_transaction(&tx, r).await?;
+        tx.commit().await.map_err(|_| Error::Unavailable)?;
+        Ok(stored)
+    }
+
+    /// Caller owns the only commit. Pair's existing pool-based original packet
+    /// validation stays outside its transaction in reserve; it cannot be bypassed
+    /// by this ModelSetup/Profile entry point.
+    pub(crate) async fn reserve_in_transaction(
+        tx: &tokio_postgres::Transaction<'_>,
+        r: Reservation<'_>,
+    ) -> Result<Definition, Error> {
+        if matches!(r.target, Target::Pair { .. }) {
+            return Err(Error::Invalid);
+        }
+        Self::reserve_prepared_in_transaction(tx, r).await
+    }
+
+    async fn reserve_prepared_in_transaction(
+        tx: &tokio_postgres::Transaction<'_>,
+        r: Reservation<'_>,
+    ) -> Result<Definition, Error> {
+        if r.id.is_nil() || r.created_by.is_empty() || r.created_by.len() > 512 {
+            return Err(Error::Invalid);
+        }
+        validate_scope(r.scope, r.thread_scope, r.created_by)?;
+        let (profile, revision) = r.target.columns(r.operation, r.mode, r.request)?;
+        let request_bytes = serde_json::to_string(r.request).map_err(|_| Error::Invalid)?;
+        let request_checksum = sha(&request_bytes);
+        if let Some(existing) = Self::get_in_transaction(tx, r.id).await? {
             if !same_request(&existing, &r) {
                 return Err(Error::Conflict);
             }
-            tx.commit().await.map_err(|_| Error::Unavailable)?;
             return Ok(existing);
         }
         if profile.is_some() {
@@ -270,10 +365,7 @@ impl Store {
         r.program
             .program()
             .inputs()
-            .bind_task_inputs_with_limits(
-                r.input,
-                brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
-            )
+            .bind_task_inputs_with_limits(r.input, r.original_input_limits)
             .map_err(|_| Error::Invalid)?;
         let program_bytes = r
             .program
@@ -298,26 +390,19 @@ impl Store {
             &sha(&program_bytes),
             brassclaw_skills::component_revision::REVISION_LIMITS,
         )?;
-        parse(
-            &input_bytes,
-            &sha(&input_bytes),
-            brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
-        )?;
+        parse(&input_bytes, &sha(&input_bytes), r.original_input_limits)?;
+        // Every newly created reservation writes a concrete validated record;
+        // NULL is read-only legacy compatibility, never a new default.
+        let original_input_limits = encode_input_limits(r.original_input_limits)?;
         let scope = serde_json::to_value(r.scope).map_err(|_| Error::Invalid)?;
         let thread_scope = serde_json::to_value(r.thread_scope).map_err(|_| Error::Invalid)?;
-        tx.execute("INSERT INTO brassclaw_prefix_job_definitions(job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT(job_id) DO NOTHING",&[&r.id,&profile,&revision,&r.operation,&r.mode,&request_bytes,&request_checksum,&program_bytes,&sha(&program_bytes),&input_bytes,&sha(&input_bytes),&scope,&thread_scope,&r.created_by]).await.map_err(|_| Error::Unavailable)?;
-        let row = tx
-            .query_one(
-                &format!("SELECT {COLUMNS} FROM brassclaw_prefix_job_definitions WHERE job_id=$1"),
-                &[&r.id],
-            )
-            .await
-            .map_err(|_| Error::Unavailable)?;
-        let stored = decode(row)?;
+        tx.execute("INSERT INTO brassclaw_prefix_job_definitions(job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by,original_input_limits) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(job_id) DO NOTHING",&[&r.id,&profile,&revision,&r.operation,&r.mode,&request_bytes,&request_checksum,&program_bytes,&sha(&program_bytes),&input_bytes,&sha(&input_bytes),&scope,&thread_scope,&r.created_by,&original_input_limits]).await.map_err(|_| Error::Unavailable)?;
+        let stored = Self::get_in_transaction(tx, r.id)
+            .await?
+            .ok_or(Error::Unavailable)?;
         if !same_request(&stored, &r) {
             return Err(Error::Conflict);
         }
-        tx.commit().await.map_err(|_| Error::Unavailable)?;
         Ok(stored)
     }
 }
@@ -384,6 +469,11 @@ pub(super) async fn assert_metadata_only(
     macro_rules! reserve {
         ($id:expr,$request:expr,$input:expr) => {
             Reservation {
+                original_input_limits: brassclaw_skills::value_contract::ContractLimits {
+                    max_depth: program.preparation_limits().bounds.max_value_depth,
+                    max_nodes: program.preparation_limits().bounds.max_value_nodes,
+                    max_bytes: program.preparation_limits().bounds.max_value_bytes,
+                },
                 id: $id,
                 target: &target,
                 operation: "generate",

@@ -3,6 +3,14 @@ import { apiFetch, clientActionId } from "../../../lib/api.js";
 // Transport state only. Never persist a provider payload or API key in browser
 // storage. Keep the original bytes in memory while the outcome is uncertain.
 const pending = new Map();
+// Ephemeral navigation notifications carry only the immutable original receipt.
+// Listener failures cannot change a committed mutation into a transport retry.
+const bootstrapListeners = new Set();
+let navigationOrder = 0;
+export function subscribeProviderBootstrap(listener) { bootstrapListeners.add(listener); return () => bootstrapListeners.delete(listener); }
+function bootstrapAvailable(receipt, order = ++navigationOrder) {
+  for (const listener of bootstrapListeners) { try { listener(receipt, order); } catch {} }
+}
 const eventName = "brassclaw-provider-mutation-pending";
 function changed() {
   if (typeof globalThis.dispatchEvent === "function" && typeof globalThis.Event === "function") globalThis.dispatchEvent(new Event(eventName));
@@ -25,6 +33,7 @@ function complete(snapshot, entry) {
   if (pending.get(entry.key) === entry) pending.delete(entry.key);
   changed();
   settingsChanged();
+  bootstrapAvailable(snapshot.mutation_receipt, entry.navigationOrder);
   return snapshot;
 }
 
@@ -50,13 +59,16 @@ export async function readProviderMutation(id) {
   // A persisted change invalidates provider-dependent views even when the
   // following runtime reload fails. This is not an uptake acknowledgement.
   settingsChanged();
+  bootstrapAvailable(receipt, entry?.navigationOrder);
   return receipt;
 }
 export async function reconcileProviderMutation(id) {
   const snapshot = await apiFetch(`/api/webchat/v2/llm/mutations/${encodeURIComponent(id)}/reconcile`, { method: "POST" });
   if (snapshot?.mutation_receipt?.mutation_id !== id) throw new Error("Original provider acknowledgement differs.");
   const entry = Array.from(pending.values()).find(item => item.id === id);
-  return entry ? complete(snapshot, entry) : snapshot;
+  if (entry) return complete(snapshot, entry);
+  bootstrapAvailable(snapshot.mutation_receipt);
+  return snapshot;
 }
 
 export async function submitProviderMutation(operation, target, path, payload) {
@@ -75,7 +87,7 @@ export async function submitProviderMutation(operation, target, path, payload) {
   }
   if (entry && entry.bytes !== bytes) throw new Error(`Provider change ${entry.id} is unresolved. Read or reconcile its original outcome before changing the request.`);
   if (!entry) {
-    entry = { id: clientActionId(), operation, target, key, bytes, path };
+    entry = { id: clientActionId(), operation, target, key, bytes, path, navigationOrder: ++navigationOrder };
     pending.set(key, entry);
     changed();
   }

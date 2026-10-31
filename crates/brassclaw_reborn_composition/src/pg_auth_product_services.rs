@@ -56,6 +56,9 @@ mod callback;
 mod cleanup;
 #[path = "pg_auth_dcr.rs"]
 mod dcr;
+#[cfg(feature = "root-llm-provider")]
+#[path = "pg_auth_device.rs"]
+mod device;
 #[path = "pg_auth_manual.rs"]
 mod manual;
 #[path = "pg_auth_manual_setup.rs"]

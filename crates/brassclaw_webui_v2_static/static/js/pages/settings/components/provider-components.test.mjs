@@ -171,6 +171,8 @@ function renderProviderManagement({ providers, activeProviderId = "nearai", sear
     ProviderDialog: "ProviderDialog",
     ProviderLoginStatus: "ProviderLoginStatus",
     SettingsSearchEmpty: "SettingsSearchEmpty",
+    ProviderMutationStatus: "ProviderMutationStatus",
+    ProviderRuntimeStatus: "ProviderRuntimeStatus",
     globalThis: {},
     groupProvidersByStatus,
     html,
@@ -502,7 +504,7 @@ test("ProviderCard renders login actions instead of generic use for login provid
 
   rendered = harness.render({
     activeProviderId: "openai",
-    provider: builtinProvider("openai_codex"),
+    provider: builtinProvider("openai_codex", { adapter: "openai_codex" }),
   });
   labels = collectScalars(rendered);
   templateText = collectTemplateText(rendered);
@@ -637,4 +639,27 @@ test("ProviderManagement restores only the selected retained provider through it
   assert.equal(opened[0].revision, 7);
   props.onChange({ target: { value: "missing-provider" } });
   assert.equal(opened.length, 1, "a stale choice cannot invent a definition");
+});
+
+test("Codex card dispatches the clicked custom provider, model and separate Kohai/Sempai roles", () => {
+  const calls = [], harness = createProviderCardHarness();
+  const provider = customProvider("custom-codex", { adapter:"openai_codex",default_model:"clicked-model",revision:7 });
+  const rendered = harness.render({ provider, activeProviderId:"other",onCodexLogin:(...args)=>calls.push(args) });
+  const group = findComponentNodes(rendered,"Button").find(node=>collectScalars(node).includes("onboarding.codexSignInSempai"));
+  assert.ok(group);
+  const callbacks = group.values.filter((value,index)=>typeof value === "function" && /onClick=\s*$/.test(group.strings[index]));
+  assert.equal(callbacks.length,2);
+  callbacks.forEach(callback=>callback());
+  assert.deepEqual(calls,[[provider,"kohai","clicked-model"],[provider,"sempai","clicked-model"]]);
+});
+
+test("Codex onboarding passes its actual displayed provider and model", () => {
+  const calls = [], context = { html,Button:"Button",Card:"Card",Badge:"Badge",ProviderLogo:"ProviderLogo",globalThis:{} };
+  vm.runInNewContext(sourceForTest("../../onboarding/onboarding-page.js",["FeaturedProviderRow"]),context);
+  const provider = builtinProvider("openai_codex",{adapter:"openai_codex",default_model:"onboarding-model",revision:9});
+  const rendered = context.globalThis.__testExports.FeaturedProviderRow({entry:{id:"openai_codex",auth:"codex",nameKey:"name",descKey:"desc"},
+    provider,configured:false,isBusy:false,login:{codexBusy:false,startCodex:(...args)=>calls.push(args)},t:key=>key});
+  const button = findComponentNodes(rendered,"Button")[0];
+  componentProps(button,"Button").onClick();
+  assert.deepEqual(calls,[[provider,"kohai","onboarding-model"]]);
 });

@@ -47,6 +47,7 @@ pub const WEBUI_V2_ROUTE_START_NEARAI_WALLET_LOGIN: &str = "webui.v2.start_neara
 pub const WEBUI_V2_ROUTE_COMPLETE_NEARAI_WALLET_LOGIN: &str =
     "webui.v2.complete_nearai_wallet_login";
 pub const WEBUI_V2_ROUTE_START_CODEX_LOGIN: &str = "webui.v2.start_codex_login";
+pub const WEBUI_V2_ROUTE_CODEX_LOGIN_STATUS: &str = "webui.v2.codex_login_status";
 pub const WEBUI_V2_ROUTE_LIST_TOOLS: &str = "webui.v2.list_tools";
 pub const WEBUI_V2_ROUTE_UPDATE_TOOL_PERMISSION: &str = "webui.v2.update_tool_permission";
 pub const WEBUI_V2_ROUTE_LIST_INSTANCE_TOOL_SETTINGS: &str = "webui.v2.list_instance_tool_settings";
@@ -140,6 +141,17 @@ pub const WEBUI_V2_ROUTE_GET_PREFIX_MODEL_ARTIFACTS: &str = "webui.v2.get_prefix
 pub const WEBUI_V2_PATTERN_PREFIX_MODEL_ARTIFACT_DETAIL: &str =
     "/api/webchat/v2/prefix-model-artifacts/{specification}/{artifact_set}";
 pub const WEBUI_V2_ROUTE_RETAIN_PREFIX_DESIGN: &str = "webui.v2.retain_prefix_design";
+pub const WEBUI_V2_ROUTE_GET_PREFIX_PAIR_ACCEPTANCE: &str = "webui.v2.get_prefix_pair_acceptance";
+pub const WEBUI_V2_ROUTE_RECONCILE_PREFIX_PAIR_ACCEPTANCE: &str =
+    "webui.v2.reconcile_prefix_pair_acceptance";
+pub const WEBUI_V2_ROUTE_PREPARE_PREFIX_PAIR_ACCEPTANCE: &str =
+    "webui.v2.prepare_prefix_pair_acceptance";
+pub const WEBUI_V2_PATTERN_PREFIX_PAIR_ACCEPTANCE: &str =
+    "/api/webchat/v2/prefix-model-designs/proposals/{specification}/{proposal}/acceptance";
+pub const WEBUI_V2_PATTERN_RECONCILE_PREFIX_PAIR_ACCEPTANCE: &str =
+    "/api/webchat/v2/prefix-model-designs/pair-acceptance/reconcile";
+pub const WEBUI_V2_PATTERN_PREPARE_PREFIX_PAIR_ACCEPTANCE: &str =
+    "/api/webchat/v2/prefix-model-designs/pair-acceptance/review";
 pub const WEBUI_V2_ROUTE_PREPARE_PREFIX_ACCEPTANCE: &str = "webui.v2.prepare_prefix_acceptance";
 pub const WEBUI_V2_ROUTE_APPROVE_PREFIX_ACCEPTANCE: &str = "webui.v2.approve_prefix_acceptance";
 pub const WEBUI_V2_ROUTE_ACTIVATE_PREFIX_ACCEPTANCE: &str = "webui.v2.activate_prefix_acceptance";
@@ -153,6 +165,9 @@ pub const WEBUI_V2_ROUTE_GET_PREFIX_PAIR_CASES: &str = "webui.v2.get_prefix_pair
 pub const WEBUI_V2_PATTERN_PREFIX_PAIR_CASES: &str =
     "/api/webchat/v2/prefix-model-designs/proposals/{specification}/{proposal}/cases";
 pub const WEBUI_V2_ROUTE_CHECK_PREFIX_PAIR_CASES: &str = "webui.v2.check_prefix_pair_cases";
+pub const WEBUI_V2_ROUTE_GET_PREFIX_MODEL_SETUP_JOB: &str = "webui.v2.get_prefix_model_setup_job";
+pub const WEBUI_V2_PATTERN_PREFIX_MODEL_SETUP_JOB: &str =
+    "/api/webchat/v2/prefix-model-designs/{specification}/setups/{revision}/jobs/{job}";
 pub const WEBUI_V2_ROUTE_GET_PREFIX_PAIR_JOB: &str = "webui.v2.get_prefix_pair_job";
 pub const WEBUI_V2_PATTERN_PREFIX_PAIR_JOB: &str =
     "/api/webchat/v2/prefix-model-designs/proposals/{specification}/{proposal}/jobs/{job}";
@@ -308,6 +323,8 @@ pub const WEBUI_V2_PATTERN_START_NEARAI_WALLET_LOGIN: &str =
     "/api/webchat/v2/llm/nearai/wallet/start";
 pub const WEBUI_V2_PATTERN_COMPLETE_NEARAI_WALLET_LOGIN: &str = "/api/webchat/v2/llm/nearai/wallet";
 pub const WEBUI_V2_PATTERN_START_CODEX_LOGIN: &str = "/api/webchat/v2/llm/codex/login";
+pub const WEBUI_V2_PATTERN_CODEX_LOGIN_STATUS: &str =
+    "/api/webchat/v2/llm/codex/login/{mutation_id}";
 pub const WEBUI_V2_PATTERN_LIST_TOOLS: &str = "/api/webchat/v2/tools";
 pub const WEBUI_V2_PATTERN_LIST_INSTANCE_TOOL_SETTINGS: &str = "/api/settings/tool-policies";
 pub const WEBUI_V2_PATTERN_UPDATE_INSTANCE_TOOL_SETTING: &str =
@@ -404,6 +421,17 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         start_nearai_wallet_login_descriptor(),
         complete_nearai_wallet_login_descriptor(),
         start_codex_login_descriptor(),
+        descriptor(
+            WEBUI_V2_ROUTE_CODEX_LOGIN_STATUS,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_CODEX_LOGIN_STATUS,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
         list_tools_descriptor(),
         update_tool_permission_descriptor(),
         descriptor(
@@ -675,6 +703,39 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
             ),
         ),
         descriptor(
+            WEBUI_V2_ROUTE_GET_PREFIX_PAIR_ACCEPTANCE,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_PREFIX_PAIR_ACCEPTANCE,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_RECONCILE_PREFIX_PAIR_ACCEPTANCE,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_RECONCILE_PREFIX_PAIR_ACCEPTANCE,
+            mutation_policy(
+                body_limit_kib(64),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_PREPARE_PREFIX_PAIR_ACCEPTANCE,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_PREPARE_PREFIX_PAIR_ACCEPTANCE,
+            mutation_policy(
+                body_limit_kib(4),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
             WEBUI_V2_ROUTE_PREPARE_PREFIX_ACCEPTANCE,
             NetworkMethod::Post,
             WEBUI_V2_PATTERN_PREPARE_PREFIX_ACCEPTANCE,
@@ -716,6 +777,17 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
                 mutation_rate_limit(),
                 AuditTraceClass::UserAction,
                 AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_GET_PREFIX_MODEL_SETUP_JOB,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_PREFIX_MODEL_SETUP_JOB,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
             ),
         ),
         descriptor(
@@ -808,6 +880,7 @@ pub fn is_webui_v2_llm_config_route_id(route_id: &str) -> bool {
             | WEBUI_V2_ROUTE_START_NEARAI_LOGIN
             | WEBUI_V2_ROUTE_COMPLETE_NEARAI_WALLET_LOGIN
             | WEBUI_V2_ROUTE_START_CODEX_LOGIN
+            | WEBUI_V2_ROUTE_CODEX_LOGIN_STATUS
     )
 }
 
@@ -827,9 +900,13 @@ pub fn is_webui_v2_operator_route_id(route_id: &str) -> bool {
                 | WEBUI_V2_ROUTE_CAPTURE_PREFIX_MODEL
                 | WEBUI_V2_ROUTE_GET_PREFIX_PAIR_CASES
                 | WEBUI_V2_ROUTE_CHECK_PREFIX_PAIR_CASES
+                | WEBUI_V2_ROUTE_GET_PREFIX_MODEL_SETUP_JOB
                 | WEBUI_V2_ROUTE_GET_PREFIX_PAIR_JOB
                 | WEBUI_V2_ROUTE_RETAIN_PREFIX_PAIR_CONSTRUCTION
                 | WEBUI_V2_ROUTE_RETAIN_PREFIX_DESIGN
+                | WEBUI_V2_ROUTE_GET_PREFIX_PAIR_ACCEPTANCE
+                | WEBUI_V2_ROUTE_RECONCILE_PREFIX_PAIR_ACCEPTANCE
+                | WEBUI_V2_ROUTE_PREPARE_PREFIX_PAIR_ACCEPTANCE
                 | WEBUI_V2_ROUTE_PREPARE_PREFIX_ACCEPTANCE
                 | WEBUI_V2_ROUTE_APPROVE_PREFIX_ACCEPTANCE
                 | WEBUI_V2_ROUTE_ACTIVATE_PREFIX_ACCEPTANCE

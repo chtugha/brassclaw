@@ -65,6 +65,7 @@ function harness({ saved = store(), respond = body => reply(body), popupBlocked 
       return respond(body);
     },
   });
+  vm.runInContext(source("../../../lib/original-custody.js"), sandbox);
   vm.runInContext(source("./oauth-original.js"), sandbox);
   vm.runInContext(source("./extensions-api.js"), sandbox);
   vm.runInContext(source("../components/oauth-original-setup.js"), sandbox);

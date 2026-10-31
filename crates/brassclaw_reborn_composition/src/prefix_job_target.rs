@@ -13,12 +13,16 @@ pub(crate) enum Target {
         specification: String,
         proposal: String,
     },
+    ModelSetup {
+        specification: String,
+        setup_revision: u64,
+    },
 }
 impl Target {
     pub(crate) fn profile(&self) -> Option<(&str, u64)> {
         match self {
             Self::Profile { name, revision } => Some((name, *revision)),
-            Self::Pair { .. } => None,
+            Self::Pair { .. } | Self::ModelSetup { .. } => None,
         }
     }
     pub(crate) fn from_columns(
@@ -32,6 +36,13 @@ impl Target {
             (Some(name), Some(revision)) => Self::Profile {
                 name,
                 revision: u64::try_from(revision).map_err(|_| Error::Invalid)?,
+            },
+            (None, None) if operation == "bootstrap_setup" => Self::ModelSetup {
+                specification: request["specification"]
+                    .as_str()
+                    .ok_or(Error::Invalid)?
+                    .into(),
+                setup_revision: request["setup_revision"].as_u64().ok_or(Error::Invalid)?,
             },
             (None, None) => Self::Pair {
                 specification: request["specification"]
@@ -55,6 +66,35 @@ impl Target {
             return Err(Error::Invalid);
         }
         match self {
+            Self::ModelSetup {
+                specification,
+                setup_revision,
+            } => {
+                crate::prefix_model_designs::hash(specification).map_err(|_| Error::Invalid)?;
+                let origin = request["origin_mutation"]
+                    .as_str()
+                    .and_then(|id| uuid::Uuid::parse_str(id).ok())
+                    .filter(|id| {
+                        !id.is_nil()
+                            && request["origin_mutation"].as_str() == Some(id.to_string().as_str())
+                    });
+                let executor = request["executing_specification"]
+                    .as_str()
+                    .ok_or(Error::Invalid)?;
+                crate::prefix_model_designs::hash(executor).map_err(|_| Error::Invalid)?;
+                if operation != "bootstrap_setup"
+                    || mode != "target"
+                    || *setup_revision > brassclaw_product_workflow::PREFIX_SETUP_MAX_EXACT_INTEGER
+                    || request.as_object().is_none_or(|value| value.len() != 5)
+                    || request["operation"] != "bootstrap_setup"
+                    || request["specification"] != *specification
+                    || request["setup_revision"].as_u64() != Some(*setup_revision)
+                    || origin.is_none()
+                {
+                    return Err(Error::Invalid);
+                }
+                Ok((None, None))
+            }
             Self::Profile { name, revision } => {
                 if name.is_empty()
                     || !matches!(
@@ -94,7 +134,7 @@ impl Target {
             } => Some(
                 json!({"operation":"check_cases","specification":specification,"proposal":proposal}),
             ),
-            Self::Profile { .. } => None,
+            Self::Profile { .. } | Self::ModelSetup { .. } => None,
         }
     }
 }

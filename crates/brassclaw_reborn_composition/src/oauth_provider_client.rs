@@ -238,6 +238,9 @@ impl OAuthClientMaterialSource for StaticOAuthClientMaterialSource {
 pub(crate) struct HostOAuthProviderClient {
     spec: HostOAuthProviderSpec,
     egress: Arc<dyn RuntimeHttpEgress>,
+    #[cfg(feature = "root-llm-provider")]
+    #[allow(dead_code)]
+    original_egress: Option<Arc<dyn brassclaw_host_runtime::HostHttpOriginalEgress>>,
     secret_store: Arc<dyn SecretStore>,
     obligation_handler: Arc<dyn CapabilityObligationHandler>,
     client_material: Arc<dyn OAuthClientMaterialSource>,
@@ -268,6 +271,8 @@ impl HostOAuthProviderClient {
         Ok(Self {
             spec,
             egress,
+            #[cfg(feature = "root-llm-provider")]
+            original_egress: None,
             secret_store,
             obligation_handler,
             client_material: Arc::new(StaticOAuthClientMaterialSource {
@@ -293,6 +298,8 @@ impl HostOAuthProviderClient {
         Ok(Self {
             spec,
             egress,
+            #[cfg(feature = "root-llm-provider")]
+            original_egress: None,
             secret_store,
             obligation_handler,
             client_material,
@@ -326,13 +333,36 @@ impl HostOAuthProviderClient {
         self
     }
 
-    async fn execute_token_request(
+    /// Trusted composition only; never selected by a Serde field or a runtime
+    /// request flag. Root must supply the SAME real host HTTP service instance.
+    #[cfg(feature = "root-llm-provider")]
+    #[allow(dead_code)]
+    pub(crate) fn with_original_egress(
+        mut self,
+        egress: Option<Arc<dyn brassclaw_host_runtime::HostHttpOriginalEgress>>,
+    ) -> Self {
+        self.original_egress = egress;
+        self
+    }
+    #[cfg(feature = "root-llm-provider")]
+    #[allow(dead_code)]
+    pub(crate) fn native_original_egress(
+        &self,
+    ) -> Result<Arc<dyn brassclaw_host_runtime::HostHttpOriginalEgress>, AuthProductError> {
+        self.original_egress
+            .clone()
+            .ok_or(AuthProductError::BackendUnavailable)
+    }
+    /// Native protocol stages reuse the existing host egress/settings path.
+    /// A successful raw return must be durably retained by the flow owner before
+    /// parsing/publication. This method itself creates no request claim.
+    pub(crate) async fn prepare_oauth_http_request(
         &self,
         scope: ResourceScope,
         token_endpoint: &str,
+        content_type: &str,
         body: Vec<u8>,
-        refresh_request: bool,
-    ) -> Result<OAuthTokenResponse, AuthProductError> {
+    ) -> Result<RuntimeHttpEgressRequest, AuthProductError> {
         let token_host = oauth_endpoint_host(token_endpoint)?;
         // Capture one coherent, acknowledged revision before any network effect.
         // Authorizing/waiting below cannot mix a newer timeout with older bytes.
@@ -347,30 +377,95 @@ impl HostOAuthProviderClient {
             &policy,
         )
         .await?;
+        Ok(RuntimeHttpEgressRequest {
+            runtime: self.runtime,
+            scope,
+            capability_id: self.capability_id.clone(),
+            method: NetworkMethod::Post,
+            url: token_endpoint.to_string(),
+            headers: vec![
+                ("content-type".to_string(), content_type.to_string()),
+                ("accept".to_string(), "application/json".to_string()),
+            ],
+            body,
+            network_policy: policy,
+            credential_injections: Vec::<RuntimeCredentialInjection>::new(),
+            response_body_limit: Some(response_body_limit),
+            save_body_to: None,
+            timeout_ms: Some(timeout_ms),
+        })
+    }
+    pub(crate) async fn execute_oauth_http(
+        &self,
+        scope: ResourceScope,
+        token_endpoint: &str,
+        content_type: &str,
+        body: Vec<u8>,
+    ) -> Result<brassclaw_host_api::RuntimeHttpEgressResponse, AuthProductError> {
+        let request = self
+            .prepare_oauth_http_request(scope, token_endpoint, content_type, body)
+            .await?;
+        let body_limit = request
+            .response_body_limit
+            .ok_or(AuthProductError::BackendUnavailable)?;
         let response = self
             .egress
-            .execute(RuntimeHttpEgressRequest {
-                runtime: self.runtime,
-                scope,
-                capability_id: self.capability_id.clone(),
-                method: NetworkMethod::Post,
-                url: token_endpoint.to_string(),
-                headers: vec![
-                    (
-                        "content-type".to_string(),
-                        "application/x-www-form-urlencoded".to_string(),
-                    ),
-                    ("accept".to_string(), "application/json".to_string()),
-                ],
-                body,
-                network_policy: policy,
-                credential_injections: Vec::<RuntimeCredentialInjection>::new(),
-                response_body_limit: Some(response_body_limit),
-                save_body_to: None,
-                timeout_ms: Some(timeout_ms),
-            })
+            .execute(request)
             .await
             .map_err(|_| AuthProductError::BackendUnavailable)?;
+        if response.body.len() as u64 > body_limit || response.saved_body.is_some() {
+            return Err(AuthProductError::BackendUnavailable);
+        }
+        Ok(response)
+    }
+    pub(crate) fn native_device_destinations(
+        &self,
+        flow_id: AuthFlowId,
+        invocation_id: brassclaw_host_api::InvocationId,
+    ) -> Result<brassclaw_auth::OAuthTokenDestinations, AuthProductError> {
+        let selected = TokenDestinations::exchange(&self.spec, flow_id, invocation_id)?;
+        Ok(brassclaw_auth::OAuthTokenDestinations {
+            access_secret: selected.access,
+            refresh_secret: selected.refresh,
+        })
+    }
+    #[cfg(feature = "root-llm-provider")]
+    #[allow(dead_code)]
+    pub(crate) fn native_device_exchange_body(
+        &self,
+        client_id: &str,
+        redirect_uri: &str,
+        code: &str,
+        verifier: &str,
+    ) -> Result<Vec<u8>, AuthProductError> {
+        if self.spec.resource.is_some() {
+            return Err(AuthProductError::MalformedConfig);
+        }
+        Ok(authorization_code_body(
+            &self.spec,
+            client_id,
+            redirect_uri,
+            None,
+            code,
+            verifier,
+        ))
+    }
+
+    async fn execute_token_request(
+        &self,
+        scope: ResourceScope,
+        token_endpoint: &str,
+        body: Vec<u8>,
+        refresh_request: bool,
+    ) -> Result<OAuthTokenResponse, AuthProductError> {
+        let response = self
+            .execute_oauth_http(
+                scope,
+                token_endpoint,
+                "application/x-www-form-urlencoded",
+                body,
+            )
+            .await?;
         if !(200..300).contains(&response.status) {
             return Err(if (500..600).contains(&response.status) {
                 AuthProductError::BackendUnavailable
@@ -541,15 +636,7 @@ impl AuthProviderClient for HostOAuthProviderClient {
         {
             return Err(AuthProductError::CrossScopeDenied);
         }
-        let destinations = TokenDestinations::exchange(
-            &self.spec,
-            context.flow_id,
-            context.scope.resource.invocation_id,
-        )?;
-        Ok(brassclaw_auth::OAuthTokenDestinations {
-            access_secret: destinations.access,
-            refresh_secret: destinations.refresh,
-        })
+        self.native_device_destinations(context.flow_id, context.scope.resource.invocation_id)
     }
 
     async fn prepare_refresh(

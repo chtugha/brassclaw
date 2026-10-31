@@ -5,7 +5,7 @@ import { SETUP_FIELDS, loadSetupDraft, pendingSetupDraft, retrySetupDraft, saveS
 const labels = { max_prefix_tokens: "llm.maxPrefixTokens", max_prompt_tokens: "llm.maxPromptTokens", reserved_output_tokens: "prefix.setupOutput", additional_framing_tokens: "prefix.setupFraming" };
 
 // Mounted once per immutable specification, independent of the active pair.
-export function PrefixModelSetupDraft({ specification, t }) {
+export function PrefixModelSetupDraft({ specification, initialRevision = null, t }) {
   const id = specification.id;
   const [basis, setBasis] = React.useState(null);
   const [strings, setStrings] = React.useState({});
@@ -31,12 +31,12 @@ export function PrefixModelSetupDraft({ specification, t }) {
       setTouched(Object.fromEntries(held.request.edits.map(edit => [edit.field, true])));
     } else {
       setBusy(true);
-      loadSetupDraft(id).then(draft => { if (epoch.current === generation) adopt(draft); })
+      loadSetupDraft(id, initialRevision).then(draft => { if (epoch.current === generation) adopt(draft); })
         .catch(err => { if (epoch.current === generation) setError(err.message); })
         .finally(() => { if (epoch.current === generation) setBusy(false); });
     }
     return () => { epoch.current++; unsubscribe(); };
-  }, [id]);
+  }, [id, initialRevision]);
   async function run(action, writing = false) {
     if (flight.current) return;
     flight.current = true; const generation = epoch.current; setBusy(true); setError(null);

@@ -69,6 +69,7 @@ where
             secret_injection_store,
             process_lifecycle_store,
             runtime_http_egress,
+            original_http_egress,
             http_client_cache_control,
             tool_call_http_egress,
             process_port,
@@ -111,6 +112,7 @@ where
             secret_injection_store,
             process_lifecycle_store,
             runtime_http_egress,
+            original_http_egress,
             http_client_cache_control,
             tool_call_http_egress,
             process_port,
@@ -166,6 +168,7 @@ where
             secret_injection_store,
             process_lifecycle_store: _,
             runtime_http_egress,
+            original_http_egress,
             http_client_cache_control,
             tool_call_http_egress,
             process_port,
@@ -218,6 +221,7 @@ where
             secret_injection_store,
             process_lifecycle_store,
             runtime_http_egress,
+            original_http_egress,
             http_client_cache_control,
             tool_call_http_egress,
             process_port,
@@ -684,6 +688,7 @@ where
         T: RuntimeHttpEgress + 'static,
     {
         self.http_client_cache_control = None;
+        self.original_http_egress = None;
         self.component_types.runtime_http_egress = Some(ProductionComponentType::of::<T>());
         self.component_types.runtime_http_egress_verified = false;
         let runtime_http_egress: Arc<dyn RuntimeHttpEgress> = runtime_http_egress;
@@ -785,6 +790,7 @@ where
         >());
         self.component_types.runtime_http_egress_verified = runtime_http_egress
             .is_production_wired_with(&self.network_policy_store, &self.secret_injection_store);
+        self.original_http_egress = Some(runtime_http_egress.clone());
         let tool_call_http_egress: Arc<dyn crate::ToolCallHttpEgress> = runtime_http_egress.clone();
         let runtime_http_egress: Arc<dyn RuntimeHttpEgress> = runtime_http_egress;
         set_runtime_http_egress(&self.runtime_http_egress, runtime_http_egress);

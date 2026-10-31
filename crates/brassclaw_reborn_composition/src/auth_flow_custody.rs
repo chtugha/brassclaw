@@ -72,6 +72,7 @@ impl StoredAuthFlow {
         Ok(Self {
             flow,
             auth_custody: AuthFlowCustody {
+                device_login: None,
                 update_account_snapshot: snapshot,
                 oauth_callback: None,
                 oauth_setup: None,

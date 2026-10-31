@@ -313,6 +313,7 @@ impl InMemoryAuthProductServices {
         state.flow_custody.insert(
             identity.flow_id,
             crate::AuthFlowCustody {
+                device_login: None,
                 update_account_snapshot: snapshot,
                 oauth_callback: None,
                 oauth_setup: None,
@@ -647,6 +648,7 @@ impl AuthFlowManager for InMemoryAuthProductServices {
         state.flow_custody.insert(
             record.id,
             crate::AuthFlowCustody {
+                device_login: None,
                 update_account_snapshot: snapshot,
                 oauth_callback: None,
                 oauth_setup: None,

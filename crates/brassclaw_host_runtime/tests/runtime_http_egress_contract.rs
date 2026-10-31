@@ -36,6 +36,8 @@ use std::{
 };
 use tempfile::tempdir;
 
+#[path = "runtime_http_egress_contract/original_custody.rs"]
+mod original_custody;
 #[path = "runtime_http_egress_contract/sensitive_save.rs"]
 mod sensitive_save;
 

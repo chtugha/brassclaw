@@ -6118,3 +6118,32 @@ or Free authority. Finish source/doc, integration, installed uptake and activati
 as distinct scopes. Do not claim full I1/I2, independent S/Pure/behavior, release or
 whole-plan acceptance from these text changes. Earlier acceptance matrices remain
 unaltered and apply to their original packages.
+
+
+### I3 follow-up: independent Pair originals and the still-required design producer
+
+Proposed private successor, 2026-10-31; no native/build/activation acceptance.
+The existing V183 acceptance schema already supports an independent Pair row.
+The connected successor factors the existing immutable writer/reader, adds exact
+Pair originals and original-decision reconciliation through the existing product /
+operator HTTP owner, and prepares native summaries from the existing encoder.
+It adds no successful new release route and no generation-qualification alias.
+Historical `/1` native Pair evidence is explicitly `legacy_native_review`, not a
+complete qualified design-workflow seal. Unknown retained references and corrupt
+or incompatible evidence are errors, distinct from a valid unaccepted proposal.
+Original summary/reconciliation is read before runtime readiness or re-evaluation.
+The existing generation approval/activation APIs keep their historical meanings.
+
+I3 remains open until the existing budgeted design-selection Recipe and source
+capture produce a real quarantined target-envelope evaluation through immutable
+jobs/global admission, with actual supported prerequisite qualifications and
+independent workflow/native result/settlement verification. Reuse the existing
+selector, generation/source/artifact and bootstrap workflow-evidence owners; the
+measurement-only v1 diagnostic cannot substitute for the v2 rule/coverage path.
+Pair release must then consume that exact original checked subject and the actual
+explicit human semantic/default-contract action. It writes Pair only; later
+profile/generation approval and Serving gates remain separate. No dummy FK,
+client-green flag, general pure bypass, new approval owner or historical evidence
+reinterpretation may stand in for the missing producer/qualification connection.
+P01 Use-dialog integration waits for this complete reader meaning. Existing
+retained tasks and required evaluation/source references remain protected.

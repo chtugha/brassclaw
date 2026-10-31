@@ -623,7 +623,7 @@ impl BuiltinObligationServices {
     pub fn host_http_egress<N>(
         &self,
         network: N,
-    ) -> impl RuntimeHttpEgress + ToolCallHttpEgress + use<N>
+    ) -> impl RuntimeHttpEgress + ToolCallHttpEgress + crate::HostHttpOriginalEgress + use<N>
     where
         N: NetworkHttpEgress + 'static,
     {
@@ -634,7 +634,7 @@ impl BuiltinObligationServices {
         &self,
         network: N,
         body_store: Arc<T>,
-    ) -> impl RuntimeHttpEgress + ToolCallHttpEgress + use<N, T>
+    ) -> impl RuntimeHttpEgress + ToolCallHttpEgress + crate::HostHttpOriginalEgress + use<N, T>
     where
         N: NetworkHttpEgress + 'static,
         T: RuntimeHttpBodyStore + 'static,

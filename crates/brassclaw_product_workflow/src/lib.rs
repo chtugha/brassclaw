@@ -142,6 +142,8 @@ pub use reborn_services::{
     PrefixListResponse, PrefixModelArtifactDetail, PrefixModelArtifactFile, PrefixModelArtifactSet,
     PrefixModelDesignCatalogue, PrefixModelSetupDraft, PrefixModelSetupEdit, PrefixModelSetupField,
     PrefixModelSetupOrigin, PrefixModelSetupValue, PrefixModelSpecification, PrefixModelTarget,
+    PrefixPairAcceptanceDecision, PrefixPairAcceptanceEvidence, PrefixPairAcceptanceReceipt,
+    PrefixPairAcceptanceReference, PrefixPairAcceptanceSelection, PrefixPairAcceptanceView,
     PrefixPairCasePacket, PrefixPairConstructionProposal, PrefixRegenerateResponse,
     PrefixSourceInventory, PrefixSourceRegistration, PrefixTargetBindingReceipt, PrefixUsedSource,
     RegisterPrefixSourceRequest, RetainPrefixDesignProposalRequest,
@@ -211,8 +213,8 @@ pub use brassclaw_product_adapters::{
 pub use brassclaw_turns::run_profile::SecurityModeConfig;
 pub use reborn_services::{
     AUTOMATION_LIST_DEFAULT_PAGE_SIZE, AUTOMATION_LIST_MAX_PAGE_SIZE, AutomationProductFacade,
-    AutomationStateAction, CodexLoginStart, ConnectableChannelsProductFacade, DocusItem,
-    DocusListResponse, DocusStore, ExtensionCredentialPrepareRequest,
+    AutomationStateAction, CodexLoginStart, CodexLoginStatus, ConnectableChannelsProductFacade,
+    DocusItem, DocusListResponse, DocusStore, ExtensionCredentialPrepareRequest,
     ExtensionCredentialReferenceRequest, ExtensionCredentialSetupService,
     ExtensionCredentialStatusRequest, ExtensionCredentialSubmitRequest, ExtensionCredentialTarget,
     ExtensionManualTokenCompletion, ExtensionManualTokenOriginal, ExtensionManualTokenSetupReceipt,

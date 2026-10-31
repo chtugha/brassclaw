@@ -6987,3 +6987,6 @@ async fn native_coding_primitives_protect_structured_entries_on_both_backends() 
     }
     check(filesystem).await;
 }
+
+#[path = "provider_bootstrap_tests.rs"]
+mod provider_bootstrap_tests;

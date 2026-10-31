@@ -156,11 +156,21 @@ impl RebornRuntime {
         } else {
             let snapshot_bytes = snapshot_bytes
                 .ok_or_else(|| invalid("source snapshot required for a new prefix job"))?;
-            crate::prefix_job_execution::validate_snapshot(profile, snapshot_bytes).map_err(
-                |_| {
-                    invalid("canonical source snapshot/procedures must match the selected compiler")
-                },
-            )?;
+            let original_input_limits = crate::prefix_job_definitions::captured_input_limits(
+                self.installed_catalogue
+                    .preparation_policy()
+                    .await
+                    .map_err(|_| invalid("effective input limits unavailable"))?,
+            )
+            .map_err(definition_error)?;
+            crate::prefix_job_execution::validate_snapshot(
+                profile,
+                snapshot_bytes,
+                original_input_limits,
+            )
+            .map_err(|_| {
+                invalid("canonical source snapshot/procedures must match the selected compiler")
+            })?;
             let program = self
                 .installed_catalogue
                 ._compiler_program
@@ -176,6 +186,7 @@ impl RebornRuntime {
                     request: &request,
                     program,
                     input: &input,
+                    original_input_limits,
                     scope: &scope,
                     thread_scope: &thread_scope,
                     created_by: caller.user_id.as_str(),
@@ -229,11 +240,19 @@ impl RebornRuntime {
             }
             existing
         } else {
+            let original_input_limits = crate::prefix_job_definitions::captured_input_limits(
+                self.installed_catalogue
+                    .preparation_policy()
+                    .await
+                    .map_err(|_| invalid("effective input limits unavailable"))?,
+            )
+            .map_err(definition_error)?;
             let input = crate::prefix_measurement_capture::capture(
                 self.installed_catalogue.pool.clone(),
                 caller.tenant_id.as_str(),
                 profile,
                 &request,
+                original_input_limits,
             )
             .await
             .map_err(RebornRuntimeError::PrefixJob)?;
@@ -252,6 +271,7 @@ impl RebornRuntime {
                     request: &metadata,
                     program: &program,
                     input: &input,
+                    original_input_limits,
                     scope: &scope,
                     thread_scope: &thread_scope,
                     created_by: caller.user_id.as_str(),
@@ -322,6 +342,13 @@ impl RebornRuntime {
                 .as_ref()
                 .ok_or_else(|| invalid("pair case workflow qualification unavailable"))?
                 .program();
+            let original_input_limits = crate::prefix_job_definitions::captured_input_limits(
+                self.installed_catalogue
+                    .preparation_policy()
+                    .await
+                    .map_err(|_| invalid("effective input limits unavailable"))?,
+            )
+            .map_err(definition_error)?;
             store
                 .reserve(Reservation {
                     id,
@@ -331,6 +358,7 @@ impl RebornRuntime {
                     request: &request,
                     program: &program,
                     input: &input,
+                    original_input_limits,
                     scope: &scope,
                     thread_scope: &thread_scope,
                     created_by: caller.user_id.as_str(),
@@ -343,7 +371,7 @@ impl RebornRuntime {
 
     // Derive transport identity once for both first admission and retry. This
     // is data custody, not an operator-role or Tool-permission decision.
-    fn prefix_definition_scope(
+    pub(super) fn prefix_definition_scope(
         &self,
         id: Uuid,
         caller: &brassclaw_product_workflow::WebUiAuthenticatedCaller,
@@ -369,7 +397,7 @@ impl RebornRuntime {
         Ok((scope, thread_scope))
     }
 
-    async fn admit_prefix_definition(
+    pub(super) async fn admit_prefix_definition(
         &self,
         definition: crate::prefix_job_definitions::Definition,
     ) -> Result<Uuid, RebornRuntimeError> {
@@ -379,6 +407,25 @@ impl RebornRuntime {
         let title = match &definition.target {
             crate::prefix_job_definitions::Target::Profile { name, .. } => {
                 format!("Prefix build: {name}")
+            }
+            crate::prefix_job_definitions::Target::ModelSetup { specification, .. } => {
+                if definition.operation != "bootstrap_setup"
+                    || definition.mode != "target"
+                    || definition.program_bytes
+                        != self
+                            .installed_catalogue
+                            .setup_qualification
+                            .program()
+                            .program()
+                            .inputs()
+                            .instruction()
+                            .retained_selection()
+                            .map_err(|_| invalid("setup program missing"))?
+                            .exact_bytes()
+                {
+                    return Err(invalid("technical setup workflow differs"));
+                }
+                format!("Provider model setup: {specification}")
             }
             crate::prefix_job_definitions::Target::Pair { specification, .. } => {
                 if definition.operation != "check_cases"

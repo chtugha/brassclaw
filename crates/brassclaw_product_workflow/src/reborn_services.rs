@@ -117,6 +117,8 @@ pub use interceptor_config::{
     PrefixListResponse, PrefixModelArtifactDetail, PrefixModelArtifactFile, PrefixModelArtifactSet,
     PrefixModelDesignCatalogue, PrefixModelSetupDraft, PrefixModelSetupEdit, PrefixModelSetupField,
     PrefixModelSetupOrigin, PrefixModelSetupValue, PrefixModelSpecification, PrefixModelTarget,
+    PrefixPairAcceptanceDecision, PrefixPairAcceptanceEvidence, PrefixPairAcceptanceReceipt,
+    PrefixPairAcceptanceReference, PrefixPairAcceptanceSelection, PrefixPairAcceptanceView,
     PrefixPairCasePacket, PrefixPairConstructionProposal, PrefixRegenerateResponse,
     PrefixSourceInventory, PrefixSourceRegistration, PrefixTargetBindingReceipt, PrefixUsedSource,
     RegisterPrefixSourceRequest, RetainPrefixDesignProposalRequest,
@@ -125,7 +127,7 @@ pub use interceptor_config::{
     map_interceptor_config_error,
 };
 pub use llm_config::{
-    CodexLoginStart, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
+    CodexLoginStart, CodexLoginStatus, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
     LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, LlmProviderView,
     NearAiAuthProvider, NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest,
     NearAiWalletLoginResult, NearAiWalletLoginStart, NearAiWalletLoginStartRequest,
@@ -996,12 +998,22 @@ pub trait RebornServicesApi: Send + Sync {
         Err(llm_config::llm_config_unavailable())
     }
 
-    /// Begin an OpenAI Codex device-code login; returns the user code + URL.
+    /// Begin or recover the exact original Codex provider/model/role intent.
     async fn start_codex_login(
         &self,
         caller: WebUiAuthenticatedCaller,
+        request: SetActiveLlmRequest,
     ) -> Result<CodexLoginStart, RebornServicesError> {
-        let _ = caller;
+        let _ = (caller, request);
+        Err(llm_config::llm_config_unavailable())
+    }
+
+    async fn codex_login_status(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        id: uuid::Uuid,
+    ) -> Result<CodexLoginStatus, RebornServicesError> {
+        let _ = (caller, id);
         Err(llm_config::llm_config_unavailable())
     }
 
@@ -1578,6 +1590,27 @@ pub trait RebornServicesApi: Send + Sync {
         Err(interceptor_config::interceptor_config_unavailable())
     }
 
+    async fn get_prefix_pair_acceptance(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _pair: PrefixPairAcceptanceReference,
+    ) -> Result<Option<PrefixPairAcceptanceReceipt>, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn reconcile_prefix_pair_acceptance(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _decision: PrefixPairAcceptanceDecision,
+    ) -> Result<Option<PrefixPairAcceptanceReceipt>, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn prepare_prefix_pair_acceptance(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _selection: PrefixPairAcceptanceSelection,
+    ) -> Result<PrefixPairAcceptanceView, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
     async fn prepare_prefix_acceptance(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -1695,6 +1728,15 @@ pub trait RebornServicesApi: Send + Sync {
         _caller: WebUiAuthenticatedCaller,
         _specification: &str,
         _proposal: &str,
+        _job: &str,
+    ) -> Result<PrefixJobDetail, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn get_prefix_model_setup_job(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _specification: &str,
+        _setup_revision: u64,
         _job: &str,
     ) -> Result<PrefixJobDetail, RebornServicesError> {
         Err(interceptor_config::interceptor_config_unavailable())
@@ -3571,13 +3613,29 @@ impl RebornServicesApi for RebornServices {
     async fn start_codex_login(
         &self,
         caller: WebUiAuthenticatedCaller,
+        request: SetActiveLlmRequest,
     ) -> Result<CodexLoginStart, RebornServicesError> {
         let service = self
             .llm_config
             .as_ref()
             .ok_or_else(llm_config::llm_config_unavailable)?;
         service
-            .start_codex_login(caller)
+            .start_codex_login(caller, request)
+            .await
+            .map_err(llm_config::map_llm_config_error)
+    }
+
+    async fn codex_login_status(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        id: uuid::Uuid,
+    ) -> Result<CodexLoginStatus, RebornServicesError> {
+        let service = self
+            .llm_config
+            .as_ref()
+            .ok_or_else(llm_config::llm_config_unavailable)?;
+        service
+            .codex_login_status(caller, id)
             .await
             .map_err(llm_config::map_llm_config_error)
     }
@@ -4969,6 +5027,42 @@ impl RebornServicesApi for RebornServices {
             .map_err(interceptor_config::map_interceptor_config_error)
     }
 
+    async fn get_prefix_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        pair: PrefixPairAcceptanceReference,
+    ) -> Result<Option<PrefixPairAcceptanceReceipt>, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .get_pair_acceptance(caller, pair)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn reconcile_prefix_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        decision: PrefixPairAcceptanceDecision,
+    ) -> Result<Option<PrefixPairAcceptanceReceipt>, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .reconcile_pair_acceptance(caller, decision)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn prepare_prefix_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        selection: PrefixPairAcceptanceSelection,
+    ) -> Result<PrefixPairAcceptanceView, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .prepare_pair_acceptance(caller, selection)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
     async fn prepare_prefix_acceptance(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -5168,6 +5262,20 @@ impl RebornServicesApi for RebornServices {
             .as_ref()
             .ok_or_else(interceptor_config::interceptor_config_unavailable)?
             .check_pair_cases(caller, specification, proposal, job)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn get_prefix_model_setup_job(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        setup_revision: u64,
+        job: &str,
+    ) -> Result<PrefixJobDetail, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .get_model_setup_job(caller, specification, setup_revision, job)
             .await
             .map_err(interceptor_config::map_interceptor_config_error)
     }

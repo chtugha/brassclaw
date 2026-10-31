@@ -389,7 +389,7 @@ pub(crate) async fn provider_role_selections<C: tokio_postgres::GenericClient + 
 }
 
 #[cfg(feature = "root-llm-provider")]
-fn model_role_keys(role: &str) -> Result<&'static [&'static str], ConfigError> {
+pub(crate) fn model_role_keys(role: &str) -> Result<&'static [&'static str], ConfigError> {
     match role {
         "kohai" => Ok(&[
             "llm.default.provider_id",

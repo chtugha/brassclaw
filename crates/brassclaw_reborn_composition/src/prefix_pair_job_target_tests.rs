@@ -154,6 +154,11 @@ async fn pair_job_target_retains_complete_source_owned_input_and_original_identi
     };
     let store = Store::new(pool.clone());
     let reservation = Reservation {
+        original_input_limits: brassclaw_skills::value_contract::ContractLimits {
+            max_depth: selected.preparation_limits().bounds.max_value_depth,
+            max_nodes: selected.preparation_limits().bounds.max_value_nodes,
+            max_bytes: selected.preparation_limits().bounds.max_value_bytes,
+        },
         id,
         target: &target,
         operation: "check_cases",

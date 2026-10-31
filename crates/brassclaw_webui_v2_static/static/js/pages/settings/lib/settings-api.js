@@ -79,10 +79,12 @@ export function completeNearaiWalletLogin(payload) {
 // Begin an OpenAI Codex (ChatGPT subscription) device-code login. Returns
 // { user_code, verification_uri } to display; a background task polls for
 // authorization, stores the tokens, and makes Codex active once authorized.
-export function startCodexLogin() {
-  return apiFetch("/api/webchat/v2/llm/codex/login", {
-    method: "POST",
-  });
+export function startCodexLogin(requestBytes, { signal } = {}) {
+  if (typeof requestBytes !== "string") throw new Error("Original Codex request bytes are required.");
+  return apiFetch("/api/webchat/v2/llm/codex/login", { method: "POST", body: requestBytes, signal });
+}
+export function codexLoginStatus(id, { signal } = {}) {
+  return apiFetch(`/api/webchat/v2/llm/codex/login/${encodeURIComponent(id)}`, { signal });
 }
 export function fetchExtensions() {
   return apiFetch("/api/webchat/v2/extensions");
@@ -408,11 +410,13 @@ export function activateComponentDeployment(request) {
 
 // Revision identity is opaque transport data, never a browser Number conversion.
 // Keep the original request unchanged so explicit retries reproduce its bytes.
-function validatePrefixRevision(value) {
+export function validatePrefixRevision(value, { allowZero = false, maximum = 18446744073709551615n } = {}) {
   const valid = typeof value === "string"
-    ? /^(0|[1-9][0-9]*)$/.test(value) && value.length <= 20 && BigInt(value) > 0n && BigInt(value) <= 18446744073709551615n
-    : Number.isSafeInteger(value) && value > 0;
+    ? /^(0|[1-9][0-9]*)$/.test(value) && value.length <= 20
+    : Number.isSafeInteger(value);
   if (!valid) throw new Error("Invalid prefix revision; reload before continuing.");
+  const revision = BigInt(value);
+  if (revision < (allowZero ? 0n : 1n) || revision > maximum) throw new Error("Invalid prefix revision; reload before continuing.");
 }
 
 // Immutable prefix artifacts; imports do not activate a serving selection.
@@ -485,4 +489,9 @@ export function fetchPrefixJob(profile, job) {
 
 export function fetchPrefixModelArtifacts(specification, artifactSet) {
   return apiFetch(`/api/webchat/v2/prefix-model-artifacts/${encodeURIComponent(specification)}/${encodeURIComponent(artifactSet)}`);
+}
+
+export function fetchPrefixModelSetupJob(specification, revision, job) {
+  validatePrefixRevision(revision, { allowZero: true, maximum: BigInt(Number.MAX_SAFE_INTEGER) });
+  return apiFetch(`/api/webchat/v2/prefix-model-designs/${encodeURIComponent(specification)}/setups/${encodeURIComponent(revision)}/jobs/${encodeURIComponent(job)}`);
 }

@@ -21,8 +21,8 @@ use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use brassclaw_product_workflow::{
     CodexLoginStart, ComponentAuditStatus, DocusItem, DocusListResponse, InterceptorConfigSnapshot,
-    LifecyclePackageKind, LifecyclePackageRef, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest,
-    LlmProbeResult, McpServerActionResponse, McpServerSettingsResponse, McpServerStartRequest,
+    LifecyclePackageKind, LifecyclePackageRef, LlmModelsResult, LlmProbeRequest, LlmProbeResult,
+    McpServerActionResponse, McpServerSettingsResponse, McpServerStartRequest,
     McpServerStatusResponse, MontyVmRestartRequest, MontyVmRestartResponse,
     MontyVmSettingsResponse, MontyVmStatusResponse, NearAiLoginRequest, NearAiLoginStart,
     NearAiWalletLoginRequest, NearAiWalletLoginResult, OutcomeKind, PrefixRegenerateResponse,
@@ -673,9 +673,9 @@ pub struct LlmProviderPath {
 pub async fn get_llm_config(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-) -> Result<Json<LlmConfigSnapshot>, WebUiV2HttpError> {
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
     let response = state.services().get_llm_config(caller).await?;
-    Ok(Json(response))
+    Ok(Json(prefix_revision_wire::llm_snapshot(&response)?))
 }
 
 /// `POST /api/webchat/v2/llm/providers`
@@ -683,9 +683,9 @@ pub async fn upsert_llm_provider(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(body): Json<UpsertLlmProviderRequest>,
-) -> Result<Json<LlmConfigSnapshot>, WebUiV2HttpError> {
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
     let response = state.services().upsert_llm_provider(caller, body).await?;
-    Ok(Json(response))
+    Ok(Json(prefix_revision_wire::llm_snapshot(&response)?))
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -701,7 +701,7 @@ pub async fn delete_llm_provider(
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(LlmProviderPath { provider_id }): Path<LlmProviderPath>,
     Json(body): Json<LlmProviderRevisionRequest>,
-) -> Result<Json<LlmConfigSnapshot>, WebUiV2HttpError> {
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
     let response = state
         .services()
         .delete_llm_provider(
@@ -711,33 +711,33 @@ pub async fn delete_llm_provider(
             body.mutation_id,
         )
         .await?;
-    Ok(Json(response))
+    Ok(Json(prefix_revision_wire::llm_snapshot(&response)?))
 }
 
 pub async fn get_llm_provider_mutation(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(mutation_id): Path<uuid::Uuid>,
-) -> Result<Json<brassclaw_product_workflow::ProviderMutationReceipt>, WebUiV2HttpError> {
-    Ok(Json(
-        state
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
+    Ok(Json(prefix_revision_wire::provider_receipt(
+        &state
             .services()
             .provider_mutation(caller, mutation_id)
             .await?,
-    ))
+    )?))
 }
 
 pub async fn reconcile_llm_provider_mutation(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(mutation_id): Path<uuid::Uuid>,
-) -> Result<Json<LlmConfigSnapshot>, WebUiV2HttpError> {
-    Ok(Json(
-        state
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
+    Ok(Json(prefix_revision_wire::llm_snapshot(
+        &state
             .services()
             .reconcile_provider_mutation(caller, mutation_id)
             .await?,
-    ))
+    )?))
 }
 
 /// `POST /api/webchat/v2/llm/active`
@@ -745,9 +745,9 @@ pub async fn set_active_llm(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(body): Json<SetActiveLlmRequest>,
-) -> Result<Json<LlmConfigSnapshot>, WebUiV2HttpError> {
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
     let response = state.services().set_active_llm(caller, body).await?;
-    Ok(Json(response))
+    Ok(Json(prefix_revision_wire::llm_snapshot(&response)?))
 }
 
 /// `POST /api/webchat/v2/llm/test-connection`
@@ -813,14 +813,25 @@ pub async fn complete_nearai_wallet_login(
 
 /// `POST /api/webchat/v2/llm/codex/login`
 ///
-/// Begins an OpenAI Codex device-code login. Takes no body — returns the user
-/// code + verification URL to display; a background task completes the flow.
+/// Starts or recovers the exact original SetActive intent. The native service
+/// owns protocol validation, issuer work and atomic publication.
 pub async fn start_codex_login(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<SetActiveLlmRequest>,
 ) -> Result<Json<CodexLoginStart>, WebUiV2HttpError> {
-    let response = state.services().start_codex_login(caller).await?;
+    let response = state.services().start_codex_login(caller, request).await?;
     Ok(Json(response))
+}
+
+/// Pure original lookup; no start, refresh or publication is performed here.
+pub async fn codex_login_status(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(id): Path<uuid::Uuid>,
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
+    let response = state.services().codex_login_status(caller, id).await?;
+    Ok(Json(prefix_revision_wire::codex_login_status(&response)?))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1833,6 +1844,19 @@ pub async fn check_prefix_pair_cases(
     ))
 }
 
+pub async fn get_prefix_model_setup_job(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((specification, revision, job)): Path<(String, u64, String)>,
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
+    Ok(Json(prefix_revision_wire::job(
+        &state
+            .services()
+            .get_prefix_model_setup_job(caller, &specification, revision, &job)
+            .await?,
+    )?))
+}
+
 pub async fn get_prefix_pair_job(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
@@ -1842,6 +1866,51 @@ pub async fn get_prefix_pair_job(
         state
             .services()
             .get_prefix_pair_job(caller, &specification, &proposal, &job)
+            .await?,
+    ))
+}
+
+pub async fn get_prefix_pair_acceptance(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((specification, proposal)): Path<(String, String)>,
+) -> Result<Json<Option<brassclaw_product_workflow::PrefixPairAcceptanceReceipt>>, WebUiV2HttpError>
+{
+    Ok(Json(
+        state
+            .services()
+            .get_prefix_pair_acceptance(
+                caller,
+                brassclaw_product_workflow::PrefixPairAcceptanceReference {
+                    specification,
+                    pair_proposal: proposal,
+                },
+            )
+            .await?,
+    ))
+}
+pub async fn reconcile_prefix_pair_acceptance(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<brassclaw_product_workflow::PrefixPairAcceptanceDecision>,
+) -> Result<Json<Option<brassclaw_product_workflow::PrefixPairAcceptanceReceipt>>, WebUiV2HttpError>
+{
+    Ok(Json(
+        state
+            .services()
+            .reconcile_prefix_pair_acceptance(caller, request)
+            .await?,
+    ))
+}
+pub async fn prepare_prefix_pair_acceptance(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<brassclaw_product_workflow::PrefixPairAcceptanceSelection>,
+) -> Result<Json<brassclaw_product_workflow::PrefixPairAcceptanceView>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .prepare_prefix_pair_acceptance(caller, request)
             .await?,
     ))
 }

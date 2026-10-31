@@ -443,6 +443,9 @@ async fn native_scoped_acceptance_retains_sources_and_guards_both_task_roles() {
             .is_err()
     );
     assert!(fixture.store().bindings().await.unwrap().is_empty());
+    // Real native Pair storage/original-reader prerequisite only. This does not
+    // invoke a new public Release API or fabricate a qualified design-job seal.
+    let pair_original = assert_independent_pair_storage(&fixture, &rig.url, &base).await;
     let base_id = fixture.approve("base-prompt", &base).await;
     assert!(
         fixture.store().bindings().await.unwrap().is_empty(),
@@ -468,6 +471,19 @@ async fn native_scoped_acceptance_retains_sources_and_guards_both_task_roles() {
     );
     let (sempai, _, reference_sempai) = fixture.package("sempai", "first").await;
     let sempai_id = fixture.approve("sempai", &sempai).await;
+    assert_eq!(
+        serde_json::to_value(
+            fixture
+                .store()
+                .pair_original(&pair_original.selection.pair)
+                .await
+                .unwrap()
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(&pair_original).unwrap(),
+        "later profile reuse must return the original Pair evaluation/actor/review, not overwrite it"
+    );
     fixture
         .store()
         .activate(sempai_id, 0, prepared.revision)
@@ -827,4 +843,263 @@ pub(crate) async fn qualify_for_existing_provider(
         governor: fixture.governor,
         reference,
     }
+}
+
+/// Exercises the actual shared writer in an explicit native fixture transaction;
+/// a synthetic native review is NOT the missing complete design-workflow seal.
+async fn assert_independent_pair_storage(
+    fixture: &Fixture,
+    url: &brassclaw_secrets::SecretMaterial,
+    generation: &str,
+) -> brassclaw_product_workflow::PrefixPairAcceptanceReceipt {
+    use brassclaw_pg::test_support::{AckCutRule, AckCutTransport};
+    use brassclaw_product_workflow::*;
+    use secrecy::ExposeSecret;
+    let selection = PrefixPairAcceptanceSelection {
+        pair: PrefixPairAcceptanceReference {
+            specification: fixture.specification.clone(),
+            pair_proposal: fixture.pair.clone(),
+        },
+        evaluation: PrefixAcceptanceSelection {
+            profile: "base-prompt".into(),
+            generation: generation.into(),
+        },
+    };
+    let store = fixture.store();
+    assert!(
+        store
+            .pair_original(&selection.pair)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let prepared = fixture.prepare("base-prompt", generation).await.unwrap();
+    let checksum = prepared.checksum.clone();
+    let mut wrong = selection.clone();
+    wrong.pair.pair_proposal = "0".repeat(64);
+    assert!(
+        fixture
+            .prepare("base-prompt", generation)
+            .await
+            .unwrap()
+            .pair_view(wrong)
+            .is_err()
+    );
+    let summary = fixture
+        .prepare("base-prompt", generation)
+        .await
+        .unwrap()
+        .pair_view(selection.clone())
+        .unwrap();
+    assert_eq!(
+        summary.release_blocked_reason,
+        "prefix.qualifiedDesignWorkflowRequired"
+    );
+    assert_eq!(summary.review.review_checksum, checksum);
+    let semantic = "Explicit native fixture human action over exact synthetic originals; no complete design-workflow or remote model claim";
+    let decision = PrefixPairAcceptanceDecision {
+        selection: selection.clone(),
+        review_checksum: checksum.clone(),
+        semantic_review: semantic.into(),
+    };
+    assert!(
+        store
+            .reconcile_pair(&decision, fixture.scope.user_id.as_str())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let id = pair_identity(&fixture.pair);
+    let evidence = Accepted {
+        format: FORMAT.into(),
+        id,
+        scope: "pair".into(),
+        pair_parent: None,
+        profile_parent: None,
+        review: prepared.target,
+        review_checksum: checksum,
+        actor: fixture.scope.user_id.to_string(),
+        semantic_review: semantic.into(),
+    };
+    // The shared writer cannot leave a partial first Pair on an actual PG
+    // rejection. Rollback also removes these deliberately temporary fixtures.
+    let mut rejected_client = fixture.pool.get().await.unwrap();
+    let rejected_tx = rejected_client.transaction().await.unwrap();
+    rejected_tx.batch_execute("CREATE FUNCTION reject_i3_pair_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'deliberate first Pair rejection'; END $$; CREATE TRIGGER reject_i3_pair_fixture BEFORE INSERT ON reborn_prefix_design_acceptances FOR EACH ROW EXECUTE FUNCTION reject_i3_pair_fixture();").await.unwrap();
+    assert!(
+        store
+            .write_acceptance(&rejected_tx, &evidence, &fixture.pair)
+            .await
+            .is_err()
+    );
+    rejected_tx.rollback().await.unwrap();
+    drop(rejected_client);
+    assert!(
+        store
+            .pair_original(&selection.pair)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // A real server COMMIT succeeds but its wire acknowledgement is dropped.
+    let transport = AckCutTransport::start(url.expose_secret(), vec![AckCutRule::next_commit(1)])
+        .await
+        .unwrap();
+    transport.arm(1).unwrap();
+    let writer = PgPrefixAcceptances::new(transport.pool.clone(), fixture.owner.clone());
+    let mut client = transport.pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    writer
+        .write_acceptance(&tx, &evidence, &fixture.pair)
+        .await
+        .unwrap();
+    assert!(tx.commit().await.is_err());
+    assert_eq!(transport.cut_count(), 1);
+    drop(client);
+    // No new preparation/SDK/counter action is needed for the original result.
+    let original = store
+        .reconcile_pair(&decision, fixture.scope.user_id.as_str())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(original.pair_acceptance, id);
+    assert_eq!(original.selection.evaluation.generation, generation);
+    assert!(matches!(
+        &original.evidence,
+        PrefixPairAcceptanceEvidence::LegacyNativeReview
+    ));
+    let value = serde_json::to_value(&original).unwrap();
+    assert!(value.get("generation_qualification").is_none());
+    let client = fixture.pool.get().await.unwrap();
+    let counts=client.query_one("SELECT count(*),count(*) FILTER(WHERE acceptance_scope='pair'),count(*) FILTER(WHERE acceptance_scope IN('profile','generation')) FROM reborn_prefix_design_acceptances",&[]).await.unwrap();
+    assert_eq!(
+        (
+            counts.get::<_, i64>(0),
+            counts.get::<_, i64>(1),
+            counts.get::<_, i64>(2)
+        ),
+        (1, 1, 0)
+    );
+    drop(client);
+    assert!(store.bindings().await.unwrap().is_empty());
+    let worker = fixture.worker.prepare().await.unwrap();
+    assert!(store.resolve(id, worker.revision).await.is_err());
+    assert!(store.activate(id, 0, worker.revision).await.is_err());
+    for field in ["checksum", "semantic", "evaluation"] {
+        let mut wrong = decision.clone();
+        match field {
+            "checksum" => wrong.review_checksum = "0".repeat(64),
+            "semantic" => wrong.semantic_review.push('!'),
+            _ => wrong.selection.evaluation.generation = "0".repeat(64),
+        }
+        assert!(
+            store
+                .reconcile_pair(&wrong, fixture.scope.user_id.as_str())
+                .await
+                .is_err()
+        );
+    }
+    assert!(
+        store
+            .reconcile_pair(&decision, "another-operator")
+            .await
+            .is_err()
+    );
+    let mut wrong = selection.pair.clone();
+    wrong.specification = "0".repeat(64);
+    assert!(store.pair_original(&wrong).await.is_err());
+    assert!(
+        PgPrefixAcceptances::new(fixture.pool.clone(), "foreign-namespace".into())
+            .pair_original(&selection.pair)
+            .await
+            .is_err()
+    );
+    // Direct service readers are live without a runtime/encoder attachment.
+    let service = crate::interceptor_config_service::RebornInterceptorConfigService::new(
+        fixture.pool.clone(),
+        fixture.owner.clone(),
+    );
+    let caller = WebUiAuthenticatedCaller::new(
+        fixture.scope.tenant_id.clone(),
+        fixture.scope.user_id.clone(),
+        None,
+        None,
+    );
+    let read = service
+        .get_pair_acceptance(caller.clone(), selection.pair.clone())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(serde_json::to_value(read).unwrap(), value);
+    assert_eq!(
+        serde_json::to_value(
+            service
+                .reconcile_pair_acceptance(caller.clone(), decision.clone())
+                .await
+                .unwrap()
+                .unwrap()
+        )
+        .unwrap(),
+        value
+    );
+    let original_view = service
+        .prepare_pair_acceptance(caller.clone(), selection.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        original_view.review.review_checksum, original.review.review_checksum,
+        "an original summary needs no runtime/encoder attachment or reevaluation"
+    );
+    assert_eq!(
+        original_view.release_blocked_reason,
+        "prefix.qualifiedDesignWorkflowRequired"
+    );
+    let mut foreign = caller;
+    foreign.tenant_id = brassclaw_host_api::TenantId::new("foreign-tenant").unwrap();
+    assert!(
+        service
+            .get_pair_acceptance(foreign, selection.pair.clone())
+            .await
+            .is_err()
+    );
+    // An incompatible contract cannot hijack an already accepted Pair ID.
+    let mut incompatible = evidence;
+    incompatible.review.contract.endpoint.push_str("/changed");
+    let mut client = fixture.pool.get().await.unwrap();
+    let tx = client.transaction().await.unwrap();
+    assert!(
+        store
+            .write_acceptance(&tx, &incompatible, &fixture.pair)
+            .await
+            .is_err()
+    );
+    tx.rollback().await.unwrap();
+    assert_eq!(
+        serde_json::to_value(store.pair_original(&selection.pair).await.unwrap().unwrap()).unwrap(),
+        value
+    );
+    // Retained corruption is an error, never "no design". Test-only rollback
+    // temporarily bypasses the immutable trigger to exercise the real reader.
+    let tx = client.transaction().await.unwrap();
+    tx.batch_execute("ALTER TABLE reborn_prefix_design_acceptances DISABLE TRIGGER protect_prefix_design_acceptance").await.unwrap();
+    tx.execute(
+        "UPDATE reborn_prefix_design_acceptances SET checksum=$2 WHERE acceptance_id=$1",
+        &[&id, &"0".repeat(64)],
+    )
+    .await
+    .unwrap();
+    assert!(store.record_on(&tx, id).await.is_err());
+    tx.rollback().await.unwrap();
+    drop(client);
+    assert_eq!(
+        serde_json::to_value(store.pair_original(&selection.pair).await.unwrap().unwrap()).unwrap(),
+        value
+    );
+    transport.shutdown().await.unwrap();
+    original
 }

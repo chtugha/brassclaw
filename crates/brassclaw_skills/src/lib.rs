@@ -160,3 +160,5 @@ pub use types::{
     ProviderRefreshStrategy, SkillCredentialLocation, SkillCredentialSpec, SkillManifest,
     SkillOAuthConfig, SkillSource,
 };
+
+pub mod bootstrap_setup_components;

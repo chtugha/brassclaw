@@ -141,6 +141,7 @@ where
     secret_injection_store: Arc<RuntimeSecretInjectionStore>,
     process_lifecycle_store: Arc<ProcessObligationLifecycleStore>,
     runtime_http_egress: SharedRuntimeHttpEgress,
+    original_http_egress: Option<Arc<dyn crate::HostHttpOriginalEgress>>,
     http_client_cache_control: Option<brassclaw_network::HttpClientCacheControl>,
     tool_call_http_egress: SharedToolCallHttpEgress,
     process_port: Arc<dyn RuntimeProcessPort>,
@@ -166,6 +167,7 @@ where
 #[derive(Clone)]
 pub struct ProductAuthProviderRuntimePorts {
     runtime_http_egress: Arc<dyn RuntimeHttpEgress>,
+    original_http_egress: Option<Arc<dyn crate::HostHttpOriginalEgress>>,
     obligation_handler: Arc<dyn CapabilityObligationHandler>,
     secret_store: Arc<dyn SecretStore>,
     secret_injection_store: Arc<RuntimeSecretInjectionStore>,
@@ -178,12 +180,14 @@ pub type ProductAuthCredentialStageError = RuntimeSecretStageError;
 impl ProductAuthProviderRuntimePorts {
     fn new(
         runtime_http_egress: Arc<dyn RuntimeHttpEgress>,
+        original_http_egress: Option<Arc<dyn crate::HostHttpOriginalEgress>>,
         obligation_handler: Arc<dyn CapabilityObligationHandler>,
         secret_store: Arc<dyn SecretStore>,
         secret_injection_store: Arc<RuntimeSecretInjectionStore>,
     ) -> Self {
         Self {
             runtime_http_egress,
+            original_http_egress,
             obligation_handler,
             secret_store,
             secret_injection_store,
@@ -194,6 +198,11 @@ impl ProductAuthProviderRuntimePorts {
         Arc::clone(&self.runtime_http_egress)
     }
 
+    /// Actual trusted capture port from the SAME configured host HTTP service.
+    /// Absence is unsupported native custody, never an unsanitized fallback.
+    pub fn original_http_egress(&self) -> Option<Arc<dyn crate::HostHttpOriginalEgress>> {
+        self.original_http_egress.clone()
+    }
     pub fn obligation_handler(&self) -> Arc<dyn CapabilityObligationHandler> {
         Arc::clone(&self.obligation_handler)
     }
@@ -322,6 +331,7 @@ where
             secret_injection_store,
             process_lifecycle_store,
             runtime_http_egress: Arc::new(Mutex::new(None)),
+            original_http_egress: None,
             http_client_cache_control: None,
             tool_call_http_egress: Arc::new(Mutex::new(None)),
             process_port: Arc::new(LocalHostProcessPort::new()),
@@ -465,6 +475,7 @@ where
         let secret_store = self.secret_store.clone()?;
         Some(ProductAuthProviderRuntimePorts::new(
             runtime_http_egress,
+            self.original_http_egress.clone(),
             self.obligation_handler(),
             secret_store,
             Arc::clone(&self.secret_injection_store),

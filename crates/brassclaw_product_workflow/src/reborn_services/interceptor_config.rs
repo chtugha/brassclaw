@@ -233,6 +233,51 @@ pub struct PrefixAcceptanceReceipt {
     pub generation_qualification: uuid::Uuid,
     pub serving_activated: bool,
 }
+/// An exact retained proposal reference, never a role or latest-design lookup.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrefixPairAcceptanceReference {
+    pub specification: String,
+    pub pair_proposal: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrefixPairAcceptanceSelection {
+    pub pair: PrefixPairAcceptanceReference,
+    /// Real quarantined evaluation, not the production generation of each profile.
+    pub evaluation: PrefixAcceptanceSelection,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrefixPairAcceptanceDecision {
+    pub selection: PrefixPairAcceptanceSelection,
+    pub review_checksum: String,
+    pub semantic_review: String,
+}
+/// Existing native review is not the future complete design-workflow seal.
+/// A legacy Pair original must remain readable without being upgraded by labels.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrefixPairAcceptanceEvidence {
+    LegacyNativeReview,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixPairAcceptanceReceipt {
+    pub pair_acceptance: uuid::Uuid,
+    pub evidence_checksum: String,
+    pub selection: PrefixPairAcceptanceSelection,
+    pub review: PrefixAcceptanceView,
+    pub actor: String,
+    pub semantic_review: String,
+    pub evidence: PrefixPairAcceptanceEvidence,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixPairAcceptanceView {
+    pub selection: PrefixPairAcceptanceSelection,
+    pub review: PrefixAcceptanceView,
+    /// No public release method exists until the real qualified producer is joined.
+    pub release_blocked_reason: String,
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActivatePrefixAcceptanceRequest {
@@ -403,7 +448,7 @@ pub struct PrefixGenerationDetail {
 
 /// Exact immutable target; Pair jobs have no synthetic profile or role revision.
 /// Flattening preserves the existing profile status JSON fields.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "target_kind", rename_all = "snake_case")]
 pub enum PrefixJobTarget {
     Profile {
@@ -413,6 +458,10 @@ pub enum PrefixJobTarget {
     Pair {
         specification: String,
         proposal: String,
+    },
+    ModelSetup {
+        specification: String,
+        setup_revision: u64,
     },
 }
 
@@ -453,6 +502,15 @@ pub trait InterceptorConfigService: Send + Sync {
     ) -> Result<PrefixJobDetail, InterceptorConfigServiceError> {
         Err(InterceptorConfigServiceError::Unavailable)
     }
+    async fn get_model_setup_job(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _specification: &str,
+        _setup_revision: u64,
+        _job: &str,
+    ) -> Result<PrefixJobDetail, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
     async fn get_pair_job(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -477,6 +535,27 @@ pub trait InterceptorConfigService: Send + Sync {
         _profile: &str,
         _job: &str,
     ) -> Result<PrefixJobDetail, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+    async fn get_pair_acceptance(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _pair: PrefixPairAcceptanceReference,
+    ) -> Result<Option<PrefixPairAcceptanceReceipt>, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+    async fn reconcile_pair_acceptance(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _decision: PrefixPairAcceptanceDecision,
+    ) -> Result<Option<PrefixPairAcceptanceReceipt>, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+    async fn prepare_pair_acceptance(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _selection: PrefixPairAcceptanceSelection,
+    ) -> Result<PrefixPairAcceptanceView, InterceptorConfigServiceError> {
         Err(InterceptorConfigServiceError::Unavailable)
     }
     async fn prepare_acceptance(

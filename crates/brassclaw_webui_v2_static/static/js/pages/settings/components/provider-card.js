@@ -60,7 +60,8 @@ export function ProviderCard({
         ${adapterLabel(provider.adapter)} · ${model || provider.default_model || t("llm.none")}
       </span>`;
 
-  const isLoginProvider = provider.id === "nearai" || provider.id === "openai_codex";
+  const isCodex = ["openai_codex", "open_ai_codex"].includes(provider.adapter);
+  const isLoginProvider = provider.id === "nearai" || isCodex;
   const hasApiKey = provider.api_key_set === true || provider.has_api_key === true;
   const configureLabel = provider.builtin
     ? provider.id === "nearai" && acceptsApiKey && !hasApiKey
@@ -97,10 +98,13 @@ export function ProviderCard({
             Google
           <//>
         `
-      : !isActive && provider.id === "openai_codex"
+      : isCodex
       ? html`
-          <${Button} type="button" variant="secondary" size="sm" disabled=${loginBusy} onClick=${onCodexLogin}>
+          <${Button} type="button" variant="secondary" size="sm" disabled=${loginBusy || isBusy} onClick=${() => onCodexLogin(provider, "kohai", model)}>
             ${t("onboarding.codexSignIn")}
+          <//>
+          <${Button} type="button" variant="secondary" size="sm" disabled=${loginBusy || isBusy} onClick=${() => onCodexLogin(provider, "sempai", model)}>
+            ${t("onboarding.codexSignInSempai")}
           <//>
         `
       : null;
@@ -233,6 +237,7 @@ export function ProviderCard({
           </div>
 
           <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-[var(--v2-panel-border)] pt-3">
+            ${isActive && isCodex && loginActions}
             ${configured && !provider.is_sempai && onUseSempai && html`
               <${Button}
                 type="button"

@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct AuthFlowCustody {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_login: Option<Box<crate::NativeDeviceLoginAction>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update_account_snapshot: Option<CredentialAccount>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oauth_callback: Option<OAuthCallbackAction>,
@@ -32,7 +34,8 @@ pub struct AuthFlowCustody {
 
 impl AuthFlowCustody {
     pub fn is_empty(&self) -> bool {
-        self.update_account_snapshot.is_none()
+        self.device_login.is_none()
+            && self.update_account_snapshot.is_none()
             && self.oauth_callback.is_none()
             && self.oauth_setup.is_none()
             && self.dcr_registration.is_none()
@@ -473,12 +476,13 @@ impl OAuthCallbackAction {
                 updated_at: now,
             }
         };
-        flow.status = crate::AuthFlowStatus::Completed;
-        flow.error = None;
-        flow.updated_at = now;
-        flow.credential_account_id = Some(account.id);
-        flow.authorization_code_hash = Some(self.original.authorization_code_hash.clone());
-        flow.pkce_verifier_hash = Some(self.original.pkce_verifier_hash.clone());
+        crate::flow::complete_credential_flow(
+            flow,
+            account.id,
+            self.original.authorization_code_hash.clone(),
+            self.original.pkce_verifier_hash.clone(),
+            now,
+        );
         self.publication = OAuthCallbackPublication::Applied;
         self.published_account = Some(account.clone());
         Ok(Some(account))

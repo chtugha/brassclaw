@@ -370,6 +370,23 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
         let _ = (caller, specification, proposal, id);
         Err(InterceptorConfigServiceError::Unavailable)
     }
+    async fn get_model_setup_job(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        setup_revision: u64,
+        job: &str,
+    ) -> Result<brassclaw_product_workflow::PrefixJobDetail, InterceptorConfigServiceError> {
+        let id = prefix_job_id(job)?;
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        if let Some(runtime) = self.runtime.as_ref().and_then(std::sync::Weak::upgrade) {
+            return runtime
+                .inspect_prefix_model_setup_job(specification, setup_revision, id)
+                .await;
+        }
+        let _ = (specification, setup_revision, id);
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
     async fn get_pair_job(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -425,6 +442,82 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
         }
         let _ = (profile, id);
         Err(InterceptorConfigServiceError::Unavailable)
+    }
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    async fn get_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        pair: brassclaw_product_workflow::PrefixPairAcceptanceReference,
+    ) -> Result<
+        Option<brassclaw_product_workflow::PrefixPairAcceptanceReceipt>,
+        InterceptorConfigServiceError,
+    > {
+        if caller.tenant_id.as_str() != self.tenant_id {
+            return Err(InterceptorConfigServiceError::Conflict);
+        }
+        crate::prefix_acceptances::PgPrefixAcceptances::new(
+            self.pool.clone(),
+            self.tenant_id.clone(),
+        )
+        .pair_original(&pair)
+        .await
+    }
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    async fn reconcile_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        decision: brassclaw_product_workflow::PrefixPairAcceptanceDecision,
+    ) -> Result<
+        Option<brassclaw_product_workflow::PrefixPairAcceptanceReceipt>,
+        InterceptorConfigServiceError,
+    > {
+        if caller.tenant_id.as_str() != self.tenant_id {
+            return Err(InterceptorConfigServiceError::Conflict);
+        }
+        crate::prefix_acceptances::PgPrefixAcceptances::new(
+            self.pool.clone(),
+            self.tenant_id.clone(),
+        )
+        .reconcile_pair(&decision, caller.user_id.as_str())
+        .await
+    }
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    async fn prepare_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        selection: brassclaw_product_workflow::PrefixPairAcceptanceSelection,
+    ) -> Result<brassclaw_product_workflow::PrefixPairAcceptanceView, InterceptorConfigServiceError>
+    {
+        if caller.tenant_id.as_str() != self.tenant_id {
+            return Err(InterceptorConfigServiceError::Conflict);
+        }
+        // Original lookup is before runtime readiness, native encoding or any
+        // current selection/preparation. Resume never re-evaluates an original.
+        let owner = crate::prefix_acceptances::PgPrefixAcceptances::new(
+            self.pool.clone(),
+            self.tenant_id.clone(),
+        );
+        if let Some(original) = owner.original_pair_view(&selection).await? {
+            return Ok(original);
+        }
+        self.runtime
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+            .ok_or(InterceptorConfigServiceError::Unavailable)?
+            .prepare_prefix_pair_acceptance(caller, selection)
+            .await
     }
     #[cfg(all(
         feature = "postgres",

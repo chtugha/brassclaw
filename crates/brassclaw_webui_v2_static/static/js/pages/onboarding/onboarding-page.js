@@ -130,7 +130,7 @@ function FeaturedProviderRow({ entry, provider, configured, isBusy, login, t, on
     actions = html`<${NearAiSetupMenu} provider=${provider} isBusy=${isBusy} login=${login} t=${t} onSetUp=${onSetUp} />`;
   } else if (entry.auth === "codex") {
     actions = html`
-      <${Button} type="button" variant="secondary" size="sm" disabled=${login.codexBusy} onClick=${login.startCodex}>
+      <${Button} type="button" variant="secondary" size="sm" disabled=${login.codexBusy || isBusy} onClick=${() => login.startCodex(provider, "kohai", provider.default_model)}>
         ${t("onboarding.signIn")}
       <//>
     `;

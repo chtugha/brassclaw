@@ -12,7 +12,7 @@ use brassclaw_engine::{
 use brassclaw_monty_host::process::PortAnswer;
 use brassclaw_pg::PgPool;
 use brassclaw_product_workflow::PrefixPairCasePacket;
-use brassclaw_skills::value_contract::{EXECUTION_DATA_LIMITS, strict_json};
+use brassclaw_skills::value_contract::{ContractLimits, strict_json};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio_postgres::Transaction;
@@ -28,8 +28,8 @@ fn check(value: bool, reason: &'static str) -> Result<(), RebornBuildError> {
         Err(invalid(reason))
     }
 }
-fn read(value: &str) -> Result<Value, RebornBuildError> {
-    strict_json(value, EXECUTION_DATA_LIMITS).map_err(invalid)
+fn read(value: &str, limits: ContractLimits) -> Result<Value, RebornBuildError> {
+    strict_json(value, limits).map_err(invalid)
 }
 fn text(value: &Value) -> Result<&str, RebornBuildError> {
     value
@@ -155,7 +155,10 @@ impl CapturedPairCases {
                 && execution.host_answers().len() == 2,
             "pair case completion/order differs",
         )?;
-        let packet = read(&self.packet.case_packet_bytes)?;
+        let packet = read(
+            &self.packet.case_packet_bytes,
+            execution.observations()["0:1"].data_limits(),
+        )?;
         let cases = packet["cases"]
             .as_array()
             .filter(|cases| !cases.is_empty())
@@ -187,6 +190,8 @@ impl CapturedPairCases {
             ])
         {
             check(step == expected_step, "pair case native step differs")?;
+            let proof = &execution.observations()[step];
+            let limits = proof.data_limits();
             let selection =
                 crate::pg_monty_admission::PgMontyAdmission::invocation_selection(program, step)
                     .map_err(invalid)?;
@@ -197,11 +202,9 @@ impl CapturedPairCases {
                     && row.get::<_, String>(3) == crate::bootstrap_evidence::checksum(&selection)
                     && row.get::<_, String>(6) == "answered"
                     && row.get::<_, i16>(7) == 1
-                    && read(&row.get::<_, String>(4))? == arguments,
+                    && read(&row.get::<_, String>(4), limits)? == arguments,
                 "pair case native identity/arguments/attempt differs",
             )?;
-            let proof = &execution.observations()[step];
-            let limits = proof.data_limits();
             let recorded: PortAnswer = serde_json::from_str(
                 row.get::<_, Option<String>>(5)
                     .as_deref()
@@ -228,7 +231,10 @@ impl CapturedPairCases {
             .map(|value|text(value).map(|value|brassclaw_model_encoding::checksum(value.as_bytes())))
             .collect::<Result<Vec<_>,_>>()?});
         check(outputs[0] == digests, "pair case native digest differs")?;
-        let observed = read(text(&outputs[1])?)?;
+        let observed = read(
+            text(&outputs[1])?,
+            execution.observations()["0:5"].data_limits(),
+        )?;
         let preparation_revision = observed["preparation_revision"]
             .as_u64()
             .filter(|revision| *revision > 0)
@@ -281,7 +287,7 @@ impl CapturedPairCases {
                 "pair case exact step data handoff differs",
             )?;
         }
-        let result = read(receipt)?;
+        let result = read(receipt, execution.observations()["0:6"].data_limits())?;
         check(
             crate::prefix_generations::canonical(&result).map_err(invalid)? == receipt
                 && result["format"] == "brassclaw-prefix-pair-case-comparison/1"

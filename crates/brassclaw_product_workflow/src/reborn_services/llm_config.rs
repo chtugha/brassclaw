@@ -128,15 +128,23 @@ pub trait LlmConfigService: Send + Sync {
         request: NearAiWalletLoginRequest,
     ) -> Result<NearAiWalletLoginResult, LlmConfigServiceError>;
 
-    /// Begin an OpenAI Codex (ChatGPT subscription) device-code login. Returns
-    /// the user code + verification URL for the frontend to display; a
-    /// background task polls the device-auth endpoint, persists the tokens,
-    /// makes Codex the active provider, and hot-swaps the running provider. The
-    /// caller polls the snapshot until Codex is active.
+    /// Start or recover this exact provider/revision/role/model intent. The
+    /// mutation UUID is also its native flow identity; retries retain all bytes.
+    /// Embedding is rejected before effects. The native owner, not this facade,
+    /// authenticates the selected protocol and owns issuer work/publication.
     async fn start_codex_login(
         &self,
         caller: WebUiAuthenticatedCaller,
+        request: SetActiveLlmRequest,
     ) -> Result<CodexLoginStart, LlmConfigServiceError>;
+
+    /// Read only this original login. Never starts, refreshes, replaces an
+    /// original, or adopts the current role/provider selection.
+    async fn codex_login_status(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        id: uuid::Uuid,
+    ) -> Result<CodexLoginStatus, LlmConfigServiceError>;
 }
 
 /// OAuth identity provider for NEAR AI session login.
@@ -234,10 +242,36 @@ pub struct NearAiWalletLoginResult {
 /// The device code + verification URL the frontend displays for Codex login.
 /// The user enters `user_code` at `verification_uri`; the backend polls for
 /// completion in the background.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CodexLoginStart {
-    pub user_code: String,
-    pub verification_uri: String,
+    pub mutation_id: uuid::Uuid,
+    pub expires_at: brassclaw_auth::Timestamp,
+    pub poll_interval_millis: u32,
+    pub user_code: Option<String>,
+    pub verification_uri: Option<String>,
+}
+
+impl std::fmt::Debug for CodexLoginStart {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CodexLoginStart")
+            .field("mutation_id", &self.mutation_id)
+            .field("expires_at", &self.expires_at)
+            .field("poll_interval_millis", &self.poll_interval_millis)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Original-only native projection. Polling is read-only; a completed result
+/// binds its own immutable provider mutation receipt. Completing may remain
+/// observable after the setup deadline when the issuer return is known.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodexLoginStatus {
+    pub mutation_id: uuid::Uuid,
+    pub status: brassclaw_auth::AuthFlowStatus,
+    pub expires_at: brassclaw_auth::Timestamp,
+    pub error: Option<brassclaw_auth::AuthErrorCode>,
+    pub mutation_receipt: Option<ProviderMutationReceipt>,
+    pub poll_interval_millis: u32,
 }
 
 /// Merged catalog plus the active selection. Keys are masked.
@@ -298,6 +332,10 @@ pub struct LlmConfigSnapshot {
 /// Immutable publication acknowledgement, not a client/prefix uptake claim.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderMutationReceipt {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bootstrap_job_id: Option<uuid::Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bootstrap_target: Option<super::interceptor_config::PrefixJobTarget>,
     pub mutation_id: uuid::Uuid,
     pub operation: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -556,4 +594,25 @@ pub(super) fn llm_config_unavailable() -> RebornServicesError {
         503,
         false,
     )
+}
+
+#[cfg(test)]
+mod codex_login_debug_tests {
+    #[test]
+    fn codex_login_start_debug_never_discloses_user_code_or_verification_uri() {
+        let start = super::CodexLoginStart {
+            mutation_id: uuid::Uuid::new_v4(),
+            expires_at: "2026-10-31T12:00:00Z".parse().unwrap(),
+            poll_interval_millis: 713,
+            user_code: Some("PRIVATE_USER_CODE".into()),
+            verification_uri: Some("https://private-issuer.example/device".into()),
+        };
+        let debug = format!("{start:?}");
+        assert!(!debug.contains("PRIVATE_USER_CODE"));
+        assert!(!debug.contains("private-issuer"));
+        assert_eq!(
+            serde_json::to_value(&start).unwrap()["user_code"],
+            "PRIVATE_USER_CODE"
+        );
+    }
 }

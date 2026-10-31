@@ -19,7 +19,7 @@ where
     N: NetworkHttpEgress + Send + Sync,
     S: SecretStore + Send + Sync,
 {
-    execute_inner(service, request, false).await
+    execute_inner(service, request, false, None).await
 }
 
 pub(super) async fn execute_for_model_visible_output<N, S>(
@@ -30,13 +30,26 @@ where
     N: NetworkHttpEgress + Send + Sync,
     S: SecretStore + Send + Sync,
 {
-    execute_inner(service, request, true).await
+    execute_inner(service, request, true, None).await
 }
 
-async fn execute_inner<N, S>(
-    service: &HostHttpEgressService<N, S>,
+pub(super) async fn execute_with_original_custody<'a, N, S>(
+    service: &'a HostHttpEgressService<N, S>,
+    request: RuntimeHttpEgressRequest,
+    custody: Box<dyn super::HostHttpOriginalCustody + 'a>,
+) -> Result<RuntimeHttpEgressResponse, PipelineError>
+where
+    N: NetworkHttpEgress + Send + Sync,
+    S: SecretStore + Send + Sync,
+{
+    execute_inner(service, request, false, Some(custody)).await
+}
+
+async fn execute_inner<'a, N, S>(
+    service: &'a HostHttpEgressService<N, S>,
     mut request: RuntimeHttpEgressRequest,
     allow_partial_response_body: bool,
+    mut custody: Option<Box<dyn super::HostHttpOriginalCustody + 'a>>,
 ) -> Result<RuntimeHttpEgressResponse, PipelineError>
 where
     N: NetworkHttpEgress + Send + Sync,
@@ -56,11 +69,53 @@ where
     )
     .map_err(PipelineError::pre_transport_keep_staged_secrets)?;
 
+    if let Some(custodian) = custody.as_mut() {
+        request.network_policy = network_policy.clone();
+        custodian
+            .authenticate_request(&request)
+            .await
+            .map_err(|_| {
+                PipelineError::pre_transport(RuntimeHttpEgressError::Request {
+                    reason: "original_custody_preflight_failed".into(),
+                    request_bytes: 0,
+                    response_bytes: 0,
+                })
+            })?;
+    }
+    let original_body_limit = request.response_body_limit;
     let response = if allow_partial_response_body {
         dispatch_network_for_model_visible_output(service, request, network_policy).await?
     } else {
         dispatch_network(service, request, network_policy).await?
     };
+    if let Some(custodian) = custody {
+        if original_body_limit.is_some_and(|limit| response.body.len() as u64 > limit) {
+            return Err(PipelineError::post_transport(
+                RuntimeHttpEgressError::Response {
+                    reason: brassclaw_host_api::RUNTIME_HTTP_REASON_RESPONSE_BODY_LIMIT_EXCEEDED
+                        .into(),
+                    request_bytes: response.usage.request_bytes,
+                    response_bytes: response.usage.response_bytes,
+                },
+            ));
+        }
+        let request_bytes = response.usage.request_bytes;
+        let response_bytes = response.usage.response_bytes;
+        let material = super::original_custody::original_material(&response).map_err(|_| {
+            PipelineError::post_transport(RuntimeHttpEgressError::Response {
+                reason: "original_custody_failed".into(),
+                request_bytes,
+                response_bytes,
+            })
+        })?;
+        custodian.retain(material).await.map_err(|_| {
+            PipelineError::post_transport(RuntimeHttpEgressError::Response {
+                reason: "original_custody_failed".into(),
+                request_bytes,
+                response_bytes,
+            })
+        })?;
+    }
     let credentials_injected = !redaction_values.is_empty();
     let (response, response_redacted) = super::sanitize::sanitize_runtime_response(
         response,

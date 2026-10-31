@@ -62,8 +62,50 @@ pub(super) fn generation_detail(value: &PrefixGenerationDetail) -> Result {
 }
 pub(super) fn job(value: &PrefixJobDetail) -> Result {
     let mut wire = encode(value)?;
-    if matches!(&value.target, PrefixJobTarget::Profile { .. }) {
-        field(&mut wire, "profile_revision")?;
+    match &value.target {
+        PrefixJobTarget::Profile { .. } => field(&mut wire, "profile_revision")?,
+        PrefixJobTarget::ModelSetup { .. } => field(&mut wire, "setup_revision")?,
+        PrefixJobTarget::Pair { .. } => {}
+    }
+    Ok(wire)
+}
+
+/// Reuse the existing provider receipt HTTP projection, including nested
+/// bootstrap target revisions. Native DTO integers and records stay untouched.
+pub(super) fn codex_login_status(value: &brassclaw_product_workflow::CodexLoginStatus) -> Result {
+    let mut wire = encode(value)?;
+    if let Some(receipt) = &value.mutation_receipt {
+        wire["mutation_receipt"] = provider_receipt(receipt)?;
+    }
+    Ok(wire)
+}
+
+fn bootstrap_target(wire: &mut Value) -> std::result::Result<(), WebUiV2HttpError> {
+    if let Some(target) = wire
+        .get_mut("bootstrap_target")
+        .filter(|value| !value.is_null())
+    {
+        if target["target_kind"] != "model_setup" {
+            return Err(WebUiV2HttpError::internal("invalid bootstrap target"));
+        }
+        field(target, "setup_revision")?;
+    }
+    Ok(())
+}
+pub(super) fn provider_receipt(
+    value: &brassclaw_product_workflow::ProviderMutationReceipt,
+) -> Result {
+    let mut wire = encode(value)?;
+    bootstrap_target(&mut wire)?;
+    Ok(wire)
+}
+pub(super) fn llm_snapshot(value: &brassclaw_product_workflow::LlmConfigSnapshot) -> Result {
+    let mut wire = encode(value)?;
+    if let Some(receipt) = wire
+        .get_mut("mutation_receipt")
+        .filter(|value| !value.is_null())
+    {
+        bootstrap_target(receipt)?;
     }
     Ok(wire)
 }
@@ -206,6 +248,41 @@ mod tests {
                 job(&status).unwrap(),
                 serde_json::to_value(&status).unwrap()
             );
+        }
+    }
+    #[test]
+    fn original_bootstrap_target_is_quoted_only_in_http_receipts() {
+        for revision in [
+            0,
+            brassclaw_product_workflow::PREFIX_SETUP_MAX_EXACT_INTEGER,
+        ] {
+            let receipt = brassclaw_product_workflow::ProviderMutationReceipt {
+                mutation_id: uuid::Uuid::new_v4(),
+                operation: "select".into(),
+                selected_role: None,
+                provider_id: Some("p".into()),
+                provider_revision: Some(1),
+                role_selections: Default::default(),
+                bootstrap_job_id: Some(uuid::Uuid::new_v4()),
+                bootstrap_target: Some(PrefixJobTarget::ModelSetup {
+                    specification: "a".repeat(64),
+                    setup_revision: revision,
+                }),
+            };
+            assert_eq!(
+                provider_receipt(&receipt).unwrap()["bootstrap_target"]["setup_revision"],
+                revision.to_string()
+            );
+            assert_eq!(
+                serde_json::to_value(&receipt).unwrap()["bootstrap_target"]["setup_revision"],
+                json!(revision)
+            );
+            let mut historical = receipt;
+            historical.bootstrap_job_id = None;
+            historical.bootstrap_target = None;
+            let value = provider_receipt(&historical).unwrap();
+            assert!(value.get("bootstrap_job_id").is_none());
+            assert!(value.get("bootstrap_target").is_none());
         }
     }
 }

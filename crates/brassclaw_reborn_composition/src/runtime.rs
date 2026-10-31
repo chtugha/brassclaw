@@ -11020,6 +11020,9 @@ mod tests {
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 #[path = "prefix_job_submission.rs"]
 mod prefix_job_submission;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+#[path = "prefix_provider_bootstrap.rs"]
+mod prefix_provider_bootstrap;
 
 #[cfg(all(
     feature = "postgres",

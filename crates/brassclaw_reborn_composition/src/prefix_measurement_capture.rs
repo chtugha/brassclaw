@@ -3,7 +3,7 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use brassclaw_pg::PgPool;
 use brassclaw_product_workflow::{InterceptorConfigServiceError as Error, MeasurePrefixRequest};
-use brassclaw_skills::value_contract::{EXECUTION_DATA_LIMITS, strict_json};
+use brassclaw_skills::value_contract::{ContractLimits, EXECUTION_DATA_LIMITS, strict_json};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -12,8 +12,14 @@ fn bad() -> Error {
         reason: "measurement requires compatible retained source/design/model inputs and explicit probe limits".into(),
     }
 }
-fn read(bytes: &str) -> Result<Value, Error> {
+fn read_metadata(bytes: &str) -> Result<Value, Error> {
     strict_json(bytes, EXECUTION_DATA_LIMITS).map_err(|_| bad())
+}
+// Existing archived package/design formats keep their own bounds. Actual
+// retained task input and result codecs use the corresponding original/proof
+// limits, never that metadata bound as a second executing-data cap.
+fn read_data(bytes: &str, limits: ContractLimits) -> Result<Value, Error> {
+    strict_json(bytes, limits).map_err(|_| bad())
 }
 fn file(package: &Value, name: &str) -> Result<String, Error> {
     String::from_utf8(
@@ -30,20 +36,18 @@ fn file(package: &Value, name: &str) -> Result<String, Error> {
 
 /// Large contexts belong to immutable execution data, not status/metadata rows.
 pub(crate) fn metadata(profile: &str, request: &MeasurePrefixRequest) -> Result<Value, Error> {
-    if request.probes_json.len() > EXECUTION_DATA_LIMITS.max_bytes
-        || [
-            &request.generation,
-            &request.proposal,
-            &request.artifact_set,
-        ]
-        .iter()
-        .any(|id| {
-            id.len() != 64
-                || !id
-                    .bytes()
-                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-        })
-    {
+    if [
+        &request.generation,
+        &request.proposal,
+        &request.artifact_set,
+    ]
+    .iter()
+    .any(|id| {
+        id.len() != 64
+            || !id
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    }) {
         return Err(bad());
     }
     let capture = json!({"expected_profile_revision":request.expected_profile_revision,
@@ -60,7 +64,10 @@ pub(crate) async fn verify(
     definition: &crate::prefix_job_definitions::Definition,
 ) -> Result<(), Error> {
     let (profile, revision) = definition.target.profile().ok_or_else(bad)?;
-    let captured = read(definition.input["request_json"].as_str().ok_or_else(bad)?)?;
+    let captured = read_data(
+        definition.input["request_json"].as_str().ok_or_else(bad)?,
+        definition.original_input_limits,
+    )?;
     let probes = captured["probes_json"].as_str().ok_or_else(bad)?;
     let mut request = definition.request["capture"].clone();
     request
@@ -71,7 +78,14 @@ pub(crate) async fn verify(
     let request: MeasurePrefixRequest = serde_json::from_value(request).map_err(|_| bad())?;
     if request.expected_profile_revision != revision
         || metadata(profile, &request)? != definition.request
-        || capture(pool, definition.scope.tenant_id.as_str(), profile, &request).await?
+        || capture(
+            pool,
+            definition.scope.tenant_id.as_str(),
+            profile,
+            &request,
+            definition.original_input_limits,
+        )
+        .await?
             != definition.input
     {
         return Err(bad());
@@ -84,6 +98,7 @@ pub(crate) async fn capture(
     namespace: &str,
     profile: &str,
     request: &MeasurePrefixRequest,
+    input_limits: ContractLimits,
 ) -> Result<Value, Error> {
     if !matches!(profile, "base-prompt" | "prefix-maker" | "sempai")
         || request.expected_profile_revision == 0
@@ -105,7 +120,7 @@ pub(crate) async fn capture(
         crate::prefix_model_designs::PgPrefixModelDesigns::new(pool.clone(), namespace.into());
     let proposal = store.get_proposal(profile, &request.proposal).await?;
     let spec = store.get_specification(&proposal.specification).await?;
-    let specification = read(&spec.specification_bytes)?;
+    let specification = read_metadata(&spec.specification_bytes)?;
     // A configured limit is an upper bound, not evidence that the target really
     // supports it. Unknown capacity remains an explicit diagnostic assumption.
     if let Some(configured) = specification["configured_context_window"].as_u64()
@@ -113,7 +128,7 @@ pub(crate) async fn capture(
     {
         return Err(bad());
     }
-    let design = read(&proposal.proposal_bytes)?;
+    let design = read_metadata(&proposal.proposal_bytes)?;
     // The existing diagnostic measures a complete compiler-package reference.
     // Rule-based proposals need the target-aware candidate/coverage pipeline;
     // never interpret missing legacy geometry as zero or infer new defaults.
@@ -131,18 +146,18 @@ pub(crate) async fn capture(
         return Err(bad());
     }
     // get() already verifies checksums, originals, maps and complete package.
-    let package = read(&generation.generation_bytes)?;
-    let source_design = read(&file(&package, "profile_design.json")?)?;
+    let package = read_metadata(&generation.generation_bytes)?;
+    let source_design = read_metadata(&file(&package, "profile_design.json")?)?;
     if source_design["evidence_view"] != design["design"]["evidence_view"]
         || source_design["source_selection"] != design["design"]["source_selection"]
     {
         return Err(bad());
     }
-    let assets = read(&assets.artifact_set_bytes)?;
+    let assets = read_metadata(&assets.artifact_set_bytes)?;
     let original_template = if assets["artifacts"].get("chat_template.jinja").is_some() {
         file(&assets, "chat_template.jinja")?
     } else {
-        read(&file(&assets, "tokenizer_config.json")?)?["chat_template"]
+        read_metadata(&file(&assets, "tokenizer_config.json")?)?["chat_template"]
             .as_str()
             .ok_or_else(bad)?
             .to_owned()
@@ -157,7 +172,12 @@ pub(crate) async fn capture(
         "probes_json":request.probes_json,"specification":proposal.specification,"artifact_set":request.artifact_set,
         "limits_ref":limits_ref,"context_window_tokens":request.context_window_tokens,
         "reserved_output_tokens":design["design"]["reserve_tokens"],"reserved_additional_input_tokens":request.reserved_additional_input_tokens});
-    Ok(json!({"request_json":crate::prefix_generations::canonical(&captured)?}))
+    brassclaw_skills::value_contract::validate_data_bounds(&captured, input_limits)
+        .map_err(|_| bad())?;
+    let input = json!({"request_json":crate::prefix_generations::canonical(&captured)?});
+    brassclaw_skills::value_contract::validate_data_bounds(&input, input_limits)
+        .map_err(|_| bad())?;
+    Ok(input)
 }
 
 pub(crate) async fn select(
@@ -243,7 +263,9 @@ pub(crate) async fn verify_receipt(
     execution: &brassclaw_engine::executor::retained_recipe::RetainedRecipeExecution,
     pool: &Arc<PgPool>,
 ) -> Result<(), brassclaw_monty_host::service::PortFailure> {
-    use brassclaw_engine::executor::retained_recipe::{RetainedProgram, port_answer_checksum};
+    use brassclaw_engine::executor::retained_recipe::{
+        RetainedProgram, port_answer_checksum_with_limits,
+    };
     use brassclaw_monty_host::process::PortAnswer;
     let failed = || {
         brassclaw_monty_host::service::PortFailure::new("prefix_measurement_receipt_invalid")
@@ -258,15 +280,21 @@ pub(crate) async fn verify_receipt(
     {
         return Err(failed());
     }
-    let value = read(receipt).map_err(|_| failed())?;
+    let result_limits = execution
+        .observations()
+        .get("0:9")
+        .ok_or_else(failed)?
+        .data_limits();
+    let value = read_data(receipt, result_limits).map_err(|_| failed())?;
     program
         .inputs()
-        .validate_step_result("0:9", &value)
+        .validate_step_result_with_limits("0:9", &value, result_limits)
         .map_err(|_| failed())?;
-    let input = read(
+    let input = read_data(
         definition.input["request_json"]
             .as_str()
             .ok_or_else(failed)?,
+        definition.original_input_limits,
     )
     .map_err(|_| failed())?;
     if crate::prefix_generations::canonical(&value).map_err(|_| failed())? != receipt
@@ -310,19 +338,24 @@ pub(crate) async fn verify_receipt(
                 .ok_or_else(failed)?,
         )
         .map_err(|_| failed())?;
-        if port_answer_checksum(&recorded).map_err(|_| failed())?
-            != port_answer_checksum(actual).map_err(|_| failed())?
+        let limits = execution
+            .observations()
+            .get(step)
+            .ok_or_else(failed)?
+            .data_limits();
+        if port_answer_checksum_with_limits(&recorded, limits).map_err(|_| failed())?
+            != port_answer_checksum_with_limits(actual, limits).map_err(|_| failed())?
         {
             return Err(failed());
         }
         let PortAnswer::Return { value: output } = actual else {
             return Err(failed());
         };
-        let arguments = read(&row.get::<_, String>(2)).map_err(|_| failed())?;
+        let arguments = read_data(&row.get::<_, String>(2), limits).map_err(|_| failed())?;
         match step.as_str() {
             "0:5" => {
-                let texts =
-                    read(arguments["data"].as_str().ok_or_else(failed)?).map_err(|_| failed())?;
+                let texts = read_data(arguments["data"].as_str().ok_or_else(failed)?, limits)
+                    .map_err(|_| failed())?;
                 if arguments["operation"] != "sha256_utf8"
                     || texts.as_array().is_none_or(|texts| texts.len() != 2)
                     || texts[1] != input["original_template"]
@@ -342,7 +375,8 @@ pub(crate) async fn verify_receipt(
                 }
             }
             "0:7" => {
-                let observed = read(output.as_str().ok_or_else(failed)?).map_err(|_| failed())?;
+                let observed =
+                    read_data(output.as_str().ok_or_else(failed)?, limits).map_err(|_| failed())?;
                 if arguments["specification"] != input["specification"]
                     || arguments["artifact_set"] != input["artifact_set"]
                     || arguments["probes_json"] != input["probes_json"]

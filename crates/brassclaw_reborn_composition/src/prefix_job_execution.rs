@@ -17,6 +17,7 @@ use crate::prefix_job_definitions::Definition;
 
 pub(crate) enum ReceiptContract {
     Generation,
+    ModelSetup,
     Measurement,
     PairCases {
         source: Arc<crate::prefix_pair_case_capture::CapturedPairCases>,
@@ -41,12 +42,13 @@ fn invalid() -> PortFailure {
 }
 /// Source metadata must describe the actual qualified compiler procedures.
 /// References remain data; this check neither trusts their prose nor executes it.
-pub(crate) fn validate_snapshot(profile: &str, bytes: &str) -> Result<(), PortFailure> {
-    let snapshot = brassclaw_skills::value_contract::strict_json(
-        bytes,
-        brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
-    )
-    .map_err(|_| invalid())?;
+pub(crate) fn validate_snapshot(
+    profile: &str,
+    bytes: &str,
+    limits: brassclaw_skills::value_contract::ContractLimits,
+) -> Result<(), PortFailure> {
+    let snapshot =
+        brassclaw_skills::value_contract::strict_json(bytes, limits).map_err(|_| invalid())?;
     let procedures = serde_json::json!({
         "compiler/entry.py":brassclaw_skills::prefix_compiler_components::COMPILER_SOURCE,
         "compiler/prefix_render.py":brassclaw_skills::prefix_reference_components::REFERENCE_RENDER_SOURCE,
@@ -77,6 +79,7 @@ impl InternalRecipeSource for Invocation {
     fn name(&self) -> &str {
         match &self.receipt_contract {
             ReceiptContract::Generation => "prefix-generation",
+            ReceiptContract::ModelSetup => "provider-model-setup",
             ReceiptContract::Measurement => "prefix-measurement",
             ReceiptContract::PairCases { .. } => "prefix-pair-cases",
         }
@@ -85,7 +88,12 @@ impl InternalRecipeSource for Invocation {
         &self.reference
     }
     fn requires_step_observations(&self) -> bool {
-        matches!(&self.receipt_contract, ReceiptContract::PairCases { .. })
+        matches!(
+            &self.receipt_contract,
+            ReceiptContract::PairCases { .. }
+                | ReceiptContract::ModelSetup
+                | ReceiptContract::Measurement
+        )
     }
     async fn select(&self) -> Result<SelectedMontyRecipe, PortFailure> {
         Ok(SelectedMontyRecipe {
@@ -109,6 +117,18 @@ impl InternalRecipeSource for Invocation {
     ) -> Result<(), PortFailure> {
         if !std::ptr::eq(selected, self.inspected.as_ref()) {
             return Err(invalid());
+        }
+        if matches!(&self.receipt_contract, ReceiptContract::ModelSetup) {
+            if self.definition.operation != "bootstrap_setup" {
+                return Err(invalid());
+            }
+            return crate::prefix_bootstrap_setup::verify_execution(
+                &self.definition.input,
+                receipt,
+                execution,
+            )
+            .map(|_| ())
+            .map_err(|_| invalid());
         }
         if let ReceiptContract::PairCases {
             source,
@@ -190,7 +210,7 @@ impl InternalRecipeSource for Invocation {
         // The package validator separately checks originals, manifests and maps.
         let snapshot = brassclaw_skills::value_contract::strict_json(
             expected,
-            brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
+            self.definition.original_input_limits,
         )
         .map_err(|_| invalid())?;
         if archived != crate::prefix_generations::canonical(&snapshot).map_err(|_| invalid())? {

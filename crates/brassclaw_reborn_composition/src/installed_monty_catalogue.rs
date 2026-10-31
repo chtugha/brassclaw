@@ -164,6 +164,7 @@ pub(crate) struct InstalledMontyCatalogue {
     pub(super) _measurement_program: Option<Arc<InspectedRetainedProgram>>,
     pub(super) _pair_case_candidate: Arc<InspectedRetainedProgram>,
     pub(super) _pair_case_program: Option<Arc<InspectedRetainedProgram>>,
+    pub(crate) setup_qualification: crate::bootstrap_setup_approval::Qualification,
     pub(super) pair_case_qualification:
         Option<crate::bootstrap_pair_approval::BootstrapPairQualification>,
     pub(super) measurement_qualification:
@@ -570,6 +571,13 @@ impl InstalledMontyCatalogue {
         let measurement_program = measurement_qualification
             .as_ref()
             .map(|qualification| qualification.program());
+        let setup_qualification = Box::pin(crate::bootstrap_setup_approval::qualify(
+            pool.clone(),
+            kernel.clone(),
+            worker,
+            preparation,
+        ))
+        .await?;
         let pair_case_candidate = crate::prefix_pair_candidates::retain(
             pool.clone(),
             kernel.as_ref(),
@@ -921,6 +929,7 @@ impl InstalledMontyCatalogue {
             _pair_case_candidate: pair_case_candidate,
             _pair_case_program: pair_case_program,
             pair_case_qualification,
+            setup_qualification,
             generation_approvals,
             compiler_approval,
             encoding_approvals,
@@ -1094,6 +1103,24 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             return Ok(None);
         };
         let reference = format!("prefix-job:{}", definition.id);
+        if definition.operation == "bootstrap_setup" {
+            if input.user_input != reference
+                || definition.scope != context.scope
+                || definition.created_by
+                    != context.actor.as_ref().ok_or_else(failed)?.user_id.as_str()
+                || definition.mode != "target"
+            {
+                return Err(failed());
+            }
+            // Exact closed model-free owner only. PrefixFreeWorkflow remains
+            // rejected by its existing separate native qualification boundary.
+            return crate::prefix_bootstrap_setup::select(
+                self, host, admission, definition, reference,
+            )
+            .await
+            .map(Some)
+            .map_err(|_| failed());
+        }
         if definition.operation == "measure" {
             if input.user_input != reference
                 || definition.scope != context.scope
@@ -1144,6 +1171,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             definition.input["snapshot_bytes"]
                 .as_str()
                 .ok_or_else(failed)?,
+            definition.original_input_limits,
         )
         .map_err(|_| failed())?;
         let inspected = self._compiler_program.as_ref().ok_or_else(failed)?.clone();
@@ -1631,6 +1659,21 @@ fn bootstrap_builtin_tools(
         answers: native_answers::NativeToolAnswers::default(),
         model_responses: None,
     }))
+}
+
+/// Bind the existing native Tool-port owner to a proven zero-Tool workflow.
+/// This is not a general pure approval or a new dispatch implementation.
+pub(crate) fn bootstrap_setup_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    if !program.bindings().is_empty() {
+        return Err(invalid("setup workflow must remain model/Tool free"));
+    }
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, false)
 }
 
 pub(crate) fn bootstrap_compiler_tools(

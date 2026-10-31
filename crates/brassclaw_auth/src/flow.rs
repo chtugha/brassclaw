@@ -474,3 +474,20 @@ pub fn flow_matches_turn_gate_query(flow: &AuthFlowRecord, query: &TurnGateAuthF
 pub fn credential_status_for_completed_flow() -> CredentialAccountStatus {
     CredentialAccountStatus::Configured
 }
+
+/// Shared terminal credential-flow update after the owning caller has validated
+/// and persisted the actual account. No account/grant/secret write is performed.
+pub(crate) fn complete_credential_flow(
+    flow: &mut AuthFlowRecord,
+    account_id: CredentialAccountId,
+    code: AuthorizationCodeHash,
+    verifier: crate::PkceVerifierHash,
+    now: Timestamp,
+) {
+    flow.status = AuthFlowStatus::Completed;
+    flow.error = None;
+    flow.updated_at = now;
+    flow.credential_account_id = Some(account_id);
+    flow.authorization_code_hash = Some(code);
+    flow.pkce_verifier_hash = Some(verifier);
+}

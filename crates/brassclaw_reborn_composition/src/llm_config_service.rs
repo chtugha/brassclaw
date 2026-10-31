@@ -17,7 +17,6 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use brassclaw_llm::ProviderRole;
 use brassclaw_llm::registry::{ProviderDefinition, ProviderProtocol, ProviderRegistry};
-use brassclaw_llm::{OpenAiCodexConfig, OpenAiCodexSessionManager};
 use brassclaw_product_workflow::{
     CodexLoginStart, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
     LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, LlmProviderView,
@@ -32,8 +31,6 @@ use crate::LlmKeyStore;
 use crate::llm_catalog::resolve_against_registry_with_credentials;
 
 const NEARAI_LOGIN_STATE_TTL: Duration = Duration::from_secs(15 * 60);
-const CODEX_LOGIN_ATTEMPT_TTL: Duration = Duration::from_secs(15 * 60);
-
 #[path = "provider_login.rs"]
 mod provider_login;
 use provider_login::NearAiLoginContext;
@@ -79,14 +76,6 @@ impl NearAiLoginStateStore {
     }
 }
 
-#[derive(Debug, Clone)]
-struct CodexLoginAttempt {
-    id: uuid::Uuid,
-    user_code: String,
-    verification_uri: String,
-    expires_at: Instant,
-}
-
 /// Live-reload seam. The runtime supplies an impl that re-resolves the LLM
 /// config (including any stored key) and atomically swaps the running
 /// provider's inner backend; tests / unwired runtimes leave it absent.
@@ -120,6 +109,8 @@ struct CapturedProbe {
 /// Requires a Postgres pool and provider repo; there is no file-based fallback.
 pub struct RebornLlmConfigService {
     publication: Arc<tokio::sync::Mutex<()>>,
+    #[cfg(feature = "skills-db")]
+    bootstrap_runtime: std::sync::OnceLock<std::sync::Weak<crate::RebornRuntime>>,
     keys: LlmKeyStore,
     reload: Option<Arc<dyn LlmReloadTrigger>>,
     memory_embedding_source: Option<Arc<dyn brassclaw_memory::EmbeddingProviderSource>>,
@@ -129,7 +120,6 @@ pub struct RebornLlmConfigService {
     /// reload. Absent when the runtime has no LLM seam wired.
     nearai_session: Option<Arc<brassclaw_llm::SessionManager>>,
     nearai_login_states: Arc<NearAiLoginStateStore>,
-    codex_login_attempts: Arc<tokio::sync::Mutex<HashMap<String, CodexLoginAttempt>>>,
     /// Postgres pool for writing/reading role assignments to `brassclaw_config`.
     pg_pool: Arc<brassclaw_pg::PgPool>,
     /// DB-backed provider repo (exclusive source of truth for all providers).
@@ -192,10 +182,60 @@ impl RebornLlmConfigService {
         Ok(original)
     }
 
+    #[cfg(feature = "skills-db")]
+    pub(crate) fn attach_prefix_bootstrap(
+        &self,
+        runtime: std::sync::Weak<crate::RebornRuntime>,
+    ) -> Result<(), LlmConfigServiceError> {
+        if let Some(original) = self.bootstrap_runtime.get() {
+            if !original.ptr_eq(&runtime) {
+                return Err(LlmConfigServiceError::Unavailable);
+            }
+            return Ok(());
+        }
+        match self.bootstrap_runtime.set(runtime) {
+            Ok(()) => Ok(()),
+            Err(runtime)
+                if self
+                    .bootstrap_runtime
+                    .get()
+                    .is_some_and(|original| original.ptr_eq(&runtime)) =>
+            {
+                Ok(())
+            }
+            Err(_) => Err(LlmConfigServiceError::Unavailable),
+        }
+    }
+    #[cfg(feature = "skills-db")]
+    fn bootstrap_runtime(
+        &self,
+    ) -> Result<Option<Arc<crate::RebornRuntime>>, LlmConfigServiceError> {
+        self.bootstrap_runtime
+            .get()
+            .map(|weak| weak.upgrade().ok_or(LlmConfigServiceError::Unavailable))
+            .transpose()
+    }
+    #[cfg(feature = "skills-db")]
+    async fn finish_bootstrap(
+        &self,
+        receipt: &brassclaw_product_workflow::ProviderMutationReceipt,
+    ) -> Result<(), LlmConfigServiceError> {
+        if let Some(id) = receipt.bootstrap_job_id {
+            let runtime = self
+                .bootstrap_runtime()?
+                .ok_or(LlmConfigServiceError::Unavailable)?;
+            runtime.admit_provider_bootstrap(id).await?;
+        }
+        Ok(())
+    }
     async fn finish_provider_mutation(
         &self,
         receipt: brassclaw_product_workflow::ProviderMutationReceipt,
     ) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
+        // After commit only. A lost admission acknowledgement/reconnect uses
+        // the original stored job; publication errors cannot skip this handoff.
+        #[cfg(feature = "skills-db")]
+        let bootstrap = self.finish_bootstrap(&receipt).await;
         // Reconcile current desired configuration; never republish the old
         // request's selection over a later writer. Its receipt stays original.
         match receipt.selected_role {
@@ -218,6 +258,8 @@ impl RebornLlmConfigService {
                 embedding?;
             }
         }
+        #[cfg(feature = "skills-db")]
+        bootstrap?;
         let mut snapshot = self.build_snapshot().await?;
         snapshot.mutation_receipt = Some(receipt);
         Ok(snapshot)
@@ -231,13 +273,14 @@ impl RebornLlmConfigService {
     ) -> Self {
         Self {
             publication: Arc::new(tokio::sync::Mutex::new(())),
+            #[cfg(feature = "skills-db")]
+            bootstrap_runtime: std::sync::OnceLock::new(),
             keys,
             reload: None,
             memory_embedding_source: None,
             embedding_publication: None,
             nearai_session: None,
             nearai_login_states: Arc::new(NearAiLoginStateStore::new()),
-            codex_login_attempts: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             pg_pool,
             pg_provider_repo,
             db_tenant_id: db_tenant_id.into(),
@@ -336,7 +379,7 @@ impl RebornLlmConfigService {
         provider_id: &str,
         model: Option<&str>,
         role: ProviderRole,
-    ) -> Result<(), LlmConfigServiceError> {
+    ) -> Result<Option<crate::llm_catalog::PreparedProviderSelection>, LlmConfigServiceError> {
         let captured =
             crate::RebornProviderAdmin::new(self.pg_pool.as_ref().clone(), &self.db_tenant_id)
                 .capture_selection(
@@ -352,28 +395,49 @@ impl RebornLlmConfigService {
                 .map_err(|_| LlmConfigServiceError::Unavailable)?
                 .ok_or(LlmConfigServiceError::NotFound)?;
         if role == ProviderRole::Embedding {
-            crate::factory::build_embeddings_config_from_provider(&captured.definition, captured.selection.model, captured.credential)
-                .map_err(|_| LlmConfigServiceError::InvalidRequest {
-                    field: Some("provider".into()),
-                    reason: "Complete the selected embedding adapter, endpoint, credentials and model dimension before selecting it.".into(),
-                })?;
-        } else {
-            drop(
-                self.build_sempai_selection(captured)
-                    .await
-                    .map_err(|_| LlmConfigServiceError::Unavailable)?,
-            );
+            crate::factory::build_embeddings_config_from_provider(
+                &captured.definition,
+                captured.selection.model,
+                captured.credential,
+            )
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            return Ok(None);
         }
-        Ok(())
+        let (provider, mut prepared) = self
+            .prepare_retained_provider(captured)
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        drop(provider);
+        // Explicit Use will persist this actual resolved model. Runtime restore
+        // below retains the original stored slot/configuration-ref semantics.
+        let crate::llm_catalog::PreparedProviderOrigin::Retained {
+            definition,
+            selection,
+            revision,
+            credential_ref,
+        } = &mut prepared.origin
+        else {
+            return Err(LlmConfigServiceError::Unavailable);
+        };
+        selection.model = Some(prepared.config.active_model_name());
+        *revision = crate::provider_admin::selection_revision(
+            &self.db_tenant_id,
+            selection,
+            definition,
+            revision.definition_revision,
+            credential_ref.as_deref(),
+        )
+        .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        Ok(Some(prepared))
     }
 
-    async fn build_sempai_selection(
+    async fn prepare_retained_provider(
         &self,
         captured: crate::provider_admin::CapturedProviderSelection,
     ) -> Result<
         (
             Arc<dyn brassclaw_llm::LlmProvider>,
-            brassclaw_llm::ProviderSelectionRevision,
+            crate::llm_catalog::PreparedProviderSelection,
         ),
         String,
     > {
@@ -384,8 +448,8 @@ impl RebornLlmConfigService {
             &captured,
         )
         .map_err(|_| "stored Sempai compatibility could not be captured".to_string())?;
-        let registry = ProviderRegistry::new(vec![captured.definition]);
-        let config = crate::llm_catalog::resolve_against_registry_with_credentials(
+        let registry = ProviderRegistry::new(vec![captured.definition.clone()]);
+        let config = resolve_against_registry_with_credentials(
             &captured.selection,
             &registry,
             captured.credential,
@@ -398,6 +462,35 @@ impl RebornLlmConfigService {
             brassclaw_llm::build_static_provider_chain_with_guard(&config, session, guard)
                 .await
                 .map_err(|_| "stored Sempai provider could not be constructed".to_string())?;
+        Ok((
+            provider,
+            crate::llm_catalog::PreparedProviderSelection {
+                config,
+                origin: crate::llm_catalog::PreparedProviderOrigin::Retained {
+                    definition: captured.definition,
+                    selection: captured.selection,
+                    revision,
+                    credential_ref: captured.credential_ref,
+                },
+            },
+        ))
+    }
+
+    async fn build_sempai_selection(
+        &self,
+        captured: crate::provider_admin::CapturedProviderSelection,
+    ) -> Result<
+        (
+            Arc<dyn brassclaw_llm::LlmProvider>,
+            brassclaw_llm::ProviderSelectionRevision,
+        ),
+        String,
+    > {
+        let (provider, prepared) = self.prepare_retained_provider(captured).await?;
+        let crate::llm_catalog::PreparedProviderOrigin::Retained { revision, .. } = prepared.origin
+        else {
+            return Err("stored provider preparation origin differs".into());
+        };
         Ok((provider, revision))
     }
 
@@ -1035,93 +1128,24 @@ impl LlmConfigService for RebornLlmConfigService {
         })
     }
 
+    // The native Codex device-login path is owned by Root's native auth
+    // publication owner. Legacy session-file polling is retired here; the
+    // new trait contract accepts a SetActiveLlmRequest and returns the
+    // mutation-scoped start record. That wiring is not yet complete.
     async fn start_codex_login(
         &self,
-        caller: WebUiAuthenticatedCaller,
+        _caller: WebUiAuthenticatedCaller,
+        _request: brassclaw_product_workflow::SetActiveLlmRequest,
     ) -> Result<CodexLoginStart, LlmConfigServiceError> {
-        let attempt_key = codex_login_attempt_key(&caller);
-        let now = Instant::now();
-        {
-            let mut attempts = self.codex_login_attempts.lock().await;
-            attempts.retain(|_, attempt| attempt.expires_at > now);
-            if let Some(attempt) = attempts.get(&attempt_key) {
-                return Ok(CodexLoginStart {
-                    user_code: attempt.user_code.clone(),
-                    verification_uri: attempt.verification_uri.clone(),
-                });
-            }
-        }
+        Err(LlmConfigServiceError::Unavailable)
+    }
 
-        // Point the login manager at the same session file the live openai_codex
-        // provider reads on reload (mirror resolution.rs env precedence). The
-        // model is irrelevant to the device-code flow, so leave it defaulted.
-        let codex_config = OpenAiCodexConfig::build(
-            None,
-            nonempty_env("OPENAI_CODEX_AUTH_URL"),
-            nonempty_env("OPENAI_CODEX_API_URL"),
-            nonempty_env("OPENAI_CODEX_CLIENT_ID"),
-            nonempty_env("OPENAI_CODEX_SESSION_PATH").map(std::path::PathBuf::from),
-            None,
-        );
-        let manager = OpenAiCodexSessionManager::new(codex_config)
-            .map_err(|_| LlmConfigServiceError::Internal)?;
-        let start = manager
-            .initiate_device_code()
-            .await
-            .map_err(|_| LlmConfigServiceError::Internal)?;
-
-        let login = CodexLoginStart {
-            user_code: start.user_code.clone(),
-            verification_uri: start.verification_uri.clone(),
-        };
-        let attempt_id = uuid::Uuid::new_v4();
-        {
-            let mut attempts = self.codex_login_attempts.lock().await;
-            attempts.insert(
-                attempt_key.clone(),
-                CodexLoginAttempt {
-                    id: attempt_id,
-                    user_code: login.user_code.clone(),
-                    verification_uri: login.verification_uri.clone(),
-                    expires_at: Instant::now() + CODEX_LOGIN_ATTEMPT_TTL,
-                },
-            );
-        }
-
-        // Poll for authorization off-thread: persist the tokens, make Codex the
-        // active provider, and hot-swap the running provider. The frontend polls
-        // the snapshot until openai_codex is active. The DB config is the source
-        // of truth, so a reload failure still applies on restart.
-        let reload = self.reload.clone();
-        let attempts = Arc::clone(&self.codex_login_attempts);
-        let codex_pool = self.pg_pool.clone();
-        let codex_tenant = self.db_tenant_id.clone();
-        let publication = Arc::clone(&self.publication);
-        tokio::spawn(async move {
-            if let Err(error) = manager.complete_device_code(&start).await {
-                tracing::debug!(%error, "codex device login did not complete");
-                remove_codex_attempt_if_current(&attempts, &attempt_key, attempt_id).await;
-                return;
-            }
-            let _publication = publication.lock().await;
-            if !remove_codex_attempt_if_current(&attempts, &attempt_key, attempt_id).await {
-                tracing::debug!("codex login completed after a newer attempt superseded it");
-                return;
-            }
-            if let Err(error) =
-                write_kohai_selection_to_db(&codex_pool, &codex_tenant, "openai_codex", None).await
-            {
-                tracing::debug!(%error, "codex login: could not set active provider");
-                return;
-            }
-            if let Some(reload) = reload
-                && let Err(error) = reload.reload().await
-            {
-                tracing::debug!(%error, "codex login: live reload failed; applies on restart");
-            }
-        });
-
-        Ok(login)
+    async fn codex_login_status(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _id: uuid::Uuid,
+    ) -> Result<brassclaw_product_workflow::CodexLoginStatus, LlmConfigServiceError> {
+        Err(LlmConfigServiceError::Unavailable)
     }
 
     async fn start_nearai_wallet_login(
@@ -1139,36 +1163,6 @@ impl LlmConfigService for RebornLlmConfigService {
     ) -> Result<NearAiWalletLoginResult, LlmConfigServiceError> {
         self.finish_nearai_wallet_login(request).await
     }
-}
-
-/// Read an env var, treating empty/whitespace as absent. Mirrors the precedence
-/// `brassclaw_llm::resolution` uses so the Codex login manager resolves the same
-/// session path / client id / auth URL as the live provider.
-fn nonempty_env(key: &str) -> Option<String> {
-    std::env::var(key)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn codex_login_attempt_key(caller: &WebUiAuthenticatedCaller) -> String {
-    format!("{}:{}", caller.tenant_id.as_str(), caller.user_id.as_str())
-}
-
-async fn remove_codex_attempt_if_current(
-    attempts: &tokio::sync::Mutex<HashMap<String, CodexLoginAttempt>>,
-    key: &str,
-    attempt_id: uuid::Uuid,
-) -> bool {
-    let mut attempts = attempts.lock().await;
-    let Some(attempt) = attempts.get(key) else {
-        return false;
-    };
-    if attempt.id != attempt_id {
-        return false;
-    }
-    attempts.remove(key);
-    true
 }
 
 /// Server route prefix handed to NEAR AI as `frontend_callback`, with an issued
@@ -1204,6 +1198,7 @@ fn sanitize_origin(raw: &str) -> Option<String> {
 /// Used from background tasks (Codex login, NEAR AI wallet login) that lack
 /// `self` access. Postgres is required — `pg_pool` is a mandatory field on
 /// `RebornLlmConfigService` after the V047/V048 migration.
+#[cfg(test)]
 pub(crate) async fn write_kohai_selection_to_db(
     pool: &Arc<brassclaw_pg::PgPool>,
     tenant_id: &str,
@@ -1540,16 +1535,54 @@ impl RebornLlmConfigService {
                 });
             }
         }
+        #[cfg(feature = "skills-db")]
+        let bootstrap_runtime = if request.set_active {
+            self.bootstrap_runtime()?
+        } else {
+            None
+        };
+        let mut prepared = None;
         // Reactivation is explicit and verifies the retained authentication and
         // adapter configuration. Draft/new inactive setup can remain incomplete.
         if request.set_active || existing.as_ref().is_some_and(|row| row.inactive) {
-            let key = if has_new_key {
-                request.api_key.clone()
+            // Authenticate the original generation before constructing a client;
+            // release all DB resources before any SDK/session preparation.
+            let (key, credential) = if has_new_key {
+                let material = request
+                    .api_key
+                    .clone()
+                    .ok_or(LlmConfigServiceError::Unavailable)?;
+                (
+                    Some(material.clone()),
+                    crate::llm_catalog::PreparedCredentialOrigin::Supplied { material },
+                )
             } else {
-                self.keys
-                    .read(&id)
+                let mut client = self
+                    .pg_pool
+                    .get()
                     .await
-                    .map_err(|_| LlmConfigServiceError::Unavailable)?
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?;
+                let tx = client
+                    .transaction()
+                    .await
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?;
+                let authenticated_ref = self
+                    .keys
+                    .record_reference_in_transaction(&tx, &id)
+                    .await
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?;
+                let material = self
+                    .keys
+                    .read_in_transaction(&tx, &id)
+                    .await
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?;
+                tx.commit()
+                    .await
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?;
+                (
+                    material,
+                    crate::llm_catalog::PreparedCredentialOrigin::Unchanged { authenticated_ref },
+                )
             };
             let selection = LlmSlotSelection {
                 provider_id: Some(id.clone()),
@@ -1567,6 +1600,16 @@ impl RebornLlmConfigService {
                     .await
                     .map_err(|_| LlmConfigServiceError::Unavailable)?,
             );
+            let mut selection = selection;
+            selection.model = Some(config.active_model_name());
+            prepared = Some(crate::llm_catalog::PreparedProviderSelection {
+                config,
+                origin: crate::llm_catalog::PreparedProviderOrigin::Draft {
+                    definition: definition.clone(),
+                    selection,
+                    credential,
+                },
+            });
         }
 
         // Definition, encrypted key and requested primary selection share one
@@ -1574,6 +1617,14 @@ impl RebornLlmConfigService {
         if request.set_active && self.reload.is_none() {
             return Err(LlmConfigServiceError::Unavailable);
         }
+        #[cfg(feature = "skills-db")]
+        let bootstrap_prepared = if let Some(runtime) = &bootstrap_runtime {
+            Some(runtime.prepare_provider_bootstrap().await?)
+        } else {
+            None
+        };
+        // Keep RC: mutation.lock waits then reads the committed original; the
+        // role owner checks current values including previously absent keys.
         let mut client = self
             .pg_pool
             .get()
@@ -1606,31 +1657,116 @@ impl RebornLlmConfigService {
                 }
                 _ => LlmConfigServiceError::Unavailable,
             })?;
+        let prepared_revision = if let Some(prepared) = &prepared {
+            let crate::llm_catalog::PreparedProviderOrigin::Draft {
+                definition,
+                selection,
+                credential,
+            } = &prepared.origin
+            else {
+                return Err(LlmConfigServiceError::Unavailable);
+            };
+            if serde_json::to_value(definition).map_err(|_| LlmConfigServiceError::Unavailable)?
+                != serde_json::to_value(&retained.definition)
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?
+            {
+                return Err(LlmConfigServiceError::Conflict {
+                    reason: "Committed definition differs from prepared provider.".into(),
+                });
+            }
+            match credential {
+                crate::llm_catalog::PreparedCredentialOrigin::Unchanged { authenticated_ref } => {
+                    let current = self
+                        .keys
+                        .record_reference_in_transaction(&transaction, &id)
+                        .await
+                        .map_err(|_| LlmConfigServiceError::Unavailable)?;
+                    if &current != authenticated_ref {
+                        return Err(LlmConfigServiceError::Conflict {
+                            reason: "Authentication changed during provider preparation.".into(),
+                        });
+                    }
+                }
+                crate::llm_catalog::PreparedCredentialOrigin::Supplied { material } => {
+                    self.keys
+                        .put_in_transaction(&transaction, &id, material.clone())
+                        .await
+                        .map_err(|_| LlmConfigServiceError::Unavailable)?;
+                }
+            }
+            let credential_ref = self
+                .keys
+                .record_reference_in_transaction(&transaction, &id)
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            let revision = crate::provider_admin::selection_revision(
+                &self.db_tenant_id,
+                selection,
+                &retained.definition,
+                retained.revision,
+                credential_ref.as_deref(),
+            )
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            if revision.model != prepared.config.active_model_name() {
+                return Err(LlmConfigServiceError::Unavailable);
+            }
+            Some(revision)
+        } else {
+            if has_new_key && let Some(key) = request.api_key {
+                self.keys
+                    .put_in_transaction(&transaction, &id, key)
+                    .await
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            }
+            None
+        };
         if let Some(expected) = expected_selection_ref.as_deref() {
+            let prepared = prepared_revision
+                .as_ref()
+                .ok_or(LlmConfigServiceError::Unavailable)?;
             crate::db_config::save_model_selection_in_transaction(
                 &transaction,
                 &self.db_tenant_id,
                 "kohai",
                 expected,
                 Some(id.as_str()),
-                request.model.as_deref().filter(|model| !model.is_empty()),
+                Some(prepared.model.as_str()),
             )
             .await
             .map_err(map_selection_edit)?;
         }
-        if has_new_key && let Some(key) = request.api_key {
-            self.keys
-                .put_in_transaction(&transaction, &id, key)
-                .await
-                .map_err(|_| LlmConfigServiceError::Unavailable)?;
-        }
+        #[cfg(feature = "skills-db")]
+        let bootstrap_job_id = if let (Some(runtime), Some(bootstrap), Some(prepared)) =
+            (&bootstrap_runtime, &bootstrap_prepared, &prepared_revision)
+        {
+            Some(
+                runtime
+                    .reserve_provider_bootstrap(
+                        &transaction,
+                        bootstrap,
+                        mutation.id(),
+                        caller,
+                        &retained,
+                        &prepared.model,
+                    )
+                    .await?,
+            )
+        } else {
+            None
+        };
+        #[cfg(not(feature = "skills-db"))]
+        let bootstrap_job_id = None;
         let receipt = mutation
-            .record(
+            .record_with_links(
                 &transaction,
                 &self.db_tenant_id,
                 caller.user_id.as_str(),
                 Some((&id, retained.revision)),
                 &self.keys,
+                crate::provider_mutation::ProviderMutationLinks {
+                    bootstrap_job_id,
+                    ..Default::default()
+                },
             )
             .await?;
         transaction
@@ -1731,6 +1867,14 @@ impl RebornLlmConfigService {
         {
             return Err(LlmConfigServiceError::Unavailable);
         }
+        #[cfg(feature = "skills-db")]
+        let bootstrap_runtime =
+            if role != ProviderRole::Embedding && !request.provider_id.trim().is_empty() {
+                self.bootstrap_runtime()?
+            } else {
+                None
+            };
+        let mut prepared = None;
         let selected = if request.provider_id.trim().is_empty() {
             None
         } else {
@@ -1755,14 +1899,19 @@ impl RebornLlmConfigService {
             }
             // Construct outside the DB transaction. The selected definition is
             // fenced again under a row lock before recording this publication.
-            self.prepare_provider_selection(
-                &selected.definition.id,
-                request.model.as_deref(),
-                role,
-            )
-            .await?;
+            prepared = self
+                .prepare_provider_selection(&selected.definition.id, request.model.as_deref(), role)
+                .await?;
             Some(selected)
         };
+        #[cfg(feature = "skills-db")]
+        let bootstrap_prepared = if let Some(runtime) = &bootstrap_runtime {
+            Some(runtime.prepare_provider_bootstrap().await?)
+        } else {
+            None
+        };
+        // Keep RC: mutation.lock waits then reads the committed original; the
+        // role owner checks current values including previously absent keys.
         let mut client = self
             .pg_pool
             .get()
@@ -1798,27 +1947,90 @@ impl RebornLlmConfigService {
                 });
             }
         }
+        if let Some(prepared) = &prepared {
+            let crate::llm_catalog::PreparedProviderOrigin::Retained {
+                definition,
+                selection,
+                revision,
+                credential_ref,
+            } = &prepared.origin
+            else {
+                return Err(LlmConfigServiceError::Unavailable);
+            };
+            let selected = selected
+                .as_ref()
+                .ok_or(LlmConfigServiceError::Unavailable)?;
+            let actual_credential = self
+                .keys
+                .record_reference_in_transaction(&transaction, &definition.id)
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            if revision.definition_revision != selected.revision
+                || definition.id != selected.definition.id
+                || serde_json::to_value(definition)
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?
+                    != serde_json::to_value(&selected.definition)
+                        .map_err(|_| LlmConfigServiceError::Unavailable)?
+                || &actual_credential != credential_ref
+                || revision.model != prepared.config.active_model_name()
+                || selection.model.as_deref() != Some(revision.model.as_str())
+                || selection.provider_id.as_deref() != Some(definition.id.as_str())
+            {
+                return Err(LlmConfigServiceError::Conflict{reason:"Provider or authentication changed during preparation; reload before retrying.".into()});
+            }
+        }
         let role_name = match role {
             ProviderRole::Kohai => "kohai",
             ProviderRole::Sempai => "sempai",
             ProviderRole::Embedding => "embedding",
         };
         let provider = selected.as_ref().map(|row| row.definition.id.as_str());
-        let model = provider
-            .and(request.model.as_deref())
-            .filter(|model| !model.is_empty());
+        let model = prepared
+            .as_ref()
+            .map(|p| p.config.active_model_name())
+            .or_else(|| {
+                provider
+                    .and(request.model.as_deref())
+                    .filter(|model| !model.is_empty())
+                    .map(str::to_owned)
+            });
         crate::db_config::save_model_selection_in_transaction(
             &transaction,
             &self.db_tenant_id,
             role_name,
             expected_selection_ref,
             provider,
-            model,
+            model.as_deref(),
         )
         .await
         .map_err(map_selection_edit)?;
+        #[cfg(feature = "skills-db")]
+        let bootstrap_job_id =
+            if let (Some(runtime), Some(bootstrap), Some(selected), Some(_prepared)) = (
+                &bootstrap_runtime,
+                &bootstrap_prepared,
+                &selected,
+                &prepared,
+            ) {
+                Some(
+                    runtime
+                        .reserve_provider_bootstrap(
+                            &transaction,
+                            bootstrap,
+                            mutation.id(),
+                            caller,
+                            selected,
+                            model.as_deref().ok_or(LlmConfigServiceError::Unavailable)?,
+                        )
+                        .await?,
+                )
+            } else {
+                None
+            };
+        #[cfg(not(feature = "skills-db"))]
+        let bootstrap_job_id = None;
         let receipt = mutation
-            .record(
+            .record_with_links(
                 &transaction,
                 &self.db_tenant_id,
                 caller.user_id.as_str(),
@@ -1826,6 +2038,10 @@ impl RebornLlmConfigService {
                     .as_ref()
                     .map(|row| (row.definition.id.as_str(), row.revision)),
                 &self.keys,
+                crate::provider_mutation::ProviderMutationLinks {
+                    bootstrap_job_id,
+                    ..Default::default()
+                },
             )
             .await?;
         transaction

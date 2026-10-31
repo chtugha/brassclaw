@@ -7,6 +7,8 @@ import vm from "node:vm";
 const source = readFileSync(new URL("./oauth-original.js", import.meta.url), "utf8")
   .replace(/^import .*;$/gm, "").replace(/^export /gm, "");
 const sandbox = vm.createContext({ clientActionId: randomUUID, URL });
+const common = readFileSync(new URL("../../../lib/original-custody.js", import.meta.url), "utf8").replace(/^export /gm, "");
+vm.runInContext(common, sandbox);
 vm.runInContext(`${source}\nglobalThis.api={findOauthOriginal,retainOauthOriginal,recordOauthOriginal,renewOauthOriginal,oauthOriginalBody};`, sandbox);
 const { findOauthOriginal: find, retainOauthOriginal: rawRetain, recordOauthOriginal: record,
   renewOauthOriginal: rawRenew, oauthOriginalBody: body } = sandbox.api;

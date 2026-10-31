@@ -102,6 +102,7 @@ impl InMemoryAuthProductServices {
             requirement_setup: None,
             requirement_selection: None,
             requirement_source: None,
+            device_login: None,
         };
         let prepared = custody.attach_dcr_original(&flow, original)?;
         state.flow_custody.insert(flow.id, custody);

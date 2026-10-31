@@ -1,6 +1,10 @@
 mod credential;
 mod host_port;
+mod original_custody;
 mod pipeline;
+pub use original_custody::{
+    HostHttpOriginalCustody, HostHttpOriginalCustodyError, HostHttpOriginalEgress,
+};
 mod sanitize;
 
 use async_trait::async_trait;
@@ -181,6 +185,34 @@ where
                 }
                 if error.should_discard_staged_secret_injections() {
                     self.discard_staged_secret_injections(&scope, &capability_id);
+                }
+                Err(error.into_inner())
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl<N, S> HostHttpOriginalEgress for HostHttpEgressService<N, S>
+where
+    N: NetworkHttpEgress + Send + Sync,
+    S: SecretStore + Send + Sync,
+{
+    async fn execute_with_original_custody<'a>(
+        &'a self,
+        request: RuntimeHttpEgressRequest,
+        custody: Box<dyn HostHttpOriginalCustody + 'a>,
+    ) -> Result<RuntimeHttpEgressResponse, RuntimeHttpEgressError> {
+        let scope = request.scope.clone();
+        let capability = request.capability_id.clone();
+        match pipeline::execute_with_original_custody(self, request, custody).await {
+            Ok(response) => Ok(response),
+            Err(error) => {
+                if error.should_discard_staged_policy() {
+                    self.discard_staged_policy(&scope, &capability);
+                }
+                if error.should_discard_staged_secret_injections() {
+                    self.discard_staged_secret_injections(&scope, &capability);
                 }
                 Err(error.into_inner())
             }

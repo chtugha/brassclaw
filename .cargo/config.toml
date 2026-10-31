@@ -1,3 +1,7 @@
+# ── Build output directory (NVMe, not SSDE) ──────────────────────────────────
+[build]
+target-dir = "/Users/ollama/brassclaw-target"
+
 # ── Cross-compilation target ──────────────────────────────────────────────────
 [target.x86_64-unknown-linux-musl]
 linker = "x86_64-linux-musl-gcc"

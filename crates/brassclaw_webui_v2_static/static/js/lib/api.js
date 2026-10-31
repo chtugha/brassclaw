@@ -1,3 +1,5 @@
+import { readOriginalJson, writeOriginalJson } from "./original-custody.js";
+
 // WebChat v2 ingress client.
 //
 // Every function in this module targets a `/api/webchat/v2/*` route
@@ -14,6 +16,7 @@
 // envelope mirrors `RebornServicesError`.
 
 const TOKEN_KEY = "brassclaw_token";
+const AUTH_ORIGINAL_CONTEXT_KEY = "brassclaw_auth_original_context";
 const V2_BASE = "/api/webchat/v2";
 
 export class ApiError extends Error {
@@ -35,11 +38,42 @@ export function readStoredToken() {
 }
 
 export function storeToken(token) {
-  if (token) {
-    sessionStorage.setItem(TOKEN_KEY, token);
-  } else {
-    sessionStorage.removeItem(TOKEN_KEY);
+  const next = token || "", changed = next !== readStoredToken();
+  // Invalidate the old context BEFORE changing authentication. If a later
+  // storage operation fails, the invalid marker blocks new original POSTs.
+  if (changed) writeOriginalJson(sessionStorage, AUTH_ORIGINAL_CONTEXT_KEY, { version: 1, nonce: null });
+  if (next) sessionStorage.setItem(TOKEN_KEY, next);
+  else sessionStorage.removeItem(TOKEN_KEY);
+  if (readStoredToken() !== next) throw new Error("Authentication storage could not be verified.");
+  if (changed && next) writeOriginalJson(sessionStorage, AUTH_ORIGINAL_CONTEXT_KEY, { version: 1, nonce: clientActionId() });
+  else if (changed) {
+    sessionStorage.removeItem(AUTH_ORIGINAL_CONTEXT_KEY);
+    if (sessionStorage.getItem(AUTH_ORIGINAL_CONTEXT_KEY) !== null) throw new Error("Authentication context could not be verified.");
   }
+}
+
+// Nonsecret transport-original namespace, not another auth session or token.
+// Existing authenticated browser sessions get one verified legacy initialization.
+export function readOriginalAuthContext() {
+  if (!readStoredToken()) throw new Error("Authentication is required for an original login.");
+  const stored = readOriginalJson(sessionStorage, AUTH_ORIGINAL_CONTEXT_KEY);
+  const context = stored.present ? stored.value : writeOriginalJson(sessionStorage,
+    AUTH_ORIGINAL_CONTEXT_KEY, { version: 1, nonce: clientActionId() });
+  if (!context || Object.keys(context).length !== 2 || context.version !== 1 ||
+      typeof context.nonce !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(context.nonce) ||
+      context.nonce === "00000000-0000-0000-0000-000000000000") throw new Error("Authentication context could not be verified.");
+  const origin = globalThis.window?.location?.origin;
+  if (typeof origin !== "string" || !origin || origin === "null") throw new Error("Instance origin is unavailable.");
+  return { origin, nonce: context.nonce };
+}
+
+// The token is compared only in memory, never copied into original records.
+export function originalAuthContextIsCurrent(context, capturedToken) {
+  try {
+    if (readStoredToken() !== capturedToken) return false;
+    const current = readOriginalAuthContext();
+    return current.origin === context.origin && current.nonce === context.nonce;
+  } catch { return false; }
 }
 
 // Generate a canonical UUID for mutation identities, including exact Q2.

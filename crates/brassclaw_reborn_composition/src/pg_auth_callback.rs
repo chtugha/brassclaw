@@ -21,6 +21,18 @@ fn target(document: &StoredAuthFlow) -> CredentialAccountId {
         })
         .unwrap_or_else(|| CredentialAccountId::from_uuid(document.flow.id.as_uuid()))
 }
+pub(super) fn decode_scoped_flow(
+    scope: &AuthProductScope,
+    id: AuthFlowId,
+    data: serde_json::Value,
+) -> Result<StoredAuthFlow, AuthProductError> {
+    let document: StoredAuthFlow =
+        serde_json::from_value(data).map_err(|_| AuthProductError::BackendUnavailable)?;
+    if document.flow.id != id || !scope_matches(scope, &document.flow.scope) {
+        return Err(AuthProductError::CrossScopeDenied);
+    }
+    Ok(document)
+}
 pub(super) async fn locked_flow(
     transaction: &tokio_postgres::Transaction<'_>,
     scope: &AuthProductScope,
@@ -30,11 +42,7 @@ pub(super) async fn locked_flow(
         "SELECT data,revision FROM brassclaw_product_auth_flows WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
         &[&scope.resource.tenant_id.as_str(),&id.to_string()],
     ).await.map_err(db_err)?.ok_or(AuthProductError::UnknownOrExpiredFlow)?;
-    let document: StoredAuthFlow =
-        serde_json::from_value(row.get(0)).map_err(|_| AuthProductError::BackendUnavailable)?;
-    if document.flow.id != id || !scope_matches(scope, &document.flow.scope) {
-        return Err(AuthProductError::CrossScopeDenied);
-    }
+    let document = decode_scoped_flow(scope, id, row.get(0))?;
     Ok((document, row.get(1)))
 }
 pub(super) async fn locked_account(

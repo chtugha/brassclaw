@@ -110,6 +110,39 @@ pub(crate) struct ResolvedProviderSelection {
     pub guard: std::sync::Arc<dyn brassclaw_llm::ProviderDispatchGuard>,
 }
 
+/// Native preflight result only. A draft has no historical revision until the
+/// existing commit owner has stored and checked its exact prepared definition.
+#[cfg(feature = "postgres")]
+pub(crate) struct PreparedProviderSelection {
+    pub(crate) config: brassclaw_llm::LlmConfig,
+    pub(crate) origin: PreparedProviderOrigin,
+}
+#[cfg(feature = "postgres")]
+pub(crate) enum PreparedProviderOrigin {
+    Retained {
+        definition: ProviderDefinition,
+        selection: brassclaw_reborn_config::LlmSlotSelection,
+        revision: brassclaw_llm::ProviderSelectionRevision,
+        credential_ref: Option<String>,
+    },
+    Draft {
+        definition: ProviderDefinition,
+        selection: brassclaw_reborn_config::LlmSlotSelection,
+        credential: PreparedCredentialOrigin,
+    },
+}
+/// Provider-neutral custody of the credential actually used during preflight.
+/// No Serialize/Deserialize, caller flag, host-session fallback or plaintext hash.
+#[cfg(feature = "postgres")]
+pub(crate) enum PreparedCredentialOrigin {
+    Unchanged {
+        authenticated_ref: Option<String>,
+    },
+    Supplied {
+        material: brassclaw_secrets::SecretMaterial,
+    },
+}
+
 /// A bad optional model configuration blocks that usage, not instance
 /// administration or deterministic work. Database snapshot failures still fail
 /// startup; only a successfully captured optional role can be unavailable here.

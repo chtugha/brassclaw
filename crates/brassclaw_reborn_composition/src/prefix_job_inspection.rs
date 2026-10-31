@@ -7,6 +7,10 @@ use brassclaw_product_workflow::{
 use serde_json::Value;
 
 enum Lookup<'a> {
+    ModelSetup {
+        specification: &'a str,
+        setup_revision: u64,
+    },
     Profile(&'a str),
     Pair {
         specification: &'a str,
@@ -36,6 +40,26 @@ impl RebornRuntime {
             Lookup::Pair {
                 specification,
                 proposal,
+            },
+            id,
+        )
+        .await
+    }
+
+    pub async fn inspect_prefix_model_setup_job(
+        &self,
+        specification: &str,
+        setup_revision: u64,
+        id: Uuid,
+    ) -> Result<PrefixJobDetail, Error> {
+        crate::prefix_model_designs::hash(specification)?;
+        if setup_revision > brassclaw_product_workflow::PREFIX_SETUP_MAX_EXACT_INTEGER {
+            return Err(crate::prefix_model_designs::bad());
+        }
+        self.inspect_prefix_job_target(
+            Lookup::ModelSetup {
+                specification,
+                setup_revision,
             },
             id,
         )
@@ -73,6 +97,16 @@ impl RebornRuntime {
                             specification.as_str() == *expected_specification
                                 && proposal.as_str() == *expected_proposal
                         }
+                        (
+                            crate::prefix_job_definitions::Target::ModelSetup {
+                                specification,
+                                setup_revision,
+                            },
+                            Lookup::ModelSetup {
+                                specification: expected,
+                                setup_revision: revision,
+                            },
+                        ) => specification.as_str() == *expected && setup_revision == revision,
                         _ => false,
                     }
             })
@@ -90,6 +124,13 @@ impl RebornRuntime {
             } => PrefixJobTarget::Pair {
                 specification: specification.clone(),
                 proposal: proposal.clone(),
+            },
+            crate::prefix_job_definitions::Target::ModelSetup {
+                specification,
+                setup_revision,
+            } => PrefixJobTarget::ModelSetup {
+                specification: specification.clone(),
+                setup_revision: *setup_revision,
             },
         };
         let state = match self

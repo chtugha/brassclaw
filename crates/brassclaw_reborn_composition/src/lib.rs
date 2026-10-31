@@ -1137,9 +1137,13 @@ mod bootstrap_reply_approval;
 #[cfg(feature = "skills-db")]
 mod bootstrap_reply_validation;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_setup_approval;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_validation;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_workflow_evidence;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_bootstrap_setup;
 #[cfg(feature = "skills-db")]
 mod public_recipe_population;
 

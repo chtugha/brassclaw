@@ -1,5 +1,6 @@
 // Redacted original correlation only; no OAuth URL/state, token or raw reply is stored.
 import { clientActionId } from "../../../lib/api.js";
+import { readOriginalJson, writeOriginalJson } from "../../../lib/original-custody.js";
 
 const PREFIX = "brassclaw:extension-oauth-original:";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,10 +54,9 @@ export function oauthOriginalKey(context) {
   return PREFIX + JSON.stringify([checked.packageId, checked.requirement, context.invocationId]);
 }
 function read(context, storage) {
-  const key = oauthOriginalKey(context), text = storage.getItem(key);
-  if (text === null) return null;
-  let value;
-  try { value = JSON.parse(text); } catch { throw invalid(); }
+  const key = oauthOriginalKey(context), stored = readOriginalJson(storage, key, invalid);
+  if (!stored.present) return null;
+  const value = stored.value;
   const keys = ["version", "key", "definition", "flowId", "invocationId", "expiresAt", "receipt"];
   if (value?.version === 2) keys.push("target");
   if (!exact(value, keys) || ![1, 2].includes(value.version) || value.key !== key || !UUID.test(value.flowId) || value.invocationId !== context.invocationId ||
@@ -72,10 +72,7 @@ function read(context, storage) {
   return value;
 }
 function write(value, storage) {
-  const bytes = JSON.stringify(value);
-  storage.setItem(value.key, bytes);
-  if (storage.getItem(value.key) !== bytes) throw invalid();
-  return value;
+  return writeOriginalJson(storage, value.key, value, invalid);
 }
 export function findOauthOriginal(context, storage = globalThis.sessionStorage) {
   return read(context, storage);
