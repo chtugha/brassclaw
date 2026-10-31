@@ -93,6 +93,7 @@ pub struct PrefixRegenerateResponse {
 #[serde(deny_unknown_fields)]
 pub struct CapturePrefixModelRequest {
     pub provider_id: String,
+    #[serde(deserialize_with = "crate::instance_tools::revision_wire::deserialize_compatible")]
     pub expected_provider_revision: u64,
     pub model: String,
 }
@@ -325,6 +326,7 @@ pub struct RetainPrefixDesignProposalRequest {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MeasurePrefixRequest {
+    #[serde(deserialize_with = "crate::instance_tools::revision_wire::deserialize_compatible")]
     pub expected_profile_revision: u64,
     pub generation: String,
     pub proposal: String,
@@ -379,6 +381,7 @@ pub struct PrefixSourceInventory {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImportPrefixGenerationRequest {
+    #[serde(deserialize_with = "crate::instance_tools::revision_wire::deserialize_compatible")]
     pub expected_profile_revision: u64,
     /// Exact self-contained compiler package bytes, never a filesystem path.
     pub generation_bytes: String,
@@ -717,6 +720,83 @@ pub fn map_interceptor_config_error(
                 429,
                 true,
             )
+        }
+    }
+}
+
+#[cfg(test)]
+mod revision_wire_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn inbound_prefix_revisions_accept_legacy_numbers_without_changing_native_serialize() {
+        for revision in [
+            0,
+            1,
+            (1_u64 << 53) - 1,
+            (1_u64 << 53) + 1,
+            i64::MAX as u64,
+            u64::MAX,
+        ] {
+            for input in [json!(revision), json!(revision.to_string())] {
+                let capture: CapturePrefixModelRequest = serde_json::from_value(json!({
+                    "provider_id":"p","expected_provider_revision":input,"model":"m"
+                }))
+                .unwrap();
+                assert_eq!(capture.expected_provider_revision, revision);
+                assert_eq!(
+                    serde_json::to_value(&capture).unwrap()["expected_provider_revision"],
+                    json!(revision)
+                );
+                let import: ImportPrefixGenerationRequest = serde_json::from_value(json!({
+                    "expected_profile_revision":input,"generation_bytes":" exact original\r\n "
+                }))
+                .unwrap();
+                assert_eq!(import.expected_profile_revision, revision);
+                let serialized = serde_json::to_value(&import).unwrap();
+                assert_eq!(serialized["expected_profile_revision"], json!(revision));
+                assert_eq!(serialized["generation_bytes"], " exact original\r\n ");
+                let measure: MeasurePrefixRequest = serde_json::from_value(json!({
+                    "expected_profile_revision":input,"generation":"g","proposal":"p","artifact_set":"a",
+                    "probes_json":" exact probes ","context_window_tokens":1,"reserved_additional_input_tokens":0
+                })).unwrap();
+                assert_eq!(measure.expected_profile_revision, revision);
+                assert_eq!(
+                    serde_json::to_value(&measure).unwrap()["expected_profile_revision"],
+                    json!(revision)
+                );
+            }
+        }
+        for invalid in [
+            json!(""),
+            json!("01"),
+            json!("+1"),
+            json!("-1"),
+            json!(" 1"),
+            json!("1 "),
+            json!("1.0"),
+            json!("1e2"),
+            json!("18446744073709551616"),
+            json!(-1),
+            json!(1.0),
+            json!(true),
+            json!(null),
+            json!([]),
+        ] {
+            assert!(
+                serde_json::from_value::<CapturePrefixModelRequest>(
+                    json!({"provider_id":"p","expected_provider_revision":invalid,"model":"m"})
+                )
+                .is_err()
+            );
+            assert!(
+                serde_json::from_value::<ImportPrefixGenerationRequest>(
+                    json!({"expected_profile_revision":invalid,"generation_bytes":"original"})
+                )
+                .is_err()
+            );
+            assert!(serde_json::from_value::<MeasurePrefixRequest>(json!({"expected_profile_revision":invalid,"generation":"g","proposal":"p","artifact_set":"a","probes_json":"[]","context_window_tokens":1,"reserved_additional_input_tokens":0})).is_err());
         }
     }
 }

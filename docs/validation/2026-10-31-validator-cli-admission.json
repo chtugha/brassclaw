@@ -1,0 +1,151 @@
+{
+  "format": "development-validation/1",
+  "request": [
+    "BUILD040",
+    "BUILD041",
+    "BUILD042",
+    "BUILD043"
+  ],
+  "date": "2026-10-31",
+  "git_base": "34ead1e889c0bfd55614a2f11d2bc47188f087d4",
+  "status": "passed-local-scoped",
+  "source": {
+    "path": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-3/source.json",
+    "sha256": "7223e33f5ae9a439d76359d47cdca1042c629ab797024721093cf4b4751996d9",
+    "files": 3315,
+    "scope": "Actual local dependency-package/resource, compiler include/config and selected browser input closure. Runtime/model/worker identities recorded in original runs."
+  },
+  "checks": [
+    {
+      "stage": "native-function-rules",
+      "exit_code": 0,
+      "seconds": 19.915257124928758,
+      "log_sha256": "f7fa28b9b3490f5e83cc16c9d1417d2519a45f121a6d94d592a4d8a40d5cff4c",
+      "warnings": [],
+      "passed": 6,
+      "log": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-1/native-function-rules.log"
+    },
+    {
+      "stage": "native-pure-source-seals",
+      "exit_code": 0,
+      "seconds": 85.88530412502587,
+      "log_sha256": "4802bda5d9dc17a53c69f6d6ebf80ef899dc7551b277726a925d2fafe542f6e5",
+      "warnings": [],
+      "passed": 2,
+      "log": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-1/native-pure-source-seals.log"
+    },
+    {
+      "stage": "native-global-source-observer",
+      "exit_code": 0,
+      "seconds": 421.6039810839575,
+      "log_sha256": "3377b9af31aed8dfc172520f09067543f4c03bce9a989c11ed11c3b0e7e17da9",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-2/native-global-source-observer.log"
+    },
+    {
+      "stage": "connected-images",
+      "exit_code": 0,
+      "seconds": 250.70072033302858,
+      "log_sha256": "f0bca1ce601a6de7a35aa0eaf2eba14ec85f11f1e14fb887ae365376f7a81abc",
+      "warnings": [],
+      "log": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-3/connected-images.log"
+    },
+    {
+      "stage": "native-class50",
+      "exit_code": 0,
+      "seconds": 9.012516500195488,
+      "log_sha256": "c5449fbd18cb5849aeed320baf038492777004e21c02c33282c8532e2e7a8f7e",
+      "warnings": [],
+      "passed": 3,
+      "log": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-3/native-class50.log"
+    },
+    {
+      "stage": "native-existing-submission",
+      "exit_code": 0,
+      "seconds": 2.4195449999533594,
+      "log_sha256": "0ed097ae85b686772e6b165810c98aab3cc7e5933d3c7e77cdf40f9790ac4855",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-3/native-existing-submission.log"
+    },
+    {
+      "stage": "native-existing-review-custody",
+      "exit_code": 0,
+      "seconds": 2.0972471251152456,
+      "log_sha256": "35ecaf7b7939e46971c5ac1f20b1654d6a9f26c60457409e85420998ce1f08ed",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-3/native-existing-review-custody.log"
+    },
+    {
+      "stage": "native-cli-embedding",
+      "exit_code": 0,
+      "seconds": 4.305118666961789,
+      "log_sha256": "f5e2f829315193f3f4b8092ea559cc3c71811fb8f0235efa1fb430c40b3eacc0",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-3/native-cli-embedding.log"
+    },
+    {
+      "stage": "architecture",
+      "exit_code": 0,
+      "seconds": 2.069795874878764,
+      "log_sha256": "caba5541a020df37fe9276b8835411bb12359b5479662be594bafebe23bd22fb",
+      "warnings": [],
+      "passed": 32,
+      "log": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-3/architecture.log"
+    },
+    {
+      "stage": "connected-strict",
+      "exit_code": 0,
+      "seconds": 110.31268570804968,
+      "log_sha256": "4192af0127bafbcba5a64cc3bd4dc28e9fb1fa06955b5f030fe002e9c07a5a88",
+      "warnings": [],
+      "log": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-3/connected-strict.log"
+    },
+    {
+      "stage": "default-composition-strict",
+      "exit_code": 0,
+      "seconds": 49.69461491703987,
+      "log_sha256": "32eb4023ad048969724a2133914692dd72f06eeec09e8a2a0747c95767ac0b37",
+      "warnings": [],
+      "log": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-3/default-composition-strict.log"
+    }
+  ],
+  "counts": {
+    "composition_native": 14,
+    "cli_native": 1,
+    "architecture": 32,
+    "actual_browser_paths_within_global_case": 4
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-3/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "b6d1101c3b58c9103368097336116ec0b9c9196a1067fc4cfdf1d77d1af05ae6",
+    "status": "exact027 worker reused; changed Skill library and test sources absent from worker normal/build closure"
+  },
+  "reuse": {
+    "native_rule_and_pure_source": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-1/progress.json",
+    "global_http_pg_browser": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-2/progress.json",
+    "reason": "The new class50 guard only rejects fresh primary class50 submissions. Reused rules/retention/pure and ordinary global workflows use unchanged relevant class1..3/22/10 paths; no parser/old selection/runtime change. CLI assertion changed only its own test. Standalone domain changes are not embedded dependency inputs."
+  },
+  "failures_preserved": [
+    {
+      "progress": "/private/tmp/brassclaw-validator-ci-validation-20261031/run-1/progress.json",
+      "cause": "Missing-key CLI expectation assumed adapter AuthFailed; existing retained guard rejects earlier with ConfigurationChanged. Fixture contract and exact expectation repaired without weakening guard."
+    }
+  ],
+  "claims": [
+    "Actual Monty Skill-call-target mechanical checking reuses existing pure-call reachability and preserves immutable old packaged source/overrides. No new joint Q1 selection or approval writer.",
+    "CLI maintenance rejects missing captured credentials and unavailable master key; actual correct physical secret owner permits configured provider construction.",
+    "Large declared-release source observer remains bounded by existing600s default only in the test; actual328-source job completed in53193ms. No production timeout change.",
+    "Fresh primary class50 review is rejected at the common store admission before staging or new review rows. Exact historical originals, pinned bytes, conflicts, retries and class10 admission remain intact through actual PG and mounted HTTP."
+  ],
+  "limitations": [
+    "No complete class50 retirement: raw historical retention, legacy queue/boot and consumer migration remain separate work.",
+    "No joint/general pure approval, complete validator workflow activation, complete plans, platform/remote/installed/Serving qualification.",
+    "GitHub CI41188072054 tested previous34ead and failed; next pushed checkpoint requires its own CI.",
+    "SDK036 and Host/PG credential cutover remain private and incomplete."
+  ]
+}

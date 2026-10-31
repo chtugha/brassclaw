@@ -25,10 +25,9 @@ use brassclaw_product_workflow::{
     LlmProbeResult, McpServerActionResponse, McpServerSettingsResponse, McpServerStartRequest,
     McpServerStatusResponse, MontyVmRestartRequest, MontyVmRestartResponse,
     MontyVmSettingsResponse, MontyVmStatusResponse, NearAiLoginRequest, NearAiLoginStart,
-    NearAiWalletLoginRequest, NearAiWalletLoginResult, OutcomeKind, PrefixListResponse,
-    PrefixRegenerateResponse, ProductWorkflowError, ProjectionCursor,
-    RebornAutomationRunHistoryResponse, RebornCancelRunResponse,
-    RebornConnectableChannelListResponse, RebornCreateAutomationResponse,
+    NearAiWalletLoginRequest, NearAiWalletLoginResult, OutcomeKind, PrefixRegenerateResponse,
+    ProductWorkflowError, ProjectionCursor, RebornAutomationRunHistoryResponse,
+    RebornCancelRunResponse, RebornConnectableChannelListResponse, RebornCreateAutomationResponse,
     RebornCreateThreadResponse, RebornDeleteAutomationResponse, RebornDeleteThreadRequest,
     RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionListResponse,
     RebornExtensionRegistryResponse, RebornFireAutomationNowResponse, RebornGetAutomationResponse,
@@ -1730,13 +1729,13 @@ pub async fn register_prefix_source(
 pub async fn prefix_model_designs(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-) -> Result<Json<brassclaw_product_workflow::PrefixModelDesignCatalogue>, WebUiV2HttpError> {
-    Ok(Json(
-        state
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
+    Ok(Json(prefix_revision_wire::model_catalogue(
+        &state
             .services()
             .prefix_model_design_catalogue(caller)
             .await?,
-    ))
+    )?))
 }
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1773,13 +1772,13 @@ pub async fn capture_prefix_model(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(request): Json<brassclaw_product_workflow::CapturePrefixModelRequest>,
-) -> Result<Json<brassclaw_product_workflow::PrefixModelSpecification>, WebUiV2HttpError> {
-    Ok(Json(
-        state
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
+    Ok(Json(prefix_revision_wire::model_specification(
+        &state
             .services()
             .capture_prefix_model(caller, request)
             .await?,
-    ))
+    )?))
 }
 pub async fn get_prefix_model_artifacts(
     State(state): State<WebUiV2State>,
@@ -1913,66 +1912,66 @@ pub async fn list_prefix_generations(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(name): Path<String>,
-) -> Result<Json<Vec<brassclaw_product_workflow::PrefixGenerationSummary>>, WebUiV2HttpError> {
-    Ok(Json(
-        state
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
+    Ok(Json(prefix_revision_wire::generation_list(
+        &state
             .services()
             .list_prefix_generations(caller, &name)
             .await?,
-    ))
+    )?))
 }
 pub async fn get_prefix_job(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((name, job)): Path<(String, String)>,
-) -> Result<Json<brassclaw_product_workflow::PrefixJobDetail>, WebUiV2HttpError> {
-    Ok(Json(
-        state.services().get_prefix_job(caller, &name, &job).await?,
-    ))
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
+    Ok(Json(prefix_revision_wire::job(
+        &state.services().get_prefix_job(caller, &name, &job).await?,
+    )?))
 }
 pub async fn measure_prefix(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((name, job)): Path<(String, String)>,
     Json(request): Json<brassclaw_product_workflow::MeasurePrefixRequest>,
-) -> Result<Json<brassclaw_product_workflow::PrefixJobDetail>, WebUiV2HttpError> {
-    Ok(Json(
-        state
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
+    Ok(Json(prefix_revision_wire::job(
+        &state
             .services()
             .measure_prefix(caller, &name, &job, request)
             .await?,
-    ))
+    )?))
 }
 pub async fn get_prefix_generation(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((name, generation)): Path<(String, String)>,
-) -> Result<Json<brassclaw_product_workflow::PrefixGenerationDetail>, WebUiV2HttpError> {
-    Ok(Json(
-        state
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
+    Ok(Json(prefix_revision_wire::generation_detail(
+        &state
             .services()
             .get_prefix_generation(caller, &name, &generation)
             .await?,
-    ))
+    )?))
 }
 pub async fn import_prefix_generation(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(name): Path<String>,
     Json(request): Json<brassclaw_product_workflow::ImportPrefixGenerationRequest>,
-) -> Result<Json<brassclaw_product_workflow::PrefixGenerationDetail>, WebUiV2HttpError> {
-    Ok(Json(
-        state
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
+    Ok(Json(prefix_revision_wire::generation_detail(
+        &state
             .services()
             .import_prefix_generation(caller, &name, request)
             .await?,
-    ))
+    )?))
 }
 
 pub async fn list_prefixes(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-) -> Result<Json<PrefixListResponse>, WebUiV2HttpError> {
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
     let user_id = caller.user_id.to_string();
     let project_id = caller
         .project_id
@@ -1983,7 +1982,7 @@ pub async fn list_prefixes(
         .services()
         .list_interceptor_prefixes(caller, &user_id, &project_id)
         .await?;
-    Ok(Json(response))
+    Ok(Json(prefix_revision_wire::prefix_list(&response)?))
 }
 
 /// `POST /api/webchat/v2/prefixes/{name}/regenerate`
@@ -2007,6 +2006,8 @@ pub async fn regenerate_prefix(
         .await?;
     Ok(Json(response))
 }
+
+mod prefix_revision_wire;
 
 pub mod reduction_rules;
 pub mod safety;

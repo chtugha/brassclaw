@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
-function fixture({ inactive = false, records = {} } = {}) {
+function fixture({ inactive = false, records = {}, revision = 3 } = {}) {
   const state = [], captures = [], imports = [], pairImports = [], effects = [], listeners = new Map(), fetches = []; let cursor = 0, deferred = false;
-  const target = { provider_id: "registered", provider_revision: 3, model: "active-model", consumer: "kohai", configured_context_window: null };
+  const target = { provider_id: "registered", provider_revision: revision, model: "active-model", consumer: "kohai", configured_context_window: null };
   let catalogue = { targets: [target, { ...target, consumer: "sempai" }], specifications: [], proposals: [], design_generation_available: false, blocked_reason: "prefix.modelDesignPrerequisites" };
   catalogue = { ...catalogue, ...records };
   if (inactive) catalogue.targets.push({ ...target, model: "configured-model", consumer: "configured" });
@@ -28,7 +28,7 @@ function nodes(root) { const out=[];function visit(v){if(Array.isArray(v)){v.for
 function value(node,key,after="") { const start=after ? node.strings.findIndex(s=>s.includes(after)) : 0;assert.notEqual(start,-1,after);const i=node.strings.findIndex((s,index)=>index>=start && s.endsWith(`${key}=`));assert.notEqual(i,-1,key);return node.values[i]; }
 function button(root,label) { return nodes(root).find(node=>node.values.includes(label)); }
 test("selecting an active target is read-only; capture pins revision and deduplicates clicks",async()=>{
-  const f=fixture(); await new Promise(setImmediate);
+  const f=fixture({revision:"9007199254740993"}); await new Promise(setImmediate);
   const select=nodes(f.render()).find(node=>node.strings.some(s=>s.includes("<select")));
   const options=nodes(f.render()).filter(node=>node.strings[0].startsWith("<option key="));
   assert.equal(options.length,1,"Kohai/Sempai same model must not duplicate target choices");
@@ -38,7 +38,7 @@ test("selecting an active target is read-only; capture pins revision and dedupli
   const capture=value(button(f.render(),"prefix.captureModel"),"onClick");
   await Promise.all([capture(),capture()]);
   assert.equal(f.captures.length,1);
-  assert.equal(JSON.stringify(f.captures[0]),JSON.stringify({provider_id:"registered",expected_provider_revision:3,model:"active-model"}));
+  assert.equal(JSON.stringify(f.captures[0]),JSON.stringify({provider_id:"registered",expected_provider_revision:"9007199254740993",model:"active-model"}));
   assert.ok(nodes(f.render()).some(node=>node.values.includes("prefix.unknownModelArtifacts")));
   assert.ok(nodes(f.render()).some(node=>node.values.includes("<script>untrusted</script>")),"record is rendered as escaped text, not executable HTML");
 });

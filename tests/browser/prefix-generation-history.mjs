@@ -8,7 +8,8 @@ import { spawn } from "node:child_process";
 import { EventEmitter, once } from "node:events";
 import { fileURLToPath } from "node:url";
 
-const [upstream, source, generationFile] = process.argv.slice(2);
+const [upstream, source, generationFile, revisionContext] = process.argv.slice(2);
+const precision = revisionContext ? JSON.parse(revisionContext) : null;
 const designView = generationFile === "--designs";
 const target = new URL(upstream);
 assert.equal(target.hostname, "127.0.0.1");
@@ -24,14 +25,14 @@ const profiles = await native("/api/webchat/v2/prefixes");
 const entry = profiles.prefixes.find(value => value.name === "base-prompt");
 assert(entry);
 const originalBytes = designView ? null : await readFile(generationFile, "utf8");
-const initial = designView ? null : await native(route);
-if (!designView) assert(initial.length >= 2, "existing native fixture must retain distinct real generations");
+const initial = designView || precision ? null : await native(route);
+if (!designView && !precision) assert(initial.length >= 2, "existing native fixture must retain distinct real generations");
 // Generation identity is over the complete package, not a caller-supplied field.
-const imported = designView ? [] : await Promise.all(initial.map(value => native(`${route}/${value.generation}`)));
+const imported = designView || precision ? [] : await Promise.all(initial.map(value => native(`${route}/${value.generation}`)));
 const a = imported.find(value => value.generation_bytes === originalBytes);
-if (!designView) assert(a, "actual exported package must already be retained");
+if (!designView && !precision) assert(a, "actual exported package must already be retained");
 const b = imported.find(value => value.summary.generation !== a.summary.generation);
-if (!designView) { assert(b); assert.equal(a.summary.qualification, "quarantined"); }
+if (!designView && !precision) { assert(b); assert.equal(a.summary.qualification, "quarantined"); }
 const aId = a?.summary.generation, bId = b?.summary.generation;
 const index = await readFile(resolve(root, "index.html"), "utf8");
 const importMap = index.match(/<script type="importmap"[^>]*>([\s\S]*?)<\/script>/)[1];
@@ -51,7 +52,7 @@ import {PrefixGenerationHistory} from '/js/pages/settings/components/prefix-gene
 import {PrefixModelDesigns} from '/js/pages/settings/components/prefix-model-designs.js';
 const entry=${JSON.stringify(entry).replaceAll("<", "\\u003c")};
 const root=createRoot(document.getElementById('root'));
-function App(){const t=useT();return ${designView ? "html`<${PrefixModelDesigns} t=${t}/>`" : "html`<${PrefixGenerationHistory} entry=${entry} t=${t}/>`"};}
+function App(){const t=useT();return ${designView || precision ? "html`<${PrefixModelDesigns} t=${t}/>`" : "html`<${PrefixGenerationHistory} entry=${entry} t=${t}/>`"};}
 window.nativeHistoryMount=show=>root.render(show?html\`<\${I18nProvider}><\${App}/><//>\`:null);
 window.nativeHistoryMount(true);
 </script></body></html>`;
@@ -88,6 +89,7 @@ const server = http.createServer(async (req, res) => {
       forward.on("error", error => { res.writeHead(502); res.end(error.message); });
       req.pipe(forward); return;
     }
+    if (precision && path === "/precision-package") { res.writeHead(200, {"content-type":"text/plain; charset=utf-8"}); res.end(originalBytes); return; }
     if (path === "/") { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end(page); return; }
     const file = resolve(root, "." + decodeURIComponent(path));
     if (!file.startsWith(root + sep)) { res.writeHead(403); res.end(); return; }
@@ -141,9 +143,68 @@ async function waitHeld(method, path) {
     await once(relayEvents, "held", { signal });
   }
 }
+let primaryFailure = null;
 try {
   await browser("open", `http://127.0.0.1:${server.address().port}`);
-  if (designView) {
+  if (precision) {
+    stage = "large revision from real browser JSON and settings-api";
+    const context = JSON.stringify(precision);
+    await browser("eval", `window.nativePrecisionContext=${context}`);
+    await browser("eval", `window.nativePrecisionReady=(async()=>{
+      const api=await import('/js/pages/settings/lib/settings-api.js');
+      const catalogue=await api.fetchPrefixModelDesigns();
+      const profiles=await api.fetchPrefixes();
+      const cfg=window.nativePrecisionContext;
+      const target=catalogue.targets.find(t=>t.provider_id===cfg.provider_id);
+      const entry=profiles.prefixes.find(p=>p.name==='base-prompt');
+      if(typeof target?.provider_revision!=='string'||target.provider_revision!==cfg.revision||typeof entry?.profile_revision!=='string'||entry.profile_revision!==cfg.revision)throw Error('lossless original revisions missing');
+      const bytes=await fetch('/precision-package').then(r=>{if(!r.ok)throw Error(r.status);return r.text();});
+      const capture={provider_id:target.provider_id,model:target.model,expected_provider_revision:target.provider_revision};
+      const imported={expected_profile_revision:entry.profile_revision,generation_bytes:bytes};
+      const first=await api.capturePrefixModel(capture); const retry=await api.capturePrefixModel(capture);
+      if(JSON.stringify(first)!==JSON.stringify(retry)||first.provider_revision!==cfg.revision)throw Error('capture original mismatch');
+      try{await api.capturePrefixModel({...capture,expected_provider_revision:(BigInt(cfg.revision)-1n).toString()});throw Error('stale capture accepted');}catch(e){if(e.status!==409)throw e;}
+      window.nativePrecisionState={api,capture,imported};
+      window.nativePrecisionLoaded=true;
+    })()`);
+    await browser("wait", "--fn", "window.nativePrecisionLoaded===true");
+    await browser("wait", "--fn", `Array.from(document.querySelectorAll('option')).some(n=>n.textContent.includes(${JSON.stringify(precision.revision)}))`);
+    const count = writes().length;
+    await browser("eval", `(()=>{
+      const {api}=window.nativePrecisionState;const unsafe=Number(window.nativePrecisionContext.revision);
+      for(const call of [()=>api.capturePrefixModel({expected_provider_revision:unsafe}),()=>api.importPrefixGeneration('base-prompt',{expected_profile_revision:unsafe}),()=>api.measurePrefix('base-prompt',crypto.randomUUID(),{expected_profile_revision:unsafe})]){
+        let rejected=false;try{call();}catch(e){rejected=/Invalid prefix revision/.test(e.message);}if(!rejected)throw Error('unsafe Number did not fail before Fetch');
+      }
+    })()`);
+    assert.equal(writes().length,count,"unsafe numeric identities dispatch no write");
+    stage="large revision original import with lost ACK";
+    const beforeImport=writes().length;cutWrites=true;
+    await browser("eval", `window.nativePrecisionUnknown=(async()=>{const s=window.nativePrecisionState;try{await s.api.importPrefixGeneration('base-prompt',s.imported);throw Error('cut ACK unexpectedly arrived');}catch(e){if(e.message==='cut ACK unexpectedly arrived')throw e;}window.nativePrecisionImportUnknown=true;})()`);
+    await browser("wait", "--fn", "window.nativePrecisionImportUnknown===true");
+    const originalImports=writes().slice(beforeImport).filter(r=>r.path===route);
+    assert(originalImports.length>0);assert(originalImports.every(r=>r.complete&&r.status===200));
+    const original=originalImports[0].body;
+    assert.deepEqual(JSON.parse(original),{expected_profile_revision:precision.revision,generation_bytes:originalBytes});
+    assert(originalImports.every(r=>r.body===original));
+    cutWrites=false;
+    await browser("eval", `window.nativePrecisionFinished=(async()=>{
+      const s=window.nativePrecisionState,cfg=window.nativePrecisionContext;
+      const receipt=await s.api.importPrefixGeneration('base-prompt',s.imported);
+      if(receipt.summary.profile_revision!==cfg.revision||receipt.generation_bytes!==s.imported.generation_bytes||receipt.summary.qualification!=='quarantined')throw Error('import original mismatch');
+      try{await s.api.importPrefixGeneration('base-prompt',{...s.imported,expected_profile_revision:(BigInt(cfg.revision)-1n).toString()});throw Error('stale import accepted');}catch(e){if(e.status!==409)throw e;}
+      const request={expected_profile_revision:cfg.revision,generation:receipt.summary.generation,proposal:'0'.repeat(64),artifact_set:'0'.repeat(64),probes_json:'[]',context_window_tokens:1,reserved_additional_input_tokens:0};
+      const job=crypto.randomUUID();
+      for(let i=0;i<2;i++){try{await s.api.measurePrefix('base-prompt',job,request);throw Error('incomplete measurement accepted');}catch(e){if(e.status!==400)throw e;}}
+      try{await s.api.fetchPrefixJob('base-prompt',job);throw Error('rejected measurement retained job');}catch(e){if(e.status!==404)throw e;}
+      window.nativePrecisionDone=true;
+    })()`);
+    await browser("wait", "--fn", "window.nativePrecisionDone===true");
+    const imports=writes().slice(beforeImport).filter(r=>r.path===route&&r.status===200);
+    assert(imports.length>=2&&imports.every(r=>r.body===original),"successful original retry is byte-identical");
+    const measures=writes().filter(r=>r.path.includes('/jobs/'));
+    assert.equal(measures.length,2);assert.equal(measures[0].body,measures[1].body);assert(measures.every(r=>r.status===400&&JSON.parse(r.body).expected_profile_revision===precision.revision));
+    console.log("native-prefix-revision-browser: passed; measurement rejected/no-job");
+  } else if (designView) {
     const catalogue = await native("/api/webchat/v2/prefix-model-designs");
     assert(catalogue.specifications.length > 0 && catalogue.proposals.length > 0);
     const spec = catalogue.specifications[0];
@@ -235,9 +296,16 @@ try {
   // Transport/timing diagnostics contain identities/statuses only, no original
   // source bytes, request bodies, bearer values or fabricated success data.
   console.error(JSON.stringify({ stage, requests: requests.map(({ method, path, complete, status }) => ({ method, path, complete, status })), held: held.map(value => ({ method: value.record.method, path: value.record.path })) }));
-  throw error;
+  primaryFailure = error;
 } finally {
-  release();
-  await browser("close").catch(error => console.error("browser cleanup failed:", error.message));
-  server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+  const cleanupFailures=[];
+  try { release(); } catch(error) { cleanupFailures.push(error); }
+  try { await browser("close"); } catch(error) { cleanupFailures.push(error); }
+  try {
+    server.closeAllConnections();
+    await new Promise((accept,reject)=>server.close(error=>error?reject(error):accept()));
+  } catch(error) { cleanupFailures.push(error); }
+  if(primaryFailure&&cleanupFailures.length) throw new AggregateError([primaryFailure,...cleanupFailures],"prefix browser check and cleanup failed");
+  if(primaryFailure) throw primaryFailure;
+  if(cleanupFailures.length) throw new AggregateError(cleanupFailures,"prefix browser cleanup failed");
 }

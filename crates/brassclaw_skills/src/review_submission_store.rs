@@ -37,6 +37,8 @@ pub enum SubmissionStoreError {
     Conflict,
     #[error("invalid immutable review subject")]
     Invalid,
+    #[error("new class-50 review submissions are not supported; use a normal Recipe")]
+    RetiredScaffold,
     #[error("review subject exceeds technical transport capacity")]
     Capacity,
     #[error(transparent)]
@@ -456,6 +458,13 @@ impl PgReviewSubmissionStore {
                 return Err(SubmissionStoreError::Conflict);
             }
             return Ok(existing);
+        }
+        // Historical bytes and identical original retries stay readable above.
+        // Only a fresh primary review is rejected, before either retention mode
+        // can allocate a revision/head or create a V149 review request. Keep
+        // class-10 root review and exact historical dependency/base refs intact.
+        if draft.candidate.class_code() == 50 {
+            return Err(SubmissionStoreError::RetiredScaffold);
         }
         let mut changes = vec![(
             &draft.candidate,

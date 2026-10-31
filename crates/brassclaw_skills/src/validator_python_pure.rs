@@ -28,7 +28,8 @@ pub fn python_pure_calls_draft(
             "result_contract":super::rule_contract(),
             "preload":{"format":"python-preload/2","exports":{
                 "check_review_python_pure_calls":{"symbol":"check_review_python_pure_calls","parameters":["inputs"],"mapping":true}
-            },"private_functions":{"_validator_python_pure_calls_result":["errors"]},"constants":[],"imports":["json"],"dependencies":[subject_reader],"default_export":"check_review_python_pure_calls"}
+            },"private_functions":{"_validator_python_pure_calls_result":["errors"],
+                "_validator_python_reachable_functions":["scopes","symbols","builtins","constants"]},"constants":[],"imports":["json"],"dependencies":[subject_reader],"default_export":"check_review_python_pure_calls"}
         },"dependencies":[subject_reader],"association":null
     }).to_string())?;
     validate(&draft)?;

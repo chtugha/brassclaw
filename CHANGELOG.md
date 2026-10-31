@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Preserve exact Prefix provider/profile revision identities across browser JSON
+  using decimal strings, with compatible inbound legacy integers and unchanged
+  native serialization, original artifacts and retained Skill contracts.
+- Add the contained Skill-call-target validator rule over shared pure-call
+  reachability and verify immutable packaged predecessors and authored overrides.
+  Joint functional approval and activation remain separate unfinished work.
+- Reject new class-50 component review submissions before revision allocation;
+  preserve historical original readback, exact pins, conflicts and retries.
+- Preserve existing domain source catalogues, derived SQLite rows and working
+  outputs when a scan, file read or UTF-8 decode fails. Publish completed scans
+  through one existing transaction and a deferred working manifest replacement.
+- Repair the CLI embedding credential fixture and retain its missing-key,
+  configured-secret-owner and unavailable-master-key assertions. Keep the large
+  native source observer bounded and include elapsed/phase failure diagnostics.
+- Batch compatible development patches into shared serial builds, continue
+  foreground work during detached Screen validation and freeze actual inputs.
+
 - Fence Prefix-history file reads, imports, lists and detail responses to their
   original profile and view. Preserve uncertain import requests for exact retry
   and keep profile identity stable when labels change.

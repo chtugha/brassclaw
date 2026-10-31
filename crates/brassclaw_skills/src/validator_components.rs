@@ -23,6 +23,7 @@ pub const STRUCTURAL_PRESENCE_SOURCE: &str = include_str!("validator_structural_
 pub const PRELOAD_DEFINITION_SOURCE: &str = include_str!("validator_preload_definition.py");
 pub const SUBJECT_SOURCES_SOURCE: &str = include_str!("validator_subject_sources.py");
 pub const REVIEW_SUBJECT_READER_SOURCE: &str = include_str!("validator_review_subject.py");
+pub const SKILL_CALL_TARGETS_SOURCE: &str = include_str!("validator_skill_calls.py");
 pub const SKILL_INTERFACE_SOURCE: &str = include_str!("validator_skill_interface.py");
 pub const RECURSIVE_CONTRACT_SOURCE: &str = include_str!("validator_recursive_contract.py");
 
@@ -64,6 +65,48 @@ pub fn skill_interface_draft(
                 "private_functions":{"_validator_skill_interface_equal":["left","right"]},
                 "constants":[],"imports":["json"],"dependencies":[recursive_rule,reader,definition],"default_export":"check_review_skill_interface"}},
         "dependencies":[recursive_rule,reader,definition],"association":null
+    }).to_string())?;
+    crate::value_contract::InputContract::from_value(
+        &draft.document()["input_contract"],
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    crate::value_contract::ValueContract::result_from_value(
+        &draft.document()["result_contract"],
+        crate::component_revision::REVISION_LIMITS,
+    )?;
+    Ok(draft)
+}
+
+/// One mechanical own-function rule. It consumes actual prior checks and native
+/// facts; joint admission, behavior, provenance and approval stay with the owner.
+pub fn skill_call_targets_draft(id: Uuid) -> Result<ComponentRevisionDraft, RevisionError> {
+    let reader = crate::global_bootstrap_components::packaged_component_id(
+        "validator:review-subject-reader",
+    );
+    let calls =
+        crate::global_bootstrap_components::packaged_component_id("validator:python-pure-calls");
+    if id.is_nil() || id == reader || id == calls {
+        return Err(RevisionError::Invalid(
+            "distinct Skill call rule and helper identities required",
+        ));
+    }
+    let mut check = rule_contract();
+    check["required"] = json!(true);
+    let mut profile = python_structure::profile_contract();
+    profile["required"] = json!(true);
+    let draft = ComponentRevisionDraft::from_json(&json!({
+        "format":"component-revision/1","uuid":id,"class_code":22,
+        "document":{"name":"check-review-skill-call-targets",
+            "description":"After actual graph and Skill-interface checks, compare native Host sites reachable through the declared public Skill exports and selected helpers with the exact associated callable. Reuse the pure checker private function-closure walk without invoking its pure-only rule. Source ranges are original parser facts; unused private functions are not usage roots. No additional one-call budget, argument/result compatibility engine, candidate invocation, behavior/prose interpretation, component approval or provenance claim. Native single-class joint preparation remains unsupported. This is one private incomplete own-function check, never a new combination review.",
+            "content":SKILL_CALL_TARGETS_SOURCE,"includes":[],"dependency_registry":null,
+            "input_contract":{"subject_json":{"type":"string","required":true,"checks":[]},
+                "inventory_json":{"type":"string","required":true,"checks":[]},"profile":profile,
+                "graph":check,"interface":check},"result_contract":rule_contract(),
+            "preload":{"format":"python-preload/2","exports":{
+                "check_review_skill_call_targets":{"symbol":"check_review_skill_call_targets","parameters":["inputs"],"mapping":true}},
+                "private_functions":{"_validator_skill_call_targets_result":["errors"]},
+                "constants":[],"imports":["json"],"dependencies":[reader,calls],"default_export":"check_review_skill_call_targets"}},
+        "dependencies":[reader,calls],"association":null
     }).to_string())?;
     crate::value_contract::InputContract::from_value(
         &draft.document()["input_contract"],

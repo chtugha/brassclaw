@@ -769,6 +769,7 @@ async fn embedding_maintenance_uses_serve_master_key_and_configured_secret_owner
         "default_base_url": "http://127.0.0.1:8000/v1", "base_url_env": null,
         "base_url_required": true, "api_key_env": null, "api_key_required": true,
         "model_env": "BRASSCLAW_UNUSED_CLI_EMBEDDING_MODEL", "default_model": "text-embedding-3-small",
+        "embedding_models":{"text-embedding-3-small":{"dimension":1536,"cache_max_entries":0}},
         "description": "Native CLI embedding credential test", "extra_headers_env": null,
         "unsupported_params": [], "setup": null, "token_budget": null,
         "context_window_tokens": 131072, "cache_retention": null
@@ -788,7 +789,17 @@ async fn embedding_maintenance_uses_serve_master_key_and_configured_secret_owner
     let args = ["maintenance", "backfill-embeddings", "--tenant", "default"];
     let without_key = command(&home, port, &args).output().unwrap();
     assert!(!without_key.status.success());
-    assert!(String::from_utf8_lossy(&without_key.stderr).contains("Authentication failed"));
+    // The retained provider guard rejects the incomplete credential snapshot
+    // before adapter construction. Do not bypass that guard to reach the
+    // adapter's later authentication check.
+    assert!(
+        String::from_utf8_lossy(&without_key.stderr).contains(
+            "Provider retained database provider configuration changed or could not be verified"
+        ),
+        "unexpected missing-credential failure ({}): {}",
+        without_key.status,
+        String::from_utf8_lossy(&without_key.stderr)
+    );
     let keys = brassclaw_reborn_composition::LlmKeyStore::new(Arc::new(
         brassclaw_secrets::PgSecretStore::new(
             pool.as_ref().clone(),

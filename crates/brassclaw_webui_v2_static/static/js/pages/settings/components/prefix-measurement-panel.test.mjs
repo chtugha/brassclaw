@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-function fixture({ fail = false, status = "Completed", saved = "" } = {}) {
+function fixture({ fail = false, status = "Completed", saved = "", revision = 1 } = {}) {
   const state = [], effects = [], timers = new Map(), storage = new Map(), requests = [];
   if (saved) storage.set("brassclaw.prefix.measurement.base-prompt.generation", saved);
   let cursor = 0, effectCursor = 0, timerId = 0, identities = 0;
@@ -21,9 +21,9 @@ function fixture({ fail = false, status = "Completed", saved = "" } = {}) {
   };
   const source = readFileSync(new URL("./prefix-measurement-panel.js", import.meta.url), "utf8").split("\n").filter(line => !line.startsWith("import ")).join("\n").replace("export function", "function");
   vm.createContext(context); vm.runInContext(source + "\nglobalThis.render = PrefixMeasurementPanel;", context);
-  function render(revision = 1) {
+  function render(selectedRevision = revision) {
     cursor = 0; effectCursor = 0;
-    const result = context.render({ entry: { name: "base-prompt", profile_revision: revision }, generation: { generation: "generation" }, t: key => key });
+    const result = context.render({ entry: { name: "base-prompt", profile_revision: selectedRevision }, generation: { generation: "generation" }, t: key => key });
     for (const record of effects) if (record.effect) { const effect = record.effect; record.effect = null; record.cleanup = effect(); }
     return result;
   }
@@ -50,14 +50,14 @@ async function choose(f) {
   attribute(controls(f.render(), "select")[1], "onChange")({ target: { value: "files" } });
 }
 test("lost-response retries preserve identity, inputs and revision; storage keeps only correlation", async () => {
-  const f = fixture({ fail: true }); await choose(f);
+  const f = fixture({ fail: true, revision: "9007199254740993" }); await choose(f);
   const submit = attribute(button(f.render(), "prefix.measureStart"), "onClick");
   await Promise.all([submit(), submit()]);
   assert.equal(f.requests.length, 1); assert.equal(f.identities(), 1);
   const retry = attribute(button(f.render(2), "prefix.measureRetry"), "onClick"); await retry();
   assert.equal(f.requests.length, 2); assert.equal(f.identities(), 1);
   assert.equal(f.requests[1].id, f.requests[0].id); assert.equal(f.requests[1].request, f.requests[0].request);
-  assert.equal(f.requests[1].request.expected_profile_revision, 1);
+  assert.equal(f.requests[1].request.expected_profile_revision, "9007199254740993");
   assert.equal(f.requests[1].request.context_window_tokens, 131072);
   assert.deepEqual([...f.storage.values()], [f.requests[0].id]);
   const rendered = f.render(2);

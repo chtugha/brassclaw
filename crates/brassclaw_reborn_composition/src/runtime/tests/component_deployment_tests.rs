@@ -6,6 +6,7 @@ mod history_http_tests;
 mod pair_construction_tests;
 #[path = "prefix_model_setup_http_tests.rs"]
 mod setup_http_tests;
+use super::super::model_encoding_tests::oracle_python;
 use super::*;
 use crate::runtime::RebornRuntime;
 use secrecy::ExposeSecret;
@@ -81,9 +82,13 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     }))
     .with_poll_settings(PollSettings {
         interval: Duration::from_millis(10),
-        // Real large source compilation is asynchronous; this acceptance
-        // observer needs more than the ordinary ten-second chat fixture.
-        max_total: Duration::from_secs(120),
+        // This caller observes a complete ten-MiB source job on CI too.
+        // Use the existing default task budget for its outer test observation;
+        // the old 120-second observer could expire while legitimate work ran.
+        // This changes neither production polling nor the VM compute account.
+        max_total: Duration::from_secs(
+            brassclaw_product_workflow::default_monty_vm_settings().max_duration_secs,
+        ),
     });
     let runtime = Arc::new(Box::pin(build_reborn_runtime(input)).await.unwrap());
     let catalogue = runtime.installed_catalogue.clone();
@@ -473,7 +478,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     drop(proof_client);
 
     let checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let large = std::process::Command::new("python3").arg("-c")
+    let large = oracle_python().arg("-c")
         .arg("import json,sys; from test_prefix_build_worker import large_source_request; import prefix_build_worker; sys.stdout.buffer.write(prefix_build_worker.build(json.dumps(large_source_request()).encode()))")
         .env("PYTHONPATH",checkout.join("scripts/prefix"))
         .env("HF_HUB_OFFLINE","1").output().unwrap();
@@ -654,9 +659,9 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         assert_eq!(
             profile["profile_revision"],
             if profile["name"] == "prefix-maker" {
-                2
+                "2"
             } else {
-                1
+                "1"
             }
         );
         assert!(!profile["description"].as_str().unwrap().is_empty());
@@ -716,7 +721,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         .find(|p| p["name"] == "sempai")
         .unwrap();
     assert_eq!(sempai["label"], "Operator label");
-    assert_eq!(sempai["profile_revision"], 2);
+    assert_eq!(sempai["profile_revision"], "2");
     // Exercise the actual source compiler and its package exporter. No invented
     // successful manifests, provider results or cache qualification receipts.
     let checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -728,11 +733,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     let source_root = root.path().join("prefix-sources");
     let compiled_root = root.path().join("prefix-compiled");
     let python = |args: Vec<String>| {
-        let output = std::process::Command::new("python3")
-            .arg(&compiler)
-            .args(args)
-            .output()
-            .unwrap();
+        let output = oracle_python().arg(&compiler).args(args).output().unwrap();
         assert!(
             output.status.success(),
             "{}",
@@ -778,6 +779,11 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
             .await
             .unwrap();
         assert_eq!(receipt["qualification"], "quarantined");
+        assert_eq!(
+            receipt["profile_revision"],
+            json!(1),
+            "native retained export stays numeric"
+        );
         let reread = backend
             .read(
                 "base-prompt",
@@ -787,6 +793,11 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
             .await
             .unwrap();
         assert_eq!(reread["generation_bytes"], generation_bytes);
+        assert_eq!(
+            reread["summary"]["profile_revision"],
+            json!(1),
+            "native read export stays numeric"
+        );
         assert!(
             backend
                 .retain("base-prompt", 2, &generation_bytes, &scope)
@@ -1434,6 +1445,14 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         std::fs::write(path, serde_json::to_vec(&sources).unwrap()).unwrap();
     }
     drop(client);
+    exercise_prefix_revision_boundaries(
+        &model_app,
+        &pool,
+        &runtime,
+        &generation_bytes,
+        root.path(),
+    )
+    .await;
     drop(app);
     drop(catalogue);
     shutdown_shared_runtime(runtime).await.unwrap();
@@ -1716,7 +1735,14 @@ async fn exercise_prefix_model_records(
     let request = json!({"provider_id":target["provider_id"],
         "expected_provider_revision":target["provider_revision"],"model":target["model"]});
     let mut stale = request.clone();
-    stale["expected_provider_revision"] = json!(target["provider_revision"].as_u64().unwrap() + 1);
+    stale["expected_provider_revision"] = json!(
+        target["provider_revision"]
+            .as_str()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap()
+            + 1
+    );
     assert_eq!(
         at(app, "POST", capture_route, Some(&stale), true).await.0,
         StatusCode::CONFLICT
@@ -1831,11 +1857,7 @@ async fn exercise_prefix_maker_import(
     std::fs::write(&inventory_path, json!({"format":"brassclaw-prefix-source-inventory/1","release":"native-prefix-maker-storage", "sources":records}).to_string()).unwrap();
     let compiler = checkout.join("scripts/prefix/prefix-maker-compiler.py");
     let run = |args: Vec<String>| {
-        let output = std::process::Command::new("python3")
-            .arg(&compiler)
-            .args(args)
-            .output()
-            .unwrap();
+        let output = oracle_python().arg(&compiler).args(args).output().unwrap();
         assert!(
             output.status.success(),
             "{}",
@@ -2290,5 +2312,244 @@ async fn exercise_prefix_model_artifacts(
             .await
             .is_err(),
         "original model artifacts and inventory must be immutable"
+    );
+}
+
+// Test-fixture preparation only; ALL provider triggers are restored in the same
+// transaction before the real protected application path is exercised.
+async fn exercise_prefix_revision_boundaries(
+    app: &axum::Router,
+    pool: &Arc<brassclaw_pg::PgPool>,
+    runtime: &Arc<RebornRuntime>,
+    generation_bytes: &str,
+    temporary: &std::path::Path,
+) {
+    let provider = "prefix-model-acceptance";
+    let tenant = runtime.webui_tenant_id();
+    let capture_path = "/api/webchat/v2/prefix-model-specifications";
+    let list_path = "/api/webchat/v2/prefix-model-designs";
+    let generations_path = "/api/webchat/v2/prefixes/base-prompt/generations";
+    let client = pool.get().await.unwrap();
+    let old_history: Value = client.query_one("SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY revision),'[]'::jsonb) FROM brassclaw_llm_provider_revisions r WHERE tenant_id=$1 AND provider_id=$2", &[&tenant,&provider]).await.unwrap().get(0);
+    let jobs_before: i64 = client
+        .query_one("SELECT count(*) FROM brassclaw_prefix_job_definitions", &[])
+        .await
+        .unwrap()
+        .get(0);
+    drop(client);
+    let mut previous_capture = None;
+    let mut previous_import = None;
+    for (index, high) in [9_007_199_254_740_993_i64, i64::MAX]
+        .into_iter()
+        .enumerate()
+    {
+        let mut client = pool.get().await.unwrap();
+        let tx = client.transaction().await.unwrap();
+        tx.batch_execute("ALTER TABLE brassclaw_llm_providers DISABLE TRIGGER brassclaw_provider_revision_assignment").await.unwrap();
+        assert_eq!(
+            tx.execute(
+                "UPDATE brassclaw_llm_providers SET revision=$3 WHERE tenant_id=$1 AND id=$2",
+                &[&tenant, &provider, &high]
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        tx.batch_execute("ALTER TABLE brassclaw_llm_providers ENABLE TRIGGER brassclaw_provider_revision_assignment").await.unwrap();
+        tx.execute(
+            "UPDATE reborn_prefix_profiles SET revision=$1 WHERE name='base-prompt'",
+            &[&high],
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        let triggers: bool = client.query_one("SELECT bool_and(tgenabled <> 'D') FROM pg_trigger WHERE tgrelid IN ('brassclaw_llm_providers'::regclass,'brassclaw_llm_provider_revisions'::regclass) AND NOT tgisinternal", &[]).await.unwrap().get(0);
+        assert!(
+            triggers,
+            "every provider/history trigger is enabled before HTTP"
+        );
+        assert_eq!(client.query_one("SELECT definition FROM brassclaw_llm_provider_revisions WHERE tenant_id=$1 AND provider_id=$2 AND revision=$3", &[&tenant,&provider,&high]).await.unwrap().get::<_,Value>(0), client.query_one("SELECT definition FROM brassclaw_llm_providers WHERE tenant_id=$1 AND id=$2", &[&tenant,&provider]).await.unwrap().get::<_,Value>(0), "real recording trigger retained exact high original");
+        drop(client);
+        let (status, catalogue) = at(app, "GET", list_path, None, true).await;
+        assert_eq!(status, StatusCode::OK);
+        let target = catalogue["targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["provider_id"] == provider)
+            .unwrap();
+        assert_eq!(target["provider_revision"], high.to_string());
+        let capture = json!({"provider_id":target["provider_id"],"model":target["model"],"expected_provider_revision":target["provider_revision"]});
+        assert_eq!(
+            at(app, "POST", capture_path, Some(&capture), false).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        let (status, captured) = at(app, "POST", capture_path, Some(&capture), true).await;
+        assert_eq!(status, StatusCode::OK, "{captured}");
+        assert_eq!(captured["provider_revision"], high.to_string());
+        let inner: Value =
+            serde_json::from_str(captured["specification_bytes"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            inner["provider_revision"].as_i64(),
+            Some(high),
+            "retained inner JSON remains exact native integer"
+        );
+        assert_eq!(
+            at(app, "POST", capture_path, Some(&capture), true).await.1,
+            captured
+        );
+        let mut stale = capture.clone();
+        stale["expected_provider_revision"] = json!((high - 1).to_string());
+        assert_eq!(
+            at(app, "POST", capture_path, Some(&stale), true).await.0,
+            StatusCode::CONFLICT
+        );
+        if let Some((request, original)) = &previous_capture {
+            assert_eq!(
+                at(app, "POST", capture_path, Some(request), true).await.1,
+                *original,
+                "historical original capture survives later provider revision"
+            );
+        }
+        // Valid compiler package, new OUTER identity only. Inner manifest bytes
+        // and old immutable rows remain unchanged.
+        let native_bytes = format!("{}{}\n", "\n".repeat(index + 1), generation_bytes);
+        let import =
+            json!({"expected_profile_revision":high.to_string(),"generation_bytes":native_bytes});
+        assert_eq!(
+            at(app, "POST", generations_path, Some(&import), false)
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+        let (status, retained) = at(app, "POST", generations_path, Some(&import), true).await;
+        assert_eq!(status, StatusCode::OK, "{retained}");
+        assert_eq!(retained["summary"]["profile_revision"], high.to_string());
+        assert_eq!(retained["generation_bytes"], native_bytes);
+        assert_eq!(retained["summary"]["qualification"], "quarantined");
+        assert_eq!(
+            at(app, "POST", generations_path, Some(&import), true)
+                .await
+                .1,
+            retained
+        );
+        let mut stale = import.clone();
+        stale["expected_profile_revision"] = json!((high - 1).to_string());
+        assert_eq!(
+            at(app, "POST", generations_path, Some(&stale), true)
+                .await
+                .0,
+            StatusCode::CONFLICT
+        );
+        if let Some((request, original)) = &previous_import {
+            assert_eq!(
+                at(app, "POST", generations_path, Some(request), true)
+                    .await
+                    .1,
+                *original,
+                "historical generation retry never rebases to new profile revision"
+            );
+        }
+        // Decode original revision on real route, but deliberately reject missing
+        // probe prerequisites. This is NOT a successful measurement qualification.
+        let measure = json!({"expected_profile_revision":high.to_string(),"generation":retained["summary"]["generation"],"proposal":"0".repeat(64),"artifact_set":"0".repeat(64),"probes_json":"[]","context_window_tokens":1,"reserved_additional_input_tokens":0});
+        let job = Uuid::new_v4();
+        let job_path = format!("/api/webchat/v2/prefixes/base-prompt/jobs/{job}");
+        assert_eq!(
+            at(app, "POST", &job_path, Some(&measure), false).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        for _ in 0..2 {
+            assert_eq!(
+                at(app, "POST", &job_path, Some(&measure), true).await.0,
+                StatusCode::BAD_REQUEST
+            );
+        }
+        assert_eq!(
+            at(app, "GET", &job_path, None, true).await.0,
+            StatusCode::NOT_FOUND
+        );
+        let browser_bytes = format!(" \n{}\n", native_bytes);
+        let browser_file = temporary.join(format!("revision-{high}.json"));
+        std::fs::write(&browser_file, &browser_bytes).unwrap();
+        let context = json!({"provider_id":provider,"revision":high.to_string()});
+        if history_http_tests::exercise_revisions(app, &browser_file, &context).await {
+            let (status, list) = at(app, "GET", generations_path, None, true).await;
+            assert_eq!(status, StatusCode::OK);
+            let id = brassclaw_model_encoding::checksum(browser_bytes.as_bytes());
+            let row = list
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|v| v["generation"] == id)
+                .expect("real browser import persisted its exact new package");
+            assert_eq!(row["profile_revision"], high.to_string());
+            let detail = at(app, "GET", &format!("{generations_path}/{id}"), None, true)
+                .await
+                .1;
+            assert_eq!(detail["generation_bytes"], browser_bytes);
+        }
+        let client = pool.get().await.unwrap();
+        assert_eq!(
+            client
+                .query_one("SELECT count(*) FROM brassclaw_prefix_job_definitions", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            jobs_before,
+            "rejected precision measurement creates no job"
+        );
+        drop(client);
+        previous_capture = Some((capture, captured));
+        previous_import = Some((import, retained));
+    }
+    // u64::MAX is valid wire data, but cannot name a PostgreSQL BIGINT
+    // revision. Reject it before retaining anything; never narrow or round it.
+    for (path, request) in [
+        (
+            capture_path,
+            json!({"provider_id":provider,"model":"configured-inactive-model","expected_provider_revision":u64::MAX.to_string()}),
+        ),
+        (
+            generations_path,
+            json!({"expected_profile_revision":u64::MAX.to_string(),"generation_bytes":generation_bytes}),
+        ),
+    ] {
+        assert_eq!(
+            at(app, "POST", path, Some(&request), true).await.0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    // Actual native backend contract remains integer even while browser/profile
+    // revisions are high; original low-revision generations retain their pins.
+    {
+        use brassclaw_host_runtime::PrefixGenerationBackend;
+        let backend =
+            crate::pg_prefix_generation_backend::PgPrefixGenerationBackend::new(pool.clone());
+        let scope = brassclaw_host_api::ResourceScope::system();
+        let receipt = backend
+            .retain("base-prompt", 1, generation_bytes, &scope)
+            .await
+            .unwrap();
+        assert_eq!(receipt["profile_revision"].as_u64(), Some(1));
+        let detail = backend
+            .read(
+                "base-prompt",
+                receipt["generation"].as_str().unwrap(),
+                &scope,
+            )
+            .await
+            .unwrap();
+        assert_eq!(detail["summary"]["profile_revision"].as_u64(), Some(1));
+        assert_eq!(detail["generation_bytes"], generation_bytes);
+    }
+    let client = pool.get().await.unwrap();
+    let unchanged: Value=client.query_one("SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY revision),'[]'::jsonb) FROM brassclaw_llm_provider_revisions r WHERE tenant_id=$1 AND provider_id=$2 AND revision<$3", &[&tenant,&provider,&9_007_199_254_740_993_i64]).await.unwrap().get(0);
+    assert_eq!(
+        unchanged, old_history,
+        "old provider history bytes were never rewritten"
+    );
+    println!(
+        "native-prefix-revision-http-pg: passed; measurement rejected/no-job, not successful measurement"
     );
 }

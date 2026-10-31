@@ -1,0 +1,60 @@
+{
+  "format": "development-validation/1",
+  "request": "BUILD044",
+  "date": "2026-10-31",
+  "git_base": "34ead1e889c0bfd55614a2f11d2bc47188f087d4",
+  "status": "passed-local-scoped",
+  "claim": "The existing three standalone domain collectors visibly reject incomplete scans and preserve prior SQLite derived state, working manifest, FINAL and published-prefix sentinel on scan failure; complete scans still prune confirmed deletions and preserve CRLF.",
+  "source": {
+    "scripts/prefix/Defensive-compiler.py": "0c47ed75a6a5edfc85bc3ebf2a913f62c9a814e64e05e8dd8a796ce60bde1ac8",
+    "scripts/prefix/Homeassistant-compiler.py": "94b6a6c44a652c2e9339fda061d48dee6215b64ce9670b01b820cc59f2d5b18a",
+    "scripts/prefix/tomedo-compiler.py": "1247c90602798bfaa3ff383d548778ce99a119304e4f14adeaae5f5370ee344c",
+    "scripts/prefix/test_prefix_compiler_citations.py": "976262a3c3bbc5755aa8d5f199a0bfadf8f47ccb6f1ee076eb6b8e49f25baf03",
+    "scripts/prefix/prefix_evidence.py": "6f28c2ff50467ec674df9b2e40b8f570b4b268cf5fc3382bf74da3e110e5fec6",
+    "scripts/prefix/prefix_units.py": "997b514fdd96540749864d8f244ad91ff062504c54d05fed9acd212c2d3667d4",
+    "scripts/prefix/prefix_procedure.py": "2fac5950ab722fb59ed6e516a4707a67b603947b2a3ba7d78640396624d51bb7",
+    "scripts/prefix/prefix_response_validation.py": "ca9e7fe8de3dc39093152bd426b229431756cc00f62a98b09c697da4566b703d",
+    "scripts/prefix/prefix_render.py": "a46344bf1deb399dda0edab1f2bc9b43527628a79eda056f47555ca0f756ead0"
+  },
+  "check": {
+    "status": "passed",
+    "runner_pid": 65103,
+    "command": [
+      "/opt/homebrew/opt/python@3.14/bin/python3.14",
+      "-B",
+      "scripts/prefix/test_prefix_compiler_citations.py",
+      "CollectorTests",
+      "-v"
+    ],
+    "source": {
+      "scripts/prefix/Defensive-compiler.py": "0c47ed75a6a5edfc85bc3ebf2a913f62c9a814e64e05e8dd8a796ce60bde1ac8",
+      "scripts/prefix/Homeassistant-compiler.py": "94b6a6c44a652c2e9339fda061d48dee6215b64ce9670b01b820cc59f2d5b18a",
+      "scripts/prefix/tomedo-compiler.py": "1247c90602798bfaa3ff383d548778ce99a119304e4f14adeaae5f5370ee344c",
+      "scripts/prefix/test_prefix_compiler_citations.py": "976262a3c3bbc5755aa8d5f199a0bfadf8f47ccb6f1ee076eb6b8e49f25baf03",
+      "scripts/prefix/prefix_evidence.py": "6f28c2ff50467ec674df9b2e40b8f570b4b268cf5fc3382bf74da3e110e5fec6",
+      "scripts/prefix/prefix_units.py": "997b514fdd96540749864d8f244ad91ff062504c54d05fed9acd212c2d3667d4",
+      "scripts/prefix/prefix_procedure.py": "2fac5950ab722fb59ed6e516a4707a67b603947b2a3ba7d78640396624d51bb7",
+      "scripts/prefix/prefix_response_validation.py": "ca9e7fe8de3dc39093152bd426b229431756cc00f62a98b09c697da4566b703d",
+      "scripts/prefix/prefix_render.py": "a46344bf1deb399dda0edab1f2bc9b43527628a79eda056f47555ca0f756ead0"
+    },
+    "python": "3.14.6 (main, Jun 10 2026, 10:03:53) [Clang 21.0.0 (clang-2100.0.123.102)]",
+    "sqlite": "3.54.1",
+    "dependencies": {
+      "openai": "2.33.0",
+      "httpx": "0.28.1",
+      "transformers": "5.1.0"
+    },
+    "process_pid": null,
+    "exit_code": 0,
+    "seconds": 4.727967791026458,
+    "log_sha256": "680a15571bb0b2931ee96e7a87d535a477f91a7527ef63be4cb6e782504db84e",
+    "passed_methods": 5,
+    "compiler_subcases": 15
+  },
+  "limitations": [
+    "Standalone collector scope, not migrated or activated native domain profiles or Serving.",
+    "SQLite commit and subsequent filesystem publication are not one crash-atomic transaction. Publication I/O failure remains visible; no retry or recovery service added.",
+    "Existing source eligibility/size/count policy and other web/PDF/forum/vendor collectors are unchanged.",
+    "Raw append-only originals may remain unreferenced after an aborted scan."
+  ]
+}

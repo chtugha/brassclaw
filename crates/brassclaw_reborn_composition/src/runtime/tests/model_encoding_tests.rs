@@ -24,7 +24,7 @@ use uuid::Uuid;
 
 // Shared with this module's durable-measurement child tests. An explicit
 // interpreter avoids accidentally using unrelated global site packages.
-fn oracle_python() -> std::process::Command {
+pub(super) fn oracle_python() -> std::process::Command {
     std::process::Command::new(
         std::env::var_os("BRASSCLAW_TEST_PYTHON")
             .unwrap_or_else(|| if cfg!(windows) { "python" } else { "python3" }.into()),

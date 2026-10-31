@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 function fixture(options = {}) {
   const state = [], requests = []; let cursor = 0, fail = true;
-  let entry = { name: "base-prompt", profile_revision: 1 };
+  let entry = { name: "base-prompt", profile_revision: options.revision ?? 1 };
   const effects = new Map(), pendingPassive = [], committed = new Map();
   let planned = [];
   function effectHook(effect, deps, layout) {
@@ -65,7 +65,7 @@ function choose(f,file){const input=nodes(f.render()).find(n=>n.strings.some(s=>
 function inspect(f,generation){const row=nodes(f.render()).find(n=>n.values.includes(generation));assert.ok(row,generation);return value(row,"onClick")();}
 function displayed(f,text){return nodes(f.render()).some(n=>n.values.some(v=>typeof v==="string"&&v.includes(text)));}
 test("import failure retains exact request across metadata changes and deduplicates clicks",async()=>{
-  const f=fixture();value(button(f.render(),"prefix.history"),"onClick")();
+  const f=fixture({revision:"9007199254740993"});value(button(f.render(),"prefix.history"),"onClick")();
   const input=nodes(f.render()).find(n=>n.strings.some(s=>s.includes('type="file"')));
   const choose=value(input,"onChange");
   await choose({target:{files:[{size:20,text:async()=>"exact compiler bytes"}]}});
@@ -73,7 +73,7 @@ test("import failure retains exact request across metadata changes and deduplica
   const retry=value(button(f.render(2),"prefix.retryImport"),"onClick");
   await Promise.all([retry(),retry()]);
   assert.equal(f.requests.length,2);assert.equal(f.requests[1].request,f.requests[0].request);
-  assert.equal(f.requests[1].request.expected_profile_revision,1);
+  assert.equal(f.requests[1].request.expected_profile_revision,"9007199254740993");
   assert.ok(!button(f.render(2),"prefix.retryImport"));
 });
 test("oversized transfer fails before reading or posting",async()=>{

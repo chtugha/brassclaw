@@ -1,3 +1,46 @@
+def _validator_python_reachable_functions(scopes, symbols, builtins, constants):
+    # Shared mechanical closure only. Call/value edges are original native
+    # observations; neither this walk nor its ordering proves behavior.
+    needed = {}
+    errors = []
+    pending = list(symbols)
+    while pending:
+        name = pending.pop()
+        if name in needed:
+            continue
+        if name not in scopes:
+            raise ValueError("declared public implementation lacks native scope")
+        scope = scopes[name]
+        dependencies = set()
+        for target in scope["calls"]:
+            if target in scopes:
+                dependencies.add(target)
+            elif target in constants or target not in builtins:
+                errors.append("function " + name + ": unsupported retained global callable " + target)
+        for target in scope["value_references"]:
+            if target in scopes:
+                dependencies.add(target)
+        needed[name] = dependencies
+        pending.extend(dependencies)
+    # Iterative cycle detection has no Python recursion/depth cap. A recursive
+    # function-value edge is unsupported by current retained qualification too.
+    degrees = {name: len(dependencies) for name, dependencies in needed.items()}
+    consumers = {name: [] for name in needed}
+    for name, dependencies in needed.items():
+        for dependency in dependencies:
+            consumers[dependency].append(name)
+    ready = [name for name in needed if degrees[name] == 0]
+    visited = 0
+    while ready:
+        name = ready.pop()
+        visited += 1
+        for consumer in consumers[name]:
+            degrees[consumer] -= 1
+            if degrees[consumer] == 0:
+                ready.append(consumer)
+    return needed, errors, visited
+
+
 def _validator_python_pure_calls_result(errors):
     return {"rule_id": "python_pure_calls", "ok": not errors, "errors": errors}
 
@@ -47,43 +90,11 @@ def check_review_python_pure_calls(inputs):
     # All public root exports belong to the reviewed interface. Walk actual
     # call and function-value edges, as the retained preflight does, including
     # exports other than the currently selected default.
-    needed = {}
-    pending = [entry["symbol"] for entry in exports.values()]
-    builtins = set(profile["builtin_names"])
-    while pending:
-        name = pending.pop()
-        if name in needed:
-            continue
-        if name not in scopes:
-            raise ValueError("declared public implementation lacks native scope")
-        scope = scopes[name]
-        dependencies = set()
-        for target in scope["calls"]:
-            if target in scopes:
-                dependencies.add(target)
-            elif target in constants or target not in builtins:
-                errors.append("function " + name + ": unsupported retained global callable " + target)
-        for target in scope["value_references"]:
-            if target in scopes:
-                dependencies.add(target)
-        needed[name] = dependencies
-        pending.extend(dependencies)
-    # Iterative cycle detection has no Python recursion/depth cap. A recursive
-    # function-value edge is unsupported by current retained qualification too.
-    degrees = {name: len(dependencies) for name, dependencies in needed.items()}
-    consumers = {name: [] for name in needed}
-    for name, dependencies in needed.items():
-        for dependency in dependencies:
-            consumers[dependency].append(name)
-    ready = [name for name in needed if degrees[name] == 0]
-    visited = 0
-    while ready:
-        name = ready.pop()
-        visited += 1
-        for consumer in consumers[name]:
-            degrees[consumer] -= 1
-            if degrees[consumer] == 0:
-                ready.append(consumer)
+    needed, call_errors, visited = _validator_python_reachable_functions(
+        scopes, [entry["symbol"] for entry in exports.values()],
+        set(profile["builtin_names"]), constants,
+    )
+    errors.extend(call_errors)
     if visited != len(needed):
         errors.append("pure_calls: recursive function graph requires unsupported retained invocation qualification")
     return _validator_python_pure_calls_result(errors)

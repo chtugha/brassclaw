@@ -150,6 +150,20 @@ failure diagnosis and evidence remain clear, and records exact inputs/results.
 Failures return to the author for connected repairs; authors submit the successor
 to the same queue rather than starting their own Cargo run.
 
+Collect the ready, reviewed, compatible patches before starting the next compilation.
+Compile shared affected artifacts once, then reuse them for the necessary selected
+cases. Do not start a new compile for each small patch or repeat passing checks
+whose inputs remain applicable. Keep independent failures attributable; a bundle
+does not turn unrelated changes into one acceptance claim.
+
+Run long validation batches in detached Screen sessions and continue implementation
+in the foreground. Check progress after useful work intervals, on failure or on
+completion; do not spend the foreground turn polling an unchanged build. Capture
+only the actual compiler, embedded-content and runtime inputs required by the
+batch, allowing unrelated source work to continue. Changes to those captured inputs
+remain private patches until that batch ends. Screen detaches the process; it does
+not make concurrent Cargo executions or edits to captured inputs safe.
+
 While a batch runs, its complete captured dependency/input set is frozen. Other
 chats may inspect source, develop bounded patches outside the checkout, and edit
 explicitly assigned paths outside that input set. They must not change captured

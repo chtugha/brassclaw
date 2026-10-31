@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { fetchPrefixModelDesigns, capturePrefixModel, importPrefixGeneration, measurePrefix } from "../pages/settings/lib/settings-api.js";
 
 import { deleteThread, listAutomations, requestManualTokenSetup, submitManualTokenSecret, continueManualToken, submitManualToken } from "./api.js";
 
@@ -156,4 +157,41 @@ test("original setup-only transport preserves optional thread and absent continu
   assert.equal(Object.hasOwn(body, "run_id"), false);
   assert.equal(Object.hasOwn(body, "gate_ref"), false);
   assert.equal(Object.hasOwn(body, "token"), false);
+});
+
+
+test("prefix HTTP revision strings survive JSON parsing and original write retries", async () => {
+  globalThis.sessionStorage = { getItem: () => "operator-token" };
+  const calls = [];
+  for (const revision of ["9007199254740993", "9223372036854775807", "18446744073709551615"]) {
+    let fail = true;
+    globalThis.fetch = async (path, options) => {
+      calls.push({ path, body: options.body });
+      if (!options.body) return new Response(JSON.stringify({targets:[{provider_id:"p",model:"m",provider_revision:revision}]}), {headers:{"content-type":"application/json"}});
+      if (fail) { fail = false; throw Error("unknown acknowledgement"); }
+      return new Response("{}", {headers:{"content-type":"application/json"}});
+    };
+    const catalogue = await fetchPrefixModelDesigns();
+    const original = {provider_id:"p",model:"m",expected_provider_revision:catalogue.targets[0].provider_revision};
+    await assert.rejects(capturePrefixModel(original), /unknown acknowledgement/);
+    await capturePrefixModel(original);
+    assert.equal(calls.at(-1).body, calls.at(-2).body);
+    assert.equal(JSON.parse(calls.at(-1).body).expected_provider_revision, revision);
+    const bytes = ' {"integer":18446744073709551615}\r\n';
+    await importPrefixGeneration("p", {expected_profile_revision:revision,generation_bytes:bytes});
+    assert.equal(JSON.parse(calls.at(-1).body).expected_profile_revision, revision);
+    assert.equal(JSON.parse(calls.at(-1).body).generation_bytes, bytes);
+    await measurePrefix("p", "original-job", {expected_profile_revision:revision,probes_json:bytes});
+    assert.equal(JSON.parse(calls.at(-1).body).expected_profile_revision, revision);
+    assert.equal(JSON.parse(calls.at(-1).body).probes_json, bytes);
+  }
+  const before = calls.length;
+  for (const revision of [9007199254740992, null, true, "", "0", "01", "+1", " 1", "1.0", "1e2", "18446744073709551616", -1, 1.5]) {
+    assert.throws(() => capturePrefixModel({expected_provider_revision:revision}), /Invalid prefix revision/);
+    assert.throws(() => importPrefixGeneration("p", {expected_profile_revision:revision}), /Invalid prefix revision/);
+    assert.throws(() => measurePrefix("p", "j", {expected_profile_revision:revision}), /Invalid prefix revision/);
+  }
+  assert.equal(calls.length, before, "invalid or already rounded Numbers must never dispatch");
+  await capturePrefixModel({provider_id:"p",model:"m",expected_provider_revision:1});
+  assert.equal(JSON.parse(calls.at(-1).body).expected_provider_revision, 1, "safe legacy numeric input is accepted without transforming its original");
 });

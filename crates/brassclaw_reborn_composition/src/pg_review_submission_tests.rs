@@ -1188,3 +1188,347 @@ async fn native_review_lineage_upgrade_preserves_v1_and_database_rejection_rolls
     let bad = bad.to_string();
     assert!(client.execute("INSERT INTO reborn_component_review_submissions(submission_id,actor,component_id,candidate_version,base_version,subject_bytes,checksum) VALUES($1,$2,$3,3,1,$4,encode(sha256(convert_to($4,'UTF8')),'hex'))",&[&bad_id,&"migration-operator",&component,&bad]).await.is_err());
 }
+
+fn historical_class_draft(id: Uuid, class_code: i32, text: &str) -> ComponentRevisionDraft {
+    ComponentRevisionDraft::from_json(
+        &json!({
+            "format":"component-revision/1","uuid":id,"class_code":class_code,
+            "document":{"body":text},"dependencies":[],"association":null,
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+async fn admission_counts(
+    pool: &Arc<PgPool>,
+    component: Uuid,
+    submission: Uuid,
+) -> (i64, i64, i64, i64) {
+    let client = pool.get().await.unwrap();
+    let row = client
+        .query_one(
+            "SELECT
+        (SELECT count(*) FROM reborn_component_revision_heads WHERE component_id=$1),
+        (SELECT count(*) FROM reborn_component_revisions WHERE component_id=$1),
+        (SELECT count(*) FROM reborn_component_review_submissions WHERE submission_id=$2),
+        (SELECT count(*) FROM reborn_component_review_requests WHERE submission_id=$2)",
+            &[&component, &submission],
+        )
+        .await
+        .unwrap();
+    (row.get(0), row.get(1), row.get(2), row.get(3))
+}
+
+#[tokio::test]
+async fn native_fresh_class50_review_rejects_every_store_admission_before_effects() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let reviews = PgReviewSubmissionStore::new(rig.pool.clone());
+    for mode in ["submit", "transaction", "retained"] {
+        let component = Uuid::new_v4();
+        let submission = Uuid::new_v4();
+        let candidate = historical_class_draft(component, 50, "new Scaffold review is retired");
+        // Generic exact revision retention remains available for historical
+        // bytes. Attaching a NEW review to it must not bypass admission.
+        let expected = if mode == "retained" {
+            PgComponentRevisionStore::new(rig.pool.clone())
+                .stage(&candidate, 0)
+                .await
+                .unwrap();
+            (1, 1, 0, 0)
+        } else {
+            (0, 0, 0, 0)
+        };
+        let proposal = if mode == "transaction" {
+            ReviewSubmissionDraft::new_after_head(submission, "author", candidate, None, vec![], 0)
+                .unwrap()
+        } else {
+            ReviewSubmissionDraft::new(submission, "author", candidate, None, vec![]).unwrap()
+        };
+        let result = if mode == "submit" {
+            reviews.submit(&proposal).await
+        } else if mode == "retained" {
+            reviews.submit_retained(&proposal).await
+        } else {
+            let mut client = rig.pool.get().await.unwrap();
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .start()
+                .await
+                .unwrap();
+            let result = PgReviewSubmissionStore::submit_in_transaction(&tx, &proposal).await;
+            tx.rollback().await.unwrap();
+            result
+        };
+        assert!(
+            matches!(result, Err(SubmissionStoreError::RetiredScaffold)),
+            "fresh admission {mode}"
+        );
+        assert_eq!(
+            admission_counts(&rig.pool, component, submission).await,
+            expected
+        );
+    }
+    // The exact guard does not create a blanket protected-root/old-parser ban.
+    let component = Uuid::new_v4();
+    let submission = Uuid::new_v4();
+    let root = ReviewSubmissionDraft::new(
+        submission,
+        "author",
+        historical_class_draft(component, 10, "protected root review data"),
+        None,
+        vec![],
+    )
+    .unwrap();
+    let retained = reviews.submit(&root).await.unwrap();
+    assert_eq!(retained.candidate.class_code, 10);
+    assert_eq!(
+        admission_counts(&rig.pool, component, submission).await,
+        (1, 1, 1, 1)
+    );
+}
+
+// Immutable historical-format bytes, with the exact old Subject/Reference field
+// order. This is test history inserted with normal integrity/FK/V149 triggers,
+// NOT a production exception or a way to invoke the retired admission path.
+const HISTORICAL_CLASS50_SUBJECT: &str = include_str!("testdata/class50_review_submission_v1.json");
+const HISTORICAL_CLASS50_SUBJECT_V2: &str =
+    include_str!("testdata/class50_review_submission_v2.json");
+async fn retain_historical_class50_fixture(
+    pool: &Arc<PgPool>,
+    bytes: &str,
+) -> RetainedReviewSubmission {
+    use sha2::Digest as _;
+    let subject: Value = serde_json::from_str(bytes).unwrap();
+    let component =
+        ComponentRevisionDraft::from_json(subject["candidate_bytes"].as_str().unwrap()).unwrap();
+    assert_eq!(component.class_code(), 50);
+    let reference = PgComponentRevisionStore::new(pool.clone())
+        .stage(&component, 0)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(selection(reference)).unwrap(),
+        subject["candidate"]
+    );
+    let id = Uuid::parse_str(subject["submission_id"].as_str().unwrap()).unwrap();
+    let actor = subject["actor"].as_str().unwrap();
+    let checksum = hex::encode(sha2::Sha256::digest(bytes.as_bytes()));
+    let client = pool.get().await.unwrap();
+    client
+        .execute(
+            "INSERT INTO reborn_component_review_submissions
+        (submission_id,actor,component_id,candidate_version,base_version,subject_bytes,checksum)
+        VALUES($1,$2,$3,$4,NULL,$5,$6)",
+            &[
+                &id,
+                &actor,
+                &component.uuid(),
+                &(reference.version as i64),
+                &bytes,
+                &checksum,
+            ],
+        )
+        .await
+        .unwrap();
+    drop(client);
+    PgReviewSubmissionStore::new(pool.clone())
+        .read(id)
+        .await
+        .unwrap()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn native_historical_class50_originals_pins_and_identical_retries_remain_exact() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    for bytes in [HISTORICAL_CLASS50_SUBJECT, HISTORICAL_CLASS50_SUBJECT_V2] {
+        let original = retain_historical_class50_fixture(&rig.pool, bytes).await;
+        let store = PgComponentRevisionStore::new(rig.pool.clone());
+        let reviews = PgReviewSubmissionStore::new(rig.pool.clone());
+        let revision = store
+            .read_revision(original.candidate.uuid, original.candidate.version)
+            .await
+            .unwrap();
+        let exact = revision.draft().exact_bytes().to_owned();
+        assert_eq!(original.subject_bytes, bytes);
+        let graph = store
+            .read_exact(&[original.candidate.uuid], &[original.candidate])
+            .await
+            .unwrap();
+        assert_eq!(
+            graph.revisions()[&original.candidate.uuid]
+                .draft()
+                .exact_bytes(),
+            exact
+        );
+        let legacy: Value = serde_json::from_str(bytes).unwrap();
+        let same = if legacy["format"] == "component-review-submission/2" {
+            ReviewSubmissionDraft::new_after_head(
+                original.id,
+                &original.actor,
+                revision.draft().clone(),
+                None,
+                vec![],
+                0,
+            )
+            .unwrap()
+        } else {
+            ReviewSubmissionDraft::new(
+                original.id,
+                &original.actor,
+                revision.draft().clone(),
+                None,
+                vec![],
+            )
+            .unwrap()
+        };
+        for result in [
+            reviews.submit(&same).await,
+            reviews.submit_retained(&same).await,
+        ] {
+            let recovered = result.unwrap();
+            assert_eq!(recovered.subject_bytes, bytes);
+            assert_eq!(recovered.checksum, original.checksum);
+            assert_eq!(recovered.candidate, original.candidate);
+        }
+        let mut client = rig.pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .unwrap();
+        let recovered = PgReviewSubmissionStore::submit_in_transaction(&tx, &same)
+            .await
+            .unwrap();
+        assert_eq!(recovered.subject_bytes, bytes);
+        tx.commit().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .unwrap();
+        let subject = PgReviewSubmissionStore::read_validator_subject_in_transaction(
+            &tx,
+            original.id,
+            brassclaw_skills::component_revision::REVISION_LIMITS,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(subject.candidate(), original.candidate);
+        assert_eq!(subject.value()["candidate"]["revision_bytes"], exact);
+        tx.commit().await.unwrap();
+        let changed = ReviewSubmissionDraft::new(
+            original.id,
+            "different actor",
+            revision.draft().clone(),
+            None,
+            vec![],
+        )
+        .unwrap();
+        assert!(matches!(
+            reviews.submit(&changed).await,
+            Err(SubmissionStoreError::Conflict)
+        ));
+        let upgrade_id = Uuid::new_v4();
+        let upgrade = ReviewSubmissionDraft::new_after_head(
+            upgrade_id,
+            &original.actor,
+            historical_class_draft(original.candidate.uuid, 50, "new revision forbidden"),
+            Some(original.candidate),
+            vec![],
+            1,
+        )
+        .unwrap();
+        assert!(matches!(
+            reviews.submit(&upgrade).await,
+            Err(SubmissionStoreError::RetiredScaffold)
+        ));
+        assert_eq!(
+            store
+                .read_allocation_head(original.candidate.uuid)
+                .await
+                .unwrap(),
+            Some((50, 1))
+        );
+        assert!(
+            store
+                .read_revision(original.candidate.uuid, 2)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            admission_counts(&rig.pool, original.candidate.uuid, original.id).await,
+            (1, 1, 1, 1)
+        );
+        assert_eq!(
+            admission_counts(&rig.pool, original.candidate.uuid, upgrade_id).await,
+            (1, 1, 0, 0)
+        );
+        assert_eq!(
+            reviews
+                .read(original.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .subject_bytes,
+            bytes
+        );
+    }
+}
+
+#[tokio::test]
+async fn native_http_class50_admission_is_visible_and_historical_readback_stays_available() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let api = app(rig.pool.clone());
+    let uri = "/api/webchat/v2/component-review-submissions";
+    let component = Uuid::new_v4();
+    let submission = Uuid::new_v4();
+    let candidate = historical_class_draft(component, 50, "new Scaffold");
+    let (status, body) = send(
+        &api,
+        "POST",
+        uri,
+        Some(&request(submission, &candidate, None, &[])),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    // Existing HTTP error vocabulary deliberately redacts backend messages.
+    assert_eq!(body["error"], "invalid_request");
+    assert_eq!(body["retryable"], false);
+    assert_eq!(
+        admission_counts(&rig.pool, component, submission).await,
+        (0, 0, 0, 0)
+    );
+    let original = retain_historical_class50_fixture(&rig.pool, HISTORICAL_CLASS50_SUBJECT).await;
+    let endpoint = format!("{uri}/{}", original.id);
+    let (status, view) = send(&api, "GET", &endpoint, None, true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view["subject_bytes"], HISTORICAL_CLASS50_SUBJECT);
+    assert_eq!(view["receipt"]["candidate"]["class_code"], 50);
+    assert_eq!(view["receipt"]["review_status"], "unreviewed");
+    assert_eq!(view["receipt"]["catalogue_activated"], false);
+    let candidate = PgComponentRevisionStore::new(rig.pool.clone())
+        .read_revision(original.candidate.uuid, 1)
+        .await
+        .unwrap();
+    let (status, recovered) = send(
+        &api,
+        "POST",
+        uri,
+        Some(&request(original.id, candidate.draft(), None, &[])),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(recovered["subject_checksum"], original.checksum);
+    assert_eq!(
+        admission_counts(&rig.pool, original.candidate.uuid, original.id).await,
+        (1, 1, 1, 1)
+    );
+}

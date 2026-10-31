@@ -72,23 +72,49 @@ pub trait InstanceToolSettings: Send + Sync {
     ) -> Result<InstanceToolSetting, InstanceToolSettingsError>;
 }
 
-mod revision_wire {
+pub(crate) mod revision_wire {
     use serde::{Deserialize, Deserializer, Serializer, de::Error};
     pub fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&value.to_string())
     }
     pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
         let text = String::deserialize(deserializer)?;
+        parse(&text).map_err(D::Error::custom)
+    }
+
+    fn parse(text: &str) -> Result<u64, &'static str> {
         if text.is_empty()
             || !text.bytes().all(|byte| byte.is_ascii_digit())
             || (text.len() > 1 && text.starts_with('0'))
         {
-            return Err(D::Error::custom(
-                "revision must be a canonical decimal string",
-            ));
+            return Err("revision must be a canonical decimal string");
         }
         text.parse()
-            .map_err(|_| D::Error::custom("revision exceeds its integer representation"))
+            .map_err(|_| "revision exceeds its integer representation")
+    }
+
+    // Opt-in inbound compatibility only. The existing Tool policy decoder
+    // remains string-only, and shared DTO serialization remains numeric.
+    pub fn deserialize_compatible<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<u64, D::Error> {
+        struct Revision;
+        impl<'de> serde::de::Visitor<'de> for Revision {
+            type Value = u64;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a canonical decimal revision string or unsigned integer")
+            }
+            fn visit_u64<E: Error>(self, value: u64) -> Result<u64, E> {
+                Ok(value)
+            }
+            fn visit_i64<E: Error>(self, value: i64) -> Result<u64, E> {
+                u64::try_from(value).map_err(E::custom)
+            }
+            fn visit_str<E: Error>(self, value: &str) -> Result<u64, E> {
+                parse(value).map_err(E::custom)
+            }
+        }
+        deserializer.deserialize_any(Revision)
     }
 }
 

@@ -1,3 +1,244 @@
+## Latest —040–044 accepted; checkpoint publication in progress
+
+Original65594/65597/66547 exited, verified by actual ps and independent common
+lock acquisition. All3315 captured inputs matched at terminal. Run3 warning-free
+compile250.7s,3 new class50 +2 old custody/submission +1 CLI native cases,32
+architecture, connected strict110.3s/default strict49.7s pass. Together with
+reused run1 eight native rules/Pure and run2 actual global/PG/HTTP/four Chromium
+case, the scoped bundle has14 Composition native +1 CLI native cases, noignored.
+Immutable receipt validator-cli-admission.json SHAd0797b99ab10f57821c38d875bb0e997414c5f6dd2df528a81f3f8c76fa983ed.
+044 receipt3565c295… separately passes5 methods/15 real SQLite/file subcases.
+Freeze released; Root keeps serial Cargo. Final changelog update occurs AFTER
+local acceptance and is embedded reference content: do NOT claim old package
+receipts cover those changed final bytes. New GitHub CI will compile/qualify that
+prose successor; do not add a redundant local compile solely to re-run the same
+large source job. Commit/push is only a checkpoint, no full-plan completion/tag.
+
+Next private work: Sources UI two-path4931ba2d… and ToolSkill facade three-path
+94d23e33… ready for Root review. H assigned a concrete actual active-catalogue
+projection into BOTH existing Recipe detail Values, same Catalogue Arc and native
+RecipeModelInput parser, with current generation/variants/exact reference/bytes;
+legacy row remains separately visible, no latest/Default inference/new publicDTO.
+Prefix author is preparing it privately; no canonical writers besides Root.
+Root036 native refresh subject/state-machine prototype under
+/private/tmp/brassclaw-codex-host036-root/native-refresh is private and uncompiled;
+complete native custody/codec/transport/consumers still required. Existing generic
+System guards must stay unchanged. Official OpenAI docs verified scoped refresh/
+credential separation; Codex CLI device docs do not establish third-party raw
+endpoint/idempotency guarantees. Do not silently migrate protocol to SIWC or
+invent automatic issuer retries. OpenAI Docs skill announced/applied this turn.
+
+## Current — larger bundles are implemented; next Rust batch running
+
+User's latest request is implemented in the unembedded development policy and
+central queue: review/integrate ready compatible patches before a shared compile;
+Screen runs detached while foreground implementation continues; Cargo remains
+serial and Root-owned. Current freeze is narrowed to3315 actual dependency/
+resource/include/config/browser inputs rather than10065 whole-repository files.
+No new coordination framework/target or build-window transfer.
+
+Actual Screen brassclaw-validator-cli-043, original65594, Cargo65597, progress:
+/private/tmp/brassclaw-validator-ci-validation-20261031/run-3/progress.json.
+Check original/current stage before any Cargo or mutation of captured inputs.
+Source manifest is run-3/source.json. Outside-input unembedded journals remain
+editable. Root retains Cargo permanently. Compilation and current tests/lint are
+PENDING; do not claim this batch passed.
+
+Integrated together after prior native original63700 actually exited and10065
+old inputs were unchanged:041's correct missing-credential guard expectation;
+043 fresh-class50 submission refusal after original recovery, before allocation;
+044 three standalone collector transaction/error/output repairs; and fourteen
+lines in development-policy.md implementing the user's workflow correction.
+Root fmt completed under common lock; diff whitespace passes. 043 original patch
+had missing no-newline markers for new fixed JSON fixtures. Root repaired only
+the diff wrapper (root-applicable.patch SHA1a194dc1…), then all four integrated
+After hashes matched the peer's manifest; fixtures keep exact original bytes.
+No parser ban, class21 alias, historical fixture rewrite or full50 retirement.
+
+Run3 compiles the three affected packages once, then selects3 actual class50
+native tests,2 existing submission/custody regressions,1 corrected CLI test,
+architecture32 and connected/default strict Clippy. It REUSES the accepted8
+Skill/Pure cases from run1 and unchanged relevant global source/HTTP/browser
+case from run2; no unnecessary global repetition. Actual run2 finished417.99s,
+core source16449ms, declared328-source/9.8MB job53193ms, all four Chromium paths
+passed. Old failed CLI log remains intact; missing credentials were already
+rejected by the retained provider guard before the adapter's AuthFailed.
+
+BUILD044 separately PASSED five actual methods/fifteen file/Git/SQLite subcases,
+zero skips,4.7s, no Cargo. Immutable receipt
+[domain collector preservation](validation/2026-10-31-domain-collector-preservation.json)
+SHA3565c295b62c513acd8507d1158a04764a6de5384cce7484dc471b6dfde153be.
+Actual Python3.14.6/SQLite3.54.1 with existing openai/httpx/transformers imports.
+This repairs incomplete-scan preservation, not DB/filesystem crash atomicity,
+other collectors, native domain migration or Serving activation.
+
+Disk was91% after native shutdown. Required bounded cache pruning removed476
+OLDER local-package .rlib files absent from the exact current compile-artifact
+outputs,2305.2MiB. Current artifacts, all metadata/fingerprints/source and ALL
+executable evidence remain; no package/full clean, no target override. Exact
+prune record: /private/tmp/brassclaw-batched-build-workflow-20261031/required-cache-prune.json.
+Actual df then90%,22.16GB available. Run3 still checks disk before each Cargo.
+Keep already passed native/image results if a later disk gate stops the batch.
+
+Latest pushed checkpoint remains34ead1e88; remote CI41188072054 failed two jobs
+plus rollup. No new GitHub run/release/tag/deploy yet. All current039–044 changes
+remain uncommitted until reviewed/required checks; commits are checkpoints only.
+Full active goal remains very incomplete. SDK036 + Host/PG bridge stay PRIVATE,
+including new existing-transaction rollback test preparation, until real connected
+consumer/custody/dispatch/UI paths are ready. Root found the proposed instance
+account bridge also needs trusted stored-System-scope rehydration: public
+ResourceScope identifiers reject the sentinel, AuthProductScope/Account currently
+use ordinary Deserialize; never relax public/generic system-scope rejection.
+Reuse existing Secret custody's internal stored_scope pattern where justified.
+
+Authorized peer state: definition peer supplied043, no pending canonical writes;
+reviewer supplied044, tests now accepted, no new inventory requested; Prefix H
+reported real missing legacy-detail→exact-revision port, no fake UI patch. Reuse
+/private/tmp/brassclaw-exact-recipe-binding-H-20261031/report.md at later owning
+Exact reader work. No C/I3/SDK-only or joint-Q1 gates were opened. Complete plan,
+platform, deployed and installed acceptance remain open. Older notes below are
+historical where superseded by this current entry and central queue.
+
+## Human steering — larger bundles and foreground implementation
+
+The user explicitly requests larger compatible patch bundles and real foreground
+implementation while Screen jobs continue. Root acknowledged the previous
+monitoring/broad-freeze overhead. Review all ready compatible work before Cargo;
+keep owner-specific checks clear, Cargo serial, and work on the next private
+connected patch during the current run. Do not wait idly for native/lint tails.
+Current batch61560 retains its recorded input freeze until actual exit; future
+manifests must be narrowed to actual compiler/runtime inputs. This is a workflow
+correction, not a request to abandon the ongoing complete-plan goal.
+
+## Next compatible bundle prepared during Screen execution
+
+Root has source-reviewed the complete798-line four-path BUILD044 collector patch
+SHA dd37839e4ffde8c81413fa42abbaba45b39103a412cbc5438e8cbfdf08d4c8b6,
+including existing db()/invalidate_document()/invalidate_final() contracts and
+real-file/SQLite tests. All four Before hashes and git apply --check match.
+Do not apply while original63700 owns the current broad source freeze. Once it
+ends, integrate044 plus041's exact guard expectation and the reviewed unembedded
+workflow policy patch. BUILD043's existing class50 admission patch is in private
+preparation; review/integrate compatible ready work BEFORE the next compilation.
+Do not invent extra work merely to wait for a patch.
+
+Private Root workflow patch:
+/private/tmp/brassclaw-batched-build-workflow-20261031/workflow.patch.
+The same directory has an actual dependency-derived candidate source list:
+64 local compiler dependency packages/resources plus real external include/Cargo
+inputs and selected browser entries,3313 files versus the current10065.
+It excludes the standalone domain compilers and unembedded development/prefix
+plans. Add the actual next selected runtime scripts before using this list; do
+not retroactively change the current frozen manifest or claim it is accepted.
+
+Root also prepared a real caller-owned-transaction rollback extension to the
+existing refresh reconciliation test at
+/private/tmp/brassclaw-codex-host036-root/refresh-transaction-tests.patch.
+Both old helper and new test patches pass exact source preconditions/apply check;
+keep them PRIVATE until the real connected036 Host/PG consumer is ready. They
+are not Codex implementation or acceptance.
+
+Disk currently92%,17.8GB available while native fixtures are alive. Recheck after
+original shutdown. Before any next Cargo, meet the unchanged<=90%/>=15GiB gate;
+only required package cleanup with retained needed images, never routine fullclean.
+Root owns all Cargo, including clean/fmt/metadata; configured target unchanged.
+
+## Batch progress — source review continues while Screen runs
+
+Original runner61560 exited after a warning-free267.2s combined compile,
+6 passing Skill-rule/retention cases and2 passing Pure-source cases. CLI fixture
+then failed at its exact missing-key assertion: the retained provider guard
+correctly returns ConfigurationChanged BEFORE the adapter's AuthFailed. The
+first041 diagnosis was incomplete; preserve run-1/native-cli-embedding.log.
+Root prepared a private assertion successor that keeps missing-key rejection,
+actual correct-key success and wrong-owner/master-key checks unchanged, without
+bypassing or changing the production guard:
+/private/tmp/brassclaw-cli-embedding-fixture-041-20261031/guard-successor.
+
+The original is gone (actual ps exit1), and run2 acquired the common lock.
+Screen brassclaw-validator-ci-native-042 / original63700 / native63713 runs ONLY
+the remaining global Monty/PG/HTTP/Chromium case using exact run1 images and
+source manifest; no second compile. Progress is
+/private/tmp/brassclaw-validator-ci-validation-20261031/run-2/progress.json.
+Current captured-source freeze remains intact until this original exits.
+Architecture/connected/default lint and corrected CLI remain pending.
+
+Parallel private work assigned to existing authorized chats: Prefix H's real
+Recipe model-input reader/UI path; definition class50 write-vs-read inventory;
+reviewer's concrete three-domain Collector data-loss repair with real SQLite
+regressions prepared, not run. Root keeps Cargo and integration ownership.
+No SDK036-only cutover or joint approval gate opening. Goal remains incomplete.
+
+## Active batch — BUILD040/041/042 integrated, compiling
+
+Screen `brassclaw-validator-ci-040-042`, original runner61560, first Cargo61565.
+/private/tmp/brassclaw-validator-ci-validation-20261031/run-1/progress.json
+is the actual progress record.10065 captured source files are frozen except the
+three Root journals. Check the ORIGINAL process and common lock before resuming;
+do not start a second Cargo run. Root remains sole build owner.
+
+Integrated after source review: five040 sources plus exact historical pure_calls
+fixture and existing retention-test extension (old revision1, new2, authored3,
+no override/old-byte rewrite);041 CLI fixture embedding_models plus actual error
+diagnostics;042 test-only600s outer observer from existing task default and safe
+elapsed/phase/call diagnostics. All four component guides and actual producer/
+consumer contracts read; six Rust files formatted, two Python syntax checks and
+whitespace passed. Actual Monty/PG/CLI/browser and strict checks are PENDING.
+Joint selection/observation gates and Q1/Q2/publication writers remain unchanged;
+036 SDK/Host work still private. Do not claim full-plan completion.
+
+039 is separately accepted in the immutable receipt below. Neither this new
+source nor040/041/042 is in pushed checkpoint34ead or failed remote CI41188072054.
+
+## Current — BUILD039 accepted; continue040/041/042, then remaining K owners
+
+Latest pushed checkpoint remains `34ead1e889c0bfd55614a2f11d2bc47188f087d4`.
+BUILD039 is now locally accepted, still uncommitted:
+[receipt](validation/2026-10-31-prefix-revision-wire.json), SHA
+0512f9ee626c54e0e662ec4cfe0e4c03f58bb4f05c0f16d32333ee0d5e1e0e30.
+Actual78 ProductWorkflow +5 HTTP +28 static +1 global +32 architecture +42 Node,
+four real Chromium paths. Compilation268.5s warning-free; native reported422.49s;
+connected/default strict104.2s/50.9s pass. R1 parser and R2–R4 disk stops retained;
+R5 original60815 terminal, actual ps header-only/exit1 and common-lock acquired.
+Source freeze released; Root remains sole Cargo owner.
+
+Root source manifest is now
+/private/tmp/brassclaw-prefix-revision-validation-20261031/run-2/source.json
+SHA aa6e65af7532b0f95db134ff6fffbf55baa6a7f00b6c7b369d43c809c387bc5b,
+10061 captured files, not full-source acceptance. Current-root pointer updated.
+Exact worker remains b6d1101c3b58c9103368097336116ec0b9c9196a1067fc4cfdf1d77d1af05ae6.
+Only required Composition/ProductWorkflow/Turns caches cleaned. Needed test
+executables retained and verified; no fullclean/target2/parallel Cargo.
+
+Full GitHub41188072054 is terminal failure for34ead: two actual failed jobs,
+CLI embedding fixture missing explicit embedding_models and native Prefix source
+observer120s timeout, plus failed rollup. Contained native Linux/macOS and other
+successful jobs are not retroactively failures; whole run is not accepted.
+Private041 fixture patch and042 observer patch are ready for Root review/integration.
+042 uses the existing default task duration only as the outer test observer,
+retains failures and adds actual release elapsed/safe phase diagnostics; no product
+limit changes. Private042 after-hash was invalidated by Root's let-chain correction;
+use exact before preconditions and capture final formatted hashes after integration.
+040 private five-path validator patch is fully source-reviewed, actual Monty/PG
+checks pending. Joint connected read-only report f70cc10c… exposes V150 format/PK/
+immutability; no productive partial joint selection or gate opening is authorized.
+036 SDK/Host bridge remains private and incomplete. Full plans remain incomplete.
+
+## Current checkpoint and continuation — 2026-10-31
+
+All previously accepted canonical work is committed and pushed as
+`34ead1e889c0bfd55614a2f11d2bc47188f087d4` on main. Full GitHub validation is
+running at https://github.com/chtugha/brassclaw/actions/runs/41188072054;
+it is not yet accepted. No version/tag/release or installed acceptance.
+Root has integrated BUILD039's ten-path HTTP precision patch after exact source
+precondition review; connected real native/PG/browser acceptance is being prepared.
+The same existing Python interpreter helper is also reused by three native
+compiler fixture calls; no compile has run for these new changes yet.
+BUILD040's bounded private missing Skill-call-target rule is authorized after
+scope review; joint admission/observation gates stay closed. BUILD036 remains
+private pending its full Host/PG integration. Root retains all Cargo ownership.
+The previous accepted packet and its immutable receipts are described below.
+
 ## Current — Prefix packet accepted; checkpoint then continue remaining owners
 
 All R1–R7 original runners terminal. R6 original55382 passed connected/default

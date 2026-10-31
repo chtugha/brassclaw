@@ -406,6 +406,15 @@ export function activateComponentDeployment(request) {
   return apiFetch("/api/webchat/v2/catalogue", { method: "POST", body: JSON.stringify(request) });
 }
 
+// Revision identity is opaque transport data, never a browser Number conversion.
+// Keep the original request unchanged so explicit retries reproduce its bytes.
+function validatePrefixRevision(value) {
+  const valid = typeof value === "string"
+    ? /^(0|[1-9][0-9]*)$/.test(value) && value.length <= 20 && BigInt(value) > 0n && BigInt(value) <= 18446744073709551615n
+    : Number.isSafeInteger(value) && value > 0;
+  if (!valid) throw new Error("Invalid prefix revision; reload before continuing.");
+}
+
 // Immutable prefix artifacts; imports do not activate a serving selection.
 export function fetchPrefixGenerations(profile) {
   return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/generations`);
@@ -414,6 +423,7 @@ export function fetchPrefixGeneration(profile, generation) {
   return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/generations/${encodeURIComponent(generation)}`);
 }
 export function importPrefixGeneration(profile, request) {
+  validatePrefixRevision(request.expected_profile_revision);
   return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/generations`, {
     method: "POST", body: JSON.stringify(request),
   });
@@ -438,6 +448,7 @@ export function updatePrefixModelSetupDraft(specification, request) {
   return apiFetch(`/api/webchat/v2/prefix-model-specifications/${encodeURIComponent(specification)}/setup-draft`, { method: "PUT", body: JSON.stringify(request) });
 }
 export function capturePrefixModel(request) {
+  validatePrefixRevision(request.expected_provider_revision);
   return apiFetch("/api/webchat/v2/prefix-model-specifications", { method: "POST", body: JSON.stringify(request) });
 }
 export function retainPrefixModelArtifacts(request) {
@@ -463,6 +474,7 @@ export function retainPrefixDesignProposal(profile, request) {
 }
 
 export function measurePrefix(profile, job, request) {
+  validatePrefixRevision(request.expected_profile_revision);
   return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/jobs/${encodeURIComponent(job)}`, {
     method: "POST", body: JSON.stringify(request),
   });

@@ -814,6 +814,7 @@ pub(super) async fn assert_global_snapshot_submission(
             .is_err(),
         "a release request cannot silently reuse a core-only capture"
     );
+    let release_started = std::time::Instant::now();
     let release_id = Uuid::new_v4();
     let release_caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
         runtime.thread_scope.tenant_id.clone(),
@@ -835,17 +836,26 @@ pub(super) async fn assert_global_snapshot_submission(
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(
-        runtime
-            .wait_for_terminal(
-                &release_definition.scope,
-                TurnRunId::from_uuid(release_id),
-                &CancellationToken::new()
-            )
-            .await
-            .unwrap(),
-        TurnStatus::Completed
-    );
+    let terminal = runtime
+        .wait_for_terminal(
+            &release_definition.scope,
+            TurnRunId::from_uuid(release_id),
+            &CancellationToken::new(),
+        )
+        .await;
+    if terminal.is_err()
+        && let Ok(job) = runtime.inspect_prefix_job("base-prompt", release_id).await
+    {
+        eprintln!(
+            "release source observation failed: elapsed_ms={} phase={:?} status={:?} answered={} pending={}",
+            release_started.elapsed().as_millis(),
+            job.admission_phase,
+            job.run_status,
+            job.answered_tool_calls,
+            job.pending_tool_calls,
+        );
+    }
+    assert_eq!(terminal.unwrap(), TurnStatus::Completed);
     let release_job = runtime
         .inspect_prefix_job("base-prompt", release_id)
         .await
@@ -887,7 +897,8 @@ pub(super) async fn assert_global_snapshot_submission(
         5
     );
     eprintln!(
-        "declared release source job completed: sources={} snapshot_bytes={}; 5 native calls, no replay/activation",
+        "declared release source job completed: elapsed_ms={} sources={} snapshot_bytes={}; 5 native calls, no replay/activation",
+        release_started.elapsed().as_millis(),
         release_capture["sources"].as_array().unwrap().len(),
         release_definition.input["snapshot_bytes"]
             .as_str()

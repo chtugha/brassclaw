@@ -27,6 +27,7 @@ import re
 import shutil
 import signal
 import sqlite3
+import stat
 import subprocess
 import sys
 import time
@@ -1327,94 +1328,121 @@ def source_score(path: Path) -> int:
         z = path.stat().st_size
         if z < 32000: score += 2
         elif z > 180000: score -= 3
-    except OSError: pass
+    except OSError as exc:
+        raise RuntimeError('Source stat failed; collection incomplete') from exc
     return score
 
 
 def collect():
-    """Synchronize the source manifest without destroying existing checkpoints."""
+    """Publish working source state only after a complete successful scan."""
     missing=[name for name in REPOS if not (REPOS_DIR/name).is_dir()]
     if missing:
         raise RuntimeError('Source checkout missing; existing evidence preserved: '+', '.join(sorted(missing)))
     conn = db()
-    DOCUMENTS_JSONL.parent.mkdir(parents=True, exist_ok=True)
-    seen: set[tuple[str,str]] = set()
-    total = 0
+    pending_manifest = None
+    manifest_created = False
     source_changed = False
-    with DOCUMENTS_JSONL.open("w", encoding="utf-8") as jout:
-        for repo_name in REPOS:
-            root = REPOS_DIR / repo_name
-            if not root.exists():
-                continue
-            candidates = []
-            for path in root.rglob("*"):
-                check_stop()
-                if not path.is_file() or path.suffix.lower() not in EXTENSIONS:
-                    continue
-                roots = REPO_DOC_ROOTS.get(repo_name)
-                if roots and not str(path.relative_to(root)).replace("\\", "/").startswith(roots):
-                    continue
-                if any(part in IGNORE for part in path.relative_to(root).parts):
-                    continue
-                try:
-                    z = path.stat().st_size
-                except OSError:
-                    continue
-                if z <= 0 or z > MAX_FILE_BYTES:
-                    continue
-                candidates.append(path)
-            candidates.sort(key=lambda p: (source_score(p), -len(str(p)), str(p)), reverse=True)
-            for path in candidates[:MAX_FILES_PER_REPO]:
-                check_stop()
-                try:
-                    # Universal-newline decoding would silently change CRLF
-                    # evidence and its snapshot hash.
-                    text = path.read_bytes().decode("utf-8")
-                except Exception:
-                    continue
-                if not text.strip():
-                    continue
-                rel = str(path.relative_to(root)).replace("\\", "/")
-                key = (repo_name, rel)
-                seen.add(key)
-                dg = digest(text)
-                atomic_write(RAW / 'documents' / (dg + '.txt'), text)
-                row = conn.execute("SELECT id,source_digest FROM documents WHERE repo=? AND path=?", key).fetchone()
-                if row is None:
+    total = 0
+    try:
+        DOCUMENTS_JSONL.parent.mkdir(parents=True, exist_ok=True)
+        pending_manifest = DOCUMENTS_JSONL.with_name(
+            f".{DOCUMENTS_JSONL.name}.{os.getpid()}.{random.randint(100000,999999)}.tmp")
+        seen: set[tuple[str,str]] = set()
+        def scan_error(error):
+            raise RuntimeError('Source scan failed; collection incomplete') from error
+        # One scan transaction: a later repository error also rolls back earlier
+        # document updates and their derived-row invalidations.
+        conn.execute("BEGIN")
+        with pending_manifest.open("x", encoding="utf-8", newline="") as jout:
+            manifest_created = True
+            for repo_name in REPOS:
+                root = REPOS_DIR / repo_name
+                if not root.is_dir():
+                    raise RuntimeError('Source checkout changed during collection')
+                candidates = []
+                # Unlike rglob, walk reports enumeration failures via onerror.
+                for directory, directories, filenames in os.walk(root, onerror=scan_error):
+                    directories[:] = [name for name in directories if name not in IGNORE]
+                    for filename in filenames:
+                        path = Path(directory) / filename
+                        check_stop()
+                        if path.suffix.lower() not in EXTENSIONS:
+                            continue
+                        roots = REPO_DOC_ROOTS.get(repo_name)
+                        if roots and not str(path.relative_to(root)).replace("\\", "/").startswith(roots):
+                            continue
+                        if any(part in IGNORE for part in path.relative_to(root).parts):
+                            continue
+                        try:
+                            observed = path.stat()
+                        except OSError as exc:
+                            raise RuntimeError('Source stat failed; collection incomplete') from exc
+                        if not stat.S_ISREG(observed.st_mode):
+                            continue
+                        z = observed.st_size
+                        if z <= 0 or z > MAX_FILE_BYTES:
+                            continue
+                        candidates.append(path)
+                candidates.sort(key=lambda p: (source_score(p), -len(str(p)), str(p)), reverse=True)
+                for path in candidates[:MAX_FILES_PER_REPO]:
+                    check_stop()
+                    try:
+                        # Keep literal CRLF and reject undecodable evidence.
+                        text = path.read_bytes().decode("utf-8")
+                    except (OSError, UnicodeError) as exc:
+                        raise RuntimeError('Source read failed; collection incomplete') from exc
+                    if not text.strip():
+                        continue
+                    rel = str(path.relative_to(root)).replace("\\", "/")
+                    key = (repo_name, rel)
+                    seen.add(key)
+                    dg = digest(text)
+                    # Content-addressed raw files are append-only evidence;
+                    # a failed scan may leave an unreferenced original behind.
+                    atomic_write(RAW / 'documents' / (dg + '.txt'), text)
+                    row = conn.execute("SELECT id,source_digest FROM documents WHERE repo=? AND path=?", key).fetchone()
+                    if row is None:
+                        source_changed = True
+                        conn.execute("INSERT INTO documents(repo,path,text,source_digest) VALUES(?,?,?,?)", (repo_name, rel, text, dg))
+                    elif row[1] != dg:
+                        source_changed = True
+                        doc_id = row[0]
+                        invalidate_document(conn, doc_id, repo_name, rel)
+                        conn.execute("UPDATE documents SET text=?,source_digest=? WHERE id=?", (text, dg, doc_id))
+                    jout.write(json.dumps({"repo": repo_name, "path": rel}, ensure_ascii=False) + "\n")
+                    total += 1
+                revision = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
+                                          capture_output=True, text=True, check=True).stdout.strip()
+                # meta_set commits; keep these writes inside the scan transaction.
+                conn.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                             ("source:" + repo_name, json.dumps({"url":REPOS[repo_name],
+                              "revision":revision, "domain":REPO_DOMAINS.get(repo_name,"engineering")})))
+            # Absence is meaningful only after every selected repository scanned.
+            for doc_id, repo, path in conn.execute("SELECT id,repo,path FROM documents").fetchall():
+                if (repo, path) not in seen and repo in REPOS:
                     source_changed = True
-                    invalidate_final()
-                    conn.execute("INSERT INTO documents(repo,path,text,source_digest) VALUES(?,?,?,?)", (repo_name, rel, text, dg))
-                elif row[1] != dg:
-                    source_changed = True
-                    invalidate_final()
-                    # Source changed: invalidate this document's downstream checkpoints.
-                    doc_id = row[0]
-                    invalidate_document(conn, doc_id, repo_name, rel)
-                    conn.execute("UPDATE documents SET text=?,source_digest=? WHERE id=?", (text, dg, doc_id))
-                jout.write(json.dumps({"repo": repo_name, "path": rel}, ensure_ascii=False) + "\n")
-                total += 1
-            conn.commit()
-            revision = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
-                                      capture_output=True, text=True, check=True).stdout.strip()
-            meta_set(conn, "source:" + repo_name, json.dumps({"url":REPOS[repo_name],
-                     "revision":revision, "domain":REPO_DOMAINS.get(repo_name,"engineering")}))
-            log(f"Collect {repo_name}: {min(len(candidates), MAX_FILES_PER_REPO):,} files")
-
-    # Remove files that disappeared from the selected source set.
-    old_cursor = conn.execute("SELECT id,repo,path FROM documents")
-    for doc_id, repo, path in old_cursor:
-        if (repo, path) not in seen and repo in REPOS:
-            source_changed = True
+                    invalidate_document(conn, doc_id, repo, path)
+                    conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
+            conn.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                         ("documents", str(total)))
+        conn.commit()
+        # SQLite and the filesystem have no common commit. After DB commit,
+        # invalidate the working reduction before replacing its source manifest.
+        # A publication I/O error stays visible; it never undoes the DB commit.
+        if source_changed:
             invalidate_final()
-            invalidate_document(conn, doc_id, repo, path)
-            conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
-    conn.commit()
-    meta_set(conn, "documents", str(total))
-    conn.close()
+        pending_manifest.replace(DOCUMENTS_JSONL)
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+        if manifest_created:
+            pending_manifest.unlink(missing_ok=True)
     if source_changed:
-        invalidate_final()
         log("Source changed: catalogue invalidated; published prefix preserved until successful replacement")
     log(f"Documents: {total:,}")
+
 
 
 def atoms_build():

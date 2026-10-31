@@ -1,3 +1,68 @@
+## 2026-10-31 — validator/CLI/admission bundle accepted locally; checkpoint CI next
+
+[BUILD040–043](validation/2026-10-31-validator-cli-admission.md) establishes14
+native Composition cases,1 CLI case,32 architecture cases and both strict
+feature configurations; no ignored selected cases or compiler warnings.
+The global case includes four Chromium paths. Exact source/image reuse avoids
+repeating unchanged relevant checks. [BUILD044](validation/2026-10-31-domain-collector-preservation.md)
+separately establishes five actual file/Git/SQLite methods/fifteen domain subcases.
+
+New primary class50 submissions fail before staging/review writes, while exact
+historical originals, retries, pins and class10 remain supported. Mechanical
+Skill-call-target checks do not open joint approval gates. The native source
+observer change is test-only; the actual328-source job completed in53.2 seconds.
+The corrected CLI case passes with the existing production guard intact.
+
+The final checkpoint changelog update is embedded reference content and follows
+these local receipts. Their exact pre-changelog package identities stay historical;
+new GitHub CI must compile and exercise the final embedded reference successor.
+No local recompile is claimed for that final prose delta. Complete plans, general
+approval, remaining class50 migration, SDK036/Host-PG, platform/installed/Serving
+and release qualification remain open. Root keeps Cargo and continues after push.
+
+## 2026-10-31 — standalone domain collection preserves previous working state
+
+[BUILD044](validation/2026-10-31-domain-collector-preservation.md) fixes the three
+existing Defensive/HA/tomedo source collectors. Incomplete reads/scans fail
+visibly; one scan transaction rolls back earlier repository changes and derived
+invalidations. Working manifest and FINAL publication follow the completed scan.
+Five actual file/Git/SQLite methods, fifteen domain subcases, pass with no skips.
+This does not establish DB/filesystem crash atomicity, other collector behavior,
+native domain migration or Serving activation.
+
+The global Monty/PG/HTTP case and all four Chromium paths have also passed on
+BUILD040/042's exact source/image. Eight Skill/Pure native cases pass. The next
+serial Screen batch65594 compiles the connected corrected CLI and fresh-class50
+admission changes once, then runs their selected native, architecture and strict
+checks. These remaining results and new GitHub CI acceptance are pending.
+Shared build procedure now batches ready compatible changes and continues
+foreground work, with actual dependency-scoped input freezes. Full plans remain
+incomplete; no release/installed/activation claim follows from these checks.
+
+## 2026-10-31 — Prefix HTTP revision precision accepted locally
+
+[BUILD039](validation/2026-10-31-prefix-revision-wire.md) preserves exact outer
+browser revision identities as decimal strings. Three inbound fields retain
+legacy unsigned-number compatibility; shared native serialization and original
+Integer Skill contracts stay numeric. Actual protected HTTP/PG/Chromium at
+2^53+1 and i64::MAX preserves capture/import originals, identical unknown-ACK
+retry and stale conflicts. u64::MAX is formatted exactly and rejected by BIGINT
+consumers. Missing-prerequisite high measurement is rejected without a job;
+this is not positive high-measurement or its stale-CAS qualification.
+
+78 ProductWorkflow, 5 HTTP, 28 embedded static, 1 global native, 32 architecture
+and 42 Node cases pass; four actual browser paths are inside the global case.
+Warning-free compilation and connected/default strict Clippy pass. Failed runner
+parser/disk attempts and necessary package-cache cleanup are preserved. Source
+manifest aa6e65af… and receipt0512f9ee… establish this exact scope, not full-plan
+or platform/installed/Serving approval. Root retains serial Cargo; freeze released.
+
+Full CI41188072054 is terminal failure at preceding checkpoint34ead: missing
+embedding fixture contract and120-second large-source observer, plus rollup.
+Private041/042 repairs await actual connected acceptance. The validated local
+precision diff is not included in that remote run. General joint review,036
+Codex Host/PG custody and remaining K3–K7/full plans stay open.
+
 ## 2026-10-31 — connected Prefix owner packet accepted locally
 
 [BUILD029/032/033/034/035/037/038](validation/2026-10-31-prefix-owner-integration.md)
@@ -21,7 +86,8 @@ Original warning, browser, disk and runner-parser failures remain recorded.
 Unchanged compiled images/worker and successful checks are reused; R7 explicitly
 runs the real HA schema case omitted by an earlier missing environment flag.
 CI now supplies actual prerequisites and demands both native browser markers;
-actionlint passes, actual GitHub acceptance is pending the checkpoint.
+actionlint passes. Checkpoint `34ead1e88` is pushed; actual GitHub acceptance
+is pending [full CI run 41188072054](https://github.com/chtugha/brassclaw/actions/runs/41188072054).
 
 Root423 source manifest f71583df… and receipt bb58d98f… establish only this local
 scope. Root retains permanent serial Cargo ownership; all original runners ended
