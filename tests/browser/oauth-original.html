@@ -7,6 +7,19 @@ sessionStorage.setItem("brassclaw_token","__FIXTURE_BEARER__");
 localStorage.setItem("brassclaw_language","en");
 window.oauthAudit=JSON.parse(sessionStorage.getItem("native-oauth-audit")||"[]");
 window.blockedPopupAttempts=0;
+// Audit real timers while delegating their scheduling and cancellation unchanged.
+window.oauthObserverTimers=[];
+const actualSetInterval=window.setInterval.bind(window),actualClearInterval=window.clearInterval.bind(window);
+window.setInterval=(callback,ms,...args)=>{
+  const observed={id:null,ms,active:true,ticks:0};
+  observed.id=actualSetInterval((...values)=>{observed.ticks++;callback(...values);},ms,...args);
+  window.oauthObserverTimers.push(observed);return observed.id;
+};
+window.clearInterval=id=>{
+  const observed=window.oauthObserverTimers.find(timer=>timer.id===id);
+  if(observed)observed.active=false;
+  return actualClearInterval(id);
+};
 // Explicit popup-blocked scenario: no navigation or request to a real issuer.
 window.open=()=>{window.blockedPopupAttempts++;return null;};
 const actualFetch=window.fetch.bind(window);

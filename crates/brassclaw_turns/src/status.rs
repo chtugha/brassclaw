@@ -58,7 +58,7 @@ pub struct TurnRunProfile {
 
 impl TurnRunProfile {
     pub fn from_resolved(resolved: ResolvedRunProfile) -> Self {
-        let id = compatibility_profile_id(&resolved);
+        let id = resolved.persisted_profile_id();
         Self {
             id,
             version: resolved.profile_version,
@@ -102,14 +102,6 @@ impl<'de> Deserialize<'de> for TurnRunProfile {
             auto_queue_followups: wire.auto_queue_followups,
             resolved,
         })
-    }
-}
-
-fn compatibility_profile_id(resolved: &ResolvedRunProfile) -> RunProfileId {
-    if resolved.profile_id.is_interactive_default() {
-        RunProfileId::default_profile()
-    } else {
-        resolved.profile_id.clone()
     }
 }
 

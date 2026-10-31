@@ -15,7 +15,10 @@
 # Stage 1: Install cargo-chef
 FROM rust:1.96-bookworm AS chef
 
-RUN cargo install --locked cargo-chef@0.1.77
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 \
+    && rm -rf /var/lib/apt/lists/*
+RUN cargo install --locked cargo-chef@0.1.78
 
 WORKDIR /app
 
@@ -24,39 +27,44 @@ FROM chef AS planner
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
-COPY vendor/monty-control/ vendor/monty-control/
+COPY vendor/ vendor/
 COPY src/ src/
 COPY tests/ tests/
 COPY migrations/ migrations/
 COPY *.md ./
 COPY docs/ docs/
+COPY scripts/ scripts/
 
-RUN cargo chef prepare --recipe-path recipe.json
+RUN python3 -m unittest discover -s scripts/ci -p test_normalize_cargo_chef_recipe.py \
+    && cargo chef prepare --recipe-path recipe.json \
+    && python3 scripts/ci/normalize_cargo_chef_recipe.py recipe.json
 
 # Stage 3: Build dependencies (cached unless Cargo.toml/lock change)
 FROM chef AS deps
 
-# Docker-only overrides for the dist profile (not in Cargo.toml because
-# cargo-dist uses dist for release binaries that need unwinding).
-ENV CARGO_PROFILE_DIST_PANIC=abort \
-    CARGO_PROFILE_DIST_CODEGEN_UNITS=1
+# Preserve the package panic strategy: host and task failure boundaries need
+# unwinding in containers as well as in the cargo-dist release binaries.
+ENV CARGO_PROFILE_DIST_CODEGEN_UNITS=1
 
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --profile dist --recipe-path recipe.json
+# Path patches outside the workspace are not included in the recipe skeleton.
+COPY --from=planner /app/vendor/ vendor/
+RUN cargo chef cook --locked --profile dist --recipe-path recipe.json
 
 # Stage 4: Build the actual binary (only recompiles brassclaw source)
 FROM deps AS builder
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
-COPY vendor/monty-control/ vendor/monty-control/
+COPY vendor/ vendor/
 COPY src/ src/
 COPY tests/ tests/
 COPY migrations/ migrations/
 COPY *.md ./
 COPY docs/ docs/
+COPY scripts/ scripts/
 
-RUN cargo build --profile dist -p brassclaw -p brassclaw_monty_host --bins
+RUN cargo build --locked --profile dist -p brassclaw -p brassclaw_monty_host --bins
 
 # Stage 5a: Shared runtime base
 FROM debian:bookworm-slim AS runtime-base

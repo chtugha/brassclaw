@@ -2359,8 +2359,8 @@ async fn planned_host_factory_create_host_uses_profiled_capabilities() {
         .await
         .unwrap();
     let mut claimed = fixture.claimed.clone();
-    claimed.state.resolved_run_profile_id = planned.profile_id.clone();
-    claimed.state.resolved_run_profile_version = planned.loop_driver.version;
+    claimed.state.resolved_run_profile_id = planned.persisted_profile_id();
+    claimed.state.resolved_run_profile_version = planned.profile_version;
     claimed.resolved_run_profile = planned;
 
     let host = fixture
@@ -2406,8 +2406,8 @@ async fn planned_host_factory_create_host_requires_profiled_capabilities() {
         .await
         .unwrap();
     let mut claimed = fixture.claimed.clone();
-    claimed.state.resolved_run_profile_id = planned.profile_id.clone();
-    claimed.state.resolved_run_profile_version = planned.loop_driver.version;
+    claimed.state.resolved_run_profile_id = planned.persisted_profile_id();
+    claimed.state.resolved_run_profile_version = planned.profile_version;
     claimed.resolved_run_profile = planned;
 
     let error = match fixture
@@ -2452,8 +2452,8 @@ async fn subagent_planned_host_factory_create_host_requires_prompt_composer() {
         .await
         .unwrap();
     let mut claimed = fixture.claimed.clone();
-    claimed.state.resolved_run_profile_id = planned.profile_id.clone();
-    claimed.state.resolved_run_profile_version = planned.loop_driver.version;
+    claimed.state.resolved_run_profile_id = planned.persisted_profile_id();
+    claimed.state.resolved_run_profile_version = planned.profile_version;
     claimed.resolved_run_profile = planned;
 
     let error = match fixture
@@ -2486,8 +2486,8 @@ async fn planned_host_factory_fails_closed_when_driver_requirements_are_missing(
         .await
         .unwrap();
     let mut claimed = fixture.claimed.clone();
-    claimed.state.resolved_run_profile_id = planned.profile_id.clone();
-    claimed.state.resolved_run_profile_version = planned.loop_driver.version;
+    claimed.state.resolved_run_profile_id = planned.persisted_profile_id();
+    claimed.state.resolved_run_profile_version = planned.profile_version;
     claimed.resolved_run_profile = planned;
 
     let error = match fixture.factory().create_host(&claimed).await {
@@ -2524,8 +2524,8 @@ async fn planned_host_factory_sanitizes_capability_profile_resolver_errors() {
         .await
         .unwrap();
     let mut claimed = fixture.claimed.clone();
-    claimed.state.resolved_run_profile_id = planned.profile_id.clone();
-    claimed.state.resolved_run_profile_version = planned.loop_driver.version;
+    claimed.state.resolved_run_profile_id = planned.persisted_profile_id();
+    claimed.state.resolved_run_profile_version = planned.profile_version;
     claimed.resolved_run_profile = planned;
 
     let error = match fixture
@@ -2559,8 +2559,8 @@ async fn profiled_capability_surface_resolver_errors_are_sanitized() {
         .await
         .unwrap();
     let mut claimed = fixture.claimed.clone();
-    claimed.state.resolved_run_profile_id = planned.profile_id.clone();
-    claimed.state.resolved_run_profile_version = planned.loop_driver.version;
+    claimed.state.resolved_run_profile_id = planned.persisted_profile_id();
+    claimed.state.resolved_run_profile_version = planned.profile_version;
     claimed.resolved_run_profile = planned;
     let loop_run_context = LoopRunContext::new(
         fixture.context.scope.clone(),
@@ -2881,8 +2881,8 @@ async fn build_runtime_host_with_optional_hooks(
         .await
         .unwrap();
     let mut claimed = fixture.claimed.clone();
-    claimed.state.resolved_run_profile_id = planned.profile_id.clone();
-    claimed.state.resolved_run_profile_version = planned.loop_driver.version;
+    claimed.state.resolved_run_profile_id = planned.persisted_profile_id();
+    claimed.state.resolved_run_profile_version = planned.profile_version;
     claimed.resolved_run_profile = planned;
 
     let host = composition

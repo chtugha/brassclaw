@@ -1848,7 +1848,7 @@ async fn loop_prompt_bundle_public_serialization_hides_raw_content() {
         accepted_message_ref: AcceptedMessageRef::new("message-loop-host").unwrap(),
         source_binding_ref: SourceBindingRef::new("source-loop-host").unwrap(),
         reply_target_binding_ref: ReplyTargetBindingRef::new("reply-loop-host").unwrap(),
-        resolved_run_profile_id: host.context.resolved_run_profile.profile_id.clone(),
+        resolved_run_profile_id: host.context.resolved_run_profile.persisted_profile_id(),
         resolved_run_profile_version: host.context.resolved_run_profile.profile_version,
         resolved_model_route: None,
         received_at: Utc.with_ymd_and_hms(2026, 5, 7, 12, 0, 0).unwrap(),

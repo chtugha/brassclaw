@@ -3,6 +3,9 @@ target/
 .env
 .env.*
 node_modules/
+**/node_modules/
+**/__pycache__/
+**/*.pyc
 
 # Operator-only local test/credential material never belongs in build context.
 LOCAL_TEST_ENV.md

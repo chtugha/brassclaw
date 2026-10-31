@@ -26,7 +26,7 @@ function reply(body, overrides = {}) {
     authorization_url: "https://issuer.example/authorize?state=PRIVATE_OAUTH_STATE", ...overrides };
 }
 function harness({ saved = store(), respond = body => reply(body), popupBlocked = false, context = defaultContext } = {}) {
-  const slots = [], pendingEffects = [], calls = [], popups = [], events = [];
+  const slots = [], pendingEffects = [], calls = [], popups = [], events = [], watched = [];
   let cursor = 0, dirty = false, refreshes = 0, handlers = new Map(), tree;
   const React = {
     useState(initial) {
@@ -47,7 +47,7 @@ function harness({ saved = store(), respond = body => reply(body), popupBlocked 
   const sandbox = vm.createContext({ React, html, Button, URL, clientActionId: randomUUID, sessionStorage: saved,
     useT: () => key => key,
     useOauthSetupProgress: () => ({ refreshSetupState: () => { refreshes++; },
-      watchOauthProgress: () => events.push("watch"), clearWatcher: () => events.push("clear") }),
+      watchOauthProgress: (popup, expiry) => { events.push("watch"); watched.push({ popup, expiry }); }, clearWatcher: () => events.push("clear") }),
     window: { open(url) {
       events.push("open");
       if (popupBlocked) return null;
@@ -91,7 +91,7 @@ function harness({ saved = store(), respond = body => reply(body), popupBlocked 
     handlers = new Map(); collect(tree); return tree;
   }
   render();
-  return { calls, saved, popups, events, render, props,
+  return { calls, saved, popups, events, watched, render, props,
     click: label => { render(); const action = handlers.get(label); assert.ok(action, `missing ${label}`); return action(); },
     handler: label => handlers.get(label),
     unmount: () => slots.forEach(slot => slot?.cleanup?.()),
@@ -242,4 +242,13 @@ test("controller keeps the original explicit account after displayed readiness c
     { kind: "existing", account_id: selected }, { kind: "existing", account_id: selected },
   ]);
   assert.equal(ui.calls[0].body.requirement, ui.props.secret.name);
+});
+
+test("a blocked popup observes the exact confirmed original receipt expiry", async () => {
+  const ui = harness({ popupBlocked: true });
+  await ui.click("extensions.oauth.start");
+  assert.equal(ui.watched.length, 1);
+  assert.equal(ui.watched[0].popup, null);
+  assert.equal(ui.watched[0].expiry, ui.calls[0].body.expires_at);
+  assert.equal(ui.popups.length, 0);
 });

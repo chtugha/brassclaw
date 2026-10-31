@@ -78,7 +78,8 @@ export function OAuthOriginalSetup({ packageRef, secret }) {
         setAuthorizationUrl(receipt.authorization_url);
         if (popup && !popup.closed) popup.location.href = receipt.authorization_url;
         else popup = window.open(receipt.authorization_url, "_blank", "noopener,noreferrer");
-        if (popup) watchOauthProgress(popup);
+        // The recovery link also needs observation when a popup is blocked.
+        watchOauthProgress(popup, receipt.expires_at);
         setMessage(t("extensions.oauth.opened"));
       }
     } catch {

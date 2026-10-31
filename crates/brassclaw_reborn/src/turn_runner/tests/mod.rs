@@ -679,7 +679,7 @@ fn make_claimed_run(
     let lease_token = TurnLeaseToken::new();
     let profile = test_resolved_profile_with_driver(descriptor);
     let mut state = test_run_state(scope, status);
-    state.resolved_run_profile_id = profile.profile_id.clone();
+    state.resolved_run_profile_id = profile.persisted_profile_id();
     state.resolved_run_profile_version = profile.profile_version;
     ClaimedTurnRun {
         state,
@@ -1572,4 +1572,70 @@ async fn cancellation_ack_failure_stops_new_worker_claims() {
         first_terminal_failure_category(&port),
         "monty_stop_unacknowledged"
     );
+}
+
+#[tokio::test]
+async fn claimed_handoff_preserves_persisted_profile_identity_and_rejects_changed_custody() {
+    use brassclaw_turns::run_profile::{MontyTaskHandoff, RunProfileResolutionRequest};
+    use brassclaw_turns::{RunProfileId, RunProfileResolver, TurnRunProfile};
+
+    let mut claimed = make_claimed_run(&test_descriptor(), test_scope(), TurnStatus::Running);
+    claimed.resolved_run_profile =
+        brassclaw_turns::run_profile::InMemoryRunProfileResolver::default()
+            .resolve_run_profile(RunProfileResolutionRequest::interactive_default())
+            .await
+            .unwrap();
+    for profile_id in [
+        RunProfileId::interactive_default(),
+        RunProfileId::new("custom_identity").unwrap(),
+    ] {
+        claimed.resolved_run_profile.profile_id = profile_id.clone();
+        let persisted = TurnRunProfile::from_resolved(claimed.resolved_run_profile.clone());
+        claimed.state.resolved_run_profile_id = persisted.id.clone();
+        claimed.state.resolved_run_profile_version = persisted.version;
+        assert_eq!(
+            persisted.id,
+            if profile_id.is_interactive_default() {
+                RunProfileId::default_profile()
+            } else {
+                profile_id
+            }
+        );
+        let request = AgentLoopDriverRunRequest {
+            turn_id: claimed.state.turn_id,
+            run_id: claimed.state.run_id,
+            resolved_run_profile: claimed.resolved_run_profile.clone(),
+        };
+        let host: Arc<dyn AgentLoopDriverHost + Send + Sync> =
+            Arc::new(MockHostFactory::host_for_claim(&claimed));
+        assert!(
+            MontyTaskHandoff::new_claimed(request.clone(), Arc::new(claimed.clone()), host.clone())
+                .is_ok()
+        );
+        for changed in 0..4 {
+            let mut invalid = claimed.clone();
+            match changed {
+                0 => {
+                    invalid.state.resolved_run_profile_id =
+                        RunProfileId::new("different_identity").unwrap()
+                }
+                1 => invalid.state.resolved_run_profile_version = RunProfileVersion::new(2),
+                2 => {
+                    invalid.state.actor = Some(brassclaw_turns::TurnActor::new(
+                        brassclaw_host_api::UserId::new("different_actor").unwrap(),
+                    ))
+                }
+                3 => {
+                    invalid.state.accepted_message_ref =
+                        AcceptedMessageRef::new("different_input").unwrap()
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                MontyTaskHandoff::new_claimed(request.clone(), Arc::new(invalid), host.clone())
+                    .is_err(),
+                "a canonical profile must not hide changed custody field {changed}"
+            );
+        }
+    }
 }

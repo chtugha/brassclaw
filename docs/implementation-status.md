@@ -1,3 +1,37 @@
+## 2026-10-31 — claimed handoff identity repaired; Docker source pending CI
+
+[BUILD026](validation/2026-10-31-ci-handoff-repair.md) shares the existing
+interactive-default/persisted-default projection across storage, host validation
+and the strict Monty handoff. Complete selected profiles, versions and all other
+custody checks remain; no stop acknowledgement or Rust fallback is invented.
+
+All105 original CI-profile host cases and262 Reborn library cases pass, separately
+from279 default/native cases;32 architecture and connected strict pass. Five pure
+Chef recipe-transformer cases are reused. Docker includes complete vendor/scripts,
+locked builds and semantically equivalent generated editions. Its panic-abort
+override is removed to retain existing host/task unwind boundaries. Actual Docker
+compilation remains pending on GitHub; local source checks do not close that gate.
+
+The previous69024bee GitHub run is terminal: Docker/Reborn failed, rollup failed,
+both contained Ubuntu/macOS and native WebUI jobs passed; cancelled packages are
+not passes. This local repair is not full CI/platform/deployment or full-plan
+acceptance. All remaining K3 and later owner gates remain open.
+
+## 2026-10-31 — OAuth observation follows original expiry
+
+[BUILD025](validation/2026-10-31-oauth-observation.md) removes the independent
+fresh ten-minute observation window. The existing browser observer receives the
+checked original receipt expiry and also observes a popup-blocked recovery link.
+Invalid/expired metadata cannot create another window; confirmed terminal
+receipts, popup close and unmount clean it up. This is read-only UI observation.
+
+26 Node cases,28 fresh embedded-asset cases and1 native HTTP/PG/Chromium caller
+passed, zero skipped/ignored, with static strict lint. Actual timers are audited
+while their scheduling/cancellation remains real. The fixture controls issuer
+responses; no external provider-health or approval claim follows. OAuth new-setup/
+max/gate lifetimes, explicit client-expiry successor, polling/transport/ingress,
+all other K3–K7 gates and full-plan/platform/release acceptance stay open.
+
 ## 2026-10-31 — acknowledged manual-token setup lifetimes accepted
 
 [BUILD024](validation/2026-10-31-manual-setup-lifetimes.md) connects the two new

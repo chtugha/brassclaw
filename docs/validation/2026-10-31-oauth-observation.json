@@ -1,0 +1,266 @@
+{
+  "format": "brassclaw-development-validation/1",
+  "date": "2026-10-31",
+  "request": "BUILD-025",
+  "status": "passed",
+  "package": "/private/tmp/brassclaw-oauth-observation-20261031",
+  "package_after_sha256": "b36395b02676e142ae8f3ef6c8c68612403e15579d9f05eaf0be21275b1d3053",
+  "sources": {
+    "crates/brassclaw_webui_v2_static/static/js/pages/extensions/components/oauth-original-setup.js": "6f15f92251f73b4805082e7bb52d99665dcc70dfe2448888360c076ee03ba5f4",
+    "crates/brassclaw_webui_v2_static/static/js/pages/extensions/hooks/useExtensions-pairing.test.mjs": "8143564198e5ab062a241684e73abd1f79385198bc4984e43dee358e9106a716",
+    "crates/brassclaw_webui_v2_static/static/js/pages/extensions/hooks/useExtensions.js": "035c5c8312fd8b3e1748bff598812687e4fc112df5edfe3dd318bc82c1a4d768",
+    "crates/brassclaw_webui_v2_static/static/js/pages/extensions/lib/oauth-original-controller.test.mjs": "4f3ef2377c32ceece56a26b5d8d3b315dd2fae3286fd099fd415d5f781cd0384",
+    "tests/browser/oauth-original.html": "e4d65f37f4a210d98756eb676761e40a889b92dd2c6919a32b1d67c2027fac27",
+    "tests/browser/oauth-original.mjs": "ea9dacb4894dbcc55fcc8e28cecef32ccbb2f349fba6c6017d14867d2ffffaec",
+    "CHANGELOG.md": "eb28fc10027943c280563ff21819df32cf84fffa5eff7c6b43700d98535275aa"
+  },
+  "source_inventory": {
+    "path": "/private/tmp/brassclaw-oauth-observation-validation-20261031/run-1/source.json",
+    "sha256": "93595dcac65640e0b904fbd87555051cd149dd7f26d566d613f5af876b57210c",
+    "entries": 8241,
+    "embedded_input_map": "/private/tmp/brassclaw-oauth-observation-validation-20261031/run-1/embedded-inputs.json",
+    "embedded_input_map_sha256": "e87db2c977e432155455bb4462d131f22674266906adbd4cc89039aa09f7f64b",
+    "reviewed_root": "/private/tmp/brassclaw-oauth-observation-20261031/current-root-inputs-oauth-observation.json",
+    "reviewed_root_sha256": "448d35e9501ed1d3967a3d1d861aa503443910329c53380c1ba51db211e1b5d4",
+    "reviewed_root_paths": 327
+  },
+  "attempts": {
+    "run-1": {
+      "path": "/private/tmp/brassclaw-oauth-observation-validation-20261031/run-1",
+      "progress_sha256": "9e9a70c4711108a6b5ff3aa5578cf959e2f30a29884415f13263ff1b17b95328",
+      "runner_sha256": "0ee727bd7f82ff6d0e72120a8625645a18c4c0b93ad03e3122b31c7dc3a12ade",
+      "status": "passed",
+      "results": [
+        {
+          "stage": "whitespace",
+          "exit_code": 0,
+          "seconds": 0.2322252090089023,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "browser-syntax",
+          "exit_code": 0,
+          "seconds": 0.2611469589173794,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "actual-embedded-images",
+          "exit_code": 0,
+          "seconds": 239.35094445804134,
+          "log_sha256": "d67fae2cf274181ccc404ef12552a64766ccf4354e6800a6a6de5ef53b043e90"
+        },
+        {
+          "stage": "static-asset-contracts",
+          "exit_code": 0,
+          "seconds": 0.24316995800472796,
+          "log_sha256": "1bb96a844d902e114d5f9938facb1e9800f8abe4058faf3814e6342262653ab0",
+          "passed": 28,
+          "tests": [
+            "assets::tests::automations_panel_assets_are_embedded",
+            "assets::tests::chat_cancelled_gate_resolution_exits_processing_state",
+            "assets::tests::chat_connect_action_assets_render_slack_pairing_and_extensions_channel_picker",
+            "assets::tests::chat_manual_auth_assets_expose_original_raw_and_reference_paths",
+            "assets::tests::chat_message_grouping_hoists_only_final_replies",
+            "assets::tests::chat_pending_reconciliation_has_caller_level_js_regression",
+            "assets::tests::chat_projection_text_preserves_pending_gate",
+            "assets::tests::extension_oauth_setup_refreshes_while_popup_is_open",
+            "assets::tests::extensions_onboarding_messages_render_in_cards",
+            "assets::tests::lookup_returns_none_for_unknown_path",
+            "router::tests::asset_table_includes_known_files",
+            "router::tests::assets_revalidate_and_honor_if_none_match",
+            "router::tests::auth_js_carries_login_ticket_contract",
+            "router::tests::etag_matches_handles_lists_wildcards_and_misses",
+            "router::tests::index_rendering_replaces_every_placeholder",
+            "router::tests::index_template_contains_placeholder",
+            "router::tests::mount_at_prefix_panics_on_empty_prefix",
+            "router::tests::mount_at_prefix_panics_on_trailing_slash",
+            "router::tests::mount_at_prefix_panics_without_leading_slash",
+            "router::tests::nonce_is_unique_per_call",
+            "router::tests::standalone_known_asset_returns_bytes",
+            "router::tests::standalone_no_dot_path_falls_back_to_spa_shell",
+            "router::tests::standalone_path_traversal_segments_return_not_found",
+            "router::tests::standalone_root_returns_spa_shell",
+            "router::tests::standalone_spa_fallback_accepts_dot_in_non_terminal_segment",
+            "router::tests::standalone_spa_fallback_for_client_route",
+            "router::tests::standalone_spa_shell_carries_matching_csp_nonce",
+            "router::tests::wallet_route_is_gone_and_falls_back_to_spa_shell"
+          ],
+          "image_key": "brassclaw_webui_v2_static"
+        },
+        {
+          "stage": "native-oauth-observation-browser",
+          "exit_code": 0,
+          "seconds": 11.05985916708596,
+          "log_sha256": "ebe31e8eb41199d491e92d38917af83a33a0f27bf4f87535640df87c85a39ff0",
+          "passed": 1,
+          "tests": [
+            "product_auth_serve::oauth_original_tests::native_browser::native_dcr_original_http_retains_one_registration_with_optional_browser_acceptance"
+          ],
+          "image_key": "brassclaw_reborn_composition"
+        },
+        {
+          "stage": "static-strict",
+          "exit_code": 0,
+          "seconds": 3.290385875152424,
+          "log_sha256": "9dfe1b869ea0cb883637dedacf392e401499cd9fef963008a63b8dd502d1fd38"
+        }
+      ]
+    }
+  },
+  "results": [
+    {
+      "stage": "whitespace",
+      "exit_code": 0,
+      "seconds": 0.2322252090089023,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "browser-syntax",
+      "exit_code": 0,
+      "seconds": 0.2611469589173794,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "actual-embedded-images",
+      "exit_code": 0,
+      "seconds": 239.35094445804134,
+      "log_sha256": "d67fae2cf274181ccc404ef12552a64766ccf4354e6800a6a6de5ef53b043e90"
+    },
+    {
+      "stage": "static-asset-contracts",
+      "exit_code": 0,
+      "seconds": 0.24316995800472796,
+      "log_sha256": "1bb96a844d902e114d5f9938facb1e9800f8abe4058faf3814e6342262653ab0",
+      "passed": 28,
+      "tests": [
+        "assets::tests::automations_panel_assets_are_embedded",
+        "assets::tests::chat_cancelled_gate_resolution_exits_processing_state",
+        "assets::tests::chat_connect_action_assets_render_slack_pairing_and_extensions_channel_picker",
+        "assets::tests::chat_manual_auth_assets_expose_original_raw_and_reference_paths",
+        "assets::tests::chat_message_grouping_hoists_only_final_replies",
+        "assets::tests::chat_pending_reconciliation_has_caller_level_js_regression",
+        "assets::tests::chat_projection_text_preserves_pending_gate",
+        "assets::tests::extension_oauth_setup_refreshes_while_popup_is_open",
+        "assets::tests::extensions_onboarding_messages_render_in_cards",
+        "assets::tests::lookup_returns_none_for_unknown_path",
+        "router::tests::asset_table_includes_known_files",
+        "router::tests::assets_revalidate_and_honor_if_none_match",
+        "router::tests::auth_js_carries_login_ticket_contract",
+        "router::tests::etag_matches_handles_lists_wildcards_and_misses",
+        "router::tests::index_rendering_replaces_every_placeholder",
+        "router::tests::index_template_contains_placeholder",
+        "router::tests::mount_at_prefix_panics_on_empty_prefix",
+        "router::tests::mount_at_prefix_panics_on_trailing_slash",
+        "router::tests::mount_at_prefix_panics_without_leading_slash",
+        "router::tests::nonce_is_unique_per_call",
+        "router::tests::standalone_known_asset_returns_bytes",
+        "router::tests::standalone_no_dot_path_falls_back_to_spa_shell",
+        "router::tests::standalone_path_traversal_segments_return_not_found",
+        "router::tests::standalone_root_returns_spa_shell",
+        "router::tests::standalone_spa_fallback_accepts_dot_in_non_terminal_segment",
+        "router::tests::standalone_spa_fallback_for_client_route",
+        "router::tests::standalone_spa_shell_carries_matching_csp_nonce",
+        "router::tests::wallet_route_is_gone_and_falls_back_to_spa_shell"
+      ],
+      "image_key": "brassclaw_webui_v2_static"
+    },
+    {
+      "stage": "native-oauth-observation-browser",
+      "exit_code": 0,
+      "seconds": 11.05985916708596,
+      "log_sha256": "ebe31e8eb41199d491e92d38917af83a33a0f27bf4f87535640df87c85a39ff0",
+      "passed": 1,
+      "tests": [
+        "product_auth_serve::oauth_original_tests::native_browser::native_dcr_original_http_retains_one_registration_with_optional_browser_acceptance"
+      ],
+      "image_key": "brassclaw_reborn_composition"
+    },
+    {
+      "stage": "static-strict",
+      "exit_code": 0,
+      "seconds": 3.290385875152424,
+      "log_sha256": "9dfe1b869ea0cb883637dedacf392e401499cd9fef963008a63b8dd502d1fd38"
+    }
+  ],
+  "counts": {
+    "rust_cases": 29,
+    "packaging_cases": 28,
+    "native_http_pg_browser_cases": 1,
+    "node_cases": 26,
+    "ignored": 0
+  },
+  "images": {
+    "brassclaw_webui_v2_static": {
+      "path": "/private/tmp/brassclaw-oauth-observation-validation-20261031/run-1/brassclaw_webui_v2_static-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_webui_v2_static-5f64f22aed8d3a89",
+      "sha256": "1ed4e687c55753f8884851fb3b252967a3ab3a2146c7b1725aff357eb90504b5",
+      "features": [],
+      "compilation_stage": "actual-embedded-images",
+      "test_image": true
+    },
+    "brassclaw_reborn_composition": {
+      "path": "/private/tmp/brassclaw-oauth-observation-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-cde394fcf1f47f30",
+      "sha256": "26e754689cd27844616d946e94faf649c052bef78b029c8b0b28f38642a6a785",
+      "features": [
+        "default",
+        "migrate-from-libsql",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ],
+      "compilation_stage": "actual-embedded-images",
+      "test_image": true
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-oauth-observation-validation-20261031/run-1/prior-monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "be0f0d6e28779c258595ce2bdcd05e75c388ffd126bf5e76121feedd10f7e93a",
+    "status": "prior worker retained before fresh build"
+  },
+  "browser_runtime": {
+    "cli": "/Volumes/SSDE/brassclaw/tests/browser/node_modules/agent-browser/bin/agent-browser-darwin-arm64",
+    "sha256": "5ff18a2f0c7d4c662d638b8ac5ce434b589be5f6bde8b8fe7e25c3658e2bcbf9",
+    "node_version": "v25.6.1"
+  },
+  "node_observation": {
+    "scope": "Pure UI hook/controller/redacted original caller tests; no successful backend or Tool behavior qualified",
+    "command": [
+      "node",
+      "--test",
+      "crates/brassclaw_webui_v2_static/static/js/pages/extensions/hooks/useExtensions-pairing.test.mjs",
+      "crates/brassclaw_webui_v2_static/static/js/pages/extensions/lib/oauth-original-controller.test.mjs",
+      "crates/brassclaw_webui_v2_static/static/js/pages/extensions/lib/oauth-original.test.mjs"
+    ],
+    "exit_code": 0,
+    "passed": 26,
+    "failed": 0,
+    "skipped": 0,
+    "source_sha256": {
+      "crates/brassclaw_webui_v2_static/static/js/pages/extensions/components/oauth-original-setup.js": "6f15f92251f73b4805082e7bb52d99665dcc70dfe2448888360c076ee03ba5f4",
+      "crates/brassclaw_webui_v2_static/static/js/pages/extensions/hooks/useExtensions-pairing.test.mjs": "8143564198e5ab062a241684e73abd1f79385198bc4984e43dee358e9106a716",
+      "crates/brassclaw_webui_v2_static/static/js/pages/extensions/hooks/useExtensions.js": "035c5c8312fd8b3e1748bff598812687e4fc112df5edfe3dd318bc82c1a4d768",
+      "crates/brassclaw_webui_v2_static/static/js/pages/extensions/lib/oauth-original-controller.test.mjs": "4f3ef2377c32ceece56a26b5d8d3b315dd2fae3286fd099fd415d5f781cd0384",
+      "crates/brassclaw_webui_v2_static/static/js/pages/extensions/lib/oauth-original.test.mjs": "9a6c28a09bf38ddc5b468a56f868a6f38edf9c771257ff4c4fff9c53396eb945",
+      "crates/brassclaw_webui_v2_static/static/js/pages/extensions/lib/oauth-original.js": "30aa6863a935b55bfdee0299af53471e746ac653e4676d1a37404bccb5ffc53d",
+      "crates/brassclaw_webui_v2_static/static/js/pages/extensions/lib/extensions-api.js": "2daeae22719836b75b182950f3a10ab3e2cfc71b76eda025788abe8114d84f08"
+    },
+    "evidence": "Original functions.exec stdout in this chat, observed once before native fixture instrumentation; no rerun to obtain another log."
+  },
+  "scope": [
+    "Existing OAuth observation consumes actual confirmed receipt expiry; no new ten-minute window on reopen and blocked-popup recovery link is observed",
+    "Pure hook/controller/original tests verify expiry/invalid metadata/reopen/blocked popup/close/unmount and all prior original identities without qualifying a backend or Tool success",
+    "Fresh actual static/Composition embedded images;28 packaging cases and existing protected native HTTP/PG/browser case pass, plus static strict lint",
+    "Native browser audit delegates real timer scheduling/cancellation unchanged, requires one ticking blocked-popup observer, then zero active observers after confirmed cancellation; all prior original/custody/unknown-cleanup assertions retained",
+    "The existing issuer egress is controlled test data; this is actual UI/HTTP/PG behavior, not real issuer health, Tool qualification or component approval",
+    "No Rust behavior, worker source, SQL, guide or release-reference inventory changes; verified unchanged worker and26 exact-input Node results reused. No repeated global/model gate for unchanged source",
+    "Local macOS scope only. OAuth default/max/gate generation, explicit client expiry successor, polling/transport/ingress and K3\u2013K7/full plans remain open"
+  ],
+  "termination": {
+    "original_runner_exited": true,
+    "common_lock_independently_acquired": true,
+    "process_evidence": "/private/tmp/brassclaw-oauth-observation-20261031/terminal-process-check.json"
+  }
+}

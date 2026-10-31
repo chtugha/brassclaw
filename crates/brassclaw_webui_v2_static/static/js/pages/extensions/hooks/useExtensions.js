@@ -15,7 +15,6 @@ import {
 } from "../lib/extensions-api.js";
 
 const OAUTH_SETUP_REFRESH_MS = 2000;
-const OAUTH_SETUP_TIMEOUT_MS = 10 * 60 * 1000;
 
 export function useExtensions() {
   const queryClient = useQueryClient();
@@ -211,15 +210,21 @@ export function useOauthSetupProgress(packageRef) {
   }, [packageKey, queryClient]);
 
   const watchOauthProgress = React.useCallback(
-    (popup) => {
+    (popup, expiresAt) => {
       clearWatcher();
-      const startedAt = Date.now();
+      // Observe the confirmed original deadline; reopening the card/window
+      // cannot grant a new observation period or renew an Auth flow.
+      const expiry = Date.parse(expiresAt);
+      if (typeof expiresAt !== "string" || !Number.isFinite(expiry)) {
+        throw new Error("OAuth setup expiry is invalid.");
+      }
+      if (expiry <= Date.now()) { refreshSetupState(); return; }
       watcherRef.current = window.setInterval(() => {
         refreshSetupState();
         if (
           setupIsConfigured() ||
           (popup && popup.closed) ||
-          Date.now() - startedAt > OAUTH_SETUP_TIMEOUT_MS
+          Date.now() >= expiry
         ) {
           clearWatcher();
           refreshSetupState();

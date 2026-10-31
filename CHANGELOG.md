@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Preserve the canonical stored identity of the default run profile at the
+  claimed Monty handoff, sharing one projection with persistence and host
+  validation. Keep exact selected versions and the remaining custody checks.
+- Include all patched vendor sources and embedded script inputs in Docker
+  builds. Update cargo-chef and migrate redundant generated target editions to
+  equivalent package editions with semantic checks and locked builds. Preserve
+  unwinding at host/task failure boundaries in containers.
+
+- Observe OAuth setup until its confirmed original expiry, including when a
+  popup is blocked. Reopening the UI no longer starts a separate ten-minute
+  observation period; a confirmed terminal receipt stops its observer.
+
 - Make new chat and Extension manual-token setup lifetimes configurable through
   acknowledged instance settings, with EN/DE explanations. Preserve every
   accepted original expiry across retries, concurrent creation and live edits;

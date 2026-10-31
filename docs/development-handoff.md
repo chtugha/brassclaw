@@ -1,3 +1,126 @@
+## BUILD026 locally accepted — GitHub Docker acceptance remains pending
+
+Both original serial runners30734 and31683 exited; the common Cargo lock was
+independently acquired. Receipt docs/validation/2026-10-31-ci-handoff-repair.json
+SHA3281e06ab8213877d527e3b2a2648beb59c964a32a6ec106fd0ce7dade6dcfeb.
+12 package paths/8245 inputs. Run1:279 actual cases (102 default host,22 runner,
+86 Turns core,68 host contracts,1 actual global Monty/PG claim),32 architecture,
+connected strict. Run2: exact GitHub root-llm-provider target105/105 host cases
+and262/262 complete library cases. Five unchanged pure Python normalization cases
+reused. No ignored cases, no fake stop ACK, no Rust workflow fallback.
+
+Docker-only successor after-r2.json was applied after both freezes ended:
+remove panic=abort so existing catch_unwind host/task boundaries inherit normal
+package unwinding. Original native inputs/results remain preserved and applicable;
+actual Docker profile build is still PENDING GitHub. Complete vendor/scripts,
+locked Chef0.1.78 and equivalent generated target-edition migration are included.
+Finalizer first encountered sandbox ps denial, then an aggregation assertion
+that expected32 in one target; actual0+4+28 aggregation corrected, no tests rerun.
+
+Reviewed Root336 manifest:
+/private/tmp/brassclaw-ci-handoff-repair-20261031/current-root-inputs-ci-handoff-repair.json
+SHA646d3d906c0fe1b7856fd676d562ad32bd6d27741e3955631d30bb028884a09a.
+Canonical workerbe0f unchanged, independently hashed and outside changed dependency
+closure. Sourcefreeze released; Root retains exclusive Cargo/build ownership.
+
+Original GitHub41175997433 on69024bee is TERMINAL failure: Docker/Reborn and
+therefore rollup. Both contained Ubuntu/macOS jobs and native Chromium passed,
+as did Windows builds/memory and other scoped jobs. Cancelled matrix jobs are
+not passes. Actual job snapshot is checkpoint-github-terminal.json in this package.
+Next checkpoint accepted025/026, push main, dispatch one full GitHub run for its
+exact SHA, repair actual failures and continue K3. No release/tag/full-plan claim.
+
+Untracked Prefixless_redefine_at_K3.md is foreign ongoing planning work, not
+owned or declared ready by either authorized implementation/document peer.
+Leave it untouched and outside this accepted package/checkpoint unless its
+actual owner/user supplies a stable ready boundary. Its new requirements are
+future successor work; do not rewrite current or accepted packets retroactively.
+
+## BUILD025 ACCEPTED — next repair actual GitHub failures, then K3 continuation
+
+Receipt docs/validation/2026-10-31-oauth-observation.json SHA
+71e5b8facaf02bb0e3dfc4f46c34fc941f6d19ed4ce53da8cea4b176e28d02f1.
+7 paths/8241 captured inputs;26 Node cases reused with exact seven source inputs,
+28 actual static packaging cases and1 actual native HTTP/PG/Chromium consumer
+passed, zero skipped/ignored; actual embedded images rebuilt239.4s, native11.1s,
+static strict3.3s. Initial queued finalizer emitted no receipt/log; independent
+retry after terminal original28981 exit succeeded, no Cargo/tests rerun.
+Root327 manifest /private/tmp/brassclaw-oauth-observation-20261031/current-root-inputs-oauth-observation.json
+SHA448d35e9501ed1d3967a3d1d861aa503443910329c53380c1ba51db211e1b5d4.
+Sourcefreeze released; Root retains sole Cargo. Workerbe0f unchanged and verified.
+025 source/report/docs are NOT committed yet; accepted checkpoint main/origin is
+69024bee1640b0da4e7873ae9e96b3fea71ee020.
+
+Actual GitHub41175997433 remains running. New failures: Docker124463588764 lacks
+/app/vendor/minijinja-compat during cargo-chef cook; planner/builder copy only
+monty-control, deps copy no patched vendor tree, scripts embeds also omitted.
+Docker log /private/tmp/brassclaw-ci-41175997433-docker.log includes genuine
+per-target edition deprecation warnings from cargo-chef synthesized manifests.
+Do not suppress them. Official latest0.1.78 still serializes completed target
+metadata; inspect/repair equivalent package-edition representation rather than
+claiming an untested version bump solves it. Never run chef cook in this checkout.
+
+Reborn124463702965 ran loop_driver_host105:101passed/4failed, log
+/private/tmp/brassclaw-ci-41175997433-reborn.log. Source traced actual common cause:
+TurnRunProfile::from_resolved maps interactive_default -> persisted default;
+RebornHostFactory already applies that exact mapping, but newly strict
+MontyTaskHandoff::new_claimed compares raw resolved ID directly. It rejects all
+four real runner handoffs BEFORE WrappingMontyDriver is called; unsupported stop
+then masks the original mismatch as monty_stop_unacknowledged. Correct the shared
+canonical persisted-ID projection and reuse it in all3 owners; preserve every
+other identity/version/claim check. Do NOT add fake stop acknowledgement, weaken
+stop/evidence or add a production Rust-loop fallback. Test adapters are generic
+runner fixtures, not ordinary global Monty activation evidence.
+
+Next BUILD026: this actual handoff identity defect + Docker input/deprecation
+repairs under CI maintenance, before regular plan continuation. Need core
+positive/default/custom and mismatched ID/version/actor/ref handoff regression,
+original105cases, real global/PG retained claim caller, architecture/shared strict;
+actual Docker validation on GitHub after safe reviewed source. No migration reserved
+after195. Existing OAuth new setup/default/max/gate, polling/transport/ingress and
+K3–K7/Validator/Pure/S/Prefix/recovery/full release remain open.
+
+GitHub successes now include all4 root shards, heavy/replay, architecture, Monty
+upgrade, native memory Ubuntu/macOS/Windows, default/all-feature Windows builds,
+and several package jobs. Cancelled package jobs are NOT passes. Observe original
+run once per meaningful interval; no duplicate dispatch on timeout.
+
+## 2026-10-31 — accepted checkpoint pushed; BUILD025 OAuth observation WIP
+
+main/origin/remote69024bee1640b0da4e7873ae9e96b3fea71ee020 verified after push;
+54 shared paths committed, checkout was clean. No tag/release/version bump.
+Full repaired GitHub workflow dispatched ONCE for this exact SHA:
+https://github.com/chtugha/brassclaw/actions/runs/41175997433,
+full_validation=true,include_docker=true. Latest observation: running, installer
+Ubuntu/macOS passed, other jobs pending/in progress. No complete CI/platform claim;
+never redispatch because observation times out. Continue its actual run.
+Both authorized chats informed; checkpoint freeze released, Root sole Cargo.
+
+BUILD025 WIP package /private/tmp/brassclaw-oauth-observation-20261031:
+7 paths (4 static JS including2 existing caller test files, native HTML/browser
+script and changelog). Confirmed-original deadline replaces fresh10min elapsed
+cap; blocked popup now observes its recovery link. Invalid/expired metadata never
+starts a new observer; close/unmount/terminal receipt clean it up.26 actual Node
+cases/0skipped passed once; original tool stdout/explicit source record retained
+in node-observation.json, not rerun for another log. New actual timer audit in
+native fixture delegates real setInterval/clearInterval unchanged; browser test
+requires one ticking blocked-popup observer and no observer after confirmed cancel.
+Not yet compiled/native-accepted. Static assets.rs/build.rs embed every asset at
+compile time even in debug: an old image would serve old JS. Rebuild actual image,
+then existing native DCR HTTP/PG/Chromium case and static packaging/strict. No Rust
+behavior/worker/SQL/Guide/reference-inventory change; release inventory explicitly
+contains neither changed production JS. Do not repeat full model/global checks
+without a relevant changed requirement. Current accepted workerbe0f0d6e… stays
+canonical; preserve/verify actual image and same source applicability.
+
+The existing native browser fixture controls issuer responses; its real HTTP/PG
+and browser behavior is evidence of UI/retention, not external issuer health or
+component approval. No new fake successful Tool/model result is introduced.
+OAuth new default/max/gate lifetime, old explicit client expiry successor,
+2000ms refresh interval, browser transport and ingress remain open, as do all
+other K3–K7/Validator/Pure/S/Prefix/recovery/release gates. Continue implementation
+without stopping at this checkpoint. No future migration reserved after195.
+
 ## 2026-10-31 — BUILD024 ACCEPTED; checkpoint then continue K3 OAuth
 
 Receipt docs/validation/2026-10-31-manual-setup-lifetimes.json SHA

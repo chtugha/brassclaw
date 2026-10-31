@@ -58,6 +58,16 @@ impl PersonalContextPolicy {
 }
 
 impl ResolvedRunProfile {
+    /// Project the interactive default onto its historical persisted identity.
+    /// The complete selected profile and its version remain unchanged.
+    pub fn persisted_profile_id(&self) -> RunProfileId {
+        if self.profile_id.is_interactive_default() {
+            RunProfileId::default_profile()
+        } else {
+            self.profile_id.clone()
+        }
+    }
+
     pub(crate) fn legacy_compatibility(
         profile_id: RunProfileId,
         profile_version: RunProfileVersion,

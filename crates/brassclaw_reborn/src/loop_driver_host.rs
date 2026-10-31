@@ -92,9 +92,8 @@ pub fn init_compaction_summarizer(body: String) {
 }
 
 use brassclaw_turns::{
-    CheckpointStateStore, LoopCheckpointStateRef, LoopCheckpointStore, RunProfileId,
-    TurnCheckpointId, TurnError, TurnRunWake, TurnRunWakeNotifier, TurnRunWakeNotifyError,
-    TurnStateStore, TurnStatus,
+    CheckpointStateStore, LoopCheckpointStateRef, LoopCheckpointStore, TurnCheckpointId, TurnError,
+    TurnRunWake, TurnRunWakeNotifier, TurnRunWakeNotifyError, TurnStateStore, TurnStatus,
     run_profile::{
         AgentLoopHostError, AgentLoopHostErrorKind, AppendCapabilityResultRef, BeginAssistantDraft,
         CapabilityBatchInvocation, CapabilityBatchOutcome, CapabilityInvocation, CapabilityOutcome,
@@ -2369,7 +2368,7 @@ fn validate_claimed_run_context(
         }
         _ => {}
     }
-    let expected_profile_id = persisted_profile_id(&run_context.resolved_run_profile.profile_id);
+    let expected_profile_id = run_context.resolved_run_profile.persisted_profile_id();
     if claimed_run.state.resolved_run_profile_id != expected_profile_id
         || claimed_run.state.resolved_run_profile_version
             != run_context.resolved_run_profile.profile_version
@@ -2584,14 +2583,6 @@ fn slot_for_model_profile(
             reason: "model profile is not supported by the model route resolver".to_string(),
         },
     )
-}
-
-fn persisted_profile_id(profile_id: &RunProfileId) -> RunProfileId {
-    if profile_id.is_interactive_default() {
-        RunProfileId::default_profile()
-    } else {
-        profile_id.clone()
-    }
 }
 
 fn validate_thread_scope(

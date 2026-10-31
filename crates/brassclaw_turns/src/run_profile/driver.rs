@@ -160,7 +160,7 @@ impl MontyTaskHandoff {
             || state.actor != context.actor
             || context.accepted_message_ref.as_ref() != Some(&state.accepted_message_ref)
             || claimed.resolved_run_profile != request.resolved_run_profile
-            || state.resolved_run_profile_id != claimed.resolved_run_profile.profile_id
+            || state.resolved_run_profile_id != claimed.resolved_run_profile.persisted_profile_id()
             || state.resolved_run_profile_version != claimed.resolved_run_profile.profile_version
             || state.run_id != request.run_id
             || state.turn_id != request.turn_id
