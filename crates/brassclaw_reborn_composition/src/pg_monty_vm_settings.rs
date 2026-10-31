@@ -3611,3 +3611,122 @@ mod turn_gate_oauth_lifetime_upgrade_tests {
         }
     }
 }
+
+#[cfg(all(test, feature = "postgres"))]
+mod standalone_oauth_lifetime_upgrade_tests {
+    use brassclaw_host_api::MontyExecutionLimits;
+    const MIGRATION: &str =
+        include_str!("../../brassclaw_pg/migrations/V197__standalone_oauth_setup_lifetimes.sql");
+
+    #[tokio::test]
+    async fn native_standalone_oauth_lifetime_upgrade_preserves_pairs_and_column_defaults() {
+        let rig = crate::runtime::test_pg::pg_rig().await;
+        let _db = rig.lock_db().await;
+        let client = rig.pool.get().await.unwrap();
+        for (schema, overrides, expected_default, expected_max) in [
+            ("oauth_setup_missing", "{}", 600u32, 600u32),
+            (
+                "oauth_setup_default_only",
+                r#"{"oauth_setup_default_ttl_secs":900}"#,
+                900,
+                900,
+            ),
+            (
+                "oauth_setup_max_only",
+                r#"{"oauth_setup_max_ttl_secs":47}"#,
+                47,
+                47,
+            ),
+            (
+                "oauth_setup_full",
+                r#"{"oauth_setup_default_ttl_secs":31,"oauth_setup_max_ttl_secs":81}"#,
+                31,
+                81,
+            ),
+        ] {
+            client.batch_execute(&format!(r#"CREATE SCHEMA {schema};
+                CREATE TABLE {schema}.reborn_monty_vm_settings (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+                SET search_path TO {schema};
+                ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT standalone_oauth_setup_lifetimes;
+                INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+                VALUES('missing','owner','agent','project',8),('default-only','owner','agent','project',12),
+                    ('max-only','owner','agent','project',20),('explicit','owner','agent','project',30);
+                UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-ARRAY['oauth_setup_default_ttl_secs','oauth_setup_max_ttl_secs'];
+                UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{{"oauth_setup_default_ttl_secs":900}}'::jsonb WHERE tenant_id='default-only';
+                UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{{"oauth_setup_max_ttl_secs":47}}'::jsonb WHERE tenant_id='max-only';
+                UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{{"oauth_setup_default_ttl_secs":4294967295,"oauth_setup_max_ttl_secs":4294967295}}'::jsonb WHERE tenant_id='explicit';"#)).await.unwrap();
+            let prior: String = client.query_one("SELECT pg_get_expr(d.adbin,d.adrelid)::text FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid=d.adrelid AND a.attnum=d.adnum WHERE d.adrelid='reborn_monty_vm_settings'::regclass AND a.attname='execution_limits'",&[]).await.unwrap().get(0);
+            client.batch_execute(&format!(r#"ALTER TABLE reborn_monty_vm_settings ALTER COLUMN execution_limits SET DEFAULT ((({prior})-ARRAY['oauth_setup_default_ttl_secs','oauth_setup_max_ttl_secs'])||'{overrides}'::jsonb||'{{"auth_backend_timeout_millis":54000}}'::jsonb)"#)).await.unwrap();
+            client.batch_execute(MIGRATION).await.unwrap();
+            for (tenant, default, maximum, revision) in [
+                ("missing", 600, 600, 9i64),
+                ("default-only", 900, 900, 13),
+                ("max-only", 47, 47, 21),
+                ("explicit", u32::MAX, u32::MAX, 30),
+            ] {
+                let row = client.query_one("SELECT execution_limits,revision FROM reborn_monty_vm_settings WHERE tenant_id=$1", &[&tenant]).await.unwrap();
+                let limits: MontyExecutionLimits = serde_json::from_value(row.get(0)).unwrap();
+                limits.validate().unwrap();
+                assert_eq!(
+                    (
+                        limits.oauth_setup_default_ttl_secs,
+                        limits.oauth_setup_max_ttl_secs,
+                        row.get::<_, i64>(1)
+                    ),
+                    (default, maximum, revision)
+                );
+            }
+            let row = client.query_one("INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id) VALUES('new','owner','agent','project') RETURNING execution_limits", &[]).await.unwrap();
+            let limits: MontyExecutionLimits = serde_json::from_value(row.get(0)).unwrap();
+            assert_eq!(
+                (
+                    limits.oauth_setup_default_ttl_secs,
+                    limits.oauth_setup_max_ttl_secs
+                ),
+                (expected_default, expected_max)
+            );
+            assert_eq!(limits.auth_backend_timeout_millis, 54000);
+            for field in ["oauth_setup_default_ttl_secs", "oauth_setup_max_ttl_secs"] {
+                for invalid in [
+                    serde_json::json!(0),
+                    serde_json::json!(-1),
+                    serde_json::json!(1.5),
+                    serde_json::Value::Null,
+                    serde_json::json!("600"),
+                    serde_json::json!(4294967296u64),
+                ] {
+                    assert!(client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||jsonb_build_object($1::text,$2::jsonb) WHERE tenant_id='missing'", &[&field,&invalid]).await.is_err());
+                }
+                assert!(client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-$1::text WHERE tenant_id='missing'", &[&field]).await.is_err());
+            }
+            assert!(client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"oauth_setup_default_ttl_secs\":601,\"oauth_setup_max_ttl_secs\":600}'::jsonb WHERE tenant_id='missing'", &[]).await.is_err());
+            client.batch_execute("RESET search_path").await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn native_standalone_oauth_upgrade_rejects_explicitly_incoherent_pairs() {
+        let rig = crate::runtime::test_pg::pg_rig().await;
+        let _db = rig.lock_db().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute("CREATE SCHEMA oauth_setup_invalid;
+            CREATE TABLE oauth_setup_invalid.reborn_monty_vm_settings (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO oauth_setup_invalid;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT standalone_oauth_setup_lifetimes;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id) VALUES('bad','owner','agent','project');
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"oauth_setup_default_ttl_secs\":601,\"oauth_setup_max_ttl_secs\":600}'::jsonb;").await.unwrap();
+        let before: serde_json::Value = client
+            .query_one("SELECT execution_limits FROM reborn_monty_vm_settings", &[])
+            .await
+            .unwrap()
+            .get(0);
+        assert!(client.batch_execute(MIGRATION).await.is_err());
+        let after: serde_json::Value = client
+            .query_one("SELECT execution_limits FROM reborn_monty_vm_settings", &[])
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(before, after);
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+}

@@ -49,16 +49,21 @@ is gone, common lock independently acquired and3315 final hashes verified.
 Source freeze released; Root keeps Cargo. Later embedded plan-prose updates are
 not silently covered by the earlier exact native package identity.
 
-Next ready compatible packages:052 Recipe re-review metadata atomicity, full
-five-path successor1bcf4ae9…;053 standalone OAuth lifetimes,16-path private
-6a7efae6… with unnumbered migration and real native/browser cases prepared.
-Review/rebase both before next compilation; no need to repeat unchanged seven-
-package native cases. 054 original Use→Bootstrap is being implemented privately
-by the existing Prefix owner, including real technical Recipe/ResultOnly and
-mutation/target inspection. It is not ready or a productive Free qualification.
-Root036 host binding/refresh/guards remain private; its Device-login lifecycle
-subpart is assigned to the existing authorized definition chat using the same
-AuthFlow/Secret owners and one shared neutral client descriptor.
+BUILD052/053 are **Passed locally in their exact scope**:
+[receipt](validation/2026-10-31-standalone-oauth-rereview.md), JSON SHA
+5b3a687864643daca6ac9a0f2c90116f172a98d97a464d5c1d4046fa614ee993.
+One shared test compilation256.8s, fresh worker15.7s;11 Rust cases (7 actual
+PG/global,3 existing HTTP contracts,1 Host API),28 Node,28 static,32 architecture,
+two actual Chromium paths and both strict configurations pass. Original74626
+ended; common lock independently acquired,3318 captured inputs/images verified.
+Current worker ef997c89… supersedes B6. Freeze released; no replacement compile.
+Previous045–051 checkpoint c68cfe80c41a0e1a0a3dcaca96234624a847eccb is pushed.
+
+Next compatible package054 remains private until its connected successor repairs
+qualification isolation and captures original input bounds in the existing job
+owner. Both Use and set_active-Upsert remain required. Root036 native binding/
+refresh/guards and its delegated Device lifecycle remain private. Collect and
+review these complete parts before the next shared compile; no SDK-only cutover.
 
 States are **Proposed**, **Ready**, **Building**, **Needs repair** and **Passed**. A ready
 request can be combined with compatible work in one verified batch. Passing
@@ -80,8 +85,8 @@ an explicit human reassignment; chats do not transfer ownership among themselves
 | BUILD-049 | Measurement observation/attempt fences | Passed local scoped | Two-path270d43a2…; profile/generation/job/read-order fencing, uncertain original retry retained. Included in42 passed/reused Node cases. No new durable UI original, backend DTO or high-measurement acceptance claim. |
 | BUILD-050 | Atomic Recipe rejection in existing Queue/Recipe owners | Passed local scoped | R2 patch28ee0f62… replaces rejected R1; incremental R3 b6a79089… shares actual transaction-key locking before absence/insert, with real pg_locks concurrency case. Legitimate manual pre-Q1 actions remain; Q2 row/queue changes commit together; upgrades preserve exact live bytes; all backend/commit failures are visible. |
 | BUILD-051 | Existing Auth refresh caller-owned publication transaction | Passed local scoped | Two reviewed Root paths, original scoped operation delegates to the same extracted account/action helper. Real rollback extension preserves independently retained response and original revisions; six existing durable-refresh cases pass, including the real caller-owned rollback. No new journal, generic System grant or SDK-only cutover; complete036 credential/host bridge remains private/open. |
-| BUILD-052 | Existing manual Recipe re-review metadata | Ready private; Root review completed | Replacing five-path1bcf4ae9…; unchanged runtime/test afterbytes from reviewed7e402f2c… plus three corrected actual caller comments. One status/tag transaction; no Queue/Q4 reset or approval. Genuine PG/HTTP late-statement/commit cases prepared, unrun. |
-| BUILD-053 | Existing standalone OAuth setup default/maximum | Ready private; Root reviewing |16-path6a7efae6… at /private/tmp/brassclaw-standalone-oauth-lifetimes-20261031. Actual600/600 defaults, coherent positive-u32 pair, existing live settings/three HTTP gates/browser producer.16 private Node cases pass; migration unnumbered, native/PG/browser unrun. |
+| BUILD-052 | Existing manual Recipe re-review metadata | Passed local scoped | One status/tag transaction, no Queue/Q4 reset or approval. Both real PG/HTTP cases pass, including late-statement and deferred-COMMIT rollback. Shared receipt5b3a6878…. |
+| BUILD-053 | Existing standalone OAuth setup default/maximum | Passed local scoped | V197, acknowledged600/600 defaults and coherent positive-u32 pair, three HTTP gates and original browser producer. Root account-before-await repair included. Actual upgrade/live-PG/global/two Chromium paths,28 Node and both strict configurations pass; shared receipt5b3a6878…. |
 | BUILD-054 | Existing I1 original Use→Bootstrap owner | Private implementation | Existing003/005 capture/assembly reused; explicit Use AND set_active-Upsert, actual retained/draft preparation origin, one mutation/spec/setup/job commit then ordinary admission, real technical Recipe/result and original-target inspection. PrefixFreeWorkflow stays closed without actual native sealed qualification. No new catalogue/queue/snapshot/renderer; migration numbers only at Root integration. |
 | BUILD-037 | Existing Prefix renderer/domain Unicode escapes | Passed scoped consumers | Five production Python paths+existing tests and real contained Monty supplementary-Unicode case pass. ASCII/BMP/unaffected text, raw cards/IDs/context maps preserved. No deployed special-token/model/Serving claim. Shared receipt bb58d98f…. |
 | BUILD-038 | Existing ModelDesign identity/original view | Passed presentation scope | Four exact source paths,9 Node and actual nativeHTTP/React keyboard/literal-original tests, current embedded bytes/304 and strict pass. Provider configuration revision correctly named; no inner reserialization/new status/action/complete P06. Shared receipt bb58d98f…. |

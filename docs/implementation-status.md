@@ -1,3 +1,22 @@
+## 2026-10-31 — standalone OAuth settings and manual re-review accepted locally
+
+[BUILD052/053](validation/2026-10-31-standalone-oauth-rereview.md) passes one
+shared warning-free compilation,11 selected Rust cases (7 actual PG/global,
+3 existing HTTP contracts,1 Host API),28 Node,28 static and32 architecture cases,
+both actual Chromium paths and connected/default strict checks. No selected
+case is ignored. V197 supplies acknowledged standalone OAuth default/maximum
+lifetimes, independent of original native/gate deadlines. The browser retains
+the clicked account before asynchronous settings/recovery reads. Recipe manual
+re-review commits status/tag together without resetting a queue or granting
+approval. The exact receipt retains source/image and runtime identities.
+
+Current worker ef997c89… supersedes B6. Source freeze ended after original74626
+exited and the common lock was independently acquired. Root keeps sole serial
+Cargo ownership, batches compatible changes and continues foreground work during
+detached Screen validation. This status paragraph is a later documentation delta;
+it is not silently included in that exact local package identity. Native Codex036,
+connected I1 qualification, full plans and release/deployed acceptance remain open.
+
 ## 2026-10-31 — catalogue/settings facades and existing custody accepted locally
 
 [BUILD045–051](validation/2026-10-31-settings-catalogue-facades.md) establishes21

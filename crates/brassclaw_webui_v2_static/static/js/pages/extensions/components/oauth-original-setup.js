@@ -34,17 +34,23 @@ export function OAuthOriginalSetup({ packageRef, secret }) {
     active.current = true;
     const version = generation.current;
     const current = () => version === generation.current && liveContext.current === key;
+    const requestedTarget = initialTarget();
     setBusy(true); setMessage(""); setAuthorizationUrl(null);
     let popup = null;
     try {
-      let selected = retainOauthOriginal(context, { create: action === "start", expiresAt: extensionOauthExpiry(), target: initialTarget() });
-      setOperation(selected);
-      // Open the placeholder in the human click's synchronous stack. A new
-      // setup first awaits recovery, which would otherwise lose popup access.
-      if (action === "new" || (action === "start" && !selected.receipt?.terminal)) {
+      let selected = findOauthOriginal(context);
+      // Retain popup activation before any new policy or recovery await.
+      if (action === "new" || (action === "start" && !selected?.receipt?.terminal)) {
         popup=window.open("about:blank","_blank","width=600,height=600");
         if (popup) popup.opener=null;
       }
+      if (!selected) {
+        if (action !== "start") throw new Error("OAuth original could not be verified.");
+        const expiresAt = await extensionOauthExpiry();
+        if (!current()) { if (popup && !popup.closed) popup.close(); return; }
+        selected = retainOauthOriginal(context, { expiresAt, target: requestedTarget });
+      }
+      setOperation(selected);
       if (action === "new") {
         // Renew only after a CURRENT owner read of the retained original; local
         // time, another account's readiness or an old response is insufficient.
@@ -52,7 +58,9 @@ export function OAuthOriginalSetup({ packageRef, secret }) {
         if (!current()) {if (popup && !popup.closed) popup.close(); return;}
         selected = recordOauthOriginal(selected, context, receipt);
         if (!selected.receipt?.terminal) { if (popup && !popup.closed) popup.close(); setOperation(selected); setMessage(t("extensions.oauth.unknown")); return; }
-        selected = renewOauthOriginal(selected, context, { expiresAt: extensionOauthExpiry(), target: initialTarget() });
+        const expiresAt = await extensionOauthExpiry();
+        if (!current()) { if (popup && !popup.closed) popup.close(); return; }
+        selected = renewOauthOriginal(selected, context, { expiresAt, target: requestedTarget });
         setOperation(selected); setCleanup(null);
       } else if (selected.receipt?.terminal && action !== "recover" && action !== "reconcile") {
         setMessage(t("extensions.oauth.closed")); return;

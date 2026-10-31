@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Make standalone OAuth setup defaults and API maximum lifetimes configurable
+  through acknowledged live settings, preserving original deadlines and explicit
+  renewals. Add WebUI controls and explanations in English and German.
+- Commit manual Recipe re-review status and validator tags atomically, preserving
+  existing queue metadata and rolling back statement or commit failures.
 - Reuse the existing credential-refresh publication in a caller-owned transaction;
   rollbacks preserve the retained response and original account for reconciliation.
 - Commit Recipe rejection and eligible Q2 queue changes together; preserve

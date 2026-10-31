@@ -1490,8 +1490,11 @@ pub trait RebornServicesApi: Send + Sync {
         ))
     }
 
-    /// Operator override to move a Q4 component (Rejected, review_attempts >= 3)
-    /// back to `pending`. Returns 501 on unsupported implementations.
+    /// Request manual re-review metadata from the existing component store.
+    /// The PostgreSQL Recipe path requires `rejected` and atomically sets
+    /// `pending` plus the validator tag; it has no Q4-only condition. This action
+    /// does not reset a queue, establish Q1/Q2 approval or activate a component.
+    /// Returns 501 on unsupported implementations.
     async fn re_review_component(
         &self,
         _caller: WebUiAuthenticatedCaller,

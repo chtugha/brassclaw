@@ -3125,6 +3125,42 @@ beim zentralen Root. B1/B2-, Packet-/Schema-/Goldenbytes und historische Planbyt
 bleiben unverändert; dieser Absatz ist ausschließlich angehängt.
 
 
+### 17.21 Originale Recipe-Ansicht und bestehende Settings-Facades — begrenzte Voraussetzungen abgenommen, 2026-10-31
+
+BUILD045–051 sind nach dem [Bericht](../validation/2026-10-31-settings-catalogue-facades.md)
+und [Receipt](../validation/2026-10-31-settings-catalogue-facades.json), SHA-256
+`ef73a537caf4df451e8890c04eae7fe3e37fa8edabab926f150a7f99f7d63dcd`,
+lokal begrenzt abgenommen: 21 native Composition-Fälle, 28 eingebettete
+WebUI-Assetfälle, 32 Architekturfälle und 42 Node-Fälle; kein ausgewählter Fall
+ignoriert. Connected- und Default-Strict sind bestanden. Der Receipt bindet
+Quellen, ausführbare Images, wiederverwendete Nachweise und zwei begrenzte
+nichtfunktionale Stylekorrekturen; er behauptet kein neu kompiliertes Image für
+die späteren Style-/Dokumentbytes.
+
+Für Exact ist damit der bisher privat vorbereitete H-Anschluss übernommen:
+Die beiden tatsächlichen aktuellen Recipe-Catalogue-/HTTP-Projektionen verwenden
+denselben bestehenden Catalogue-Reader und bewahren die vollständigen Originale
+ihrer tatsächlich ausgewählten Revisionen. Varianten werden ihren exakten
+Originalen zugeordnet; Disabled-/Unactivated-Retention ist im angegebenen Scope
+mitgeprüft. Die UI trennt diese Auswahlansicht von der bearbeitbaren
+Legacy-Projektion; deren Row kann weiterhin aktuell sein.
+Weder eine Originalansicht noch ihre Quellenretention erteilt eine neue Freigabe.
+
+Der gemeinsame Batch belegt außerdem seine tatsächlichen ToolSkill-Reads,
+ausdrücklich nicht unterstützten Review-Writes sowie die im Bericht benannten
+atomaren Reject-/Rollback-, Queue-/Graduation- und Refresh-Custody-Fälle.
+Sources-Lesezustände und Measurement-Originalbindungen samt exakten unsicheren
+Retries haben Node-State-Abdeckung; dies ist keine neue Chromium-Abnahme und
+keine durable Unmount-/Restart-Recovery.
+
+Diese Voraussetzungen schließen weder Original-Use/ModelSetup und den verbundenen
+I1-Consumer noch unabhängige Designfreigabe, vollständiges I2, Prefix-Q1/Q2,
+Serving, GC oder den Gesamtplan. Das verbundene I1-Paket wird weiterhin ausschließlich
+privat vorbereitet und ist durch diesen Abschnitt weder integriert noch
+qualifiziert. Sourcefreeze ist nach dem im Receipt beschriebenen tatsächlichen
+Batchende und der unabhängigen Lockprüfung beendet; Cargo und kanonische
+Codeintegration bleiben beim zentralen Root. Frühere Nachweise bleiben unverändert.
+
 ## 18. Open Prefixless successor — visible construction choice
 
 **Offener nachgelagerter Auftrag, 2026-10-31; nicht durch diesen Text implementiert.**

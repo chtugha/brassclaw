@@ -2378,3 +2378,145 @@ async fn native_pg_queue_absence_and_upgrade_insert_share_transaction_key() {
         json!({"description":"exact concurrent proposal"})
     );
 }
+
+/// Actual legacy metadata fixtures, not successful Q1/behavior/approval evidence.
+async fn re_review_metadata_candidate(
+    pool: &Arc<PgPool>,
+    name: &str,
+    with_queue: bool,
+) -> (
+    Uuid,
+    brassclaw_engine::memory::retrieval_source::ComponentScope,
+) {
+    let (id, scope) = recipe_rejection_candidate(pool, name, false).await;
+    pool.get()
+        .await
+        .unwrap()
+        .execute(
+            "UPDATE reborn_recipes SET validation_status='rejected',
+             consumer_tags=ARRAY['02:orchestrator','05:validator','00:rusty','05:validator']
+         WHERE id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap();
+    if with_queue {
+        // Use the actual queue owner and its configured threshold, then a
+        // lifecycle-only seal. The action must preserve this existing Q4 row.
+        let queue =
+            crate::validation_queue::ValidationQueueStore::with_reject_threshold(pool.clone(), 1);
+        queue.submit(&scope, id, 21, None).await.unwrap();
+        queue.gate1_pass(&scope, id, &[]).await.unwrap();
+        queue
+            .reject(&scope, id, "existing operator rejection")
+            .await
+            .unwrap();
+    }
+    (id, scope)
+}
+
+#[tokio::test]
+async fn native_http_recipe_re_review_commits_status_tag_and_preserves_queue_metadata() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let app = app(rig.pool.clone());
+    let request = json!({"feedback":"operator requests another review"});
+    for (name, with_queue) in [("manual-rereview", false), ("q4-rereview", true)] {
+        let (id, scope) = re_review_metadata_candidate(&rig.pool, name, with_queue).await;
+        let before = recipe_rejection_snapshot(&rig.pool, id).await;
+        let uri = format!(
+            "/api/webchat/v2/components/21/{id}/re-review?project_id={}",
+            scope.project_id
+        );
+        let (status, body) = send(&app, "PUT", &uri, Some(&request), true).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["previous_status"], "rejected");
+        assert_eq!(body["new_status"], "pending");
+        let after = recipe_rejection_snapshot(&rig.pool, id).await;
+        let mut old_row: Value = serde_json::from_str(&before.0).unwrap();
+        let mut new_row: Value = serde_json::from_str(&after.0).unwrap();
+        assert_eq!(new_row["validation_status"], "pending");
+        assert_eq!(
+            new_row["consumer_tags"],
+            json!(["02:orchestrator", "00:rusty", "05:validator"])
+        );
+        for field in ["validation_status", "consumer_tags", "updated_at"] {
+            old_row.as_object_mut().unwrap().remove(field);
+            new_row.as_object_mut().unwrap().remove(field);
+        }
+        assert_eq!(
+            new_row, old_row,
+            "preserve all unrelated actual metadata bytes"
+        );
+        assert_eq!(after.1, before.1, "manual action creates no queue verdict");
+        assert_eq!(
+            send(&app, "PUT", &uri, Some(&request), true).await.0,
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(recipe_rejection_snapshot(&rig.pool, id).await, after);
+        let outside =
+            format!("/api/webchat/v2/components/21/{id}/re-review?project_id=other-project");
+        assert_eq!(
+            send(&app, "PUT", &outside, Some(&request), true).await.0,
+            StatusCode::NOT_FOUND
+        );
+        let evidence: i64 = rig.pool.get().await.unwrap().query_one(
+            "SELECT (SELECT count(*) FROM reborn_component_graduation_receipts WHERE component_id=$1)
+                 + (SELECT count(*) FROM reborn_component_review_evidence)", &[&id],
+        ).await.unwrap().get(0);
+        assert_eq!(evidence, 0, "metadata is not approval evidence");
+    }
+}
+
+#[tokio::test]
+async fn native_http_recipe_re_review_rolls_back_tag_statement_and_commit_failures() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let app = app(rig.pool.clone());
+    let client = rig.pool.get().await.unwrap();
+    client
+        .batch_execute(
+            "CREATE FUNCTION fail_rereview_tag() RETURNS trigger LANGUAGE plpgsql AS $$
+         BEGIN RAISE EXCEPTION 'private rereview diagnostic' USING ERRCODE='23514'; END $$;",
+        )
+        .await
+        .unwrap();
+    for (name, with_queue) in [
+        ("manual-rereview-fault", false),
+        ("q4-rereview-fault", true),
+    ] {
+        let (id, scope) = re_review_metadata_candidate(&rig.pool, name, with_queue).await;
+        let before = recipe_rejection_snapshot(&rig.pool, id).await;
+        let uri = format!(
+            "/api/webchat/v2/components/21/{id}/re-review?project_id={}",
+            scope.project_id
+        );
+        let request = json!({"feedback":"retry metadata only"});
+        for ddl in [
+            // First status UPDATE has succeeded before the actual tag statement fails.
+            "CREATE TRIGGER rereview_fault BEFORE UPDATE OF consumer_tags ON reborn_recipes FOR EACH ROW EXECUTE FUNCTION fail_rereview_tag()",
+            // Both actual statements succeed; the real commit is then rejected.
+            "CREATE CONSTRAINT TRIGGER rereview_fault AFTER UPDATE ON reborn_recipes DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (OLD.consumer_tags IS DISTINCT FROM NEW.consumer_tags) EXECUTE FUNCTION fail_rereview_tag()",
+        ] {
+            client.batch_execute(ddl).await.unwrap();
+            let (status, body) = send(&app, "PUT", &uri, Some(&request), true).await;
+            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+            assert!(!body.to_string().contains("private rereview diagnostic"));
+            assert_eq!(recipe_rejection_snapshot(&rig.pool, id).await, before);
+            client
+                .batch_execute("DROP TRIGGER rereview_fault ON reborn_recipes")
+                .await
+                .unwrap();
+        }
+        assert_eq!(
+            send(&app, "PUT", &uri, Some(&request), true).await.0,
+            StatusCode::OK
+        );
+        let after = recipe_rejection_snapshot(&rig.pool, id).await;
+        let row: Value = serde_json::from_str(&after.0).unwrap();
+        assert_eq!(row["validation_status"], "pending");
+        assert_eq!(
+            row["consumer_tags"],
+            json!(["02:orchestrator", "00:rusty", "05:validator"])
+        );
+        assert_eq!(after.1, before.1);
+    }
+}

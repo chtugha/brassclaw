@@ -10,12 +10,11 @@ pub(super) async fn oauth_start_handler(
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(request): Json<OAuthStartRequest>,
 ) -> Result<Json<OAuthStartResponse>, ProductAuthRouteFailure> {
-    let now = Utc::now();
-    if request.expires_at <= now
-        || request.expires_at > now + ChronoDuration::seconds(PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS)
-    {
-        return Err(ProductAuthRouteFailure::invalid_request());
-    }
+    state
+        .product_auth
+        .validate_standalone_oauth_expiry(request.expires_at)
+        .await
+        .map_err(ProductAuthRouteFailure::from)?;
 
     let scope = scope_from_authenticated_caller(&caller, &request)?;
     let provider = AuthProviderId::new(request.provider).map_err(|_| {
@@ -355,13 +354,11 @@ async fn start_dcr_extension_oauth_flow(
                     original.update_binding,
                 ),
                 None => {
-                    let now = Utc::now();
-                    if request.expires_at <= now
-                        || request.expires_at
-                            > now + ChronoDuration::seconds(PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS)
-                    {
-                        return Err(ProductAuthRouteFailure::invalid_request());
-                    }
+                    state
+                        .product_auth
+                        .validate_standalone_oauth_expiry(request.expires_at)
+                        .await
+                        .map_err(ProductAuthRouteFailure::from)?;
                     let (setup, binding) = extension_oauth_requirement::prepare(
                         &state,
                         &caller,
@@ -496,12 +493,11 @@ async fn start_google_oauth_flow(
     {
         return Ok(flow);
     }
-    let now = Utc::now();
-    if request.expires_at <= now
-        || request.expires_at > now + ChronoDuration::seconds(PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS)
-    {
-        return Err(ProductAuthRouteFailure::invalid_request());
-    }
+    state
+        .product_auth
+        .validate_standalone_oauth_expiry(request.expires_at)
+        .await
+        .map_err(ProductAuthRouteFailure::from)?;
 
     let config = state.google_oauth_config()?;
     let (requirement_setup, update_binding) = prepared.map_or((None, None), |(setup, binding)| {

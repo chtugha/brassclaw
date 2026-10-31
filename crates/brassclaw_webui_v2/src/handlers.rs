@@ -1598,9 +1598,10 @@ pub async fn send_component_to_revision(
 
 /// `PUT /api/webchat/v2/components/{class_code}/{component_id}/re-review`
 ///
-/// Operator override to move a **Q4** component (Rejected, review_attempts >= 3)
-/// back to `pending` so the auto-validator re-runs. Only Q4 items are accepted;
-/// Q3 items (review_attempts < 3) must use the normal re-submit path instead.
+/// Request manual re-review metadata through the existing store. The PostgreSQL
+/// Recipe path requires a `rejected` row and atomically sets `pending` plus its
+/// validator tag; this handler adds no Q4-only condition. This action does not
+/// requeue a validator, establish Q1/Q2 approval or activate the component.
 pub async fn re_review_component(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,

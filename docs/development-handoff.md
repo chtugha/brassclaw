@@ -1,3 +1,43 @@
+## Latest —052/053 accepted together; foreground implementation continues
+
+Checkpoint c68cfe80c41a0e1a0a3dcaca96234624a847eccb is pushed to main.
+BUILD052/053 are accepted locally in their exact scope:
+[receipt](validation/2026-10-31-standalone-oauth-rereview.md), JSON SHA
+5b3a687864643daca6ac9a0f2c90116f172a98d97a464d5c1d4046fa614ee993.
+One shared compilation256.8s, fresh worker15.7s,11 selected Rust cases
+(7 actual PG/global,3 existing HTTP contracts,1 Host API),28 Node,28 static,
+32 architecture, both actual Chromium paths, connected/default strict105.6s/
+51.4s pass without selected ignored cases or compiler warnings. No replacement
+compile was needed. Original74626 is gone; common lock independently acquired,
+3318 captured inputs and copied images verified. Source freeze is released;
+Root retains sole serial Cargo ownership. Current worker is ef997c89f6eb1c6176a725df9f4ab7115d151c93f2b96affba71eacf21df9bc1;
+B6 is historical and must not replace it.
+
+V197 supplies live standalone OAuth600/600 default/maximum settings and coherent
+upgrade of missing partners, preserving existing originals. Browser target is
+captured before settings/recovery awaits; two account-switch regressions pass.
+Manual Recipe re-review commits status/tag atomically, without queue reset or
+new approval. These source changes and the scoped receipt await checkpoint commit.
+
+Next: collect the connected I1 successor and native036 Device-login/Root bridge
+before selecting the next shared build. I1 original43-path proposal is NOT ready
+for integration: qualifier transactions need RepeatableRead, provider commit
+retains ReadCommitted, native immutable qualification is prepared before locks.
+The minimal original_input_limits extension in the existing Prefix job owner is
+approved for the connected successor; historical NULL uses exact old bounds,
+new reservations capture acknowledged limits once, originals precede new reads.
+No new settings/parser/snapshot owner. Fixed metadata/selection format caps
+remain an explicit inventory item, not resolved by this change. Root must review
+all connected runtime/store/inspection/UI/native cases before integration.
+
+036 Device protocol/custody and its separate900s setup setting remain private.
+Do not integrate SDK-only or disconnected settings. Root owns native encrypted
+head/account/refresh publication and all provider/guard consumers. No external
+maintainer approval for shipped seeds, generic System grant, Rust-loop fallback,
+new queue or automatic replay. Detached Screen is for serial validation while
+foreground implementation proceeds; no unchanged-build polling loop. Full plans,
+platform/release/installed/Serving acceptance remain open; commit is a checkpoint.
+
 ## Latest —045–051 accepted; next compatible bundle ready
 
 Original72982 is gone by actual ps. Root independently acquired the common Cargo

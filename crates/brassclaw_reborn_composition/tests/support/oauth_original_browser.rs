@@ -56,6 +56,55 @@ async fn native_dcr_original_http_retains_one_registration_with_optional_browser
     crate::pg_auth_product_services::run_auth_migrations(rig.pool.as_ref())
         .await
         .unwrap();
+    let browser_script = std::env::var_os("BRASSCLAW_DCR_BROWSER_ACCEPTANCE");
+    // The real browser now reads the same acknowledged settings owner as Auth.
+    // Do not manufacture an effective revision/status in this fixture.
+    let runtime_home = tempfile::tempdir().unwrap();
+    let runtime = if browser_script.is_some() {
+        use brassclaw_product_workflow::MontyVmSettingsStore;
+        let store = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+            rig.pool.clone(),
+            "default",
+            "default",
+        );
+        let current = store.get("default", "default").await.unwrap();
+        let mut policy = current.memory_policy;
+        policy.mode = brassclaw_product_workflow::MontyMemoryMode::Manual;
+        store
+            .upsert(
+                "default",
+                "default",
+                &serde_json::from_value(json!({
+                    "expected_revision":current.revision, "memory_policy":policy,
+                    "max_memory_bytes":brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES
+                }))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        Some(Arc::new(
+            Box::pin(crate::build_reborn_runtime(
+                crate::RebornRuntimeInput::from_services(
+                    crate::RebornBuildInput::postgres_with_reborn_home(
+                        "default",
+                        (*rig.pool).clone(),
+                        rig.url.clone(),
+                        runtime_home.path().into(),
+                    )
+                    .with_tenant_id("default")
+                    .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
+                )
+                .with_identity(crate::RebornRuntimeIdentity {
+                    tenant_id: "default".into(),
+                    ..crate::RebornRuntimeIdentity::reborn_cli()
+                }),
+            ))
+            .await
+            .unwrap(),
+        ))
+    } else {
+        None
+    };
     let secrets = Arc::new(
         brassclaw_secrets::PgSecretStore::new(
             rig.pool.as_ref().clone(),
@@ -107,6 +156,18 @@ async fn native_dcr_original_http_retains_one_registration_with_optional_browser
     .into_services(Arc::new(NoopDispatcher))
     .with_flow_record_source(native.clone())
     .with_dcr_oauth_registry(Arc::new(OAuthDcrProviderRegistry::new(vec![provider])));
+    let services = if let Some(runtime) = &runtime {
+        services.with_primitive_settings_source(
+            runtime
+                .services()
+                .primitive_settings
+                .as_ref()
+                .unwrap()
+                .clone(),
+        )
+    } else {
+        services
+    };
     let state = ProductAuthRouteState::new(
         Arc::new(services),
         TenantId::new("tenant-alpha").unwrap(),
@@ -133,7 +194,7 @@ async fn native_dcr_original_http_retains_one_registration_with_optional_browser
     assert_eq!(observed.registrations.load(Ordering::SeqCst), 1);
     assert_eq!(observed.deletions.load(Ordering::SeqCst), 1);
 
-    let Some(script) = std::env::var_os("BRASSCLAW_DCR_BROWSER_ACCEPTANCE") else {
+    let Some(script) = browser_script else {
         eprintln!("Native HTTP assertions completed; Chromium acceptance was not requested.");
         return;
     };
@@ -167,7 +228,14 @@ async fn native_dcr_original_http_retains_one_registration_with_optional_browser
     .replace("__IMPORT_MAP__", import_map)
     .replace("__FIXTURE_NONCE__", &nonce)
     .replace("__FIXTURE_BEARER__", BEARER);
+    let runtime = runtime.unwrap();
+    let bundle = crate::build_webui_services(runtime.clone(), None)
+        .await
+        .unwrap();
     let app = app
+        .merge(brassclaw_webui_v2::webui_v2_router(
+            brassclaw_webui_v2::WebUiV2State::new(bundle.api),
+        ))
         .merge(brassclaw_webui_v2_static::static_router())
         .route(
             "/__native_dcr_original",
@@ -177,6 +245,7 @@ async fn native_dcr_original_http_retains_one_registration_with_optional_browser
                 async move { ([(header::CONTENT_SECURITY_POLICY, csp)], Html(page)) }
             }),
         )
+        .layer(axum::Extension(test_caller()))
         .layer(middleware::from_fn_with_state(
             Arc::new(AtomicBool::new(true)),
             browser_transport,
@@ -231,4 +300,8 @@ async fn native_dcr_original_http_retains_one_registration_with_optional_browser
         count, 2,
         "both actual originals remain canceled in PostgreSQL"
     );
+    match Arc::try_unwrap(runtime) {
+        Ok(runtime) => runtime.shutdown().await.unwrap(),
+        Err(_) => panic!("browser fixture retained runtime ownership after server shutdown"),
+    }
 }

@@ -12,6 +12,200 @@ use std::sync::{
 use tokio::sync::Notify;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_standalone_oauth_lifetimes_use_live_policy_without_retiming_exact_originals() {
+    use crate::input::OAuthClientConfig;
+    use crate::oauth_gate::{GoogleOAuthGateProvider, GoogleSetupRequest};
+    use crate::{RebornRuntimeIdentity, RebornRuntimeInput, build_reborn_runtime};
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(MontyMemoryMode::Manual).await;
+    let home = tempfile::tempdir().unwrap();
+    let runtime = Box::pin(build_reborn_runtime(
+        RebornRuntimeInput::from_services(
+            rig.build_input("standalone-oauth-lifetimes", home.path())
+                .with_tenant_id("default")
+                .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
+        )
+        .with_identity(RebornRuntimeIdentity {
+            tenant_id: "default".into(),
+            ..RebornRuntimeIdentity::reborn_cli()
+        }),
+    ))
+    .await
+    .unwrap();
+    let settings = runtime.webui_monty_settings_store();
+    let original = settings.get("default", "default").await.unwrap();
+    let auth = runtime.services().product_auth.as_ref().unwrap().clone();
+    let mut limits = original.execution_limits;
+    limits.oauth_setup_default_ttl_secs = 47;
+    limits.oauth_setup_max_ttl_secs = 71;
+    let first = settings.upsert("default","default", &serde_json::from_value(serde_json::json!({
+        "expected_revision":original.revision,"execution_limits":limits,"token_budgets_enabled":false
+    })).unwrap()).await.unwrap();
+    let route = crate::product_auth_serve::product_auth_route_mount(
+        crate::product_auth_serve::ProductAuthRouteState::new(
+            auth.clone(),
+            brassclaw_host_api::TenantId::new("default").unwrap(),
+            None,
+            None,
+        ),
+    )
+    .protected
+    .layer(axum::Extension(
+        brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
+            brassclaw_host_api::TenantId::new("default").unwrap(),
+            brassclaw_host_api::UserId::new("standalone-owner").unwrap(),
+            None,
+            None,
+        ),
+    ));
+    let post_new = |suffix: &str| {
+        let body = serde_json::json!({
+            "provider":"github", "authorization_url":"https://provider.example/oauth",
+            "opaque_state":format!("standalone-state-{suffix}"),
+            "pkce_verifier":format!("standalone-pkce-{suffix}"),
+            "expires_at":(Utc::now()+ChronoDuration::seconds(60)).to_rfc3339()
+        });
+        axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/reborn/product-auth/oauth/start")
+            .header(axum::http::header::CONTENT_TYPE, "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap()
+    };
+    use tower::ServiceExt;
+    assert_eq!(
+        route
+            .clone()
+            .oneshot(post_new("accepted"))
+            .await
+            .unwrap()
+            .status(),
+        axum::http::StatusCode::OK
+    );
+    let expiry = Utc::now() + ChronoDuration::seconds(60);
+    auth.validate_standalone_oauth_expiry(expiry).await.unwrap();
+    assert!(
+        auth.validate_standalone_oauth_expiry(Utc::now() + ChronoDuration::seconds(72))
+            .await
+            .is_err()
+    );
+    assert!(
+        auth.validate_standalone_oauth_expiry(Utc::now())
+            .await
+            .is_err()
+    );
+    let source = runtime
+        .services()
+        .primitive_settings
+        .as_ref()
+        .unwrap()
+        .clone();
+    let google = GoogleOAuthGateProvider::new(
+        OAuthClientConfig::new(
+            "controlled-standalone-client",
+            "https://app.example/api/reborn/product-auth/oauth/google/callback",
+            None,
+        )
+        .unwrap(),
+        runtime.services().secret_store.clone(),
+    )
+    .with_primitive_settings_source(Some(source));
+    let request = GoogleSetupRequest {
+        scope: sample_auth_scope(),
+        flow_id: AuthFlowId::new(),
+        account_label: CredentialAccountLabel::new("standalone original").unwrap(),
+        requested_scopes: vec![
+            ProviderScope::new(brassclaw_auth::GOOGLE_CALENDAR_READONLY_SCOPE).unwrap(),
+        ],
+        continuation: AuthContinuationRef::SetupOnly,
+        requirement_setup: None,
+        update_binding: None,
+        update_account_snapshot: None,
+        deadline: OAuthSetupDeadline::Exact(expiry),
+    };
+    let retained = google
+        .prepare_setup_original(request.clone())
+        .await
+        .unwrap();
+    limits.oauth_setup_default_ttl_secs = 1;
+    limits.oauth_setup_max_ttl_secs = 1;
+    let second = settings
+        .upsert(
+            "default",
+            "default",
+            &serde_json::from_value(serde_json::json!({
+                "expected_revision":first.revision,"execution_limits":limits
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(auth.validate_standalone_oauth_expiry(expiry).await.is_err());
+    assert_eq!(
+        route.oneshot(post_new("rejected")).await.unwrap().status(),
+        axum::http::StatusCode::BAD_REQUEST
+    );
+    retained
+        .verify(
+            &google
+                .prepare_setup_original(request.clone())
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+    let effective = settings
+        .runtime_status()
+        .await
+        .unwrap()
+        .unwrap()
+        .execution_limits
+        .unwrap();
+    assert_eq!(effective.effective_revision, second.revision);
+    assert_eq!(
+        (
+            effective.limits.oauth_setup_default_ttl_secs,
+            effective.limits.oauth_setup_max_ttl_secs
+        ),
+        (1, 1)
+    );
+    // The standalone maximum never silently caps a native Exact producer.
+    let mut explicit = request;
+    explicit.flow_id = AuthFlowId::new();
+    assert_eq!(
+        google
+            .prepare_setup_original(explicit)
+            .await
+            .unwrap()
+            .definition
+            .expires_at,
+        expiry
+    );
+    let unavailable = auth
+        .as_ref()
+        .clone()
+        .with_primitive_settings_source(Arc::new(
+            crate::host_primitive_settings::AcknowledgedPrimitiveSettings::new(),
+        ));
+    assert!(matches!(
+        unavailable.validate_standalone_oauth_expiry(expiry).await,
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    ));
+    settings
+        .upsert(
+            "default",
+            "default",
+            &serde_json::from_value(serde_json::json!({
+                "expected_revision":second.revision,"execution_limits":original.execution_limits
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_auth_backend_wait_captures_acknowledged_policy_without_retiming_a_call() {
     use crate::{RebornRuntimeIdentity, RebornRuntimeInput, build_reborn_runtime};
     use axum::{http::StatusCode, response::IntoResponse};

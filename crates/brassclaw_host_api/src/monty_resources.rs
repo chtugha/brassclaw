@@ -83,6 +83,13 @@ pub struct MontyExecutionLimits {
     /// Existing originals and explicit standalone setup expiries stay fixed.
     #[serde(default = "default_turn_gate_oauth_setup_ttl")]
     pub turn_gate_oauth_setup_ttl_secs: u32,
+    /// Default only for a new standalone browser OAuth setup correlation.
+    /// Explicit original expiries, task gates and native Exact inputs stay fixed.
+    #[serde(default = "default_standalone_oauth_setup_ttl")]
+    pub oauth_setup_default_ttl_secs: u32,
+    /// New standalone API expiry bound, not an issuer/token or gate lifetime.
+    #[serde(default = "default_standalone_oauth_setup_ttl")]
+    pub oauth_setup_max_ttl_secs: u32,
     /// Maximum age of discovered OAuth server metadata. Zero disables reuse.
     /// This never changes an accepted Auth flow's expiry or registration.
     #[serde(default = "default_oauth_dcr_metadata_cache_ttl")]
@@ -237,6 +244,8 @@ impl Default for MontyExecutionLimits {
             manual_token_setup_ttl_secs: default_manual_token_setup_ttl(),
             extension_manual_token_setup_ttl_secs: default_extension_manual_token_setup_ttl(),
             turn_gate_oauth_setup_ttl_secs: default_turn_gate_oauth_setup_ttl(),
+            oauth_setup_default_ttl_secs: default_standalone_oauth_setup_ttl(),
+            oauth_setup_max_ttl_secs: default_standalone_oauth_setup_ttl(),
             default_memory_tree_depth: default_memory_tree_depth(),
             max_memory_tree_depth: default_memory_tree_max_depth(),
             max_coding_read_bytes: default_max_coding_read_bytes(),
@@ -343,6 +352,9 @@ impl MontyExecutionLimits {
             || self.manual_token_setup_ttl_secs == 0
             || self.extension_manual_token_setup_ttl_secs == 0
             || self.turn_gate_oauth_setup_ttl_secs == 0
+            || self.oauth_setup_default_ttl_secs == 0
+            || self.oauth_setup_max_ttl_secs == 0
+            || self.oauth_setup_default_ttl_secs > self.oauth_setup_max_ttl_secs
             || self.oauth_dcr_response_body_bytes == 0
             || self.oauth_dcr_response_body_bytes > isize::MAX as u64
             || self.default_memory_tree_depth == 0
@@ -446,6 +458,9 @@ fn default_manual_token_setup_ttl() -> u32 {
 }
 fn default_extension_manual_token_setup_ttl() -> u32 {
     300
+}
+fn default_standalone_oauth_setup_ttl() -> u32 {
+    600
 }
 fn default_turn_gate_oauth_setup_ttl() -> u32 {
     600
@@ -590,4 +605,42 @@ const fn default_max_coding_diff_preview_bytes() -> u64 {
 }
 const fn default_coding_diff_context_lines() -> u64 {
     3
+}
+
+#[cfg(test)]
+mod standalone_oauth_lifetime_tests {
+    use super::*;
+
+    #[test]
+    fn standalone_oauth_defaults_and_pair_bounds_are_independent_of_token_budgets() {
+        let defaults = MontyExecutionLimits::default();
+        assert_eq!(defaults.oauth_setup_default_ttl_secs, 600);
+        assert_eq!(defaults.oauth_setup_max_ttl_secs, 600);
+        for (default, maximum, valid) in [
+            (1, 1, true),
+            (600, 600, true),
+            (u32::MAX, u32::MAX, true),
+            (0, 600, false),
+            (600, 0, false),
+            (601, 600, false),
+        ] {
+            let mut limits = defaults;
+            limits.oauth_setup_default_ttl_secs = default;
+            limits.oauth_setup_max_ttl_secs = maximum;
+            assert_eq!(limits.validate().is_ok(), valid);
+        }
+        for field in ["oauth_setup_default_ttl_secs", "oauth_setup_max_ttl_secs"] {
+            for invalid in [
+                serde_json::json!(-1),
+                serde_json::json!(1.5),
+                serde_json::json!("600"),
+                serde_json::Value::Null,
+                serde_json::json!(4294967296u64),
+            ] {
+                let mut value = serde_json::to_value(defaults).unwrap();
+                value[field] = invalid;
+                assert!(serde_json::from_value::<MontyExecutionLimits>(value).is_err());
+            }
+        }
+    }
 }

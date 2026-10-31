@@ -1,0 +1,233 @@
+{
+  "format": "development-validation/1",
+  "request": [
+    "BUILD052",
+    "BUILD053"
+  ],
+  "date": "2026-10-31",
+  "git_base": "c68cfe80c41a0e1a0a3dcaca96234624a847eccb",
+  "status": "passed-local-scoped",
+  "source": {
+    "path": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/source.json",
+    "sha256": "97f10faa1e2816293a19c7f80f20d526e4fcaa85ad58e40ceb9fab7bdcbc8407",
+    "files": 3318
+  },
+  "checks": [
+    {
+      "stage": "node-oauth-original",
+      "exit_code": 0,
+      "seconds": 0.22815762483514845,
+      "log_sha256": "50a9d3875fd2654397242bab4171eeced25fee02544095fa2fa93d799dd10e57",
+      "warnings": [],
+      "passed": 28,
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/node-oauth-original.log"
+    },
+    {
+      "stage": "worker-build",
+      "exit_code": 0,
+      "seconds": 15.723106207791716,
+      "log_sha256": "eff1ccad5c0aaf3687246e7006b1d68b4caa4e32ce2ac9a829d619d846b51438",
+      "warnings": [],
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/worker-build.log"
+    },
+    {
+      "stage": "connected-images",
+      "exit_code": 0,
+      "seconds": 256.7929854160175,
+      "log_sha256": "20ec8fff4fa3cbd649e6d43d827a51db6b40db77463e4e436c0d0432751e3b7e",
+      "warnings": [],
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/connected-images.log"
+    },
+    {
+      "stage": "host-api-oauth-pair",
+      "exit_code": 0,
+      "seconds": 0.10047375014983118,
+      "log_sha256": "b70c0dac602c80d85cbcd729303cde89340c571cf1855310217bb50c034d1152",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/host-api-oauth-pair.log"
+    },
+    {
+      "stage": "native-oauth-upgrade",
+      "exit_code": 0,
+      "seconds": 5.13007695809938,
+      "log_sha256": "b59f15f73d3bae77730e648d0dc40ba51ab853abe3af36a5185b8d1505ec6cfa",
+      "warnings": [],
+      "passed": 2,
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/native-oauth-upgrade.log"
+    },
+    {
+      "stage": "native-live-oauth-policy",
+      "exit_code": 0,
+      "seconds": 39.562188166892156,
+      "log_sha256": "c062b2fdef39ea5a75ed60f89364eb92f3634c7dda0eeea39d39c2ff00bfcaf3",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/native-live-oauth-policy.log"
+    },
+    {
+      "stage": "native-recipe-rereview",
+      "exit_code": 0,
+      "seconds": 4.020419999957085,
+      "log_sha256": "dcd1c68d1f9a836e0535798b59d2b81bfbee1c48f06de4ebb6201732d874a781",
+      "warnings": [],
+      "passed": 2,
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/native-recipe-rereview.log"
+    },
+    {
+      "stage": "existing-dcr-original-http",
+      "exit_code": 0,
+      "seconds": 0.13619449990801513,
+      "log_sha256": "71e3408186423e175d544f74dc90c2ef44934da27e608fa8470f3969698184f6",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/existing-dcr-original-http.log"
+    },
+    {
+      "stage": "existing-google-original-http",
+      "exit_code": 0,
+      "seconds": 0.11776200006715953,
+      "log_sha256": "e3af9c90bf3b40c52794a27fd82f2a89b284c3a009e4981da25bfa6124d9e191",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/existing-google-original-http.log"
+    },
+    {
+      "stage": "existing-google-invalid-expiry",
+      "exit_code": 0,
+      "seconds": 0.10199208394624293,
+      "log_sha256": "c84b78acb10120d41fb0abfd7b775040cb5b543f4b0de6727a12b6cf48a1b713",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/existing-google-invalid-expiry.log"
+    },
+    {
+      "stage": "native-dcr-original-browser",
+      "exit_code": 0,
+      "seconds": 46.54393095802516,
+      "log_sha256": "8d4db7b12042badaae308a7bbfc335602dc7bb07773e722a453088bfad935b20",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/native-dcr-original-browser.log"
+    },
+    {
+      "stage": "native-resource-browser",
+      "exit_code": 0,
+      "seconds": 116.99743787501939,
+      "log_sha256": "37c4fd02fc566e1f971f8d7d6c7779d53f64cc9b6bafdbf0285671e312a346ea",
+      "warnings": [],
+      "passed": 1,
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/native-resource-browser.log"
+    },
+    {
+      "stage": "embedded-static",
+      "exit_code": 0,
+      "seconds": 0.09485058300197124,
+      "log_sha256": "35109be68576ac3e49d2785c44b8ddba894c87861757abc9af187185e0581c81",
+      "warnings": [],
+      "passed": 28,
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/embedded-static.log"
+    },
+    {
+      "stage": "architecture",
+      "exit_code": 0,
+      "seconds": 1.0566040829289705,
+      "log_sha256": "fd526c6e4f02d393b3bcb6f425e79a89fefde496aa3a44067e7ade4b139e82b0",
+      "warnings": [],
+      "passed": 32,
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/architecture.log"
+    },
+    {
+      "stage": "connected-strict",
+      "exit_code": 0,
+      "seconds": 105.64753891690634,
+      "log_sha256": "36315568c98bd608b14cdba11541555f276eaaafdc6fa6b1f66d737a83987304",
+      "warnings": [],
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/connected-strict.log"
+    },
+    {
+      "stage": "default-strict",
+      "exit_code": 0,
+      "seconds": 51.44499391596764,
+      "log_sha256": "ce3aae326eecfabfb720289544070593c40ecc8953ee860b9a9084513baa4c41",
+      "warnings": [],
+      "log": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/default-strict.log"
+    }
+  ],
+  "counts": {
+    "selected_rust_cases": 11,
+    "native_pg_or_global_cases": 7,
+    "existing_http_contract_cases": 3,
+    "host_api_case": 1,
+    "actual_browser_paths": 2,
+    "embedded_static": 28,
+    "architecture": 32,
+    "node": 28,
+    "ignored_selected": 0
+  },
+  "images": {
+    "monty_worker": {
+      "path": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/monty_worker-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+      "sha256": "ef997c89f6eb1c6176a725df9f4ab7115d151c93f2b96affba71eacf21df9bc1",
+      "features": [],
+      "is_test": false
+    },
+    "brassclaw_webui_v2_static": {
+      "path": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/brassclaw_webui_v2_static-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_webui_v2_static-5f64f22aed8d3a89",
+      "sha256": "a67dbbc09189d31455acb74bdf648b6a520b3dbd3defee555989112b92621216",
+      "features": [],
+      "is_test": true
+    },
+    "brassclaw_host_api": {
+      "path": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/brassclaw_host_api-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_host_api-92eccb6a3f165ba2",
+      "sha256": "bc13b196914cd486fddb3b838e478c272c27fb36dc893cca529800bcccea99d9",
+      "features": [],
+      "is_test": true
+    },
+    "brassclaw_reborn_composition": {
+      "path": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/brassclaw_reborn_composition-tests",
+      "original": "/Users/ollama/brassclaw-target/debug/deps/brassclaw_reborn_composition-cde394fcf1f47f30",
+      "sha256": "a4ab397d010363a1dae35c2999d0a9c494cd18db5377ec633be1a90671432fad",
+      "features": [
+        "default",
+        "migrate-from-libsql",
+        "postgres",
+        "root-llm-provider",
+        "skills-db",
+        "test-support"
+      ],
+      "is_test": true
+    }
+  },
+  "worker": {
+    "path": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "ef997c89f6eb1c6176a725df9f4ab7115d151c93f2b96affba71eacf21df9bc1",
+    "status": "fresh worker built from the same updated HostApi settings contract"
+  },
+  "prior_worker_retained": {
+    "path": "/private/tmp/brassclaw-standalone-oauth-validation-20261031/run-1/prior-monty_worker",
+    "original": "/Users/ollama/brassclaw-target/debug/monty_worker",
+    "sha256": "b6d1101c3b58c9103368097336116ec0b9c9196a1067fc4cfdf1d77d1af05ae6"
+  },
+  "browser_runtime": {
+    "path": "/Volumes/SSDE/brassclaw/tests/browser/node_modules/agent-browser/bin/agent-browser-darwin-arm64",
+    "sha256": "5ff18a2f0c7d4c662d638b8ac5ce434b589be5f6bde8b8fe7e25c3658e2bcbf9"
+  },
+  "scope": [
+    "V197 and one acknowledged MontyExecutionLimits owner supply positive-u32 standalone OAuth default/max600/600; explicit valid values/custom column defaults preserved and invalid pairs rejected.",
+    "Real shared Rust/Monty settings uptake affects new standalone HTTP admission; existing Google original and native Exact/gate deadlines are not retimed.",
+    "Actual Chromium original/unknown-ACK/cancel/recovery and real EN/DE save/status/help/restoration paths complete; controller account-target changes before policy/renewal awaits retain the clicked original.",
+    "Existing manual Recipe re-review status/tag changes share one transaction; true statement/deferred-commit errors roll back exact metadata and preserve queue state."
+  ],
+  "limits": [
+    "The three existing HTTP contract cases include their existing contained fixture backends; no live external issuer claim.",
+    "The two original target-switch races are Node/controller cases, not a new Chromium race claim.",
+    "Recipe re-review remains existing legacy metadata, not productive immutable requeue/Q1/Q2 or activation.",
+    "SDK036/native Device login/credential/consumer cutover, its separate private900s setting, I1/Free/design/Serving and full-plan/platform/release/deployed acceptance remain incomplete."
+  ],
+  "terminal": "Original74626 absent by actual ps; common Cargo lock independently acquired; all3318 current source hashes and copied images/new worker verified before further documentation changes."
+}

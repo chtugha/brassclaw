@@ -140,9 +140,13 @@ einschließlich Queue-Konkurrenz und wiederverwendbare Auth-Refresh-Publikation
 in einer Aufrufertransaktion. Die bisherigen Original-/Refresh-Zustände bleiben
 erhalten; dies ist noch kein nativer Codex-Credential-/Login-/Dispatch-Cutover.
 Dieser bleibt in K3/Schritt6 beim bestehenden Provider-/Auth-Owner. Eigenständige
-OAuth-Default-/Maximallaufzeiten sind als privates zusammenhängendes Settings-
-Paket vorbereitet, aber hier noch nicht integriert oder abgenommen. Kein neuer
-Settings-, Credential-, Workflow- oder Queue-Owner und kein K3-Abschluss.
+OAuth-Default-/Maximallaufzeiten sind im Quellstand über V197 und den bestehenden
+quittierten Settings-/API-/Browserpfad angeschlossen: positive u32, Defaults
+600/600, Default höchstens Maximum. Bestehende Originale und native Exact-/Gate-
+Fristen bleiben unverändert; neue Browserinputs binden Target und erste Expiry
+vor ihren weiteren Aufrufen. Quellstand und tatsächliche begrenzte Abnahme werden
+im Implementierungsindex getrennt geführt. Kein neuer Settings-, Credential-,
+Workflow- oder Queue-Owner und kein K3-Abschluss.
 
 **Belegte Übergabelücke; Owner:** §10.1/Phase 3a; Prefix und Composition liefern
 Verbraucherfälle. [PgProviderRepo](crates/brassclaw_reborn_composition/src/pg_provider_repo.rs)

@@ -636,6 +636,30 @@ impl RebornProductAuthServices {
         self
     }
 
+    /// Only new standalone API inputs are checked here. Callers first recover
+    /// authenticated originals; a policy edit never retimes an accepted flow.
+    pub(crate) async fn validate_standalone_oauth_expiry(
+        &self,
+        expiry: chrono::DateTime<Utc>,
+    ) -> Result<(), AuthProductError> {
+        let limits = crate::oauth_provider_client::acknowledged_oauth_limits(
+            self.primitive_settings.as_ref(),
+        )
+        .await?;
+        let now = Utc::now();
+        let maximum = now
+            .checked_add_signed(chrono::Duration::seconds(i64::from(
+                limits.oauth_setup_max_ttl_secs,
+            )))
+            .ok_or(AuthProductError::BackendUnavailable)?;
+        if expiry <= now || expiry > maximum {
+            return Err(AuthProductError::InvalidRequest {
+                reason: "new standalone OAuth expiry exceeds the acknowledged policy".into(),
+            });
+        }
+        Ok(())
+    }
+
     pub(crate) async fn backend_timeout(&self) -> Result<std::time::Duration, AuthProductError> {
         let limits = crate::oauth_provider_client::acknowledged_oauth_limits(
             self.primitive_settings.as_ref(),

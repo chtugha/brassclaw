@@ -227,8 +227,7 @@ impl ValidationQueueStore {
     ) -> Result<bool, ValidationQueueError> {
         let mut client = self.pool.get().await.map_err(map_pool)?;
         let tx = client.transaction().await.map_err(map_pg)?;
-        let created = match Self::submit_on(&tx, scope, component_id, component_class, None).await
-        {
+        let created = match Self::submit_on(&tx, scope, component_id, component_class, None).await {
             Ok(()) => true,
             Err(ValidationQueueError::AlreadyQueued { .. }) => false,
             Err(error) => return Err(error),

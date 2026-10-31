@@ -6,6 +6,7 @@
 import { apiFetch, setupExtension } from "../../../lib/api.js";
 import { oauthOriginalBody } from "./oauth-original.js";
 import { redeemPairingCode } from "./pairing-api.js";
+import { fetchMontyVmStatus } from "../../settings/lib/settings-api.js";
 
 export function fetchExtensions() {
   return apiFetch("/api/webchat/v2/extensions");
@@ -59,10 +60,19 @@ export function continueExtensionManualToken(packageRef, operation) {
 export function cancelExtensionManualToken(packageRef, operation) {
   return apiFetch(manualPath(packageRef, "cancel"), { method: "POST", body: JSON.stringify(manualBody(operation)) });
 }
-// Keep the existing initial expiry default in one producer. Original retries
-// never call this to replace their saved first expiry.
-export function extensionOauthExpiry() {
-  return new Date(Date.now() + 10 * 60 * 1000).toISOString();
+// Called only for an absent original or a confirmed explicit successor.
+// A configured unavailable owner never falls back to a browser constant.
+export async function extensionOauthExpiry() {
+  const status = await fetchMontyVmStatus();
+  const policy = status?.execution_limits;
+  const ttl = policy?.limits?.oauth_setup_default_ttl_secs;
+  const maximum = policy?.limits?.oauth_setup_max_ttl_secs;
+  if (!Number.isSafeInteger(policy?.effective_revision) || policy.effective_revision <= 0 ||
+      !Number.isInteger(ttl) || ttl <= 0 || ttl > 4294967295 ||
+      !Number.isInteger(maximum) || maximum <= 0 || maximum > 4294967295 || ttl > maximum) {
+    throw new Error("OAuth setup policy is unavailable.");
+  }
+  return new Date(Date.now() + ttl * 1000).toISOString();
 }
 export function sendExtensionOauthOriginal(packageRef, operation, action) {
   const id=packageId(packageRef);

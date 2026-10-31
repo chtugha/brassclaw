@@ -677,6 +677,74 @@ impl PgRecipeStore {
         Ok((previous_status, new_status))
     }
 
+    /// Preserve the existing manual rejected-to-pending metadata action while
+    /// committing its status and validator-tag writes together. This neither
+    /// changes a queue verdict nor establishes Q1, Q2 or activation evidence.
+    async fn re_review_metadata(
+        &self,
+        scope: &ComponentScope,
+        id: Uuid,
+    ) -> Result<String, PgRecipeStoreError> {
+        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let tx = client.transaction().await.map_err(map_pg)?;
+        let row = tx
+            .query_opt(
+                "SELECT validation_status FROM reborn_recipes
+             WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5
+             FOR UPDATE",
+                &[
+                    &id,
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                ],
+            )
+            .await
+            .map_err(map_pg)?
+            .ok_or_else(|| PgRecipeStoreError::NotFound { id: id.to_string() })?;
+        let previous_status: String = row.get(0);
+        if previous_status != "rejected" {
+            return Err(PgRecipeStoreError::Invalid {
+                reason: "re_review_component requires the component to be in rejected status"
+                    .into(),
+            });
+        }
+        Self::update_validation_status_on(
+            &*tx,
+            scope,
+            id,
+            RecipeValidationStatusUpdate {
+                validation_status: "pending",
+            },
+        )
+        .await?;
+        // Same ordering/deduplication as the original tag writer: keep every
+        // other tag byte/order, remove old validator occurrences, append one.
+        let updated = tx
+            .execute(
+                "UPDATE reborn_recipes
+             SET consumer_tags = array_append(
+                 array_remove(consumer_tags, '05:validator'), '05:validator'
+             )
+             WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5",
+                &[
+                    &id,
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                ],
+            )
+            .await
+            .map_err(map_pg)?;
+        if updated != 1 {
+            return Err(PgRecipeStoreError::NotFound { id: id.to_string() });
+        }
+        tx.commit().await.map_err(map_pg)?;
+        Ok(previous_status)
+    }
+
     /// Increment outcome counters and recompute Wilson lower bound + tier label.
     ///
     /// To avoid a SELECT-then-UPDATE race while keeping all Wilson arithmetic in
@@ -1936,59 +2004,17 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 "invalid component_id UUID: {e}"
             ))
         })?;
-        let current = self
+        let scope = ComponentScope {
+            tenant_id: self.tenant_id.clone(),
+            user_id: user_id.to_string(),
+            agent_id: self.agent_id.clone(),
+            project_id: project_id.to_string(),
+        };
+        let previous_status = self
             .inner
-            .get(&self.tenant_id, user_id, &self.agent_id, project_id, uuid)
-            .await
-            .map_err(map_pg_recipe_error)?
-            .ok_or_else(|| {
-                brassclaw_product_workflow::RecipeStoreError::NotFound(component_id.to_string())
-            })?;
-        // Q4 guard is enforced by the caller (ValidationQueueStore) which checks
-        // reborn_validation_queue.counter — no longer available on PgRecipe.
-        if current.validation_status != "rejected" {
-            return Err(brassclaw_product_workflow::RecipeStoreError::Invalid(
-                "re_review_component requires the component to be in rejected status".to_string(),
-            ));
-        }
-        let previous_status = current.validation_status.clone();
-        self.inner
-            .update_validation_status(
-                &self.tenant_id,
-                user_id,
-                &self.agent_id,
-                project_id,
-                uuid,
-                RecipeValidationStatusUpdate {
-                    validation_status: "pending",
-                },
-            )
+            .re_review_metadata(&scope, uuid)
             .await
             .map_err(map_pg_recipe_error)?;
-        // Re-add validator tag so it re-enters Q1 auto-validation.
-        let client = self.inner.pool.get().await.map_err(|e| {
-            brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-        })?;
-        client
-            .execute(
-                "UPDATE reborn_recipes
-                 SET consumer_tags = array_append(
-                     array_remove(consumer_tags, '05:validator'), '05:validator'
-                 )
-                 WHERE id = $1 AND tenant_id = $2 AND user_id = $3
-                   AND agent_id = $4 AND project_id = $5",
-                &[
-                    &uuid,
-                    &self.tenant_id.as_str(),
-                    &user_id,
-                    &self.agent_id.as_str(),
-                    &project_id,
-                ],
-            )
-            .await
-            .map_err(|e| {
-                brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-            })?;
         Ok(brassclaw_product_workflow::UpdateValidationStatusResponse {
             id: component_id.to_string(),
             item_type: brassclaw_product_workflow::RecipeKind::Recipe,

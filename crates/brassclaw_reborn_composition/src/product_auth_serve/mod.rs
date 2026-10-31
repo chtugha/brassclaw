@@ -58,7 +58,9 @@ use brassclaw_host_api::{
     AgentId, ExtensionId, InvocationId, ProjectId, ResourceScope, TenantId, ThreadId, UserId,
 };
 use brassclaw_product_workflow::WebUiAuthenticatedCaller;
-use chrono::{Duration as ChronoDuration, Utc};
+#[cfg(test)]
+use chrono::Duration as ChronoDuration;
+use chrono::Utc;
 use lru::LruCache;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -146,7 +148,6 @@ const OAUTH_RATE_WINDOW_SECONDS: NonZeroU32 = match NonZeroU32::new(60) {
     // SAFETY: 60 is a non-zero literal rate-limit window.
     None => unreachable!(),
 };
-const PRODUCT_AUTH_FLOW_MAX_TTL_SECONDS: i64 = 10 * 60;
 const OAUTH_CALLBACK_QUERY_MAX_BYTES: usize = 16 * 1024;
 const OAUTH_CALLBACK_FIELD_MAX_BYTES: usize = 512;
 const OAUTH_CALLBACK_SCOPES_MAX_BYTES: usize = 4 * 1024;

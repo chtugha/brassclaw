@@ -758,9 +758,11 @@ pub trait RecipeStore: Send + Sync {
         feedback: Option<&str>,
     ) -> Result<UpdateValidationStatusResponse, RecipeStoreError>;
 
-    /// Operator override to move a Q4 component (Rejected, review_attempts >= 3)
-    /// back to `pending` without the Q3 review_attempts guard. Returns
-    /// `RecipeStoreError::Invalid` if the component is not in Q4.
+    /// Manual re-review metadata. The PostgreSQL Recipe implementation requires
+    /// `rejected` and atomically sets `pending` plus the validator tag, without a
+    /// Q4-only condition. Invalid state/class returns `RecipeStoreError::Invalid`;
+    /// an absent scoped row returns `NotFound`. This action does not reset a queue,
+    /// establish Q1/Q2 approval or activate the component.
     async fn re_review_component(
         &self,
         user_id: &str,
