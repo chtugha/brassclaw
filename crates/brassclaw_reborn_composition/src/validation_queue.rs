@@ -227,10 +227,8 @@ impl ValidationQueueStore {
             let scope = scope.clone();
             let service = bridge.service.clone();
             let ports_factory = Arc::clone(&bridge.ports_factory);
-            let queue_store = Self::with_reject_threshold(
-                Arc::clone(&self.pool),
-                self.reject_threshold,
-            );
+            let queue_store =
+                Self::with_reject_threshold(Arc::clone(&self.pool), self.reject_threshold);
             // Default execution limits are valid by construction; the static
             // expect is infallible given the default MontyExecutionLimits.
             let preparation = brassclaw_monty_host::utility::UtilityLimits::from_execution(

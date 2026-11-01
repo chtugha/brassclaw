@@ -1126,10 +1126,17 @@ async fn seed_prefix_bundle_group(
         source: "system".into(), validation_status: "validated".into(), includes: vec![], content_checksum: None,
     }, "ts-host-store-prefix-bundle").await?;
 
-    let pc_id = stores.upsert_python_code(pc_row(
-        &tenant, "pc-host-assemble-prefix-bundle", "Sweep and persist the prefix bundle.",
-        PC_HOST_ASSEMBLE_PREFIX_BUNDLE_CONTENT,
-    ), "pc-host-assemble-prefix-bundle").await?;
+    let pc_id = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-host-assemble-prefix-bundle",
+                "Sweep and persist the prefix bundle.",
+                PC_HOST_ASSEMBLE_PREFIX_BUNDLE_CONTENT,
+            ),
+            "pc-host-assemble-prefix-bundle",
+        )
+        .await?;
     let skill_sweep_id = stores.upsert_skill(skill_row(
         &tenant, "skill-sweep-validated-components", "Sweep validated components for the prefix bundle.",
         "Use host.sweep_validated_components(scope_ticket) to assemble the validated bundle and architecture references.", 1,
@@ -12887,24 +12894,29 @@ Safety:
 // interpret braces).
 // ---------------------------------------------------------------------------
 
-const PC_EXEC_SHELL_GIT_STATUS_CONTENT: &str = r#"# §shell-safe-fixed: command is a compile-time constant — no injection surface.
-result = host.shell(command="git status")
+const PC_EXEC_SHELL_GIT_STATUS_CONTENT: &str = r#"def usage_l036(inputs):
+    result = host.shell(command="git status")
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_LOG_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
-result = host.shell(command="git log --oneline -20")
+const PC_EXEC_SHELL_GIT_LOG_CONTENT: &str = r#"def usage_l037(inputs):
+    result = host.shell(command="git log --oneline -20")
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_DIFF_STAT_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
-result = host.shell(command="git diff --stat")
+const PC_EXEC_SHELL_GIT_DIFF_STAT_CONTENT: &str = r#"def usage_l038(inputs):
+    result = host.shell(command="git diff --stat")
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_BRANCH_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
-result = host.shell(command="git branch -a")
+const PC_EXEC_SHELL_GIT_BRANCH_CONTENT: &str = r#"def usage_l039(inputs):
+    result = host.shell(command="git branch -a")
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_STASH_LIST_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
-result = host.shell(command="git stash list")
+const PC_EXEC_SHELL_GIT_STASH_LIST_CONTENT: &str = r#"def usage_l040(inputs):
+    result = host.shell(command="git stash list")
+    return result
 "#;
 
 // §shell-guard-custom: git log -N — Tier 1 only; n validated to safe integer range.
@@ -13022,24 +13034,29 @@ const PC_EXEC_SHELL_WHICH_CONTENT: &str = r#"def usage_shell_which(inputs):
     return result
 "#;
 
-const PC_EXEC_SHELL_DATE_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="date -u +%Y-%m-%dT%H:%M:%SZ")
+const PC_EXEC_SHELL_DATE_CONTENT: &str = r#"def usage_shell_date(inputs):
+    result = host.shell(command='date -u +%Y-%m-%dT%H:%M:%SZ')
+    return result
 "#;
 
-const PC_EXEC_SHELL_HOSTNAME_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="hostname")
+const PC_EXEC_SHELL_HOSTNAME_CONTENT: &str = r#"def usage_l060(inputs):
+    result = host.shell(command='hostname')
+    return result
 "#;
 
-const PC_EXEC_SHELL_WHOAMI_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="whoami")
+const PC_EXEC_SHELL_WHOAMI_CONTENT: &str = r#"def usage_l061(inputs):
+    result = host.shell(command='whoami')
+    return result
 "#;
 
-const PC_EXEC_SHELL_UPTIME_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="uptime")
+const PC_EXEC_SHELL_UPTIME_CONTENT: &str = r#"def usage_l062(inputs):
+    result = host.shell(command='uptime')
+    return result
 "#;
 
-const PC_EXEC_SHELL_FREE_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="free -h")
+const PC_EXEC_SHELL_FREE_CONTENT: &str = r#"def usage_l063(inputs):
+    result = host.shell(command='free -h')
+    return result
 "#;
 
 const PC_EXEC_SHELL_WC_L_CONTENT: &str = r#"def usage_shell_wc_l(inputs):
@@ -18220,16 +18237,19 @@ For multi-file or architectural findings, post a PR-level comment instead:
 
 Format every comment: bold severity tag, one-line summary, explanation, concrete fix with code."#;
 
-const PC_GIT_DIFF_UNSTAGED_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal command. Tier 0.
-result = host.shell(command="git diff")
+const PC_GIT_DIFF_UNSTAGED_CONTENT: &str = r#"def usage_l080(inputs):
+    result = host.shell(command='git diff')
+    return result
 "#;
 
-const PC_GIT_DIFF_STAGED_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal command. Tier 0.
-result = host.shell(command="git diff --cached")
+const PC_GIT_DIFF_STAGED_CONTENT: &str = r#"def usage_l081(inputs):
+    result = host.shell(command='git diff --cached')
+    return result
 "#;
 
-const PC_GIT_DIFF_HEAD_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal command. Tier 0.
-result = host.shell(command="git diff HEAD~1")
+const PC_GIT_DIFF_HEAD_CONTENT: &str = r#"def usage_l082(inputs):
+    result = host.shell(command='git diff HEAD~1')
+    return result
 "#;
 
 const RECIPE_CODE_REVIEW_LOCAL_YAML: &str = r#"step_descriptions: [
@@ -18410,16 +18430,19 @@ Each test item must name the specific function, path, or behaviour it targets �
 
 const SKILL_QA_REGRESSION_RISK_BODY: &str = r#"Regression risk assessment: for each changed function or module, identify what OTHER code depends on it (callers, trait impls, serialization contracts, DB schema assumptions). Check whether integration tests cover those interaction paths. Flag as high-risk: changes to public API surfaces, database schema changes, serialization format changes, and shared state mutations. For each risk, suggest the specific test that would catch it."#;
 
-const PC_GLOB_TEST_FILES_RUST_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal pattern, Tier 0.
-result = host.glob(pattern="**/*_test.rs")
+const PC_GLOB_TEST_FILES_RUST_CONTENT: &str = r#"def usage_glob_test_rust(inputs):
+    result = host.glob(pattern="**/*_test.rs")
+    return result
 "#;
 
-const PC_GLOB_TEST_FILES_TS_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal pattern, Tier 0.
-result = host.glob(pattern="**/*.test.ts")
+const PC_GLOB_TEST_FILES_TS_CONTENT: &str = r#"def usage_glob_test_ts(inputs):
+    result = host.glob(pattern="**/*.test.ts")
+    return result
 "#;
 
-const PC_GLOB_TEST_FILES_PY_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal pattern, Tier 0.
-result = host.glob(pattern="**/*_test.py")
+const PC_GLOB_TEST_FILES_PY_CONTENT: &str = r#"def usage_glob_test_py(inputs):
+    result = host.glob(pattern="**/*_test.py")
+    return result
 "#;
 
 const PC_GREP_FN_TESTS_CONTENT: &str = r#"def usage_grep_fn_tests(inputs):
@@ -18571,16 +18594,19 @@ const SKILL_SECURITY_SUPPLY_CHAIN_BODY: &str = r#"Supply chain review: for each 
 
 const SKILL_SECURITY_SECRETS_BODY: &str = r#"Secrets scan: grep for patterns like (password|api_key|secret|token|credential)\s*[:=]\s*['"][^'"]{8,} to find hardcoded secrets. Check that .env files are listed in .gitignore. Verify that secrets are not included in: log.info!/warn!/error! calls, HTTP error response bodies, SSE event streams, or test fixture files committed to the repo."#;
 
-const PC_GREP_HARDCODED_SECRETS_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal pattern, Tier 0.
-result = host.grep(pattern="(?i)(password|api_key|secret|token|credential)\\s*[:=]\\s*['\"][^'\"]{8,}")
+const PC_GREP_HARDCODED_SECRETS_CONTENT: &str = r#"def usage_l084(inputs):
+    result = host.grep(pattern=r"(?i)(password|api_key|secret|token|credential)\s*[:=]\s*['\"][^'\"]{8,}", path=inputs["path"])
+    return result
 "#;
 
-const PC_GREP_INJECTION_PATTERNS_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal pattern, Tier 0.
-result = host.grep(pattern="(?i)(eval\\(|exec\\(|subprocess|shell_exec|format!.*sql|query.*format)")
+const PC_GREP_INJECTION_PATTERNS_CONTENT: &str = r#"def usage_l085(inputs):
+    result = host.grep(pattern=r"(?i)(eval\(|exec\(|subprocess|shell_exec|format!.*sql|query.*format)", path=inputs["path"])
+    return result
 "#;
 
-const PC_GREP_ENV_FILES_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal pattern, Tier 0.
-result = host.glob(pattern="**/.env*")
+const PC_GREP_ENV_FILES_CONTENT: &str = r#"def glob_env_files(inputs):
+    result = host.glob(pattern='**/.env*')
+    return result
 "#;
 
 const RECIPE_SECURITY_REVIEW_SCAN_YAML: &str = r#"step_descriptions: [
