@@ -1,4 +1,59 @@
 
+## 2026-11-02 — bootstrap_l013_approval: L013–L101 qualification at boot; wave-2 audit
+
+**Commits:**
+- `d2abc65b5` — fix: rustfmt single-line panic in T5 validator_retained_q1_tests
+- `68a0ebf7c` — feat: bootstrap_l013_approval — L013–L101 component qualification at boot
+
+**bootstrap_l013_approval.rs (PKG-L-A closure + wave-2):**
+
+New `bootstrap_l013_approval.rs` (969 lines) adds idempotent boot-time qualification
+for all L013–L101 PythonCode/Skill pairs and pure-logic components.
+
+Approach: for each pair, `qualify_tool_calling_pair` retains immutable
+`component-revision/1` envelopes in `reborn_component_revisions` (separate from
+the mutable `reborn_python_code` / `reborn_skills` legacy rows), writes
+Q1 + behavioral evidence rows into `reborn_component_review_evidence`, and records
+a `skill-association-approval/1` in `reborn_skill_association_approvals`.
+Pure-logic components receive `pure-component-approval/1` in
+`reborn_pure_component_approvals`. All approval UUIDs are deterministic (UUID v5
+from the association bytes + QUAL_NAMESPACE) — idempotent across restarts.
+`q2_ref = null` per the `system_seed` bootstrap contract; no external human action.
+
+`component_boot.rs` calls `qualify_all()` after `seed_builtin_components` and
+before `run_boot_integrity_check`. `lib.rs` declares the new module.
+
+**Gap analysis docs added:**
+- `missing1_v3_at_k3.md`: L010 (`pc-exec-file-exists`) typed `not_found` contract gap.
+- `missing2_v3_at_k3.md`: L013–L101 full qualification gap analysis (partial Q1 coverage,
+  no per-class behavioral checks, no source_inspection wiring).
+
+**Wave-2 audit findings:**
+- TASK-006/007/008 (PgCompositionPort validator_bridge): CLOSED — `compose` is a
+  read-only composition path; Q1 kicks already fire from `create_and_submit` paths.
+  No `validator_bridge` needed in `PgCompositionPort`.
+- TASK-005 (L013–L025 python-preload/2): CLOSED — `python-preload/2` is a spec concept
+  stored in `ComponentRevisionDraft` JSON (retained path), not in the legacy `pc_row()`
+  struct. All L013–L025 bodies are in `def` export format; no action needed.
+- All fixes from `q1_validation_v3.md` Rev5 (Fixes 1–6): confirmed already applied.
+- WP-1/WP-2/WP-4 screen build evidence: fmt CLEAN, clippy 0w, unit tests PASS.
+
+**Validation:**
+- `cargo fmt --all -- --check`: CLEAN
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings`: 0 warnings
+- `cargo test -p brassclaw_skills`: 13/13 pass
+
+**Remaining open items (updated):**
+- Integration tests T3–T5 for `run_q1_validation_retained` require live Postgres + Monty.
+- L010 (`pc-exec-file-exists`) blocked on typed `not_found` contract (see `missing1_v3_at_k3.md`).
+- Validator Steps 7–12: structural class-22 route body already seeded; Steps 8–12 need
+  behavioral evidence + human Q2 + activation (full path through real Monty/IBS).
+- General pure approval, K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences.
+- R09/subagent migrations (5 subagent Recipes), dynamic occurrences (V35-13/14).
+
+---
+
+
 ## 2026-11-01 — PKG-H + Fix 2: run_q1_validation legacy path removed; pool_for_validator cleaned
 
 **Commits:**

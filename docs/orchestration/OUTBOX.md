@@ -288,3 +288,71 @@ the seed function names in `builtin_bootstrap.rs` are consistent.
 ---
 
 <!-- Coordinator posts BUILD_RESULT blocks below after running each compile -->
+
+---
+
+## TASK-009 — Audit and qualify L026–L050 component body exports
+
+**Status:** DONE (inline audit 2026-11-02)
+**Package:** PKG-L-B
+**Assigned:** 2026-11-02
+
+### Result
+
+All L026–L050 components confirmed already in correct preloadable `def` export format:
+- L026 `extract_web_search_results(inputs)`, L027 `url_encode(inputs)` — ✅
+- L028–L032 memory group: `usage_memory_search/write/patch/read/tree(inputs)` — ✅
+- L033 `extract_section(inputs)`, L034 `format_memory_entry(inputs)` — ✅
+- L035 `prepare_append_content(inputs)` — ✅ (pure prepare helper for 2-Tool monolith)
+- L036–L041 git shell: `usage_l036–l041(inputs)` — ✅
+
+No code changes required. TASK-009 closed.
+
+---
+
+## TASK-010 — Identify and document remaining open items for wave-3
+
+**Status:** ASSIGNED
+**Package:** PKG-AUDIT-3
+**Assigned:** 2026-11-02
+
+### Goal
+
+Produce a bounded, prioritized list of the next 3–5 concrete implementation packages
+for wave-3, drawn from the open items in `docs/implementation-status.md` and
+`docs/plans/`. Focus on items that:
+1. Have a clear bounded scope (< 500 lines of new code)
+2. Do not depend on live Postgres/Monty for compilation evidence
+3. Advance a plan gate (validator Step 7 class routes, K3 closure, prefix C1)
+
+### Candidates to evaluate
+
+1. **K3 closure prerequisite**: Check what BUILD-036 native/browser/worker/lint
+   receipts are actually needed and whether any bounded code change can advance them.
+   Read `simplified_v3.md` §K3 and `docs/plans/prefix_v3_upgrade.md` steps 2–5.
+
+2. **Validator Step 7 class-1 route**: The structural presence check for class-1
+   (Skill) is already seeded. What's needed to activate it? Check
+   `validator_v3.md` §Step 7 class-1 route requirements vs current seeder state.
+
+3. **R09 subagent Recipes**: `monty.composition.md` §3 lists 5 subagent Recipes.
+   How many are seeded? What's missing? Read `builtin_bootstrap.rs` spawn/subagent
+   section and compare to the plan.
+
+4. **L010 `not_found` contract**: `missing1_v3_at_k3.md` documents the gap.
+   Is there a concrete fix or does it require a new migration?
+
+5. **prefix Phase C1**: What's the smallest deliverable in Phase C1?
+   Read `docs/plans/prefix_v3_upgrade.md` §Phase C1.
+
+### Acceptance
+
+Produce a WAVE-3 ASSIGNMENTS block in this OUTBOX with specific bounded packages,
+each with < 20-line step-by-step instructions.
+
+### Dependencies
+
+Blocked by: none (read-only audit)
+
+---
+
