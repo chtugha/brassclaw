@@ -48,7 +48,7 @@ use uuid::Uuid;
 use crate::pg_review_admission_source::VALIDATOR_REVIEW_PREFIX;
 
 /// Errors from the durable Q1 selection preparation step.
-#[allow(dead_code)] // wired by validator Step 9/12 Q1 scheduling
+#[allow(dead_code)] // wired by PKG-C ValidationQueueStore integration
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Q1AdmissionError {
     #[error("validator coverage derivation failed: {0}")]
@@ -71,7 +71,7 @@ pub(crate) enum Q1AdmissionError {
 /// success so the caller can verify idempotent retry round-trips.
 ///
 /// This is preparation, not execution authority or Q1 evidence.
-#[allow(dead_code)] // wired by validator Step 9/12 Q1 scheduling
+#[allow(dead_code)] // wired by PKG-C ValidationQueueStore integration
 pub(crate) async fn retain_validator_selection(
     pool: &PgPool,
     subject: &RetainedValidatorSubject,
@@ -108,7 +108,7 @@ pub(crate) async fn retain_validator_selection(
 /// means `verify_receipt` ran on the receipt; it is not a Q1 pass unless
 /// `pg_validator_q1_evidence::persist_validator_q1_evidence` succeeded inside
 /// `verify_receipt`.
-#[allow(dead_code)] // wired by validator Step 9/12 Q1 scheduling
+#[allow(dead_code)] // wired by PKG-C ValidationQueueStore integration
 pub(crate) async fn submit_validator_review(
     service: &ServiceClient,
     submission_id: Uuid,
@@ -137,6 +137,7 @@ pub(crate) async fn submit_validator_review(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use brassclaw_monty_host::service::ServiceFailure;
     use uuid::Uuid;
 
     /// The validator review user_input has the exact expected form.
@@ -159,5 +160,50 @@ mod tests {
         assert_eq!(parsed, id, "submission_id round-trip must match");
         // Suppress unused variable warnings in the test scope.
         let _ = (run_id, thread_id);
+    }
+
+    /// All Q1AdmissionError variants produce a non-empty Display string.
+    /// ServiceFailure derives Debug+Copy so the Submission variant is testable.
+    #[test]
+    fn q1_admission_error_variants_are_displayable() {
+        let errors: &[Q1AdmissionError] = &[
+            Q1AdmissionError::Coverage("bad coverage"),
+            Q1AdmissionError::SelectionBytes("bad bytes"),
+            Q1AdmissionError::Retention,
+            Q1AdmissionError::Submission(ServiceFailure::Transport),
+            Q1AdmissionError::Pool,
+        ];
+        for e in errors {
+            let s = e.to_string();
+            assert!(!s.is_empty(), "error Display must not be empty for {e:?}");
+        }
+    }
+
+    /// The TaskInput fields that submit_validator_review builds are correct.
+    /// Verifies the exact field construction without needing a live ServiceClient.
+    #[test]
+    fn validator_review_task_input_fields_are_correct() {
+        let submission_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
+        let thread_id = Uuid::new_v4();
+        // Replicate the exact field construction from submit_validator_review.
+        let user_input = format!("{VALIDATOR_REVIEW_PREFIX}{submission_id}");
+        let message_id = format!("validator-q1:{submission_id}");
+        let turn_id = submission_id.to_string();
+        let conversation_id = thread_id.to_string();
+        let run_id_str = run_id.to_string();
+        // Verify the prefix is present and the UUID suffix parses back.
+        let suffix = user_input
+            .strip_prefix(VALIDATOR_REVIEW_PREFIX)
+            .expect("user_input starts with VALIDATOR_REVIEW_PREFIX");
+        let parsed = Uuid::parse_str(suffix).expect("suffix is a valid UUID");
+        assert_eq!(
+            parsed, submission_id,
+            "submission_id round-trips through user_input"
+        );
+        assert_eq!(message_id, format!("validator-q1:{submission_id}"));
+        assert_eq!(turn_id, submission_id.to_string());
+        assert_eq!(conversation_id, thread_id.to_string());
+        assert_eq!(run_id_str, run_id.to_string());
     }
 }

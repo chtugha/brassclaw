@@ -10876,6 +10876,22 @@ async fn seed_process_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinB
         )
         .await?;
 
+    // R09 prerequisite — proposed-child-task-request (class 22, pure).
+    // Prepare reusable typed goal/context for a separately admitted child task.
+    // Inputs: goal:string required/nonempty, context:string required.
+    // Result: {goal:string, context:string} exact object, no extras.
+    let _pc_child_task_request = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "proposed-child-task-request",
+                "Prepare reusable typed goal/context for a separately admitted child task.",
+                r#"result = {"goal": inputs["goal"], "context": inputs["context"]}"#,
+            ),
+            "proposed-child-task-request",
+        )
+        .await?;
+
     // 9. Spawn-subagent Recipes (class 21) — chunk 6e. ALL Tier 1
     //    (§spawn_subagent-guard: llm_call_required=true; no Tier-0 spawn dispatch).
     //    Each is a 3-step delegation: (1) orchestrator loads the flavour leaf skill,
