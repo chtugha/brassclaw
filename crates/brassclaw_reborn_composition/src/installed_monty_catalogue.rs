@@ -1113,6 +1113,108 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         if !context.trusted_internal_turn {
             return Ok(None);
         }
+
+        // Validator review routing: trusted internal turn whose user_input matches
+        // "validator-review:<uuid>". This is a private admission path — no public
+        // intent example, no Tier-2 match, no run_validator_python_with_limits call.
+        if input
+            .user_input
+            .starts_with(crate::pg_review_admission_source::VALIDATOR_REVIEW_PREFIX)
+        {
+            use brassclaw_engine::{
+                executor::retained_source::InspectedRetainedProgram,
+                memory::retained_validator::RetainedValidatorCoverage,
+            };
+            use brassclaw_skills::{
+                component_revision::REVISION_LIMITS,
+                review_submission_store::{PgReviewSubmissionStore, selection},
+            };
+
+            // 1. Strip the known-length prefix and parse the submission UUID.
+            //    Reject malformed suffixes before any DB read.
+            let suffix = input
+                .user_input
+                .strip_prefix(crate::pg_review_admission_source::VALIDATOR_REVIEW_PREFIX)
+                .ok_or_else(failed)?;
+            let submission_id = Uuid::parse_str(suffix).map_err(|_| failed())?;
+
+            // 2. Read the sealed subject and selection from durable storage in a
+            //    single repeatable-read transaction. Reject if either is absent.
+            let mut client = self.pool.get().await.map_err(|_| failed())?;
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(|_| failed())?;
+            let subject = PgReviewSubmissionStore::read_validator_subject_in_transaction(
+                &tx,
+                submission_id,
+                REVISION_LIMITS,
+            )
+            .await
+            .map_err(|_| failed())?
+            .ok_or_else(failed)?;
+            let selection =
+                selection::read_preparation_in_transaction(&tx, submission_id, REVISION_LIMITS)
+                    .await
+                    .map_err(|_| failed())?
+                    .ok_or_else(failed)?;
+            tx.commit().await.map_err(|_| failed())?;
+
+            // 3. Restore the retained programme from the sealed selection.
+            let program =
+                RetainedValidatorCoverage::restore_preparation(&selection).map_err(|_| failed())?;
+
+            // 4. Inspect the retained programme under the current worker image.
+            //    preparation_limits() returns the UtilityLimits that inspect_with_limits
+            //    requires; the corresponding ContractLimits are derived from those same
+            //    bounds for subject/inputs construction.
+            let preparation = self.preparation_limits().await.map_err(|_| failed())?;
+            let contract_limits = brassclaw_skills::value_contract::ContractLimits {
+                max_depth: preparation.bounds.max_value_depth,
+                max_nodes: preparation.bounds.max_value_nodes,
+                max_bytes: preparation.bounds.max_value_bytes,
+            };
+            let inspected = Arc::new(
+                InspectedRetainedProgram::inspect_with_limits(
+                    RetainedProgram::Tools(Arc::new(program)),
+                    &self.worker_image.path(),
+                    preparation,
+                )
+                .await
+                .map_err(|_| failed())?,
+            );
+
+            // 5. Derive typed inputs from the sealed subject (no source substitution).
+            let coverage = RetainedValidatorCoverage::from_inputs(inspected.program().inputs())
+                .map_err(|_| failed())?;
+            let inputs = crate::pg_review_admission_source::subject_validator_task_inputs(
+                &coverage,
+                &subject,
+                &inspected,
+                contract_limits,
+            )
+            .map_err(|_| failed())?;
+
+            // 6. Construct the sealed ReviewAdmissionSource. new() enforces
+            //    subject/selection agreement and the zero-Tool-binding invariant.
+            let source = Arc::new(
+                crate::pg_review_admission_source::ReviewAdmissionSource::new(
+                    Arc::new(subject),
+                    Arc::new(selection),
+                    inspected,
+                    inputs,
+                    self.pool.clone(),
+                    contract_limits,
+                )
+                .map_err(|_| failed())?,
+            );
+
+            return Ok(Some(source));
+        }
+
         let Some(definition) = crate::prefix_job_definitions::Store::new(self.pool.clone())
             .get(context.run_id.as_uuid())
             .await

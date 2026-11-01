@@ -188,6 +188,8 @@ pub(crate) mod pg_recipe_store;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_retained_q1;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_review_admission_source;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_review_inspection;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_review_submission;

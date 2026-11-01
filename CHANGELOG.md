@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Step 6 simplify_V3 — validator receipt verification and `capture_internal`
+  routing (Items A + B):
+
+  **Item A — `pg_review_admission_source.rs` (new file, fully authored):**
+  Implements `ReviewAdmissionSource` and `InternalRecipeSource` for the sealed
+  structural validator admission path. `verify_receipt` now performs the correct
+  five-step sequence: (1) identity guard via `RetainedRecipeSelection::checksum()`
+  comparison (replaces fragile `std::ptr::eq`); (2) receipt JSON parse and
+  per-step results map extraction; (3) `WorkflowReview::structural` +
+  `persist_workflow_review` before any Q1 write; (4) `self.coverage.observe_subject`
+  using the `RetainedValidatorCoverage` derived once at construction in `new()`
+  (not re-derived per call); (5) `persist_validator_q1_evidence`. All five
+  `StructuralReviewFailure` variants are exhaustively matched. No evidence row is
+  written if any earlier guard fails. `VALIDATOR_REVIEW_PREFIX`, `make_validator_receipt`,
+  `parse_validator_receipt`, `subject_validator_task_inputs` and
+  `subject_inputs_with_default_limits` helpers retained for the wiring path.
+  Module registered in `lib.rs` under `#[cfg(all(feature = "postgres", feature =
+  "skills-db"))]`. Plan docs `Step6_simplify_V3.md` and
+  `correction_before_step6_simplify_v3.md` added.
+
+  **Item B — `installed_monty_catalogue.rs` (`capture_internal` routing):**
+  Adds a private validator routing branch in `InstalledMontyCatalogue::capture_internal`
+  that activates for trusted internal turns whose `user_input` starts with
+  `VALIDATOR_REVIEW_PREFIX`. The branch: strips the prefix and parses the
+  submission UUID; reads `RetainedValidatorSubject` and `RetainedValidatorSelection`
+  from a single `RepeatableRead` read-only transaction; restores the retained
+  programme via `RetainedValidatorCoverage::restore_preparation`; inspects it
+  under the live worker image using `preparation_limits()` (`UtilityLimits`);
+  derives `ContractLimits` from the same bounds; constructs `ReviewAdmissionSource`
+  (enforcing subject/selection agreement and zero-Tool-binding at construction);
+  and returns the source as `Arc<dyn InternalRecipeSource>` for the existing
+  `GlobalRecipePorts::for_internal` path in the factory. No new runner, no
+  public intent example, no `run_validator_python_with_limits` call, no
+  `compose_orchestrator` call.
+
 - BUILD-036 (host/PG binding/rotation — full implementation): wire the native
   Codex credential path from the authenticated PG bridge to the SDK host port.
   `NativeCodexSourceSupplier` in `pg_auth_codex_access.rs` implements
