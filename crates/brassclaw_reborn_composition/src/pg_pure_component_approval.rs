@@ -295,6 +295,116 @@ pub async fn load_independently_qualified(
     Ok(rows.iter().map(|row| row.get::<_, Uuid>(0)).collect())
 }
 
+/// Record an immutable link between a review submission and a pure-component
+/// approval, using the new `reborn_pure_evidence_submission_links` table (V201).
+///
+/// This is the write path for pure-component-review cutover contract item 1:
+/// it ties the original `submission_id` (from `reborn_component_review_submissions`)
+/// to the `approval_id` (from `reborn_pure_component_approvals`) and the exact
+/// `component_id`/`candidate_version` pair from the submission. Doing so lets
+/// the trusted review owner verify that the pure approval was derived from the
+/// correct exact review subject without reparsing `subject_bytes`.
+///
+/// Idempotent: a repeated call with the same `link_id` succeeds if the stored
+/// row is byte-identical. Conflicting bytes (same `link_id`, different content)
+/// are rejected.
+///
+/// # Invariants
+///
+/// - All three IDs are non-nil UUIDs.
+/// - `submission_id` must exist in `reborn_component_review_submissions`.
+/// - `approval_id` must exist in `reborn_pure_component_approvals`.
+/// - `component_id`/`candidate_version` must exist in `reborn_component_revisions`
+///   and must match the submission's own `component_id`/`candidate_version`.
+/// - This function does not verify evidence or grant any approval; those are
+///   separate gates in the trusted review owner.
+pub async fn record_pure_evidence_submission_link(
+    pool: &PgPool,
+    link_id: Uuid,
+    submission_id: Uuid,
+    approval_id: Uuid,
+    component_id: Uuid,
+    candidate_version: u64,
+) -> Result<(), PureApprovalError> {
+    if link_id.is_nil() || submission_id.is_nil() || approval_id.is_nil() || component_id.is_nil()
+    {
+        return Err(invalid("link, submission, approval and component IDs must be non-nil"));
+    }
+    let version =
+        i64::try_from(candidate_version).map_err(|_| invalid("candidate version exceeds i64 range"))?;
+    let mut client = pool.get().await.map_err(PureApprovalError::Connection)?;
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .map_err(db)?;
+
+    // Verify the submission exists and the component_id/candidate_version match.
+    let sub_row = tx
+        .query_opt(
+            "SELECT component_id, candidate_version
+             FROM reborn_component_review_submissions
+             WHERE submission_id = $1",
+            &[&submission_id],
+        )
+        .await
+        .map_err(db)?
+        .ok_or_else(|| invalid("submission_id not found in review submissions"))?;
+    let stored_component: Uuid = sub_row.get(0);
+    let stored_version: i64 = sub_row.get(1);
+    if stored_component != component_id || stored_version != version {
+        return Err(invalid(
+            "component_id/candidate_version do not match the submission's subject",
+        ));
+    }
+
+    // Verify the approval exists.
+    let approval_exists: bool = tx
+        .query_one(
+            "SELECT EXISTS(SELECT 1 FROM reborn_pure_component_approvals WHERE approval_id = $1)",
+            &[&approval_id],
+        )
+        .await
+        .map_err(db)?
+        .get(0);
+    if !approval_exists {
+        return Err(invalid("approval_id not found in pure component approvals"));
+    }
+
+    // Insert idempotently.
+    tx.execute(
+        "INSERT INTO reborn_pure_evidence_submission_links
+         (link_id, submission_id, approval_id, component_id, candidate_version)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (link_id) DO NOTHING",
+        &[&link_id, &submission_id, &approval_id, &component_id, &version],
+    )
+    .await
+    .map_err(db)?;
+
+    // Verify idempotency: if a row already exists it must have identical fields.
+    let stored = tx
+        .query_one(
+            "SELECT submission_id, approval_id, component_id, candidate_version
+             FROM reborn_pure_evidence_submission_links WHERE link_id = $1",
+            &[&link_id],
+        )
+        .await
+        .map_err(db)?;
+    if stored.get::<_, Uuid>(0) != submission_id
+        || stored.get::<_, Uuid>(1) != approval_id
+        || stored.get::<_, Uuid>(2) != component_id
+        || stored.get::<_, i64>(3) != version
+    {
+        return Err(invalid(
+            "stored pure evidence submission link has conflicting fields",
+        ));
+    }
+
+    tx.commit().await.map_err(db)
+}
+
 #[cfg(all(test, feature = "skills-db"))]
 mod tests {
     use super::*;

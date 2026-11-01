@@ -1,3 +1,25 @@
+## 2026-11-01 — V201 pure evidence submission links added (source-only checkpoint)
+
+`V201__pure_evidence_submission_links.sql` adds `reborn_pure_evidence_submission_links`,
+a checked immutable successor table for pure-component-review cutover contract item 1.
+It links an immutable `reborn_component_review_submissions.submission_id` (V104) to a
+`reborn_pure_component_approvals.approval_id` (V200) with the exact
+`component_id`/`candidate_version` pair, satisfying the requirement to introduce a
+checked successor migration instead of relabelling new fields under the unchanged V102/V106
+formats. Immutability triggers match V102/V200 conventions.
+
+`pg_pure_component_approval::record_pure_evidence_submission_link` supplies the Rust write
+path: verifies submission and approval existence, matches component/version against the
+stored submission subject, inserts idempotently and rejects conflicting concurrent writes.
+This is a structural link; it does not imply Q1, Q2, activation or Tool permission.
+
+Disk space (13 GB on /Users/ollama/brassclaw-target, 16 GB on /Volumes/SSDE) is below
+the 15 GB compile threshold; this checkpoint is source-only. No build receipt.
+Remaining open: trusted review owner with durable Q1 scheduling (Steps 3/8-12),
+eight class validator routes, K3 OAuth browser expiry, library migrations, prefix
+Phase C2/C3/D and complete plan acceptance.
+
+
 ## 2026-11-01 — pure-component-approval store wired (checkpoint 29102065f)
 
 Checkpoint 29102065f wires the full `pure-component-approval/1` write path.
