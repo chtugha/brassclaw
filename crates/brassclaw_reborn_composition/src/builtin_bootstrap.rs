@@ -8216,33 +8216,35 @@ const PC_EXEC_MEMORY_TREE_CONTENT: &str = r#"def usage_memory_tree(inputs):
 "#;
 
 // Pure section extractor — no host call; receives content string and heading.
-const PC_MEMORY_EXTRACT_SECTION_CONTENT: &str = r#"def extract_section(inputs):
-    # Pure-logic ATX-heading section extractor (L033). No host calls, no I/O.
-    lines = inputs["content"].split("\n")
-    found = False
-    level = 0
-    collected = []
-    for line in lines:
-        prefix = len(line) - len(line.lstrip("#"))
-        is_heading = 1 <= prefix <= 6 and line[prefix:prefix+1] == " "
-        title = line[prefix+1:].strip() if is_heading else ""
-        if not found and is_heading and title == inputs["heading"]:
-            found = True
-            level = prefix
-        elif found and is_heading and prefix <= level:
-            break
-        elif found:
-            collected.append(line)
-    return {"found": found,
-            "section_content": "\n".join(collected) if found else None,
-            "heading": inputs["heading"]}
-"#;
+const PC_MEMORY_EXTRACT_SECTION_CONTENT: &str = concat!(
+    "def extract_section(inputs):\n",
+    "    # Pure-logic ATX-heading section extractor (L033). No host calls, no I/O.\n",
+    "    lines = inputs[\"content\"].split(\"\\n\")\n",
+    "    found = False\n",
+    "    level = 0\n",
+    "    collected = []\n",
+    "    for line in lines:\n",
+    "        prefix = len(line) - len(line.lstrip(\"#\"))\n",
+    "        is_heading = 1 <= prefix <= 6 and line[prefix:prefix+1] == \" \"\n",
+    "        title = line[prefix+1:].strip() if is_heading else \"\"\n",
+    "        if not found and is_heading and title == inputs[\"heading\"]:\n",
+    "            found = True\n",
+    "            level = prefix\n",
+    "        elif found and is_heading and prefix <= level:\n",
+    "            break\n",
+    "        elif found:\n",
+    "            collected.append(line)\n",
+    "    return {\"found\": found,\n",
+    "            \"section_content\": \"\\n\".join(collected) if found else None,\n",
+    "            \"heading\": inputs[\"heading\"]}\n",
+);
 
 // Pure entry formatter — no host call; caller must supply timestamp_str.
-const PC_MEMORY_FORMAT_ENTRY_CONTENT: &str = r#"def format_memory_entry(inputs):
-    # Pure-logic memory entry formatter (L034). No host calls, no I/O.
-    return {"formatted_entry": "### " + inputs["timestamp_str"] + "\n\n" + inputs["text"] + "\n"}
-"#;
+const PC_MEMORY_FORMAT_ENTRY_CONTENT: &str = concat!(
+    "def format_memory_entry(inputs):\n",
+    "    # Pure-logic memory entry formatter (L034). No host calls, no I/O.\n",
+    "    return {\"formatted_entry\": \"### \" + inputs[\"timestamp_str\"] + \"\\n\\n\" + inputs[\"text\"] + \"\\n\"}\n",
+);
 
 // ---------------------------------------------------------------------------
 // Memory group skill bodies — transcribed verbatim from the doc (Q1=A).
