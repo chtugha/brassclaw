@@ -225,8 +225,7 @@ impl ValidationQueueStore {
         if let Some(bridge) = &self.validator_bridge {
             let pool = Arc::clone(&self.pool);
             let scope = scope.clone();
-            let service = bridge.service.clone();
-            let ports_factory = Arc::clone(&bridge.ports_factory);
+            let bridge = Arc::clone(bridge);
             let queue_store =
                 Self::with_reject_threshold(Arc::clone(&self.pool), self.reject_threshold);
             // Default execution limits are valid by construction; the static
@@ -243,8 +242,7 @@ impl ValidationQueueStore {
                     component_class,
                     &queue_store,
                     preparation,
-                    Some(&service),
-                    Some(&ports_factory),
+                    Some(bridge.as_ref()),
                 )
                 .await;
             });
@@ -272,44 +270,12 @@ impl ValidationQueueStore {
         let tx = client.transaction().await.map_err(map_pg)?;
         Self::submit_on(&tx, scope, component_id, component_class, proposed_payload).await?;
         tx.commit().await.map_err(map_pg)?;
-        // PKG-C: fire-and-forget retained Q1 kick after commit.
+        // PKG-C: fire-and-forget retained Q1 kick — delegate to the shared
+        // helper so both submit() and create_and_submit paths use the same code.
         // The Q1 outcome does not block or change the submit result;
         // deferral (None bridge / no Recipe seeded) is the correct fallback.
         #[cfg(feature = "skills-db")]
-        if let Some(bridge) = &self.validator_bridge {
-            let pool = Arc::clone(&self.pool);
-            let scope = scope.clone();
-            let service = bridge.service.clone();
-            let ports_factory = Arc::clone(&bridge.ports_factory);
-            // Construct a minimal queue_store for the spawned Q1 call;
-            // no basic_prompt_store or validator_bridge needed inside Q1.
-            let queue_store = Self {
-                pool: Arc::clone(&self.pool),
-                reject_threshold: self.reject_threshold,
-                #[cfg(feature = "postgres")]
-                basic_prompt_store: None,
-                validator_bridge: None,
-            };
-            // Default execution limits are valid by construction; the static
-            // expect is infallible given the default MontyExecutionLimits.
-            let preparation = brassclaw_monty_host::utility::UtilityLimits::from_execution(
-                brassclaw_host_api::MontyExecutionLimits::default(),
-            )
-            .expect("default MontyExecutionLimits are always valid");
-            tokio::spawn(async move {
-                let _ = crate::q1_orchestrator::run_q1_validation_retained(
-                    &pool,
-                    &scope,
-                    component_id,
-                    component_class,
-                    &queue_store,
-                    preparation,
-                    Some(&service),
-                    Some(&ports_factory),
-                )
-                .await;
-            });
-        }
+        self.fire_q1_kick_if_wired(scope, component_id, component_class);
         Ok(())
     }
 
@@ -2435,16 +2401,15 @@ mod tests {
                 &store,
                 brassclaw_monty_host::utility::UtilityLimits::from_execution(Default::default())
                     .unwrap(),
-                None, // service not yet wired
-                None, // ports_factory not yet wired
+                None, // bridge not yet wired
             )
             .await
-            .expect("run_q1_validation_retained should not error on None inputs");
+            .expect("run_q1_validation_retained should not error on None bridge");
 
-            // Both None → Deferred, queue row stays at state 1.
+            // None bridge → Deferred, queue row stays at state 1.
             assert!(
                 matches!(outcome, Q1Outcome::Deferred { .. }),
-                "expected Deferred when service/ports are None; got {outcome:?}"
+                "expected Deferred when bridge is None; got {outcome:?}"
             );
 
             let row = store

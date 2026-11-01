@@ -107,8 +107,8 @@ pub(super) async fn settle_closed(admitted: &Admitted) -> Result<(), RebornBuild
     Ok(())
 }
 
-pub(super) struct Admitted {
-    pub(super) host: Arc<MontyTaskHost>,
+pub(crate) struct Admitted {
+    pub(crate) host: Arc<MontyTaskHost>,
     pub(super) input: Value,
     pub(super) admission: Arc<PgMontyAdmission>,
     pub(super) state: Arc<PgTurnStateStore>,
@@ -124,6 +124,25 @@ pub(super) async fn admit(
         .map(AdmissionMode::ModelContained)
         .unwrap_or(AdmissionMode::Contained);
     prepare_admission(pool, identity, answer, mode).await
+}
+
+/// Reserve a trusted internal validator task admission.
+///
+/// Sets `trusted_internal_turn = true` so that `capture_internal` is reached
+/// in `InstalledMontyCatalogue`. Must be called after `retain_validator_selection`
+/// has succeeded for `submission_id`.
+///
+/// The returned `Admitted::host` must be passed to
+/// `GlobalMontyDriver::drive_admitted`. After `drive_admitted` returns, no
+/// explicit admission cleanup is required — the factory's `settle` /
+/// `settle_unsubmitted` path owns the lifecycle.
+pub(crate) async fn admit_validator_handoff(
+    pool: Arc<PgPool>,
+    submission_id: uuid::Uuid,
+    reference: &str,
+) -> Result<Admitted, RebornBuildError> {
+    let identity = format!("validator-{}", submission_id.as_simple());
+    prepare_admission(pool, &identity, reference, AdmissionMode::ValidatorInternal).await
 }
 
 /// Reserve a real installation-review parent without starting VM execution.
@@ -146,6 +165,15 @@ enum AdmissionMode<'a> {
     /// must expose the real model/accounting/custody ports for this subject;
     /// unavailable support fails instead of falling back to the reply host.
     ModelContained(&'a dyn brassclaw_reborn::turn_runner::HostFactory),
+    /// Trusted internal validator task.  Sets `trusted_internal_turn = true`
+    /// so that `capture_internal` is reached in `InstalledMontyCatalogue`.
+    /// Must be called after `retain_validator_selection` has succeeded.
+    /// Does NOT call `check_and_start`; internal tasks bypass model selection
+    /// via the trusted flag.
+    /// Construction is pending the PKG-C end-to-end wiring of the production
+    /// `submit_validator_review` → `ServiceClient` → `capture_internal` path.
+    #[allow(dead_code)] // constructed by submit_validator_review dispatch (PKG-C E2E gate)
+    ValidatorInternal,
     #[cfg(test)]
     RetainedParent,
 }
@@ -162,6 +190,7 @@ async fn prepare_admission(
     let (project, owner) = match mode {
         AdmissionMode::Contained => (Some(ProjectId::new("contained").map_err(invalid)?), None),
         AdmissionMode::ModelContained(_) => (None, Some(actor.clone())),
+        AdmissionMode::ValidatorInternal => (None, Some(actor.clone())),
         #[cfg(test)]
         AdmissionMode::RetainedParent => (None, Some(actor.clone())),
     };
@@ -169,6 +198,9 @@ async fn prepare_admission(
         AdmissionMode::Contained => "bootstrap-internal",
         AdmissionMode::ModelContained(_) => {
             brassclaw_turns::run_profile::INTERNAL_MODEL_SOURCE_BINDING
+        }
+        AdmissionMode::ValidatorInternal => {
+            brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING
         }
         #[cfg(test)]
         AdmissionMode::RetainedParent => {
@@ -209,13 +241,15 @@ async fn prepare_admission(
         AdmissionMode::Contained => {
             TurnScope::new(tenant.clone(), Some(agent), project, conversation.clone())
         }
-        AdmissionMode::ModelContained(_) => TurnScope::new_with_owner(
-            tenant.clone(),
-            Some(agent),
-            project,
-            conversation.clone(),
-            scope.owner_user_id.clone(),
-        ),
+        AdmissionMode::ModelContained(_) | AdmissionMode::ValidatorInternal => {
+            TurnScope::new_with_owner(
+                tenant.clone(),
+                Some(agent),
+                project,
+                conversation.clone(),
+                scope.owner_user_id.clone(),
+            )
+        }
         #[cfg(test)]
         AdmissionMode::RetainedParent => TurnScope::new_with_owner(
             tenant.clone(),
@@ -229,10 +263,11 @@ async fn prepare_admission(
     let coordinator = DefaultTurnCoordinator::new(state.clone());
     let coordinator = match mode {
         AdmissionMode::Contained => coordinator,
-        AdmissionMode::ModelContained(_) => coordinator.with_run_profile_resolver(Arc::new(
-            brassclaw_reborn::planned_driver_factory::default_planned_run_profile_resolver()
-                .map_err(invalid)?,
-        )),
+        AdmissionMode::ModelContained(_) | AdmissionMode::ValidatorInternal => coordinator
+            .with_run_profile_resolver(Arc::new(
+                brassclaw_reborn::planned_driver_factory::default_planned_run_profile_resolver()
+                    .map_err(invalid)?,
+            )),
         #[cfg(test)]
         AdmissionMode::RetainedParent => coordinator.with_run_profile_resolver(Arc::new(
             brassclaw_reborn::planned_driver_factory::default_planned_run_profile_resolver()
@@ -291,9 +326,10 @@ async fn prepare_admission(
             .ok_or_else(|| invalid("bootstrap actor missing"))?,
     )
     .with_accepted_message_ref(claimed.state.accepted_message_ref.clone());
-    #[cfg(test)]
     let context = match mode {
         AdmissionMode::Contained | AdmissionMode::ModelContained(_) => context,
+        AdmissionMode::ValidatorInternal => context.with_trusted_internal_turn(),
+        #[cfg(test)]
         AdmissionMode::RetainedParent => context.with_trusted_internal_turn(),
     };
     let attempt = MontyTaskAttempt {
@@ -335,7 +371,7 @@ async fn prepare_admission(
         };
         match mode {
             AdmissionMode::Contained => MontyTaskHandoff::new(request, attempt, host),
-            AdmissionMode::ModelContained(_) => {
+            AdmissionMode::ModelContained(_) | AdmissionMode::ValidatorInternal => {
                 MontyTaskHandoff::new_claimed(request, Arc::new(claimed), host)
             }
             #[cfg(test)]
@@ -381,6 +417,9 @@ async fn prepare_admission(
     if matches!(mode, AdmissionMode::Contained) {
         admission.check_and_start().await.map_err(invalid)?;
     }
+    // ValidatorInternal: trusted_internal_turn is already set on the context.
+    // check_and_start is not called; internal tasks bypass model selection.
+    // ModelContained: check_and_start is also not called (factory supplies ports).
     Ok(Admitted {
         host,
         admission,

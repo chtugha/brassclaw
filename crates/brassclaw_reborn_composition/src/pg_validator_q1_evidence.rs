@@ -45,10 +45,8 @@ use sha2::{Digest, Sha256};
 use tokio_postgres::IsolationLevel;
 use uuid::Uuid;
 
-#[allow(dead_code)] // wired by validator Step 12 durable admission path
 const MAX_EVIDENCE_BYTES: usize = 8 * 1024 * 1024;
 
-#[allow(dead_code)] // wired by validator Step 12 durable admission path
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ValidatorQ1EvidenceError {
     #[error("validator Q1 evidence: {0}")]
@@ -60,11 +58,9 @@ pub(crate) enum ValidatorQ1EvidenceError {
     #[error("validator Q1 evidence integrity check failed")]
     Integrity,
 }
-#[allow(dead_code)] // wired by validator Step 12 durable admission path
 fn invalid(reason: &'static str) -> ValidatorQ1EvidenceError {
     ValidatorQ1EvidenceError::Invalid(reason)
 }
-#[allow(dead_code)] // wired by validator Step 12 durable admission path
 fn db(error: tokio_postgres::Error) -> ValidatorQ1EvidenceError {
     ValidatorQ1EvidenceError::Database(error)
 }
@@ -75,13 +71,12 @@ fn db(error: tokio_postgres::Error) -> ValidatorQ1EvidenceError {
 /// This reference may be used as the `q1_ref` in a later
 /// `PureComponentApprovalDeclaration` or `skill-association-approval/1`, but
 /// only after the complete trusted review path is satisfied.
-#[allow(dead_code)] // wired by validator Step 12 durable admission path
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PersistedValidatorQ1Evidence {
     evidence_id: Uuid,
 }
 impl PersistedValidatorQ1Evidence {
-    #[allow(dead_code)] // wired by validator Step 12 durable admission path
+    #[allow(dead_code)] // used by approval path after Step 12
     pub(crate) fn evidence_id(&self) -> Uuid {
         self.evidence_id
     }
@@ -105,7 +100,6 @@ impl PersistedValidatorQ1Evidence {
 /// - `selection`: sealed `RetainedValidatorSelection` from the selection store.
 /// - `checks`: sealed `ObservedSubjectValidatorChecks` from the executor observer.
 /// - `task_handle`: the UUID identifying the completed task (not caller-supplied).
-#[allow(dead_code)] // wired by validator Step 12 durable admission path
 pub(crate) async fn persist_validator_q1_evidence(
     pool: &PgPool,
     subject: &RetainedValidatorSubject,

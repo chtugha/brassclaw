@@ -48,8 +48,8 @@ use uuid::Uuid;
 use crate::pg_review_admission_source::VALIDATOR_REVIEW_PREFIX;
 
 /// Errors from the durable Q1 selection preparation step.
-#[allow(dead_code)] // wired by PKG-C ValidationQueueStore integration
 #[derive(Debug, thiserror::Error)]
+#[allow(dead_code)] // Coverage and Submission used only by submit_validator_review (retained for testing)
 pub(crate) enum Q1AdmissionError {
     #[error("validator coverage derivation failed: {0}")]
     Coverage(&'static str),
@@ -71,7 +71,6 @@ pub(crate) enum Q1AdmissionError {
 /// success so the caller can verify idempotent retry round-trips.
 ///
 /// This is preparation, not execution authority or Q1 evidence.
-#[allow(dead_code)] // wired by PKG-C ValidationQueueStore integration
 pub(crate) async fn retain_validator_selection(
     pool: &PgPool,
     subject: &RetainedValidatorSubject,
@@ -108,7 +107,7 @@ pub(crate) async fn retain_validator_selection(
 /// means `verify_receipt` ran on the receipt; it is not a Q1 pass unless
 /// `pg_validator_q1_evidence::persist_validator_q1_evidence` succeeded inside
 /// `verify_receipt`.
-#[allow(dead_code)] // wired by PKG-C ValidationQueueStore integration
+#[allow(dead_code)] // lower-level path; replaced by ValidatorTaskDriver for production; retained for testing
 pub(crate) async fn submit_validator_review(
     service: &ServiceClient,
     submission_id: Uuid,

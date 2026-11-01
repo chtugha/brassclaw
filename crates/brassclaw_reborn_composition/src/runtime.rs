@@ -3092,6 +3092,7 @@ pub async fn build_reborn_runtime(
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
             })?;
+        let _pool_for_validator = Arc::clone(&pool);
         let ports = Arc::new(
             crate::global_task_factory::OwnedGlobalTaskFactory::new(
                 pool,
@@ -3123,10 +3124,10 @@ pub async fn build_reborn_runtime(
         #[cfg(not(test))]
         {
             // Wire the retained Q1 path — deferred silently if already set.
-            let _ = catalogue.bind_validator_service(
-                owner.client(),
-                crate::installed_monty_catalogue::make_validator_ports_factory(ports),
+            let validator_driver = std::sync::Arc::new(
+                crate::validator_task_driver::ValidatorTaskDriver::new(driver.clone()),
             );
+            let _ = catalogue.bind_validator_service(validator_driver, _pool_for_validator);
         }
         (
             owner,
@@ -3374,7 +3375,11 @@ pub async fn build_reborn_runtime(
     // Wire PgSempaiProposalSink when Postgres pool is available.
     // Routes Sempai-proposed component updates and intent examples to Q1
     // validation queue so operators can review before they take effect.
-    #[cfg(all(feature = "postgres", feature = "root-llm-provider", not(feature = "skills-db")))]
+    #[cfg(all(
+        feature = "postgres",
+        feature = "root-llm-provider",
+        not(feature = "skills-db")
+    ))]
     let proposal_sink: Option<Arc<dyn brassclaw_interceptor::SempaiProposalSink>> =
         services.pg_pool.as_ref().map(|pool| {
             Arc::new(crate::sempai_proposal_sink::PgSempaiProposalSink::new(
@@ -3386,7 +3391,11 @@ pub async fn build_reborn_runtime(
 
     // When skills-db is active, attach the validator bridge so that Sempai
     // proposals trigger Q1 via the retained IBS/Recipe path (PKG-C+ wiring).
-    #[cfg(all(feature = "postgres", feature = "root-llm-provider", feature = "skills-db"))]
+    #[cfg(all(
+        feature = "postgres",
+        feature = "root-llm-provider",
+        feature = "skills-db"
+    ))]
     let proposal_sink: Option<Arc<dyn brassclaw_interceptor::SempaiProposalSink>> =
         services.pg_pool.as_ref().map(|pool| {
             let sink = crate::sempai_proposal_sink::PgSempaiProposalSink::new(
@@ -4555,6 +4564,8 @@ mod tests {
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "resource_store_settings_tests.rs"]
     mod resource_store_settings_tests;
+    // review_admission_source_tests removed: old contained-runner approach superseded by
+    // validation_queue_q1_retained_tests which uses the drive_admitted path (plan Revision 4).
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "source_inspection_tests.rs"]
     mod source_inspection_tests;
@@ -4564,6 +4575,9 @@ mod tests {
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "tool_output_policy.rs"]
     mod tool_output_policy;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "validation_queue_q1_retained_tests.rs"]
+    mod validation_queue_q1_retained_tests;
 
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     mod mcp_provider_acceptance {

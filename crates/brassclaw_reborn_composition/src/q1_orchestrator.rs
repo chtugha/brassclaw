@@ -484,7 +484,6 @@ pub async fn run_q1_validation(
 /// Returns `Q1Outcome::Passed` / `Q1Outcome::Failed` only when the complete
 /// IBS path executed and `verify_receipt` persisted evidence without error.
 #[cfg(feature = "skills-db")]
-#[allow(clippy::too_many_arguments)]
 pub async fn run_q1_validation_retained(
     pool: &PgPool,
     scope: &ComponentScope,
@@ -492,12 +491,7 @@ pub async fn run_q1_validation_retained(
     class_code: i32,
     queue_store: &ValidationQueueStore,
     preparation: brassclaw_monty_host::utility::UtilityLimits,
-    service: Option<&brassclaw_monty_host::service::ServiceClient>,
-    ports_factory: Option<
-        &std::sync::Arc<
-            dyn Fn() -> std::sync::Arc<dyn brassclaw_monty_host::service::TaskPorts> + Send + Sync,
-        >,
-    >,
+    bridge: Option<&crate::installed_monty_catalogue::ValidatorServiceBridge>,
 ) -> Result<Q1Outcome, Q1Error> {
     use std::sync::Arc;
 
@@ -508,7 +502,6 @@ pub async fn run_q1_validation_retained(
             retained_instruction::{WorkflowClass, compile_retained_recipe},
         },
     };
-    use brassclaw_monty_host::service::TaskOutcome;
     use brassclaw_skills::{
         component_revision::{REVISION_LIMITS, RetainedComponentSnapshot},
         review_submission_store::PgReviewSubmissionStore,
@@ -518,11 +511,12 @@ pub async fn run_q1_validation_retained(
             structural_validator_pc_id, structural_validator_recipe_id,
         },
     };
+    use brassclaw_turns::LoopCompleted;
 
-    // Step 1 — require wired service; defer if not yet available.
-    let (service, ports_factory) = match (service, ports_factory) {
-        (Some(s), Some(p)) => (s, p),
-        _ => {
+    // Step 1 — require wired bridge; defer if not yet available.
+    let bridge = match bridge {
+        Some(b) => b,
+        None => {
             return Ok(Q1Outcome::deferred("retained path not yet wired"));
         }
     };
@@ -731,54 +725,60 @@ pub async fn run_q1_validation_retained(
         }
     };
 
-    // Step 6 — retain the sealed validator selection.
+    // Step 6 — retain the sealed validator selection (idempotent).
     crate::pg_validator_q1_admission::retain_validator_selection(pool, &subject, &inspected)
         .await
         .map_err(|e| Q1Error::Admission(e.to_string()))?;
 
-    // Step 7 — submit the validator review task to the global Monty service.
-    let run_id = Uuid::new_v4();
-    let thread_id = Uuid::new_v4();
-    let ticket = crate::pg_validator_q1_admission::submit_validator_review(
-        service,
-        submission_id,
-        run_id,
-        thread_id,
-        ports_factory(),
-    )
-    .await
-    .map_err(|e| Q1Error::Admission(e.to_string()))?;
-
-    // Step 8 — await the ticket and translate the outcome.
-    let receipt = ticket
-        .wait()
+    // Step 7 — submit through the trusted internal drive_turn path.
+    // drive_admitted calls build -> capture_internal -> GlobalRecipePorts::for_internal.
+    // On InternalCompleted, GlobalRecipePorts::finish calls source.verify_receipt,
+    // which persists the Q1 evidence. `settle_closed` must NOT be called after this.
+    let loop_exit = bridge
+        .driver
+        .submit(Arc::new(pool.clone()), submission_id)
         .await
-        .map_err(|e| Q1Error::Admission(format!("{e:?}")))?;
+        .map_err(|e| Q1Error::Admission(e.to_string()))?;
 
     tracing::debug!(
         component_id = %component_id,
         class_code   = class_code,
         submission_id = %submission_id,
-        outcome       = ?receipt.outcome,
+        loop_exit     = ?loop_exit,
         "Q1 retained: validator review task settled"
     );
 
-    match &receipt.outcome {
-        TaskOutcome::InternalCompleted { .. } => {
+    match loop_exit {
+        brassclaw_turns::LoopExit::Completed(LoopCompleted {
+            completion_kind: brassclaw_turns::LoopCompletionKind::ResultOnly,
+            ..
+        }) => {
+            // InternalCompleted path: verify_receipt ran and persisted evidence.
             queue_store.gate1_pass_reviewed(scope, &review, &[]).await?;
             Ok(Q1Outcome::Passed)
         }
-        TaskOutcome::Failed { reason_kind } => {
-            let errors = vec![format!("validator task failed: {reason_kind}")];
+        brassclaw_turns::LoopExit::Completed(_) => {
+            // Unexpected normal Completed (FinalReply) for an internal task.
+            let errors =
+                vec!["retained validator returned unexpected FinalReply completion".into()];
             queue_store
                 .gate1_fail_reviewed(scope, &review, &errors)
                 .await?;
             Ok(Q1Outcome::Failed { errors })
         }
-        TaskOutcome::Completed { .. } => {
-            // Unexpected for an internal task — treat as failure without
-            // fabricating evidence.
-            let errors = vec!["retained validator returned unexpected Completed outcome".into()];
+        brassclaw_turns::LoopExit::Cancelled(cancelled) => {
+            let errors = vec![format!(
+                "validator task cancelled: {:?}",
+                cancelled.reason_kind
+            )];
+            queue_store
+                .gate1_fail_reviewed(scope, &review, &errors)
+                .await?;
+            Ok(Q1Outcome::Failed { errors })
+        }
+        brassclaw_turns::LoopExit::Blocked(_) | brassclaw_turns::LoopExit::Failed(_) => {
+            // Not produced by drive_admitted for internal tasks — treat as failure.
+            let errors = vec!["retained validator returned unexpected blocked/failed exit".into()];
             queue_store
                 .gate1_fail_reviewed(scope, &review, &errors)
                 .await?;
