@@ -243,6 +243,13 @@ async fn decode<C: tokio_postgres::GenericClient + Sync>(
     let bootstrap_job_id: Option<uuid::Uuid> = row.try_get("bootstrap_job_id").map_err(error)?;
     #[cfg(feature = "skills-db")]
     let bootstrap_target = if let Some(job_id) = bootstrap_job_id {
+        // Detect native Codex login by its kind and the presence of a
+        // published credential head reference in the same immutable row.
+        let credential_head_ref: Option<String> =
+            row.try_get("credential_head_ref").map_err(error)?;
+        let is_native_login = operation == "upsert"
+            && request["kind"] == serde_json::json!(crate::provider_codex_credentials::LOGIN_KIND)
+            && credential_head_ref.is_some();
         let job = crate::prefix_job_definitions::Store::get_on(client, job_id)
             .await
             .map_err(|_| LlmConfigServiceError::Unavailable)?
@@ -265,6 +272,13 @@ async fn decode<C: tokio_postgres::GenericClient + Sync>(
             Some(brassclaw_llm::ProviderRole::Kohai) => "kohai",
             Some(brassclaw_llm::ProviderRole::Sempai) => "sempai",
             None if operation == "upsert" && request["set_active"] == true => "kohai",
+            // Native login records its role intent inside the original context
+            // field; absent means the operator selected the default Kohai role.
+            None if is_native_login => match request["context"]["request"]["role"].as_str() {
+                Some("kohai") | None => "kohai",
+                Some("sempai") => "sempai",
+                _ => return Err(LlmConfigServiceError::Unavailable),
+            },
             _ => return Err(LlmConfigServiceError::Unavailable),
         };
         let role_keys = crate::db_config::model_role_keys(role)
@@ -298,7 +312,8 @@ async fn decode<C: tokio_postgres::GenericClient + Sync>(
             || job.request["executing_specification"] != *specification
             || !((operation == "select"
                 && matches!(request["role"].as_str(), Some("kohai" | "sempai")))
-                || (operation == "upsert" && request["set_active"] == true))
+                || (operation == "upsert" && request["set_active"] == true)
+                || is_native_login)
         {
             return Err(LlmConfigServiceError::Unavailable);
         }

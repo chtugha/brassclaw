@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- BUILD-036 (host/PG binding/rotation — full implementation): wire the native
+  Codex credential path from the authenticated PG bridge to the SDK host port.
+  `NativeCodexSourceSupplier` in `pg_auth_codex_access.rs` implements
+  `CodexHostSessionSource`; constructed per-resolved selection when protocol is
+  `OpenAiCodex` and a credential head reference is confirmed. Thread
+  `codex_native_owner: Option<Arc<PgAuthProductServices>>` into
+  `resolve_captured_provider_selection`, `resolve_boot_provider_selection_db`,
+  `resolve_provider_selection_db`, `RebornLlmReloadAdapter` (field +
+  `with_codex_native_owner` builder, carried into `PgPrimaryPreparation` so
+  live-reload callbacks hold the owner), and `TaskProviderConfiguration` (field
+  + builder, used in per-task `prepare()`). Wire all four runtime sites
+  (`build_reborn_runtime` boot, task-provider config, sempai attach-preparation,
+  `webui_llm_reload_adapter`). Mount `provider_codex_login.rs` as `mod
+  codex_login` under `#[cfg(all(feature = "postgres", feature =
+  "root-llm-provider"))]`; dispatch `start_codex_login` and `codex_login_status`
+  stubs to its methods. Add manual `Clone` impl for `RebornLlmConfigService`
+  (required for the login-driver spawn task). Fix `oauth_device_login_setup_ttl_secs`
+  → `oauth_setup_default_ttl_secs`; fix `credential_head_ref` borrow. Fix
+  pre-existing embedding validation: map `EmbeddingError::InvalidResponse` →
+  `LlmConfigServiceError::InvalidRequest` (was incorrectly `Unavailable`). Make
+  `pg_auth_product_services::codex_access` `pub(crate)` to expose the supplier.
+  `pg_pure_component_approval.rs` formatting pass.
+
 - Repair qualification isolation and original input bounds in the I1
   Use→Bootstrap job owner (BUILD-054): `Qualification::prepare` now reads
   `original_input_limits` from `reborn_monty_vm_settings` inside its own

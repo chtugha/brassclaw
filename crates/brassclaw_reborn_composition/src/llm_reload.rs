@@ -16,6 +16,11 @@ pub(crate) struct RebornLlmReloadAdapter {
     keys: LlmKeyStore,
     pg_pool: Arc<brassclaw_pg::PgPool>,
     tenant_id: String,
+    /// Authenticated PG bridge for native Codex credential consumption.
+    /// Absent for non-root runtimes and protocols that do not use Codex.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    codex_native_owner:
+        Option<std::sync::Arc<crate::pg_auth_product_services::PgAuthProductServices>>,
 }
 
 impl RebornLlmReloadAdapter {
@@ -32,7 +37,20 @@ impl RebornLlmReloadAdapter {
             keys,
             pg_pool,
             tenant_id: tenant_id.into(),
+            #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+            codex_native_owner: None,
         }
+    }
+
+    /// Supply the native Codex credential owner so live reloads can build the
+    /// `NativeCodexSourceSupplier` without re-querying auth at dispatch time.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    pub(crate) fn with_codex_native_owner(
+        mut self,
+        owner: Option<std::sync::Arc<crate::pg_auth_product_services::PgAuthProductServices>>,
+    ) -> Self {
+        self.codex_native_owner = owner;
+        self
     }
     /// Attach the authoritative source once before ingress. Retain weak runtime
     /// ownership so the provider and its preparation callback cannot form a cycle.
@@ -48,6 +66,8 @@ impl RebornLlmReloadAdapter {
                 pg_pool: self.pg_pool.clone(),
                 tenant_id: self.tenant_id.clone(),
                 sempai,
+                #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+                codex_native_owner: self.codex_native_owner.clone(),
             }))
     }
 }
@@ -59,6 +79,9 @@ struct PgPrimaryPreparation {
     pg_pool: Arc<brassclaw_pg::PgPool>,
     tenant_id: String,
     sempai: Option<Arc<dyn brassclaw_llm::ProviderSelectionPreparer>>,
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    codex_native_owner:
+        Option<std::sync::Arc<crate::pg_auth_product_services::PgAuthProductServices>>,
 }
 
 #[async_trait]
@@ -74,18 +97,22 @@ impl brassclaw_llm::ProviderSelectionPreparer for PgPrimaryPreparation {
                 provider: "stored primary provider".into(),
             }
         })?;
-        RebornLlmReloadAdapter::new(
+        #[allow(unused_mut)]
+        let mut adapter = RebornLlmReloadAdapter::new(
             handle,
             self.session.clone(),
             self.keys.clone(),
             self.pg_pool.clone(),
             &self.tenant_id,
-        )
-        .reload()
-        .await
-        .map(|_| ())
-        .map_err(|_| brassclaw_llm::LlmError::ConfigurationChanged {
-            provider: "stored primary provider".into(),
+        );
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        {
+            adapter = adapter.with_codex_native_owner(self.codex_native_owner.clone());
+        }
+        adapter.reload().await.map(|_| ()).map_err(|_| {
+            brassclaw_llm::LlmError::ConfigurationChanged {
+                provider: "stored primary provider".into(),
+            }
         })
     }
 }
@@ -93,6 +120,12 @@ impl brassclaw_llm::ProviderSelectionPreparer for PgPrimaryPreparation {
 #[async_trait]
 impl LlmReloadTrigger for RebornLlmReloadAdapter {
     async fn reload(&self) -> Result<brassclaw_llm::ProviderPublication, String> {
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        let codex_native_owner = self.codex_native_owner.clone();
+        #[cfg(not(all(feature = "postgres", feature = "root-llm-provider")))]
+        let codex_native_owner: Option<
+            std::sync::Arc<crate::pg_auth_product_services::PgAuthProductServices>,
+        > = None;
         self.reload_handle
             .publish_primary_from(|| async {
                 let captured =
@@ -120,6 +153,7 @@ impl LlmReloadTrigger for RebornLlmReloadAdapter {
                     &self.tenant_id,
                     &self.keys,
                     captured,
+                    codex_native_owner,
                 )
                 .map_err(|_| {
                     brassclaw_llm::ProviderPreparationFailure::selected(

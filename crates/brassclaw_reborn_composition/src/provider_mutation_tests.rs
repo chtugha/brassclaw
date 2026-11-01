@@ -1317,11 +1317,12 @@ async fn native_provider_publications_identify_actual_clients_and_serialize_capt
         async move {
             handle
                 .publish_primary_from(|| async {
-                    let selected =
-                        crate::llm_catalog::resolve_provider_selection_db(&pool, tenant, &keys)
-                            .await
-                            .unwrap()
-                            .unwrap();
+                    let selected = crate::llm_catalog::resolve_provider_selection_db(
+                        &pool, tenant, &keys, None,
+                    )
+                    .await
+                    .unwrap()
+                    .unwrap();
                     let provider = brassclaw_llm::build_static_provider_chain_with_guard(
                         &selected.config,
                         session,

@@ -28,6 +28,10 @@ pub(crate) struct TaskProviderConfiguration {
     memory: Option<Arc<brassclaw_memory::EmbeddingProviderSourceSlot>>,
     #[cfg(feature = "skills-db")]
     encoding: Option<EncodingDependencies>,
+    /// Authenticated PG bridge owner for native Codex per-task credential
+    /// consumption. Absent for non-root runtimes and non-Codex protocols.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    codex_native_owner: Option<Arc<crate::pg_auth_product_services::PgAuthProductServices>>,
 }
 #[cfg(feature = "skills-db")]
 #[derive(Clone)]
@@ -48,7 +52,19 @@ impl TaskProviderConfiguration {
             memory: None,
             #[cfg(feature = "skills-db")]
             encoding: None,
+            #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+            codex_native_owner: None,
         }
+    }
+
+    /// Supply the native Codex credential owner for per-task client builds.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    pub(crate) fn with_codex_native_owner(
+        mut self,
+        owner: Option<Arc<crate::pg_auth_product_services::PgAuthProductServices>>,
+    ) -> Self {
+        self.codex_native_owner = owner;
+        self
     }
     #[cfg(feature = "skills-db")]
     pub(crate) fn with_final_encoding(
@@ -815,11 +831,18 @@ impl TaskModelProviderSource for TaskRoleSource {
         prepared
             .credentials
             .insert(provider_id.clone(), retained.credential);
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        let codex_native_owner = configuration.codex_native_owner.clone();
+        #[cfg(not(all(feature = "postgres", feature = "root-llm-provider")))]
+        let codex_native_owner: Option<
+            std::sync::Arc<crate::pg_auth_product_services::PgAuthProductServices>,
+        > = None;
         let resolved = crate::llm_catalog::resolve_captured_provider_selection(
             &configuration.pool,
             &configuration.tenant,
             &configuration.keys,
             retained.captured,
+            codex_native_owner,
         )
         .map_err(|_| unavailable())?;
         let model = resolved.revision.model.clone();

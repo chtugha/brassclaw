@@ -34,6 +34,9 @@ const NEARAI_LOGIN_STATE_TTL: Duration = Duration::from_secs(15 * 60);
 #[path = "provider_login.rs"]
 mod provider_login;
 use provider_login::NearAiLoginContext;
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+#[path = "provider_codex_login.rs"]
+mod codex_login;
 
 /// One-use login state retains the exact original provider/auth/role context.
 /// A completed commit is independently recoverable through its mutation receipt.
@@ -132,6 +135,41 @@ pub struct RebornLlmConfigService {
     /// Shared interceptor mode flag.
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
     interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode>,
+    /// Weak reference to the composed auth services that own the native Codex
+    /// device login. Absent until wired at startup; callers get Unavailable.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    native_auth: std::sync::Weak<crate::RebornProductAuthServices>,
+}
+
+impl Clone for RebornLlmConfigService {
+    fn clone(&self) -> Self {
+        Self {
+            publication: Arc::clone(&self.publication),
+            #[cfg(feature = "skills-db")]
+            bootstrap_runtime: {
+                let lock = std::sync::OnceLock::new();
+                if let Some(weak) = self.bootstrap_runtime.get() {
+                    let _ = lock.set(weak.clone());
+                }
+                lock
+            },
+            keys: self.keys.clone(),
+            reload: self.reload.clone(),
+            memory_embedding_source: self.memory_embedding_source.clone(),
+            embedding_publication: self.embedding_publication.clone(),
+            nearai_session: self.nearai_session.clone(),
+            nearai_login_states: Arc::clone(&self.nearai_login_states),
+            pg_pool: Arc::clone(&self.pg_pool),
+            pg_provider_repo: Arc::clone(&self.pg_provider_repo),
+            db_tenant_id: self.db_tenant_id.clone(),
+            #[cfg(feature = "root-llm-provider")]
+            sempai_swappable: self.sempai_swappable.clone(),
+            #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+            interceptor_mode: self.interceptor_mode.clone(),
+            #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+            native_auth: self.native_auth.clone(),
+        }
+    }
 }
 
 struct PgSempaiPreparation {
@@ -288,6 +326,8 @@ impl RebornLlmConfigService {
             sempai_swappable: None,
             #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
             interceptor_mode: None,
+            #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+            native_auth: std::sync::Weak::new(),
         }
     }
 
@@ -356,6 +396,18 @@ impl RebornLlmConfigService {
         self
     }
 
+    /// Attach the auth services owning the native Codex device login.
+    /// Must be called before the service is Arc-wrapped; the Weak is taken
+    /// from the same Arc that the runtime keeps alive.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    pub(crate) fn with_native_product_auth(
+        mut self,
+        auth: &Arc<crate::RebornProductAuthServices>,
+    ) -> Self {
+        self.native_auth = Arc::downgrade(auth);
+        self
+    }
+
     /// Reload failures are visible to the writer. The acknowledgement identifies
     /// the actual published client; model-profile/budget coordination has its
     /// separate owning contract and is not inferred from a no-op callback.
@@ -400,7 +452,18 @@ impl RebornLlmConfigService {
                 captured.selection.model,
                 captured.credential,
             )
-            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            .map_err(|error| match error {
+                brassclaw_embeddings::EmbeddingError::AuthFailed => {
+                    LlmConfigServiceError::Unavailable
+                }
+                brassclaw_embeddings::EmbeddingError::InvalidResponse(reason) => {
+                    LlmConfigServiceError::InvalidRequest {
+                        field: Some("model".into()),
+                        reason,
+                    }
+                }
+                _ => LlmConfigServiceError::Unavailable,
+            })?;
             return Ok(None);
         }
         let (provider, mut prepared) = self
@@ -1128,24 +1191,36 @@ impl LlmConfigService for RebornLlmConfigService {
         })
     }
 
-    // The native Codex device-login path is owned by Root's native auth
-    // publication owner. Legacy session-file polling is retired here; the
-    // new trait contract accepts a SetActiveLlmRequest and returns the
-    // mutation-scoped start record. That wiring is not yet complete.
     async fn start_codex_login(
         &self,
-        _caller: WebUiAuthenticatedCaller,
-        _request: brassclaw_product_workflow::SetActiveLlmRequest,
+        caller: WebUiAuthenticatedCaller,
+        request: brassclaw_product_workflow::SetActiveLlmRequest,
     ) -> Result<CodexLoginStart, LlmConfigServiceError> {
-        Err(LlmConfigServiceError::Unavailable)
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        {
+            return self.start_native_codex_login(caller, request).await;
+        }
+        #[cfg(not(all(feature = "postgres", feature = "root-llm-provider")))]
+        {
+            let _ = (caller, request);
+            Err(LlmConfigServiceError::Unavailable)
+        }
     }
 
     async fn codex_login_status(
         &self,
-        _caller: WebUiAuthenticatedCaller,
-        _id: uuid::Uuid,
+        caller: WebUiAuthenticatedCaller,
+        id: uuid::Uuid,
     ) -> Result<brassclaw_product_workflow::CodexLoginStatus, LlmConfigServiceError> {
-        Err(LlmConfigServiceError::Unavailable)
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        {
+            return self.read_native_codex_login_status(caller, id).await;
+        }
+        #[cfg(not(all(feature = "postgres", feature = "root-llm-provider")))]
+        {
+            let _ = (caller, id);
+            Err(LlmConfigServiceError::Unavailable)
+        }
     }
 
     async fn start_nearai_wallet_login(

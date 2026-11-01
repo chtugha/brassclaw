@@ -326,12 +326,13 @@ pub async fn record_pure_evidence_submission_link(
     component_id: Uuid,
     candidate_version: u64,
 ) -> Result<(), PureApprovalError> {
-    if link_id.is_nil() || submission_id.is_nil() || approval_id.is_nil() || component_id.is_nil()
-    {
-        return Err(invalid("link, submission, approval and component IDs must be non-nil"));
+    if link_id.is_nil() || submission_id.is_nil() || approval_id.is_nil() || component_id.is_nil() {
+        return Err(invalid(
+            "link, submission, approval and component IDs must be non-nil",
+        ));
     }
-    let version =
-        i64::try_from(candidate_version).map_err(|_| invalid("candidate version exceeds i64 range"))?;
+    let version = i64::try_from(candidate_version)
+        .map_err(|_| invalid("candidate version exceeds i64 range"))?;
     let mut client = pool.get().await.map_err(PureApprovalError::Connection)?;
     let tx = client
         .build_transaction()
@@ -378,7 +379,13 @@ pub async fn record_pure_evidence_submission_link(
          (link_id, submission_id, approval_id, component_id, candidate_version)
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (link_id) DO NOTHING",
-        &[&link_id, &submission_id, &approval_id, &component_id, &version],
+        &[
+            &link_id,
+            &submission_id,
+            &approval_id,
+            &component_id,
+            &version,
+        ],
     )
     .await
     .map_err(db)?;

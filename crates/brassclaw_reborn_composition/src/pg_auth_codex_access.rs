@@ -1,6 +1,7 @@
 #![allow(dead_code)] // PRIVATE036: staged access APIs; callers land with the full login/refresh/startup wiring.
 //! PRIVATE036: existing native Auth owner, request-local access consumption.
-//! Unmounted/uncompiled until login, refresh, all callers and native cases join.
+//! The `NativeCodexSourceSupplier` is now the live call-site bridge; it is
+//! constructed per-resolved-selection by `resolve_captured_provider_selection`.
 use super::PgAuthProductServices;
 use std::sync::Arc;
 
@@ -8,7 +9,8 @@ use async_trait::async_trait;
 use brassclaw_auth::{CredentialAccount, CredentialAccountSnapshotRef, CredentialAccountStatus};
 use brassclaw_host_api::SecretHandle;
 use brassclaw_llm::{
-    CodexHostSession, LlmError, ProviderDispatchGuard, ProviderDispatchState, ProviderRequestFacts,
+    CodexHostSession, CodexHostSessionSource, LlmError, ProviderDispatchGuard,
+    ProviderDispatchState, ProviderRequestFacts,
 };
 use chrono::{DateTime, Utc};
 
@@ -214,5 +216,59 @@ impl PgAuthProductServices {
                 provider_guard,
             }),
         ))
+    }
+}
+
+/// Per-selection bridge from the authenticated PG owner to the SDK's host port.
+/// Constructed once per resolved Codex selection; each `session()` call consumes
+/// one token generation and pins a new immutable `NativeCodexAccessGuard`.
+pub(crate) struct NativeCodexSourceSupplier {
+    owner: Arc<PgAuthProductServices>,
+    namespace: String,
+    provider_id: String,
+    head_reference: String,
+    api_base_url: String,
+    provider_guard: Arc<dyn ProviderDispatchGuard>,
+}
+
+impl std::fmt::Debug for NativeCodexSourceSupplier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NativeCodexSourceSupplier")
+            .finish_non_exhaustive()
+    }
+}
+
+impl NativeCodexSourceSupplier {
+    pub(crate) fn new(
+        owner: Arc<PgAuthProductServices>,
+        namespace: impl Into<String>,
+        provider_id: impl Into<String>,
+        head_reference: impl Into<String>,
+        api_base_url: impl Into<String>,
+        provider_guard: Arc<dyn ProviderDispatchGuard>,
+    ) -> Self {
+        Self {
+            owner,
+            namespace: namespace.into(),
+            provider_id: provider_id.into(),
+            head_reference: head_reference.into(),
+            api_base_url: api_base_url.into(),
+            provider_guard,
+        }
+    }
+}
+
+#[async_trait]
+impl CodexHostSessionSource for NativeCodexSourceSupplier {
+    async fn session(&self) -> Result<CodexHostSession, LlmError> {
+        self.owner
+            .take_codex_access_session(
+                &self.namespace,
+                &self.provider_id,
+                &self.head_reference,
+                &self.api_base_url,
+                Arc::clone(&self.provider_guard),
+            )
+            .await
     }
 }

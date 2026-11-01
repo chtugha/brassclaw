@@ -827,6 +827,10 @@ impl RebornRuntime {
                 if let Some(mode) = self.interceptor_mode() {
                     configuration = configuration.with_interceptor_mode(mode);
                 }
+                #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+                if let Some(auth) = self.services.product_auth.as_ref() {
+                    configuration = configuration.with_native_product_auth(auth);
+                }
                 Some(Arc::new(configuration))
             })
             .clone()
@@ -847,13 +851,23 @@ impl RebornRuntime {
         #[cfg(feature = "postgres")]
         {
             let tenant_id = self.thread_scope.tenant_id.as_str().to_string();
-            let adapter = crate::llm_reload::RebornLlmReloadAdapter::new(
+            #[allow(unused_mut)]
+            let mut adapter = crate::llm_reload::RebornLlmReloadAdapter::new(
                 Arc::clone(&parts.reload_handle),
                 Arc::clone(&parts.session),
                 self.services.llm_key_store(),
                 Arc::clone(pool),
                 tenant_id,
             );
+            #[cfg(feature = "root-llm-provider")]
+            {
+                let codex_owner = self
+                    .services
+                    .product_auth
+                    .as_ref()
+                    .and_then(|auth| auth.native_codex_owner().ok());
+                adapter = adapter.with_codex_native_owner(codex_owner);
+            }
             Some(adapter)
         }
     }
@@ -2073,10 +2087,15 @@ pub async fn build_reborn_runtime(
         drop(llm);
         match services.pg_pool.as_ref() {
             Some(pool) => {
+                let boot_codex_owner = services
+                    .product_auth
+                    .as_ref()
+                    .and_then(|auth| auth.native_codex_owner().ok());
                 let boot = crate::llm_catalog::resolve_boot_provider_selection_db(
                     pool,
                     validated_identity.tenant_id.as_str(),
                     &services.llm_key_store(),
+                    boot_codex_owner,
                 )
                 .await
                 .map_err(|_| {
@@ -2603,6 +2622,14 @@ pub async fn build_reborn_runtime(
             validated_identity.tenant_id.as_str(),
             services.llm_key_store(),
         );
+        #[cfg(feature = "postgres")]
+        let configuration = {
+            let codex_owner = services
+                .product_auth
+                .as_ref()
+                .and_then(|auth| auth.native_codex_owner().ok());
+            configuration.with_codex_native_owner(codex_owner)
+        };
         #[cfg(feature = "skills-db")]
         let configuration = configuration
             .with_memory_source(services.memory_embedding_source.clone())
@@ -2726,6 +2753,10 @@ pub async fn build_reborn_runtime(
                 "Sempai configuration preparation could not be attached".into(),
             )
         })?;
+        let prep_codex_owner = services
+            .product_auth
+            .as_ref()
+            .and_then(|auth| auth.native_codex_owner().ok());
         crate::llm_reload::RebornLlmReloadAdapter::new(
             parts.reload_handle.clone(),
             parts.session.clone(),
@@ -2733,6 +2764,7 @@ pub async fn build_reborn_runtime(
             pool.clone(),
             tenant,
         )
+        .with_codex_native_owner(prep_codex_owner)
         .attach_preparation(Some(sempai_source))
         .map_err(|_| {
             RebornRuntimeError::LlmProvider(
