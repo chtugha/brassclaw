@@ -6457,54 +6457,55 @@ const PC_EXEC_HTTP_DELETE_CONTENT: &str = r#"def usage_http_delete(inputs):
 
 // Pure HTTP status check — no host call; receives status_code as typed integer.
 const PC_HTTP_STATUS_CHECK_CONTENT: &str = r#"def check_http_status(inputs):
-    status_code = inputs["status_code"]
-    is_success = 200 <= status_code < 300
-    result = {"is_success": is_success, "status_code": status_code}
-    return result
+    # Pure-logic HTTP status classifier (L024). No host calls, no I/O.
+    status = inputs["status_code"]
+    if type(status) is not int or not 100 <= status <= 599:
+        raise ValueError("invalid HTTP status")
+    return {"is_success": 200 <= status < 300, "status_code": status}
 "#;
 
-// Pure JSON field extraction — no host call; receives data dict and dot-path string.
+// Pure JSON field extraction — no host call; receives structured data and segments list.
 const PC_JSON_EXTRACT_FIELD_CONTENT: &str = r#"def extract_json_field(inputs):
-    parts = inputs["path"].split(".")
+    # Pure-logic typed JSON traversal (L025). No host calls, no I/O.
+    # segments: list of {kind:"key"|"index", key:str|null, index:int|null}
     current = inputs["data"]
-    for part in parts:
-        if isinstance(current, dict) and part in current:
-            current = current[part]
-        elif isinstance(current, list):
-            try:
-                current = current[int(part)]
-            except (ValueError, IndexError):
-                current = None
-                break
+    for segment in inputs["segments"]:
+        kind = segment["kind"]
+        if kind == "key":
+            if type(segment["key"]) is not str or segment["index"] is not None:
+                raise ValueError("invalid key segment")
+        elif kind == "index":
+            if type(segment["index"]) is not int or segment["index"] < 0 or segment["key"] is not None:
+                raise ValueError("invalid index segment")
         else:
+            raise ValueError("invalid segment kind")
+    found = True
+    for segment in inputs["segments"]:
+        if segment["kind"] == "key" and isinstance(current, dict) and segment["key"] in current:
+            current = current[segment["key"]]
+        elif segment["kind"] == "index" and isinstance(current, list) and segment["index"] < len(current):
+            current = current[segment["index"]]
+        else:
+            found = False
             current = None
             break
-    result = {"value": current, "path": inputs["path"], "found": current is not None}
-    return result
+    return {"value": current, "found": found}
 "#;
 
 // Pure web search result extractor — no host call; receives pre-parsed response dict.
 const PC_WEB_SEARCH_EXTRACT_CONTENT: &str = r#"def extract_web_search_results(inputs):
-    data = inputs["data"]
-    if isinstance(data, dict):
-        results = (
-            data.get("results") or
-            data.get("organic_results") or
-            data.get("items") or
-            data.get("RelatedTopics") or
-            []
-        )
-        result = [
-            {
-                "title":   r.get("title") or r.get("Text", ""),
-                "url":     r.get("url") or r.get("link") or r.get("FirstURL", ""),
-                "snippet": r.get("snippet") or r.get("description") or ""
-            }
-            for r in results if isinstance(r, dict)
-        ]
-    else:
-        result = {"error": "expected parsed dict from http response", "raw": str(data)[:500]}
-    return result
+    # Pure-logic search result extractor (L026). No host calls, no I/O.
+    limit = inputs["limit"]
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("invalid_search_display_limit")
+    data = inputs["response"]
+    rows = data[inputs["rows_field"]]
+    result = []
+    for row in rows:
+        result.append({"title": row[inputs["title_field"]],
+                       "url": row[inputs["url_field"]],
+                       "snippet": row[inputs["snippet_field"]]})
+    return result[:limit]
 "#;
 
 // Pure URL query-string builder — no host call; receives raw query string.
@@ -6518,11 +6519,13 @@ const PC_WEB_SEARCH_QUERY_BUILD_CONTENT: &str = r#"def build_url_query(inputs):
 
 // Pure percent-encoder — no host call; receives raw string to encode.
 const PC_URL_ENCODE_CONTENT: &str = r#"def url_encode(inputs):
-    raw = inputs["raw"].strip()
-    safe = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-    encoded = "".join(c if c in safe else "%" + format(ord(c), "02X") for c in raw)
-    result = {"encoded": encoded, "raw": raw}
-    return result
+    # Pure-logic UTF-8 percent-encoder (L027). No host calls, no I/O.
+    # Encodes UTF-8 bytes (not code points) for one path/query value.
+    safe = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    encoded = ""
+    for byte in inputs["text"].encode("utf-8"):
+        encoded += chr(byte) if byte in safe else "%" + format(byte, "02X")
+    return {"encoded": encoded, "raw": inputs["text"]}
 "#;
 
 // ---------------------------------------------------------------------------
@@ -8213,31 +8216,33 @@ const PC_EXEC_MEMORY_TREE_CONTENT: &str = r#"def usage_memory_tree(inputs):
 "#;
 
 // Pure section extractor — no host call; receives content string and heading.
-const PC_MEMORY_EXTRACT_SECTION_CONTENT: &str = r##"def extract_section(inputs):
+const PC_MEMORY_EXTRACT_SECTION_CONTENT: &str = r#"def extract_section(inputs):
+    # Pure-logic ATX-heading section extractor (L033). No host calls, no I/O.
     lines = inputs["content"].split("\n")
-    heading = inputs["heading"]
-    in_section = False
-    section_lines = []
+    found = False
+    level = 0
+    collected = []
     for line in lines:
-        stripped = line.lstrip("#").strip()
-        if stripped == heading and line.startswith("#"):
-            in_section = True
-            continue
-        if in_section:
-            if line.startswith("#"):
-                break
-            section_lines.append(line)
-    section_content = "\n".join(section_lines).strip() if section_lines else None
-    result = {"section_content": section_content, "heading": heading, "found": section_content is not None}
-    return result
-"##;
+        prefix = len(line) - len(line.lstrip("#"))
+        is_heading = 1 <= prefix <= 6 and line[prefix:prefix+1] == " "
+        title = line[prefix+1:].strip() if is_heading else ""
+        if not found and is_heading and title == inputs["heading"]:
+            found = True
+            level = prefix
+        elif found and is_heading and prefix <= level:
+            break
+        elif found:
+            collected.append(line)
+    return {"found": found,
+            "section_content": "\n".join(collected) if found else None,
+            "heading": inputs["heading"]}
+"#;
 
 // Pure entry formatter — no host call; caller must supply timestamp_str.
-const PC_MEMORY_FORMAT_ENTRY_CONTENT: &str = r####"def format_memory_entry(inputs):
-    formatted_entry = f"### {inputs['timestamp_str']}\n\n{inputs['text']}\n"
-    result = {"formatted_entry": formatted_entry}
-    return result
-"####;
+const PC_MEMORY_FORMAT_ENTRY_CONTENT: &str = r#"def format_memory_entry(inputs):
+    # Pure-logic memory entry formatter (L034). No host calls, no I/O.
+    return {"formatted_entry": "### " + inputs["timestamp_str"] + "\n\n" + inputs["text"] + "\n"}
+"#;
 
 // ---------------------------------------------------------------------------
 // Memory group skill bodies — transcribed verbatim from the doc (Q1=A).
