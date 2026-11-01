@@ -393,7 +393,6 @@ mod tests {
         assert_eq!(wrong_class, 0);
         for (table, name, class) in [
             ("reborn_skills", "orchestrator:main", 10_i16),
-            ("reborn_tools", "zencoder-api", 0_i16),
         ] {
             // These table names are the fixed test literals above.
             let sql = format!(

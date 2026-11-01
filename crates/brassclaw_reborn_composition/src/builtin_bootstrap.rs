@@ -880,14 +880,7 @@ pub async fn seed_builtin_components(
     // in Steps 4–8.
     seed_doc_sync_group(&stores).await?;
 
-    // Pass 16 — Zencoder extension (REST API delegation to AI coding agents).
-    // Tool + ToolSkills + PythonCode + Skills + Recipes + ExtensionCatalogue.
-    // ts-host-post-reply must exist before this pass runs (the auth-setup
-    // recipe references it by name lookup). It is seeded by Pass 6
-    // (`seed_builtin_host::seed_builtin_host_components`) which runs in
-    // `component_boot.rs` BEFORE `seed_builtin_components` is called, so the
-    // dependency is always satisfied.
-    crate::zencoder_bootstrap::seed_zencoder_extension(stores.pool.clone(), tenant_id).await?;
+    // Pass 16 — Zencoder extension removed (archived to docs/archive/zencoder_bootstrap.rs.archived).
 
     // Pass 17 — operator-triggered prefix-bundle assembly through two focused
     // host capabilities and a Tier-0 recipe.
@@ -17742,23 +17735,36 @@ prefix stale. Fully deterministic (no LLM calls).
 /// No imports needed — pure Python string comparison.
 /// IBS substitutes stored_hash as {{vars.slot0}}, new_hash as {{vars.slot1}}.
 const PC_HASH_CHANGED_CONTENT: &str = r#"def usage_hash_changed(inputs):
-    # Pure-logic hash comparison. No I/O, no imports.
-    _stored = inputs.get("stored_hash") or ""
-    _new    = inputs.get("new_hash") or ""
-    return {"changed": _stored != _new}
+    # Pure-logic SHA-256 hash comparison (L090). No host calls, no I/O.
+    import re
+    new = inputs["new_hash"]
+    prior = inputs["prior_hash"]
+    if re.fullmatch(r"[0-9a-f]{64}", new) is None:
+        raise ValueError("invalid new SHA-256")
+    if prior is not None and re.fullmatch(r"[0-9a-f]{64}", prior) is None:
+        raise ValueError("invalid prior SHA-256")
+    return {"changed": prior != new}
 "#;
 
 /// Render the `## CC:UID  LABEL  "name"` base-prompt header line.
 /// Matches do_reassemble's format exactly.
 /// Inputs: class_code, prompt_uid, label, name.
-const PC_FORMAT_COMPONENT_HEADER_CONTENT: &str = r#"def usage_format_component_header(inputs):
-    # Pure-logic header renderer. No I/O, no imports.
-    _class_code = inputs["class_code"]
-    _prompt_uid = inputs["prompt_uid"]
-    _label      = inputs["label"]
-    _name       = inputs["name"]
-    return {"header": '## ' + _class_code + ':' + _prompt_uid + '  ' + _label + '  "' + _name + '"'}
-"#;
+const PC_FORMAT_COMPONENT_HEADER_CONTENT: &str = concat!(
+    "def usage_format_component_header(inputs):\n",
+    "    # Pure-logic header renderer (L091). No host calls, no I/O.\n",
+    "    name = inputs[\"name\"]\n",
+    "    label = inputs[\"label\"]\n",
+    "    for char in name:\n",
+    "        if char in ('\"', '\\\\', '\\n', '\\r', '\\x00') or ord(char) < 32 or ord(char) == 127:\n",
+    "            raise ValueError(\"name needs a separately qualified escape profile\")\n",
+    "    if not label:\n",
+    "        raise ValueError(\"invalid class label\")\n",
+    "    for char in label:\n",
+    "        if char.isspace() or char in ('\"', '\\\\') or ord(char) < 32 or ord(char) == 127:\n",
+    "            raise ValueError(\"invalid class label\")\n",
+    "    return {\"header\": \"## \" + str(inputs[\"class_code\"]) + \":\" + str(inputs[\"prompt_uid\"])\n",
+    "            + \"  \" + label + \"  \\\"\" + name + \"\\\"}\n",
+);
 
 // ---------------------------------------------------------------------------
 // Pass 15 — doc-sync leaf skill body constants

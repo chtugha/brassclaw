@@ -182,8 +182,8 @@ async fn builtin_bootstrap_seed_lands_all_v3_components() {
         .unwrap();
 
     // Reviewed installation inventory: 8 host primitives, 21 capability
-    // primitives, 2 prefix primitives and the Zencoder primitive. History
-    // persistence reuses memory_write; it is not a separate host Tool.
+    // primitives, 2 prefix primitives. History persistence reuses memory_write;
+    // it is not a separate host Tool. Zencoder extension removed (archived).
     let expected_tools = [
         "apply_patch",
         "component_db",
@@ -216,7 +216,6 @@ async fn builtin_bootstrap_seed_lands_all_v3_components() {
         "trigger_list",
         "trigger_remove",
         "write_file",
-        "zencoder-api",
     ];
     let inventory_client = rig.pool.get().await.expect("inventory client");
     let user = SYSTEM_RESERVED_ID.to_string();

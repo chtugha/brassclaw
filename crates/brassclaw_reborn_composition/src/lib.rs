@@ -268,8 +268,7 @@ mod webui_rate_limit;
 mod webui_route_match;
 mod webui_serve;
 mod webui_ws_origin;
-#[cfg(feature = "postgres")]
-pub mod zencoder_bootstrap;
+// zencoder_bootstrap removed — archived to docs/archive/zencoder_bootstrap.rs.archived
 
 #[cfg(feature = "postgres")]
 pub(crate) mod boot_integrity;
