@@ -914,14 +914,16 @@ pub(crate) async fn retain_validator_check_drafts(
     use brassclaw_skills::{
         global_bootstrap_components::packaged_component_id,
         validator_components::{
-            preload_definition_draft, python_contracts_draft, python_definitions_draft,
-            python_graph_draft, python_pure_calls_draft, recursive_contract_draft,
-            review_subject_reader_draft, skill_interface_draft, structural_presence_draft,
-            subject_sources_draft,
+            VALIDATOR_CLASS_CODES, preload_definition_draft, python_contracts_draft,
+            python_definitions_draft, python_graph_draft, python_pure_calls_draft,
+            recursive_contract_draft, review_subject_reader_draft, skill_interface_draft,
+            structural_presence_draft, structural_validator_recipe_drafts, subject_sources_draft,
         },
     };
 
     let store = brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone());
+
+    // Retain shared checking components (independent of class route).
     for draft in [
         structural_presence_draft(packaged_component_id("validator:structural-presence")),
         preload_definition_draft(packaged_component_id("validator:preload-definition")),
@@ -960,6 +962,45 @@ pub(crate) async fn retain_validator_check_drafts(
             }
         })?;
     }
+
+    // Retain the immutable revision drafts for the eight class validator Recipes
+    // (PC + collect + aggregate + Recipe with validator_coverage). These supply
+    // the RetainedValidatorCoverage::from_inputs() path; they are separate from
+    // the legacy mutable reborn_recipes rows seeded by seed_validator_recipes.
+    let class_labels: &[(i16, &str)] = &[
+        (0, "Tool"),
+        (1, "leaf Skill"),
+        (2, "domain Skill"),
+        (3, "LLM Skill"),
+        (13, "ToolSkill"),
+        (21, "Recipe"),
+        (22, "PythonCode"),
+        (23, "ExtensionCatalogue"),
+    ];
+    debug_assert_eq!(class_labels.len(), VALIDATOR_CLASS_CODES.len());
+    for (class_code, class_label) in class_labels {
+        let drafts = structural_validator_recipe_drafts(
+            *class_code,
+            class_label,
+            PC_VALIDATOR_STRUCTURAL_BODY,
+        )
+        .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
+            reason: error.to_string(),
+        })?;
+        for draft in drafts {
+            store
+                .retain_packaged_draft(&draft)
+                .await
+                .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
+                    reason: error.to_string(),
+                })?;
+        }
+    }
+
+    tracing::debug!(
+        "retained validator check drafts: shared checking components \
+         + 8 class validator Recipe revision drafts (source-only, no approval)"
+    );
     Ok(())
 }
 

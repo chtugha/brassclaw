@@ -479,3 +479,224 @@ pub fn source_inspection_drafts(
         )?,
     ])
 }
+
+/// Stable packaged ID for the structural-check PythonCode for a validator class.
+/// These IDs are allocated in the shared installation namespace so both the legacy
+/// mutable-recipe seeder and the new immutable-revision path use the same identity.
+pub fn structural_validator_pc_id(class_code: i16) -> Uuid {
+    crate::global_bootstrap_components::packaged_component_id(&format!(
+        "validator:structural:pc:class-{class_code}"
+    ))
+}
+
+/// Stable packaged ID for the collect step of a class validator Recipe.
+pub fn structural_validator_collect_id(class_code: i16) -> Uuid {
+    crate::global_bootstrap_components::packaged_component_id(&format!(
+        "validator:structural:collect:class-{class_code}"
+    ))
+}
+
+/// Stable packaged ID for the aggregate step of a class validator Recipe.
+pub fn structural_validator_aggregate_id(class_code: i16) -> Uuid {
+    crate::global_bootstrap_components::packaged_component_id(&format!(
+        "validator:structural:aggregate:class-{class_code}"
+    ))
+}
+
+/// Stable packaged ID for a class validator Recipe (immutable revision path).
+pub fn structural_validator_recipe_id(class_code: i16) -> Uuid {
+    crate::global_bootstrap_components::packaged_component_id(&format!(
+        "validator:structural:recipe:class-{class_code}"
+    ))
+}
+
+/// Supported class codes for the eight packaged structural validator Recipes.
+pub const VALIDATOR_CLASS_CODES: &[i16] = &[0, 1, 2, 3, 13, 21, 22, 23];
+
+/// Build the immutable `ComponentRevisionDraft` set for one structural class
+/// validator Recipe and its dependencies. This is the retained-revision path
+/// for `RetainedValidatorCoverage::from_inputs()`; it is separate from the
+/// legacy mutable `reborn_recipes` seeder in `seed_validator_recipes`.
+///
+/// Returns four drafts (in dependency-first order):
+/// 1. PythonCode — the structural check body (pure-logic, `inputs["name/description/content"]`).
+/// 2. PythonCode — collect step (single-rule wrapper).
+/// 3. PythonCode — aggregate step.
+/// 4. Recipe (class 21) — the validator Recipe with `validator_coverage`.
+///
+/// The PythonCode body must already be published via the existing
+/// `PC_VALIDATOR_STRUCTURAL_BODY` constant in `builtin_bootstrap.rs`; the
+/// IDs here must match those used by the bootstrap seeder.
+///
+/// None of these drafts establish approval, Q1 evidence, activation or Tool
+/// permission. They supply preparation metadata for the retained validator path.
+pub fn structural_validator_recipe_drafts(
+    class_code: i16,
+    class_label: &str,
+    pc_body: &str,
+) -> Result<Vec<ComponentRevisionDraft>, RevisionError> {
+    if !VALIDATOR_CLASS_CODES.contains(&class_code) {
+        return Err(RevisionError::Invalid("unsupported validator class code"));
+    }
+    let pc_id = structural_validator_pc_id(class_code);
+    let collect_id = structural_validator_collect_id(class_code);
+    let aggregate_id = structural_validator_aggregate_id(class_code);
+    let recipe_id = structural_validator_recipe_id(class_code);
+
+    // Rule name for the single structural check.
+    let rule_id = "structural_presence";
+    let rule_step = "0:1";
+    let collect_step = "0:2";
+    let aggregate_step = "0:3";
+
+    // 1. PythonCode for the structural-check body.
+    let pc_description = format!(
+        "Tier-0 structural validator executor for class {class_code} ({class_label}). \
+         Checks name, description, and content/steps are non-empty. \
+         Pure-logic, no host calls. Inputs: inputs[\"name\"], \
+         inputs[\"description\"], inputs[\"content\"]. Returns \
+         {{\"pass\": bool, \"errors\": [str]}}."
+    );
+    let rule_contract = rule_contract();
+    let pc_draft = ComponentRevisionDraft::from_json(&json!({
+        "format": "component-revision/1",
+        "uuid": pc_id,
+        "class_code": 22,
+        "document": {
+            "name": format!("check-structural-presence-class-{class_code}"),
+            "description": pc_description,
+            "content": pc_body,
+            "includes": [],
+            "dependency_registry": null,
+            "input_contract": {
+                "name": {"type": "string", "required": true, "checks": []},
+                "description": {"type": "string", "required": true, "checks": []},
+                "content": {"type": "string", "required": true, "checks": []}
+            },
+            "result_contract": rule_contract,
+            "preload": {
+                "format": "python-preload/2",
+                "exports": {
+                    "check_structural_presence": {
+                        "symbol": "check_structural_presence",
+                        "parameters": ["inputs"],
+                        "mapping": true
+                    }
+                },
+                "private_functions": {},
+                "constants": [],
+                "imports": [],
+                "dependencies": [],
+                "default_export": "check_structural_presence"
+            }
+        },
+        "dependencies": [],
+        "association": null
+    }).to_string())?;
+
+    // 2. Collect step (single rule).
+    let collect_draft = collect_draft(collect_id, &[rule_id.to_string()])?;
+
+    // 3. Aggregate step.
+    let aggregate_draft = aggregate_draft(aggregate_id)?;
+
+    // 4. Recipe with validator_coverage.
+    // Build document using Value directly because the variant_key is dynamic.
+    let recipe_description = format!(
+        "Tier-0 structural validator for class {class_code} ({class_label}). \
+         Checks name, description, and content/steps are non-empty. \
+         Seeds the trusted-root Q1 gate. Private: consumer_tags=[05:validator]."
+    );
+    let variant_key = format!("validator-class-{class_code}");
+    let pc_input_contract = json!({
+        "name":    {"type": "string", "required": true, "checks": []},
+        "description": {"type": "string", "required": true, "checks": []},
+        "content": {"type": "string", "required": true, "checks": []}
+    });
+
+    // Verify the aggregate result contract has the expected shape required by
+    // RetainedValidatorCoverage::from_inputs (pass:bool + errors:list).
+    let agg = &aggregate_draft.document()["result_contract"];
+    if agg["type"] != "object"
+        || agg["allow_extra_fields"] != false
+        || agg["fields"]["pass"]["type"] != "boolean"
+        || agg["fields"]["errors"]["type"] != "list"
+    {
+        return Err(RevisionError::Invalid(
+            "aggregate result contract does not match required shape",
+        ));
+    }
+
+    // Build the input_layouts and invocations with dynamic keys.
+    let layout_steps = {
+        let mut steps = serde_json::Map::new();
+        steps.insert("0:1".into(), json!({
+            "name":        {"kind": "task_input", "reference": "{{vars.name}}"},
+            "description": {"kind": "task_input", "reference": "{{vars.description}}"},
+            "content":     {"kind": "task_input", "reference": "{{vars.content}}"}
+        }));
+        let mut collect_inputs = serde_json::Map::new();
+        collect_inputs.insert(rule_id.to_string(), json!({"kind": "result", "step_id": rule_step, "path": []}));
+        steps.insert("0:2".into(), serde_json::Value::Object(collect_inputs));
+        steps.insert("0:3".into(), json!({
+            "required_rule_ids": {"kind": "constant", "value": [rule_id]},
+            "checks": {"kind": "result", "step_id": collect_step, "path": []}
+        }));
+        serde_json::Value::Object(steps)
+    };
+    let layout = json!({
+        "format": "recipe-input-layout/1",
+        "task_inputs": pc_input_contract,
+        "steps": layout_steps
+    });
+    let input_layouts = {
+        let mut m = serde_json::Map::new();
+        m.insert(variant_key.clone(), layout);
+        serde_json::Value::Object(m)
+    };
+    let invocations = {
+        let mut inv = serde_json::Map::new();
+        inv.insert(variant_key.clone(), json!({
+            "0:1": "check_structural_presence",
+            "0:2": "collect_validator_checks",
+            "0:3": "aggregate_validator_checks"
+        }));
+        serde_json::Value::Object(inv)
+    };
+
+    let recipe_doc = json!({
+        "name": format!("validator-class-{class_code}"),
+        "description": recipe_description,
+        "validates_class_code": class_code,
+        "consumer_tags": ["05:validator"],
+        "validator_coverage": {
+            "format": "validator-coverage/1",
+            "rules": [{"rule_id": rule_id, "step_id": rule_step}],
+            "aggregate_step": aggregate_step
+        },
+        "variants": [{
+            "variant_key": variant_key,
+            "step_link": "0:1-0:E",
+            "intent_examples": [],
+            "variable_patterns": []
+        }],
+        "step_descriptions": [{"desc_idx": 0, "label": format!("Structural check class {class_code}"), "yaml_source": "", "steps": [
+            {"stepnumber": 1, "knowledge": "orchestrator", "goal": "Run structural presence check", "content": "", "type": "component", "include": [pc_id]},
+            {"stepnumber": 2, "knowledge": "orchestrator", "goal": "Collect rule results", "content": "", "type": "component", "include": [collect_id]},
+            {"stepnumber": 3, "knowledge": "orchestrator", "goal": "Aggregate required rule set", "content": "", "type": "component", "include": [aggregate_id]}
+        ]}],
+        "input_layouts": input_layouts,
+        "invocations": invocations
+    });
+
+    let recipe_draft = ComponentRevisionDraft::from_json(&json!({
+        "format": "component-revision/1",
+        "uuid": recipe_id,
+        "class_code": 21,
+        "document": recipe_doc,
+        "dependencies": [pc_id, collect_id, aggregate_id],
+        "association": null
+    }).to_string())?;
+
+    Ok(vec![pc_draft, collect_draft, aggregate_draft, recipe_draft])
+}

@@ -1,3 +1,39 @@
+## 2026-11-01 — BUILD-057/058: V202 validator Q1 runs index + structural validator Recipe drafts (source-only)
+
+**V202** (`V202__validator_q1_runs.sql`) adds `reborn_validator_q1_runs`, an immutable
+FK-indexed linking table from completed Q1 run → evidence record. It joins
+`reborn_component_review_submissions` (V104) + `reborn_component_review_evidence` (V102) with
+the `validator_selection_checksum` (hex SHA-256 of the retained `monty-retained-recipe-selection/1` bytes)
+as the natural key. Immutability triggers match V102/V200 conventions. Enables evidence
+lookup without JSONB parsing.
+
+`pg_validator_q1_evidence.rs` extended to also write the run index row in `reborn_validator_q1_runs`
+atomically in the same transaction as the V102 evidence insert, with idempotent conflict handling
+and integrity verification on the FK-linked `evidence_id`.
+
+**BUILD-058** adds `structural_validator_recipe_drafts(class_code, class_label, pc_body)`
+to `brassclaw_skills::validator_components`. This produces four `ComponentRevisionDraft` objects
+(PythonCode + collect + aggregate + Recipe with `validator_coverage`) for each of the eight
+supported validator class codes (0, 1, 2, 3, 13, 21, 22, 23). The Recipe draft carries the
+`validator_coverage` field required by `RetainedValidatorCoverage::from_inputs()`. Helper ID
+functions (`structural_validator_pc_id`, `structural_validator_collect_id`,
+`structural_validator_aggregate_id`, `structural_validator_recipe_id`) allocate stable
+`packaged_component_id` identities in the shared installation namespace.
+
+`retain_validator_check_drafts` in `builtin_bootstrap.rs` extended to also call
+`structural_validator_recipe_drafts` for all eight classes and retain them via
+`PgComponentRevisionStore::retain_packaged_draft`. These supply the immutable-revision
+path for the retained validator selection; they are separate from the legacy mutable
+`reborn_recipes` rows seeded by `seed_validator_recipes`.
+
+Disk space still below 15 GB compile threshold (13 GB NVMe). Source-only checkpoint.
+Storing these revision drafts does not establish Q1, human Q2, approval or activation.
+Open: durable Q1 admission to global orchestrator (Steps 6/9/12), eight class routes
+replacing `load_validator_program`, K3 OAuth browser expiry, prefix Phase C2/C3/D and
+complete plan acceptance.
+
+
+
 ## 2026-11-01 — pg_validator_q1_evidence and module registrations (source-only)
 
 `pg_validator_q1_evidence.rs` adds the durable Q1 evidence writer bridging

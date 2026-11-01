@@ -2,7 +2,8 @@
 //!
 //! This is the trusted bridge from a completed `RetainedRecipeExecution` (with
 //! an `ObservedSubjectValidatorChecks` result) to a persisted immutable
-//! `component-review-evidence/1` row in `reborn_component_review_evidence`.
+//! `component-review-evidence/1` row in `reborn_component_review_evidence` (V102)
+//! plus a corresponding index row in `reborn_validator_q1_runs` (V202).
 //!
 //! # Authority chain
 //!
@@ -22,7 +23,9 @@
 //! The evidence ID is deterministically derived from the submission ID and
 //! validator selection checksum. An identical retry with the same sealed inputs
 //! is a no-op when the stored row is byte-identical; differing bytes are an
-//! integrity error that must not be silently ignored.
+//! integrity error that must not be silently ignored. The run row in
+//! `reborn_validator_q1_runs` is inserted idempotently under the same natural
+//! key (submission_id, validator_selection_checksum).
 //!
 //! # Feature gate
 //!
@@ -188,7 +191,8 @@ pub async fn persist_validator_q1_evidence(
         .await
         .map_err(db)?;
 
-    // Idempotent insert: ON CONFLICT DO NOTHING preserves existing rows.
+    // Idempotent insert into evidence store: ON CONFLICT DO NOTHING preserves
+    // existing rows; integrity check below detects differing concurrent writes.
     tx.execute(
         "INSERT INTO reborn_component_review_evidence(evidence_id, evidence_bytes, checksum)
          VALUES ($1, $2, $3)
@@ -210,6 +214,43 @@ pub async fn persist_validator_q1_evidence(
     if stored.get::<_, &str>(0) != bytes.as_str()
         || stored.get::<_, &str>(1) != checksum.as_str()
     {
+        return Err(ValidatorQ1EvidenceError::Integrity);
+    }
+
+    // Write the FK-indexed run row so readers can find evidence without JSONB
+    // parsing. The UNIQUE constraint on (submission_id, validator_selection_checksum)
+    // makes this idempotent; a conflict means an identical run was already recorded.
+    let class_i16 = i16::try_from(subject.candidate().class_code)
+        .map_err(|_| invalid("candidate class code is out of i16 range"))?;
+    tx.execute(
+        "INSERT INTO reborn_validator_q1_runs
+             (run_id, submission_id, validator_selection_checksum,
+              candidate_class_code, task_handle, evidence_id, succeeded)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (submission_id, validator_selection_checksum) DO NOTHING",
+        &[
+            &evidence_id,
+            &subject.submission_id(),
+            &validator_selection_checksum,
+            &class_i16,
+            &task_handle,
+            &evidence_id,
+            &succeeded,
+        ],
+    )
+    .await
+    .map_err(db)?;
+
+    // Verify the run row is consistent: its evidence_id must match ours.
+    let run_row = tx
+        .query_one(
+            "SELECT evidence_id FROM reborn_validator_q1_runs
+             WHERE submission_id = $1 AND validator_selection_checksum = $2",
+            &[&subject.submission_id(), &validator_selection_checksum],
+        )
+        .await
+        .map_err(db)?;
+    if run_row.get::<_, Uuid>(0) != evidence_id {
         return Err(ValidatorQ1EvidenceError::Integrity);
     }
 
