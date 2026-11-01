@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Wire `POST /api/webchat/v2/pure-component-approvals` end-to-end: add
+  `PureApprovalStore` trait and `submit_pure_component_approval` (default 501)
+  to `RebornServicesApi`; back it with `PgPureApprovalStore` in
+  `brassclaw_reborn_composition`; mount handler, route descriptor and Axum
+  route in `brassclaw_webui_v2`. Completes the write path for
+  `pure-component-approval/1` declarations persisted to
+  `reborn_pure_component_approvals` (V200 migration).
+
 - Make standalone OAuth setup defaults and API maximum lifetimes configurable
   through acknowledged live settings, preserving original deadlines and explicit
   renewals. Add WebUI controls and explanations in English and German.

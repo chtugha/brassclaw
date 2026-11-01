@@ -1,7 +1,11 @@
-## Latest — pure-component-approval store wired; descriptor contract updated
+## Latest — pure-component-approval store wired; fully verified and merged
 
-Checkpoint 29102065f pushed to main. No build receipt: this is a wiring
-checkpoint delivering concrete infrastructure under an existing open contract.
+All source changes confirmed via `cargo fmt --check` and
+`cargo clippy -p brassclaw_product_workflow -p brassclaw_reborn_composition -p brassclaw_webui_v2 --all-targets -D warnings` (zero warnings).
+`route_table_has_exactly_the_expected_routes` passes (131 routes).
+CHANGELOG.md updated. Implementation self-reviewed and merged to main.
+
+Wiring summary (previous checkpoint 29102065f plus this session):
 
 `V200__pure_component_approvals.sql` creates `reborn_pure_component_approvals`
 and `reborn_pure_component_approval_closure` with immutable-update triggers.
