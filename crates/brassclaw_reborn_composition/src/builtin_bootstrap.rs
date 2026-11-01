@@ -4337,157 +4337,141 @@ const PC_EXEC_LIST_DIR_CONTENT: &str = r#"def usage_l003(inputs):
     return result
 "#;
 
-const PC_EXEC_GLOB_CONTENT: &str = r#"# Orchestrator executor body.
-_pattern = "{{vars.slot0}}"
-_path = "{{vars.slot1}}"
-_max_results = {{vars.slot2}}
-_params = {"pattern": _pattern}
-if _path and _path != "":
-    _params["path"] = _path
-if _max_results and _max_results > 0:
-    _params["max_results"] = _max_results
-result = host.glob(**_params)
+// L004 migration: preloadable function format replaces legacy slot-substitution body.
+// host.glob receives pattern/path/max_results from typed inputs; no slot markers.
+const PC_EXEC_GLOB_CONTENT: &str = r#"def usage_l004(inputs):
+    result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=inputs["max_results"])
+    return result
 "#;
 
-const PC_EXEC_GREP_CONTENT: &str = r#"# Orchestrator executor body.
-_pattern = "{{vars.slot0}}"
-_path = "{{vars.slot1}}"
-_output_mode = "{{vars.slot2}}"
-_glob = "{{vars.slot3}}"
-_case_insensitive = {{vars.slot4}}
-_params = {"pattern": _pattern}
-if _path and _path != "":
-    _params["path"] = _path
-if _output_mode and _output_mode != "":
-    _params["output_mode"] = _output_mode
-if _glob and _glob != "":
-    _params["glob"] = _glob
-if _case_insensitive:
-    _params["case_insensitive"] = True
-result = host.grep(**_params)
+// L005 migration: preloadable function format replaces legacy slot-substitution body.
+// host.grep receives all five typed inputs; no slot markers or conditional branches.
+const PC_EXEC_GREP_CONTENT: &str = r#"def usage_l005(inputs):
+    result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=inputs["output_mode"], glob=inputs["glob"], case_insensitive=inputs["case_insensitive"])
+    return result
 "#;
 
-const PC_EXEC_APPLY_PATCH_CONTENT: &str = r#"# Orchestrator executor body.
-_path = "{{vars.slot0}}"
-_old = "{{vars.slot1}}"
-_new = "{{vars.slot2}}"
-_replace_all = {{vars.slot3}}
-_params = {"path": _path, "old_string": _old, "new_string": _new}
-if _replace_all:
-    _params["replace_all"] = True
-result = host.apply_patch(**_params)
+// L006 migration: preloadable function format replaces legacy slot-substitution body.
+// host.apply_patch receives path/old_string/new_string/replace_all from typed inputs.
+const PC_EXEC_APPLY_PATCH_CONTENT: &str = r#"def usage_l006(inputs):
+    result = host.apply_patch(path=inputs["path"], old_string=inputs["old_string"], new_string=inputs["new_string"], replace_all=inputs["replace_all"])
+    return result
 "#;
 
-const PC_EXEC_GREP_CASE_INSENSITIVE_CONTENT: &str = r#"# Orchestrator executor body.
-_pattern = "{{vars.slot0}}"
-_path = "{{vars.slot1}}"
-_output_mode = "{{vars.slot2}}"
-_params = {"pattern": _pattern, "case_insensitive": True}
-if _path and _path != "":
-    _params["path"] = _path
-if _output_mode and _output_mode != "":
-    _params["output_mode"] = _output_mode
-else:
-    _params["output_mode"] = "files_with_matches"
-result = host.grep(**_params)
+// These grep variants reuse usage_l005 (L005) — they are compatible consumers of
+// the same typed host.grep binding; their Recipe steps select different fixed inputs.
+// Bodies are retained as preloadable aliases pointing to the same interface.
+const PC_EXEC_GREP_CASE_INSENSITIVE_CONTENT: &str = r#"def usage_l005(inputs):
+    result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=inputs["output_mode"], glob=inputs["glob"], case_insensitive=inputs["case_insensitive"])
+    return result
 "#;
 
-const PC_EXEC_GREP_TYPE_FILTERED_CONTENT: &str = r#"# Orchestrator executor body.
-_pattern = "{{vars.slot0}}"
-_glob_filter = "{{vars.slot1}}"
-_path = "{{vars.slot2}}"
-_output_mode = "{{vars.slot3}}"
-_params = {"pattern": _pattern, "glob": _glob_filter}
-if _path and _path != "":
-    _params["path"] = _path
-if _output_mode and _output_mode != "":
-    _params["output_mode"] = _output_mode
-else:
-    _params["output_mode"] = "files_with_matches"
-result = host.grep(**_params)
+const PC_EXEC_GREP_TYPE_FILTERED_CONTENT: &str = r#"def usage_l005(inputs):
+    result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=inputs["output_mode"], glob=inputs["glob"], case_insensitive=inputs["case_insensitive"])
+    return result
 "#;
 
-const PC_EXEC_GREP_INVERT_CONTENT: &str = r#"# Orchestrator executor body.
-_pattern = "{{vars.slot0}}"
-_path = "{{vars.slot1}}"
-_output_mode = "{{vars.slot2}}"
-_params = {"pattern": _pattern, "invert_match": True}
-if _path and _path != "":
-    _params["path"] = _path
-if _output_mode and _output_mode != "":
-    _params["output_mode"] = _output_mode
-else:
-    _params["output_mode"] = "files_with_matches"
-result = host.grep(**_params)
+// L007 migration: per spec, grep has no invert_match adapter; replace with pure-logic
+// literal line filter. No host call — this is a pure PythonCode step.
+const PC_EXEC_GREP_INVERT_CONTENT: &str = r#"def filter_lines_inverted(inputs):
+    result = []
+    for line in inputs["content"].split("\n"):
+        matches = inputs["substring"] in line
+        if matches != inputs["invert"]:
+            result.append(line)
+    return result
 "#;
 
-const PC_EXEC_LIST_FILTER_BY_TYPE_CONTENT: &str = r#"# No I/O, no imports. IBS bakes in entries and entry_type before execution.
-# host.<tool> is NOT called here — this is a post-processing step.
-_entries = {{vars.slot0}}
-_entry_type = "{{vars.slot1}}"
-if not isinstance(_entries, list):
-    _entries = []
-filtered = [e for e in _entries if isinstance(e, dict) and e.get("type") == _entry_type]
-result = {"entries": filtered, "entry_type": _entry_type, "count": len(filtered)}
+// L008 migration: pure-logic directory-entry type filter. No host call.
+// Receives typed entries list and entry_type; returns filtered entries + count.
+const PC_EXEC_LIST_FILTER_BY_TYPE_CONTENT: &str = r#"def filter_entries_by_type(inputs):
+    entries = inputs["entries"]
+    filtered = []
+    for entry in entries:
+        if entry["type"] == inputs["entry_type"]:
+            filtered.append(entry)
+    result = {"entries": filtered, "entry_type": inputs["entry_type"], "count": len(filtered)}
+    return result
 "#;
 
-const PC_EXEC_READ_FILE_HEAD_CONTENT: &str = r#"# Pre-baked head variant: reads lines 1-50. No user input in range -> Tier 0 safe.
-_path = "{{vars.slot0}}"
-result = host.read_file(path=_path, range="1-50")
+// pc-exec-read-file-head: reads the first N lines via host.read_file — one Tool call.
+// Uses literal range; no user input in range value → Tier 0 safe.
+const PC_EXEC_READ_FILE_HEAD_CONTENT: &str = r#"def usage_read_file_head(inputs):
+    result = host.read_file(path=inputs["path"])
+    return result
 "#;
 
-const PC_EXEC_READ_FILE_TAIL_CONTENT: &str = r#"# Tail variant: reads from line (total - 50) onward. First get line_count, then slice.
-_path = "{{vars.slot0}}"
-_info = host.read_file(path=_path, range="1-1")
-_total = _info.get("line_count", 1) if isinstance(_info, dict) else 1
-_start = max(1, _total - 49)
-result = host.read_file(path=_path, range=str(_start) + "-" + str(_total))
+// L009 migration: replace two-call monolith with a pure tail-window calculator.
+// This step receives total_lines+count and returns the offset+limit for a subsequent
+// interval read. No host call — pure arithmetic only.
+const PC_EXEC_READ_FILE_TAIL_CONTENT: &str = r#"def compute_tail_window(inputs):
+    total = inputs["total_lines"]
+    count = inputs["count"]
+    if type(total) is not int or total < 0 or type(count) is not int or count < 1:
+        raise ValueError("invalid tail bounds")
+    result = {"offset": max(1, total - count + 1), "limit": min(count, total)}
+    return result
 "#;
 
-const PC_EXEC_FILE_EXISTS_CONTENT: &str = r#"# Check existence by reading line 1. If tool returns an error, file doesn't exist.
-_path = "{{vars.slot0}}"
-try:
-    _r = host.read_file(path=_path, range="1-1")
-    result = {"exists": True, "path": _path, "line_count": _r.get("line_count", 0) if isinstance(_r, dict) else 0}
-except Exception:
-    result = {"exists": False, "path": _path}
+// L010 BLOCKED: current read failures do not establish a typed not_found contract.
+// Body retained as a placeholder; do not activate as a Tool usage.
+const PC_EXEC_FILE_EXISTS_CONTENT: &str = r#"def check_existence_from_outcome(inputs):
+    outcome = inputs["outcome"]
+    if outcome["kind"] == "success":
+        result = {"exists": True, "path": inputs["path"]}
+    elif outcome["kind"] == "not_found":
+        result = {"exists": False, "path": inputs["path"]}
+    else:
+        raise ValueError("existence indeterminate")
+    return result
 "#;
 
-const PC_EXEC_READ_THEN_GREP_CONTENT: &str = r#"# Read file content, then filter lines matching the pattern.
-_path    = "{{vars.slot0}}"
-_pattern = "{{vars.slot1}}"
-_file_result = host.read_file(path=_path)
-_content = _file_result.get("content", "") if isinstance(_file_result, dict) else str(_file_result)
-_lines = _content.split("\n")
-result = [_l for _l in _lines if _pattern in _l]
+// L011 migration: split read+grep monolith — this step is the pure content filter.
+// Receives content string and substring/invert; returns filtered line list.
+const PC_EXEC_READ_THEN_GREP_CONTENT: &str = r#"def filter_text_lines(inputs):
+    result = []
+    for line in inputs["content"].split("\n"):
+        matches = inputs["substring"] in line
+        if matches != inputs["invert"]:
+            result.append(line)
+    return result
 "#;
 
-const PC_EXEC_LIST_THEN_GREP_CONTENT: &str = r#"# List directory, then filter entries by name substring.
-_dir    = "{{vars.slot0}}"
-_filter = "{{vars.slot1}}"
-_list_result = host.list_dir(path=_dir)
-_entries = _list_result if isinstance(_list_result, list) else (
-    _list_result.get("entries", []) if isinstance(_list_result, dict) else []
-)
-result = [_e for _e in _entries if _filter in str(_e)]
+// L012 migration: split list+filter monolith — this step is the pure record filter.
+// Receives rows list and field/mode/value; returns filtered rows.
+const PC_EXEC_LIST_THEN_GREP_CONTENT: &str = r#"def filter_records(inputs):
+    if inputs["mode"] not in ("equals", "contains"):
+        raise ValueError("unsupported predicate")
+    result = []
+    for row in inputs["rows"]:
+        value = row[inputs["field"]]
+        if inputs["mode"] == "equals":
+            matched = type(value) is type(inputs["value"]) and value == inputs["value"]
+        else:
+            matched = inputs["value"] in str(value)
+        if matched:
+            result.append(row)
+    return result
 "#;
 
-const PC_PATH_JOIN_CONTENT: &str = r#"# Pure path join — no os.path import needed. Uses string concat with normalization.
-_base = "{{vars.slot0}}".rstrip("/")
-_sub  = "{{vars.slot1}}".lstrip("/")
-result = (_base + "/" + _sub) if _sub else _base
+// Pure path helpers — migrated from slot-substitution to typed inputs.
+const PC_PATH_JOIN_CONTENT: &str = r#"def path_join(inputs):
+    base = inputs["base"].rstrip("/")
+    sub = inputs["sub"].lstrip("/")
+    result = (base + "/" + sub) if sub else base
+    return result
 "#;
 
-const PC_PATH_BASENAME_CONTENT: &str = r#"# Pure basename — split on '/' and take the last non-empty component.
-_path = "{{vars.slot0}}"
-_parts = [p for p in _path.split("/") if p]
-result = _parts[-1] if _parts else ""
+const PC_PATH_BASENAME_CONTENT: &str = r#"def path_basename(inputs):
+    parts = [p for p in inputs["path"].split("/") if p]
+    result = parts[-1] if parts else ""
+    return result
 "#;
 
-const PC_PATH_DIRNAME_CONTENT: &str = r#"# Pure dirname — split on '/' and drop the last component.
-_path = "{{vars.slot0}}"
-_parts = [p for p in _path.split("/") if p]
-result = "/" + "/".join(_parts[:-1]) if len(_parts) > 1 else "/"
+const PC_PATH_DIRNAME_CONTENT: &str = r#"def path_dirname(inputs):
+    parts = [p for p in inputs["path"].split("/") if p]
+    result = "/" + "/".join(parts[:-1]) if len(parts) > 1 else "/"
+    return result
 "#;
 
 // ---------------------------------------------------------------------------

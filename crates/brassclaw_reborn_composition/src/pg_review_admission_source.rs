@@ -18,21 +18,29 @@
 //! {"format": "validator-structural-receipt/1", "results": {"step_id": <value>, …}}
 //! ```
 //! where each `step_id` key maps to the actual return value produced by that
-//! step. `verify_receipt` then performs the following sequence, in order:
+//! step. `verify_receipt` performs the following sequence, in strict order:
 //!
 //! 1. Verifies that the executed programme matches the one sealed at admission
 //!    by comparing their `RetainedRecipeSelection` checksums.
 //! 2. Parses the receipt JSON and extracts the per-step `results` map.
-//! 3. Persists a `WorkflowReview::structural` record via `persist_workflow_review`,
-//!    recording the selected-variant structure of the executed programme.
+//! 3. **Verifies the aggregate-step fingerprint**: the raw receipt string is the
+//!    typed value the Python orchestrator returned at the aggregate step, so
+//!    `proof.result_checksum()` must equal
+//!    `typed_value_checksum_with_limits(&json!(receipt), proof.data_limits())`.
+//!    This is the tamper-evidence link between the receipt payload and the sealed
+//!    execution record. Any mismatch causes an immediate `Err` before any writes.
 //! 4. Calls `RetainedValidatorCoverage::observe_subject` with the parsed
 //!    per-step results map, the sealed subject, the sealed selection and the
-//!    completed execution to produce `ObservedSubjectValidatorChecks`.
-//! 5. Calls `persist_validator_q1_evidence` to write the durable Q1 evidence row.
+//!    completed execution to produce `ObservedSubjectValidatorChecks`. This
+//!    additionally verifies per-step input and result fingerprints across all steps.
+//! 5. Persists a `WorkflowReview::structural` record via `persist_workflow_review`,
+//!    recording the selected-variant structure of the executed programme.
+//! 6. Calls `persist_validator_q1_evidence` to write the durable Q1 evidence row.
 //!
-//! Steps 3 and 5 must both succeed before `Ok(())` is returned. A failed persist
-//! leaves the task in an incomplete-evidence state; neither Q1 success nor a
-//! fabricated pass is synthesised from a persistence error.
+//! Steps 5 and 6 must both succeed before `Ok(())` is returned. No writes occur
+//! before step 3 passes. A failed persist leaves the task in an
+//! incomplete-evidence state; neither Q1 success nor a fabricated pass is
+//! synthesised from a persistence error.
 //!
 //! # Reference string
 //!
@@ -52,7 +60,9 @@ use std::{collections::BTreeMap, sync::Arc};
 use async_trait::async_trait;
 use brassclaw_engine::{
     executor::{
-        retained_recipe::{RetainedProgram, RetainedRecipeExecution},
+        retained_recipe::{
+            typed_value_checksum_with_limits, RetainedProgram, RetainedRecipeExecution,
+        },
         retained_source::InspectedRetainedProgram,
     },
     memory::retained_validator::RetainedValidatorCoverage,
@@ -61,7 +71,7 @@ use brassclaw_monty_host::service::PortFailure;
 use brassclaw_pg::PgPool;
 use brassclaw_skills::{
     component_revision::REVISION_LIMITS,
-    review_submission_store::{RetainedValidatorSubject, selection::RetainedValidatorSelection},
+    review_submission_store::{selection::RetainedValidatorSelection, RetainedValidatorSubject},
     value_contract::ContractLimits,
 };
 use serde_json::Value;
@@ -69,7 +79,7 @@ use uuid::Uuid;
 
 use crate::global_recipe_ports::{InternalRecipeSource, SelectedMontyRecipe};
 use crate::pg_retained_q1::StructuralReviewFailure;
-use crate::pg_workflow_review::{WorkflowReview, persist_workflow_review};
+use crate::pg_workflow_review::{persist_workflow_review, WorkflowReview};
 
 /// Canonical reference prefix for validator review internal tasks.
 #[allow(dead_code)] // wired by validator Step 6 capture_internal routing
@@ -218,8 +228,20 @@ impl InternalRecipeSource for ReviewAdmissionSource {
     ///
     /// The Python orchestrator posts a receipt string of the form:
     /// `{"format": "validator-structural-receipt/1", "results": {"step_id": <value>, …}}`
-    /// This method verifies programme identity, persists structural workflow evidence,
-    /// produces sealed observations, and persists durable Q1 evidence — in that order.
+    ///
+    /// Exact verification sequence — see module-level doc for the full contract:
+    /// 1. Programme identity (RetainedRecipeSelection checksum).
+    /// 2. Receipt JSON parsing and envelope format.
+    /// 3. Aggregate-step fingerprint: the raw receipt string is the value Python
+    ///    returned at the aggregate step; its checksum must match the executor's
+    ///    sealed observation before any writes occur.
+    /// 4. `observe_subject`: per-step input + result fingerprint verification across
+    ///    all steps, producing sealed `ObservedSubjectValidatorChecks`.
+    /// 5. `WorkflowReview::structural` + `persist_workflow_review`.
+    /// 6. `persist_validator_q1_evidence`.
+    ///
+    /// No writes occur before step 3 passes. Neither a partial write nor a
+    /// fabricated pass is synthesised from any individual failure.
     async fn verify_receipt(
         &self,
         receipt: &str,
@@ -263,10 +285,47 @@ impl InternalRecipeSource for ReviewAdmissionSource {
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
 
-        // Step 3: persist structural workflow-review evidence before Q1 evidence.
-        // WorkflowReview::structural derives its report from the sealed inspected
-        // programme — no receipt values are needed. Both persists must succeed;
-        // neither a partial nor a fabricated pass is acceptable on failure.
+        // Step 3: verify the aggregate-step fingerprint.
+        //
+        // The Python orchestrator returns the receipt as a string value at the
+        // aggregate step. The executor records its SHA-256 fingerprint (as
+        // typed-value-sha256/1 of Value::String(receipt)) in the observation.
+        // Verifying this before any writes proves the receipt came from the actual
+        // Monty execution rather than being supplied externally. A spoofed or
+        // truncated receipt string would produce a different checksum and is
+        // rejected here, before observe_subject runs.
+        let aggregate_step = self.coverage.aggregate_step();
+        let proof = execution
+            .observations()
+            .get(aggregate_step)
+            .ok_or_else(|| failure("validator_receipt_aggregate_observation_missing"))?;
+        // The receipt string is what Python returned — it is typed as
+        // Value::String, so json!(receipt) wraps it correctly.
+        let expected_checksum =
+            typed_value_checksum_with_limits(&serde_json::json!(receipt), proof.data_limits())
+                .map_err(|_| failure("validator_receipt_checksum_overflow"))?;
+        if proof.result_checksum() != Some(expected_checksum) {
+            return Err(failure("validator_receipt_fingerprint_mismatch"));
+        }
+
+        // Step 4: produce sealed subject-bound observations. This verifies per-step
+        // input and result fingerprints for every step using the stored coverage
+        // declaration (derived once at construction in new()).
+        let checks = self
+            .coverage
+            .observe_subject(
+                &self.subject,
+                &self.selection,
+                execution,
+                &results,
+                self.limits,
+            )
+            .map_err(|_| failure("validator_receipt_observation_failed"))?;
+
+        // Step 5: persist structural workflow-review evidence. WorkflowReview::structural
+        // derives its report from the sealed inspected programme — no receipt values
+        // are needed for this record. Placed after observe_subject so no structural
+        // evidence is written unless the fingerprint and observations are consistent.
         let structural_review =
             WorkflowReview::structural(Arc::clone(&self.inspected)).map_err(|e| match e {
                 StructuralReviewFailure::Preparation(reason) => {
@@ -284,26 +343,11 @@ impl InternalRecipeSource for ReviewAdmissionSource {
             .await
             .map_err(|_| failure("validator_receipt_structural_review_persist_failed"))?;
 
-        // Step 4: produce sealed subject-bound observations using the stored
-        // coverage declaration (derived once at construction in new()).
-        let checks = self
-            .coverage
-            .observe_subject(
-                &self.subject,
-                &self.selection,
-                execution,
-                &results,
-                self.limits,
-            )
-            .map_err(|_| failure("validator_receipt_observation_failed"))?;
-
-        // Extract the task handle UUID. TaskHandle wraps Uuid and only exposes
-        // Display; the hyphenated form produced by Display always round-trips
-        // through Uuid::parse_str without error.
+        // Step 6: persist the durable Q1 evidence row.
+        // TaskHandle wraps Uuid and only exposes Display; the hyphenated form
+        // produced by Display always round-trips through Uuid::parse_str without error.
         let task_handle = Uuid::parse_str(&execution.task_handle().to_string())
             .map_err(|_| failure("validator_receipt_task_handle_invalid"))?;
-
-        // Step 5: persist the durable Q1 evidence row.
         crate::pg_validator_q1_evidence::persist_validator_q1_evidence(
             &self.pool,
             &self.subject,
@@ -405,7 +449,7 @@ pub(crate) fn subject_inputs_with_default_limits(
 
 #[cfg(test)]
 mod routing_tests {
-    use super::{VALIDATOR_REVIEW_PREFIX, validator_review_reference};
+    use super::{validator_review_reference, VALIDATOR_REVIEW_PREFIX};
     use uuid::Uuid;
 
     /// The prefix constant has the exact expected form used by capture_internal.
