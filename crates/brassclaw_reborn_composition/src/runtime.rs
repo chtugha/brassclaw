@@ -4578,6 +4578,9 @@ mod tests {
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "validation_queue_q1_retained_tests.rs"]
     mod validation_queue_q1_retained_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "validator_retained_q1_tests.rs"]
+    mod validator_retained_q1_tests;
 
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     mod mcp_provider_acceptance {
