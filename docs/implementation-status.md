@@ -1,3 +1,143 @@
+## 2026-11-01 — BUILD-061: K4–K7 conformity gate evidence records
+
+### K4 — Evidence alignment for retained Loader, Child, MCP boundaries
+
+**Evidence-alignment check; no code changes found.** Five files inspected:
+
+- [`retained_preload.rs`](../crates/brassclaw_engine/src/executor/retained_preload.rs):
+  Preload isolation is per-task. The `FunctionCache` is keyed by `(skill_uuid, version,
+  checksum)` triples; no mutable shared state crosses task boundaries. Bindings survive
+  waits/resumes because the preloaded cache lives on the task's `RetainedPreloadState`
+  which is held by the `RetainedPreloadOrchestrator` for the task's lifetime. No
+  defect found against K4 precision points 1–3.
+
+- [`retained_recipe.rs`](../crates/brassclaw_engine/src/executor/retained_recipe.rs):
+  Line 735 apparent `inputs` mutation: `inputs` is owned data within the step execution
+  context, not a mutable reference across task boundary. Typed inputs are bound once
+  from the `BuildInstruction` snapshot before execution and not mutated between steps.
+  Isolation is preserved. No defect.
+
+- [`pg_monty_child.rs`](../crates/brassclaw_reborn_composition/src/pg_monty_child.rs):
+  Parent claim is preserved through child admission: `parent_run_id` and
+  `parent_invocation_id` are stored with the child record and checked before any
+  child state transition. Acknowledged-loss cases do not trigger a replacement child.
+  No defect.
+
+- [`monty_child_admission.rs`](../crates/brassclaw_reborn_composition/src/monty_child_admission.rs):
+  Line 48 `claimed_child_reservation_released == Some(true) && !is_terminal()` returning
+  `Uncertain` is correct defensive behavior: a released-but-not-terminal child is
+  genuinely uncertain, not a completed parent claim. No defect.
+
+- [`mcp_chat_bridge.rs`](../crates/brassclaw_reborn_composition/src/mcp_chat_bridge.rs):
+  MCP wait does not block the parent's ordinary chat task. The bridge forwards
+  result delivery and disconnect handling scoped to the individual MCP request.
+  No second reply/history effect path. No defect.
+
+**Conclusion:** No concrete defects found in K4 files. K4 closes by evidence
+documentation. Unsupported retry/chain/occurrence profiles remain open at their
+existing owners (stop/max_attempts:1, one bound Tool call per ordinary execution step).
+R09 public parent bootstrap, five subagent Recipes, full crash recovery and V35-13/14
+remain regular open work.
+
+### K5 — Changed embedded documents and validator boundary alignment
+
+**Package/evidence alignment.** D01–D12 definition and contract document corrections
+were delivered per [`Exact_V3_definition_update_at_K3.md`](plans/Exact_V3_definition_update_at_K3.md)
+§12 (bounded delivery, 2026-10-31). Affected documents:
+
+- D01–D03: `recipe.md`, `skills.md`, `tools.md` — corrected step-body execution
+  requirement, preloadable function interface language, Tool primitive definition
+- D04–D06: `toolskills.md`, `AGENTS.md` component table — IBS binding metadata
+  corrections, no Orchestrator-channel execution
+- D07–D09: pure-component-review.md cutover contract — eight-item exact remaining
+  contract, successor compatibility language
+- D10–D12: `simplified_v3.md` K4–K7 gate prose — precision points added
+
+These documents are embedded via `include_str!` in
+[`prefix_release_documents.rs`](../crates/brassclaw_reborn_composition/src/prefix_release_documents.rs)
+and [`prefix_reference_seeds.rs`](../crates/brassclaw_reborn_composition/src/prefix_reference_seeds.rs).
+New document bytes are captured automatically at compile time; no separate
+K5 code change is required beyond the document text delivery itself. The
+[latest validator evidence](validation/2026-10-24-python-graph-review.md) explicitly
+excludes parallel document changes and the regular app from its scope.
+
+**Acceptance prerequisite:** A boot test confirming source-capture identity for
+the new embedded bytes is required before K5 formally closes. This constitutes
+an open acceptance gate. No old source bytes, hashes, approvals or overrides
+are rewritten. Not-yet-compiled evidence does not retroactively claim a boot receipt.
+
+### K6 — Artifact and data retention inventory before shared upgrade
+
+**Retention inventory for the currently supported scope:**
+
+Running/suspended tasks:
+- Task state is persisted in `reborn_runs` + `reborn_turn_participants` (V147/V150).
+  The global `GlobalMontyOwner` service restores admitted tasks from DB on restart.
+  No in-RAM task state is the only copy of task data; all admitted tasks have
+  durable PG identity before the worker processes them.
+
+Catalogue/export references:
+- Component revisions: `reborn_component_revisions` (V103) — immutable, `ON UPDATE DO NOTHING` triggers.
+- Recipe revisions: `reborn_recipes` / `reborn_recipe_variants` — per-package draft/retain path.
+- Approval evidence: `reborn_component_review_evidence` (V102) — immutable rows, no delete.
+- Pure approvals: `reborn_pure_component_approvals` + `reborn_pure_component_approval_closure` (V200) — immutable.
+- Validator Q1 runs: `reborn_validator_q1_runs` (V202) — immutable FK index.
+- Pure evidence links: `reborn_pure_evidence_submission_links` (V201) — immutable.
+- Submission store: `reborn_component_review_submissions` (V104) — append-only.
+
+Prefix originals/generations:
+- `reborn_prefix_acceptances`, `reborn_prefix_owner_revisions`, `reborn_prefix_owner_generations`
+  — immutable append-only per existing prefix owner contracts.
+- Source-capture: sealed SHA-256 identity stored per captured source file (V177+).
+
+Sealed review/Q2 data:
+- Human Q2 approval records: `reborn_validation_queue` rows, `reborn_review_receipts`.
+- Override records: stored with submission IDs — not rewritten by package upgrades.
+
+Confirmed/unresolved effects:
+- Effect custody: `reborn_tool_invocation_attempts` + `reborn_effect_fence` records
+  provide confirmed/unresolved effect tracking for retried dispatches.
+
+**Gaps (explicit blockades):**
+- Full crash recovery (durable resume after process restart mid-execution) is not
+  yet supported. Any in-flight task at process exit is reconciled as uncertain;
+  no in-memory continuation is invented. This is an explicit blockade, not a silent
+  drop.
+- ABI-loader cross-version native Tool re-load after upgrade is not yet implemented.
+  Old native Tool artifact revisions are retained on disk; the retained IBS path
+  pins exact artifact identifiers. Missing reloadability blocks upgrade for running
+  tasks that depend on the old binary; upgrade must drain/reconcile first. This is
+  an explicit blockade, not a pass.
+- Full prefix/review restore after crash is blocked pending durable recovery owner
+  acceptance (Phase 3a gate).
+
+### K7 — Conformity gate closure record
+
+Per-K0-row records (K0 = baseline, K1 = typing, K2 = composition, K3 = auth, K4–K6 above):
+
+| Gate | Status | Evidence |
+|------|--------|----------|
+| K1 | Accepted 2026-10-24 | [Python graph review](validation/2026-10-24-python-graph-review.md) — typed inputs/BuildInstruction/snapshot |
+| K2 | Accepted 2026-10-24 | Same receipt — composition/IBS assembly |
+| K3 | Source-only + BUILD-036 (96c7fc977) | Native Codex credential wiring delivered; acceptance pending native/browser/worker/lint receipt. Browser expiry producers implemented (V197, `extensionOauthExpiry()`). K3 step 6 delivered but acceptance not yet closed. |
+| K4 | No defects found — evidence documented above | Five files inspected; two apparent defects were false positives. K4 closes by evidence documentation per plan. |
+| K5 | D01–D12 document corrections delivered | Embedded via `include_str!`; boot-test source-capture identity receipt open. |
+| K6 | Retention inventory documented above | Supported-scope artifacts recorded; three explicit blockades documented (crash recovery, ABI reload, prefix/review restore). |
+| K7 | This record | Per-K0-row table above; no active recipe disabled, no open defect treated as future work. |
+
+**Continuation prerequisite:** K1/K2 accepted; K3 source-only (BUILD-036 delivered,
+acceptance pending); K4 no-defect evidence; K5 document delivery done (boot receipt
+open); K6 inventory complete with explicit blockades; K7 this record. Remaining
+open work proceeds per existing owners: general Pure approval, eight validator
+routes, five subagent migrations, full library conversion, accepted prefix designs/
+generate/serving/final guard, scope/product cutover, dynamic occurrences, general
+crash recovery.
+
+**BUILD-061 compilation receipt:** `cargo clippy -p brassclaw_reborn_composition
+--features postgres,skills-db -- -D warnings` → zero errors, zero warnings
+(3041703c3). Format check clean.
+
+
 ## 2026-11-01 — BUILD-060: structural_validator_recipe_drafts unit tests
 
 Seven unit tests added to `validator_components.rs` under `#[cfg(test)]`
