@@ -48,7 +48,6 @@ use uuid::Uuid;
 
 #[path = "validation_review.rs"]
 mod review;
-pub(crate) use review::Q1Candidate;
 
 #[cfg(feature = "skills-db")]
 use crate::installed_monty_catalogue::ValidatorServiceBridge;
@@ -2333,50 +2332,6 @@ mod tests {
                 retained, 1,
                 "purging a usage-Skill ticket cannot delete an Orchestrator row"
             );
-        }
-
-        /// Phase N: run_q1_validation defers when no validation Recipe is seeded.
-        ///
-        /// In a test environment `reborn_recipes` has no `05:validator`-tagged rows,
-        /// so every Q1 attempt returns `Q1Outcome::Deferred` and leaves the queue
-        /// row at state 1 (Q1_pending) — the graceful-defer path documented in §0.23.9.
-        #[tokio::test]
-        async fn run_q1_validation_defers_when_no_recipe_seeded() {
-            use crate::q1_orchestrator::{Q1Outcome, run_q1_validation};
-            let rig = pg_rig().await;
-            let scope = test_scope();
-            let store = ValidationQueueStore::new(rig.pool.clone());
-
-            let cid = Uuid::new_v4();
-            store.submit(&scope, cid, 20, None).await.unwrap();
-
-            let outcome = run_q1_validation(
-                &rig.pool,
-                &scope,
-                cid,
-                20,
-                &store,
-                brassclaw_monty_host::utility::UtilityLimits::from_execution(Default::default())
-                    .unwrap(),
-            )
-            .await
-            .expect("run q1");
-
-            // No validator Recipe in the test DB → Deferred, not Passed or Failed.
-            assert!(
-                matches!(outcome, Q1Outcome::Deferred { .. }),
-                "expected Deferred when no Recipe is seeded; got {outcome:?}"
-            );
-
-            // Queue row must still be at state 1 (unchanged).
-            let row = store
-                .list(&scope, Some(STATE_Q1_PENDING as u8))
-                .await
-                .unwrap()
-                .into_iter()
-                .find(|r| r.component_id == cid)
-                .expect("queue row at state 1");
-            assert_eq!(row.state, STATE_Q1_PENDING);
         }
 
         /// PKG-B: `run_q1_validation_retained` returns `Deferred` when called with

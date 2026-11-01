@@ -149,9 +149,9 @@ pub async fn run_sweep(pool: &Arc<PgPool>) -> Result<(), Box<dyn std::error::Err
 
 // Phase N: spawn_q1_validation_sweep removed — the legacy Q1 sweep used the
 // now-dropped `queue_code` column and `ComponentValidator::validate_by_class`.
-// Q1 is now orchestrated via `ValidationQueueStore` + `run_q1_validation`
-// in `q1_orchestrator.rs`. No background sweep replacement is needed here;
-// the orchestrated Q1 path is driven per-component at submission time.
+// Q1 is now orchestrated via `ValidationQueueStore::fire_q1_kick_if_wired`
+// → `run_q1_validation_retained` in `q1_orchestrator.rs`. No background sweep
+// is needed; the retained Q1 path fires per-component at submission time.
 
 // ---------------------------------------------------------------------------
 // Idle self-improvement sweep (§0.23.8)
