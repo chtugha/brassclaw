@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+- **L013–L101 boot-time qualification** (`bootstrap_l013_approval.rs`,
+  commit `68a0ebf7c`): New `bootstrap_l013_approval` module (969 lines) performs
+  idempotent boot-time qualification of all L013–L101 PythonCode/Skill pairs and
+  pure-logic components. Writes `component-revision/1` envelopes in
+  `reborn_component_revisions`, `skill-association-approval/1` rows in
+  `reborn_skill_association_approvals` (54 Tool-calling pairs across network,
+  memory, shell/git, plan and GitHub groups), and `pure-component-approval/1`
+  records in `reborn_pure_component_approvals` (13 pure-logic helpers). UUID v5
+  derived IDs ensure idempotency across boots; a checksum mismatch aborts with a
+  hard error. `q2_ref=null` throughout per the `system_seed` bootstrap contract.
+  Wired into `initialize_runtime_components` after builtin seeding, before boot
+  integrity check. Module gated on `#[cfg(all(feature = "postgres", feature =
+  "skills-db"))]`. Two gap-analysis documents added: `missing1_v3_at_k3.md`
+  (L010 `not_found` contract) and `missing2_v3_at_k3.md` (L013–L101 full
+  qualification plan).
+
+- **implementation-status wave-2 audit** (commit `1cf20b054`): Record
+  `bootstrap_l013_approval` boot evidence in `docs/implementation-status.md`.
+  TASK-005/006/007/008 closed (L013–L025 bodies confirmed correct;
+  `PgCompositionPort` compose is read-only — no `validator_bridge` needed).
+  Wave-2 audit confirmed: L026–L050 bodies are in correct `def export(inputs):`
+  preloadable format with no changes needed.
+
+- **PKG-H: retire `run_q1_validation` legacy path** (commit `942ff5c69`):
+  Removed the legacy `run_q1_validation` mutable-recipe execution path from
+  `pg_validator_q1_admission.rs`; the `q1_db` helper survives for the retained
+  path. `submit_validator_review` removed (no production callers remain after
+  `ValidatorTaskDriver` wiring). `Coverage` and `Submission` variants dropped
+  from `Q1AdmissionError`; the surviving test
+  `q1_admission_error_variants_are_displayable` checks the remaining three
+  variants.
+
+- **PKG-I/T5: `run_q1_validation_retained_fails_for_empty_content` integration
+  test** (commits `6672242b4`, `d2abc65b5`): Integration test confirming the
+  retained Q1 validation path rejects empty `content` and returns a classified
+  failure. Registered `validator_retained_q1_tests.rs` in `runtime.rs`. Rustfmt
+  single-line panic fix applied.
+
+- **Audit findings cleanup** (commit `965793bd9`): `ValidatorServiceBridge` and
+  `run_q1_validation_retained` narrowed from `pub` to `pub(crate)`. Stale doc
+  comment on `AdmissionMode::ValidatorInternal` updated to reflect live
+  `ValidatorTaskDriver::submit → admit_validator_handoff` wiring.
+  `docs/orchestration/` session-coordination artifacts (INBOX/OUTBOX/PROTOCOL/
+  TASKS) removed from the product documentation tree.
+
+- **PKG-C: `ValidatorTaskDriver` wired through `drive_admitted`** (commit
+  `6d9ecd2ad`): Added `AdmissionMode::ValidatorInternal` to
+  `bootstrap_validation.rs` (trusted-internal turn path).
+  `ValidatorTaskDriver::submit` calls `admit_validator_handoff`;
+  `ValidatorServiceBridge` connects the bridge into all three proposal paths
+  (recipe/python_code/intent) via `with_validator_service`. `runtime.rs`
+  `skills-db` branch connects `installed_catalogue.validator_bridge()` into
+  the proposal sink.
+
+- **L024–L034 seed body fixes** (commits `48aab6e80`, `631cd27d7`): Corrected
+  `pc-web-search-extract` (typed-field inputs: `response/rows_field/title_field/
+  url_field/snippet_field/limit`), `pc-url-encode` (UTF-8 byte-encoding, `text`
+  input key) and L024–L027/L033/L034 bodies per spec.
+
+
 - **PKG-F complete: all PythonCode seed bodies migrated to preloadable format**
   (`builtin_bootstrap.rs`, commit `6b1d66915`): Migrated the last 19 remaining
   `§shell-safe-fixed` legacy top-level `result = host.*` bodies to v3 preloadable
