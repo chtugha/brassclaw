@@ -1048,6 +1048,17 @@ pub(crate) async fn retain_validator_structure_drafts(
     Ok(())
 }
 
+const PC_HOST_ASSEMBLE_PREFIX_BUNDLE_CONTENT: &str = r#"def usage_assemble_prefix_bundle(inputs):
+    scope_ticket = inputs["scope_ticket"]
+    bundle_parts = host.sweep_validated_components(scope_ticket=scope_ticket)
+    result = host.store_prefix_bundle(
+        scope_ticket=scope_ticket,
+        bundle=bundle_parts["bundle"],
+        generation_ms=bundle_parts["generation_ms"],
+    )
+    return result
+"#;
+
 async fn seed_prefix_bundle_group(
     stores: &BootstrapStores,
 ) -> Result<(), SeedBuiltinBootstrapError> {
@@ -1117,7 +1128,7 @@ async fn seed_prefix_bundle_group(
 
     let pc_id = stores.upsert_python_code(pc_row(
         &tenant, "pc-host-assemble-prefix-bundle", "Sweep and persist the prefix bundle.",
-        "# Channel: orchestrator | Class: 22 | No imports.\nbundle_parts = host.sweep_validated_components(scope_ticket=\"{{vars.slot0}}\")\nresult = host.store_prefix_bundle(scope_ticket=\"{{vars.slot0}}\", bundle=bundle_parts[\"bundle\"], generation_ms=bundle_parts[\"generation_ms\"])\n",
+        PC_HOST_ASSEMBLE_PREFIX_BUNDLE_CONTENT,
     ), "pc-host-assemble-prefix-bundle").await?;
     let skill_sweep_id = stores.upsert_skill(skill_row(
         &tenant, "skill-sweep-validated-components", "Sweep validated components for the prefix bundle.",
@@ -6376,138 +6387,125 @@ fn ts_web_search_row(tenant: &str) -> NewPgToolSkill {
 }
 
 // ---------------------------------------------------------------------------
-// Network group PythonCode bodies (class 22) — transcribed verbatim from the
-// doc. Bodies use `host.<tool>(kwarg=value)` dispatch with `{{vars.slotN}}`
-// vars; no imports.
+// Network group PythonCode bodies (class 22) — L016-L023 preloadable format.
 // ---------------------------------------------------------------------------
 
-const PC_EXEC_HTTP_GET_CONTENT: &str = r#"# Orchestrator executor body.
-_url = "{{vars.slot0}}"
-_limit = {{vars.slot1}}
-_params = {"url": _url, "method": "get"}
-if _limit and _limit > 0:
-    _params["response_body_limit"] = _limit
-result = host.http(**_params)
+// L016 migration: host.http GET with typed url/headers/response_body_limit inputs.
+const PC_EXEC_HTTP_GET_CONTENT: &str = r#"def usage_l016(inputs):
+    result = host.http(method="GET", url=inputs["url"], headers=inputs["headers"], response_body_limit=inputs["response_body_limit"])
+    return result
 "#;
 
-const PC_EXEC_HTTP_POST_CONTENT: &str = r#"# Orchestrator executor body.
-_url = "{{vars.slot0}}"
-_body = {{vars.slot1}}
-_headers = {{vars.slot2}}
-_params = {"url": _url, "method": "post", "body": _body}
-if _headers:
-    _params["headers"] = _headers
-result = host.http(**_params)
+// L017 migration: host.http POST with typed url/body/headers inputs.
+const PC_EXEC_HTTP_POST_CONTENT: &str = r#"def usage_l017(inputs):
+    result = host.http(method="POST", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+    return result
 "#;
 
-const PC_EXEC_HTTP_SAVE_CONTENT: &str = r#"# Orchestrator executor body.
-_url = "{{vars.slot0}}"
-_save_to = "{{vars.slot1}}"
-result = host.http.save(url=_url, save_to=_save_to)
+// L018 BLOCKED: host.http.save alias not registered; placeholder preparation only.
+const PC_EXEC_HTTP_SAVE_CONTENT: &str = r#"def prepare_http_save_request(inputs):
+    result = {"url": inputs["url"], "save_to": inputs["save_to"]}
+    return result
 "#;
 
-const PC_EXEC_HTTP_PATCH_CONTENT: &str = r#"# Orchestrator executor body.
-_url = "{{vars.slot0}}"
-_body = {{vars.slot1}}
-_headers = {{vars.slot2}}
-_params = {"url": _url, "method": "patch", "body": _body}
-if _headers:
-    _params["headers"] = _headers
-result = host.http(**_params)
+// host.http PATCH with typed url/body/headers inputs.
+const PC_EXEC_HTTP_PATCH_CONTENT: &str = r#"def usage_l017_patch(inputs):
+    result = host.http(method="PATCH", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+    return result
 "#;
 
-const PC_EXEC_HTTP_HEAD_CONTENT: &str = r#"# Orchestrator executor body.
-_url = "{{vars.slot0}}"
-result = host.http(url=_url, method="head")
+// host.http HEAD with typed url input.
+const PC_EXEC_HTTP_HEAD_CONTENT: &str = r#"def usage_http_head(inputs):
+    result = host.http(method="HEAD", url=inputs["url"])
+    return result
 "#;
 
-const PC_EXEC_HTTP_GET_AUTHENTICATED_CONTENT: &str = r#"# Orchestrator executor body.
-_url = "{{vars.slot0}}"
-_auth = "{{vars.slot1}}"
-_params = {"url": _url, "method": "get", "headers": {"Authorization": _auth}}
-result = host.http(**_params)
+// host.http GET with Authorization header from typed auth input.
+const PC_EXEC_HTTP_GET_AUTHENTICATED_CONTENT: &str = r#"def usage_l016_authenticated(inputs):
+    result = host.http(method="GET", url=inputs["url"], headers={"Authorization": inputs["auth"]}, response_body_limit=inputs["response_body_limit"])
+    return result
 "#;
 
-const PC_EXEC_HTTP_PUT_CONTENT: &str = r#"# Orchestrator executor body.
-_url = "{{vars.slot0}}"
-_body = {{vars.slot1}}
-_headers = {{vars.slot2}}
-_params = {"url": _url, "method": "put", "body": _body}
-if _headers:
-    _params["headers"] = _headers
-result = host.http(**_params)
+// host.http PUT with typed url/body/headers inputs.
+const PC_EXEC_HTTP_PUT_CONTENT: &str = r#"def usage_http_put(inputs):
+    result = host.http(method="PUT", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+    return result
 "#;
 
-const PC_EXEC_HTTP_DELETE_CONTENT: &str = r#"# Orchestrator executor body.
-_url = "{{vars.slot0}}"
-_headers = {{vars.slot1}}
-_params = {"url": _url, "method": "delete"}
-if _headers:
-    _params["headers"] = _headers
-result = host.http(**_params)
+// host.http DELETE with typed url/headers inputs.
+const PC_EXEC_HTTP_DELETE_CONTENT: &str = r#"def usage_http_delete(inputs):
+    result = host.http(method="DELETE", url=inputs["url"], headers=inputs["headers"])
+    return result
 "#;
 
-const PC_HTTP_STATUS_CHECK_CONTENT: &str = r#"# No I/O, no imports. IBS bakes in status_code as {{vars.slot0}} before execution.
-status_code = {{vars.slot0}}
-is_success = 200 <= status_code < 300
-result = {"is_success": is_success, "status_code": status_code}
+// Pure HTTP status check — no host call; receives status_code as typed integer.
+const PC_HTTP_STATUS_CHECK_CONTENT: &str = r#"def check_http_status(inputs):
+    status_code = inputs["status_code"]
+    is_success = 200 <= status_code < 300
+    result = {"is_success": is_success, "status_code": status_code}
+    return result
 "#;
 
-const PC_JSON_EXTRACT_FIELD_CONTENT: &str = r#"# No I/O, no imports. IBS bakes in 'data' and 'path' before execution.
-data = {{vars.slot0}}
-path = "{{vars.slot1}}"
-parts = path.split(".")
-current = data
-for part in parts:
-    if isinstance(current, dict) and part in current:
-        current = current[part]
-    elif isinstance(current, list):
-        try:
-            current = current[int(part)]
-        except (ValueError, IndexError):
+// Pure JSON field extraction — no host call; receives data dict and dot-path string.
+const PC_JSON_EXTRACT_FIELD_CONTENT: &str = r#"def extract_json_field(inputs):
+    parts = inputs["path"].split(".")
+    current = inputs["data"]
+    for part in parts:
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+        elif isinstance(current, list):
+            try:
+                current = current[int(part)]
+            except (ValueError, IndexError):
+                current = None
+                break
+        else:
             current = None
             break
+    result = {"value": current, "path": inputs["path"], "found": current is not None}
+    return result
+"#;
+
+// Pure web search result extractor — no host call; receives pre-parsed response dict.
+const PC_WEB_SEARCH_EXTRACT_CONTENT: &str = r#"def extract_web_search_results(inputs):
+    data = inputs["data"]
+    if isinstance(data, dict):
+        results = (
+            data.get("results") or
+            data.get("organic_results") or
+            data.get("items") or
+            data.get("RelatedTopics") or
+            []
+        )
+        result = [
+            {
+                "title":   r.get("title") or r.get("Text", ""),
+                "url":     r.get("url") or r.get("link") or r.get("FirstURL", ""),
+                "snippet": r.get("snippet") or r.get("description") or ""
+            }
+            for r in results if isinstance(r, dict)
+        ]
     else:
-        current = None
-        break
-result = {"value": current, "path": path, "found": current is not None}
+        result = {"error": "expected parsed dict from http response", "raw": str(data)[:500]}
+    return result
 "#;
 
-const PC_WEB_SEARCH_EXTRACT_CONTENT: &str = r#"# Pure orchestrator body - no imports. slot0 = pre-parsed response dict
-# (the http tool's JSON response is already a dict in the execution context).
-_data = "{{vars.slot0}}"
-if isinstance(_data, dict):
-    _results = (
-        _data.get("results") or
-        _data.get("organic_results") or
-        _data.get("items") or
-        _data.get("RelatedTopics") or
-        []
-    )
-    result = [
-        {
-            "title":   r.get("title") or r.get("Text", ""),
-            "url":     r.get("url") or r.get("link") or r.get("FirstURL", ""),
-            "snippet": r.get("snippet") or r.get("description") or ""
-        }
-        for r in _results if isinstance(r, dict)
-    ]
-else:
-    result = {"error": "expected parsed dict from http response", "raw": str(_data)[:500]}
+// Pure URL query-string builder — no host call; receives raw query string.
+const PC_WEB_SEARCH_QUERY_BUILD_CONTENT: &str = r#"def build_url_query(inputs):
+    raw = inputs["raw"].strip()
+    safe = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+    encoded = "".join(c if c in safe else "%" + format(ord(c), "02X") for c in raw)
+    result = {"encoded": encoded, "raw": raw}
+    return result
 "#;
 
-const PC_WEB_SEARCH_QUERY_BUILD_CONTENT: &str = r#"# No imports - pure built-in percent-encoding (mirrors pc-url-encode logic).
-_raw = "{{vars.slot0}}".strip()
-_safe = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-_encoded = "".join(c if c in _safe else "%" + format(ord(c), "02X") for c in _raw)
-result = {"encoded": _encoded, "raw": _raw}
-"#;
-
-const PC_URL_ENCODE_CONTENT: &str = r#"# No imports - pure built-in percent-encoding. Covers all non-unreserved chars.
-_raw = "{{vars.slot0}}".strip()
-_safe = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-_encoded = "".join(c if c in _safe else "%" + format(ord(c), "02X") for c in _raw)
-result = {"encoded": _encoded, "raw": _raw}
+// Pure percent-encoder — no host call; receives raw string to encode.
+const PC_URL_ENCODE_CONTENT: &str = r#"def url_encode(inputs):
+    raw = inputs["raw"].strip()
+    safe = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+    encoded = "".join(c if c in safe else "%" + format(ord(c), "02X") for c in raw)
+    result = {"encoded": encoded, "raw": raw}
+    return result
 "#;
 
 // ---------------------------------------------------------------------------
@@ -8164,83 +8162,64 @@ fn ts_memory_tree_row(tenant: &str) -> NewPgToolSkill {
 }
 
 // ---------------------------------------------------------------------------
-// Memory group PythonCode bodies (class 22) — transcribed verbatim from the
-// doc. Bodies use `host.<tool>(kwarg=value)` dispatch with `{{vars.slotN}}`
-// vars; no imports.
+// Memory group PythonCode bodies (class 22) — preloadable function format.
 // ---------------------------------------------------------------------------
 
-const PC_EXEC_MEMORY_SEARCH_CONTENT: &str = r#"# Orchestrator executor body.
-_query = "{{vars.slot0}}"
-_limit = {{vars.slot1}}
-_params = {"query": _query}
-if _limit and _limit > 0:
-    _params["limit"] = _limit
-result = host.memory_search(**_params)
+// host.memory_search with typed query/limit inputs.
+const PC_EXEC_MEMORY_SEARCH_CONTENT: &str = r#"def usage_memory_search(inputs):
+    result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
+    return result
 "#;
 
-const PC_EXEC_MEMORY_WRITE_CONTENT: &str = r#"# Orchestrator executor body.
-_content = "{{vars.slot0}}"
-_target = "{{vars.slot1}}"
-_append = {{vars.slot2}}
-_params = {"content": _content}
-if _target and _target != "":
-    _params["target"] = _target
-if _append is not None:
-    _params["append"] = _append
-result = host.memory_write(**_params)
+// host.memory_write with typed content/target/append inputs.
+const PC_EXEC_MEMORY_WRITE_CONTENT: &str = r#"def usage_memory_write(inputs):
+    result = host.memory_write(content=inputs["content"], target=inputs["target"], append=inputs["append"])
+    return result
 "#;
 
-const PC_EXEC_MEMORY_PATCH_CONTENT: &str = r#"# Orchestrator executor body.
-_target = "{{vars.slot0}}"
-_old = "{{vars.slot1}}"
-_new = "{{vars.slot2}}"
-_replace_all = {{vars.slot3}}
-_params = {"target": _target, "old_string": _old, "new_string": _new}
-if _replace_all:
-    _params["replace_all"] = True
-result = host.memory_write(**_params)
+// host.memory_write patch mode with typed target/old_string/new_string/replace_all inputs.
+const PC_EXEC_MEMORY_PATCH_CONTENT: &str = r#"def usage_memory_patch(inputs):
+    result = host.memory_write(target=inputs["target"], old_string=inputs["old_string"], new_string=inputs["new_string"], replace_all=inputs["replace_all"])
+    return result
 "#;
 
-const PC_EXEC_MEMORY_READ_CONTENT: &str = r#"# Orchestrator executor body.
-_path = "{{vars.slot0}}"
-result = host.memory_read(path=_path)
+// host.memory_read with typed path input.
+const PC_EXEC_MEMORY_READ_CONTENT: &str = r#"def usage_memory_read(inputs):
+    result = host.memory_read(path=inputs["path"])
+    return result
 "#;
 
-const PC_EXEC_MEMORY_TREE_CONTENT: &str = r#"# Orchestrator executor body.
-_path = "{{vars.slot0}}"
-_depth = {{vars.slot1}}
-_params = {}
-if _path and _path != "":
-    _params["path"] = _path
-if _depth and _depth > 0:
-    _params["depth"] = _depth
-result = host.memory_tree(**_params)
+// host.memory_tree with typed path/depth inputs.
+const PC_EXEC_MEMORY_TREE_CONTENT: &str = r#"def usage_memory_tree(inputs):
+    result = host.memory_tree(path=inputs["path"], depth=inputs["depth"])
+    return result
 "#;
 
-const PC_MEMORY_EXTRACT_SECTION_CONTENT: &str = r##"# No I/O, no imports. IBS bakes in content and heading before execution.
-content = "{{vars.slot0}}"
-heading = "{{vars.slot1}}"
-lines = content.split("\n")
-in_section = False
-section_lines = []
-for line in lines:
-    stripped = line.lstrip("#").strip()
-    if stripped == heading and line.startswith("#"):
-        in_section = True
-        continue
-    if in_section:
-        if line.startswith("#"):
-            break
-        section_lines.append(line)
-section_content = "\n".join(section_lines).strip() if section_lines else None
-result = {"section_content": section_content, "heading": heading, "found": section_content is not None}
+// Pure section extractor — no host call; receives content string and heading.
+const PC_MEMORY_EXTRACT_SECTION_CONTENT: &str = r##"def extract_section(inputs):
+    lines = inputs["content"].split("\n")
+    heading = inputs["heading"]
+    in_section = False
+    section_lines = []
+    for line in lines:
+        stripped = line.lstrip("#").strip()
+        if stripped == heading and line.startswith("#"):
+            in_section = True
+            continue
+        if in_section:
+            if line.startswith("#"):
+                break
+            section_lines.append(line)
+    section_content = "\n".join(section_lines).strip() if section_lines else None
+    result = {"section_content": section_content, "heading": heading, "found": section_content is not None}
+    return result
 "##;
 
-const PC_MEMORY_FORMAT_ENTRY_CONTENT: &str = r####"# No I/O, no imports, no datetime. Caller must supply timestamp_str.
-text = "{{vars.slot0}}"
-timestamp_str = "{{vars.slot1}}"
-formatted_entry = f"### {timestamp_str}\n\n{text}\n"
-result = {"formatted_entry": formatted_entry}
+// Pure entry formatter — no host call; caller must supply timestamp_str.
+const PC_MEMORY_FORMAT_ENTRY_CONTENT: &str = r####"def format_memory_entry(inputs):
+    formatted_entry = f"### {inputs['timestamp_str']}\n\n{inputs['text']}\n"
+    result = {"formatted_entry": formatted_entry}
+    return result
 "####;
 
 // ---------------------------------------------------------------------------
@@ -8310,13 +8289,15 @@ Orchestrator note: NEVER use datetime.now() in PythonCode. Always call skill-tim
 // Memory group chunk 5d — Step 11.x variant component bodies.
 // ---------------------------------------------------------------------------
 
-const PC_EXEC_MEMORY_APPEND_CONTENT: &str = r#"# Append pattern: read existing, concat new content, write back.
-_path    = "{{vars.slot0}}"
-_new_txt = "{{vars.slot1}}"
-_existing = host.memory_read(path=_path)
-_current = _existing.get("content", "") if isinstance(_existing, dict) else ""
-_combined = _current.rstrip("\n") + "\n\n" + _new_txt
-result = host.memory_write(path=_path, content=_combined)
+// NOTE: pc-exec-memory-append is a two-Tool monolith (read then write).
+// Per L-series spec, multi-Tool bodies must be split into separate Recipe steps.
+// Retained here as a preloadable pure helper for the append-combination logic
+// pending the Recipe split; the host calls move to separate steps.
+const PC_EXEC_MEMORY_APPEND_CONTENT: &str = r#"def prepare_append_content(inputs):
+    current = inputs["existing_content"].rstrip("\n")
+    new_text = inputs["new_text"]
+    result = {"combined": current + "\n\n" + new_text}
+    return result
 "#;
 
 const SKILL_MEMORY_WRITE_APPEND_BODY: &str = r#"Use pc-exec-memory-append to add content to an existing memory document without overwriting
@@ -12915,97 +12896,119 @@ const PC_EXEC_SHELL_GIT_STASH_LIST_CONTENT: &str = r#"# §shell-safe-fixed: fixe
 result = host.shell(command="git stash list")
 "#;
 
-const PC_EXEC_SHELL_GIT_LOG_N_CONTENT: &str = r#"_n = {{vars.slot0}}
-# Validate: only safe integer in 1–100 range
-if not isinstance(_n, int) or not (1 <= _n <= 100):
-    _n = 20
-result = host.shell(command=f"git log --oneline -{_n}")
+// §shell-guard-custom: git log -N — Tier 1 only; n validated to safe integer range.
+const PC_EXEC_SHELL_GIT_LOG_N_CONTENT: &str = r#"def usage_git_log_n(inputs):
+    n = inputs["n"]
+    if type(n) is not int or not (1 <= n <= 100):
+        n = 20
+    result = host.shell(command=f"git log --oneline -{n}")
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_REMOTE_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="git remote -v")
+// §shell-safe-fixed: fixed read-only commands; no user input in command.
+const PC_EXEC_SHELL_GIT_REMOTE_CONTENT: &str = r#"def usage_git_remote(inputs):
+    result = host.shell(command="git remote -v")
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_SHOW_STAT_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="git show --stat HEAD")
+const PC_EXEC_SHELL_GIT_SHOW_STAT_CONTENT: &str = r#"def usage_git_show_stat(inputs):
+    result = host.shell(command="git show --stat HEAD")
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_TAG_LIST_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="git tag --list")
+const PC_EXEC_SHELL_GIT_TAG_LIST_CONTENT: &str = r#"def usage_git_tag_list(inputs):
+    result = host.shell(command="git tag --list")
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_DIFF_NAME_ONLY_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
-result = host.shell(command="git diff --name-only HEAD")
+const PC_EXEC_SHELL_GIT_DIFF_NAME_ONLY_CONTENT: &str = r#"def usage_git_diff_name_only(inputs):
+    result = host.shell(command="git diff --name-only HEAD")
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_LOG_STAT_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
-result = host.shell(command="git log --stat --oneline -5")
+const PC_EXEC_SHELL_GIT_LOG_STAT_CONTENT: &str = r#"def usage_git_log_stat(inputs):
+    result = host.shell(command="git log --stat --oneline -5")
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_STASH_SHOW_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
-result = host.shell(command="git stash show")
+const PC_EXEC_SHELL_GIT_STASH_SHOW_CONTENT: &str = r#"def usage_git_stash_show(inputs):
+    result = host.shell(command="git stash show")
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_CONFIG_LIST_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
-result = host.shell(command="git config --list")
+const PC_EXEC_SHELL_GIT_CONFIG_LIST_CONTENT: &str = r#"def usage_git_config_list(inputs):
+    result = host.shell(command="git config --list")
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_ADD_CONTENT: &str = r#"# §shell-guard-custom — path is user/LLM-supplied. Tier 1 only.
-_path = "{{vars.slot0}}" or "."
-result = host.shell(command="git add " + _path)
+// §shell-guard-custom — Tier 1 only; path/message/remote/branch are typed inputs.
+const PC_EXEC_SHELL_GIT_ADD_CONTENT: &str = r#"def usage_git_add(inputs):
+    path = inputs["path"] or "."
+    result = host.shell(command="git add " + path)
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_COMMIT_CONTENT: &str = r#"# §shell-guard-custom — commit message is user/LLM-supplied. Tier 1 only.
-_msg = "{{vars.slot0}}"
-result = host.shell(command="git commit -m " + repr(_msg))
+const PC_EXEC_SHELL_GIT_COMMIT_CONTENT: &str = r#"def usage_git_commit(inputs):
+    result = host.shell(command="git commit -m " + repr(inputs["message"]))
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_PUSH_CONTENT: &str = r#"# §shell-guard-custom — remote/branch are user-supplied. Tier 1 only.
-_remote = "{{vars.slot0}}" or "origin"
-_branch = "{{vars.slot1}}" or "main"
-result = host.shell(command="git push " + _remote + " " + _branch)
+const PC_EXEC_SHELL_GIT_PUSH_CONTENT: &str = r#"def usage_git_push(inputs):
+    remote = inputs["remote"] or "origin"
+    branch = inputs["branch"] or "main"
+    result = host.shell(command="git push " + remote + " " + branch)
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_PULL_CONTENT: &str = r#"# §shell-guard-custom — remote/branch are user-supplied. Tier 1 only.
-_remote = "{{vars.slot0}}" or "origin"
-_branch = "{{vars.slot1}}" or ""
-_cmd = "git pull " + _remote
-if _branch:
-    _cmd = _cmd + " " + _branch
-result = host.shell(command=_cmd)
+const PC_EXEC_SHELL_GIT_PULL_CONTENT: &str = r#"def usage_git_pull(inputs):
+    remote = inputs["remote"] or "origin"
+    branch = inputs["branch"] or ""
+    cmd = "git pull " + remote
+    if branch:
+        cmd = cmd + " " + branch
+    result = host.shell(command=cmd)
+    return result
 "#;
 
-const PC_EXEC_SHELL_GIT_FETCH_CONTENT: &str = r#"# §shell-safe-fixed — 'git fetch --all' is a fixed read-only remote query. No user input in command.
-result = host.shell(command="git fetch --all")
+const PC_EXEC_SHELL_GIT_FETCH_CONTENT: &str = r#"def usage_git_fetch(inputs):
+    result = host.shell(command="git fetch --all")
+    return result
 "#;
 
-const PC_EXEC_SHELL_PWD_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="pwd")
+const PC_EXEC_SHELL_PWD_CONTENT: &str = r#"def usage_shell_pwd(inputs):
+    result = host.shell(command="pwd")
+    return result
 "#;
 
-const PC_EXEC_SHELL_DF_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="df -h")
+const PC_EXEC_SHELL_DF_CONTENT: &str = r#"def usage_shell_df(inputs):
+    result = host.shell(command="df -h")
+    return result
 "#;
 
-const PC_EXEC_SHELL_PS_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="ps aux")
+const PC_EXEC_SHELL_PS_CONTENT: &str = r#"def usage_shell_ps(inputs):
+    result = host.shell(command="ps aux")
+    return result
 "#;
 
-const PC_EXEC_SHELL_ENV_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="env")
+const PC_EXEC_SHELL_ENV_CONTENT: &str = r#"def usage_shell_env(inputs):
+    result = host.shell(command="env")
+    return result
 "#;
 
-const PC_EXEC_SHELL_UNAME_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
-result = host.shell(command="uname -a")
+const PC_EXEC_SHELL_UNAME_CONTENT: &str = r#"def usage_shell_uname(inputs):
+    result = host.shell(command="uname -a")
+    return result
 "#;
 
-const PC_EXEC_SHELL_WHICH_CONTENT: &str = r#"import re as _re
-_tool = "{{vars.slot0}}"
-# Validate: only safe identifiers allowed (no injection surface)
-if not _re.match(r'^[a-zA-Z0-9_\-]{1,64}$', _tool):
-    result = {"error": "Invalid tool name — must be a safe identifier", "success": False}
-else:
-    result = host.shell(command=f"which {_tool}")
+// §shell-guard-custom: tool name validated to safe identifier pattern before dispatch.
+const PC_EXEC_SHELL_WHICH_CONTENT: &str = r#"def usage_shell_which(inputs):
+    import re as _re
+    tool = inputs["tool"]
+    if not _re.match(r'^[a-zA-Z0-9_\-]{1,64}$', tool):
+        result = {"error": "Invalid tool name — must be a safe identifier", "success": False}
+    else:
+        result = host.shell(command=f"which {tool}")
+    return result
 "#;
 
 const PC_EXEC_SHELL_DATE_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
@@ -13028,13 +13031,14 @@ const PC_EXEC_SHELL_FREE_CONTENT: &str = r#"# §shell-safe-fixed: fixed command,
 result = host.shell(command="free -h")
 "#;
 
-const PC_EXEC_SHELL_WC_L_CONTENT: &str = r#"import re as _re
-_filepath = "{{vars.slot0}}"
-# Validate: only allow safe relative paths (no shell metacharacters)
-if not _re.match(r'^[a-zA-Z0-9_\-./]{1,256}$', _filepath):
-    result = {"error": "Invalid filepath — must be a safe relative path", "success": False}
-else:
+const PC_EXEC_SHELL_WC_L_CONTENT: &str = r#"def usage_shell_wc_l(inputs):
+    import re as _re
+    _filepath = inputs["filepath"]
+    # Validate: only allow safe relative paths (no shell metacharacters)
+    if not _re.match(r'^[a-zA-Z0-9_\-./]{1,256}$', _filepath):
+        return {"error": "Invalid filepath — must be a safe relative path", "success": False}
     result = host.shell(command=f"wc -l {_filepath}")
+    return result
 "#;
 
 // ---------------------------------------------------------------------------
@@ -14536,75 +14540,58 @@ If you find yourself routing user requests through echo, use the correct tool in
 // PythonCode body constants — management group
 // ---------------------------------------------------------------------------
 
-const PC_EXEC_TIME_NOW_CONTENT: &str = r#"# Orchestrator executor body.
-_timezone = "{{vars.slot0}}"
-_params = {"operation": "now"}
-if _timezone and _timezone != "":
-    _params["timezone"] = _timezone
-result = host.time(**_params)
+// host.time now — typed timezone input.
+const PC_EXEC_TIME_NOW_CONTENT: &str = r#"def usage_time_now(inputs):
+    result = host.time(operation="now", timezone=inputs["timezone"])
+    return result
 "#;
 
-const PC_EXEC_TIME_PARSE_CONTENT: &str = r#"# Orchestrator executor body.
-_input = "{{vars.slot0}}"
-_timezone = "{{vars.slot1}}"
-_params = {"operation": "parse", "input": _input}
-if _timezone and _timezone != "":
-    _params["timezone"] = _timezone
-result = host.time(**_params)
+// host.time parse — typed input/timezone inputs.
+const PC_EXEC_TIME_PARSE_CONTENT: &str = r#"def usage_time_parse(inputs):
+    result = host.time(operation="parse", input=inputs["input"], timezone=inputs["timezone"])
+    return result
 "#;
 
-const PC_EXEC_TIME_CONVERT_CONTENT: &str = r#"# Orchestrator executor body.
-_input = "{{vars.slot0}}"
-_from_tz = "{{vars.slot1}}"
-_to_tz = "{{vars.slot2}}"
-_params = {"operation": "convert", "input": _input}
-if _from_tz and _from_tz != "":
-    _params["from_timezone"] = _from_tz
-if _to_tz and _to_tz != "":
-    _params["to_timezone"] = _to_tz
-result = host.time(**_params)
+// host.time convert — typed input/from_timezone/to_timezone inputs.
+const PC_EXEC_TIME_CONVERT_CONTENT: &str = r#"def usage_time_convert(inputs):
+    result = host.time(operation="convert", input=inputs["input"], from_timezone=inputs["from_timezone"], to_timezone=inputs["to_timezone"])
+    return result
 "#;
 
-const PC_EXEC_TIME_DIFF_CONTENT: &str = r#"# Orchestrator executor body. No I/O, no imports, no network.
-# IBS bakes in slot values before execution.
-_input = "{{vars.slot0}}"
-_ts2   = "{{vars.slot1}}"
-result = host.time(operation="diff", input=_input, timestamp2=_ts2)
+// host.time diff — typed input/timestamp2 inputs.
+const PC_EXEC_TIME_DIFF_CONTENT: &str = r#"def usage_time_diff(inputs):
+    result = host.time(operation="diff", input=inputs["input"], timestamp2=inputs["timestamp2"])
+    return result
 "#;
 
-const PC_EXEC_TIME_FORMAT_CONTENT: &str = r#"# Orchestrator executor body. No I/O, no imports, no network.
-# IBS bakes in slot values before execution.
-_input  = "{{vars.slot0}}"
-_fmt    = "{{vars.slot1}}"
-_tz     = "{{vars.slot2}}"
-_params = {"operation": "format", "input": _input}
-if _fmt:
-    _params["format_string"] = _fmt
-if _tz:
-    _params["timezone"] = _tz
-result = host.time(**_params)
+// host.time format — typed input/format_string/timezone inputs.
+const PC_EXEC_TIME_FORMAT_CONTENT: &str = r#"def usage_time_format(inputs):
+    result = host.time(operation="format", input=inputs["input"], format_string=inputs["format_string"], timezone=inputs["timezone"])
+    return result
 "#;
 
-const PC_EXEC_JSON_QUERY_CONTENT: &str = r#"# Orchestrator executor body.
-_data = {{vars.slot0}}
-_path = "{{vars.slot1}}"
-result = host.json(operation="query", data=_data, path=_path)
+// host.json query — typed data/path inputs.
+const PC_EXEC_JSON_QUERY_CONTENT: &str = r#"def usage_json_query(inputs):
+    result = host.json(operation="query", data=inputs["data"], path=inputs["path"])
+    return result
 "#;
 
-const PC_EXEC_JSON_STRINGIFY_CONTENT: &str = r#"# Orchestrator executor body.
-_operation = "{{vars.slot0}}"
-_data = {{vars.slot1}}
-result = host.json(operation=_operation, data=_data)
+// host.json operation — typed operation/data inputs.
+const PC_EXEC_JSON_STRINGIFY_CONTENT: &str = r#"def usage_json_operation(inputs):
+    result = host.json(operation=inputs["operation"], data=inputs["data"])
+    return result
 "#;
 
-const PC_EXEC_JSON_VALIDATE_CONTENT: &str = r#"# Orchestrator executor body.
-_data = "{{vars.slot0}}"
-result = host.json(operation="validate", data=_data)
+// host.json validate — typed data input.
+const PC_EXEC_JSON_VALIDATE_CONTENT: &str = r#"def usage_json_validate(inputs):
+    result = host.json(operation="validate", data=inputs["data"])
+    return result
 "#;
 
-const PC_EXEC_ECHO_CONTENT: &str = r#"# Diagnostic executor body. host.<tool> provided by runtime sandbox.
-_message = "{{vars.slot0}}"
-result = host.echo(message=_message)
+// host.echo diagnostic — typed message input (diagnostic only).
+const PC_EXEC_ECHO_CONTENT: &str = r#"def usage_echo(inputs):
+    result = host.echo(message=inputs["message"])
+    return result
 "#;
 
 // ---------------------------------------------------------------------------
@@ -14834,31 +14821,33 @@ const RECIPE_SUBAGENT_QUERY_YAML: &str = r#"step_descriptions: [
 // (verbatim doc source) + trigger recipe YAML sources (verbatim doc flat format).
 // ---------------------------------------------------------------------------
 
-const PC_EXEC_TRIGGER_LIST_CONTENT: &str = r#"# Orchestrator executor body.
-_scope = "{{vars.slot0}}" if "{{vars.slot0}}" else "all"
-result = host.trigger_list(scope=_scope)
+const PC_EXEC_TRIGGER_LIST_CONTENT: &str = r#"def usage_trigger_list(inputs):
+    _scope = inputs.get("scope") or "all"
+    result = host.trigger_list(scope=_scope)
+    return result
 "#;
 
-const PC_EXEC_TRIGGER_LIST_ACTIVE_CONTENT: &str = r#"# Orchestrator executor body.
-result = host.trigger_list(scope="active")
+const PC_EXEC_TRIGGER_LIST_ACTIVE_CONTENT: &str = r#"def usage_trigger_list_active(inputs):
+    result = host.trigger_list(scope="active")
+    return result
 "#;
 
-const PC_EXEC_TRIGGER_LIST_SCHEDULED_CONTENT: &str = r#"# Orchestrator executor body.
-result = host.trigger_list(scope="scheduled")
+const PC_EXEC_TRIGGER_LIST_SCHEDULED_CONTENT: &str = r#"def usage_trigger_list_scheduled(inputs):
+    result = host.trigger_list(scope="scheduled")
+    return result
 "#;
 
-const PC_EXEC_TRIGGER_RESOLVE_AND_REMOVE_CONTENT: &str = r#"# Orchestrator executor body. No I/O, no imports, no network.
-# IBS bakes in slot values before execution.
-_trigger_name = "{{vars.slot0}}"
-_list_result  = host.trigger_list()
-_triggers     = _list_result.get("triggers", []) if isinstance(_list_result, dict) else []
-_found        = next((t for t in _triggers if t.get("name") == _trigger_name), None)
-if _found is None:
-    result = {"removed": False, "trigger_name": _trigger_name,
-              "error": f"No trigger named '{_trigger_name}' found"}
-else:
+const PC_EXEC_TRIGGER_RESOLVE_AND_REMOVE_CONTENT: &str = r#"def usage_trigger_resolve_and_remove(inputs):
+    _trigger_name = inputs["trigger_name"]
+    _list_result  = host.trigger_list()
+    _triggers     = _list_result.get("triggers", []) if isinstance(_list_result, dict) else []
+    _found        = next((t for t in _triggers if t.get("name") == _trigger_name), None)
+    if _found is None:
+        return {"removed": False, "trigger_name": _trigger_name,
+                "error": f"No trigger named '{_trigger_name}' found"}
     _remove_result = host.trigger_remove(trigger_name=_trigger_name)
     result = {"removed": True, "trigger_name": _trigger_name, "remove_result": _remove_result}
+    return result
 "#;
 
 const SKILL_TRIGGER_LIST_BODY: &str = r#"Use `ts-trigger-list` (via pc-exec-trigger-list) to retrieve a JSON array of all
@@ -17697,23 +17686,23 @@ prefix stale. Fully deterministic (no LLM calls).
 /// Compare two hash strings; return {changed: bool}.
 /// No imports needed — pure Python string comparison.
 /// IBS substitutes stored_hash as {{vars.slot0}}, new_hash as {{vars.slot1}}.
-const PC_HASH_CHANGED_CONTENT: &str = r#"# Pure-logic hash comparison. No I/O, no imports.
-# IBS bakes {{vars.slot0}} = stored hash, {{vars.slot1}} = new hash before execution.
-_stored = "{{vars.slot0}}"
-_new    = "{{vars.slot1}}"
-result = {"changed": _stored != _new}
+const PC_HASH_CHANGED_CONTENT: &str = r#"def usage_hash_changed(inputs):
+    # Pure-logic hash comparison. No I/O, no imports.
+    _stored = inputs.get("stored_hash") or ""
+    _new    = inputs.get("new_hash") or ""
+    return {"changed": _stored != _new}
 "#;
 
 /// Render the `## CC:UID  LABEL  "name"` base-prompt header line.
 /// Matches do_reassemble's format exactly.
-/// IBS substitutes: slot0=class_code, slot1=prompt_uid, slot2=label, slot3=name.
-const PC_FORMAT_COMPONENT_HEADER_CONTENT: &str = r#"# Pure-logic header renderer. No I/O, no imports.
-# IBS bakes slot0=class_code, slot1=prompt_uid, slot2=label, slot3=name.
-_class_code = "{{vars.slot0}}"
-_prompt_uid = "{{vars.slot1}}"
-_label      = "{{vars.slot2}}"
-_name       = "{{vars.slot3}}"
-result = {"header": '## ' + _class_code + ':' + _prompt_uid + '  ' + _label + '  "' + _name + '"'}
+/// Inputs: class_code, prompt_uid, label, name.
+const PC_FORMAT_COMPONENT_HEADER_CONTENT: &str = r#"def usage_format_component_header(inputs):
+    # Pure-logic header renderer. No I/O, no imports.
+    _class_code = inputs["class_code"]
+    _prompt_uid = inputs["prompt_uid"]
+    _label      = inputs["label"]
+    _name       = inputs["name"]
+    return {"header": '## ' + _class_code + ':' + _prompt_uid + '  ' + _label + '  "' + _name + '"'}
 "#;
 
 // ---------------------------------------------------------------------------
@@ -17954,23 +17943,43 @@ const SKILL_GITHUB_ADD_COMMENT_BODY: &str = r#"Post a comment on a GitHub issue 
 
 const SKILL_GITHUB_CREATE_PR_BODY: &str = r#"Create a pull request: POST https://api.github.com/repos/{owner}/{repo}/pulls with body={"title":"...","body":"...","head":"feature-branch","base":"main","draft":true}. Always set `draft: true` unless the user explicitly says "ready for review". The `head` is the source branch, `base` is the target. Returns the created PR object with number and html_url."#;
 
-const PC_GITHUB_LIST_ISSUES_CONTENT: &str = r#"# §shell-guard: not applicable — read-only HTTP GET, fixed URL shape, Tier 0.
-# slot0 = owner, slot1 = repo
-result = host.http_fetch(method="GET", url="https://api.github.com/repos/{{vars.slot0}}/{{vars.slot1}}/issues?state=open&sort=created&direction=desc&per_page=30")
+const PC_GITHUB_LIST_ISSUES_CONTENT: &str = r#"def usage_github_list_issues(inputs):
+    # §shell-guard: not applicable — read-only HTTP GET, fixed URL shape, Tier 0.
+    owner = inputs["owner"]
+    repo  = inputs["repo"]
+    result = host.http_fetch(
+        method="GET",
+        url=f"https://api.github.com/repos/{owner}/{repo}/issues?state=open&sort=created&direction=desc&per_page=30",
+    )
+    return result
 "#;
 
-const PC_GITHUB_LIST_PRS_CONTENT: &str = r#"# §shell-guard: not applicable — read-only HTTP GET, fixed URL shape, Tier 0.
-# slot0 = owner, slot1 = repo
-result = host.http_fetch(method="GET", url="https://api.github.com/repos/{{vars.slot0}}/{{vars.slot1}}/pulls?state=open&sort=created&direction=desc&per_page=30")
+const PC_GITHUB_LIST_PRS_CONTENT: &str = r#"def usage_github_list_prs(inputs):
+    # §shell-guard: not applicable — read-only HTTP GET, fixed URL shape, Tier 0.
+    owner = inputs["owner"]
+    repo  = inputs["repo"]
+    result = host.http_fetch(
+        method="GET",
+        url=f"https://api.github.com/repos/{owner}/{repo}/pulls?state=open&sort=created&direction=desc&per_page=30",
+    )
+    return result
 "#;
 
-const PC_GITHUB_GET_AUTHENTICATED_USER_CONTENT: &str = r#"# §shell-guard: not applicable — read-only HTTP GET, fixed URL, Tier 0.
-result = host.http_fetch(method="GET", url="https://api.github.com/user")
+const PC_GITHUB_GET_AUTHENTICATED_USER_CONTENT: &str = r#"def usage_github_get_authenticated_user(inputs):
+    # §shell-guard: not applicable — read-only HTTP GET, fixed URL, Tier 0.
+    result = host.http_fetch(method="GET", url="https://api.github.com/user")
+    return result
 "#;
 
-const PC_GITHUB_SEARCH_ISSUES_CONTENT: &str = r#"# §shell-guard: not applicable — read-only HTTP GET, Tier 0.
-# slot0 = URL-encoded search query (e.g. "is:pr+author:%40me+sort:updated-desc&per_page=20")
-result = host.http_fetch(method="GET", url="https://api.github.com/search/issues?q={{vars.slot0}}")
+const PC_GITHUB_SEARCH_ISSUES_CONTENT: &str = r#"def usage_github_search_issues(inputs):
+    # §shell-guard: not applicable — read-only HTTP GET, Tier 0.
+    # query = URL-encoded search query (e.g. "is:pr+author:%40me+sort:updated-desc&per_page=20")
+    query  = inputs["query"]
+    result = host.http_fetch(
+        method="GET",
+        url=f"https://api.github.com/search/issues?q={query}",
+    )
+    return result
 "#;
 
 const RECIPE_GITHUB_LIST_ISSUES_YAML: &str = r#"step_descriptions: [
@@ -18402,9 +18411,11 @@ const PC_GLOB_TEST_FILES_PY_CONTENT: &str = r#"# §shell-safe-fixed — fixed li
 result = host.glob(pattern="**/*_test.py")
 "#;
 
-const PC_GREP_FN_TESTS_CONTENT: &str = r#"# §shell-safe-fixed — pattern from slot0, include fixed to *test*, Tier 0.
-# slot0 = function name to search for in test files
-result = host.grep(pattern="{{vars.slot0}}", include="*test*")
+const PC_GREP_FN_TESTS_CONTENT: &str = r#"def usage_grep_fn_tests(inputs):
+    # pattern from inputs["pattern"], include fixed to *test*, Tier 0.
+    pattern = inputs["pattern"]
+    result = host.grep(pattern=pattern, include="*test*")
+    return result
 "#;
 
 const RECIPE_QA_REVIEW_LOCAL_YAML: &str = r#"step_descriptions: [
@@ -18728,23 +18739,38 @@ const SKILL_PLAN_LIST_BODY: &str = r#"List plans: use memory_search with query "
 
 const SKILL_PLAN_REVISE_BODY: &str = r#"Revise a plan: (1) read the plan from memory at plans/<slug>.md; (2) apply the user's feedback — update steps, reorder, split, or merge; (3) reset any failed/in-progress steps back to [ ] (pending); (4) rewrite the entire plan via memory_write with append=false; (5) present the revised plan and suggest /plan approve to re-execute."#;
 
-const PC_PLAN_CREATE_CONTENT: &str = r#"# Pure-logic formatter + one memory_write call. Tier 1 (LLM composes plan in prior step).
-# slot0 = slug, slot1 = full plan document body (composed by LLM in prior step)
-result = host.memory_write(path="plans/{{vars.slot0}}.md", content="{{vars.slot1}}", append=False)
+const PC_PLAN_CREATE_CONTENT: &str = r#"def usage_plan_create(inputs):
+    # Tier 1 (LLM composes plan in prior step).
+    slug    = inputs["slug"]
+    content = inputs["content"]
+    result  = host.memory_write(path=f"plans/{slug}.md", content=content, append=False)
+    return result
 "#;
 
-const PC_PLAN_READ_CONTENT: &str = r#"# §shell-safe-fixed — fixed path shape. Tier 0.
-# slot0 = plan slug
-result = host.memory_read(path="plans/{{vars.slot0}}.md")
+const PC_PLAN_READ_CONTENT: &str = r#"def usage_plan_read(inputs):
+    # Fixed path shape. Tier 0.
+    slug   = inputs["slug"]
+    result = host.memory_read(path=f"plans/{slug}.md")
+    return result
 "#;
 
-const PC_PLAN_SEARCH_CONTENT: &str = r#"# §shell-safe-fixed — fixed query shape. Tier 0.
-result = host.memory_search(query="plan_id:")
+const PC_PLAN_SEARCH_CONTENT: &str = r#"def usage_plan_search(inputs):
+    # Fixed query shape. Tier 0.
+    result = host.memory_search(query="plan_id:")
+    return result
 "#;
 
-const PC_PLAN_STATUS_UPDATE_CONTENT: &str = r#"# Patch mode memory_write — updates step markers in plan doc. Tier 1 (LLM identifies step).
-# slot0 = slug, slot1 = old_string (step line to replace), slot2 = new_string (replacement)
-result = host.memory_write(path="plans/{{vars.slot0}}.md", old_string="{{vars.slot1}}", new_string="{{vars.slot2}}")
+const PC_PLAN_STATUS_UPDATE_CONTENT: &str = r#"def usage_plan_status_update(inputs):
+    # Patch mode memory_write — updates step markers in plan doc. Tier 1 (LLM identifies step).
+    slug       = inputs["slug"]
+    old_string = inputs["old_string"]
+    new_string = inputs["new_string"]
+    result     = host.memory_write(
+        path=f"plans/{slug}.md",
+        old_string=old_string,
+        new_string=new_string,
+    )
+    return result
 "#;
 
 const RECIPE_PLAN_CREATE_YAML: &str = r#"step_descriptions: [
