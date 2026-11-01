@@ -1,4 +1,54 @@
 
+## 2026-11-01 — PKG-H + Fix 2: run_q1_validation legacy path removed; pool_for_validator cleaned
+
+**Commits:**
+- `dc745d4fc` — fix: move pool_for_validator into cfg(not(test)) block
+- `942ff5c69` — PKG-H: remove run_q1_validation legacy path; q1_db helper survives for retained path
+
+**PKG-H implementation complete:**
+
+The legacy mutable-recipe Q1 path (`run_q1_validation`, `load_validator_program`,
+`run_validator_python_with_limits`, `ComponentContentFields`, `reviewed_content_fields`)
+has been removed from `q1_orchestrator.rs`. This was the Step 6 completion gate for
+`validator_v3.md` — the production path now exclusively uses `run_q1_validation_retained`.
+
+**Removals:**
+- `run_q1_validation` function and its entire doc block.
+- `load_validator_program` function (queried mutable `reborn_recipes` rows directly).
+- `run_validator_python_with_limits` async function.
+- `ComponentContentFields` struct and `reviewed_content_fields` helper.
+- `Q1Error::AmbiguousValidator` and `Q1Error::InvalidValidator` variants.
+- Unused `brassclaw_monty_host::utility::UtilityLimits` import.
+- Unused `pub(crate) use review::Q1Candidate` re-export in `validation_queue.rs`.
+- Legacy test `run_q1_validation_defers_when_no_recipe_seeded` in `validation_queue.rs`.
+- Stale comment in `retention_sweep.rs` updated to reference `fire_q1_kick_if_wired`.
+
+**Retained:**
+- `q1_db` helper — still used by the retained path at lines 292, 331, 341.
+- Module doc updated to describe only the retained IBS/Recipe path.
+- All four Q1 outcome tests pass.
+
+**Validation:**
+- `cargo fmt --all -- --check`: clean
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings`: 0 warnings
+- `cargo test -p brassclaw_reborn_composition --features postgres,skills-db -- q1_orchestrator`: 4/4 pass
+
+**Fix 2 (pool_for_validator):**
+- `_pool_for_validator` removed; `pool_for_validator` now declared inside `#[cfg(not(test))]` block.
+- `pool.clone()` used for `OwnedGlobalTaskFactory::new` (no semantic change — `Arc::clone`).
+
+**Remaining open items (updated):**
+- `run_q1_validation` legacy path **removed** — Step 6 completion gate closed.
+- Integration test T1–T5 for `run_q1_validation_retained` (TASK-004).
+- `PgCompositionPort` production wiring investigation (TASK-006) — constructor chain not yet located.
+- Validator Steps 7–12 (class routes, behavioral evidence, human Q2, production cutover).
+- General pure approval, K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences.
+- Orchestration infrastructure created at `docs/orchestration/` (PROTOCOL.md, INBOX.md, OUTBOX.md, TASKS.md).
+
+---
+
+
+
 ## 2026-11-01 — PKG-C: ValidatorTaskDriver + drive_admitted end-to-end Q1 retained path
 
 **Commits:**
