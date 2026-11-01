@@ -1,3 +1,24 @@
+## 2026-11-01 — pure-component-approval store wired (checkpoint 29102065f)
+
+Checkpoint 29102065f wires the full `pure-component-approval/1` write path.
+`V200` migration adds `reborn_pure_component_approvals` and
+`reborn_pure_component_approval_closure` tables with immutable-update triggers.
+`pg_pure_component_approval` exposes `record_pure_component_approval`,
+`parse_and_record_pure_component_approval`, `read_pure_component_approval_root`
+and `load_independently_qualified` as the public composition API.
+`PureApprovalStore` trait added to `brassclaw_product_workflow` with a concrete
+`PgPureApprovalStore` adapter. `POST /api/webchat/v2/pure-component-approvals`
+route mounted end-to-end. `authored_monty_catalogue` wired to extend
+`independently_qualified` from DB-backed approvals during catalogue preparation.
+Descriptor contract test updated to 131 routes.
+
+Also resolved: pre-existing deadpool `Transaction` deref mismatches in
+`prefix_acceptances`, `prefix_bootstrap_setup` and `llm_config_service`;
+`chunks_exact_to_as_chunks` clippy lint; missing imports in integrated bootstrap
+test files. Warning-free clippy and format pass confirmed; all 68 webui_v2 tests
+pass. This is a wiring checkpoint; no build receipt. Full plans, K3–K7,
+general Q1/Pure approval, validator Steps 3/8–12 and Serving remain open.
+
 ## 2026-10-31 — standalone OAuth settings and manual re-review accepted locally
 
 [BUILD052/053](validation/2026-10-31-standalone-oauth-rereview.md) passes one

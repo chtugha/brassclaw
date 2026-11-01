@@ -1,3 +1,33 @@
+## Latest — pure-component-approval store wired; descriptor contract updated
+
+Checkpoint 29102065f pushed to main. No build receipt: this is a wiring
+checkpoint delivering concrete infrastructure under an existing open contract.
+
+`V200__pure_component_approvals.sql` creates `reborn_pure_component_approvals`
+and `reborn_pure_component_approval_closure` with immutable-update triggers.
+`pg_pure_component_approval` provides `record_pure_component_approval`,
+`parse_and_record_pure_component_approval`, `read_pure_component_approval_root`
+and `load_independently_qualified` as `pub` API. `pg_pure_approval_store`
+adapts these to the new `PureApprovalStore` trait in `brassclaw_product_workflow`.
+`POST /api/webchat/v2/pure-component-approvals` is mounted and wired end-to-end
+(handler → facade → store → DB). `authored_monty_catalogue` now calls
+`load_independently_qualified` during catalogue preparation to extend
+`independently_qualified` with general DB-backed pure approvals.
+
+Also fixed in this checkpoint: pre-existing deadpool `Transaction` deref errors
+in `prefix_acceptances`, `prefix_bootstrap_setup` and `llm_config_service`; the
+`chunks_exact_to_as_chunks` clippy lint in `prefix_acceptances`; missing `use`
+imports in the integrated `provider_bootstrap_tests` / `provider_bootstrap_limit_tests`
+test files. Descriptor contract test updated from 130 to 131 routes.
+
+This completes the write path for `pure-component-approval/1`. The remaining
+open items from `docs/reborn/pure-component-review.md#exact-remaining-cutover-contract`
+are the trusted review owner (items 1–6), durable Q1 scheduling (validator_v3
+Steps 3/8–12), and the activation/catalogue publication path.
+
+K3–K7 remain open. Native Codex credential (private draft) is the next K3 item.
+Root retains serial Cargo; source freeze is released.
+
 ## Latest —052/053 accepted together; foreground implementation continues
 
 Checkpoint c68cfe80c41a0e1a0a3dcaca96234624a847eccb is pushed to main.
