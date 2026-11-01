@@ -893,6 +893,11 @@ pub async fn seed_builtin_components(
     // host capabilities and a Tier-0 recipe.
     seed_prefix_bundle_group(&stores).await?;
 
+    // Pass 18 — counterfactual pure-logic helpers C01–C02.
+    // These are pure (no host calls) reusable building blocks needed by several
+    // Recipe families (web-search, code-review, plan-mode, patch flows).
+    seed_counterfactual_helpers(&stores).await?;
+
     crate::system_seed::repair_packaged_legacy_prompts(
         &stores.pool,
         &stores.tenant,
@@ -18944,3 +18949,102 @@ Structured task planning using memory documents. Plans stored at plans/<slug>.md
 - Use memory_write patch mode for step updates (preserves rest of document).
 - v1 mission_create / mission_fire do NOT exist in v3 — use recipe steps instead.
 "#;
+
+// ---------------------------------------------------------------------------
+// Pass 18 — counterfactual pure-logic helpers (C01, C02)
+// ---------------------------------------------------------------------------
+// C01: combine an approved HTTPS origin with a relative path (no host calls).
+// C02: verify patch preconditions before dispatching a file/memory patch.
+// Both are pure-logic components (class 22) with no Tool calls.
+// ---------------------------------------------------------------------------
+
+const PC_API_ABSOLUTE_URL_CONTENT: &str = r##"def build_api_absolute_url(inputs):
+    # Pure-logic HTTPS URL assembly. No host calls, no I/O.
+    origin = inputs["origin"]
+    relative = inputs["relative_path"]
+    if not origin.startswith("https://"):
+        raise ValueError("https_origin_required")
+    authority = origin[8:]
+    _bad_chars_auth = set("/?#@" + chr(92))
+    if not authority or any(c in _bad_chars_auth for c in authority):
+        raise ValueError("invalid_origin")
+    parts = authority.split(":")
+    if len(parts) > 2:
+        raise ValueError("unsupported_origin_profile")
+    name = parts[0]
+    for label in name.split("."):
+        if not label or len(label) > 63 or label[0] == "-" or label[-1] == "-":
+            raise ValueError("invalid_origin_label")
+        if any(c not in "abcdefghijklmnopqrstuvwxyz0123456789-" for c in label):
+            raise ValueError("invalid_origin_character")
+    if len(name) > 253:
+        raise ValueError("invalid_origin_length")
+    if len(parts) == 2:
+        port = parts[1]
+        if not port or any(c not in "0123456789" for c in port) or not 1 <= int(port) <= 65535:
+            raise ValueError("invalid_origin_port")
+    if not relative.startswith("/") or relative.startswith("//"):
+        raise ValueError("relative_api_path_required")
+    _bad_rel = set("#" + chr(92))
+    if any(ord(c) <= 32 or ord(c) >= 127 or c in _bad_rel for c in relative):
+        raise ValueError("invalid_relative_api_path")
+    return origin + relative
+"##;
+
+const PC_PATCH_PRECONDITION_CONTENT: &str = r#"def check_patch_precondition(inputs):
+    # Pure-logic patch pre-check. No host calls, no I/O.
+    source = inputs["source_text"]
+    old = inputs["old_string"]
+    new = inputs["new_string"]
+    replace_all = inputs["replace_all"]
+    if not old or not isinstance(replace_all, bool):
+        raise ValueError("invalid_patch_request")
+    count = source.count(old)
+    if count == 0 or (not replace_all and count != 1):
+        raise ValueError("patch_target_missing_or_ambiguous")
+    if old == new:
+        raise ValueError("patch_has_no_change")
+    return {"old_string": old, "new_string": new,
+            "replace_all": replace_all, "occurrences": count}
+"#;
+
+async fn seed_counterfactual_helpers(
+    stores: &BootstrapStores,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    let tenant = stores.tenant.clone();
+
+    stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "proposed-api-absolute-url",
+                "Pure-logic HTTPS URL assembler (C01). Combines an approved HTTPS origin \
+                 with a relative API path after validating both. No host calls, no I/O. \
+                 Inputs: origin (https://<host> string), relative_path (starts with /). \
+                 Returns the joined absolute URL string. Raises ValueError on any \
+                 invalid origin format or path. Does not grant network access.",
+                PC_API_ABSOLUTE_URL_CONTENT,
+            ),
+            "proposed-api-absolute-url",
+        )
+        .await?;
+
+    stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "proposed-patch-precondition",
+                "Pure-logic patch precondition checker (C02). Verifies that old_string \
+                 appears exactly once in source_text (or N times when replace_all=true), \
+                 that old != new, and that old is nonempty. No host calls, no I/O. \
+                 Inputs: source_text (string), old_string (string), new_string (string), \
+                 replace_all (boolean). Returns {old_string, new_string, replace_all, \
+                 occurrences}. Raises ValueError on ambiguous, absent or unchanged patch.",
+                PC_PATCH_PRECONDITION_CONTENT,
+            ),
+            "proposed-patch-precondition",
+        )
+        .await?;
+
+    Ok(())
+}
