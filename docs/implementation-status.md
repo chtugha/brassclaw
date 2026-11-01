@@ -1,4 +1,38 @@
 
+## 2026-11-01 — Zencoder archived; body correctness batch (L041/L086–L091/C06/C07)
+
+**Commits:**
+- `209445b82` — Pass 19: C06 document-render + C07 typed-json-text pure helpers
+- `65dfbd9b0` — Fix L041/L086/L087/L089 seed bodies; add proposed-plan-target
+- `0f18fdc9e` — Archive Zencoder extension; fix L041/L086-L089/L090/L091 bodies; C06/C07
+
+**Zencoder extension removed:**
+- `zencoder_bootstrap.rs` moved to `docs/archive/zencoder_bootstrap.rs.archived`.
+- `seed_zencoder_extension` call removed from `builtin_bootstrap.rs` Pass 16.
+- `pub mod zencoder_bootstrap` removed from `lib.rs`.
+- `zencoder-api` Tool removed from `component_boot.rs` integrity test and `builtin_bootstrap_seed.rs` expected_tools list.
+- Zero remaining Zencoder references in production Rust code.
+
+**Body correctness fixes:**
+- **L041** (`pc-exec-shell-git-log-n`): renamed export `usage_l041`; input key `n`→`count`; silent default-20 replaced with `raise ValueError`.
+- **proposed-plan-target**: new pure helper seeded before plan-create (Pass 14). Validates slug, returns `plans/<slug>.md`.
+- **L086/L087**: receive validated `target` path, re-validate regex before dispatch. No more f-string slug interpolation.
+- **L089** (`pc-plan-status-update`): replaced slug-only patch monolith with spec-compliant pure marker selector. Parses `## Steps` section, validates transitions, returns `{old_string, new_string, replace_all:False}` for C02→L030.
+- **L090** (`pc-hash-changed`): proper SHA-256 hex validation; nullable `prior_hash`; `usage_hash_changed(inputs)` export.
+- **L091** (`pc-format-component-header`): name/label character validation per spec; uses `concat!()` to avoid raw-string terminator collisions.
+- **C06** (`proposed-document-render`): `render_document(inputs)` — validates single-line header, joins with body.
+- **C07** (`proposed-typed-json-text`): `typed_json_text(inputs)` — `json.dumps` with `ensure_ascii=False, allow_nan=False`.
+
+**Remaining open items (unchanged):**
+- L010 (`pc-exec-file-exists`) blocked on typed `not_found` contract.
+- `run_q1_validation` legacy path removal — Step 6 completion gate.
+- Validator Steps 7–12 (class routes, behavioral evidence, human Q2, production cutover).
+- General pure approval, K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences.
+
+---
+
+
+
 ## 2026-11-01 — Pass 18: C01–C05 counterfactual pure helpers seeded
 
 **Commits:**
