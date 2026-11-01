@@ -44,6 +44,8 @@ mod inner {
     use crate::pg_python_code_store::{NewPgPythonCode, PgPythonCodeStore};
     use crate::pg_recipe_store::{NewPgRecipe, PgRecipeStore};
     use crate::validation_queue::ValidationQueueStore;
+    #[cfg(feature = "skills-db")]
+    use crate::installed_monty_catalogue::ValidatorServiceBridge;
 
     // Only authorable constructor fields cross this boundary. Scope, identity,
     // source, status, approval, tier and integrity checksums belong to the host.
@@ -146,6 +148,18 @@ mod inner {
                 tenant_id,
                 agent_id,
             }
+        }
+
+        /// Attach a [`ValidatorServiceBridge`] so that `create_and_submit` on
+        /// the recipe/python_code stores fires a Q1 kick after each commit
+        /// (PKG-C+ wiring). No-op when the `skills-db` feature is inactive.
+        #[cfg(feature = "skills-db")]
+        pub(crate) fn with_validator_service(
+            mut self,
+            bridge: Arc<ValidatorServiceBridge>,
+        ) -> Self {
+            self.queue_store = self.queue_store.with_validator_service(bridge);
+            self
         }
 
         /// Insert a recipe-class (21) proposal row and enqueue it for Q1.

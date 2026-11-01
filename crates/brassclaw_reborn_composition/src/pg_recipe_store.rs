@@ -401,6 +401,10 @@ impl PgRecipeStore {
                 reason: e.to_string(),
             })?;
         transaction.commit().await.map_err(map_pg)?;
+        // PKG-C+ fire-and-forget retained Q1 kick after commit — same path as
+        // ValidationQueueStore::submit(). No-op when no bridge is wired.
+        #[cfg(feature = "skills-db")]
+        queue_store.fire_q1_kick_if_wired(&scope, id, 21);
         Ok(id)
     }
 

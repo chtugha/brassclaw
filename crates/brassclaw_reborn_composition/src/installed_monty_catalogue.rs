@@ -152,7 +152,6 @@ pub(crate) struct InstalledMontyCatalogue {
     captured_prefixes: std::sync::Mutex<BTreeMap<String, std::sync::Weak<TaskCatalogue>>>,
     tool_credential_sources:
         std::sync::OnceLock<Arc<crate::task_tool_credentials::ToolCredentialSourceOwner>>,
-    #[allow(dead_code)] // wired by PKG-B; consumed by PKG-C validator dispatch
     pub(crate) validator_service: std::sync::OnceLock<ValidatorServiceBridge>,
     child_tasks: child_tasks::ChildTasks,
     pub(crate) discovery_publication: tokio::sync::Mutex<()>,
@@ -218,7 +217,6 @@ impl InstalledMontyCatalogue {
     /// passing into `ValidationQueueStore::with_validator_service`.
     /// Returns `None` when `bind_validator_service` has not yet been called
     /// (e.g. in tests or before the global Monty driver is started).
-    #[allow(dead_code)] // wired by PKG-C PgCompositionPort integration
     pub(crate) fn validator_bridge(&self) -> Option<std::sync::Arc<ValidatorServiceBridge>> {
         self.validator_service.get().map(|b| {
             std::sync::Arc::new(ValidatorServiceBridge {

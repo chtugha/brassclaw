@@ -1677,9 +1677,9 @@ async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
             pc_row(
                 &tenant,
                 "pc-exec-read-file",
-                "Orchestrator executor: calls host.<tool> to read a file via \
-                 builtin.read_file. Input: path (string), range (optional string, \
-                 e.g. '1-50'). Output: tool result dict {content, line_count, path}.",
+                "Preloadable usage_l001(inputs): reads a file via host.read_file. \
+                 Typed input: path (nonempty string). Returns the read_file result: \
+                 content, path, total_lines, lines_shown, truncated_by_default.",
                 PC_EXEC_READ_FILE_CONTENT,
             ),
             "pc-exec-read-file",
@@ -1690,9 +1690,9 @@ async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
             pc_row(
                 &tenant,
                 "pc-exec-write-file",
-                "Orchestrator executor: calls host.<tool> to write a file via \
-                 builtin.write_file. Input: path (string), content (string). Output: \
-                 tool result dict {path, bytes_written}.",
+                "Preloadable usage_l002(inputs): writes a file via host.write_file. \
+                 Typed inputs: path (nonempty string), content (string, may be empty). \
+                 Returns the write acknowledgement.",
                 PC_EXEC_WRITE_FILE_CONTENT,
             ),
             "pc-exec-write-file",
@@ -1703,9 +1703,9 @@ async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
             pc_row(
                 &tenant,
                 "pc-exec-list-dir",
-                "Orchestrator executor: calls host.<tool> to list a directory via \
-                 builtin.list_dir. Input: path (string, omit for workspace root), \
-                 recursive (bool, default false), max_depth (int, optional).",
+                "Preloadable usage_l003(inputs): lists a directory via host.list_dir. \
+                 Typed inputs: path (nonempty string), recursive (boolean), \
+                 max_depth (nonneg integer). Returns path, entries, count, truncated.",
                 PC_EXEC_LIST_DIR_CONTENT,
             ),
             "pc-exec-list-dir",
@@ -4316,38 +4316,25 @@ fn recipe_row(
     }
 }
 
-const PC_EXEC_READ_FILE_CONTENT: &str = r#"# Orchestrator executor body. host.<tool> is provided by the runtime sandbox.
-# IBS bakes in path and range values as {{vars.slot0}} / {{vars.slot1}} before execution.
-# No I/O, no imports — pure orchestrator dispatch.
-_path = "{{vars.slot0}}"
-_range = "{{vars.slot1}}"
-_params = {"path": _path}
-if _range and _range != "":
-    _params["range"] = _range
-result = host.read_file(**_params)
+// L001 migration: preloadable function format replaces legacy slot-substitution body.
+// host.read_file receives the path from typed inputs; no slot markers or range hack.
+const PC_EXEC_READ_FILE_CONTENT: &str = r#"def usage_l001(inputs):
+    result = host.read_file(path=inputs["path"])
+    return result
 "#;
 
-const PC_EXEC_WRITE_FILE_CONTENT: &str = r#"# Orchestrator executor body. host.<tool> is provided by the runtime sandbox.
-# IBS bakes in path and content as {{vars.slot0}} / {{vars.slot1}} before execution.
-# No I/O, no imports — pure orchestrator dispatch.
-_path = "{{vars.slot0}}"
-_content = "{{vars.slot1}}"
-result = host.write_file(path=_path, content=_content)
+// L002 migration: preloadable function format replaces legacy slot-substitution body.
+// host.write_file receives path/content from typed inputs; no slot markers.
+const PC_EXEC_WRITE_FILE_CONTENT: &str = r#"def usage_l002(inputs):
+    result = host.write_file(path=inputs["path"], content=inputs["content"])
+    return result
 "#;
 
-const PC_EXEC_LIST_DIR_CONTENT: &str = r#"# Orchestrator executor body. host.<tool> provided by runtime sandbox.
-# IBS bakes in path/recursive/max_depth as slot0/slot1/slot2.
-_path = "{{vars.slot0}}"
-_recursive = {{vars.slot1}}
-_max_depth = {{vars.slot2}}
-_params = {}
-if _path and _path != "":
-    _params["path"] = _path
-if _recursive:
-    _params["recursive"] = True
-if _max_depth and _max_depth > 0:
-    _params["max_depth"] = _max_depth
-result = host.list_dir(**_params)
+// L003 migration: preloadable function format replaces legacy slot-substitution body.
+// host.list_dir receives path/recursive/max_depth from typed inputs; no slot markers.
+const PC_EXEC_LIST_DIR_CONTENT: &str = r#"def usage_l003(inputs):
+    result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_depth=inputs["max_depth"])
+    return result
 "#;
 
 const PC_EXEC_GLOB_CONTENT: &str = r#"# Orchestrator executor body.

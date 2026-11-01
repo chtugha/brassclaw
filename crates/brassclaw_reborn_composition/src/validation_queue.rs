@@ -211,6 +211,51 @@ impl ValidationQueueStore {
         self
     }
 
+    /// Fire a detached Q1 kick for a component that was just committed to the
+    /// queue via `submit_in_transaction` (i.e. from `create_and_submit`). This
+    /// is identical to the kick inside `submit()` and must be called after the
+    /// enclosing transaction has committed. No-op when no bridge is wired.
+    #[cfg(feature = "skills-db")]
+    pub(crate) fn fire_q1_kick_if_wired(
+        &self,
+        scope: &ComponentScope,
+        component_id: Uuid,
+        component_class: i32,
+    ) {
+        if let Some(bridge) = &self.validator_bridge {
+            let pool = Arc::clone(&self.pool);
+            let scope = scope.clone();
+            let service = bridge.service.clone();
+            let ports_factory = Arc::clone(&bridge.ports_factory);
+            let queue_store = Self {
+                pool: Arc::clone(&self.pool),
+                reject_threshold: self.reject_threshold,
+                #[cfg(feature = "postgres")]
+                basic_prompt_store: None,
+                validator_bridge: None,
+            };
+            // Default execution limits are valid by construction; the static
+            // expect is infallible given the default MontyExecutionLimits.
+            let preparation = brassclaw_monty_host::utility::UtilityLimits::from_execution(
+                brassclaw_host_api::MontyExecutionLimits::default(),
+            )
+            .expect("default MontyExecutionLimits are always valid");
+            tokio::spawn(async move {
+                let _ = crate::q1_orchestrator::run_q1_validation_retained(
+                    &pool,
+                    &scope,
+                    component_id,
+                    component_class,
+                    &queue_store,
+                    preparation,
+                    Some(&service),
+                    Some(&ports_factory),
+                )
+                .await;
+            });
+        }
+    }
+
     /// Submit a component to the Q1 queue (state 1).
     ///
     /// `proposed_payload` is `Some` for upgrades (edit of a validated

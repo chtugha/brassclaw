@@ -3374,7 +3374,7 @@ pub async fn build_reborn_runtime(
     // Wire PgSempaiProposalSink when Postgres pool is available.
     // Routes Sempai-proposed component updates and intent examples to Q1
     // validation queue so operators can review before they take effect.
-    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider", not(feature = "skills-db")))]
     let proposal_sink: Option<Arc<dyn brassclaw_interceptor::SempaiProposalSink>> =
         services.pg_pool.as_ref().map(|pool| {
             Arc::new(crate::sempai_proposal_sink::PgSempaiProposalSink::new(
@@ -3382,6 +3382,24 @@ pub async fn build_reborn_runtime(
                 validated_identity.tenant_id.as_str(),
                 validated_identity.agent_id.as_str(),
             )) as Arc<dyn brassclaw_interceptor::SempaiProposalSink>
+        });
+
+    // When skills-db is active, attach the validator bridge so that Sempai
+    // proposals trigger Q1 via the retained IBS/Recipe path (PKG-C+ wiring).
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider", feature = "skills-db"))]
+    let proposal_sink: Option<Arc<dyn brassclaw_interceptor::SempaiProposalSink>> =
+        services.pg_pool.as_ref().map(|pool| {
+            let sink = crate::sempai_proposal_sink::PgSempaiProposalSink::new(
+                Arc::clone(pool),
+                validated_identity.tenant_id.as_str(),
+                validated_identity.agent_id.as_str(),
+            );
+            let sink = if let Some(bridge) = installed_catalogue.validator_bridge() {
+                sink.with_validator_service(bridge)
+            } else {
+                sink
+            };
+            Arc::new(sink) as Arc<dyn brassclaw_interceptor::SempaiProposalSink>
         });
 
     #[cfg(all(
