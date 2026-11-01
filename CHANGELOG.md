@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Retire `brassclaw_engine`'s v2-compat `SkillTracker` bridge: remove the
+  `V2SkillMetadata` / `CodeSnippet` dependency from the engine crate, replace
+  `__record_skill_usage__` with a no-op (the `PgThreadEngineStore` always
+  stubbed `load_memory_doc` / `save_memory_doc` so the tracker was dead in
+  production), and drop the `v2-skill-tracker` feature and `v2-compat` feature
+  from `brassclaw_engine`'s `brassclaw_skills` dependency. The `#![allow(deprecated)]`
+  suppression in `brassclaw_skills/src/lib.rs` is removed; `v2.rs` now carries
+  its own scoped allow. Skill telemetry lives in `reborn_skills` DB columns.
+
 - Wire `POST /api/webchat/v2/pure-component-approvals` end-to-end: add
   `PureApprovalStore` trait and `submit_pure_component_approval` (default 501)
   to `RebornServicesApi`; back it with `PgPureApprovalStore` in

@@ -3,16 +3,19 @@
 //! # Feature gate
 //!
 //! This module is gated on the `v2-compat` Cargo feature.
-//! These are bridge types for the MemoryDoc-backed v2 engine path
-//! (`brassclaw_engine::memory::skill_tracker`). They are serialized into
-//! `MemoryDoc.metadata` JSON. In v3, skill telemetry is stored in
-//! `reborn_skills` columns (`usage_count`, `success_count`, `failure_count`,
-//! `wilson_lower`, `confidence`). Enable only for the legacy `skill_tracker`
-//! path; do not add new consumers.
+//! These are bridge types for the MemoryDoc-backed v2 skill path.  In v3,
+//! skill telemetry is stored in `reborn_skills` columns (`usage_count`,
+//! `success_count`, `failure_count`, `wilson_lower`, `confidence`).
+//! The `brassclaw_engine` crate no longer depends on this module; it is
+//! retained only for historical compatibility.  Do not add new consumers.
 //!
 //! These types extend the v1 skill model with capabilities needed by the v2
 //! engine: executable code snippets, usage/confidence metrics, and versioning.
-//! They are serialized into `MemoryDoc.metadata` JSON in the engine crate.
+//! They are serialized into `MemoryDoc.metadata` JSON in the legacy engine crate.
+
+// `CodeSnippet` is deprecated; `SkillRevision` / `V2SkillMetadata` reference it
+// in struct fields.  Suppress the warning within this bridge module only.
+#![allow(deprecated)]
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

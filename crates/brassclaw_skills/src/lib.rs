@@ -1,6 +1,3 @@
-// Allow deprecated DocType during the migration to class-code component tables.
-// v2.rs uses DocType as a bridge type; retained until the v2 module is retired.
-#![allow(deprecated)]
 //! Skill component types, validation, and DB-backed storage for BrassClaw.
 //!
 //! The v1 SKILL.md subsystem (filesystem install/remove, host-FS registry

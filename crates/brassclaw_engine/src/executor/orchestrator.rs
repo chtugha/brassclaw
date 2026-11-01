@@ -2559,35 +2559,21 @@ async fn handle_list_skills(
 
 /// Handle `__record_skill_usage__(doc_id, success)`.
 ///
-/// Records that a skill was used in this thread. Called by the Python
-/// orchestrator after skill-assisted execution completes.
+/// The v2 MemoryDoc-backed telemetry path has been retired; this is now a
+/// no-op.  Skill telemetry is stored in `reborn_skills` (`usage_count`,
+/// `success_count`, `failure_count`) and updated by the Validator/reward path
+/// in `brassclaw_reborn_composition`.  See `skill_tracker.rs` for the
+/// migration note.
 async fn handle_record_skill_usage(
     args: &[MontyObject],
-    store: Option<&Arc<dyn Store>>,
+    _store: Option<&Arc<dyn Store>>,
 ) -> ExtFunctionResult {
-    let Some(store) = store else {
-        return ExtFunctionResult::Return(MontyObject::none());
-    };
-
     let doc_id_str = args.first().map(monty_to_string).unwrap_or_default();
     let success = args
         .get(1)
         .map(|o| o.as_ref().as_bool() == Some(true))
         .unwrap_or(false);
-
-    let Ok(uuid) = uuid::Uuid::parse_str(&doc_id_str) else {
-        debug!("__record_skill_usage__: invalid doc_id: {doc_id_str}");
-        return ExtFunctionResult::Return(MontyObject::none());
-    };
-
-    let tracker = crate::memory::SkillTracker::new(Arc::clone(store));
-    if let Err(e) = tracker
-        .record_usage(crate::types::memory::DocId(uuid), success)
-        .await
-    {
-        debug!("__record_skill_usage__: failed: {e}");
-    }
-
+    debug!("__record_skill_usage__: no-op (doc_id={doc_id_str}, success={success})");
     ExtFunctionResult::Return(MontyObject::none())
 }
 
