@@ -25,11 +25,13 @@ use super::pg_retained_q1::{
 
 /// Expectations are authoring data. Only comparisons with executor-owned
 /// observations determine the persisted result, including negative cases.
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 pub(crate) struct WorkflowStepExpectation {
     pub(crate) inputs: Value,
     pub(crate) tool: Option<(Value, PortAnswer)>,
     pub(crate) result: ExpectedStepResult,
 }
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 pub(crate) enum ExpectedWorkflowTermination {
     CompletedSteps,
     FailedStep {
@@ -40,6 +42,7 @@ pub(crate) enum ExpectedWorkflowTermination {
 
 /// Private construction retains the exact inspected program and actual derived
 /// evidence. No arbitrary JSON, approval flag or latest-version lookup enters.
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 pub(crate) struct WorkflowReview {
     inspected: Arc<InspectedRetainedProgram>,
     id: Uuid,
@@ -49,6 +52,7 @@ pub(crate) struct WorkflowReview {
     bytes: String,
     checksum: String,
 }
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 impl WorkflowReview {
     pub(crate) fn structural(
         inspected: Arc<InspectedRetainedProgram>,
@@ -280,6 +284,7 @@ impl WorkflowReview {
     }
 }
 
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 pub(crate) async fn persist_workflow_review(
     pool: &PgPool,
     review: Arc<WorkflowReview>,
@@ -291,6 +296,7 @@ pub(crate) async fn persist_workflow_review(
             retained: review,
         })
 }
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 async fn persist(pool: &PgPool, review: &WorkflowReview) -> Result<(), StructuralReviewFailure> {
     let mut client = pool
         .get()
@@ -345,9 +351,11 @@ async fn persist(pool: &PgPool, review: &WorkflowReview) -> Result<(), Structura
     }
     tx.commit().await.map_err(StructuralReviewFailure::Database)
 }
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 fn hex(checksum: [u8; 32]) -> String {
     checksum.iter().map(|byte| format!("{byte:02x}")).collect()
 }
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 fn digest(bytes: &str) -> String {
     format!("{:x}", Sha256::digest(bytes.as_bytes()))
 }

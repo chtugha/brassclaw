@@ -20,8 +20,10 @@ use sha2::{Digest, Sha256};
 use tokio_postgres::IsolationLevel;
 use uuid::Uuid;
 
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 const MAX_REVIEW_BYTES: usize = 64 * 1024 * 1024;
 
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 #[derive(thiserror::Error)]
 pub(crate) enum StructuralReviewFailure {
     #[error("retained structural review: {0}")]
@@ -40,10 +42,12 @@ impl std::fmt::Debug for StructuralReviewFailure {
         f.write_str(&self.to_string())
     }
 }
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 fn database(error: tokio_postgres::Error) -> StructuralReviewFailure {
     StructuralReviewFailure::Database(error)
 }
 
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 struct Record {
     id: Uuid,
     bytes: String,
@@ -52,10 +56,12 @@ struct Record {
 
 /// Privately produced actual observations, retaining their exact selected graph.
 /// Evidence IDs identify Q1 records only, never combination approval or grants.
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 pub(crate) struct StructuralReviewSet {
     inspected: Arc<InspectedRetainedProgram>,
     records: BTreeMap<Uuid, Record>,
 }
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 impl StructuralReviewSet {
     pub(crate) fn prepare(
         inspected: Arc<InspectedRetainedProgram>,
@@ -159,9 +165,11 @@ impl StructuralReviewSet {
         self.records.get(&skill).map(|record| record.bytes.as_str())
     }
 }
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 fn digest(bytes: &str) -> String {
     format!("{:x}", Sha256::digest(bytes.as_bytes()))
 }
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 fn hex(checksum: [u8; 32]) -> String {
     checksum.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -170,6 +178,7 @@ fn hex(checksum: [u8; 32]) -> String {
 /// Retry this same set; never manufacture a new successful Q1 record on recovery.
 pub(crate) struct RetainedReviewPersistenceError<T> {
     pub(crate) failure: StructuralReviewFailure,
+    #[allow(dead_code)] // wired by validator Step 6/9 admission path
     pub(crate) retained: Arc<T>,
 }
 impl<T> std::fmt::Debug for RetainedReviewPersistenceError<T> {
@@ -187,9 +196,11 @@ impl<T> std::error::Error for RetainedReviewPersistenceError<T> {
         Some(&self.failure)
     }
 }
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 pub(crate) type StructuralReviewPersistenceError =
     RetainedReviewPersistenceError<StructuralReviewSet>;
 
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 pub(crate) async fn persist_structural_reviews(
     pool: &PgPool,
     reviews: Arc<StructuralReviewSet>,
@@ -202,6 +213,7 @@ pub(crate) async fn persist_structural_reviews(
         })
 }
 
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 async fn persist(
     pool: &PgPool,
     inspected: &InspectedRetainedProgram,
@@ -273,10 +285,12 @@ async fn persist(
 
 /// Authored expected values/classification, not observations or approval flags.
 /// The producer compares them to the actual executor-owned completed step.
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 pub(crate) enum ExpectedStepResult {
     Return(serde_json::Value),
     Failure(RetainedStepFailure),
 }
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 pub(crate) struct BehavioralExpectation {
     pub(crate) inputs: serde_json::Value,
     pub(crate) arguments: serde_json::Value,
@@ -287,10 +301,12 @@ pub(crate) struct BehavioralExpectation {
 /// One actual verification case per selected usage, including repeated uses.
 /// This does not establish whole-Recipe completion, semantic consistency,
 /// authenticated human Q2, controlled system-seed provenance or activation.
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 pub(crate) struct BehavioralReviewSet {
     inspected: Arc<InspectedRetainedProgram>,
     records: BTreeMap<Uuid, Record>,
 }
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 impl BehavioralReviewSet {
     pub(crate) fn prepare(
         execution: &RetainedRecipeExecution,
@@ -452,6 +468,7 @@ impl BehavioralReviewSet {
     }
 }
 
+#[allow(dead_code)] // wired by validator Step 6/9 admission path
 pub(crate) async fn persist_behavioral_reviews(
     pool: &PgPool,
     reviews: Arc<BehavioralReviewSet>,

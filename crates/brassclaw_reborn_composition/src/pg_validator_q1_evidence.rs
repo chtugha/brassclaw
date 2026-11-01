@@ -37,10 +37,7 @@ use brassclaw_engine::memory::retained_validator::ObservedSubjectValidatorChecks
 use brassclaw_pg::PgPool;
 use brassclaw_skills::{
     component_revision::REVISION_LIMITS,
-    review_submission_store::{
-        RetainedValidatorSubject,
-        selection::RetainedValidatorSelection,
-    },
+    review_submission_store::{RetainedValidatorSubject, selection::RetainedValidatorSelection},
     value_contract::validate_data_bounds,
 };
 use serde_json::json;
@@ -48,10 +45,12 @@ use sha2::{Digest, Sha256};
 use tokio_postgres::IsolationLevel;
 use uuid::Uuid;
 
+#[allow(dead_code)] // wired by validator Step 12 durable admission path
 const MAX_EVIDENCE_BYTES: usize = 8 * 1024 * 1024;
 
+#[allow(dead_code)] // wired by validator Step 12 durable admission path
 #[derive(Debug, thiserror::Error)]
-pub enum ValidatorQ1EvidenceError {
+pub(crate) enum ValidatorQ1EvidenceError {
     #[error("validator Q1 evidence: {0}")]
     Invalid(&'static str),
     #[error("validator Q1 evidence database operation failed")]
@@ -61,9 +60,11 @@ pub enum ValidatorQ1EvidenceError {
     #[error("validator Q1 evidence integrity check failed")]
     Integrity,
 }
+#[allow(dead_code)] // wired by validator Step 12 durable admission path
 fn invalid(reason: &'static str) -> ValidatorQ1EvidenceError {
     ValidatorQ1EvidenceError::Invalid(reason)
 }
+#[allow(dead_code)] // wired by validator Step 12 durable admission path
 fn db(error: tokio_postgres::Error) -> ValidatorQ1EvidenceError {
     ValidatorQ1EvidenceError::Database(error)
 }
@@ -74,12 +75,14 @@ fn db(error: tokio_postgres::Error) -> ValidatorQ1EvidenceError {
 /// This reference may be used as the `q1_ref` in a later
 /// `PureComponentApprovalDeclaration` or `skill-association-approval/1`, but
 /// only after the complete trusted review path is satisfied.
+#[allow(dead_code)] // wired by validator Step 12 durable admission path
 #[derive(Clone, Copy, Debug)]
-pub struct PersistedValidatorQ1Evidence {
+pub(crate) struct PersistedValidatorQ1Evidence {
     evidence_id: Uuid,
 }
 impl PersistedValidatorQ1Evidence {
-    pub fn evidence_id(&self) -> Uuid {
+    #[allow(dead_code)] // wired by validator Step 12 durable admission path
+    pub(crate) fn evidence_id(&self) -> Uuid {
         self.evidence_id
     }
 }
@@ -102,7 +105,8 @@ impl PersistedValidatorQ1Evidence {
 /// - `selection`: sealed `RetainedValidatorSelection` from the selection store.
 /// - `checks`: sealed `ObservedSubjectValidatorChecks` from the executor observer.
 /// - `task_handle`: the UUID identifying the completed task (not caller-supplied).
-pub async fn persist_validator_q1_evidence(
+#[allow(dead_code)] // wired by validator Step 12 durable admission path
+pub(crate) async fn persist_validator_q1_evidence(
     pool: &PgPool,
     subject: &RetainedValidatorSubject,
     selection: &RetainedValidatorSelection,
@@ -130,9 +134,7 @@ pub async fn persist_validator_q1_evidence(
         hasher.update(b"validator-q1-evidence/1:");
         hasher.update(subject.submission_id().as_bytes());
         hasher.update(b":validator:");
-        hasher.update(
-            Sha256::digest(selection.validator_bytes().as_bytes()).as_slice(),
-        );
+        hasher.update(Sha256::digest(selection.validator_bytes().as_bytes()).as_slice());
         let hash: [u8; 32] = hasher.finalize().into();
         // Build a deterministic UUID v5-like from the hash bytes.
         // We use the first 16 bytes, setting version=5 and variant bits per RFC.
@@ -152,10 +154,11 @@ pub async fn persist_validator_q1_evidence(
         .ok_or_else(|| invalid("observation report is missing required aggregation.pass field"))?;
 
     // Build the evidence record.
-    let validator_selection_checksum: String = Sha256::digest(selection.validator_bytes().as_bytes())
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
+    let validator_selection_checksum: String =
+        Sha256::digest(selection.validator_bytes().as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
     let record = json!({
         "format": "component-review-evidence/1",
         "evidence_id": evidence_id,
@@ -171,19 +174,23 @@ pub async fn persist_validator_q1_evidence(
         "report": report,
     });
 
-    validate_data_bounds(&record, REVISION_LIMITS).map_err(|_| {
-        invalid("Q1 evidence record exceeds technical data contract limits")
-    })?;
+    validate_data_bounds(&record, REVISION_LIMITS)
+        .map_err(|_| invalid("Q1 evidence record exceeds technical data contract limits"))?;
     let bytes = record.to_string();
     if bytes.len() > MAX_EVIDENCE_BYTES {
-        return Err(invalid("serialized Q1 evidence record exceeds technical capacity"));
+        return Err(invalid(
+            "serialized Q1 evidence record exceeds technical capacity",
+        ));
     }
     let checksum: String = Sha256::digest(bytes.as_bytes())
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
 
-    let mut client = pool.get().await.map_err(ValidatorQ1EvidenceError::Connection)?;
+    let mut client = pool
+        .get()
+        .await
+        .map_err(ValidatorQ1EvidenceError::Connection)?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -211,9 +218,7 @@ pub async fn persist_validator_q1_evidence(
         )
         .await
         .map_err(db)?;
-    if stored.get::<_, &str>(0) != bytes.as_str()
-        || stored.get::<_, &str>(1) != checksum.as_str()
-    {
+    if stored.get::<_, &str>(0) != bytes.as_str() || stored.get::<_, &str>(1) != checksum.as_str() {
         return Err(ValidatorQ1EvidenceError::Integrity);
     }
 
