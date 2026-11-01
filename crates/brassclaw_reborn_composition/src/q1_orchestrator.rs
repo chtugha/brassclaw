@@ -106,6 +106,8 @@ pub enum Q1Error {
     AmbiguousValidator { class_code: i16 },
     #[error("validator Recipe {recipe_id} is not a supported approved PythonCode program")]
     InvalidValidator { recipe_id: Uuid },
+    #[error("retained Q1 admission error: {0}")]
+    Admission(String),
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +459,327 @@ pub async fn run_q1_validation(
             .gate1_fail_reviewed(scope, &review, &errors)
             .await?;
         Ok(Q1Outcome::Failed { errors })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Retained IBS/Recipe path
+// ---------------------------------------------------------------------------
+
+/// Schedule a Q1 validator review through the retained IBS/Recipe path.
+/// This replaces `run_validator_python_with_limits` for components whose
+/// structural validator Recipe drafts are already seeded in the revision store.
+///
+/// Returns `Q1Outcome::Deferred` when:
+/// - The revision store has no structural validator draft for `class_code`
+/// - The `ServiceClient` is not yet wired (None)
+/// - No active submission exists in the review-submission store for `component_id`
+/// - The installed worker binary is unavailable
+///
+/// Returns `Q1Outcome::Passed` / `Q1Outcome::Failed` only when the complete
+/// IBS path executed and `verify_receipt` persisted evidence without error.
+#[cfg(feature = "skills-db")]
+#[allow(dead_code)] // wired by validator Step 6 capture_internal routing
+#[allow(clippy::too_many_arguments)]
+pub async fn run_q1_validation_retained(
+    pool: &PgPool,
+    scope: &ComponentScope,
+    component_id: Uuid,
+    class_code: i32,
+    queue_store: &ValidationQueueStore,
+    preparation: brassclaw_monty_host::utility::UtilityLimits,
+    service: Option<&brassclaw_monty_host::service::ServiceClient>,
+    ports_factory: Option<
+        &std::sync::Arc<
+            dyn Fn() -> std::sync::Arc<dyn brassclaw_monty_host::service::TaskPorts> + Send + Sync,
+        >,
+    >,
+) -> Result<Q1Outcome, Q1Error> {
+    use std::sync::Arc;
+
+    use brassclaw_engine::{
+        executor::{retained_recipe::RetainedProgram, retained_source::InspectedRetainedProgram},
+        memory::{
+            retained_inputs::prepare_retained_unbound_program,
+            retained_instruction::{WorkflowClass, compile_retained_recipe},
+        },
+    };
+    use brassclaw_monty_host::service::TaskOutcome;
+    use brassclaw_skills::{
+        component_revision::{REVISION_LIMITS, RetainedComponentSnapshot},
+        review_submission_store::PgReviewSubmissionStore,
+        revision_store::PgComponentRevisionStore,
+        validator_components::{
+            structural_validator_aggregate_id, structural_validator_collect_id,
+            structural_validator_pc_id, structural_validator_recipe_id,
+        },
+    };
+
+    // Step 1 — require wired service; defer if not yet available.
+    let (service, ports_factory) = match (service, ports_factory) {
+        (Some(s), Some(p)) => (s, p),
+        _ => {
+            return Ok(Q1Outcome::deferred("retained path not yet wired"));
+        }
+    };
+
+    // Step 2 — convert class_code and check if the structural validator revision
+    // draft is seeded for this class.
+    let class_i16: i16 = class_code
+        .try_into()
+        .map_err(|_| Q1Error::InvalidClassCode { class_code })?;
+
+    let revision_store = PgComponentRevisionStore::new(Arc::new(pool.clone()));
+    let recipe_id = structural_validator_recipe_id(class_i16);
+    let Some((_, recipe_version)) = revision_store
+        .read_allocation_head(recipe_id)
+        .await
+        .map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?
+    else {
+        return Ok(Q1Outcome::deferred(format!(
+            "no structural validator revision draft for class {class_code}"
+        )));
+    };
+
+    // Step 3 — read all 4 drafts and build a RetainedComponentSnapshot.
+    let pc_id = structural_validator_pc_id(class_i16);
+    let collect_id = structural_validator_collect_id(class_i16);
+    let aggregate_id = structural_validator_aggregate_id(class_i16);
+
+    let pc_version = revision_store
+        .read_allocation_head(pc_id)
+        .await
+        .map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?
+        .map(|(_, v)| v)
+        .ok_or_else(|| Q1Error::Db {
+            reason: format!("structural validator PC draft missing for class {class_code}"),
+        })?;
+    let collect_version = revision_store
+        .read_allocation_head(collect_id)
+        .await
+        .map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?
+        .map(|(_, v)| v)
+        .ok_or_else(|| Q1Error::Db {
+            reason: format!("structural validator collect draft missing for class {class_code}"),
+        })?;
+    let aggregate_version = revision_store
+        .read_allocation_head(aggregate_id)
+        .await
+        .map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?
+        .map(|(_, v)| v)
+        .ok_or_else(|| Q1Error::Db {
+            reason: format!("structural validator aggregate draft missing for class {class_code}"),
+        })?;
+
+    let recipe_rev = revision_store
+        .read_revision(recipe_id, recipe_version)
+        .await
+        .map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?;
+    let pc_rev = revision_store
+        .read_revision(pc_id, pc_version)
+        .await
+        .map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?;
+    let collect_rev = revision_store
+        .read_revision(collect_id, collect_version)
+        .await
+        .map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?;
+    let aggregate_rev = revision_store
+        .read_revision(aggregate_id, aggregate_version)
+        .await
+        .map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?;
+
+    let snapshot = Arc::new(
+        RetainedComponentSnapshot::new(
+            &[recipe_id],
+            vec![recipe_rev, pc_rev, collect_rev, aggregate_rev],
+        )
+        .map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?,
+    );
+
+    // Step 4 — compile, prepare and inspect the retained program.
+    let instruction = compile_retained_recipe(
+        snapshot,
+        recipe_id,
+        "selected",
+        WorkflowClass::Deterministic,
+    )
+    .map_err(|e| Q1Error::Db {
+        reason: format!("compile_retained_recipe: {e}"),
+    })?;
+    let program = prepare_retained_unbound_program(instruction).map_err(|e| Q1Error::Db {
+        reason: format!("prepare_retained_unbound_program: {e}"),
+    })?;
+
+    let worker = match brassclaw_monty_host::process::installed_worker() {
+        Ok(w) => w,
+        Err(_) => {
+            return Ok(Q1Outcome::deferred("worker image not available"));
+        }
+    };
+
+    let inspected = Arc::new(
+        InspectedRetainedProgram::inspect_with_limits(
+            RetainedProgram::Unbound(Arc::new(program)),
+            &worker,
+            preparation,
+        )
+        .await
+        .map_err(|e| Q1Error::Db {
+            reason: format!("InspectedRetainedProgram::inspect_with_limits: {e}"),
+        })?,
+    );
+
+    // Step 5 — find the most-recent active submission for this component and
+    // read its sealed validator subject.  A missing submission is expected
+    // until the operator has explicitly submitted the component for review via
+    // the retained authoring path; defer rather than error.
+    //
+    // We query reborn_component_review_submissions directly by component_id
+    // because PgReviewSubmissionStore only provides lookup-by-submission-id.
+    let submission_id: Option<Uuid> = {
+        let client = pool.get().await.map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?;
+        client
+            .query_opt(
+                "SELECT submission_id FROM reborn_component_review_submissions \
+                 WHERE component_id=$1 ORDER BY recorded_at DESC LIMIT 1",
+                &[&component_id],
+            )
+            .await
+            .map_err(q1_db)?
+            .map(|row| row.get(0))
+    };
+    let submission_id = match submission_id {
+        Some(id) => id,
+        None => {
+            return Ok(Q1Outcome::deferred(format!(
+                "no active submission for component {component_id}"
+            )));
+        }
+    };
+
+    // Capture the queue candidate to record the result later, mirroring the
+    // existing run_q1_validation flow (state check + field extraction).
+    let review = match queue_store.capture_q1_candidate(scope, component_id).await {
+        Ok(review) => review,
+        Err(crate::validation_queue::ValidationQueueError::ComponentMissing { .. }) => {
+            return Ok(Q1Outcome::deferred(format!(
+                "component {component_id} not found in scope"
+            )));
+        }
+        Err(error) => return Err(error.into()),
+    };
+    if review.class_code() != class_i16 {
+        return Err(
+            crate::validation_queue::ValidationQueueError::ReviewChanged { component_id }.into(),
+        );
+    }
+
+    // Read the sealed validator subject from the review-submission store.
+    let subject = {
+        let mut client = pool.get().await.map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .map_err(q1_db)?;
+        let subject = PgReviewSubmissionStore::read_validator_subject_in_transaction(
+            &tx,
+            submission_id,
+            REVISION_LIMITS,
+        )
+        .await
+        .map_err(|e| Q1Error::Db {
+            reason: format!("read_validator_subject_in_transaction: {e}"),
+        })?;
+        tx.commit().await.map_err(q1_db)?;
+        subject
+    };
+    let subject = match subject {
+        Some(s) => s,
+        None => {
+            return Ok(Q1Outcome::deferred(format!(
+                "no active submission for component {component_id}"
+            )));
+        }
+    };
+
+    // Step 6 — retain the sealed validator selection.
+    crate::pg_validator_q1_admission::retain_validator_selection(pool, &subject, &inspected)
+        .await
+        .map_err(|e| Q1Error::Admission(e.to_string()))?;
+
+    // Step 7 — submit the validator review task to the global Monty service.
+    let run_id = Uuid::new_v4();
+    let thread_id = Uuid::new_v4();
+    let ticket = crate::pg_validator_q1_admission::submit_validator_review(
+        service,
+        submission_id,
+        run_id,
+        thread_id,
+        ports_factory(),
+    )
+    .await
+    .map_err(|e| Q1Error::Admission(e.to_string()))?;
+
+    // Step 8 — await the ticket and translate the outcome.
+    let receipt = ticket
+        .wait()
+        .await
+        .map_err(|e| Q1Error::Admission(format!("{e:?}")))?;
+
+    tracing::debug!(
+        component_id = %component_id,
+        class_code   = class_code,
+        submission_id = %submission_id,
+        outcome       = ?receipt.outcome,
+        "Q1 retained: validator review task settled"
+    );
+
+    match &receipt.outcome {
+        TaskOutcome::InternalCompleted { .. } => {
+            queue_store.gate1_pass_reviewed(scope, &review, &[]).await?;
+            Ok(Q1Outcome::Passed)
+        }
+        TaskOutcome::Failed { reason_kind } => {
+            let errors = vec![format!("validator task failed: {reason_kind}")];
+            queue_store
+                .gate1_fail_reviewed(scope, &review, &errors)
+                .await?;
+            Ok(Q1Outcome::Failed { errors })
+        }
+        TaskOutcome::Completed { .. } => {
+            // Unexpected for an internal task — treat as failure without
+            // fabricating evidence.
+            let errors = vec!["retained validator returned unexpected Completed outcome".into()];
+            queue_store
+                .gate1_fail_reviewed(scope, &review, &errors)
+                .await?;
+            Ok(Q1Outcome::Failed { errors })
+        }
     }
 }
 
