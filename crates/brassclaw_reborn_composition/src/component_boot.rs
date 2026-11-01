@@ -18,6 +18,16 @@ pub(crate) async fn initialize_runtime_components(
         .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
             reason: format!("builtin component seeding failed: {e}"),
         })?;
+
+    // Step 3b — qualify L013–L101 PythonCode/Skill pairs and pure-logic components.
+    // Idempotent: pairs already approved are skipped; mismatched checksums abort boot.
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    crate::bootstrap_l013_approval::qualify_all(booted_db.pool().clone(), host_tenant_id)
+        .await
+        .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+            reason: format!("L013-L101 qualification failed: {e}"),
+        })?;
+
     let recovered = crate::boot_integrity::run_boot_integrity_check(booted_db)
         .await
         .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
