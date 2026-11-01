@@ -893,10 +893,14 @@ pub async fn seed_builtin_components(
     // host capabilities and a Tier-0 recipe.
     seed_prefix_bundle_group(&stores).await?;
 
-    // Pass 18 — counterfactual pure-logic helpers C01–C02.
+    // Pass 18 — counterfactual pure-logic helpers C01–C05.
     // These are pure (no host calls) reusable building blocks needed by several
     // Recipe families (web-search, code-review, plan-mode, patch flows).
     seed_counterfactual_helpers(&stores).await?;
+
+    // Pass 19 — additional audit-derived pure helpers C06–C07.
+    // C06: document header+body combiner. C07: typed-value JSON serializer.
+    seed_additional_pure_helpers(&stores).await?;
 
     crate::system_seed::repair_packaged_legacy_prompts(
         &stores.pool,
@@ -18951,7 +18955,7 @@ Structured task planning using memory documents. Plans stored at plans/<slug>.md
 "#;
 
 // ---------------------------------------------------------------------------
-// Pass 18 — counterfactual pure-logic helpers (C01, C02)
+// Pass 18 — counterfactual pure-logic helpers (C01–C05)
 // ---------------------------------------------------------------------------
 // C01: combine an approved HTTPS origin with a relative path (no host calls).
 // C02: verify patch preconditions before dispatching a file/memory patch.
@@ -19261,6 +19265,70 @@ async fn seed_counterfactual_helpers(
                 PC_PR_LINE_COMMENT_CONTENT,
             ),
             "proposed-pr-line-comment",
+        )
+        .await?;
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// C06: combine a single-line rendered header with a document body.
+// Pure-logic; no host calls.
+// ---------------------------------------------------------------------------
+
+const PC_DOCUMENT_RENDER_CONTENT: &str = r#"def render_document(inputs):
+    # Pure-logic document renderer (C06). No host calls, no I/O.
+    header = inputs["header"]
+    if not header.strip() or "\n" in header or "\r" in header:
+        raise ValueError("invalid_document_header")
+    return header + "\n\n" + inputs["body"]
+"#;
+
+// ---------------------------------------------------------------------------
+// C07: serialize a validated typed value to a JSON text string.
+// Pure-logic; no host calls.
+// ---------------------------------------------------------------------------
+
+const PC_TYPED_JSON_TEXT_CONTENT: &str = r#"def typed_json_text(inputs):
+    # Pure-logic JSON serializer (C07). No host calls, no I/O.
+    import json
+    return json.dumps(inputs["data"], ensure_ascii=False, allow_nan=False)
+"#;
+
+async fn seed_additional_pure_helpers(
+    stores: &BootstrapStores,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    let tenant = stores.tenant.clone();
+
+    stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "proposed-document-render",
+                "Pure-logic document renderer (C06). Combines a validated single-line \
+                 component header with a document body. Rejects multiline headers and \
+                 missing/null values. No host calls, no I/O. \
+                 Inputs: header (non-empty single-line string), body (string). \
+                 Returns the joined document string.",
+                PC_DOCUMENT_RENDER_CONTENT,
+            ),
+            "proposed-document-render",
+        )
+        .await?;
+
+    stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "proposed-typed-json-text",
+                "Pure-logic typed JSON serializer (C07). Serializes a validated typed \
+                 value to a JSON text string. Rejects NaN/Infinity values. Uses \
+                 ensure_ascii=False to preserve Unicode. No host calls, no I/O. \
+                 Inputs: data (validated typed value matching the consumer's finite \
+                 recursive schema). Returns the JSON-encoded string.",
+                PC_TYPED_JSON_TEXT_CONTENT,
+            ),
+            "proposed-typed-json-text",
         )
         .await?;
 
