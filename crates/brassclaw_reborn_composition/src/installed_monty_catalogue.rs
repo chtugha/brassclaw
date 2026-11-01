@@ -607,10 +607,15 @@ impl InstalledMontyCatalogue {
         let pair_case_program = pair_case_qualification
             .as_ref()
             .map(|qualification| qualification.program());
-        let _free_workflow_qualification = Box::pin(
-            crate::bootstrap_free_workflow_approval::qualify(pool.clone(), worker, preparation),
-        )
-        .await?;
+        let _free_workflow_qualification =
+            Box::pin(crate::bootstrap_free_workflow_approval::qualify(
+                pool.clone(),
+                kernel.clone(),
+                scope,
+                worker,
+                preparation,
+            ))
+            .await?;
         let store = PgComponentRevisionStore::new(pool.clone());
         let client = pool
             .get()

@@ -2085,16 +2085,20 @@ pub async fn build_reborn_runtime(
                     )
                 })?;
                 match boot.selection {
-                    Some(selected) => (
-                        Some(
-                            ResolvedRebornLlm::from_llm_config(selected.config)
-                                .with_publication(selected.revision)
-                                .with_dispatch_guard(selected.guard),
-                        ),
-                        selected.definition.context_window_tokens,
-                        selected.definition.cache_retention,
-                        boot.failure,
-                    ),
+                    Some(selected) => {
+                        let mut llm = ResolvedRebornLlm::from_llm_config(selected.config)
+                            .with_publication(selected.revision)
+                            .with_dispatch_guard(selected.guard);
+                        if let Some(source) = selected.codex_host_source {
+                            llm = llm.with_codex_host_source(source);
+                        }
+                        (
+                            Some(llm),
+                            selected.definition.context_window_tokens,
+                            selected.definition.cache_retention,
+                            boot.failure,
+                        )
+                    }
                     None => (None, None, None, boot.failure),
                 }
             }
@@ -4175,8 +4179,17 @@ async fn build_llm_gateway(
 ) -> Result<LlmGatewayBundle, RebornRuntimeError> {
     let selection = (llm.provider_id().to_owned(), llm.model().to_owned());
     let session = brassclaw_llm::create_session_manager(llm.config.session.clone()).await;
-    let mut raw = match llm.dispatch_guard {
-        Some(guard) => {
+    let mut raw = match (llm.dispatch_guard, llm.codex_host_source) {
+        (Some(guard), Some(source)) => {
+            brassclaw_llm::build_static_provider_chain_with_codex_host_session(
+                &llm.config,
+                Arc::clone(&session),
+                guard,
+                source,
+            )
+            .await
+        }
+        (Some(guard), None) => {
             brassclaw_llm::build_static_provider_chain_with_guard(
                 &llm.config,
                 Arc::clone(&session),
@@ -4184,7 +4197,9 @@ async fn build_llm_gateway(
             )
             .await
         }
-        None => brassclaw_llm::build_static_provider_chain(&llm.config, Arc::clone(&session)).await,
+        (None, _) => {
+            brassclaw_llm::build_static_provider_chain(&llm.config, Arc::clone(&session)).await
+        }
     }
     .map_err(|error| RebornRuntimeError::LlmProvider(error.to_string()))?;
     if let Some(retention) = cache_retention {

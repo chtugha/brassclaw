@@ -6,10 +6,14 @@
 //!
 //! This mirrors OpenClaw's Responses API flow translated to Rust.
 
+use crate::CodexHostSession;
+use crate::provider_observation::{ProviderObservationError, ProviderWireObserver};
 use async_trait::async_trait;
 use reqwest::Client;
 use rust_decimal::Decimal;
+use secrecy::ExposeSecret;
 use serde::Deserialize;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::error::LlmError;
@@ -33,7 +37,63 @@ pub struct OpenAiCodexProvider {
     max_response_bytes: Option<u64>,
     model: String,
     api_base_url: String,
-    auth: RwLock<AuthState>,
+    auth: RwLock<Option<AuthState>>,
+}
+
+fn codex_transport_error(error: reqwest::Error) -> LlmError {
+    // Preserve builder/connect/timeout classification and the actual cause;
+    // the endpoint can contain credentials and must not enter diagnostics.
+    LlmError::Http(error.without_url())
+}
+fn codex_custody_error() -> LlmError {
+    LlmError::InvalidResponse {
+        provider: "openai_codex".into(),
+        reason: "provider response evidence unavailable".into(),
+    }
+}
+struct CodexCredentialObserver {
+    guard: Arc<dyn crate::ProviderDispatchGuard>,
+    model: String,
+    max_output_tokens: Option<u32>,
+    original: Option<Arc<dyn ProviderWireObserver>>,
+}
+#[async_trait]
+impl ProviderWireObserver for CodexCredentialObserver {
+    async fn before_submission(&self) -> Result<(), ProviderObservationError> {
+        self.guard
+            .check(crate::ProviderRequestFacts {
+                model: &self.model,
+                max_output_tokens: self.max_output_tokens,
+            })
+            .await
+            .map_err(|_| ProviderObservationError)?;
+        if let Some(original) = &self.original {
+            original.before_submission().await?;
+        }
+        Ok(())
+    }
+    fn submission_started(&self) {
+        if let Some(original) = &self.original {
+            original.submission_started();
+        }
+    }
+    fn submission_rejected(&self) {
+        if let Some(original) = &self.original {
+            original.submission_rejected();
+        }
+    }
+    fn receive_response(&self, status: u16, body: &[u8]) -> Result<(), ProviderObservationError> {
+        if let Some(original) = &self.original {
+            original.receive_response(status, body)?;
+        }
+        Ok(())
+    }
+    async fn persist_response(&self) -> Result<(), ProviderObservationError> {
+        if let Some(original) = &self.original {
+            original.persist_response().await?;
+        }
+        Ok(())
+    }
 }
 
 impl OpenAiCodexProvider {
@@ -56,55 +116,89 @@ impl OpenAiCodexProvider {
         request_timeout_secs: u64,
         max_response_bytes: Option<u64>,
     ) -> Result<Self, LlmError> {
-        let account_id = extract_account_id(token)?;
+        Self::with_auth(
+            model,
+            api_base_url,
+            request_timeout_secs,
+            max_response_bytes,
+            Some(AuthState {
+                token: token.to_owned(),
+                account_id: extract_account_id(token)?,
+            }),
+        )
+    }
+    fn with_auth(
+        model: &str,
+        api_base_url: &str,
+        request_timeout_secs: u64,
+        max_response_bytes: Option<u64>,
+        auth: Option<AuthState>,
+    ) -> Result<Self, LlmError> {
         Ok(Self {
             client: crate::registry_http_client("openai_codex", request_timeout_secs)?,
             max_response_bytes,
-            model: model.to_string(),
-            api_base_url: api_base_url.trim_end_matches('/').to_string(),
-            auth: RwLock::new(AuthState {
-                token: token.to_string(),
-                account_id,
-            }),
+            model: model.to_owned(),
+            api_base_url: api_base_url.trim_end_matches('/').to_owned(),
+            auth: RwLock::new(auth),
         })
+    }
+    pub(crate) fn new_host_with_response_limit(
+        model: &str,
+        api_base_url: &str,
+        request_timeout_secs: u64,
+        max_response_bytes: Option<u64>,
+    ) -> Result<Self, LlmError> {
+        Self::with_auth(
+            model,
+            api_base_url,
+            request_timeout_secs,
+            max_response_bytes,
+            None,
+        )
     }
 
     /// Update the access token after a refresh.
     pub async fn update_token(&self, token: &str) -> Result<(), LlmError> {
         let account_id = extract_account_id(token)?;
-        *self.auth.write().await = AuthState {
+        *self.auth.write().await = Some(AuthState {
             token: token.to_string(),
             account_id,
-        };
+        });
         tracing::debug!("Updated Codex provider token");
         Ok(())
     }
 
     /// Build request headers matching OpenClaw's `buildHeaders`.
     async fn build_headers(&self) -> Result<reqwest::header::HeaderMap, LlmError> {
+        let auth = self.auth.read().await;
+        let auth = auth.as_ref().ok_or_else(|| LlmError::AuthFailed {
+            provider: "openai_codex".into(),
+        })?;
+        Self::headers_for(auth)
+    }
+
+    fn headers_for(auth: &AuthState) -> Result<reqwest::header::HeaderMap, LlmError> {
         use reqwest::header::{
             ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue, USER_AGENT,
         };
 
-        let auth = self.auth.read().await;
-
         let mut headers = HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", auth.token)).map_err(|e| {
+        let mut authorization =
+            HeaderValue::from_str(&format!("Bearer {}", auth.token)).map_err(|error| {
                 LlmError::RequestFailed {
-                    provider: "openai_codex".to_string(),
-                    reason: format!("Invalid token for header: {e}"),
+                    provider: "openai_codex".into(),
+                    reason: format!("Invalid token for header: {error}"),
                 }
-            })?,
-        );
-        headers.insert(
-            HeaderName::from_static("chatgpt-account-id"),
-            HeaderValue::from_str(&auth.account_id).map_err(|e| LlmError::RequestFailed {
-                provider: "openai_codex".to_string(),
-                reason: format!("Invalid account ID for header: {e}"),
-            })?,
-        );
+            })?;
+        authorization.set_sensitive(true);
+        headers.insert(AUTHORIZATION, authorization);
+        let mut account =
+            HeaderValue::from_str(&auth.account_id).map_err(|error| LlmError::RequestFailed {
+                provider: "openai_codex".into(),
+                reason: format!("Invalid account ID for header: {error}"),
+            })?;
+        account.set_sensitive(true);
+        headers.insert(HeaderName::from_static("chatgpt-account-id"), account);
         headers.insert(
             HeaderName::from_static("openai-beta"),
             HeaderValue::from_static("responses=experimental"),
@@ -175,31 +269,87 @@ impl OpenAiCodexProvider {
         body
     }
 
-    /// Send a request and parse the SSE response stream.
-    async fn send_request(&self, body: serde_json::Value) -> Result<ParsedResponse, LlmError> {
+    /// Build once with this invocation's token, then retain the same request
+    /// through measurement, the live barrier and transport. No shared auth write.
+    async fn send_request(
+        &self,
+        body: serde_json::Value,
+        host: Option<CodexHostSession>,
+        max_output_tokens: Option<u32>,
+    ) -> Result<ParsedResponse, LlmError> {
         let url = format!("{}/responses", self.api_base_url);
-        let headers = self.build_headers().await?;
-
-        tracing::debug!(
-            url = %url,
-            model = %self.model,
-            "Sending Responses API request"
-        );
-
-        let response = self
+        let original = crate::provider_observation::current();
+        let (headers, observer) = match host {
+            Some(host) => {
+                let auth = AuthState {
+                    account_id: extract_account_id(host.token.expose_secret()).inspect_err(
+                        |_error| {
+                            crate::provider_observation::record_pre_submission_rejection();
+                        },
+                    )?,
+                    token: host.token.expose_secret().to_owned(),
+                };
+                let headers = Self::headers_for(&auth)?;
+                let observer: Arc<dyn ProviderWireObserver> = Arc::new(CodexCredentialObserver {
+                    guard: host.guard,
+                    model: self.model.clone(),
+                    max_output_tokens,
+                    original,
+                });
+                (headers, Some(observer))
+            }
+            None => (self.build_headers().await?, original),
+        };
+        let request = self
             .client
             .post(&url)
             .headers(headers)
             .json(&body)
-            .send()
-            .await
-            .map_err(|e| LlmError::RequestFailed {
-                provider: "openai_codex".to_string(),
-                reason: format!("HTTP request failed: {e}"),
+            .build()
+            .map_err(|error| {
+                if let Some(observer) = &observer {
+                    observer.submission_rejected();
+                }
+                codex_transport_error(error)
             })?;
-
+        let response = if let Some(guard) = crate::final_request_guard::current() {
+            let checked = guard.prepare(request).await.map_err(|reason| {
+                if let Some(observer) = &observer {
+                    observer.submission_rejected();
+                }
+                LlmError::FinalRequestRejected { reason }
+            })?;
+            let transport = crate::final_request_guard::FinalRequestTransport::from_registry_client(
+                self.client.clone(),
+            );
+            checked
+                .send_observed(&transport, observer.clone())
+                .await
+                .map_err(|error| match error {
+                    crate::final_request_guard::FinalRequestSendError::Rejected(reason) => {
+                        LlmError::FinalRequestRejected { reason }
+                    }
+                    crate::final_request_guard::FinalRequestSendError::Transport(error) => {
+                        codex_transport_error(error)
+                    }
+                })?
+        } else {
+            if let Some(observer) = &observer {
+                observer.before_submission().await.map_err(|_| {
+                    observer.submission_rejected();
+                    LlmError::ConfigurationChanged {
+                        provider: "openai_codex request authorization".into(),
+                    }
+                })?;
+                observer.submission_started();
+            }
+            self.client
+                .execute(request)
+                .await
+                .map_err(codex_transport_error)?
+        };
         let status = response.status();
-        if !status.is_success() {
+        if !status.is_success() && observer.is_none() {
             return Err(crate::response_body::rejection(
                 response,
                 self.max_response_bytes,
@@ -207,36 +357,58 @@ impl OpenAiCodexProvider {
             )
             .await);
         }
-
-        // Read the full body and parse SSE events
-        let body_bytes = crate::response_body::read(response, self.max_response_bytes)
+        let retry_after = crate::retry::parse_retry_after_hint(
+            response.headers().get(reqwest::header::RETRY_AFTER),
+        );
+        // Retain actual raw SSE/error bytes before parsing, including failures.
+        let bytes = crate::response_body::read(response, self.max_response_bytes)
             .await
             .map_err(|error| error.into_llm("openai_codex"))?;
-
-        let body_text = String::from_utf8_lossy(&body_bytes);
-        parse_sse_response(&body_text)
+        if let Some(observer) = observer {
+            observer
+                .receive_response(status.as_u16(), &bytes)
+                .map_err(|_| codex_custody_error())?;
+            observer
+                .persist_response()
+                .await
+                .map_err(|_| codex_custody_error())?;
+        }
+        if !status.is_success() {
+            return Err(crate::response_body::received_rejection(
+                status.as_u16(),
+                retry_after,
+                "openai_codex",
+                Some(&String::from_utf8_lossy(&bytes)),
+            ));
+        }
+        parse_sse_response(&String::from_utf8_lossy(&bytes))
     }
 }
 
-#[async_trait]
-impl LlmProvider for OpenAiCodexProvider {
-    fn model_name(&self) -> std::borrow::Cow<'_, str> {
-        std::borrow::Cow::Borrowed(&self.model)
+impl OpenAiCodexProvider {
+    pub(crate) async fn complete_with_host_session(
+        &self,
+        request: CompletionRequest,
+        host: CodexHostSession,
+    ) -> Result<CompletionResponse, LlmError> {
+        self.complete_inner(request, Some(host)).await
     }
-
-    fn cost_per_token(&self) -> (Decimal, Decimal) {
-        (Decimal::ZERO, Decimal::ZERO)
+    pub(crate) async fn complete_tools_with_host_session(
+        &self,
+        request: ToolCompletionRequest,
+        host: CodexHostSession,
+    ) -> Result<ToolCompletionResponse, LlmError> {
+        self.complete_tools_inner(request, Some(host)).await
     }
-
-    fn calculate_cost(&self, _input_tokens: u32, _output_tokens: u32) -> Decimal {
-        Decimal::ZERO
-    }
-
-    async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+    async fn complete_inner(
+        &self,
+        request: CompletionRequest,
+        host: Option<CodexHostSession>,
+    ) -> Result<CompletionResponse, LlmError> {
         let mut messages = request.messages;
         crate::provider::sanitize_tool_messages(&mut messages);
         let body = self.build_request_body(&messages, None);
-        let parsed = self.send_request(body).await?;
+        let parsed = self.send_request(body, host, request.max_tokens).await?;
 
         Ok(CompletionResponse {
             content: parsed.text_content,
@@ -247,9 +419,10 @@ impl LlmProvider for OpenAiCodexProvider {
         })
     }
 
-    async fn complete_with_tools(
+    async fn complete_tools_inner(
         &self,
         request: ToolCompletionRequest,
+        host: Option<CodexHostSession>,
     ) -> Result<ToolCompletionResponse, LlmError> {
         let mut messages = request.messages;
         crate::provider::sanitize_tool_messages(&mut messages);
@@ -270,7 +443,7 @@ impl LlmProvider for OpenAiCodexProvider {
             .collect();
 
         let body = self.build_request_body(&messages, Some(&request.tools));
-        let mut parsed = self.send_request(body).await?;
+        let mut parsed = self.send_request(body, host, request.max_tokens).await?;
 
         // Reverse-map sanitized tool names back to originals so the caller
         // can look them up in the tool registry.
@@ -297,6 +470,34 @@ impl LlmProvider for OpenAiCodexProvider {
 
             reasoning: parsed.reasoning,
         })
+    }
+}
+
+#[async_trait]
+impl LlmProvider for OpenAiCodexProvider {
+    fn supports_final_request_guard(&self) -> bool {
+        true
+    }
+    fn model_name(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(&self.model)
+    }
+
+    fn cost_per_token(&self) -> (Decimal, Decimal) {
+        (Decimal::ZERO, Decimal::ZERO)
+    }
+
+    fn calculate_cost(&self, _input_tokens: u32, _output_tokens: u32) -> Decimal {
+        Decimal::ZERO
+    }
+
+    async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        self.complete_inner(request, None).await
+    }
+    async fn complete_with_tools(
+        &self,
+        request: ToolCompletionRequest,
+    ) -> Result<ToolCompletionResponse, LlmError> {
+        self.complete_tools_inner(request, None).await
     }
 
     /// Returns empty — Codex uses subscription-based access with a fixed model,
@@ -1155,7 +1356,7 @@ data: {"type":"response.output_text.delta","delta":" ignored"}
 
         // Verify account_id was updated
         let auth = provider.auth.read().await;
-        assert_eq!(auth.account_id, "acct_new");
+        assert_eq!(auth.as_ref().unwrap().account_id, "acct_new");
     }
 
     #[test]
@@ -1450,23 +1651,53 @@ data: {"type":"response.completed","response":{"status":"completed","usage":{"in
         )
         .unwrap();
         assert!(matches!(
-            provider.send_request(serde_json::json!({})).await,
+            provider
+                .send_request(serde_json::json!({}), None, None)
+                .await,
             Err(LlmError::ResponseTooLarge { limit: 64, .. })
         ));
         provider.max_response_bytes = Some(4096);
-        let reply = provider.send_request(serde_json::json!({})).await.unwrap();
+        let reply = provider
+            .send_request(serde_json::json!({}), None, None)
+            .await
+            .unwrap();
         assert_eq!(reply.text_content, "answer");
         provider.max_response_bytes = Some(64);
         assert!(matches!(
-            provider.send_request(serde_json::json!({})).await,
+            provider
+                .send_request(serde_json::json!({}), None, None)
+                .await,
             Err(LlmError::ResponseTooLarge { limit: 64, .. })
         ));
         let error = provider
-            .send_request(serde_json::json!({}))
+            .send_request(serde_json::json!({}), None, None)
             .await
             .unwrap_err();
         assert!(matches!(error, LlmError::BadGateway { status: 503, .. }));
         assert!(!format!("{error:?}").contains("private-upstream-error"));
         server.await.unwrap();
+    }
+}
+
+#[cfg(test)]
+mod auth_header_redaction_tests {
+    use super::*;
+    #[tokio::test]
+    async fn codex_auth_header_debug_is_redacted_without_changing_wire_bytes() {
+        let account = "private-account-redaction-sentinel";
+        let jwt = crate::codex_test_helpers::make_test_jwt(account);
+        let provider =
+            OpenAiCodexProvider::new("fixture-model", "http://127.0.0.1:1", &jwt, 5).unwrap();
+        let headers = provider.build_headers().await.unwrap();
+        assert_eq!(
+            headers[reqwest::header::AUTHORIZATION].to_str().unwrap(),
+            format!("Bearer {jwt}")
+        );
+        assert_eq!(headers["chatgpt-account-id"].to_str().unwrap(), account);
+        assert!(headers[reqwest::header::AUTHORIZATION].is_sensitive());
+        assert!(headers["chatgpt-account-id"].is_sensitive());
+        let debug = format!("{headers:?}");
+        assert!(!debug.contains(&jwt));
+        assert!(!debug.contains(account));
     }
 }

@@ -138,12 +138,25 @@ impl LlmReloadTrigger for RebornLlmReloadAdapter {
                 if current == publication {
                     return Ok((provider, publication));
                 }
-                let provider = brassclaw_llm::build_static_provider_chain_with_guard(
-                    &selected.config,
-                    Arc::clone(&self.session),
-                    selected.guard,
-                )
-                .await
+                let provider = match selected.codex_host_source {
+                    Some(source) => {
+                        brassclaw_llm::build_static_provider_chain_with_codex_host_session(
+                            &selected.config,
+                            Arc::clone(&self.session),
+                            selected.guard,
+                            source,
+                        )
+                        .await
+                    }
+                    None => {
+                        brassclaw_llm::build_static_provider_chain_with_guard(
+                            &selected.config,
+                            Arc::clone(&self.session),
+                            selected.guard,
+                        )
+                        .await
+                    }
+                }
                 .map_err(|error| {
                     brassclaw_llm::ProviderPreparationFailure::selected(error, publication.clone())
                 })?;

@@ -850,13 +850,23 @@ impl TaskModelProviderSource for TaskRoleSource {
         // never publish that client over a later desired/effective revision.
         let provider = match current {
             Some((provider, actual)) if actual == publication => provider,
-            _ => brassclaw_llm::build_static_provider_chain_with_guard(
-                &resolved.config,
-                self.owner.session.clone(),
-                resolved.guard,
-            )
-            .await
-            .map_err(|_| unavailable())?,
+            _ => match resolved.codex_host_source {
+                Some(source) => brassclaw_llm::build_static_provider_chain_with_codex_host_session(
+                    &resolved.config,
+                    self.owner.session.clone(),
+                    resolved.guard,
+                    source,
+                )
+                .await
+                .map_err(|_| unavailable())?,
+                None => brassclaw_llm::build_static_provider_chain_with_guard(
+                    &resolved.config,
+                    self.owner.session.clone(),
+                    resolved.guard,
+                )
+                .await
+                .map_err(|_| unavailable())?,
+            },
         };
         let retained = RetainedLlmProvider {
             provider,

@@ -127,6 +127,11 @@ pub struct ResolvedRebornLlm {
     pub(crate) config: brassclaw_llm::LlmConfig,
     pub(crate) publication: Option<brassclaw_llm::ProviderSelectionRevision>,
     pub(crate) dispatch_guard: Option<Arc<dyn brassclaw_llm::ProviderDispatchGuard>>,
+    /// Non-serializable installed Codex credential source, threaded from the
+    /// authenticated PG bridge to the SDK builder. `None` until the host
+    /// bridge supplies a confirmed lineage holder; `None` for all non-Codex
+    /// protocols.
+    pub(crate) codex_host_source: Option<Arc<dyn brassclaw_llm::CodexHostSessionSource>>,
 }
 
 #[cfg(feature = "root-llm-provider")]
@@ -146,6 +151,7 @@ impl ResolvedRebornLlm {
             config,
             publication: None,
             dispatch_guard: None,
+            codex_host_source: None,
         }
     }
 
@@ -162,6 +168,14 @@ impl ResolvedRebornLlm {
         guard: Arc<dyn brassclaw_llm::ProviderDispatchGuard>,
     ) -> Self {
         self.dispatch_guard = Some(guard);
+        self
+    }
+
+    pub(crate) fn with_codex_host_source(
+        mut self,
+        source: Arc<dyn brassclaw_llm::CodexHostSessionSource>,
+    ) -> Self {
+        self.codex_host_source = Some(source);
         self
     }
 }

@@ -17,6 +17,7 @@ mod bedrock;
 pub mod circuit_breaker;
 pub(crate) mod codex_auth;
 mod codex_chatgpt;
+mod codex_host_session;
 pub mod config;
 pub mod costs;
 mod dispatch_guard;
@@ -69,6 +70,7 @@ pub mod vision_models;
 mod single_submission_tests;
 
 pub use circuit_breaker::{CircuitBreakerConfig, CircuitBreakerProvider};
+pub use codex_host_session::{CodexHostSession, CodexHostSessionSource};
 pub use config::{
     BedrockConfig, CacheRetention, GeminiOauthConfig, LlmBackendKind, LlmConfig, NearAiConfig,
     OAUTH_PLACEHOLDER, OpenAiCodexConfig, ProviderRequestPolicy, RegistryProviderConfig,
@@ -844,6 +846,7 @@ fn sanitize_gemini_base_url(base_url: &str) -> Result<String, ()> {
 async fn create_openai_codex_provider(
     config: &LlmConfig,
     host_managed_authentication: bool,
+    host_source: Option<Arc<dyn CodexHostSessionSource>>,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
     let codex = config
         .openai_codex
@@ -852,10 +855,24 @@ async fn create_openai_codex_provider(
             provider: "openai_codex".to_string(),
         })?;
 
-    let session_mgr = Arc::new(OpenAiCodexSessionManager::new(codex.clone())?);
-    if !host_managed_authentication {
-        session_mgr.ensure_authenticated().await?;
+    if let Some(source) = host_source {
+        let provider = Arc::new(OpenAiCodexProvider::new_host_with_response_limit(
+            &codex.model,
+            &codex.api_base_url,
+            config.request_timeout_secs,
+            config.max_response_bytes,
+        )?);
+        return Ok(Arc::new(TokenRefreshingProvider::new_host(
+            provider, source,
+        )));
     }
+    if host_managed_authentication {
+        return Err(LlmError::ConfigurationChanged {
+            provider: "openai_codex host session is unavailable".into(),
+        });
+    }
+    let session_mgr = Arc::new(OpenAiCodexSessionManager::new(codex.clone())?);
+    session_mgr.ensure_authenticated().await?;
 
     let token = session_mgr.get_access_token().await?;
 
@@ -873,12 +890,10 @@ async fn create_openai_codex_provider(
         codex.api_base_url,
     );
 
-    let provider = TokenRefreshingProvider::new(provider, session_mgr);
-    Ok(Arc::new(if host_managed_authentication {
-        provider.with_host_managed_authentication()
-    } else {
-        provider
-    }))
+    Ok(Arc::new(TokenRefreshingProvider::new(
+        provider,
+        session_mgr,
+    )))
 }
 
 /// Create a cheap/fast LLM provider for lightweight tasks (heartbeat, routing, evaluation).
@@ -1003,6 +1018,7 @@ pub(crate) async fn build_provider_chain_components(
             include_standalone_cheap: true,
             host_managed_authentication: false,
             guard: None,
+            codex_host_source: None,
         },
     )
     .await
@@ -1012,6 +1028,7 @@ struct ProviderChainBuildOptions {
     include_standalone_cheap: bool,
     host_managed_authentication: bool,
     guard: Option<Arc<dyn ProviderDispatchGuard>>,
+    codex_host_source: Option<Arc<dyn CodexHostSessionSource>>,
 }
 
 async fn build_provider_chain_components_with_options(
@@ -1023,10 +1040,22 @@ async fn build_provider_chain_components_with_options(
         include_standalone_cheap,
         host_managed_authentication,
         guard,
+        codex_host_source,
     } = options;
+    let codex_host = codex_host_source.is_some();
+    if codex_host && !matches!(config.backend_kind(), LlmBackendKind::OpenAiCodex) {
+        return Err(LlmError::ConfigurationChanged {
+            provider: "Codex host source target".into(),
+        });
+    }
     let llm: Arc<dyn LlmProvider> = if matches!(config.backend_kind(), LlmBackendKind::OpenAiCodex)
     {
-        create_openai_codex_provider(config, host_managed_authentication || guard.is_some()).await?
+        create_openai_codex_provider(
+            config,
+            host_managed_authentication || guard.is_some(),
+            codex_host_source,
+        )
+        .await?
     } else {
         create_llm_provider(config, session.clone()).await?
     };
@@ -1233,6 +1262,7 @@ pub async fn build_static_provider_chain(
             include_standalone_cheap: false,
             host_managed_authentication: true,
             guard: None,
+            codex_host_source: None,
         },
     )
     .await?;
@@ -1259,6 +1289,36 @@ pub async fn build_static_provider_chain_with_guard(
             include_standalone_cheap: false,
             host_managed_authentication: true,
             guard: Some(guard),
+            codex_host_source: None,
+        },
+    )
+    .await?
+    .primary;
+    Ok(
+        if let Some(recorder) = RecordingLlm::from_env(primary.clone()) {
+            recorder as Arc<dyn LlmProvider>
+        } else {
+            primary
+        },
+    )
+}
+
+/// Build the existing guarded chain with an explicit installed Codex credential
+/// owner. This is infrastructure only, not serving/design qualification.
+pub async fn build_static_provider_chain_with_codex_host_session(
+    config: &LlmConfig,
+    session: Arc<SessionManager>,
+    guard: Arc<dyn ProviderDispatchGuard>,
+    source: Arc<dyn CodexHostSessionSource>,
+) -> Result<Arc<dyn LlmProvider>, LlmError> {
+    let primary = build_provider_chain_components_with_options(
+        config,
+        session,
+        ProviderChainBuildOptions {
+            include_standalone_cheap: false,
+            host_managed_authentication: true,
+            guard: Some(guard),
+            codex_host_source: Some(source),
         },
     )
     .await?
@@ -1466,7 +1526,7 @@ mod tests {
         }
     }
 
-    fn test_llm_config() -> LlmConfig {
+    pub(super) fn test_llm_config() -> LlmConfig {
         LlmConfig {
             backend: "nearai".to_string(),
             resolved_protocol: None,
@@ -1491,7 +1551,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn static_codex_factory_missing_or_corrupt_session_never_starts_login() {
+    async fn static_codex_factory_requires_host_without_reading_missing_or_corrupt_file() {
         use crate::codex_test_helpers::{codex_http_fixture, test_codex_config};
         let server = codex_http_fixture(|path, _| {
             panic!("static SDK construction cannot initiate OAuth: {path}")
@@ -1516,7 +1576,10 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(matches!(missing, Err(LlmError::AuthFailed { .. })));
+        assert!(matches!(
+            missing,
+            Err(LlmError::ConfigurationChanged { .. })
+        ));
         std::fs::write(
             &path,
             r#"{"access_token":"private-corrupt-token","expires_at":"private-corrupt-date"}"#,
@@ -1532,7 +1595,7 @@ mod tests {
             Ok(_) => panic!("corrupt credentials must fail"),
             Err(error) => error.to_string(),
         };
-        assert!(error.contains("saved OAuth session"));
+        assert!(error.contains("configuration changed"));
         assert!(!error.contains("private-corrupt"));
         assert_eq!(server.requests.lock().await.len(), 0);
         server.finish().await;
@@ -1985,3 +2048,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod codex_host_session_tests;

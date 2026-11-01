@@ -108,6 +108,10 @@ pub(crate) struct ResolvedProviderSelection {
     pub definition: ProviderDefinition,
     pub revision: brassclaw_llm::ProviderSelectionRevision,
     pub guard: std::sync::Arc<dyn brassclaw_llm::ProviderDispatchGuard>,
+    /// Non-serializable installed Codex credential source, threaded from the
+    /// authenticated host bridge to the SDK builder. `None` for all non-Codex
+    /// protocols and until the PG bridge supplies a confirmed lineage holder.
+    pub codex_host_source: Option<std::sync::Arc<dyn brassclaw_llm::CodexHostSessionSource>>,
 }
 
 /// Native preflight result only. A draft has no historical revision until the
@@ -265,6 +269,10 @@ pub(crate) fn resolve_captured_provider_selection(
         definition: captured.definition,
         revision,
         guard,
+        // The authenticated PG bridge supplies a real source once the
+        // installed Codex subject and head-binding are fully qualified.
+        // Until then this is None for all protocols including OpenAiCodex.
+        codex_host_source: None,
     })
 }
 

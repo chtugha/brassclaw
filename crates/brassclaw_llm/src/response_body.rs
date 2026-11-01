@@ -98,14 +98,28 @@ pub(crate) async fn rejection(
     let status = response.status().as_u16();
     let retry_after =
         crate::retry::parse_retry_after_hint(response.headers().get(reqwest::header::RETRY_AFTER));
-    if matches!(status, 400 | 413) {
-        let body = match text(response, limit, provider).await {
-            Ok(body) => body,
+    let body = if matches!(status, 400 | 413) {
+        match text(response, limit, provider).await {
+            Ok(body) => Some(body),
             Err(error) => return error,
-        };
-        if let Some(error) = crate::error::context_length_error(status, &body) {
-            return error;
         }
+    } else {
+        None
+    };
+    received_rejection(status, retry_after, provider, body.as_deref())
+}
+
+/// Classify bytes already retained by the actual response custody owner.
+pub(crate) fn received_rejection(
+    status: u16,
+    retry_after: Option<std::time::Duration>,
+    provider: &str,
+    body: Option<&str>,
+) -> crate::LlmError {
+    if matches!(status, 400 | 413)
+        && let Some(error) = body.and_then(|body| crate::error::context_length_error(status, body))
+    {
+        return error;
     }
     match status {
         401 | 403 => crate::LlmError::AuthFailed {

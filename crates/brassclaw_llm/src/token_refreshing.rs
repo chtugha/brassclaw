@@ -14,6 +14,7 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use secrecy::ExposeSecret;
 
+use crate::CodexHostSessionSource;
 use crate::error::LlmError;
 use crate::openai_codex_provider::OpenAiCodexProvider;
 use crate::openai_codex_session::OpenAiCodexSessionManager;
@@ -28,29 +29,44 @@ use crate::provider::{
 /// refresh we just call `update_token()` -- no client rebuild is needed.
 pub struct TokenRefreshingProvider {
     inner: Arc<OpenAiCodexProvider>,
-    session: Arc<OpenAiCodexSessionManager>,
-    host_managed_authentication: bool,
+    source: SessionSource,
+}
+
+enum SessionSource {
+    File(Arc<OpenAiCodexSessionManager>),
+    Host(Arc<dyn CodexHostSessionSource>),
 }
 
 impl TokenRefreshingProvider {
     pub fn new(inner: Arc<OpenAiCodexProvider>, session: Arc<OpenAiCodexSessionManager>) -> Self {
         Self {
             inner,
-            session,
-            host_managed_authentication: false,
+            source: SessionSource::File(session),
         }
     }
 
-    /// Captured/server-owned clients never initiate a device login or replay
-    /// a model exchange to repair authentication. The host owns that lifecycle.
-    pub(crate) fn with_host_managed_authentication(mut self) -> Self {
-        self.host_managed_authentication = true;
-        self
+    pub(crate) fn new_host(
+        inner: Arc<OpenAiCodexProvider>,
+        source: Arc<dyn CodexHostSessionSource>,
+    ) -> Self {
+        Self {
+            inner,
+            source: SessionSource::Host(source),
+        }
+    }
+
+    fn file_session(&self) -> Result<&OpenAiCodexSessionManager, LlmError> {
+        match &self.source {
+            SessionSource::File(session) => Ok(session),
+            SessionSource::Host(_) => Err(LlmError::ConfigurationChanged {
+                provider: "Codex file session is unavailable".into(),
+            }),
+        }
     }
 
     /// Push a fresh token from the session manager into the inner provider.
     async fn update_inner_token(&self) -> Result<(), LlmError> {
-        let token = self.session.get_access_token().await?;
+        let token = self.file_session()?.get_access_token().await?;
         self.inner.update_token(token.expose_secret()).await?;
         tracing::debug!("Updated inner provider token after refresh");
         Ok(())
@@ -58,16 +74,11 @@ impl TokenRefreshingProvider {
 
     /// Refresh and synchronize the token before an API call.
     ///
-    /// Host-managed clients propagate errors before model submission. Standalone
-    /// clients preserve the legacy best-effort refresh and policy-controlled retry.
+    /// This helper is only used by the explicit File path. Host calls return
+    /// through their own immutable snapshot before entering this helper.
     async fn ensure_fresh_token(&self) -> Result<(), LlmError> {
-        if self.host_managed_authentication {
-            // Also synchronize a refresh completed by another caller before
-            // its inner-token update. Errors stop before a model submission.
-            return self.update_inner_token().await;
-        }
-        if self.session.needs_refresh().await {
-            match self.session.refresh_tokens().await {
+        if self.file_session()?.needs_refresh().await {
+            match self.file_session()?.refresh_tokens().await {
                 Ok(()) => {
                     if let Err(e) = self.update_inner_token().await {
                         tracing::debug!(
@@ -101,15 +112,29 @@ impl LlmProvider for TokenRefreshingProvider {
     }
 
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        if let SessionSource::Host(source) = &self.source {
+            if request.dispatch_policy != crate::ProviderDispatchPolicy::SingleSubmission {
+                crate::provider_observation::record_pre_submission_rejection();
+                return Err(LlmError::ConfigurationChanged {
+                    provider: "Codex Host requires SingleSubmission".into(),
+                });
+            }
+            let snapshot = source.session().await.inspect_err(|_error| {
+                crate::provider_observation::record_pre_submission_rejection();
+            })?;
+            return self
+                .inner
+                .complete_with_host_session(request, snapshot)
+                .await;
+        }
         self.ensure_fresh_token().await?;
 
         match self.inner.complete(request.clone()).await {
             Err(LlmError::AuthFailed { .. } | LlmError::SessionExpired { .. })
-                if !self.host_managed_authentication
-                    && request.dispatch_policy.allows_resubmission() =>
+                if request.dispatch_policy.allows_resubmission() =>
             {
                 tracing::debug!("Auth failure during complete(), refreshing and retrying once");
-                self.session.handle_auth_failure().await?;
+                self.file_session()?.handle_auth_failure().await?;
                 self.update_inner_token().await?;
                 self.inner.complete(request).await
             }
@@ -121,17 +146,31 @@ impl LlmProvider for TokenRefreshingProvider {
         &self,
         request: ToolCompletionRequest,
     ) -> Result<ToolCompletionResponse, LlmError> {
+        if let SessionSource::Host(source) = &self.source {
+            if request.dispatch_policy != crate::ProviderDispatchPolicy::SingleSubmission {
+                crate::provider_observation::record_pre_submission_rejection();
+                return Err(LlmError::ConfigurationChanged {
+                    provider: "Codex Host requires SingleSubmission".into(),
+                });
+            }
+            let snapshot = source.session().await.inspect_err(|_error| {
+                crate::provider_observation::record_pre_submission_rejection();
+            })?;
+            return self
+                .inner
+                .complete_tools_with_host_session(request, snapshot)
+                .await;
+        }
         self.ensure_fresh_token().await?;
 
         match self.inner.complete_with_tools(request.clone()).await {
             Err(LlmError::AuthFailed { .. } | LlmError::SessionExpired { .. })
-                if !self.host_managed_authentication
-                    && request.dispatch_policy.allows_resubmission() =>
+                if request.dispatch_policy.allows_resubmission() =>
             {
                 tracing::debug!(
                     "Auth failure during complete_with_tools(), refreshing and retrying once"
                 );
-                self.session.handle_auth_failure().await?;
+                self.file_session()?.handle_auth_failure().await?;
                 self.update_inner_token().await?;
                 self.inner.complete_with_tools(request).await
             }
@@ -140,12 +179,10 @@ impl LlmProvider for TokenRefreshingProvider {
     }
 
     async fn list_models(&self) -> Result<Vec<String>, LlmError> {
-        self.ensure_fresh_token().await?;
         self.inner.list_models().await
     }
 
     async fn model_metadata(&self) -> Result<ModelMetadata, LlmError> {
-        self.ensure_fresh_token().await?;
         self.inner.model_metadata().await
     }
 
@@ -217,111 +254,5 @@ mod tests {
     fn test_active_model_name_delegates() {
         let (provider, _dir) = make_provider_and_session();
         assert_eq!(provider.active_model_name(), "gpt-5.3-codex");
-    }
-    #[tokio::test]
-    async fn host_managed_refresh_failure_stops_all_model_entry_points() {
-        use crate::ChatMessage;
-        use crate::codex_test_helpers::codex_http_fixture;
-        use crate::openai_codex_session::OpenAiCodexSession;
-        let server = codex_http_fixture(|path, _| {
-            assert_eq!(
-                path, "/oauth/token",
-                "refresh failure must precede model submission"
-            );
-            (401, r#"{"error":"private-refresh-error"}"#.into())
-        })
-        .await;
-        let home = tempdir().unwrap();
-        let mut config = test_codex_config(home.path().join("session.json"));
-        config.auth_endpoint = server.endpoint.clone();
-        config.api_base_url = server.endpoint.clone();
-        let jwt = make_test_jwt("acct_original");
-        let inner = Arc::new(
-            OpenAiCodexProvider::new(&config.model, &config.api_base_url, &jwt, 5).unwrap(),
-        );
-        let session = Arc::new(OpenAiCodexSessionManager::new(config).unwrap());
-        session
-            .set_session(OpenAiCodexSession {
-                access_token: jwt,
-                refresh_token: "original-refresh".into(),
-                expires_at: chrono::Utc::now() - chrono::Duration::seconds(1),
-                created_at: chrono::Utc::now(),
-            })
-            .await;
-        let provider =
-            TokenRefreshingProvider::new(inner, session).with_host_managed_authentication();
-        let request = || CompletionRequest::new(vec![ChatMessage::user("do not submit")]);
-        for result in [
-            provider.complete(request()).await.map(|_| ()),
-            provider
-                .complete_with_tools(ToolCompletionRequest::from_completion_request(
-                    request(),
-                    vec![],
-                ))
-                .await
-                .map(|_| ()),
-            provider.list_models().await.map(|_| ()),
-            provider.model_metadata().await.map(|_| ()),
-        ] {
-            let error = result.unwrap_err().to_string();
-            assert!(error.contains("401"));
-            assert!(!error.contains("private-refresh-error"));
-        }
-        assert_eq!(server.requests.lock().await.len(), 4);
-        server.finish().await;
-    }
-
-    #[tokio::test]
-    async fn host_managed_auth_rejection_never_replays_or_starts_login() {
-        use crate::ChatMessage;
-        use crate::codex_test_helpers::codex_http_fixture;
-        use crate::openai_codex_session::OpenAiCodexSession;
-        let server = codex_http_fixture(|path, _| {
-            assert_eq!(
-                path, "/responses",
-                "model auth failure cannot start token/device exchange"
-            );
-            (
-                401,
-                r#"{"error":{"message":"expired","type":"authentication_error"}}"#.into(),
-            )
-        })
-        .await;
-        let home = tempdir().unwrap();
-        let mut config = test_codex_config(home.path().join("session.json"));
-        config.auth_endpoint = server.endpoint.clone();
-        config.api_base_url = server.endpoint.clone();
-        let jwt = make_test_jwt("acct_original");
-        let inner = Arc::new(
-            OpenAiCodexProvider::new(&config.model, &config.api_base_url, &jwt, 5).unwrap(),
-        );
-        let session = Arc::new(OpenAiCodexSessionManager::new(config).unwrap());
-        session
-            .set_session(OpenAiCodexSession {
-                access_token: jwt,
-                refresh_token: "original-refresh".into(),
-                expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
-                created_at: chrono::Utc::now(),
-            })
-            .await;
-        let provider =
-            TokenRefreshingProvider::new(inner, session).with_host_managed_authentication();
-        let request = || CompletionRequest::new(vec![ChatMessage::user("one exchange")]);
-        assert!(provider.complete(request()).await.is_err());
-        assert!(
-            provider
-                .complete_with_tools(ToolCompletionRequest::from_completion_request(
-                    request(),
-                    vec![]
-                ))
-                .await
-                .is_err()
-        );
-        assert_eq!(
-            server.requests.lock().await.len(),
-            2,
-            "each caller gets exactly its own response"
-        );
-        server.finish().await;
     }
 }
