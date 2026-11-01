@@ -174,3 +174,130 @@ async fn run_q1_validation_retained_passes_and_persists_evidence() {
         .expect("queue row must exist at state 2 after Q1Outcome::Passed");
     assert_eq!(row.state, 2, "queue row must be at state 2 (gate1-passed)");
 }
+
+/// T5: end-to-end fail — component with empty `content` produces `Q1Outcome::Failed`.
+///
+/// Seeds validator drafts, creates a class-22 component with an empty `content`
+/// field (which the structural validator rejects), submits it for review and to the
+/// queue, calls `run_q1_validation_retained`, and asserts `Q1Outcome::Failed` with
+/// a non-empty error list. The queue row must stay at state 1 (Q1 failed records
+/// the failure but does not promote to state 2).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_q1_validation_retained_fails_for_empty_content() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = Box::pin(build_reborn_runtime(RebornRuntimeInput::from_services(
+        rig.build_input("q1-retained-fail-owner", directory.path())
+            .with_runtime_policy(local_dev_runtime_policy()),
+    )))
+    .await
+    .unwrap();
+
+    let bridge = ValidatorServiceBridge {
+        driver: std::sync::Arc::new(ValidatorTaskDriver::new(
+            runtime.monty_test_controls.0.clone(),
+        )),
+        pool: rig.pool.clone(),
+    };
+
+    crate::builtin_bootstrap::retain_validator_check_drafts(&rig.pool)
+        .await
+        .expect("retain_validator_check_drafts must succeed");
+
+    let scope = ComponentScope {
+        tenant_id: "q1-retained-fail-t".into(),
+        user_id: "q1-retained-fail-u".into(),
+        agent_id: "q1-retained-fail-a".into(),
+        project_id: "q1-retained-fail-p".into(),
+    };
+    let store = ValidationQueueStore::new(rig.pool.clone());
+
+    // Malformed component: empty content — structural validator rejects it.
+    let component_id = Uuid::new_v4();
+    let doc = serde_json::json!({
+        "format": "component-revision/1",
+        "uuid": component_id,
+        "class_code": 22,
+        "document": {
+            "name": format!("fail-component-{}", component_id.as_simple()),
+            "description": "A component whose content is deliberately empty.",
+            "content": "",
+            "input_contract": {},
+            "result_contract": {"type": "null"},
+            "preload": {
+                "format": "python-preload/2",
+                "exports": {},
+                "private_functions": {},
+                "constants": [],
+                "imports": [],
+                "dependencies": [],
+                "default_export": null
+            }
+        },
+        "dependencies": [],
+        "association": null
+    })
+    .to_string();
+
+    let submission_id = Uuid::new_v4();
+    brassclaw_skills::review_submission_store::PgReviewSubmissionStore::new(rig.pool.clone())
+        .submit(
+            &brassclaw_skills::review_submission_store::ReviewSubmissionDraft::new(
+                submission_id,
+                "validator-structural-review",
+                brassclaw_skills::component_revision::ComponentRevisionDraft::from_json(&doc)
+                    .expect("malformed doc must parse at the JSON/schema level"),
+                None,
+                vec![],
+            )
+            .expect("ReviewSubmissionDraft::new must succeed"),
+        )
+        .await
+        .expect("PgReviewSubmissionStore::submit must succeed");
+
+    store
+        .submit(&scope, component_id, 22, None)
+        .await
+        .expect("ValidationQueueStore::submit must succeed");
+
+    let outcome = run_q1_validation_retained(
+        &rig.pool,
+        &scope,
+        component_id,
+        22,
+        &store,
+        brassclaw_monty_host::utility::UtilityLimits::from_execution(Default::default()).unwrap(),
+        Some(&bridge),
+    )
+    .await
+    .expect("run_q1_validation_retained must not return Err for a structural failure");
+
+    match &outcome {
+        Q1Outcome::Failed { errors } => {
+            assert!(
+                !errors.is_empty(),
+                "expected non-empty error list for empty-content component; got none"
+            );
+            assert!(
+                errors.iter().any(|e| e.contains("content")),
+                "expected an error mentioning 'content'; got: {errors:?}"
+            );
+        }
+        other => panic!(
+            "expected Q1Outcome::Failed for empty-content component; got {other:?}"
+        ),
+    }
+
+    // Queue row must remain at state 1 (Q1_pending/failed) — NOT promoted to 2.
+    let rows = store
+        .list(&scope, Some(1))
+        .await
+        .expect("list must succeed");
+    assert!(
+        rows.iter().any(|r| r.component_id == component_id),
+        "queue row must stay at state 1 after Q1Outcome::Failed"
+    );
+}
