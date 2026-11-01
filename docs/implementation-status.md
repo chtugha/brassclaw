@@ -1,4 +1,36 @@
 
+## 2026-11-01 — PKG-F complete: all seed bodies migrated to preloadable interface; cleanup
+
+**Commits this session (continuation):**
+- `298b39090` — PKG-E-R09 fix: `proposed-child-task-request` to `def prepare_child_task_request(inputs):`
+- `21e2d0050` — fix: `ValidationQueueStore` inner spawn uses constructor not struct literal
+- `6947008fd` — cleanup: remove stale `#[allow(dead_code)]` from wired retained-Q1 path items
+- `89a52443e` — docs: annotate `run_q1_validation` as legacy mutable-recipe path
+- `6b1d66915` — PKG-F L036–L040+: migrate remaining fixed-command shell bodies
+
+**PKG-F complete — all `builtin_bootstrap.rs` seed bodies now in preloadable format:**
+- L036–L040: git-status/log/diff-stat/branch/stash-list → `usage_l036`–`usage_l040`
+- L060–L063: hostname/whoami/uptime/free → `usage_l060`–`usage_l063`
+- `usage_shell_date`, `usage_glob_test_rust/ts/py` — fixed-command format eliminated
+- Zero legacy `result = host.*` top-level statements remain (verified by script)
+- `proposed-child-task-request` → `def prepare_child_task_request(inputs):` (PKG-E-R09)
+
+**Cleanup items resolved:**
+- `ValidationQueueStore` inner spawned store uses `with_reject_threshold()` constructor
+- Stale `#[allow(dead_code)]` removed from: `VALIDATOR_REVIEW_PREFIX`, `ReviewAdmissionSource`,
+  `ReviewAdmissionSource::new()`, `subject_validator_task_inputs()`, `failure()`,
+  `run_q1_validation_retained` (all now wired in production paths)
+- Test-only helpers retain targeted `#[allow(dead_code)]` with accurate comment
+- `run_q1_validation` annotated as legacy path; new callers directed to `_retained`
+
+**Remaining open items (updated):**
+- L010 (`pc-exec-file-exists`) blocked on typed `not_found` contract.
+- `run_q1_validation` legacy path removal — Step 6 completion gate (retained path needs behavioral evidence).
+- Validator Steps 7–12 (class routes, behavioral evidence, human Q2, production cutover).
+- General pure approval, K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences.
+
+---
+
 ## 2026-11-01 — verify_receipt fingerprint fix + PKG-C+/PKG-F L001–L012 preloadable migrations
 
 **verify_receipt fingerprint check (committed in `017ccf2d6`):**
