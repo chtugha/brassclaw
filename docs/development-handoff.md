@@ -1,4 +1,37 @@
-## Latest — verify_receipt fingerprint fix + PKG-C+/PKG-F L001–L012 migrations
+## Latest — PKG-F complete: all PythonCode seed bodies now in preloadable format
+
+### Session summary (2026-11-01, continuation)
+
+**Commits landed this session (in order):**
+
+| Commit | Package | Description |
+|--------|---------|-------------|
+| `298b39090` | PKG-E-R09 fix | `proposed-child-task-request` — `def prepare_child_task_request(inputs):` + `python-preload/2` |
+| `21e2d0050` | fix | `ValidationQueueStore` inner spawn uses `Self::with_reject_threshold(...)` constructor |
+| `6947008fd` | cleanup | Remove stale `#[allow(dead_code)]` from `run_q1_validation_retained` + `pg_review_admission_source.rs` |
+| `89a52443e` | docs | Annotate `run_q1_validation` as legacy mutable-recipe path (Step 6 migration target) |
+| `6b1d66915` | PKG-F final | Migrate all remaining 19 `§shell-safe-fixed` legacy bodies to preloadable `def` format |
+
+**Key result:**
+Zero legacy top-level `result = ...` bodies remain in `builtin_bootstrap.rs`. Every seeded PythonCode component now uses the v3 preloadable function interface (`def export_name(inputs): ... return result`). The PKG-E-R09 open item from the prior session is closed.
+
+**Validation:**
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db -- -D warnings`: 0 warnings.
+- `cargo fmt --all -- --check`: clean for all touched files (pre-existing `runtime.rs`/`sempai_proposal_sink.rs` fmt diffs are PKG-C+/PKG-F upstream baseline).
+
+**Known open items after this session:**
+- L010 (`pc-exec-file-exists`) blocked on typed `not_found` contract.
+- L013–L101 Lnnn plan-entry migrations: body format complete; full qualification (exports, associations, behavioral evidence) remains open.
+- `run_q1_validation` legacy path still active — removal is Step 6 completion gate.
+- `PgCompositionPort` wiring of `validator_bridge()` not yet connected.
+- Validator Steps 7–12 (class routes, behavioral evidence, human Q2, production cutover).
+- General pure approval, K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences.
+
+Root retains serial Cargo ownership. 9 commits ahead of origin/main.
+
+---
+
+## Previous — verify_receipt fingerprint fix + PKG-C+/PKG-F L001–L012 migrations
 
 ### Session summary (2026-11-01)
 
@@ -26,19 +59,6 @@
 
 **Critical defect fixed:**
 - `verify_receipt` was missing the aggregate-step fingerprint check (`typed_value_checksum_with_limits(&json!(receipt), proof.data_limits())`), and was writing structural evidence before `observe_subject` ran. Both corrected.
-
-**Known open items after this session:**
-- `proposed-child-task-request` (PKG-E-R09) seed still uses legacy top-level body format — requires preload-function migration + `python-preload/2` declaration.
-- L010 (`pc-exec-file-exists`) blocked on typed `not_found` contract.
-- L013–L101 remaining PythonCode migrations.
-- `run_q1_validation` legacy path not yet removed (Step 6 completion gate).
-- `PgCompositionPort` wiring of `validator_bridge()` not yet connected.
-- Validator Steps 7–12 remain fully open.
-
-Root retains serial Cargo ownership. Format check clean; clippy 0 warnings on
-`brassclaw_reborn_composition --features postgres,skills-db`. Full plans,
-K3 formal closure, prefix C2/C3/D, general pure approval and dynamic occurrences
-remain open.
 
 ---
 

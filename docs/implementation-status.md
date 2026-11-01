@@ -31,6 +31,37 @@
 
 ---
 
+## 2026-11-01 — PKG-F complete: all PythonCode seed bodies now in preloadable format
+
+**PKG-E-R09 fix + dead_code cleanup + run_q1_validation annotation (commits `298b39090`, `21e2d0050`, `6947008fd`, `89a52443e`):**
+- `builtin_bootstrap.rs`: `proposed-child-task-request` seed migrated to `def prepare_child_task_request(inputs):` format with `python-preload/2` declaration. Closes the PKG-E-R09 open item from the prior session.
+- `validation_queue.rs`: inner spawn now uses `Self::with_reject_threshold(...)` constructor call (fmt/consistency fix).
+- `q1_orchestrator.rs`: `#[allow(dead_code)]` removed from `run_q1_validation_retained` (now wired). Added doc comment marking `run_q1_validation` as the legacy mutable-recipe path (Step 6 migration target).
+- `pg_review_admission_source.rs`: 10 stale `wired by validator Step 6` annotations removed; precise `#[allow(dead_code)]` restored on test-only helpers.
+
+**PKG-F L036-L040+ final batch (commit `6b1d66915`):**
+- Migrated all remaining 19 `§shell-safe-fixed` legacy top-level bodies to preloadable `def` format:
+  - L036–L040: `pc-exec-shell-git-status/log/diff-stat/branch/stash-list` → `usage_l036..l040(inputs)`
+  - `pc-exec-shell-date` → `usage_shell_date(inputs)`
+  - L060–L063: `pc-exec-shell-hostname/whoami/uptime/free` → `usage_l060..l063(inputs)`
+  - L080–L082: `pc-git-diff-unstaged/staged/head` → `usage_l080..l082(inputs)`
+  - `pc-glob-test-files-rust/ts/py` → `glob_test_files_rust/ts/py(inputs)`
+  - L084: `pc-grep-hardcoded-secrets` → `usage_l084(inputs)` (with `path` input)
+  - L085: `pc-grep-injection-patterns` → `usage_l085(inputs)` (with `path` input)
+  - `pc-grep-env-files` → `glob_env_files(inputs)`
+- **Zero legacy `result = ...` top-level bodies remain** in `builtin_bootstrap.rs`.
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db`: 0 warnings.
+- `cargo fmt --all -- --check`: clean for `builtin_bootstrap.rs` (pre-existing `runtime.rs`/`sempai_proposal_sink.rs` diffs are PKG-C+/PKG-F upstream baseline, not introduced here).
+
+**Open after this session:**
+- L010 (`pc-exec-file-exists`) blocked on typed `not_found` contract.
+- L013–L101: remaining Lnnn plan-entry migrations are body-format-complete; full qualification (exports, associations, behavioral evidence) remains open.
+- `run_q1_validation` legacy path still active — removal is Step 6 completion gate per `validator_v3.md`.
+- `PgCompositionPort` wiring of `validator_bridge()` not yet connected.
+- Validator Steps 7–12 (class routes, behavioral evidence, human Q2, production cutover).
+- General pure approval, K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences.
+
+
 ## 2026-11-01 — verify_receipt fingerprint fix + PKG-C+/PKG-F L001–L012 preloadable migrations
 
 **verify_receipt fingerprint check (committed in `017ccf2d6`):**

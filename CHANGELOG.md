@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **PKG-F complete: all PythonCode seed bodies migrated to preloadable format**
+  (`builtin_bootstrap.rs`, commit `6b1d66915`): Migrated the last 19 remaining
+  `§shell-safe-fixed` legacy top-level `result = host.*` bodies to v3 preloadable
+  `def export_name(inputs): ... return result` format. Affected slugs: L036–L040
+  (`pc-exec-shell-git-status/log/diff-stat/branch/stash-list`), `pc-exec-shell-date`,
+  L060–L063 (`pc-exec-shell-hostname/whoami/uptime/free`), L080–L082
+  (`pc-git-diff-unstaged/staged/head`), `pc-glob-test-files-rust/ts/py`, L084
+  (`pc-grep-hardcoded-secrets`), L085 (`pc-grep-injection-patterns`),
+  `pc-grep-env-files`. Zero legacy bodies remain in `builtin_bootstrap.rs`.
+
+- **PKG-E-R09 fix: proposed-child-task-request preloadable migration**
+  (`builtin_bootstrap.rs`, commit `298b39090`): `proposed-child-task-request`
+  seed body replaced with `def prepare_child_task_request(inputs):` preloadable
+  function + `python-preload/2` declaration. Closes PKG-E-R09 open item.
+
 - **verify_receipt aggregate-step fingerprint check** (`pg_review_admission_source.rs`,
   commit `017ccf2d6`): Added the missing aggregate-step fingerprint verification
   and corrected the step ordering. `verify_receipt` now performs the correct
