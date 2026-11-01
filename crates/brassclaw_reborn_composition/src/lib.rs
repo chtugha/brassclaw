@@ -214,6 +214,8 @@ mod pg_transcript_admission;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_user_preference_store;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_validator_q1_admission;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_validator_q1_evidence;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_workflow_review;

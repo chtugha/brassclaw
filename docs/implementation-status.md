@@ -1,3 +1,30 @@
+## 2026-11-01 — WP-1/WP-2/WP-4: Step 6 validation, routing tests, Q1 admission module
+
+**WP-1 evidence (commit `09580b0ec`):** `cargo clippy -p brassclaw_reborn_composition
+--features postgres,skills-db -- -D warnings` zero warnings; `cargo clippy -p brassclaw_skills
+--all-targets -- -D warnings` zero warnings; `cargo fmt --all -- --check` clean.
+8 `structural_validator_recipe_tests` pass; 2 `pg_validator_q1_evidence` unit tests pass.
+Resolves source-only status of BUILD-055/056/057/058/060 by establishing first
+compilation receipt. `provider_boot_tests.rs` two `resolve_provider_selection_db` calls
+updated to supply the new `codex_native_owner: None` argument introduced by BUILD-036.
+
+**WP-2 evidence:** `pg_review_admission_source` routing_tests module added. 4 unit tests
+cover `VALIDATOR_REVIEW_PREFIX` format, valid UUID detection, invalid input rejection, and
+`make_validator_receipt`/`parse_validator_receipt` round-trip. All 4 tests pass. clippy clean.
+
+**WP-4:** `pg_validator_q1_admission.rs` added — Step 9/12 gate prerequisite. Provides
+`retain_validator_selection` (derives `component-validator-selection/1` bytes via
+`RetainedValidatorCoverage::selection_bytes` and retains in
+`reborn_component_validator_selections`) and `submit_validator_review` (submits
+`TaskEntry::InternalRecipe { name: "validator-structural-review" }` with
+`VALIDATOR_REVIEW_PREFIX + submission_id` as `user_input` via `ServiceClient`).
+Compilation and unit test receipt pending from screen session.
+
+Open: complete `q1_orchestrator.rs` call-site wiring to replace `run_validator_python_with_limits`
+with the retained IBS path; K3 formal closure; prefix Phase C2/C3/D; R09/subagent migrations;
+L001–L101 component migrations; general pure approval; dynamic occurrences.
+
+
 ## 2026-11-01 — BUILD-061: K4–K7 conformity gate evidence records
 
 ### K4 — Evidence alignment for retained Loader, Child, MCP boundaries
