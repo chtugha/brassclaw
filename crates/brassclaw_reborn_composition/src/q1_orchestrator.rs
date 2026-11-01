@@ -358,9 +358,14 @@ async fn run_validator_python_with_limits(
 }
 
 // ---------------------------------------------------------------------------
-// Public entry point
+// Legacy mutable-recipe entry point (Step 6 migration target)
 // ---------------------------------------------------------------------------
 
+/// **Legacy path** — queries `reborn_recipes` directly and extracts the
+/// PythonCode body from `step_descriptions`. Use `run_q1_validation_retained`
+/// for all new callers; this function remains for compatibility while the
+/// retained path accumulates behavioral evidence (validator Step 6).
+///
 /// Run Gate 1 (Q1) validation for one component and record the result on the
 /// validation queue (FIND-P9-01 / §0.23.9).
 ///
