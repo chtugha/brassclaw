@@ -1,3 +1,27 @@
+## 2026-11-01 — pg_validator_q1_evidence and module registrations (source-only)
+
+`pg_validator_q1_evidence.rs` adds the durable Q1 evidence writer bridging
+completed validator Recipe executions to persisted `component-review-evidence/1`
+rows in `reborn_component_review_evidence` (V102). It accepts only sealed inputs
+(`RetainedValidatorSubject`, `RetainedValidatorSelection`,
+`ObservedSubjectValidatorChecks`, task_handle UUID) — none from request data or
+caller-supplied JSON. Derives a deterministic evidence UUID from the submission
+and validator selection, inserts idempotently with byte-identical conflict check,
+and rejects integrity violations. Two unit tests verify determinism and uniqueness.
+
+`lib.rs` now declares `pg_retained_q1`, `pg_workflow_review` and
+`pg_validator_q1_evidence` as `pub(crate)` modules gated on
+`postgres + skills-db`, wiring these previously floating files into the compilation
+unit. These are source-only additions; no build receipt (disk space 13 GB NVMe,
+16 GB SSDE below 15 GB threshold). Storing evidence does not establish Q1,
+combination approval, semantic agreement, human Q2 or activation.
+
+Open: trusted review owner durable Q1 scheduling wired to global orchestrator
+(Steps 6/9/12), human Q2 route, pure approval pins through all readers (item 7),
+eight class validator routes, K3 OAuth browser expiry, L001–L101 migrations,
+prefix Phase C2/C3/D and complete plan acceptance.
+
+
 ## 2026-11-01 — V201 pure evidence submission links added (source-only checkpoint)
 
 `V201__pure_evidence_submission_links.sql` adds `reborn_pure_evidence_submission_links`,

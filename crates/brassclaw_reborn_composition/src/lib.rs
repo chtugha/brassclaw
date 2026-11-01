@@ -181,6 +181,12 @@ pub(crate) mod pg_prefix_scope_ticket;
 pub(crate) mod pg_pure_approval_store;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub mod pg_pure_component_approval;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_retained_q1;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_validator_q1_evidence;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_workflow_review;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_python_code_store;
 #[cfg(feature = "postgres")]
