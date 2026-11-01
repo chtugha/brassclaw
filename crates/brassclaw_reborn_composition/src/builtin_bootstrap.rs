@@ -988,12 +988,11 @@ pub(crate) async fn retain_validator_check_drafts(
             reason: error.to_string(),
         })?;
         for draft in drafts {
-            store
-                .retain_packaged_draft(&draft)
-                .await
-                .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
+            store.retain_packaged_draft(&draft).await.map_err(|error| {
+                SeedBuiltinBootstrapError::ComponentRevision {
                     reason: error.to_string(),
-                })?;
+                }
+            })?;
         }
     }
 
@@ -12342,22 +12341,23 @@ fn seed_host_group_noop() {
 /// Minimal structural-check PythonCode body used by all class validators.
 /// Inputs: `inputs["name"]`, `inputs["description"]`, `inputs["content"]`.
 /// Returns `{"pass": bool, "errors": [str]}`.
-const PC_VALIDATOR_STRUCTURAL_BODY: &str = r#"# Tier-0 structural validator (class 22, pure-logic).
-# Checks: name present, description non-empty, content non-empty.
-# Inputs are supplied as typed data via inputs["name"], inputs["description"],
-# inputs["content"]; no IBS marker substitution is required.
-# No I/O, no imports, no host calls.
-_name = inputs["name"]
-_desc = inputs["description"]
-_content = inputs["content"]
-_errors = []
-if not _name or not _name.strip():
-    _errors.append("name is empty")
-if not _desc or not _desc.strip():
-    _errors.append("description is empty")
-if not _content or not _content.strip():
-    _errors.append("content/steps is empty")
-result = {"pass": len(_errors) == 0, "errors": _errors}
+const PC_VALIDATOR_STRUCTURAL_BODY: &str = r#"def check_structural_presence(inputs):
+    # Tier-0 structural validator (class 22, pure-logic).
+    # Checks: name present, description non-empty, content non-empty.
+    # Inputs supplied as typed data via inputs["name"], inputs["description"],
+    # inputs["content"]; no IBS marker substitution is required.
+    # No I/O, no imports, no host calls.
+    _name = inputs["name"]
+    _desc = inputs["description"]
+    _content = inputs["content"]
+    _errors = []
+    if not _name or not _name.strip():
+        _errors.append("name is empty")
+    if not _desc or not _desc.strip():
+        _errors.append("description is empty")
+    if not _content or not _content.strip():
+        _errors.append("content/steps is empty")
+    return {"pass": len(_errors) == 0, "errors": _errors}
 "#;
 
 /// YAML `step_descriptions` source shared by all class validators (single step).

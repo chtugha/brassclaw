@@ -558,41 +558,44 @@ pub fn structural_validator_recipe_drafts(
          {{\"pass\": bool, \"errors\": [str]}}."
     );
     let rule_contract = rule_contract();
-    let pc_draft = ComponentRevisionDraft::from_json(&json!({
-        "format": "component-revision/1",
-        "uuid": pc_id,
-        "class_code": 22,
-        "document": {
-            "name": format!("check-structural-presence-class-{class_code}"),
-            "description": pc_description,
-            "content": pc_body,
-            "includes": [],
-            "dependency_registry": null,
-            "input_contract": {
-                "name": {"type": "string", "required": true, "checks": []},
-                "description": {"type": "string", "required": true, "checks": []},
-                "content": {"type": "string", "required": true, "checks": []}
-            },
-            "result_contract": rule_contract,
-            "preload": {
-                "format": "python-preload/2",
-                "exports": {
-                    "check_structural_presence": {
-                        "symbol": "check_structural_presence",
-                        "parameters": ["inputs"],
-                        "mapping": true
-                    }
+    let pc_draft = ComponentRevisionDraft::from_json(
+        &json!({
+            "format": "component-revision/1",
+            "uuid": pc_id,
+            "class_code": 22,
+            "document": {
+                "name": format!("check-structural-presence-class-{class_code}"),
+                "description": pc_description,
+                "content": pc_body,
+                "includes": [],
+                "dependency_registry": null,
+                "input_contract": {
+                    "name": {"type": "string", "required": true, "checks": []},
+                    "description": {"type": "string", "required": true, "checks": []},
+                    "content": {"type": "string", "required": true, "checks": []}
                 },
-                "private_functions": {},
-                "constants": [],
-                "imports": [],
-                "dependencies": [],
-                "default_export": "check_structural_presence"
-            }
-        },
-        "dependencies": [],
-        "association": null
-    }).to_string())?;
+                "result_contract": rule_contract,
+                "preload": {
+                    "format": "python-preload/2",
+                    "exports": {
+                        "check_structural_presence": {
+                            "symbol": "check_structural_presence",
+                            "parameters": ["inputs"],
+                            "mapping": true
+                        }
+                    },
+                    "private_functions": {},
+                    "constants": [],
+                    "imports": [],
+                    "dependencies": [],
+                    "default_export": "check_structural_presence"
+                }
+            },
+            "dependencies": [],
+            "association": null
+        })
+        .to_string(),
+    )?;
 
     // 2. Collect step (single rule).
     let collect_draft = collect_draft(collect_id, &[rule_id.to_string()])?;
@@ -630,18 +633,27 @@ pub fn structural_validator_recipe_drafts(
     // Build the input_layouts and invocations with dynamic keys.
     let layout_steps = {
         let mut steps = serde_json::Map::new();
-        steps.insert("0:1".into(), json!({
-            "name":        {"kind": "task_input", "reference": "{{vars.name}}"},
-            "description": {"kind": "task_input", "reference": "{{vars.description}}"},
-            "content":     {"kind": "task_input", "reference": "{{vars.content}}"}
-        }));
+        steps.insert(
+            "0:1".into(),
+            json!({
+                "name":        {"kind": "task_input", "reference": "{{vars.name}}"},
+                "description": {"kind": "task_input", "reference": "{{vars.description}}"},
+                "content":     {"kind": "task_input", "reference": "{{vars.content}}"}
+            }),
+        );
         let mut collect_inputs = serde_json::Map::new();
-        collect_inputs.insert(rule_id.to_string(), json!({"kind": "result", "step_id": rule_step, "path": []}));
+        collect_inputs.insert(
+            rule_id.to_string(),
+            json!({"kind": "result", "step_id": rule_step, "path": []}),
+        );
         steps.insert("0:2".into(), serde_json::Value::Object(collect_inputs));
-        steps.insert("0:3".into(), json!({
-            "required_rule_ids": {"kind": "constant", "value": [rule_id]},
-            "checks": {"kind": "result", "step_id": collect_step, "path": []}
-        }));
+        steps.insert(
+            "0:3".into(),
+            json!({
+                "required_rule_ids": {"kind": "constant", "value": [rule_id]},
+                "checks": {"kind": "result", "step_id": collect_step, "path": []}
+            }),
+        );
         serde_json::Value::Object(steps)
     };
     let layout = json!({
@@ -656,11 +668,14 @@ pub fn structural_validator_recipe_drafts(
     };
     let invocations = {
         let mut inv = serde_json::Map::new();
-        inv.insert(variant_key.clone(), json!({
-            "0:1": "check_structural_presence",
-            "0:2": "collect_validator_checks",
-            "0:3": "aggregate_validator_checks"
-        }));
+        inv.insert(
+            variant_key.clone(),
+            json!({
+                "0:1": "check_structural_presence",
+                "0:2": "collect_validator_checks",
+                "0:3": "aggregate_validator_checks"
+            }),
+        );
         serde_json::Value::Object(inv)
     };
 
@@ -689,14 +704,17 @@ pub fn structural_validator_recipe_drafts(
         "invocations": invocations
     });
 
-    let recipe_draft = ComponentRevisionDraft::from_json(&json!({
-        "format": "component-revision/1",
-        "uuid": recipe_id,
-        "class_code": 21,
-        "document": recipe_doc,
-        "dependencies": [pc_id, collect_id, aggregate_id],
-        "association": null
-    }).to_string())?;
+    let recipe_draft = ComponentRevisionDraft::from_json(
+        &json!({
+            "format": "component-revision/1",
+            "uuid": recipe_id,
+            "class_code": 21,
+            "document": recipe_doc,
+            "dependencies": [pc_id, collect_id, aggregate_id],
+            "association": null
+        })
+        .to_string(),
+    )?;
 
     Ok(vec![pc_draft, collect_draft, aggregate_draft, recipe_draft])
 }
@@ -707,15 +725,16 @@ mod structural_validator_recipe_tests {
     use crate::global_bootstrap_components::packaged_component_id;
 
     const MINIMAL_PC_BODY: &str = concat!(
-        "# Tier-0 structural validator (pure-logic).\n",
-        "_name = inputs[\"name\"]\n",
-        "_desc = inputs[\"description\"]\n",
-        "_content = inputs[\"content\"]\n",
-        "_errors = []\n",
-        "if not _name or not _name.strip(): _errors.append(\"name is empty\")\n",
-        "if not _desc or not _desc.strip(): _errors.append(\"description is empty\")\n",
-        "if not _content or not _content.strip(): _errors.append(\"content/steps is empty\")\n",
-        "result = {\"pass\": len(_errors) == 0, \"errors\": _errors}\n",
+        "def check_structural_presence(inputs):\n",
+        "    # Tier-0 structural validator (pure-logic).\n",
+        "    _name = inputs[\"name\"]\n",
+        "    _desc = inputs[\"description\"]\n",
+        "    _content = inputs[\"content\"]\n",
+        "    _errors = []\n",
+        "    if not _name or not _name.strip(): _errors.append(\"name is empty\")\n",
+        "    if not _desc or not _desc.strip(): _errors.append(\"description is empty\")\n",
+        "    if not _content or not _content.strip(): _errors.append(\"content/steps is empty\")\n",
+        "    return {\"pass\": len(_errors) == 0, \"errors\": _errors}\n",
     );
 
     #[test]
@@ -747,10 +766,13 @@ mod structural_validator_recipe_tests {
 
     #[test]
     fn pc_draft_is_class_22() {
-        let drafts =
-            structural_validator_recipe_drafts(22, "PythonCode", MINIMAL_PC_BODY).unwrap();
+        let drafts = structural_validator_recipe_drafts(22, "PythonCode", MINIMAL_PC_BODY).unwrap();
         let pc = &drafts[0];
-        assert_eq!(pc.class_code(), 22, "first draft must be PythonCode (class 22)");
+        assert_eq!(
+            pc.class_code(),
+            22,
+            "first draft must be PythonCode (class 22)"
+        );
     }
 
     #[test]
@@ -788,7 +810,11 @@ mod structural_validator_recipe_tests {
             );
             // Verify there is exactly one rule in the coverage.
             let rules = coverage["rules"].as_array().unwrap();
-            assert_eq!(rules.len(), 1, "expected exactly one rule for class {class_code}");
+            assert_eq!(
+                rules.len(),
+                1,
+                "expected exactly one rule for class {class_code}"
+            );
             assert_eq!(rules[0]["rule_id"], "structural_presence");
             assert_eq!(rules[0]["step_id"], "0:1");
         }
@@ -819,22 +845,37 @@ mod structural_validator_recipe_tests {
         // Class-22 and class-0 IDs are distinct.
         assert_ne!(ids_22.0, ids_0.0);
         // IDs are in the packaged namespace (v5 UUID based on a fixed namespace).
-        assert_eq!(ids_22.0, packaged_component_id("validator:structural:pc:class-22"));
-        assert_eq!(ids_22.3, packaged_component_id("validator:structural:recipe:class-22"));
+        assert_eq!(
+            ids_22.0,
+            packaged_component_id("validator:structural:pc:class-22")
+        );
+        assert_eq!(
+            ids_22.3,
+            packaged_component_id("validator:structural:recipe:class-22")
+        );
     }
 
     #[test]
     fn recipe_draft_dependencies_match_pc_collect_aggregate() {
-        let drafts =
-            structural_validator_recipe_drafts(22, "PythonCode", MINIMAL_PC_BODY).unwrap();
+        let drafts = structural_validator_recipe_drafts(22, "PythonCode", MINIMAL_PC_BODY).unwrap();
         let pc_id = drafts[0].uuid();
         let collect_id = drafts[1].uuid();
         let aggregate_id = drafts[2].uuid();
         let recipe_deps = drafts[3].dependencies();
         assert!(recipe_deps.contains(&pc_id), "recipe deps must include pc");
-        assert!(recipe_deps.contains(&collect_id), "recipe deps must include collect");
-        assert!(recipe_deps.contains(&aggregate_id), "recipe deps must include aggregate");
-        assert_eq!(recipe_deps.len(), 3, "recipe should have exactly 3 dependencies");
+        assert!(
+            recipe_deps.contains(&collect_id),
+            "recipe deps must include collect"
+        );
+        assert!(
+            recipe_deps.contains(&aggregate_id),
+            "recipe deps must include aggregate"
+        );
+        assert_eq!(
+            recipe_deps.len(),
+            3,
+            "recipe should have exactly 3 dependencies"
+        );
     }
 
     #[test]
@@ -843,11 +884,17 @@ mod structural_validator_recipe_tests {
         let doc = drafts[3].document();
         let expected_key = "validator-class-0";
         assert!(
-            doc["input_layouts"].as_object().unwrap().contains_key(expected_key),
+            doc["input_layouts"]
+                .as_object()
+                .unwrap()
+                .contains_key(expected_key),
             "input_layouts should use variant key '{expected_key}'"
         );
         assert!(
-            doc["invocations"].as_object().unwrap().contains_key(expected_key),
+            doc["invocations"]
+                .as_object()
+                .unwrap()
+                .contains_key(expected_key),
             "invocations should use variant key '{expected_key}'"
         );
     }
@@ -858,8 +905,7 @@ mod structural_validator_recipe_tests {
         // match pass:bool + errors:list shape (enforced inside the factory).
         // All eight classes use aggregate_draft() which produces the correct shape.
         for &class_code in VALIDATOR_CLASS_CODES {
-            let result =
-                structural_validator_recipe_drafts(class_code, "label", MINIMAL_PC_BODY);
+            let result = structural_validator_recipe_drafts(class_code, "label", MINIMAL_PC_BODY);
             assert!(
                 result.is_ok(),
                 "class {class_code} should succeed with correct aggregate shape"

@@ -305,8 +305,17 @@ async fn run_validator_python_with_limits(
         );
     }
 
-    // Append `result` as the final expression so run_python_code_body returns it.
-    let body_with_return = format!("{body}\nresult");
+    // Preload-format bodies define a function `check_structural_presence(inputs)`
+    // and must be invoked explicitly. Legacy inline bodies assign `result`
+    // directly. Detect the preload format by looking for the canonical export name.
+    let body_with_return = if body.contains("def check_structural_presence(") {
+        // Preload function format: call the function as the final expression so
+        // the Evaluate utility returns its value directly (assignment returns None).
+        format!("{body}\ncheck_structural_presence(inputs)")
+    } else {
+        // Legacy inline format: append `result` as the final expression.
+        format!("{body}\nresult")
+    };
 
     let inputs = serde_json::json!({"name": name, "description": description, "content": content});
     match run_python_code_body_with_limits(&body_with_return, &[("inputs", inputs)], limits).await {
@@ -508,22 +517,24 @@ mod tests {
     /// The exact checked-in seed body from `PC_VALIDATOR_STRUCTURAL_BODY`
     /// in `builtin_bootstrap.rs` — kept inline so the test is self-contained.
     /// Uses `inputs["name/description/content"]` directly (no slot markers).
-    const TEST_VALIDATOR_BODY: &str = r#"# Tier-0 structural validator (class 22, pure-logic).
-# Checks: name present, description non-empty, content non-empty.
-# Inputs are supplied as typed data via inputs["name"], inputs["description"],
-# inputs["content"]; no IBS marker substitution is required.
-# No I/O, no imports, no host calls.
-_name = inputs["name"]
-_desc = inputs["description"]
-_content = inputs["content"]
-_errors = []
-if not _name or not _name.strip():
-    _errors.append("name is empty")
-if not _desc or not _desc.strip():
-    _errors.append("description is empty")
-if not _content or not _content.strip():
-    _errors.append("content/steps is empty")
-result = {"pass": len(_errors) == 0, "errors": _errors}
+    /// Preload function format: defines `check_structural_presence(inputs)`.
+    const TEST_VALIDATOR_BODY: &str = r#"def check_structural_presence(inputs):
+    # Tier-0 structural validator (class 22, pure-logic).
+    # Checks: name present, description non-empty, content non-empty.
+    # Inputs supplied as typed data via inputs["name"], inputs["description"],
+    # inputs["content"]; no IBS marker substitution is required.
+    # No I/O, no imports, no host calls.
+    _name = inputs["name"]
+    _desc = inputs["description"]
+    _content = inputs["content"]
+    _errors = []
+    if not _name or not _name.strip():
+        _errors.append("name is empty")
+    if not _desc or not _desc.strip():
+        _errors.append("description is empty")
+    if not _content or not _content.strip():
+        _errors.append("content/steps is empty")
+    return {"pass": len(_errors) == 0, "errors": _errors}
 "#;
 
     #[tokio::test]
