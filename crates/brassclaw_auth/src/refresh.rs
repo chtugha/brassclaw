@@ -137,12 +137,81 @@ pub struct CredentialRefreshCompletion {
     pub outcome: CredentialRefreshOutcome,
 }
 
+/// Pure subject validation for the SAME refresh state machine. Neither branch
+/// authenticates a secret, authorizes transport or grants dispatch. The native
+/// instance owner must authenticate its account/client lineage and exact source,
+/// durably admit the action, then use its private host transport capability.
+#[derive(Clone, Copy)]
+enum RefreshSubject {
+    Scoped,
+    HostInstance,
+}
+impl RefreshSubject {
+    fn authorized(self, account: &CredentialAccount, request: &CredentialRefreshRequest) -> bool {
+        match self {
+            Self::Scoped => {
+                account.is_authorized_for_requester(request.requester_extension.as_ref())
+            }
+            Self::HostInstance => {
+                let resource = &account.scope.resource;
+                !resource.is_system()
+                    && account.scope.surface == crate::AuthSurface::SetupAdmin
+                    && resource.agent_id.is_none()
+                    && resource.project_id.is_none()
+                    && resource.thread_id.is_none()
+                    && account.scope.session_id.is_none()
+                    && account.ownership == crate::CredentialOwnership::System
+                    && account.owner_extension.is_none()
+                    && account.granted_extensions.is_empty()
+                    && request.requester_extension.is_none()
+            }
+        }
+    }
+    fn validate(
+        self,
+        account: &CredentialAccount,
+        request: &CredentialRefreshRequest,
+    ) -> Result<(), AuthProductError> {
+        match self {
+            Self::Scoped => crate::domain::validate_refresh_target(account, request),
+            Self::HostInstance => {
+                if !self.authorized(account, request)
+                    || account.id != request.account_id
+                    || account.scope != request.scope
+                    || account.provider != request.provider
+                {
+                    return Err(AuthProductError::CrossScopeDenied);
+                }
+                crate::domain::validate_refresh_account_state(account)
+            }
+        }
+    }
+}
+
 impl CredentialRefreshAction {
     /// Reconstruct the exact selected provider metadata, never latest material.
     /// This is not authority: only the winning durable admission may dispatch it.
     /// Retained legacy intents without a source stay read-only/reconcilable.
     pub fn provider_dispatch(
         &self,
+    ) -> Result<(OAuthProviderRefreshRequest, OAuthProviderRefreshPreparation), AuthProductError>
+    {
+        self.provider_dispatch_for(RefreshSubject::Scoped)
+    }
+
+    /// Native instance metadata only. This is NOT a dispatch grant. Generic
+    /// refresh/extension paths still reject System-owned accounts; only the
+    /// private host owner can authenticate and submit its actual credential.
+    pub fn provider_dispatch_host_instance(
+        &self,
+    ) -> Result<(OAuthProviderRefreshRequest, OAuthProviderRefreshPreparation), AuthProductError>
+    {
+        self.provider_dispatch_for(RefreshSubject::HostInstance)
+    }
+
+    fn provider_dispatch_for(
+        &self,
+        subject: RefreshSubject,
     ) -> Result<(OAuthProviderRefreshRequest, OAuthProviderRefreshPreparation), AuthProductError>
     {
         if self.outcome != CredentialRefreshOutcome::Submitted
@@ -153,7 +222,7 @@ impl CredentialRefreshAction {
         if self.expected_account.id != self.original.account_id {
             return Err(AuthProductError::BackendConflict);
         }
-        crate::domain::validate_refresh_target(&self.expected_account, &self.original.request())?;
+        subject.validate(&self.expected_account, &self.original.request())?;
         let request = OAuthProviderRefreshRequest {
             refresh_id: self.original.id,
             provider: self.expected_account.provider.clone(),
@@ -242,6 +311,35 @@ impl CredentialRefreshAction {
         prepared: CredentialRefreshPrepared,
         now: Timestamp,
     ) -> Result<CredentialRefreshAdmission, AuthProductError> {
+        Self::begin_for(current, existing, prepared, now, RefreshSubject::Scoped)
+    }
+
+    /// Use the existing state transitions for host-owned instance metadata.
+    /// The caller must first authenticate its original instance subject and
+    /// source through the native store and commit the winning journal admission
+    /// before HTTP. Caller labels or this pure result grant no authority.
+    pub fn begin_host_instance(
+        current: &mut CredentialAccount,
+        existing: &[Self],
+        prepared: CredentialRefreshPrepared,
+        now: Timestamp,
+    ) -> Result<CredentialRefreshAdmission, AuthProductError> {
+        Self::begin_for(
+            current,
+            existing,
+            prepared,
+            now,
+            RefreshSubject::HostInstance,
+        )
+    }
+
+    fn begin_for(
+        current: &mut CredentialAccount,
+        existing: &[Self],
+        prepared: CredentialRefreshPrepared,
+        now: Timestamp,
+        subject: RefreshSubject,
+    ) -> Result<CredentialRefreshAdmission, AuthProductError> {
         if let Some(original) = existing
             .iter()
             .find(|a| a.original.id == prepared.original.id)
@@ -251,11 +349,11 @@ impl CredentialRefreshAction {
         }
         let expected = &prepared.expected_account;
         let request = prepared.original.request();
-        crate::domain::validate_refresh_target(expected, &request)?;
+        subject.validate(expected, &request)?;
         if current.id != expected.id
             || current.provider != expected.provider
             || !scope_matches(&current.scope, &expected.scope)
-            || !current.is_authorized_for_requester(request.requester_extension.as_ref())
+            || !subject.authorized(current, &request)
         {
             return Err(AuthProductError::CrossScopeDenied);
         }
@@ -296,7 +394,7 @@ impl CredentialRefreshAction {
                 Ok(CredentialRefreshAdmission::Original(action))
             }
             (Some(handle), Some(destinations), Some(_)) => {
-                action.provider_dispatch()?;
+                action.provider_dispatch_for(subject)?;
                 let reused = |candidate: &SecretHandle| {
                     current.access_secret.as_ref() == Some(candidate)
                         || current.refresh_secret.as_ref() == Some(candidate)

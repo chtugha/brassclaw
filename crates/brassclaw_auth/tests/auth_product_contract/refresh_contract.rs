@@ -1067,3 +1067,299 @@ async fn legacy_refresh_intent_without_source_stays_readable_and_cannot_gain_dis
         "completion cannot substitute source generation"
     );
 }
+
+// Pure custody/state-transition contracts. No secret, real transport, native
+// journal admission or installed-provider authority is manufactured here.
+mod host_instance_state_contract {
+    use super::*;
+    use brassclaw_auth::{
+        CredentialRefreshAction, CredentialRefreshAdmission, CredentialRefreshCompletion,
+        CredentialRefreshId, CredentialRefreshOriginal, CredentialRefreshOutcome,
+        CredentialRefreshPrepared, CredentialRefreshPublication, OAuthProviderRefreshPreparation,
+        OAuthRefreshSource, OAuthTokenDestinations,
+    };
+
+    fn preparation() -> (CredentialAccount, CredentialRefreshPrepared) {
+        // Native instance scope: SetupAdmin with no agent/project/thread/session.
+        // local_default sets agent_id/project_id; clear them for a valid native subject.
+        let mut resource = ResourceScope::local_default(
+            UserId::new("original-installer").unwrap(),
+            InvocationId::new(),
+        )
+        .unwrap();
+        resource.agent_id = None;
+        resource.project_id = None;
+        let owner = AuthProductScope::new(resource, AuthSurface::SetupAdmin);
+        let now = Utc::now();
+        let account = CredentialAccount {
+            id: CredentialAccountId::new(),
+            scope: owner.clone(),
+            provider: AuthProviderId::new("openai_codex").unwrap(),
+            label: label("host instance metadata"),
+            status: CredentialAccountStatus::Configured,
+            ownership: CredentialOwnership::System,
+            owner_extension: None,
+            granted_extensions: vec![],
+            access_secret: Some(SecretHandle::new("host-current-access").unwrap()),
+            access_expires_at: None,
+            refresh_secret: Some(SecretHandle::new("host-current-refresh").unwrap()),
+            scopes: vec![],
+            created_at: now,
+            updated_at: now,
+        };
+        let request = CredentialRefreshRequest::new(owner, account.provider.clone(), account.id);
+        let prepared = CredentialRefreshPrepared {
+            original: CredentialRefreshOriginal::from(&request),
+            expected_account: account.clone(),
+            preparation: Some(OAuthProviderRefreshPreparation {
+                destinations: OAuthTokenDestinations {
+                    access_secret: SecretHandle::new("host-next-access").unwrap(),
+                    refresh_secret: SecretHandle::new("host-next-refresh").unwrap(),
+                },
+                source: OAuthRefreshSource {
+                    scope: account.scope.resource.clone(),
+                    handle: account.refresh_secret.clone().unwrap(),
+                    record_reference: "opaque fixture metadata, never authentication".into(),
+                },
+            }),
+        };
+        (account, prepared)
+    }
+
+    #[test]
+    fn host_instance_metadata_never_enables_generic_system_refresh() {
+        let (mut account, prepared) = preparation();
+        assert!(matches!(
+            CredentialRefreshAction::begin(&mut account, &[], prepared.clone(), Utc::now()),
+            Err(AuthProductError::CrossScopeDenied)
+        ));
+        let CredentialRefreshAdmission::Dispatch(action) =
+            CredentialRefreshAction::begin_host_instance(
+                &mut account,
+                &[],
+                prepared.clone(),
+                Utc::now(),
+            )
+            .unwrap()
+        else {
+            panic!("pure initial native metadata admission")
+        };
+        assert_eq!(account, prepared.expected_account);
+        assert!(matches!(
+            action.provider_dispatch(),
+            Err(AuthProductError::CrossScopeDenied)
+        ));
+        let (request, selected) = action.provider_dispatch_host_instance().unwrap();
+        assert_eq!(Some(&selected), prepared.preparation.as_ref());
+        assert!(selected.source.verify(&request).is_ok());
+        let restored: CredentialRefreshAction =
+            serde_json::from_value(serde_json::to_value(&action).unwrap()).unwrap();
+        assert_eq!(
+            restored, action,
+            "native ownership preserves ordinary stored scope identity"
+        );
+        assert!(matches!(
+            restored.provider_dispatch(),
+            Err(AuthProductError::CrossScopeDenied)
+        ));
+        let mut reserved = prepared.expected_account.clone();
+        reserved.scope.resource = ResourceScope::system();
+        let mut reserved_prepared = prepared.clone();
+        reserved_prepared.expected_account = reserved.clone();
+        reserved_prepared.original.scope = reserved.scope.clone();
+        reserved_prepared.preparation.as_mut().unwrap().source.scope =
+            reserved.scope.resource.clone();
+        assert!(matches!(
+            CredentialRefreshAction::begin_host_instance(
+                &mut reserved,
+                &[],
+                reserved_prepared,
+                Utc::now()
+            ),
+            Err(AuthProductError::CrossScopeDenied)
+        ));
+        assert!(
+            serde_json::from_value::<OAuthRefreshSource>(
+                serde_json::to_value(&OAuthRefreshSource {
+                    scope: ResourceScope::system(),
+                    ..selected.source.clone()
+                })
+                .unwrap()
+            )
+            .is_err()
+        );
+        let mut legacy = action.clone();
+        legacy.source = None;
+        assert!(matches!(
+            legacy.provider_dispatch_host_instance(),
+            Err(AuthProductError::BackendUnavailable)
+        ));
+    }
+
+    #[test]
+    fn host_instance_metadata_keeps_original_blockers_and_publication_fences() {
+        let (mut account, prepared) = preparation();
+        let CredentialRefreshAdmission::Dispatch(mut action) =
+            CredentialRefreshAction::begin_host_instance(
+                &mut account,
+                &[],
+                prepared.clone(),
+                Utc::now(),
+            )
+            .unwrap()
+        else {
+            panic!("pure initial native metadata admission")
+        };
+        assert!(matches!(
+            CredentialRefreshAction::begin_host_instance(
+                &mut account,
+                &[action.clone()],
+                prepared.clone(),
+                Utc::now()
+            )
+            .unwrap(),
+            CredentialRefreshAdmission::Original(_)
+        ));
+        let mut alternate = prepared.clone();
+        alternate.original.id = CredentialRefreshId::new();
+        assert!(matches!(
+            CredentialRefreshAction::begin_host_instance(
+                &mut account,
+                &[action.clone()],
+                alternate,
+                Utc::now()
+            ),
+            Err(AuthProductError::BackendConflict)
+        ));
+        let destinations = action.destinations.clone().unwrap();
+        let completion = CredentialRefreshCompletion {
+            dispatched: action.clone(),
+            outcome: CredentialRefreshOutcome::Returned(OAuthProviderRefresh {
+                provider: action.original.provider.clone(),
+                access_secret: destinations.access_secret.clone(),
+                access_expires_at: None,
+                refresh_secret: Some(destinations.refresh_secret.clone()),
+                scopes: vec![],
+            }),
+        };
+        action.record_result(completion, Utc::now()).unwrap();
+        action.publish(&mut account, Utc::now()).unwrap();
+        assert_eq!(account.access_secret, Some(destinations.access_secret));
+        assert_eq!(account.refresh_secret, Some(destinations.refresh_secret));
+        assert_eq!(action.publication, CredentialRefreshPublication::Applied);
+        assert!(action.receipt().unwrap().confirmed_refresh());
+        assert!(matches!(
+            CredentialRefreshAction::begin_host_instance(
+                &mut account,
+                &[action],
+                prepared,
+                Utc::now()
+            )
+            .unwrap(),
+            CredentialRefreshAdmission::Original(_)
+        ));
+    }
+
+    #[test]
+    fn host_instance_metadata_rejects_scoped_extension_and_invalid_source_subjects() {
+        let (account, prepared) = preparation();
+        let mut extension = prepared.clone();
+        extension.original.requester_extension =
+            Some(ExtensionId::new("untrusted-extension").unwrap());
+        assert!(matches!(
+            CredentialRefreshAction::begin_host_instance(
+                &mut account.clone(),
+                &[],
+                extension,
+                Utc::now()
+            ),
+            Err(AuthProductError::CrossScopeDenied)
+        ));
+        for surface in [AuthSurface::Web, AuthSurface::Api, AuthSurface::Chat] {
+            let mut wrong_surface = prepared.clone();
+            wrong_surface.expected_account.scope.surface = surface;
+            wrong_surface.original.scope.surface = surface;
+            assert!(matches!(
+                CredentialRefreshAction::begin_host_instance(
+                    &mut account.clone(),
+                    &[],
+                    wrong_surface,
+                    Utc::now()
+                ),
+                Err(AuthProductError::CrossScopeDenied)
+            ));
+        }
+        let mut session = prepared.clone();
+        session.expected_account.scope.session_id =
+            Some(AuthSessionId::new("not-an-instance-original").unwrap());
+        session.original.scope = session.expected_account.scope.clone();
+        assert!(matches!(
+            CredentialRefreshAction::begin_host_instance(
+                &mut account.clone(),
+                &[],
+                session,
+                Utc::now()
+            ),
+            Err(AuthProductError::CrossScopeDenied)
+        ));
+        let mut empty_source = prepared.clone();
+        empty_source
+            .preparation
+            .as_mut()
+            .unwrap()
+            .source
+            .record_reference
+            .clear();
+        assert!(matches!(
+            CredentialRefreshAction::begin_host_instance(
+                &mut account.clone(),
+                &[],
+                empty_source,
+                Utc::now()
+            ),
+            Err(AuthProductError::BackendConflict)
+        ));
+        let mut wrong_source = prepared.clone();
+        wrong_source.preparation.as_mut().unwrap().source.scope = ResourceScope::system();
+        assert!(matches!(
+            CredentialRefreshAction::begin_host_instance(
+                &mut account.clone(),
+                &[],
+                wrong_source,
+                Utc::now()
+            ),
+            Err(AuthProductError::CrossScopeDenied)
+        ));
+        let mut revoked = prepared.clone();
+        revoked.expected_account.status = CredentialAccountStatus::Revoked;
+        assert!(matches!(
+            CredentialRefreshAction::begin_host_instance(
+                &mut account.clone(),
+                &[],
+                revoked,
+                Utc::now()
+            ),
+            Err(AuthProductError::CredentialMissing)
+        ));
+        let mut scoped = account;
+        scoped.scope = scope("normal-account-remains-scoped");
+        scoped.ownership = CredentialOwnership::UserReusable;
+        let mut scoped_prepared = prepared;
+        scoped_prepared.original.scope = scoped.scope.clone();
+        scoped_prepared.expected_account = scoped.clone();
+        scoped_prepared.preparation.as_mut().unwrap().source.scope = scoped.scope.resource.clone();
+        assert!(matches!(
+            CredentialRefreshAction::begin_host_instance(
+                &mut scoped,
+                &[],
+                scoped_prepared.clone(),
+                Utc::now()
+            ),
+            Err(AuthProductError::CrossScopeDenied)
+        ));
+        assert!(matches!(
+            CredentialRefreshAction::begin(&mut scoped, &[], scoped_prepared, Utc::now()).unwrap(),
+            CredentialRefreshAdmission::Dispatch(_)
+        ));
+    }
+}

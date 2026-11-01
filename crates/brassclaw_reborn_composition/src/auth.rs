@@ -1,3 +1,7 @@
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+#[path = "auth_native_codex.rs"]
+mod native_codex;
+
 #[path = "auth_google_original.rs"]
 mod google_original;
 
@@ -563,6 +567,12 @@ impl RebornProductAuthServicePorts {
 /// lower auth stores, provider clients, or route-local state.
 #[derive(Clone)]
 pub struct RebornProductAuthServices {
+    /// Native ownership is either the actual coherent composed pair or
+    /// unavailable; externally supplied/non-PG Auth never adopts another store.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    #[allow(dead_code)]
+    // PRIVATE036: used by with_native_codex_owners/native_codex_owner/native_codex_transport once callers land.
+    native_codex: native_codex::NativeCodexOwners,
     flow_manager: Arc<dyn AuthFlowManager>,
     interaction_service: Arc<dyn AuthInteractionService>,
     manual_token_flow_service: Arc<dyn RebornManualTokenFlowService>,
@@ -729,6 +739,8 @@ impl RebornProductAuthServices {
             oauth_gate_registry: None,
             flow_record_source: None,
             primitive_settings: None,
+            #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+            native_codex: native_codex::NativeCodexOwners::default(),
         }
     }
 

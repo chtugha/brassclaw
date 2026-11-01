@@ -241,7 +241,7 @@ impl RebornProviderAdmin {
                     }
                 })?;
                 let credential = keys
-                    .read_in_transaction(&transaction, &definition.id)
+                    .read_usage_credential_in_transaction(&transaction, &definition)
                     .await
                     .map_err(|_| RebornProviderAdminError::LoadDatabase {
                         reason: "provider credential snapshot is unavailable".into(),
@@ -257,7 +257,7 @@ impl RebornProviderAdmin {
                         reason: "selected provider revision is unavailable".into(),
                     })?;
                 let credential_ref = keys
-                    .record_reference_in_transaction(&transaction, &definition.id)
+                    .inspect_usage_credential_reference_in_transaction(&transaction, &definition)
                     .await
                     .map_err(|_| RebornProviderAdminError::LoadDatabase {
                         reason: "provider credential reference is unavailable".into(),

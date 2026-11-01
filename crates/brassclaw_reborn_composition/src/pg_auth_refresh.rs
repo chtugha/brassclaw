@@ -6,6 +6,13 @@ use brassclaw_auth::{
     CredentialRefreshOriginal, CredentialRefreshPrepared,
 };
 
+type RefreshAdmission = fn(
+    &mut CredentialAccount,
+    &[CredentialRefreshAction],
+    CredentialRefreshPrepared,
+    brassclaw_auth::Timestamp,
+) -> Result<CredentialRefreshAdmission, AuthProductError>;
+
 fn decode_action(row: &tokio_postgres::Row) -> Result<CredentialRefreshAction, AuthProductError> {
     serde_json::from_value(row.get::<_, serde_json::Value>(0))
         .map_err(|_| AuthProductError::BackendUnavailable)
@@ -82,18 +89,55 @@ impl PgAuthProductServices {
         if let Some(action) = self.read_refresh_action(&original.request()).await? {
             return Ok(CredentialRefreshAdmission::Original(action));
         }
-        let (tenant, scope_ref, id) = key(&original)?;
         let mut client = self.pool.get().await.map_err(pool_err)?;
         let transaction = client.transaction().await.map_err(db_err)?;
-        let (mut account, account_revision) = account_for_update(&transaction, &original).await?;
+        let (admission, changed) = self
+            .begin_refresh_in_transaction(&transaction, prepared, CredentialRefreshAction::begin)
+            .await?;
+        if changed {
+            transaction.commit().await.map_err(db_err)?;
+        } else {
+            transaction.rollback().await.map_err(db_err)?;
+        }
+        Ok(admission)
+    }
+
+    /// Native metadata admission in the EXISTING refresh journal. The caller
+    /// must authenticate its original instance binding under the same account ->
+    /// action -> encrypted-head lock order and COMMIT before actual issuer I/O.
+    /// Caller labels, this metadata or a returned Dispatch are not permission
+    /// before that winning acknowledged commit. No HTTP occurs in this helper.
+    #[allow(dead_code)] // PRIVATE036: used by the native host refresh caller once login/publication wiring lands.
+    pub(crate) async fn begin_host_instance_refresh_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        prepared: CredentialRefreshPrepared,
+    ) -> Result<CredentialRefreshAdmission, AuthProductError> {
+        self.begin_refresh_in_transaction(
+            transaction,
+            prepared,
+            CredentialRefreshAction::begin_host_instance,
+        )
+        .await
+        .map(|(admission, _)| admission)
+    }
+
+    async fn begin_refresh_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        prepared: CredentialRefreshPrepared,
+        admit: RefreshAdmission,
+    ) -> Result<(CredentialRefreshAdmission, bool), AuthProductError> {
+        let original = prepared.original.clone();
+        let (tenant, scope_ref, id) = key(&original)?;
+        let (mut account, account_revision) = account_for_update(transaction, &original).await?;
         if let Some(row)=transaction.query_opt(
             "SELECT data FROM brassclaw_product_auth_refreshes WHERE tenant_id=$1 AND scope_ref=$2 AND id=$3 FOR UPDATE",
             &[&tenant,&scope_ref,&id],
         ).await.map_err(db_err)? {
             let action=decode_action(&row)?;
             if action.original!=original {return Err(AuthProductError::BackendConflict);}
-            transaction.rollback().await.map_err(db_err)?;
-            return Ok(CredentialRefreshAdmission::Original(action));
+            return Ok((CredentialRefreshAdmission::Original(action), false));
         }
         let mut existing = Vec::new();
         if let Some(handle) = &account.refresh_secret {
@@ -106,8 +150,7 @@ impl PgAuthProductServices {
             }
         }
         let before = account.clone();
-        let admission =
-            CredentialRefreshAction::begin(&mut account, &existing, prepared, Utc::now())?;
+        let admission = admit(&mut account, &existing, prepared, Utc::now())?;
         let action = match &admission {
             CredentialRefreshAdmission::Dispatch(action)
             | CredentialRefreshAdmission::Original(action) => action,
@@ -119,11 +162,7 @@ impl PgAuthProductServices {
                 .ok_or(AuthProductError::BackendUnavailable)?;
             let selected = self
                 .secret_store
-                .inspect_record_reference_in_transaction(
-                    &transaction,
-                    &source.scope,
-                    &source.handle,
-                )
+                .inspect_record_reference_in_transaction(transaction, &source.scope, &source.handle)
                 .await
                 .map_err(|_| AuthProductError::BackendUnavailable)?;
             if selected.as_deref() != Some(source.record_reference.as_str()) {
@@ -146,12 +185,11 @@ impl PgAuthProductServices {
             return Err(AuthProductError::BackendConflict);
         }
         if before != account {
-            update_account(&transaction, &account, account_revision).await?;
+            update_account(transaction, &account, account_revision).await?;
         }
-        // A lost acknowledgement cannot return Dispatch and therefore cannot
-        // authorize a second issuer request. Original readback remains durable.
-        transaction.commit().await.map_err(db_err)?;
-        Ok(admission)
+        // The owning wrapper must confirm its COMMIT before returning Dispatch.
+        // A native caller verifies its exact provider binding in this SAME tx.
+        Ok((admission, true))
     }
 
     async fn record_refresh_result(

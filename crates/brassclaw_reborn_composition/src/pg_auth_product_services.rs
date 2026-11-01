@@ -54,6 +54,12 @@ type Pool = deadpool_postgres::Pool;
 mod callback;
 #[path = "pg_auth_cleanup.rs"]
 mod cleanup;
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+#[path = "pg_auth_codex_access.rs"]
+mod codex_access;
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+#[path = "pg_auth_codex_publication.rs"]
+pub(crate) mod codex_publication;
 #[path = "pg_auth_dcr.rs"]
 mod dcr;
 #[cfg(feature = "root-llm-provider")]

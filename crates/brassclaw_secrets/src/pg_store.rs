@@ -982,6 +982,31 @@ impl PgSecretStore {
         .await
     }
 
+    /// Conditional authenticated generation and lifetime in the caller's
+    /// transaction. None expected means create-only, including concurrent
+    /// insertions. Reuses the same row/advisory checks as ordinary secret CAS.
+    pub async fn put_with_expiry_if_record_reference_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: ResourceScope,
+        handle: SecretHandle,
+        material: SecretMaterial,
+        expires_at: Option<Timestamp>,
+        expected: Option<&str>,
+    ) -> Result<Option<SecretMetadata>, SecretStoreError> {
+        self.put_checked_in_transaction(
+            transaction,
+            scope,
+            handle,
+            OrdinarySecretValue {
+                material,
+                expires_at,
+            },
+            Some(expected),
+        )
+        .await
+    }
+
     async fn put_checked_in_transaction(
         &self,
         transaction: &tokio_postgres::Transaction<'_>,
@@ -1192,6 +1217,41 @@ impl PgSecretStore {
         }
         digest.update(version.to_be_bytes());
         format!("{:x}", digest.finalize())
+    }
+
+    /// Compare an exact authenticated record in the caller's existing read
+    /// snapshot. No raw value, lease, lock, migration or write crosses this port.
+    /// A missing, changed or non-material record cannot match the selection.
+    pub async fn inspect_matches_if_record_reference_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        expected_reference: &str,
+        candidate: &SecretMaterial,
+    ) -> Result<bool, SecretStoreError> {
+        let Some(record) = self
+            .inspect_secret_in_transaction(transaction, scope, handle)
+            .await?
+        else {
+            return Ok(false);
+        };
+        let reference = self.encrypted_record_reference(
+            &record.key,
+            handle,
+            &record.ciphertext,
+            record.version,
+        );
+        if reference != expected_reference {
+            return Ok(false);
+        }
+        let Some(expected) = record.value.material_for_compare() else {
+            return Ok(false);
+        };
+        Ok(crate::crypto::secret_values_match(
+            expected.expose_secret(),
+            candidate.expose_secret(),
+        ))
     }
 
     /// Trusted publication-owner comparison inside its existing transaction.

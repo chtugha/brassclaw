@@ -309,7 +309,7 @@ impl RebornProviderAdmin {
             selection.provider_id = Some(definition.id.clone());
             if !credentials.contains_key(&definition.id) {
                 let inspected = match keys
-                    .inspect_record_reference_in_transaction(&transaction, &definition.id)
+                    .inspect_usage_credential_reference_in_transaction(&transaction, definition)
                     .await
                 {
                     Ok(reference) => CredentialMetadata::Verified(reference),
@@ -413,7 +413,7 @@ impl RebornProviderAdmin {
         crate::llm_catalog::validate_selection(&binding.selection, &retained.definition, 0)
             .map_err(|_| unavailable())?;
         let observed = keys
-            .inspect_record_reference_in_transaction(&transaction, &binding.revision.provider_id)
+            .inspect_usage_credential_reference_in_transaction(&transaction, &retained.definition)
             .await
             .map_err(|_| unavailable())?;
         let credential = match credential {
@@ -431,16 +431,16 @@ impl RebornProviderAdmin {
                     return Err(unavailable());
                 }
                 let value = if observed.is_some() {
-                    keys.read_in_transaction(&transaction, &binding.revision.provider_id)
+                    keys.read_usage_credential_in_transaction(&transaction, &retained.definition)
                         .await
                         .map_err(|_| unavailable())?
                 } else {
                     None
                 };
                 let live = keys
-                    .inspect_record_reference_in_transaction(
+                    .inspect_usage_credential_reference_in_transaction(
                         &transaction,
-                        &binding.revision.provider_id,
+                        &retained.definition,
                     )
                     .await
                     .map_err(|_| unavailable())?;

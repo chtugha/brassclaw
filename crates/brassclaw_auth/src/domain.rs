@@ -357,6 +357,12 @@ pub fn validate_refresh_target(
     if !account_is_authorized_for_requester(account, request.requester_extension.as_ref()) {
         return Err(AuthProductError::CrossScopeDenied);
     }
+    validate_refresh_account_state(account)
+}
+
+pub(crate) fn validate_refresh_account_state(
+    account: &CredentialAccount,
+) -> Result<(), AuthProductError> {
     if matches!(
         account.status,
         crate::CredentialAccountStatus::Missing

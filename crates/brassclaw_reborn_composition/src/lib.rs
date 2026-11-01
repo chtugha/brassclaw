@@ -215,6 +215,8 @@ mod provider_admin;
 #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 mod provider_admin_product_command;
 #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+pub(crate) mod provider_codex_credentials;
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 mod provider_dispatch;
 #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 mod provider_mutation;

@@ -72,7 +72,7 @@ impl OAuthSetupDeadline {
 
 /// Both OAuth protocol clients use the existing acknowledged host policy.
 /// A configured unavailable owner never falls back to local canonical defaults.
-pub(super) async fn acknowledged_oauth_limits(
+pub(crate) async fn acknowledged_oauth_limits(
     source: Option<&Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
 ) -> Result<brassclaw_host_api::MontyExecutionLimits, AuthProductError> {
     let limits = match source {

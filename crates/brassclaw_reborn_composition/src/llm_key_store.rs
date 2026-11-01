@@ -27,6 +27,50 @@ pub struct LlmKeyStore {
 }
 
 impl LlmKeyStore {
+    /// Identity of the credential selected by the actual retained protocol.
+    /// Codex selects its authenticated native login head, never an API-key row
+    /// or decrypted session JSON. This read has no lease or refresh effect.
+    #[cfg(feature = "postgres")]
+    pub(crate) async fn inspect_usage_credential_reference_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        definition: &brassclaw_llm::ProviderDefinition,
+    ) -> Result<Option<String>, LlmKeyStoreError> {
+        if definition.protocol != brassclaw_llm::ProviderProtocol::OpenAiCodex {
+            return self
+                .inspect_record_reference_in_transaction(transaction, &definition.id)
+                .await;
+        }
+        let store = self.postgres.as_ref().ok_or_else(|| {
+            LlmKeyStoreError::Store(SecretStoreError::BackendMisconfigured {
+                reason: "native credential metadata requires its PostgreSQL secret owner".into(),
+            })
+        })?;
+        store
+            .inspect_record_reference_in_transaction(
+                transaction,
+                &scope(),
+                &oauth_handle_for(&definition.id)?,
+            )
+            .await
+            .map_err(LlmKeyStoreError::Store)
+    }
+
+    /// Only API-key protocols resolve raw key material while preparing a
+    /// selection. A native Codex request obtains its exact token later through
+    /// the existing Auth owner and its immutable per-token dispatch guard.
+    #[cfg(feature = "postgres")]
+    pub(crate) async fn read_usage_credential_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        definition: &brassclaw_llm::ProviderDefinition,
+    ) -> Result<Option<SecretMaterial>, LlmKeyStoreError> {
+        if definition.protocol == brassclaw_llm::ProviderProtocol::OpenAiCodex {
+            return Ok(None);
+        }
+        self.read_in_transaction(transaction, &definition.id).await
+    }
+
     /// Read authenticated version metadata without consuming a lease, locking
     /// rows or migrating legacy records in an administration GET snapshot.
     #[cfg(feature = "postgres")]
@@ -278,7 +322,16 @@ fn scope() -> ResourceScope {
 }
 
 fn handle_for(provider_id: &str) -> Result<SecretHandle, LlmKeyStoreError> {
-    SecretHandle::new(format!("llm_provider_{provider_id}_api_key")).map_err(|source| {
+    provider_handle(provider_id, "api_key")
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) fn oauth_handle_for(provider_id: &str) -> Result<SecretHandle, LlmKeyStoreError> {
+    provider_handle(provider_id, "oauth")
+}
+
+fn provider_handle(provider_id: &str, purpose: &str) -> Result<SecretHandle, LlmKeyStoreError> {
+    SecretHandle::new(format!("llm_provider_{provider_id}_{purpose}")).map_err(|source| {
         LlmKeyStoreError::InvalidProviderId {
             provider_id: provider_id.to_string(),
             reason: source.to_string(),

@@ -1226,7 +1226,7 @@ fn parse_adapter(adapter: &str) -> Option<ProviderProtocol> {
     serde_json::from_value(serde_json::Value::String(adapter.to_string())).ok()
 }
 
-fn normalized_endpoint(value: Option<&str>) -> Option<String> {
+pub(crate) fn normalized_endpoint(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
         .filter(|value| !value.is_empty())
