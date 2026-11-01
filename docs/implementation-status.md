@@ -1,4 +1,59 @@
 
+## 2026-11-01 — PKG-C: ValidatorTaskDriver + drive_admitted end-to-end Q1 retained path
+
+**Commits:**
+- `6d9ecd2ad` — PKG-C: wire ValidatorTaskDriver through drive_admitted path
+- `45d9ca464` — fix: resolve audit findings — constructor, K3 test, description strings, docs cleanup
+
+**PKG-C implementation complete:**
+
+`run_q1_validation_retained` is now wired as the live Q1 path via the retained
+`GlobalMontyDriver::drive_admitted` mechanism. The PKG-B deferred-ports placeholder
+(`make_validator_ports_factory`, `ValidatorDeferredPorts`) has been removed and
+replaced with the real execution path.
+
+**New files:**
+- `crates/brassclaw_reborn_composition/src/validator_task_driver.rs` — `ValidatorTaskDriver`
+  and `ValidatorDriverError`. Wraps the test-controls `MontyDriver` and translates
+  `Admitted` into a `drive_admitted` call.
+- `crates/brassclaw_reborn_composition/src/runtime/tests/validation_queue_q1_retained_tests.rs`
+  — PKG-D deferred-path tests B/C/D (moved from `validation_queue.rs`).
+- `crates/brassclaw_reborn_composition/src/runtime/tests/validator_retained_q1_tests.rs`
+  — Step 6 end-to-end integration test: seeds drafts, submits class-22 component,
+    runs `run_q1_validation_retained`, asserts `Q1Outcome::Passed` + real DB evidence rows.
+
+**Key modified files:**
+- `bootstrap_validation.rs`: `AdmissionMode::ValidatorInternal` added; `admit_validator_handoff`
+  new function; `Admitted` and its `host` field made `pub(crate)`.
+- `global_monty_driver.rs`: `drive_admitted` method — mirrors `drive_turn` but accepts
+  a pre-created `Arc<MontyTaskHost>` directly.
+- `installed_monty_catalogue.rs`: `ValidatorServiceBridge` (now `pub`) fields replaced
+  (`driver: Arc<ValidatorTaskDriver>`, `pool: Arc<PgPool>`); `make_validator_ports_factory`
+  and `ValidatorDeferredPorts` deleted; `bind_validator_service` and `validator_bridge`
+  updated accordingly.
+- `q1_orchestrator.rs`: `run_q1_validation_retained` now takes a single `bridge: Option<&ValidatorServiceBridge>`
+  parameter and matches all four `LoopExit` variants (`Completed`, `Blocked`, `Cancelled`, `Failed`).
+- `validation_queue.rs`: `fire_q1_kick_if_wired` updated to call `ValidatorTaskDriver::submit`.
+- `runtime.rs`: `bind_validator_service(validator_driver, _pool_for_validator)` wired in
+  `#[cfg(not(test))]` block; `mod validator_retained_q1_tests` registered.
+
+**Validation:**
+- `cargo check -p brassclaw_reborn_composition --features postgres,skills-db --tests`: clean
+- `cargo fmt --all -- --check`: clean
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings`: 0 warnings
+
+**Remaining open items (updated):**
+- Step 6 integration test (`validator_retained_q1_tests`) registered and compiles; full live
+  DB execution requires `cargo test --features integration`.
+- `PgCompositionPort` wiring of `validator_bridge()` not yet connected.
+- `run_q1_validation` legacy path removal — completion gate for Step 6.
+- Validator Steps 7–12 (class routes, behavioral evidence, human Q2, production cutover).
+- L010 (`pc-exec-file-exists`) blocked on typed `not_found` contract.
+- General pure approval, K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences.
+
+---
+
+
 ## 2026-11-01 — Zencoder archived; body correctness batch (L041/L086–L091/C06/C07)
 
 **Commits:**

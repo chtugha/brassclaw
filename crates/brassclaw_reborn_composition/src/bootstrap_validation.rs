@@ -170,9 +170,7 @@ enum AdmissionMode<'a> {
     /// Must be called after `retain_validator_selection` has succeeded.
     /// Does NOT call `check_and_start`; internal tasks bypass model selection
     /// via the trusted flag.
-    /// Construction is pending the PKG-C end-to-end wiring of the production
-    /// `submit_validator_review` → `ServiceClient` → `capture_internal` path.
-    #[allow(dead_code)] // constructed by submit_validator_review dispatch (PKG-C E2E gate)
+    /// Constructed by `ValidatorTaskDriver::submit` via `admit_validator_handoff`.
     ValidatorInternal,
     #[cfg(test)]
     RetainedParent,

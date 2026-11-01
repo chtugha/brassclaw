@@ -484,7 +484,7 @@ pub async fn run_q1_validation(
 /// Returns `Q1Outcome::Passed` / `Q1Outcome::Failed` only when the complete
 /// IBS path executed and `verify_receipt` persisted evidence without error.
 #[cfg(feature = "skills-db")]
-pub async fn run_q1_validation_retained(
+pub(crate) async fn run_q1_validation_retained(
     pool: &PgPool,
     scope: &ComponentScope,
     component_id: Uuid,

@@ -2150,7 +2150,7 @@ impl RetainedToolPort for SelectedTools {
 /// Injected after `GlobalMontyDriver` is constructed; carries the live driver
 /// and pool for the retained Q1 validator path.
 /// Set exactly once via `bind_validator_service`; never replaced.
-pub struct ValidatorServiceBridge {
+pub(crate) struct ValidatorServiceBridge {
     pub(crate) driver: std::sync::Arc<crate::validator_task_driver::ValidatorTaskDriver>,
     pub(crate) pool: std::sync::Arc<brassclaw_pg::PgPool>,
 }
