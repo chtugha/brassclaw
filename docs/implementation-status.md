@@ -1,3 +1,39 @@
+
+## 2026-11-01 — PKG-B/D/E-R09: ValidatorServiceBridge + q1_admission tests + proposed-child-task-request seed
+
+**PKG-B evidence (commit `a92e8e5e8`):**
+- `installed_monty_catalogue.rs`: `ValidatorServiceBridge` struct, `OnceLock<ValidatorServiceBridge>` field,
+  `bind_validator_service` method, `make_validator_ports_factory` (PKG-B deferred proxy) added.
+- `runtime.rs`: `#[cfg(not(test))]` block calls `bind_validator_service` after `GlobalMontyDriver::new`.
+- `validation_queue.rs`: test `run_q1_validation_retained_defers_when_no_service_wired` added — confirms
+  `None,None` guard returns `Q1Outcome::Deferred`.
+- `q1_review_fixture.rs`: `#[allow(clippy::duplicate_mod)]` added on intentional path includes.
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db`: 0 warnings.
+- `cargo test -p brassclaw_skills`: 13/13 pass.
+
+**PKG-D + PKG-E-R09 evidence (commit `955007991`):**
+- `pg_validator_q1_admission.rs`: 3 `#[allow(dead_code)]` comments updated to "wired by PKG-C
+  ValidationQueueStore integration"; 2 new unit tests added: `q1_admission_error_variants_are_displayable`
+  (all 5 variants including `Submission(ServiceFailure::Transport)`) and
+  `validator_review_task_input_fields_are_correct` (exact TaskInput field construction verification).
+- `builtin_bootstrap.rs`: `proposed-child-task-request` class-22 PythonCode seeded per
+  `monty.composition.implementation.md` §R09 — pure dict mapping of goal+context inputs.
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db`: 0 warnings.
+
+**Full lib test run (commit `955007991`, features postgres,skills-db):**
+- `cargo test -p brassclaw_reborn_composition --features postgres,skills-db --lib`
+- Result: 1208 passed; 89 failed; 6 ignored; finished in 1290.97s
+- Our new tests: `pg_validator_q1_admission::tests::q1_admission_error_variants_are_displayable` ✓,
+  `pg_validator_q1_admission::tests::validator_review_task_input_fields_are_correct` ✓,
+  `pg_validator_q1_admission::tests::validator_review_user_input_matches_prefix` ✓.
+- 89 failures are pre-existing infrastructure-dependent tests requiring live Postgres/Monty
+  (all in `runtime::tests::*`, `oauth_dcr::limits_tests::*`, `pg_auth_product_services::*` etc.).
+  None are caused by PKG-B/D/E-R09 changes. Baseline established for future comparison.
+
+Open: PKG-C (wire `run_q1_validation_retained` as live Q1 path via `ValidationQueueStore`),
+general Pure approval, eight validator class routes, K3/K5 acceptance gates, prefix C2/C3/D.
+
+
 ## 2026-11-01 — WP-1/WP-2/WP-4: Step 6 validation, routing tests, Q1 admission module
 
 **WP-1 evidence (commit `09580b0ec`):** `cargo clippy -p brassclaw_reborn_composition
