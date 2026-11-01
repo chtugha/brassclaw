@@ -19008,6 +19008,172 @@ const PC_PATCH_PRECONDITION_CONTENT: &str = r#"def check_patch_precondition(inpu
             "replace_all": replace_all, "occurrences": count}
 "#;
 
+// ---------------------------------------------------------------------------
+// C03: format one structured review finding into display text.
+// Pure-logic; no host calls.
+// ---------------------------------------------------------------------------
+
+const PC_FINDING_TEXT_CONTENT: &str = r#"def render_finding_text(inputs):
+    # Pure-logic finding formatter (C03). No host calls, no I/O.
+    finding = inputs["finding"]
+    severity = finding["severity"]
+    if severity not in ["Critical", "High", "Medium", "Low", "Info"]:
+        raise ValueError("invalid_finding_severity")
+    title = finding["title"]
+    if not title.strip() or "\n" in title or "\r" in title:
+        raise ValueError("invalid_finding_title")
+    if not finding["detail"].strip() or not finding["recommendation"].strip():
+        raise ValueError("incomplete_finding")
+    return "[" + severity + "] " + title + "\n\n" + finding["detail"] + "\n\n" + finding["recommendation"]
+"#;
+
+// ---------------------------------------------------------------------------
+// C04: parse a unified text diff and derive eligible line/side anchors.
+// Pure-logic; no host calls. Uses the re module for index-header validation.
+// ---------------------------------------------------------------------------
+
+const PC_TEXT_DIFF_ANCHORS_CONTENT: &str = r#"def derive_diff_anchors(inputs):
+    # Pure-logic unified-diff anchor deriver (C04). No host calls, no I/O.
+    import re
+    base_sha = inputs["base_sha"]
+    head_sha = inputs["head_sha"]
+    for sha in [base_sha, head_sha]:
+        if len(sha) not in [40, 64] or any(c not in "0123456789abcdef" for c in sha):
+            raise ValueError("invalid_diff_subject")
+    if not inputs["source_ref"]:
+        raise ValueError("missing_diff_source")
+    anchors = []
+    seen_paths = []
+    state = "start"
+    path = ""
+    header = ""
+    old_left = 0
+    new_left = 0
+    old_line = 0
+    new_line = 0
+    old_end = 0
+    new_end = 0
+    file_hunks = 0
+    marker_allowed = False
+    lines = inputs["diff_text"].split("\n")
+    if lines[-1] == "":
+        lines = lines[:-1]
+    for line in lines:
+        if line == "\\ No newline at end of file":
+            if state != "body" or not marker_allowed:
+                raise ValueError("invalid_no_newline_marker")
+            marker_allowed = False
+            continue
+        marker_allowed = False
+        if line.startswith("diff --git "):
+            if old_left != 0 or new_left != 0 or (state != "start" and file_hunks == 0):
+                raise ValueError("incomplete_diff_file")
+            header = line
+            state = "metadata"
+            file_hunks = 0
+            old_end = 0
+            new_end = 0
+        elif state == "metadata" and line.startswith("index "):
+            if re.fullmatch(r"index [0-9a-f]+\.\.[0-9a-f]+(?: [0-7]{6})?", line) is None:
+                raise ValueError("invalid_index_header")
+            state = "old_header"
+        elif state in ["metadata", "old_header"] and line.startswith("--- a/"):
+            path = line[6:]
+            if not path or any(ord(c) < 32 or ord(c) in [34, 92, 127] for c in path):
+                raise ValueError("unsupported_diff_path")
+            if any(part in ["", ".", ".."] for part in path.split("/")) or path in seen_paths:
+                raise ValueError("invalid_or_duplicate_diff_path")
+            seen_paths.append(path)
+            state = "new_header"
+        elif state == "new_header" and line == "+++ b/" + path:
+            if header != "diff --git a/" + path + " b/" + path:
+                raise ValueError("diff_header_mismatch")
+            state = "hunk_header"
+        elif state in ["hunk_header", "body"] and line.startswith("@@ "):
+            if old_left != 0 or new_left != 0:
+                raise ValueError("incomplete_diff_hunk")
+            pieces = line[3:].split(" @@", 1)
+            if len(pieces) != 2 or (pieces[1] and not pieces[1].startswith(" ")):
+                raise ValueError("invalid_hunk_header")
+            ranges = pieces[0].split(" ")
+            if len(ranges) != 2 or not ranges[0].startswith("-") or not ranges[1].startswith("+"):
+                raise ValueError("invalid_hunk_ranges")
+            parsed = []
+            for item in ranges:
+                fields = item[1:].split(",")
+                if len(fields) not in [1, 2] or any(not f or any(c not in "0123456789" for c in f) for f in fields):
+                    raise ValueError("invalid_hunk_number")
+                start = int(fields[0])
+                count = int(fields[1]) if len(fields) == 2 else 1
+                if count > 0 and start < 1:
+                    raise ValueError("invalid_hunk_start")
+                parsed.append([start, count])
+            # A zero-count range is a gap after start; normalize its next coordinate.
+            old_start = parsed[0][0] if parsed[0][1] else parsed[0][0] + 1
+            new_start = parsed[1][0] if parsed[1][1] else parsed[1][0] + 1
+            if file_hunks and (old_start < old_end or new_start < new_end):
+                raise ValueError("overlapping_or_reordered_hunk")
+            old_line, old_left = old_start, parsed[0][1]
+            new_line, new_left = new_start, parsed[1][1]
+            if old_left == 0 and new_left == 0:
+                raise ValueError("empty_hunk")
+            old_end = old_start + old_left
+            new_end = new_start + new_left
+            file_hunks += 1
+            state = "body"
+        elif state == "body" and line.startswith(" ") and old_left > 0 and new_left > 0:
+            anchors.append({"path": path, "line": new_line, "side": "RIGHT"})
+            old_line += 1
+            new_line += 1
+            old_left -= 1
+            new_left -= 1
+            marker_allowed = True
+        elif state == "body" and line.startswith("-") and old_left > 0:
+            anchors.append({"path": path, "line": old_line, "side": "LEFT"})
+            old_line += 1
+            old_left -= 1
+            marker_allowed = True
+        elif state == "body" and line.startswith("+") and new_left > 0:
+            anchors.append({"path": path, "line": new_line, "side": "RIGHT"})
+            new_line += 1
+            new_left -= 1
+            marker_allowed = True
+        else:
+            raise ValueError("unsupported_or_invalid_diff")
+    if old_left != 0 or new_left != 0 or (state != "start" and file_hunks == 0):
+        raise ValueError("incomplete_diff")
+    return {"source_ref": inputs["source_ref"], "base_sha": base_sha, "head_sha": head_sha, "anchors": anchors}
+"#;
+
+// ---------------------------------------------------------------------------
+// C05: validate diff identity and anchor, then prepare PR line-comment fields.
+// Pure-logic; no host calls.
+// ---------------------------------------------------------------------------
+
+const PC_PR_LINE_COMMENT_CONTENT: &str = r#"def prepare_pr_line_comment(inputs):
+    # Pure-logic PR review-comment preparer (C05). No host calls, no I/O.
+    facts = inputs["diff_facts"]
+    if (facts["source_ref"] != inputs["expected_source_ref"]
+            or facts["head_sha"] != inputs["reviewed_head_sha"]
+            or facts["base_sha"] != inputs["reviewed_base_sha"]):
+        raise ValueError("wrong_review_subject")
+    if (inputs["current_head_sha"] != inputs["reviewed_head_sha"]
+            or inputs["current_base_sha"] != inputs["reviewed_base_sha"]):
+        raise ValueError("review_head_changed")
+    line = inputs["line"]
+    side = inputs["side"]
+    if isinstance(line, bool) or not isinstance(line, int) or line < 1 or side not in ["LEFT", "RIGHT"]:
+        raise ValueError("invalid_comment_target")
+    matches = 0
+    for anchor in facts["anchors"]:
+        if anchor["path"] == inputs["path"] and anchor["line"] == line and anchor["side"] == side:
+            matches += 1
+    if matches != 1 or not inputs["body"].strip():
+        raise ValueError("unverified_comment_target_or_body")
+    return {"body": inputs["body"], "commit_id": inputs["reviewed_head_sha"],
+            "path": inputs["path"], "line": line, "side": side}
+"#;
+
 async fn seed_counterfactual_helpers(
     stores: &BootstrapStores,
 ) -> Result<(), SeedBuiltinBootstrapError> {
@@ -19043,6 +19209,58 @@ async fn seed_counterfactual_helpers(
                 PC_PATCH_PRECONDITION_CONTENT,
             ),
             "proposed-patch-precondition",
+        )
+        .await?;
+
+    stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "proposed-finding-text",
+                "Pure-logic review finding formatter (C03). Renders one structured finding \
+                 {severity, title, detail, recommendation} into display text. Validates the \
+                 finite severity vocabulary (Critical/High/Medium/Low/Info), rejects \
+                 multiline titles and blank detail/recommendation. No host calls, no I/O. \
+                 Returns the formatted string.",
+                PC_FINDING_TEXT_CONTENT,
+            ),
+            "proposed-finding-text",
+        )
+        .await?;
+
+    stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "proposed-text-diff-anchors",
+                "Pure-logic unified-diff anchor deriver (C04). Parses a complete ordinary \
+                 unified text diff and returns all eligible file/line/side targets for \
+                 GitHub-style line comments. Validates SHA identity (40/64 hex), diff \
+                 headers, hunk accounting, non-overlapping ordering and the finite supported \
+                 diff profile (same-path modified files only). No host calls, no I/O. \
+                 Inputs: source_ref, base_sha, head_sha, diff_text. Returns \
+                 {source_ref, base_sha, head_sha, anchors:[{path,line,side}]}.",
+                PC_TEXT_DIFF_ANCHORS_CONTENT,
+            ),
+            "proposed-text-diff-anchors",
+        )
+        .await?;
+
+    stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "proposed-pr-line-comment",
+                "Pure-logic PR review-comment preparer (C05). Validates diff identity, \
+                 head-SHA freshness, anchor existence and body text, then returns the \
+                 typed GitHub review-comment fields. No host calls, no I/O. \
+                 Inputs: diff_facts (C04 result), expected_source_ref, reviewed_base_sha, \
+                 reviewed_head_sha, current_base_sha, current_head_sha, body, path, \
+                 line (positive int), side (LEFT|RIGHT). Returns \
+                 {body, commit_id, path, line, side}.",
+                PC_PR_LINE_COMMENT_CONTENT,
+            ),
+            "proposed-pr-line-comment",
         )
         .await?;
 
