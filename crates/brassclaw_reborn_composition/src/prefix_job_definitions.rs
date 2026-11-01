@@ -120,6 +120,31 @@ pub(crate) fn captured_input_limits(
     ))
 }
 
+/// Read the current effective execution limits from the default settings row
+/// within the caller's transaction. Returns the `LEGACY_INPUT_LIMITS` default
+/// when no row exists, matching the behaviour of `preparation_policy()`.
+/// Must only be called inside the transaction that owns the coherent snapshot.
+pub(crate) async fn read_effective_limits_in_transaction(
+    client: &(impl tokio_postgres::GenericClient + Sync),
+) -> Result<brassclaw_skills::value_contract::ContractLimits, Error> {
+    let row = client
+        .query_opt(
+            "SELECT execution_limits FROM reborn_monty_vm_settings \
+             WHERE tenant_id='default' AND user_id='default' \
+               AND agent_id='default' AND project_id='default'",
+            &[],
+        )
+        .await
+        .map_err(|_| Error::Unavailable)?;
+    let policy: brassclaw_host_api::MontyExecutionLimits = match row {
+        Some(r) => {
+            serde_json::from_value(r.get::<_, serde_json::Value>(0)).map_err(|_| Error::Invalid)?
+        }
+        None => brassclaw_host_api::MontyExecutionLimits::default(),
+    };
+    captured_input_limits(policy)
+}
+
 #[cfg(test)]
 #[path = "prefix_job_input_identity_tests.rs"]
 mod input_identity_tests;
@@ -346,6 +371,17 @@ impl Store {
                 return Err(Error::Conflict);
             }
             return Ok(existing);
+        }
+        // Verify the offered input limits match the effective preparation policy
+        // at commit time. A concurrent live settings edit between qualification
+        // capture and this reserve must be detected and rejected rather than
+        // silently storing a stale codec boundary.
+        let effective_limits = read_effective_limits_in_transaction(tx).await?;
+        if r.original_input_limits.max_depth != effective_limits.max_depth
+            || r.original_input_limits.max_nodes != effective_limits.max_nodes
+            || r.original_input_limits.max_bytes != effective_limits.max_bytes
+        {
+            return Err(Error::Conflict);
         }
         if profile.is_some() {
             let current = tx

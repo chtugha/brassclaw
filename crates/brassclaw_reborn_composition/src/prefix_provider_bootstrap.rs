@@ -4,22 +4,17 @@ use super::*;
 impl RebornRuntime {
     /// Only before the provider mutation/locks. The existing role-CAS writer
     /// requires RC; the qualification reader separately requires coherent RR.
+    /// Effective input limits are now captured inside the qualification's own
+    /// coherent RR transaction; do not pre-read the preparation policy here.
     pub(crate) async fn prepare_provider_bootstrap(
         &self,
     ) -> Result<
         crate::bootstrap_setup_approval::Prepared,
         brassclaw_product_workflow::LlmConfigServiceError,
     > {
-        let policy = self
-            .installed_catalogue
-            .preparation_policy()
-            .await
-            .map_err(|_| brassclaw_product_workflow::LlmConfigServiceError::Unavailable)?;
-        let original_input_limits = crate::prefix_job_definitions::captured_input_limits(policy)
-            .map_err(|_| brassclaw_product_workflow::LlmConfigServiceError::Unavailable)?;
         self.installed_catalogue
             .setup_qualification
-            .prepare(&self.installed_catalogue.pool, original_input_limits)
+            .prepare(&self.installed_catalogue.pool)
             .await
             .map_err(|_| brassclaw_product_workflow::LlmConfigServiceError::Unavailable)
     }

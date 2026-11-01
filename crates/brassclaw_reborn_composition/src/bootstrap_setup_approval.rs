@@ -70,11 +70,10 @@ struct Subject {
     behavior: Uuid,
 }
 impl Qualification {
-    pub(crate) async fn prepare(
-        &self,
-        pool: &PgPool,
-        original_input_limits: ContractLimits,
-    ) -> Result<Prepared, RebornBuildError> {
+    /// Read the effective input limits and verify the qualification evidence in
+    /// the same coherent RR snapshot. The caller must not pre-read the policy
+    /// independently; this is the only authoritative capture path.
+    pub(crate) async fn prepare(&self, pool: &PgPool) -> Result<Prepared, RebornBuildError> {
         let mut client = pool.get().await.map_err(invalid)?;
         let tx = client
             .build_transaction()
@@ -84,6 +83,13 @@ impl Qualification {
             .await
             .map_err(invalid)?;
         self.verify_in_transaction(&tx).await?;
+        // Deref to the inner tokio_postgres::Transaction required by the
+        // generic GenericClient + Sync bound; deadpool wraps but does not
+        // directly implement the tokio_postgres trait.
+        let original_input_limits =
+            crate::prefix_job_definitions::read_effective_limits_in_transaction(&*tx)
+                .await
+                .map_err(|_| invalid("effective input limits unavailable in qualification read"))?;
         tx.commit().await.map_err(invalid)?;
         Ok(Prepared {
             subject: self.subject.clone(),

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Repair qualification isolation and original input bounds in the I1
+  Use→Bootstrap job owner (BUILD-054): `Qualification::prepare` now reads
+  `original_input_limits` from `reborn_monty_vm_settings` inside its own
+  coherent RR read-only transaction rather than accepting a separately pre-read
+  value from the caller. `reserve_prepared_in_transaction` reads the effective
+  limits within its commit transaction and returns `Conflict` when a concurrent
+  settings edit has changed them since the qualification was captured.
+  `prepare_provider_bootstrap` is simplified — the separate
+  `preparation_policy`/`captured_input_limits` pre-call is removed. No new
+  migration number; Root assigns at integration.
+
 - Add independent pair-only prefix acceptance (BUILD-023): `approve_pair` and
   `approved_pair_retry` on `PgPrefixAcceptances` write only the `scope="pair"` row
   without creating profile or generation rows. The returned `PrefixPairAcceptanceReceipt`
