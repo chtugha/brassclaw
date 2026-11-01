@@ -1,4 +1,37 @@
 
+## 2026-11-01 — Pass 18: C01–C05 counterfactual pure helpers seeded
+
+**Commits:**
+- `ccb080bf0` — Pass 18: seed C01 `build_api_absolute_url` + C02 `check_patch_precondition`
+- `72b7327a3` — Pass 18 C03–C05: seed `finding-text`, `diff-anchors`, `pr-line-comment`
+
+**C01–C05 counterfactual helpers complete (`seed_counterfactual_helpers`, Pass 18):**
+
+All five class-22 PythonCode components from `monty.composition.implementation.md §C01–C05`
+are now seeded as preloadable `def` exports with no host calls.
+
+| Component | Slug | Export | Notes |
+|-----------|------|--------|-------|
+| C01 | `proposed-api-absolute-url` | `build_api_absolute_url(inputs)` | Pure HTTPS URL assembler; validates origin + relative path |
+| C02 | `proposed-patch-precondition` | `check_patch_precondition(inputs)` | Pure patch pre-checker; count/unique/non-empty guards |
+| C03 | `proposed-finding-text` | `render_finding_text(inputs)` | Pure review finding formatter; finite severity vocab |
+| C04 | `proposed-text-diff-anchors` | `derive_diff_anchors(inputs)` | Pure unified diff parser; returns {anchors:[{path,line,side}]} |
+| C05 | `proposed-pr-line-comment` | `prepare_pr_line_comment(inputs)` | Pure PR comment preparer; validates diff identity + anchor |
+
+- C01: uses `r##"..."##` to avoid `"#` collision with `r#"..."#` raw-string delimiter.
+- C04: uses `import re` for index-header validation (declared dependency).
+- Zero host calls in any of the five; zero legacy `result =` top-level assignments.
+
+**Remaining open items (unchanged):**
+- L010 (`pc-exec-file-exists`) blocked on typed `not_found` contract.
+- `run_q1_validation` legacy path removal — Step 6 completion gate.
+- Validator Steps 7–12 (class routes, behavioral evidence, human Q2, production cutover).
+- General pure approval, K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences.
+
+---
+
+
+
 ## 2026-11-01 — PKG-F complete: all seed bodies migrated to preloadable interface; cleanup
 
 **Commits this session (continuation):**
