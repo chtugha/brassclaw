@@ -1745,7 +1745,7 @@ impl RebornLlmConfigService {
                         &transaction,
                         bootstrap,
                         mutation.id(),
-                        caller,
+                        &caller,
                         &retained,
                         &prepared.model,
                     )

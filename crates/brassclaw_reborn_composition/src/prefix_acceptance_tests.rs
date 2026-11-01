@@ -1093,7 +1093,7 @@ async fn assert_independent_pair_storage(
     )
     .await
     .unwrap();
-    assert!(store.record_on(&tx, id).await.is_err());
+    assert!(store.record_on(&*tx, id).await.is_err());
     tx.rollback().await.unwrap();
     drop(client);
     assert_eq!(

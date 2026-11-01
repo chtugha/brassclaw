@@ -177,6 +177,10 @@ pub(crate) mod pg_monty_vm_settings;
 pub(crate) mod pg_prefix_bundle_backends;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_prefix_scope_ticket;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_pure_approval_store;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub mod pg_pure_component_approval;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_python_code_store;
 #[cfg(feature = "postgres")]

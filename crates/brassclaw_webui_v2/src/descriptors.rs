@@ -290,6 +290,12 @@ pub const WEBUI_V2_ROUTE_UPDATE_DOCUS: &str = "webui.v2.update_docus";
 pub const WEBUI_V2_PATTERN_LIST_DOCUS: &str = "/api/webchat/v2/docus";
 pub const WEBUI_V2_PATTERN_GET_DOCUS: &str = "/api/webchat/v2/docus/{id}";
 
+// Pure-component approval submission.
+pub const WEBUI_V2_ROUTE_SUBMIT_PURE_COMPONENT_APPROVAL: &str =
+    "webui.v2.submit_pure_component_approval";
+pub const WEBUI_V2_PATTERN_SUBMIT_PURE_COMPONENT_APPROVAL: &str =
+    "/api/webchat/v2/pure-component-approvals";
+
 pub const WEBUI_V2_PATTERN_CREATE_THREAD: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_LIST_THREADS: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_DELETE_THREAD: &str = "/api/webchat/v2/threads/{thread_id}";
@@ -842,6 +848,8 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         list_docus_descriptor(),
         get_docus_descriptor(),
         update_docus_descriptor(),
+        // Pure-component approval submission.
+        submit_pure_component_approval_descriptor(),
         // Phase V — Orchestrator MCP Server settings tab.
         get_settings_mcp_server_descriptor(),
         put_settings_mcp_server_descriptor(),
@@ -2184,6 +2192,20 @@ fn update_docus_descriptor() -> IngressRouteDescriptor {
         WEBUI_V2_ROUTE_UPDATE_DOCUS,
         NetworkMethod::Put,
         WEBUI_V2_PATTERN_GET_DOCUS,
+        mutation_policy(
+            body_limit_kib(512),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn submit_pure_component_approval_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_SUBMIT_PURE_COMPONENT_APPROVAL,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_SUBMIT_PURE_COMPONENT_APPROVAL,
         mutation_policy(
             body_limit_kib(512),
             mutation_rate_limit(),

@@ -460,6 +460,30 @@ impl InstalledMontyCatalogue {
                         canonical_generation = Some(owner);
                     }
                 }
+                // Extend with general pure-component approvals from the DB.
+                // Collect UUIDs of standalone executable steps (non-binding steps).
+                let pure_step_ids: Vec<Uuid> = program
+                    .program()
+                    .steplist
+                    .iter()
+                    .filter(|step| !program.bindings().contains_key(&step.step_id))
+                    .filter_map(|step| {
+                        program
+                            .inputs()
+                            .components()
+                            .get(&step.step_id)
+                            .map(|r| r.uuid)
+                    })
+                    .collect();
+                if !pure_step_ids.is_empty() {
+                    let approved = crate::pg_pure_component_approval::load_independently_qualified(
+                        tx,
+                        &pure_step_ids,
+                    )
+                    .await
+                    .map_err(|e| invalid(e.to_string()))?;
+                    independently_qualified.extend(approved);
+                }
                 let mut records = BTreeMap::new();
                 let mut approvals = BTreeMap::new();
 

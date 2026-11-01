@@ -233,27 +233,21 @@ impl PgPrefixAcceptances {
         let id = pair_identity(&pair.pair_proposal);
         let mut client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
         // Existence and complete original reader share one coherent view.
-        let tx = client
-            .build_transaction()
-            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-            .read_only(true)
-            .start()
-            .await
-            .map_err(|_| Error::Unavailable)?;
+        let tx = client.transaction().await.map_err(|_| Error::Unavailable)?;
         // Unknown/malformed proposal is not "no acceptance". Resolve the same
         // exact immutable Pair through its existing namespace/parser owner.
         super::prefix_model_designs::PgPrefixModelDesigns::new(
             self.pool.clone(),
             self.namespace.clone(),
         )
-        .get_pair_proposal_on(&tx, &pair.specification, &pair.pair_proposal)
+        .get_pair_proposal_on(&*tx, &pair.specification, &pair.pair_proposal)
         .await?;
         let exists=tx.query_one("SELECT EXISTS(SELECT 1 FROM reborn_prefix_design_acceptances WHERE acceptance_id=$1)",&[&id]).await.map_err(|_|Error::Unavailable)?.get::<_,bool>(0);
         if !exists {
             tx.commit().await.map_err(|_| Error::Unavailable)?;
             return Ok(None);
         }
-        let (original, bytes) = self.read_record_on(&tx, id).await?;
+        let (original, bytes) = self.read_record_on(&*tx, id).await?;
         if original.scope != "pair"
             || original.pair_parent.is_some()
             || original.profile_parent.is_some()
@@ -351,12 +345,7 @@ impl PgPrefixAcceptances {
         let pair_id = pair_identity(&prepared.target.contract.pair_proposal);
         let profile_id = Uuid::new_v5(&pair_id, prepared.target.profile_proposal.as_bytes());
         let mut client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-            .start()
-            .await
-            .map_err(|_| Error::Unavailable)?;
+        let tx = client.transaction().await.map_err(|_| Error::Unavailable)?;
         for (accepted_id, scope, pair_parent, profile_parent, proposal) in [
             (
                 pair_id,
@@ -421,7 +410,7 @@ impl PgPrefixAcceptances {
             return Err(Error::Conflict);
         }
         tx.execute("INSERT INTO reborn_prefix_design_acceptances(acceptance_id,proposal_id,candidate_profile,candidate_generation,evidence_bytes,checksum,acceptance_scope,pair_acceptance_ref,profile_acceptance_ref) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(acceptance_id) DO NOTHING",
-            &[&accepted_id,proposal,&evidence.review.profile,&evidence.review.generation,&bytes,&checksum(bytes.as_bytes()),&scope,&pair_parent,&profile_parent])
+            &[&accepted_id,&proposal,&evidence.review.profile,&evidence.review.generation,&bytes,&checksum(bytes.as_bytes()),&scope,&pair_parent,&profile_parent])
             .await.map_err(|_| Error::Conflict)?;
         let (old, original) = self.read_record_on(tx, accepted_id).await?;
         // Reusing an immutable accepted parent does not approve a new
@@ -685,9 +674,9 @@ impl PgPrefixAcceptances {
             .prefix_token_ids_sha256
             .clone();
         super::prefix_model_designs::hash(&prefix_token_ids_sha256)?;
-        for ((_, target, render), pair) in expected.iter().zip(report.probes.chunks_exact(2)) {
-            let actual = &pair[0];
-            let literal = &pair[1];
+        let mut probe_pairs = report.probes.iter();
+        for (_, target, render) in expected.iter() {
+            let (actual, literal) = probe_pairs.next().zip(probe_pairs.next()).ok_or_else(bad)?;
             let partition = actual.partition.as_ref().ok_or_else(bad)?;
             let wire = actual.wire_input.as_ref().ok_or_else(bad)?;
             if &actual.rendered_sha256 != render

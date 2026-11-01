@@ -157,13 +157,7 @@ pub(crate) async fn select(
         return Err(invalid("setup retained program differs"));
     }
     let mut client = catalogue.pool.get().await.map_err(invalid)?;
-    let tx = client
-        .build_transaction()
-        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-        .read_only(true)
-        .start()
-        .await
-        .map_err(invalid)?;
+    let tx = client.transaction().await.map_err(invalid)?;
     catalogue
         .setup_qualification
         .verify_in_transaction(&tx)
@@ -171,7 +165,7 @@ pub(crate) async fn select(
     let origin: Uuid =
         serde_json::from_value(definition.request["origin_mutation"].clone()).map_err(invalid)?;
     let mutation =
-        crate::provider_mutation::read_original(&tx, definition.scope.tenant_id.as_str(), origin)
+        crate::provider_mutation::read_original(&*tx, definition.scope.tenant_id.as_str(), origin)
             .await
             .map_err(invalid)?;
     if mutation.bootstrap_job_id != Some(definition.id) {

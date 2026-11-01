@@ -2511,6 +2511,30 @@ pub async fn update_docus(
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
+/// Response type for `POST /api/webchat/v2/pure-component-approvals`.
+#[derive(Debug, serde::Serialize)]
+pub struct PureComponentApprovalResponse {
+    /// The approved root component UUID.
+    pub root_id: uuid::Uuid,
+}
+
+/// `POST /api/webchat/v2/pure-component-approvals`
+///
+/// Parse and record a `pure-component-approval/1` JSON declaration.
+/// The request body must be the raw JSON text of the declaration.
+/// Returns the approved root component UUID on success.
+pub async fn submit_pure_component_approval(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    body: String,
+) -> Result<Json<PureComponentApprovalResponse>, WebUiV2HttpError> {
+    let root_id = state
+        .services()
+        .submit_pure_component_approval(caller, body)
+        .await?;
+    Ok(Json(PureComponentApprovalResponse { root_id }))
+}
+
 // ── Phase V — Orchestrator MCP Server handlers ────────────────────────────────
 
 /// `GET /api/settings/mcp-server`

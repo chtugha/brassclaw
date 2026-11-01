@@ -2228,6 +2228,39 @@ pub trait RebornServicesApi: Send + Sync {
             false,
         ))
     }
+
+    /// Parse and record a `pure-component-approval/1` JSON declaration.
+    ///
+    /// The request body is the raw JSON text of the approval declaration.
+    /// Returns the approved root component UUID on success.
+    ///
+    /// Defaults to `501 Not Implemented` so facades that don't wire a
+    /// [`PureApprovalStore`] inherit a safe surface.
+    async fn submit_pure_component_approval(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _json_body: String,
+    ) -> Result<uuid::Uuid, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+}
+
+/// Port trait for submitting pure-component approval declarations.
+///
+/// The concrete implementation lives in
+/// `brassclaw_reborn_composition::pg_pure_component_approval`.
+#[async_trait]
+pub trait PureApprovalStore: Send + Sync {
+    /// Parse and record a `pure-component-approval/1` JSON declaration.
+    /// Returns the approved root component UUID on success.
+    async fn submit_pure_component_approval(
+        &self,
+        json_body: &str,
+    ) -> Result<uuid::Uuid, Box<dyn std::error::Error + Send + Sync>>;
 }
 
 /// Default facade implementation composed at the WebUI boundary.
@@ -2296,6 +2329,10 @@ pub struct RebornServices {
     /// Docus store backing `GET/PUT /api/webchat/v2/docus`.
     /// When unwired the trait defaults return 501.
     docus_store: Option<Arc<dyn DocusStore>>,
+    /// Pure-component approval store backing
+    /// `POST /api/webchat/v2/pure-component-approvals`.
+    /// When unwired the trait default returns 501.
+    pure_approval_store: Option<Arc<dyn PureApprovalStore>>,
     /// Orchestrator MCP Server service backing `/api/settings/mcp-server/*`.
     /// When unwired the trait defaults return 501.
     mcp_server_service: Option<Arc<dyn crate::settings::McpServerService>>,
@@ -2351,6 +2388,7 @@ impl RebornServices {
             chat_preference_store: None,
             intent_inputs_store: None,
             docus_store: None,
+            pure_approval_store: None,
             mcp_server_service: None,
             settings_listing: None,
             config_store: None,
@@ -2623,6 +2661,13 @@ impl RebornServices {
     /// Wire the docus store backing `GET/PUT /api/webchat/v2/docus`.
     pub fn with_docus_store(mut self, store: Arc<dyn DocusStore>) -> Self {
         self.docus_store = Some(store);
+        self
+    }
+
+    /// Wire the pure-component approval store backing
+    /// `POST /api/webchat/v2/pure-component-approvals`.
+    pub fn with_pure_approval_store(mut self, store: Arc<dyn PureApprovalStore>) -> Self {
+        self.pure_approval_store = Some(store);
         self
     }
 
@@ -5654,6 +5699,27 @@ impl RebornServicesApi for RebornServices {
             tracing::debug!("docus update error: {e}");
             RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 500, false)
         })
+    }
+
+    async fn submit_pure_component_approval(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        json_body: String,
+    ) -> Result<uuid::Uuid, RebornServicesError> {
+        let store = self.pure_approval_store.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
+        })?;
+        store
+            .submit_pure_component_approval(&json_body)
+            .await
+            .map_err(|e| {
+                tracing::debug!("pure component approval error: {e}");
+                RebornServicesError::from_status(
+                    RebornServicesErrorCode::InvalidRequest,
+                    400,
+                    false,
+                )
+            })
     }
 
     // ── Phase V — Orchestrator MCP Server ────────────────────────────────────

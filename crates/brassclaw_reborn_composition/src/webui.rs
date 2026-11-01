@@ -392,6 +392,18 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         tracing::debug!("DocusStore wired through PgDocusStore");
     }
 
+    // Wire the pure-component approval store.
+    // When the pool is available, POST /api/webchat/v2/pure-component-approvals
+    // parses and records `pure-component-approval/1` declarations to DB.
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        let store = crate::pg_pure_approval_store::PgPureApprovalStore::new(Arc::clone(pool));
+        api = api.with_pure_approval_store(
+            Arc::new(store) as Arc<dyn brassclaw_product_workflow::PureApprovalStore>
+        );
+        tracing::debug!("PureApprovalStore wired through PgPureApprovalStore");
+    }
+
     // The inbound MCP settings surface reports unavailable until qualified
     // Recipe discovery, durable chat correlation/closure and provider sessions
     // are wired. Never give MCP a ComponentPort or a dedicated composer.

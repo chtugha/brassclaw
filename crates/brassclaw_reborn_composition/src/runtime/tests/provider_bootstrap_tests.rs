@@ -1,9 +1,12 @@
 //! Real connected WebUI facade, PostgreSQL, encrypted credentials and global
 //! Recipe execution. No real provider dispatch is needed for technical setup.
 use super::*;
+use crate::runtime::RebornRuntime;
 use brassclaw_pg::test_support::{AckBoundary, AckCutRule, AckCutTransport};
 use brassclaw_product_workflow::{PrefixJobTarget, ProviderMutationReceipt};
 use serde_json::{Value, json};
+use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 #[path = "provider_bootstrap_limit_tests.rs"]
 mod limits;
 
@@ -144,7 +147,7 @@ async fn native_use_bootstrap_is_atomic_original_model_free_and_preserves_manual
     let home = tempfile::tempdir().unwrap();
     let input = RebornRuntimeInput::from_services(
         crate::input::RebornBuildInput::postgres_with_reborn_home(
-            "bootstrap-operator".into(),
+            "bootstrap-operator",
             pool.as_ref().clone(),
             rig.url.clone(),
             home.path().to_path_buf(),

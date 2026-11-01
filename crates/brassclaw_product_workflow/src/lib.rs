@@ -133,6 +133,7 @@ pub use policy::{
     NoopBeforeInboundPolicy,
 };
 pub use reborn_services::CapabilityPermissionStore;
+pub use reborn_services::PureApprovalStore;
 pub use reborn_services::{
     ActivatePrefixAcceptanceRequest, CapturePrefixModelRequest, ImportPrefixGenerationRequest,
     InterceptorConfigService, InterceptorConfigServiceError, InterceptorConfigSnapshot,
