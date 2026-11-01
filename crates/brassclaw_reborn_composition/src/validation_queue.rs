@@ -2315,6 +2315,50 @@ mod tests {
             assert_eq!(row.state, STATE_Q1_PENDING);
         }
 
+        /// PKG-B: `run_q1_validation_retained` returns `Deferred` when called with
+        /// `None, None` — the None-guard path in §0.23.9 that protects the queue row
+        /// until the retained service is wired by `bind_validator_service`.
+        #[cfg(feature = "skills-db")]
+        #[tokio::test]
+        async fn run_q1_validation_retained_defers_when_no_service_wired() {
+            use crate::q1_orchestrator::{Q1Outcome, run_q1_validation_retained};
+            let rig = pg_rig().await;
+            let scope = test_scope();
+            let store = ValidationQueueStore::new(rig.pool.clone());
+
+            let cid = Uuid::new_v4();
+            store.submit(&scope, cid, 20, None).await.unwrap();
+
+            let outcome = run_q1_validation_retained(
+                &rig.pool,
+                &scope,
+                cid,
+                20,
+                &store,
+                brassclaw_monty_host::utility::UtilityLimits::from_execution(Default::default())
+                    .unwrap(),
+                None, // service not yet wired
+                None, // ports_factory not yet wired
+            )
+            .await
+            .expect("run_q1_validation_retained should not error on None inputs");
+
+            // Both None → Deferred, queue row stays at state 1.
+            assert!(
+                matches!(outcome, Q1Outcome::Deferred { .. }),
+                "expected Deferred when service/ports are None; got {outcome:?}"
+            );
+
+            let row = store
+                .list(&scope, Some(STATE_Q1_PENDING as u8))
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|r| r.component_id == cid)
+                .expect("queue row must remain at state 1");
+            assert_eq!(row.state, STATE_Q1_PENDING);
+        }
+
         /// submit → gate1_pass (pub(crate)) → approve: full graduation round-trip.
         ///
         /// Since orchestrated Q1 defers until validator Recipes are seeded, the

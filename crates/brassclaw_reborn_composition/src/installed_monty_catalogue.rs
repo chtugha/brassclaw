@@ -152,6 +152,8 @@ pub(crate) struct InstalledMontyCatalogue {
     captured_prefixes: std::sync::Mutex<BTreeMap<String, std::sync::Weak<TaskCatalogue>>>,
     tool_credential_sources:
         std::sync::OnceLock<Arc<crate::task_tool_credentials::ToolCredentialSourceOwner>>,
+    #[allow(dead_code)] // wired by PKG-B; consumed by PKG-C validator dispatch
+    pub(crate) validator_service: std::sync::OnceLock<ValidatorServiceBridge>,
     child_tasks: child_tasks::ChildTasks,
     pub(crate) discovery_publication: tokio::sync::Mutex<()>,
     pub(crate) discovery_effective: tokio::sync::RwLock<Option<Uuid>>,
@@ -190,6 +192,25 @@ impl InstalledMontyCatalogue {
     ) -> Result<(), AgentLoopDriverError> {
         self.tool_credential_sources
             .set(owner)
+            .map_err(|_| failed())
+    }
+
+    /// Wire the live `ServiceClient` and ports factory for the retained Q1 path.
+    /// Called once from `runtime.rs` immediately after `GlobalMontyDriver::new`.
+    /// A second call returns `Err` (OnceLock contract — must not replace).
+    #[allow(dead_code)] // called from #[cfg(not(test))] runtime.rs block
+    pub(crate) fn bind_validator_service(
+        &self,
+        service: brassclaw_monty_host::service::ServiceClient,
+        ports_factory: std::sync::Arc<
+            dyn Fn() -> std::sync::Arc<dyn brassclaw_monty_host::service::TaskPorts> + Send + Sync,
+        >,
+    ) -> Result<(), AgentLoopDriverError> {
+        self.validator_service
+            .set(ValidatorServiceBridge {
+                service,
+                ports_factory,
+            })
             .map_err(|_| failed())
     }
 
@@ -925,6 +946,7 @@ impl InstalledMontyCatalogue {
             preparation_settings: std::sync::RwLock::new(None),
             captured_prefixes: std::sync::Mutex::new(BTreeMap::new()),
             tool_credential_sources: std::sync::OnceLock::new(),
+            validator_service: std::sync::OnceLock::new(),
             child_tasks: child_tasks::ChildTasks::default(),
             #[cfg(test)]
             capture_gate: tokio::sync::Mutex::new(None),
@@ -2116,4 +2138,71 @@ impl RetainedToolPort for SelectedTools {
             },
         }
     }
+}
+
+/// Injected after `GlobalMontyDriver` is constructed; carries the live
+/// `ServiceClient` and a ports factory closure for the retained Q1 path.
+/// Set exactly once via `bind_validator_service`; never replaced.
+#[allow(dead_code)] // fields read by PKG-C validator dispatch; PKG-B wires only
+pub(crate) struct ValidatorServiceBridge {
+    pub(crate) service: brassclaw_monty_host::service::ServiceClient,
+    pub(crate) ports_factory: std::sync::Arc<
+        dyn Fn() -> std::sync::Arc<dyn brassclaw_monty_host::service::TaskPorts> + Send + Sync,
+    >,
+}
+
+/// Build the `ports_factory` closure for `ValidatorServiceBridge` from the
+/// already-started global task factory.  PKG-B stores the factory for future
+/// PKG-C wiring; the deferred proxy returns `Err` on every call because the
+/// retained Q1 path is not yet active in PKG-B.
+#[allow(dead_code)] // called from #[cfg(not(test))] runtime.rs block
+pub(crate) fn make_validator_ports_factory(
+    factory: std::sync::Arc<dyn crate::global_monty_driver::GlobalTaskPortsFactory>,
+) -> std::sync::Arc<
+    dyn Fn() -> std::sync::Arc<dyn brassclaw_monty_host::service::TaskPorts> + Send + Sync,
+> {
+    use brassclaw_monty_host::{
+        process::TaskHandle,
+        service::{PortFailure, TaskOutcome, TaskPorts},
+        transport_actor::TransportClient,
+    };
+    use futures::{FutureExt, future::BoxFuture};
+    use std::collections::BTreeMap;
+
+    fn deferred_failure() -> PortFailure {
+        PortFailure::new("validator_service_not_yet_active").expect("static reason")
+    }
+
+    /// PKG-B placeholder: holds the factory for future PKG-C wiring.
+    /// Every call returns a port failure; the retained Q1 path becomes active
+    /// only after the PKG-C production switch.
+    struct ValidatorDeferredPorts {
+        _factory: std::sync::Arc<dyn crate::global_monty_driver::GlobalTaskPortsFactory>,
+    }
+    impl TaskPorts for ValidatorDeferredPorts {
+        fn dependency_parent(&self) -> Option<std::sync::Arc<dyn TaskPorts>> {
+            None
+        }
+        fn call(
+            self: std::sync::Arc<Self>,
+            _task: TaskHandle,
+            _transport: TransportClient,
+            _name: String,
+            _args: Vec<serde_json::Value>,
+            _kwargs: BTreeMap<String, serde_json::Value>,
+        ) -> BoxFuture<'static, Result<serde_json::Value, PortFailure>> {
+            async { Err(deferred_failure()) }.boxed()
+        }
+        fn finish(
+            self: std::sync::Arc<Self>,
+            _outcome: TaskOutcome,
+        ) -> BoxFuture<'static, Result<TaskOutcome, PortFailure>> {
+            async { Err(deferred_failure()) }.boxed()
+        }
+        fn fence(&self) {}
+    }
+
+    let ports: std::sync::Arc<dyn TaskPorts> =
+        std::sync::Arc::new(ValidatorDeferredPorts { _factory: factory });
+    std::sync::Arc::new(move || ports.clone())
 }

@@ -34,8 +34,10 @@ use sha2::{Digest, Sha256};
 use crate::native_admission_fixture as admission;
 #[path = "../../../../crates/brassclaw_reborn/tests/common/native_pg.rs"]
 mod native_pg;
+#[allow(clippy::duplicate_mod)] // intentional: needs private access to pub(crate) module
 #[path = "../../../../crates/brassclaw_reborn_composition/src/pg_retained_q1.rs"]
 mod pg_retained_q1;
+#[allow(clippy::duplicate_mod)] // intentional: needs private access to pub(crate) module
 #[path = "../../../../crates/brassclaw_reborn_composition/src/pg_workflow_review.rs"]
 mod pg_workflow_review;
 #[path = "retained_kernel.rs"]

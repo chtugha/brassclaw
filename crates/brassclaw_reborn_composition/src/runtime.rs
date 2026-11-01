@@ -3120,6 +3120,14 @@ pub async fn build_reborn_runtime(
         {
             monty_test_controls = (driver.clone(), ports);
         }
+        #[cfg(not(test))]
+        {
+            // Wire the retained Q1 path — deferred silently if already set.
+            let _ = catalogue.bind_validator_service(
+                owner.client(),
+                crate::installed_monty_catalogue::make_validator_ports_factory(ports),
+            );
+        }
         (
             owner,
             catalogue,
