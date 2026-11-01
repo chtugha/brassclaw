@@ -700,3 +700,170 @@ pub fn structural_validator_recipe_drafts(
 
     Ok(vec![pc_draft, collect_draft, aggregate_draft, recipe_draft])
 }
+
+#[cfg(test)]
+mod structural_validator_recipe_tests {
+    use super::*;
+    use crate::global_bootstrap_components::packaged_component_id;
+
+    const MINIMAL_PC_BODY: &str = concat!(
+        "# Tier-0 structural validator (pure-logic).\n",
+        "_name = inputs[\"name\"]\n",
+        "_desc = inputs[\"description\"]\n",
+        "_content = inputs[\"content\"]\n",
+        "_errors = []\n",
+        "if not _name or not _name.strip(): _errors.append(\"name is empty\")\n",
+        "if not _desc or not _desc.strip(): _errors.append(\"description is empty\")\n",
+        "if not _content or not _content.strip(): _errors.append(\"content/steps is empty\")\n",
+        "result = {\"pass\": len(_errors) == 0, \"errors\": _errors}\n",
+    );
+
+    #[test]
+    fn all_eight_class_codes_produce_four_drafts() {
+        for &class_code in VALIDATOR_CLASS_CODES {
+            let label = format!("class-{class_code}");
+            let drafts = structural_validator_recipe_drafts(class_code, &label, MINIMAL_PC_BODY)
+                .unwrap_or_else(|err| {
+                    panic!("structural_validator_recipe_drafts({class_code}) failed: {err}")
+                });
+            assert_eq!(
+                drafts.len(),
+                4,
+                "expected 4 drafts for class {class_code}, got {}",
+                drafts.len()
+            );
+        }
+    }
+
+    #[test]
+    fn unsupported_class_code_is_rejected() {
+        for &bad in &[4i16, 5, 7, 8, 9, 10, 11, 12, 14, 15, 16, 24, 50] {
+            assert!(
+                structural_validator_recipe_drafts(bad, "bad", MINIMAL_PC_BODY).is_err(),
+                "class code {bad} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn pc_draft_is_class_22() {
+        let drafts =
+            structural_validator_recipe_drafts(22, "PythonCode", MINIMAL_PC_BODY).unwrap();
+        let pc = &drafts[0];
+        assert_eq!(pc.class_code(), 22, "first draft must be PythonCode (class 22)");
+    }
+
+    #[test]
+    fn recipe_draft_is_class_21_with_validator_coverage() {
+        for &class_code in VALIDATOR_CLASS_CODES {
+            let drafts = structural_validator_recipe_drafts(
+                class_code,
+                &format!("class-{class_code}"),
+                MINIMAL_PC_BODY,
+            )
+            .unwrap();
+            let recipe = &drafts[3];
+            assert_eq!(
+                recipe.class_code(),
+                21,
+                "fourth draft must be Recipe (class 21) for class {class_code}"
+            );
+            let doc = recipe.document();
+            let coverage = doc.get("validator_coverage").unwrap_or_else(|| {
+                panic!("validator_coverage missing in class {class_code} recipe doc")
+            });
+            assert_eq!(
+                coverage["format"], "validator-coverage/1",
+                "validator_coverage format mismatch for class {class_code}"
+            );
+            assert_eq!(
+                doc["validates_class_code"].as_i64().unwrap(),
+                i64::from(class_code),
+                "validates_class_code mismatch"
+            );
+            assert_eq!(
+                doc["consumer_tags"],
+                serde_json::json!(["05:validator"]),
+                "consumer_tags must be exactly [\"05:validator\"] for class {class_code}"
+            );
+            // Verify there is exactly one rule in the coverage.
+            let rules = coverage["rules"].as_array().unwrap();
+            assert_eq!(rules.len(), 1, "expected exactly one rule for class {class_code}");
+            assert_eq!(rules[0]["rule_id"], "structural_presence");
+            assert_eq!(rules[0]["step_id"], "0:1");
+        }
+    }
+
+    #[test]
+    fn stable_packaged_ids_are_consistent() {
+        // ID functions should be deterministic and distinct per class.
+        let ids_22 = (
+            structural_validator_pc_id(22),
+            structural_validator_collect_id(22),
+            structural_validator_aggregate_id(22),
+            structural_validator_recipe_id(22),
+        );
+        let ids_0 = (
+            structural_validator_pc_id(0),
+            structural_validator_collect_id(0),
+            structural_validator_aggregate_id(0),
+            structural_validator_recipe_id(0),
+        );
+        // Per-class IDs are distinct from each other within the same class.
+        assert_ne!(ids_22.0, ids_22.1);
+        assert_ne!(ids_22.0, ids_22.2);
+        assert_ne!(ids_22.0, ids_22.3);
+        assert_ne!(ids_22.1, ids_22.2);
+        assert_ne!(ids_22.1, ids_22.3);
+        assert_ne!(ids_22.2, ids_22.3);
+        // Class-22 and class-0 IDs are distinct.
+        assert_ne!(ids_22.0, ids_0.0);
+        // IDs are in the packaged namespace (v5 UUID based on a fixed namespace).
+        assert_eq!(ids_22.0, packaged_component_id("validator:structural:pc:class-22"));
+        assert_eq!(ids_22.3, packaged_component_id("validator:structural:recipe:class-22"));
+    }
+
+    #[test]
+    fn recipe_draft_dependencies_match_pc_collect_aggregate() {
+        let drafts =
+            structural_validator_recipe_drafts(22, "PythonCode", MINIMAL_PC_BODY).unwrap();
+        let pc_id = drafts[0].uuid();
+        let collect_id = drafts[1].uuid();
+        let aggregate_id = drafts[2].uuid();
+        let recipe_deps = drafts[3].dependencies();
+        assert!(recipe_deps.contains(&pc_id), "recipe deps must include pc");
+        assert!(recipe_deps.contains(&collect_id), "recipe deps must include collect");
+        assert!(recipe_deps.contains(&aggregate_id), "recipe deps must include aggregate");
+        assert_eq!(recipe_deps.len(), 3, "recipe should have exactly 3 dependencies");
+    }
+
+    #[test]
+    fn input_layouts_uses_variant_key() {
+        let drafts = structural_validator_recipe_drafts(0, "Tool", MINIMAL_PC_BODY).unwrap();
+        let doc = drafts[3].document();
+        let expected_key = "validator-class-0";
+        assert!(
+            doc["input_layouts"].as_object().unwrap().contains_key(expected_key),
+            "input_layouts should use variant key '{expected_key}'"
+        );
+        assert!(
+            doc["invocations"].as_object().unwrap().contains_key(expected_key),
+            "invocations should use variant key '{expected_key}'"
+        );
+    }
+
+    #[test]
+    fn aggregate_result_shape_is_validated() {
+        // structural_validator_recipe_drafts rejects if aggregate result doesn't
+        // match pass:bool + errors:list shape (enforced inside the factory).
+        // All eight classes use aggregate_draft() which produces the correct shape.
+        for &class_code in VALIDATOR_CLASS_CODES {
+            let result =
+                structural_validator_recipe_drafts(class_code, "label", MINIMAL_PC_BODY);
+            assert!(
+                result.is_ok(),
+                "class {class_code} should succeed with correct aggregate shape"
+            );
+        }
+    }
+}

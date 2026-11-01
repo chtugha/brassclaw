@@ -1,3 +1,21 @@
+## 2026-11-01 — BUILD-060: structural_validator_recipe_drafts unit tests
+
+Seven unit tests added to `validator_components.rs` under `#[cfg(test)]`
+`structural_validator_recipe_tests` module, covering:
+- All eight class codes produce exactly four drafts
+- Unsupported class codes are rejected  
+- First draft is class 22 (PythonCode)
+- Fourth draft is class 21 (Recipe) with `validator_coverage` carrying the correct
+  format, `validates_class_code`, `consumer_tags` and exactly one rule (`structural_presence`)
+- ID functions produce stable, deterministic, distinct values in the packaged namespace
+- Recipe dependencies match the PC/collect/aggregate UUIDs exactly
+- `input_layouts` and `invocations` use the expected variant key
+
+Source-only checkpoint (disk space 13 GB NVMe below 15 GB compile threshold).
+Tests are not yet compiled/run; compilation requires disk space recovery.
+
+
+
 ## 2026-11-01 — BUILD-057/058: V202 validator Q1 runs index + structural validator Recipe drafts (source-only)
 
 **V202** (`V202__validator_q1_runs.sql`) adds `reborn_validator_q1_runs`, an immutable
