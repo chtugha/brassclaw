@@ -12295,19 +12295,20 @@ fn seed_host_group_noop() {
 // class-3 Skills.
 //
 // Each PythonCode body is a pure-logic function (no host calls, no imports).
-// IBS bakes {{vars.slot0}} / {{vars.slot1}} / {{vars.slot2}} into the body
-// before execution.
+// Inputs are supplied as typed data through `inputs["name"]`, `inputs["description"]`
+// and `inputs["content"]`; no IBS slot-marker substitution is required.
 
 /// Minimal structural-check PythonCode body used by all class validators.
-/// Slot mapping: slot0 = name, slot1 = description, slot2 = content/steps.
+/// Inputs: `inputs["name"]`, `inputs["description"]`, `inputs["content"]`.
 /// Returns `{"pass": bool, "errors": [str]}`.
 const PC_VALIDATOR_STRUCTURAL_BODY: &str = r#"# Tier-0 structural validator (class 22, pure-logic).
 # Checks: name present, description non-empty, content non-empty.
-# IBS bakes {{vars.slot0/1/2}} into the body before execution.
+# Inputs are supplied as typed data via inputs["name"], inputs["description"],
+# inputs["content"]; no IBS marker substitution is required.
 # No I/O, no imports, no host calls.
-_name = "{{vars.slot0}}"
-_desc = "{{vars.slot1}}"
-_content = "{{vars.slot2}}"
+_name = inputs["name"]
+_desc = inputs["description"]
+_content = inputs["content"]
 _errors = []
 if not _name or not _name.strip():
     _errors.append("name is empty")

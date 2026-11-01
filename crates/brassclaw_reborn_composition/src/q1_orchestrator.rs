@@ -505,11 +505,17 @@ mod tests {
     // run_validator_python unit tests (Phase P.0 Step 5)
     // ---------------------------------------------------------------------------
 
-    /// The shared structural validator body (copy of PC_VALIDATOR_STRUCTURAL_BODY
-    /// from builtin_bootstrap.rs — kept inline so the test is self-contained).
-    const TEST_VALIDATOR_BODY: &str = r#"_name = "{{vars.slot0}}"
-_desc = "{{vars.slot1}}"
-_content = "{{vars.slot2}}"
+    /// The exact checked-in seed body from `PC_VALIDATOR_STRUCTURAL_BODY`
+    /// in `builtin_bootstrap.rs` — kept inline so the test is self-contained.
+    /// Uses `inputs["name/description/content"]` directly (no slot markers).
+    const TEST_VALIDATOR_BODY: &str = r#"# Tier-0 structural validator (class 22, pure-logic).
+# Checks: name present, description non-empty, content non-empty.
+# Inputs are supplied as typed data via inputs["name"], inputs["description"],
+# inputs["content"]; no IBS marker substitution is required.
+# No I/O, no imports, no host calls.
+_name = inputs["name"]
+_desc = inputs["description"]
+_content = inputs["content"]
 _errors = []
 if not _name or not _name.strip():
     _errors.append("name is empty")
