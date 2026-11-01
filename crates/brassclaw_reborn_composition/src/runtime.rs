@@ -3092,10 +3092,9 @@ pub async fn build_reborn_runtime(
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
             })?;
-        let _pool_for_validator = Arc::clone(&pool);
         let ports = Arc::new(
             crate::global_task_factory::OwnedGlobalTaskFactory::new(
-                pool,
+                pool.clone(),
                 owner.ownership_check(),
                 Arc::new(catalogue.clone()),
                 owner.client(),
@@ -3124,10 +3123,11 @@ pub async fn build_reborn_runtime(
         #[cfg(not(test))]
         {
             // Wire the retained Q1 path — deferred silently if already set.
+            let pool_for_validator = Arc::clone(&pool);
             let validator_driver = std::sync::Arc::new(
                 crate::validator_task_driver::ValidatorTaskDriver::new(driver.clone()),
             );
-            let _ = catalogue.bind_validator_service(validator_driver, _pool_for_validator);
+            let _ = catalogue.bind_validator_service(validator_driver, pool_for_validator);
         }
         (
             owner,
