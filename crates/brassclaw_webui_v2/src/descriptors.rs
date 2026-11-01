@@ -152,6 +152,10 @@ pub const WEBUI_V2_PATTERN_RECONCILE_PREFIX_PAIR_ACCEPTANCE: &str =
     "/api/webchat/v2/prefix-model-designs/pair-acceptance/reconcile";
 pub const WEBUI_V2_PATTERN_PREPARE_PREFIX_PAIR_ACCEPTANCE: &str =
     "/api/webchat/v2/prefix-model-designs/pair-acceptance/review";
+pub const WEBUI_V2_ROUTE_APPROVE_PREFIX_PAIR_ACCEPTANCE: &str =
+    "webui.v2.approve_prefix_pair_acceptance";
+pub const WEBUI_V2_PATTERN_APPROVE_PREFIX_PAIR_ACCEPTANCE: &str =
+    "/api/webchat/v2/prefix-model-designs/pair-acceptance/approve";
 pub const WEBUI_V2_ROUTE_PREPARE_PREFIX_ACCEPTANCE: &str = "webui.v2.prepare_prefix_acceptance";
 pub const WEBUI_V2_ROUTE_APPROVE_PREFIX_ACCEPTANCE: &str = "webui.v2.approve_prefix_acceptance";
 pub const WEBUI_V2_ROUTE_ACTIVATE_PREFIX_ACCEPTANCE: &str = "webui.v2.activate_prefix_acceptance";
@@ -742,6 +746,17 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
             ),
         ),
         descriptor(
+            WEBUI_V2_ROUTE_APPROVE_PREFIX_PAIR_ACCEPTANCE,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_APPROVE_PREFIX_PAIR_ACCEPTANCE,
+            mutation_policy(
+                body_limit_kib(64),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
             WEBUI_V2_ROUTE_PREPARE_PREFIX_ACCEPTANCE,
             NetworkMethod::Post,
             WEBUI_V2_PATTERN_PREPARE_PREFIX_ACCEPTANCE,
@@ -915,6 +930,7 @@ pub fn is_webui_v2_operator_route_id(route_id: &str) -> bool {
                 | WEBUI_V2_ROUTE_GET_PREFIX_PAIR_ACCEPTANCE
                 | WEBUI_V2_ROUTE_RECONCILE_PREFIX_PAIR_ACCEPTANCE
                 | WEBUI_V2_ROUTE_PREPARE_PREFIX_PAIR_ACCEPTANCE
+                | WEBUI_V2_ROUTE_APPROVE_PREFIX_PAIR_ACCEPTANCE
                 | WEBUI_V2_ROUTE_PREPARE_PREFIX_ACCEPTANCE
                 | WEBUI_V2_ROUTE_APPROVE_PREFIX_ACCEPTANCE
                 | WEBUI_V2_ROUTE_ACTIVATE_PREFIX_ACCEPTANCE

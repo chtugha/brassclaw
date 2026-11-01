@@ -579,6 +579,16 @@ pub trait InterceptorConfigService: Send + Sync {
     ) -> Result<PrefixAcceptanceReceipt, InterceptorConfigServiceError> {
         Err(InterceptorConfigServiceError::Unavailable)
     }
+    /// Independent pair-only acceptance. Does not write profile or generation
+    /// rows; the returned receipt uses `pair_acceptance`, never
+    /// `generation_qualification`. Uses the existing prepare/encode path.
+    async fn approve_pair_acceptance(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _decision: PrefixPairAcceptanceDecision,
+    ) -> Result<PrefixPairAcceptanceReceipt, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
     async fn model_design_catalogue(
         &self,
         _caller: WebUiAuthenticatedCaller,

@@ -277,6 +277,29 @@ impl RebornServicesApi for StubServices {
             release_blocked_reason: "prefix.qualifiedDesignWorkflowRequired".into(),
         })
     }
+    async fn approve_prefix_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        decision: brassclaw_product_workflow::PrefixPairAcceptanceDecision,
+    ) -> Result<brassclaw_product_workflow::PrefixPairAcceptanceReceipt, RebornServicesError> {
+        self.pair_acceptance_calls.lock().unwrap().push((
+            caller.clone(),
+            "approve_pair".into(),
+            serde_json::to_value(&decision).unwrap(),
+        ));
+        Ok(brassclaw_product_workflow::PrefixPairAcceptanceReceipt {
+            pair_acceptance: uuid::Uuid::from_u128(2),
+            evidence_checksum: "f".repeat(64),
+            selection: decision.selection,
+            review: brassclaw_product_workflow::PrefixAcceptanceView {
+                review_checksum: decision.review_checksum,
+                review: serde_json::json!({"fixture":"pair-only native review, no generation qualification"}),
+            },
+            actor: caller.user_id.to_string(),
+            semantic_review: decision.semantic_review,
+            evidence: brassclaw_product_workflow::PrefixPairAcceptanceEvidence::LegacyNativeReview,
+        })
+    }
 
     async fn create_thread(
         &self,
@@ -4603,15 +4626,18 @@ async fn pair_acceptance_http_retains_exact_original_identity_and_blocked_summar
         )
         .await
         .unwrap();
-    assert_eq!(
-        response.status(),
-        StatusCode::NOT_FOUND,
-        "no test-only or unqualified release endpoint"
-    );
+    assert_eq!(response.status(), StatusCode::OK);
+    let approve_receipt = read_json(response).await;
+    // Pair-only receipt must not carry generation_qualification or serving_activated.
+    assert!(approve_receipt.get("generation_qualification").is_none());
+    assert!(approve_receipt.get("serving_activated").is_none());
+    assert!(approve_receipt.get("pair_acceptance").is_some());
     let calls = services.pair_acceptance_calls.lock().unwrap();
-    assert_eq!(calls.len(), 4);
+    assert_eq!(calls.len(), 5);
     assert!(calls.iter().all(|(who, _, _)| who == &caller()));
     assert_eq!(calls[0].2, pair);
     assert_eq!(calls[1].2, selection);
     assert_eq!(calls[2].2, decision);
+    // calls[3] is the erroring get with spec=0s; calls[4] is the approve_pair decision.
+    assert_eq!(calls[4].2, decision);
 }

@@ -93,6 +93,44 @@ impl RebornRuntime {
             serving_activated: false,
         })
     }
+    pub(crate) async fn approve_prefix_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        decision: brassclaw_product_workflow::PrefixPairAcceptanceDecision,
+    ) -> Result<brassclaw_product_workflow::PrefixPairAcceptanceReceipt, Error> {
+        if caller.tenant_id.as_str() != self.webui_tenant_id() {
+            return Err(Error::Conflict);
+        }
+        let owner = crate::prefix_acceptances::PgPrefixAcceptances::new(
+            self.services().pg_pool.clone().ok_or(Error::Unavailable)?,
+            caller.tenant_id.to_string(),
+        );
+        if owner
+            .approved_pair_retry(&decision, caller.user_id.as_str())
+            .await?
+        {
+            // Already committed; re-read the exact original receipt.
+            return owner
+                .pair_original(&decision.selection.pair)
+                .await?
+                .ok_or(Error::Unavailable);
+        }
+        let prepared = self
+            .prepare_prefix_review(&caller, &decision.selection.evaluation)
+            .await?;
+        // Verify the prepared review matches what the caller saw.
+        if prepared.review_checksum() != decision.review_checksum {
+            return Err(Error::Conflict);
+        }
+        owner
+            .approve_pair(
+                prepared,
+                &decision.review_checksum,
+                caller.user_id.as_str(),
+                &decision.semantic_review,
+            )
+            .await
+    }
     pub(crate) async fn activate_prefix_acceptance(
         &self,
         caller: WebUiAuthenticatedCaller,

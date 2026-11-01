@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Add independent pair-only prefix acceptance (BUILD-023): `approve_pair` and
+  `approved_pair_retry` on `PgPrefixAcceptances` write only the `scope="pair"` row
+  without creating profile or generation rows. The returned `PrefixPairAcceptanceReceipt`
+  carries `pair_acceptance`; a Pair ID never occupies `PrefixAcceptanceReceipt.generation_qualification`.
+  Wire the path through `RebornRuntime`, `PgInterceptorConfigService`, `InterceptorConfigService`
+  trait, `RebornServicesApi` and a new `POST .../pair-acceptance/approve` WebUI route with
+  descriptor, handler, operator-route guard and contract tests.
+
+- Add `QualifiedPrefixFreeWorkflow` scaffold and `bootstrap_free_workflow_approval` module
+  (BUILD-002 prerequisite): opaque qualification type constructible only after Q1/behavior/oracle
+  evidence gates pass. `InstalledMontyCatalogue` carries the optional qualification and calls
+  `verify_in_transaction` during retained-selection checks. `qualify()` returns `Ok(None)` until
+  all five prerequisite gates (BUILD-004/032 retained Recipe, fixture oracle, ResultOnly admission,
+  validation execution, durable evidence) are complete; existing `PrefixFreeWorkflow` guards remain
+  in effect.
+
 - Retire `brassclaw_engine`'s v2-compat `SkillTracker` bridge: remove the
   `V2SkillMetadata` / `CodeSnippet` dependency from the engine crate, replace
   `__record_skill_usage__` with a no-op (the `PgThreadEngineStore` always

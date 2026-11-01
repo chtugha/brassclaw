@@ -167,6 +167,8 @@ pub(crate) struct InstalledMontyCatalogue {
     pub(crate) setup_qualification: crate::bootstrap_setup_approval::Qualification,
     pub(super) pair_case_qualification:
         Option<crate::bootstrap_pair_approval::BootstrapPairQualification>,
+    pub(super) _free_workflow_qualification:
+        Option<crate::bootstrap_free_workflow_approval::QualifiedPrefixFreeWorkflow>,
     pub(super) measurement_qualification:
         Option<crate::bootstrap_measurement_approval::BootstrapMeasurementQualification>,
     pub(super) _compiler_program: Option<Arc<InspectedRetainedProgram>>,
@@ -400,6 +402,12 @@ impl InstalledMontyCatalogue {
                 .await
                 .map_err(|_| failed())?;
         }
+        if let Some(qualification) = &self._free_workflow_qualification {
+            qualification
+                .verify_in_transaction(tx)
+                .await
+                .map_err(|_| failed())?;
+        }
 
         for selected in std::iter::once(&self.reply)
             .chain(std::iter::once(&self.history))
@@ -599,6 +607,10 @@ impl InstalledMontyCatalogue {
         let pair_case_program = pair_case_qualification
             .as_ref()
             .map(|qualification| qualification.program());
+        let _free_workflow_qualification = Box::pin(
+            crate::bootstrap_free_workflow_approval::qualify(pool.clone(), worker, preparation),
+        )
+        .await?;
         let store = PgComponentRevisionStore::new(pool.clone());
         let client = pool
             .get()
@@ -929,6 +941,7 @@ impl InstalledMontyCatalogue {
             _pair_case_candidate: pair_case_candidate,
             _pair_case_program: pair_case_program,
             pair_case_qualification,
+            _free_workflow_qualification,
             setup_qualification,
             generation_approvals,
             compiler_approval,

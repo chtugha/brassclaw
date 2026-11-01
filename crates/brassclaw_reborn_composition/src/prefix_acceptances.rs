@@ -97,6 +97,9 @@ impl PreparedPrefixReview {
             release_blocked_reason: "prefix.qualifiedDesignWorkflowRequired".into(),
         })
     }
+    pub(crate) fn review_checksum(&self) -> &str {
+        &self.checksum
+    }
     pub(crate) fn view(&self) -> serde_json::Value {
         serde_json::json!({"review":self.target,"review_checksum":self.checksum})
     }
@@ -322,6 +325,90 @@ impl PgPrefixAcceptances {
             return Err(Error::Conflict);
         }
         Ok(true)
+    }
+    /// Idempotent retry check for a pair-only acceptance. Returns true when an
+    /// exact matching pair row already exists. A Pair ID must never be used as
+    /// a generation_qualification; the scope guard enforces this at read time.
+    pub(crate) async fn approved_pair_retry(
+        &self,
+        decision: &brassclaw_product_workflow::PrefixPairAcceptanceDecision,
+        actor: &str,
+    ) -> Result<bool, Error> {
+        let id = pair_identity(&decision.selection.pair.pair_proposal);
+        let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
+        let exists = client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM reborn_prefix_design_acceptances WHERE acceptance_id=$1)",
+                &[&id],
+            )
+            .await
+            .map_err(|_| Error::Unavailable)?
+            .get::<_, bool>(0);
+        drop(client);
+        if !exists {
+            return Ok(false);
+        }
+        let old = self.record(id).await?;
+        // A pair row must never carry profile/generation parents.
+        if old.scope != "pair"
+            || old.pair_parent.is_some()
+            || old.profile_parent.is_some()
+            || old.review.contract.specification != decision.selection.pair.specification
+            || old.review.contract.pair_proposal != decision.selection.pair.pair_proposal
+            || old.review.profile != decision.selection.evaluation.profile
+            || old.review.generation != decision.selection.evaluation.generation
+            || old.review_checksum != decision.review_checksum
+            || old.actor != actor
+            || old.semantic_review != decision.semantic_review
+        {
+            return Err(Error::Conflict);
+        }
+        Ok(true)
+    }
+    /// Independent pair-only acceptance. Writes only the `scope="pair"` row;
+    /// does not create profile or generation rows. The pair ID is deterministic
+    /// from the proposal so the caller does not supply it.
+    ///
+    /// A Pair ID must never occupy `PrefixAcceptanceReceipt.generation_qualification`
+    /// or a generation-only `approved_retry`; the returned receipt uses
+    /// `PrefixPairAcceptanceReceipt.pair_acceptance` instead.
+    pub(crate) async fn approve_pair(
+        &self,
+        prepared: PreparedPrefixReview,
+        reviewed_checksum: &str,
+        actor: &str,
+        semantic_review: &str,
+    ) -> Result<brassclaw_product_workflow::PrefixPairAcceptanceReceipt, Error> {
+        if reviewed_checksum != prepared.checksum
+            || prepared.target.namespace != self.namespace
+            || checksum(prepared.bytes.as_bytes()) != prepared.checksum
+            || !valid_human_action(actor, semantic_review)
+        {
+            return Err(Error::Conflict);
+        }
+        let pair_id = pair_identity(&prepared.target.contract.pair_proposal);
+        let evidence = Accepted {
+            format: FORMAT.into(),
+            id: pair_id,
+            scope: "pair".into(),
+            pair_parent: None,
+            profile_parent: None,
+            review: prepared.target,
+            review_checksum: prepared.checksum.clone(),
+            actor: actor.into(),
+            semantic_review: semantic_review.into(),
+        };
+        let mut client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
+        let tx = client.transaction().await.map_err(|_| Error::Unavailable)?;
+        self.write_acceptance(
+            &tx,
+            &evidence,
+            &evidence.review.contract.pair_proposal.clone(),
+        )
+        .await?;
+        tx.commit().await.map_err(|_| Error::Unavailable)?;
+        let bytes = serde_json::to_string(&evidence).map_err(|_| Error::Unavailable)?;
+        pair_receipt(evidence, checksum(bytes.as_bytes()))
     }
     /// Called only from authenticated operator composition after showing the
     /// exact native review. This writes acceptance, never a serving pointer.

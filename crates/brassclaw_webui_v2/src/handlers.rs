@@ -1939,6 +1939,18 @@ pub async fn approve_prefix_acceptance(
             .await?,
     ))
 }
+pub async fn approve_prefix_pair_acceptance(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<brassclaw_product_workflow::PrefixPairAcceptanceDecision>,
+) -> Result<Json<brassclaw_product_workflow::PrefixPairAcceptanceReceipt>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .approve_prefix_pair_acceptance(caller, request)
+            .await?,
+    ))
+}
 pub async fn activate_prefix_acceptance(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,

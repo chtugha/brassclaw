@@ -573,6 +573,29 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
             .approve_prefix_acceptance(caller, decision)
             .await
     }
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    async fn approve_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        decision: brassclaw_product_workflow::PrefixPairAcceptanceDecision,
+    ) -> Result<
+        brassclaw_product_workflow::PrefixPairAcceptanceReceipt,
+        InterceptorConfigServiceError,
+    > {
+        if caller.tenant_id.as_str() != self.tenant_id {
+            return Err(InterceptorConfigServiceError::Conflict);
+        }
+        self.runtime
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+            .ok_or(InterceptorConfigServiceError::Unavailable)?
+            .approve_prefix_pair_acceptance(caller, decision)
+            .await
+    }
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     async fn model_design_catalogue(
         &self,

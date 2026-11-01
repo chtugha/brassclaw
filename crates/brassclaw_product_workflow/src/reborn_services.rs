@@ -1632,6 +1632,13 @@ pub trait RebornServicesApi: Send + Sync {
     ) -> Result<PrefixAcceptanceReceipt, RebornServicesError> {
         Err(interceptor_config::interceptor_config_unavailable())
     }
+    async fn approve_prefix_pair_acceptance(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _decision: PrefixPairAcceptanceDecision,
+    ) -> Result<PrefixPairAcceptanceReceipt, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
     /// List registered sources for a prefix profile and optional generation.
     async fn prefix_model_design_catalogue(
         &self,
@@ -5141,6 +5148,18 @@ impl RebornServicesApi for RebornServices {
             .as_ref()
             .ok_or_else(interceptor_config::interceptor_config_unavailable)?
             .approve_acceptance(caller, decision)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn approve_prefix_pair_acceptance(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        decision: PrefixPairAcceptanceDecision,
+    ) -> Result<PrefixPairAcceptanceReceipt, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .approve_pair_acceptance(caller, decision)
             .await
             .map_err(interceptor_config::map_interceptor_config_error)
     }
