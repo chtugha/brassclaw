@@ -181,16 +181,12 @@ pub(crate) mod pg_prefix_scope_ticket;
 pub(crate) mod pg_pure_approval_store;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub mod pg_pure_component_approval;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
-pub(crate) mod pg_retained_q1;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
-pub(crate) mod pg_validator_q1_evidence;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
-pub(crate) mod pg_workflow_review;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_python_code_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_recipe_store;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_retained_q1;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_review_inspection;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
@@ -215,6 +211,10 @@ pub(crate) mod pg_tool_store;
 mod pg_transcript_admission;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_user_preference_store;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_validator_q1_evidence;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_workflow_review;
 pub(crate) mod plan_library;
 #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 mod provider_admin;
