@@ -286,9 +286,7 @@ async fn run_q1_validation_retained_fails_for_empty_content() {
                 "expected an error mentioning 'content'; got: {errors:?}"
             );
         }
-        other => panic!(
-            "expected Q1Outcome::Failed for empty-content component; got {other:?}"
-        ),
+        other => panic!("expected Q1Outcome::Failed for empty-content component; got {other:?}"),
     }
 
     // Queue row must remain at state 1 (Q1_pending/failed) — NOT promoted to 2.
