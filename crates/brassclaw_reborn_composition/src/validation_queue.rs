@@ -50,6 +50,8 @@ use uuid::Uuid;
 mod review;
 pub(crate) use review::Q1Candidate;
 
+#[cfg(feature = "skills-db")]
+use crate::installed_monty_catalogue::ValidatorServiceBridge;
 #[cfg(feature = "postgres")]
 use crate::pg_basic_prompt_store::PgBasicPromptStore;
 
@@ -158,6 +160,11 @@ pub struct ValidationQueueStore {
     /// next turn (§12 of prefix_V3.md).
     #[cfg(feature = "postgres")]
     basic_prompt_store: Option<Arc<PgBasicPromptStore>>,
+    /// Optional: when set, `submit()` kicks `run_q1_validation_retained` after
+    /// each new enqueue so the retained IBS/Recipe Q1 path runs per-component.
+    /// Fire-and-forget via `tokio::spawn`; Q1 outcome does not block submission.
+    #[cfg(feature = "skills-db")]
+    validator_bridge: Option<Arc<ValidatorServiceBridge>>,
 }
 
 impl ValidationQueueStore {
@@ -168,6 +175,8 @@ impl ValidationQueueStore {
             reject_threshold: DEFAULT_REJECT_THRESHOLD,
             #[cfg(feature = "postgres")]
             basic_prompt_store: None,
+            #[cfg(feature = "skills-db")]
+            validator_bridge: None,
         }
     }
 
@@ -180,6 +189,8 @@ impl ValidationQueueStore {
             reject_threshold,
             #[cfg(feature = "postgres")]
             basic_prompt_store: None,
+            #[cfg(feature = "skills-db")]
+            validator_bridge: None,
         }
     }
 
@@ -188,6 +199,15 @@ impl ValidationQueueStore {
     #[cfg(feature = "postgres")]
     pub(crate) fn with_basic_prompt_store(mut self, store: Arc<PgBasicPromptStore>) -> Self {
         self.basic_prompt_store = Some(store);
+        self
+    }
+
+    /// Attach a [`ValidatorServiceBridge`] so that `submit()` kicks
+    /// `run_q1_validation_retained` after each new enqueue (PKG-C wiring).
+    /// The Q1 call runs in a detached `tokio::spawn`; submission never blocks on it.
+    #[cfg(feature = "skills-db")]
+    pub(crate) fn with_validator_service(mut self, bridge: Arc<ValidatorServiceBridge>) -> Self {
+        self.validator_bridge = Some(bridge);
         self
     }
 
@@ -212,6 +232,44 @@ impl ValidationQueueStore {
         let tx = client.transaction().await.map_err(map_pg)?;
         Self::submit_on(&tx, scope, component_id, component_class, proposed_payload).await?;
         tx.commit().await.map_err(map_pg)?;
+        // PKG-C: fire-and-forget retained Q1 kick after commit.
+        // The Q1 outcome does not block or change the submit result;
+        // deferral (None bridge / no Recipe seeded) is the correct fallback.
+        #[cfg(feature = "skills-db")]
+        if let Some(bridge) = &self.validator_bridge {
+            let pool = Arc::clone(&self.pool);
+            let scope = scope.clone();
+            let service = bridge.service.clone();
+            let ports_factory = Arc::clone(&bridge.ports_factory);
+            // Construct a minimal queue_store for the spawned Q1 call;
+            // no basic_prompt_store or validator_bridge needed inside Q1.
+            let queue_store = Self {
+                pool: Arc::clone(&self.pool),
+                reject_threshold: self.reject_threshold,
+                #[cfg(feature = "postgres")]
+                basic_prompt_store: None,
+                validator_bridge: None,
+            };
+            // Default execution limits are valid by construction; the static
+            // expect is infallible given the default MontyExecutionLimits.
+            let preparation = brassclaw_monty_host::utility::UtilityLimits::from_execution(
+                brassclaw_host_api::MontyExecutionLimits::default(),
+            )
+            .expect("default MontyExecutionLimits are always valid");
+            tokio::spawn(async move {
+                let _ = crate::q1_orchestrator::run_q1_validation_retained(
+                    &pool,
+                    &scope,
+                    component_id,
+                    component_class,
+                    &queue_store,
+                    preparation,
+                    Some(&service),
+                    Some(&ports_factory),
+                )
+                .await;
+            });
+        }
         Ok(())
     }
 
