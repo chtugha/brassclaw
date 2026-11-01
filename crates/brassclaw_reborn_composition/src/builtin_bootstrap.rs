@@ -5525,9 +5525,10 @@ async fn seed_network_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinB
             pc_row(
                 &tenant,
                 "pc-web-search-extract",
-                "PythonCode helper: extract title+url+snippet list from a search API JSON \
-                 response. Input: response body string. Output: [{title, url, snippet}] \
-                 or error.",
+                "PythonCode helper: extract a typed list of search results from a parsed \
+                 API response dict. Inputs: response (dict), rows_field (str), \
+                 title_field (str), url_field (str), snippet_field (str), limit (int>0). \
+                 Output: [{title, url, snippet}] truncated to limit.",
                 PC_WEB_SEARCH_EXTRACT_CONTENT,
             ),
             "pc-web-search-extract",
@@ -5551,9 +5552,9 @@ async fn seed_network_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinB
             pc_row(
                 &tenant,
                 "pc-url-encode",
-                "Pure-logic helper: URL-encodes a string (percent-encoding, spaces as \
-                 %20). No imports - uses pure built-in character-by-character encoding. \
-                 Input: raw string. Output: {encoded, raw}.",
+                "Pure-logic helper: percent-encodes a string as UTF-8 bytes (spaces as \
+                 %20, non-ASCII as multi-byte sequences). Input: text (str). \
+                 Output: {encoded (str), raw (str — echo of input text)}.",
                 PC_URL_ENCODE_CONTENT,
             ),
             "pc-url-encode",

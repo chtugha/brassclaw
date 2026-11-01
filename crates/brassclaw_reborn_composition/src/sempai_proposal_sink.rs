@@ -41,11 +41,11 @@ mod inner {
     use tracing::{debug, warn};
     use uuid::Uuid;
 
+    #[cfg(feature = "skills-db")]
+    use crate::installed_monty_catalogue::ValidatorServiceBridge;
     use crate::pg_python_code_store::{NewPgPythonCode, PgPythonCodeStore};
     use crate::pg_recipe_store::{NewPgRecipe, PgRecipeStore};
     use crate::validation_queue::ValidationQueueStore;
-    #[cfg(feature = "skills-db")]
-    use crate::installed_monty_catalogue::ValidatorServiceBridge;
 
     // Only authorable constructor fields cross this boundary. Scope, identity,
     // source, status, approval, tier and integrity checksums belong to the host.

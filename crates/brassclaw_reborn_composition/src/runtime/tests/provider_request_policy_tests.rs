@@ -432,3 +432,292 @@ async fn native_live_provider_request_policy_reaches_selected_clients() {
     stop.cancel();
     server.await.unwrap();
 }
+
+/// K3 acceptance: a committed provider change whose reload fails leaves
+/// desired_publications diverged from runtime_publications, with the
+/// failed target captured in runtime_publication_failures. Calling
+/// reconcile_provider_mutation heals the divergence without redoing effects.
+///
+/// # Why ControllableReload must route through publish_primary_from
+///
+/// `runtime_publication_failures` is populated from
+/// `LlmReloadTrigger::publication_status().failed`, which maps to
+/// `SwappableLlmProvider::publication_status().failed`. That `failed` field is
+/// set *only* by `SwappableLlmProvider::preparation_failed()`, which is called
+/// exclusively inside `LlmReloadHandle::publish_primary_from` when the preparer
+/// closure returns `Err(ProviderPreparationFailure)`.
+///
+/// A trigger that returns bare `Err(String)` from `reload()` without going through
+/// `publish_primary_from` never sets `state.failed`, so
+/// `runtime_publication_failures` stays empty and the K3 assertions would fail.
+///
+/// This test therefore wires a real `LlmReloadHandle` and delegates to a real
+/// `RebornLlmReloadAdapter` on the success path (so `desired == runtime` holds
+/// after a successful reload) and calls `handle.publish_primary_from` with a
+/// failing closure on the failure path (so `state.failed` is populated).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_provider_reload_failure_captured_and_reconciled_via_mutation() {
+    use brassclaw_product_workflow::LlmConfigService;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    // ControllableReload wraps a real RebornLlmReloadAdapter (success path) and
+    // holds its LlmReloadHandle separately (failure injection path).
+    //
+    // On success:  delegate to inner.reload() — produces a real Configured
+    //              publication from the DB so desired == runtime holds.
+    // On failure:  call handle.publish_primary_from with a failing closure so
+    //              preparation_failed() sets state.failed on the SwappableLlmProvider
+    //              and runtime_publication_failures is populated by build_snapshot.
+    struct ControllableReload {
+        inner: Arc<crate::llm_reload::RebornLlmReloadAdapter>,
+        handle: Arc<brassclaw_llm::LlmReloadHandle>,
+        should_fail: Arc<AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::llm_config_service::LlmReloadTrigger for ControllableReload {
+        async fn reload(&self) -> Result<brassclaw_llm::ProviderPublication, String> {
+            if self.should_fail.load(Ordering::SeqCst) {
+                // Capture the current desired target before failing so the
+                // failure record is meaningful (the thing we tried to publish).
+                let desired = self.inner.publication();
+                self.handle
+                    .publish_primary_from(|| {
+                        let desired = desired.clone();
+                        async move {
+                            Err(brassclaw_llm::ProviderPreparationFailure::selected(
+                                brassclaw_llm::LlmError::ConfigurationChanged {
+                                    provider: "k3-controllable-reload-failure".into(),
+                                },
+                                desired,
+                            ))
+                        }
+                    })
+                    .await
+                    .map_err(|_| "deliberate controllable reload failure".to_owned())
+            } else {
+                // Real reload through the DB — produces a Configured publication
+                // that matches what build_snapshot computes as desired.
+                self.inner.reload().await
+            }
+        }
+
+        fn publication(&self) -> brassclaw_llm::ProviderPublication {
+            self.inner.publication()
+        }
+
+        fn publication_status(&self) -> brassclaw_llm::ProviderPublicationStatus {
+            self.inner.publication_status()
+        }
+    }
+
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let tenant = "native-k3-reload-failure";
+    let repo = Arc::new(crate::PgProviderRepo::new(
+        rig.pool.as_ref().clone(),
+        tenant,
+    ));
+
+    // Seed a provider and select it as Kohai.
+    repo.upsert(
+        serde_json::from_value(serde_json::json!({
+            "id": "k3-provider",
+            "protocol": "open_ai_completions",
+            "default_base_url": "http://127.0.0.1:18888/v1",
+            "base_url_required": true,
+            "api_key_required": false,
+            "model_env": "UNUSED_K3_RELOAD_MODEL",
+            "default_model": "k3-model-v1",
+            "description": "K3 reload failure fixture"
+        }))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    crate::db_config::save_config_changes(
+        &rig.pool,
+        tenant,
+        &[("llm.default.provider_id", Some("k3-provider"))],
+        crate::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+
+    let keys = crate::LlmKeyStore::new_postgres(Arc::new(
+        brassclaw_secrets::PgSecretStore::new(
+            rig.pool.as_ref().clone(),
+            secrecy::SecretString::from("k3-reload-failure-master-key"),
+            "k3-reload-key-owner",
+        )
+        .unwrap(),
+    ));
+
+    // Build the LlmReloadHandle + SwappableLlmProvider first so we can pass
+    // the same Arc<LlmReloadHandle> to both the adapter (success path) and the
+    // ControllableReload (failure injection path).
+    let primary = Arc::new(brassclaw_llm::SwappableLlmProvider::new(Arc::new(
+        crate::runtime::PlaceholderLlmProvider,
+    )));
+    let handle = Arc::new(brassclaw_llm::LlmReloadHandle::new(
+        Arc::clone(&primary),
+        None,
+    ));
+    let session = Arc::new(brassclaw_llm::SessionManager::new(Default::default()));
+    let inner = Arc::new(crate::llm_reload::RebornLlmReloadAdapter::new(
+        Arc::clone(&handle),
+        Arc::clone(&session),
+        keys.clone(),
+        rig.pool.clone(),
+        tenant,
+    ));
+    let should_fail = Arc::new(AtomicBool::new(false));
+    let reload = Arc::new(ControllableReload {
+        inner: Arc::clone(&inner),
+        handle: Arc::clone(&handle),
+        should_fail: Arc::clone(&should_fail),
+    });
+    let service =
+        crate::RebornLlmConfigService::new(keys.clone(), rig.pool.clone(), repo.clone(), tenant)
+            .with_reload_trigger(reload as Arc<dyn crate::llm_config_service::LlmReloadTrigger>);
+
+    let caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
+        brassclaw_host_api::TenantId::new(tenant).unwrap(),
+        brassclaw_host_api::UserId::new("k3-operator").unwrap(),
+        None,
+        None,
+    );
+
+    // --- Baseline: initial snapshot. desired == runtime (both Unconfigured
+    //     because no successful reload has run yet). ---
+    let initial = service.snapshot(caller.clone()).await.unwrap();
+    assert_eq!(
+        initial.desired_publications.get("kohai"),
+        initial.runtime_publications.get("kohai"),
+        "before any selection change, desired and runtime publications must agree"
+    );
+    assert!(
+        !initial.runtime_publication_failures.contains_key("kohai"),
+        "no failure before any selection is made"
+    );
+
+    // --- Perform a selection with reload succeeding to establish a baseline.
+    //     inner.reload() resolves the DB selection and calls publish_primary_from
+    //     with the real Configured publication, so runtime matches desired. ---
+    let current_revision = repo
+        .get_revision("k3-provider", false)
+        .await
+        .unwrap()
+        .unwrap()
+        .revision;
+    let baseline = service
+        .set_active(
+            caller.clone(),
+            serde_json::from_value(serde_json::json!({
+                "mutation_id": uuid::Uuid::new_v4(),
+                "provider_id": "k3-provider",
+                "model": "k3-model-v1",
+                "role": "kohai",
+                "expected_revision": current_revision,
+                "expected_selection_ref": initial.role_selection_refs.get("kohai").cloned()
+                    .unwrap_or_default()
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        baseline.desired_publications["kohai"], baseline.runtime_publications["kohai"],
+        "after a successful selection + reload, desired and runtime must agree"
+    );
+    assert!(
+        !baseline.runtime_publication_failures.contains_key("kohai"),
+        "no failure after successful selection"
+    );
+    let working_desired = baseline.desired_publications["kohai"].clone();
+
+    // --- Arm the reload failure, then edit the provider definition.
+    //     The upsert commits the DB change but the reload returns Err. ---
+    should_fail.store(true, Ordering::SeqCst);
+    let current_revision = repo
+        .get_revision("k3-provider", false)
+        .await
+        .unwrap()
+        .unwrap()
+        .revision;
+    let mutation_id = uuid::Uuid::new_v4();
+    let upsert_result = service
+        .upsert_provider(
+            caller.clone(),
+            serde_json::from_value(serde_json::json!({
+                "mutation_id": mutation_id,
+                "id": "k3-provider",
+                "expected_revision": current_revision,
+                "adapter": "open_ai_completions",
+                "name": "K3 description update — reload will fail"
+            }))
+            .unwrap(),
+        )
+        .await;
+    // The DB commit succeeded but reload failed → service returns Err(Unavailable).
+    assert!(
+        upsert_result.is_err(),
+        "upsert must return an error when the post-commit reload fails"
+    );
+
+    // --- Snapshot after failed reload: desired diverges from runtime.
+    //     desired_publications["kohai"] is computed from the DB (definition_revision
+    //     incremented by upsert). runtime_publications["kohai"] still reflects the
+    //     last successful reload. runtime_publication_failures["kohai"] is set
+    //     because publish_primary_from called preparation_failed() on the provider. ---
+    let after_failure = service.snapshot(caller.clone()).await.unwrap();
+    assert_ne!(
+        after_failure.desired_publications["kohai"], after_failure.runtime_publications["kohai"],
+        "desired and runtime publications must diverge after a failed reload"
+    );
+    assert_eq!(
+        after_failure.runtime_publications["kohai"], working_desired,
+        "runtime publication must still reflect the last successful reload"
+    );
+    assert!(
+        after_failure
+            .runtime_publication_failures
+            .contains_key("kohai"),
+        "runtime_publication_failures must capture the failed reload target"
+    );
+
+    // --- Reconcile while reload is still failing: must return Err. ---
+    let reconcile_failing = service
+        .reconcile_provider_mutation(caller.clone(), mutation_id)
+        .await;
+    assert!(
+        reconcile_failing.is_err(),
+        "reconcile must also fail when reload is still broken"
+    );
+
+    // --- Repair: allow reload to succeed, then reconcile.
+    //     reconcile_provider_mutation re-runs finish_provider_mutation, which calls
+    //     refresh_running_provider → inner.reload() → publish_primary_from with the
+    //     real Configured publication → desired and runtime converge. ---
+    should_fail.store(false, Ordering::SeqCst);
+    let reconciled = service
+        .reconcile_provider_mutation(caller.clone(), mutation_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        reconciled.desired_publications["kohai"], reconciled.runtime_publications["kohai"],
+        "after successful reconciliation desired and runtime must agree"
+    );
+    assert!(
+        !reconciled
+            .runtime_publication_failures
+            .contains_key("kohai"),
+        "no failure after successful reconciliation"
+    );
+    assert_eq!(
+        reconciled.mutation_receipt.as_ref().map(|r| r.mutation_id),
+        Some(mutation_id),
+        "the original mutation receipt is returned"
+    );
+
+    repo.delete("k3-provider").await.unwrap();
+}

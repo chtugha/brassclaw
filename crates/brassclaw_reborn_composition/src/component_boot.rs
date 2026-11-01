@@ -391,9 +391,7 @@ mod tests {
             &[&tenant],
         ).await.unwrap().get(0);
         assert_eq!(wrong_class, 0);
-        for (table, name, class) in [
-            ("reborn_skills", "orchestrator:main", 10_i16),
-        ] {
+        for (table, name, class) in [("reborn_skills", "orchestrator:main", 10_i16)] {
             // These table names are the fixed test literals above.
             let sql = format!(
                 "SELECT q.component_class FROM reborn_validation_queue q
