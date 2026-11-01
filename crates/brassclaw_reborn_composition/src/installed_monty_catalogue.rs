@@ -214,6 +214,20 @@ impl InstalledMontyCatalogue {
             .map_err(|_| failed())
     }
 
+    /// Return the live validator service bridge if already wired, for
+    /// passing into `ValidationQueueStore::with_validator_service`.
+    /// Returns `None` when `bind_validator_service` has not yet been called
+    /// (e.g. in tests or before the global Monty driver is started).
+    #[allow(dead_code)] // wired by PKG-C PgCompositionPort integration
+    pub(crate) fn validator_bridge(&self) -> Option<std::sync::Arc<ValidatorServiceBridge>> {
+        self.validator_service.get().map(|b| {
+            std::sync::Arc::new(ValidatorServiceBridge {
+                service: b.service.clone(),
+                ports_factory: std::sync::Arc::clone(&b.ports_factory),
+            })
+        })
+    }
+
     /// Closed behavioral review only; this cannot publish a draft catalogue or
     /// supply an ordinary task with an unapproved selection. The original
     /// native registration, current policy and actual parent owner still apply.
