@@ -402,3 +402,76 @@ pub(crate) fn subject_inputs_with_default_limits(
 ) -> Result<brassclaw_host_api::JsonValue, &'static str> {
     subject_validator_task_inputs(coverage, subject, inspected, REVISION_LIMITS)
 }
+
+#[cfg(test)]
+mod routing_tests {
+    use super::{VALIDATOR_REVIEW_PREFIX, validator_review_reference};
+    use uuid::Uuid;
+
+    /// The prefix constant has the exact expected form used by capture_internal.
+    #[test]
+    fn validator_review_prefix_has_expected_form() {
+        assert_eq!(VALIDATOR_REVIEW_PREFIX, "validator-review:");
+    }
+
+    /// A user_input matching the prefix + valid UUID is detected as a validator
+    /// review admission. This mirrors the starts_with check in capture_internal.
+    #[test]
+    fn user_input_with_prefix_and_valid_uuid_is_detected_as_validator_review() {
+        let id = Uuid::new_v4();
+        let reference = validator_review_reference(id);
+        assert!(
+            reference.starts_with(VALIDATOR_REVIEW_PREFIX),
+            "reference must start with VALIDATOR_REVIEW_PREFIX"
+        );
+        // The suffix after stripping the prefix must be a valid UUID.
+        let suffix = reference
+            .strip_prefix(VALIDATOR_REVIEW_PREFIX)
+            .expect("suffix must exist");
+        let parsed = Uuid::parse_str(suffix).expect("suffix must be a valid UUID");
+        assert_eq!(parsed, id, "round-trip UUID must match original");
+    }
+
+    /// A user_input that does not match the prefix is NOT detected as a
+    /// validator review admission. This mirrors the early-return in capture_internal.
+    #[test]
+    fn user_input_without_prefix_is_not_detected_as_validator_review() {
+        let inputs = [
+            "",
+            "ordinary-chat-message",
+            "prefix-job:some-uuid",
+            // Malformed: missing the colon separator
+            &format!("validator-review{}", Uuid::new_v4()),
+            // Correct prefix but no UUID
+            "validator-review:",
+            // Correct prefix but invalid UUID
+            "validator-review:not-a-uuid",
+        ];
+        for input in inputs {
+            assert!(
+                !input.starts_with(VALIDATOR_REVIEW_PREFIX)
+                    || Uuid::parse_str(input.strip_prefix(VALIDATOR_REVIEW_PREFIX).unwrap_or(""))
+                        .is_err(),
+                "input {:?} must not be detected as a valid validator review reference",
+                input
+            );
+        }
+    }
+
+    /// The receipt format string matches what parse_validator_receipt expects.
+    #[test]
+    fn make_and_parse_receipt_round_trip() {
+        use super::{make_validator_receipt, parse_validator_receipt};
+        use brassclaw_skills::component_revision::REVISION_LIMITS;
+        use std::collections::BTreeMap;
+
+        let mut results = BTreeMap::new();
+        results.insert("step_1".to_string(), serde_json::json!({"ok": true}));
+        results.insert("step_2".to_string(), serde_json::json!(42));
+
+        let receipt_str = make_validator_receipt(&results);
+        let parsed = parse_validator_receipt(&receipt_str, REVISION_LIMITS)
+            .expect("valid receipt must parse cleanly");
+        assert_eq!(parsed, results, "round-trip must produce identical map");
+    }
+}

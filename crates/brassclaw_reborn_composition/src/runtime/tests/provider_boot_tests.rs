@@ -880,10 +880,11 @@ async fn native_database_provider_retains_selected_prompt_cache_policy() {
     for retention in ["long", "short", "none"] {
         definition.cache_retention = Some(retention.into());
         repo.upsert(definition.clone()).await.unwrap();
-        let selected = crate::llm_catalog::resolve_provider_selection_db(&rig.pool, tenant, &keys)
-            .await
-            .unwrap()
-            .unwrap();
+        let selected =
+            crate::llm_catalog::resolve_provider_selection_db(&rig.pool, tenant, &keys, None)
+                .await
+                .unwrap()
+                .unwrap();
         assert_eq!(selected.revision.model, "selected-database-model");
         let provider = selected.config.provider.unwrap();
         assert_eq!(
@@ -899,7 +900,7 @@ async fn native_database_provider_retains_selected_prompt_cache_policy() {
     definition.cache_retention = Some("invalid-database-policy".into());
     repo.upsert(definition).await.unwrap();
     assert!(
-        crate::llm_catalog::resolve_provider_selection_db(&rig.pool, tenant, &keys)
+        crate::llm_catalog::resolve_provider_selection_db(&rig.pool, tenant, &keys, None)
             .await
             .is_err()
     );
