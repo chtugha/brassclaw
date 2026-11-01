@@ -61,7 +61,7 @@ use async_trait::async_trait;
 use brassclaw_engine::{
     executor::{
         retained_recipe::{
-            typed_value_checksum_with_limits, RetainedProgram, RetainedRecipeExecution,
+            RetainedProgram, RetainedRecipeExecution, typed_value_checksum_with_limits,
         },
         retained_source::InspectedRetainedProgram,
     },
@@ -71,7 +71,7 @@ use brassclaw_monty_host::service::PortFailure;
 use brassclaw_pg::PgPool;
 use brassclaw_skills::{
     component_revision::REVISION_LIMITS,
-    review_submission_store::{selection::RetainedValidatorSelection, RetainedValidatorSubject},
+    review_submission_store::{RetainedValidatorSubject, selection::RetainedValidatorSelection},
     value_contract::ContractLimits,
 };
 use serde_json::Value;
@@ -79,17 +79,16 @@ use uuid::Uuid;
 
 use crate::global_recipe_ports::{InternalRecipeSource, SelectedMontyRecipe};
 use crate::pg_retained_q1::StructuralReviewFailure;
-use crate::pg_workflow_review::{persist_workflow_review, WorkflowReview};
+use crate::pg_workflow_review::{WorkflowReview, persist_workflow_review};
 
 /// Canonical reference prefix for validator review internal tasks.
-#[allow(dead_code)] // wired by validator Step 6 capture_internal routing
 pub(crate) const VALIDATOR_REVIEW_PREFIX: &str = "validator-review:";
 
 /// Build the canonical `user_input` reference for a validator review task.
 ///
 /// The admitted `TaskInput::user_input` must equal this value for the task to
 /// be routed through `ReviewAdmissionSource`.
-#[allow(dead_code)] // wired by validator Step 6 capture_internal routing
+#[allow(dead_code)] // used by routing tests
 pub(crate) fn validator_review_reference(submission_id: Uuid) -> String {
     format!("{VALIDATOR_REVIEW_PREFIX}{submission_id}")
 }
@@ -99,7 +98,6 @@ pub(crate) fn validator_review_reference(submission_id: Uuid) -> String {
 /// Constructed only by the trusted `capture_internal` path in
 /// `InstalledMontyCatalogue`. No public API or arbitrary JSON supplies the
 /// sealed fields; the pool and subject come from durable storage reads.
-#[allow(dead_code)] // wired by validator Step 6 capture_internal routing
 pub(crate) struct ReviewAdmissionSource {
     /// Canonical `user_input` reference for this review task.
     reference: String,
@@ -134,7 +132,6 @@ impl ReviewAdmissionSource {
     ///
     /// Returns `Err` if the inspected program does not satisfy the validator
     /// coverage contract (e.g. has unexpected Tool bindings for a pure validator).
-    #[allow(dead_code)] // wired by validator Step 6 capture_internal routing
     pub(crate) fn new(
         subject: Arc<RetainedValidatorSubject>,
         selection: Arc<RetainedValidatorSelection>,
@@ -175,7 +172,7 @@ impl ReviewAdmissionSource {
     }
 
     /// The sealed submission subject (read-only for callers needing class code).
-    #[allow(dead_code)] // wired by validator Step 6 capture_internal routing
+    #[allow(dead_code)] // used by routing tests
     pub(crate) fn subject(&self) -> &RetainedValidatorSubject {
         &self.subject
     }
@@ -361,7 +358,6 @@ impl InternalRecipeSource for ReviewAdmissionSource {
     }
 }
 
-#[allow(dead_code)] // wired by validator Step 6 capture_internal routing
 fn failure(reason: &'static str) -> PortFailure {
     PortFailure::new(reason).expect("static classified reason")
 }
@@ -374,7 +370,6 @@ fn failure(reason: &'static str) -> PortFailure {
 ///
 /// All values come from the sealed subject's candidate revision document.
 /// No source substitution occurs; values are typed data.
-#[allow(dead_code)] // wired by validator Step 6 capture_internal routing
 pub(crate) fn subject_validator_task_inputs(
     coverage: &RetainedValidatorCoverage,
     subject: &RetainedValidatorSubject,
@@ -392,7 +387,7 @@ pub(crate) fn subject_validator_task_inputs(
 /// map for callers that need it (e.g. test helpers).
 ///
 /// Does NOT write any evidence row; that is done by `verify_receipt`.
-#[allow(dead_code)] // wired by validator Step 6 capture_internal routing
+#[allow(dead_code)] // used by routing tests
 pub(crate) fn parse_validator_receipt(
     receipt: &str,
     limits: ContractLimits,
@@ -427,7 +422,7 @@ pub(crate) fn parse_validator_receipt(
 /// The structural validator orchestrator posts the receipt by calling
 /// `host.post_internal_receipt(make_validator_receipt(results))`.
 /// Each step_id maps to the Value that `host.run_program(step_id)` returned.
-#[allow(dead_code)] // wired by validator Step 6 capture_internal routing
+#[allow(dead_code)] // used by routing tests
 pub(crate) fn make_validator_receipt(results: &BTreeMap<String, Value>) -> String {
     serde_json::json!({
         "format": "validator-structural-receipt/1",
@@ -438,7 +433,7 @@ pub(crate) fn make_validator_receipt(results: &BTreeMap<String, Value>) -> Strin
 
 /// Build the subject input that is passed into the validator's `subject_json`
 /// input field for pure structural checks. Uses REVISION_LIMITS by default.
-#[allow(dead_code)] // wired by validator Step 6 capture_internal routing
+#[allow(dead_code)] // used by routing tests
 pub(crate) fn subject_inputs_with_default_limits(
     coverage: &RetainedValidatorCoverage,
     subject: &RetainedValidatorSubject,
@@ -449,7 +444,7 @@ pub(crate) fn subject_inputs_with_default_limits(
 
 #[cfg(test)]
 mod routing_tests {
-    use super::{validator_review_reference, VALIDATOR_REVIEW_PREFIX};
+    use super::{VALIDATOR_REVIEW_PREFIX, validator_review_reference};
     use uuid::Uuid;
 
     /// The prefix constant has the exact expected form used by capture_internal.
