@@ -12929,11 +12929,11 @@ const PC_EXEC_SHELL_GIT_STASH_LIST_CONTENT: &str = r#"def usage_l040(inputs):
 "#;
 
 // §shell-guard-custom: git log -N — Tier 1 only; n validated to safe integer range.
-const PC_EXEC_SHELL_GIT_LOG_N_CONTENT: &str = r#"def usage_git_log_n(inputs):
-    n = inputs["n"]
-    if type(n) is not int or not (1 <= n <= 100):
-        n = 20
-    result = host.shell(command=f"git log --oneline -{n}")
+const PC_EXEC_SHELL_GIT_LOG_N_CONTENT: &str = r#"def usage_l041(inputs):
+    count = inputs["count"]
+    if type(count) is not int or not 1 <= count <= 100:
+        raise ValueError("invalid log count")
+    result = host.shell(command="git log --oneline -" + str(count))
     return result
 "#;
 
@@ -16714,13 +16714,30 @@ async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuilti
     // ------------------------------------------------------------------
 
     // 14a. PythonCode executors
+    // proposed-plan-target: pure slug-to-path validator (L086/L087/L089 dependency).
+    stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "proposed-plan-target",
+                "Pure-logic plan target builder. Validates a slug as a 1-64 char \
+                 lowercase ASCII kebab-case identifier and returns \
+                 plans/<slug>.md as a memory-relative path. No host calls, no I/O. \
+                 Inputs: slug (string). Raises ValueError on invalid slug.",
+                PC_PLAN_TARGET_CONTENT,
+            ),
+            "proposed-plan-target",
+        )
+        .await?;
+
     let pc_plan_create = stores
         .upsert_python_code(
             pc_row(
                 &tenant,
                 "pc-plan-create",
-                "Orchestrator executor: write plan document to plans/{slug}.md via memory_write. \
-                 slot0=slug, slot1=plan body. Tier 1 (LLM composes body in prior step).",
+                "Orchestrator executor: write plan document to the validated target \
+                 path via memory_write. Inputs: target (validated path from \
+                 proposed-plan-target), content. Tier 1 (LLM composes body in prior step).",
                 PC_PLAN_CREATE_CONTENT,
             ),
             "pc-plan-create",
@@ -16731,8 +16748,9 @@ async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuilti
             pc_row(
                 &tenant,
                 "pc-plan-read",
-                "Orchestrator executor: read plan document from plans/{slug}.md via memory_read. \
-                 slot0=slug. Tier 0.",
+                "Orchestrator executor: read plan document from the validated target \
+                 path via memory_read. Inputs: target (validated path from \
+                 proposed-plan-target). Tier 0.",
                 PC_PLAN_READ_CONTENT,
             ),
             "pc-plan-read",
@@ -18785,18 +18803,36 @@ const SKILL_PLAN_LIST_BODY: &str = r#"List plans: use memory_search with query "
 
 const SKILL_PLAN_REVISE_BODY: &str = r#"Revise a plan: (1) read the plan from memory at plans/<slug>.md; (2) apply the user's feedback — update steps, reorder, split, or merge; (3) reset any failed/in-progress steps back to [ ] (pending); (4) rewrite the entire plan via memory_write with append=false; (5) present the revised plan and suggest /plan approve to re-execute."#;
 
+const PC_PLAN_TARGET_CONTENT: &str = r#"def plan_target(inputs):
+    # Pure-logic plan target builder (proposed-plan-target). No host calls, no I/O.
+    # Validates slug and returns the memory-relative path "plans/<slug>.md".
+    import re
+    slug = inputs["slug"]
+    if re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug) is None:
+        raise ValueError("invalid plan slug")
+    return "plans/" + slug + ".md"
+"#;
+
 const PC_PLAN_CREATE_CONTENT: &str = r#"def usage_plan_create(inputs):
     # Tier 1 (LLM composes plan in prior step).
-    slug    = inputs["slug"]
+    # Slug already validated by proposed-plan-target in a prior Recipe step;
+    # target path is passed as inputs["target"].
+    import re
+    target = inputs["target"]
+    if re.fullmatch(r"plans/[a-z0-9][a-z0-9_-]{0,63}\.md", target) is None:
+        raise ValueError("invalid plan target")
     content = inputs["content"]
-    result  = host.memory_write(path=f"plans/{slug}.md", content=content, append=False)
+    result  = host.memory_write(path=target, content=content, append=False)
     return result
 "#;
 
 const PC_PLAN_READ_CONTENT: &str = r#"def usage_plan_read(inputs):
-    # Fixed path shape. Tier 0.
-    slug   = inputs["slug"]
-    result = host.memory_read(path=f"plans/{slug}.md")
+    # Tier 0. Target path validated by proposed-plan-target in a prior step.
+    import re
+    target = inputs["target"]
+    if re.fullmatch(r"plans/[a-z0-9][a-z0-9_-]{0,63}\.md", target) is None:
+        raise ValueError("invalid plan target")
+    result = host.memory_read(path=target)
     return result
 "#;
 
@@ -18806,18 +18842,48 @@ const PC_PLAN_SEARCH_CONTENT: &str = r#"def usage_plan_search(inputs):
     return result
 "#;
 
-const PC_PLAN_STATUS_UPDATE_CONTENT: &str = r#"def usage_plan_status_update(inputs):
-    # Patch mode memory_write — updates step markers in plan doc. Tier 1 (LLM identifies step).
-    slug       = inputs["slug"]
-    old_string = inputs["old_string"]
-    new_string = inputs["new_string"]
-    result     = host.memory_write(
-        path=f"plans/{slug}.md",
-        old_string=old_string,
-        new_string=new_string,
-    )
-    return result
-"#;
+const PC_PLAN_STATUS_UPDATE_CONTENT: &str = concat!(
+    "def usage_plan_status_update(inputs):\n",
+    "    # Pure-logic plan marker selector (L089 successor).\n",
+    "    # Validates the plan document step section and returns the exact patch strings.\n",
+    "    import re\n",
+    "    markers = {\"pending\": \" \", \"in_progress\": \"-\", \"done\": \"x\"}\n",
+    "    old_status = inputs[\"from_status\"]\n",
+    "    new_status = inputs[\"to_status\"]\n",
+    "    if [old_status, new_status] not in [[\"pending\", \"in_progress\"], [\"in_progress\", \"done\"]]:\n",
+    "        raise ValueError(\"unsupported_plan_transition\")\n",
+    "    number = inputs[\"step_number\"]\n",
+    "    if isinstance(number, bool) or not isinstance(number, int) or number < 1:\n",
+    "        raise ValueError(\"invalid_step_number\")\n",
+    "    seen = []\n",
+    "    section_count = 0\n",
+    "    in_steps = False\n",
+    "    target = None\n",
+    "    for physical_line in inputs[\"source_text\"].split(\"\\n\"):\n",
+    "        line = physical_line[:-1] if physical_line.endswith(\"\\r\") else physical_line\n",
+    "        if line == \"## Steps\":\n",
+    "            section_count += 1\n",
+    "            in_steps = True\n",
+    "        elif line.startswith(\"## \"):\n",
+    "            in_steps = False\n",
+    "        elif in_steps and line.strip():\n",
+    "            match = re.fullmatch(r\"- \\[([ x-])\\] ([1-9][0-9]*)\\.\\s+(.+)\", line)\n",
+    "            if match is None or not match.group(2) or not match.group(3).strip():\n",
+    "                raise ValueError(\"invalid_plan_step_row\")\n",
+    "            step_number = int(match.group(2))\n",
+    "            if step_number in seen:\n",
+    "                raise ValueError(\"duplicate_plan_step\")\n",
+    "            seen.append(step_number)\n",
+    "            if step_number == number:\n",
+    "                if match.group(1) != markers[old_status]:\n",
+    "                    raise ValueError(\"plan_status_precondition_failed\")\n",
+    "                target = line\n",
+    "    if section_count != 1 or target is None:\n",
+    "        raise ValueError(\"missing_or_ambiguous_plan_steps\")\n",
+    "    return {\"old_string\": target,\n",
+    "            \"new_string\": \"- [\" + markers[new_status] + \"]\" + target[5:],\n",
+    "            \"replace_all\": False}\n",
+);
 
 const RECIPE_PLAN_CREATE_YAML: &str = r#"step_descriptions: [
   {
