@@ -1,4 +1,59 @@
 
+## 2026-11-01 — verify_receipt fingerprint fix + PKG-C+/PKG-F L001–L012 preloadable migrations
+
+**verify_receipt fingerprint check (committed in `017ccf2d6`):**
+- `pg_review_admission_source.rs`: added the missing aggregate-step fingerprint
+  check (step 3 of the correct 6-step sequence) and fixed the step ordering so
+  no writes occur before fingerprint verification passes.
+  - **New step 3:** `typed_value_checksum_with_limits(&serde_json::json!(receipt), proof.data_limits())` is computed for the aggregate step observation; `proof.result_checksum() != Some(expected_checksum)` returns `Err("validator_receipt_fingerprint_mismatch")` before any DB write.
+  - **Reordered:** `observe_subject` (step 4) now runs before `WorkflowReview::structural` + `persist_workflow_review` (step 5); previously structural evidence was persisted before observation verification.
+  - **Added import:** `typed_value_checksum_with_limits` from `brassclaw_engine::executor::retained_recipe`.
+  - Module-level doc and method doc updated to reflect the corrected 6-step contract.
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db -- -D warnings`: 0 warnings.
+- `cargo test -p brassclaw_reborn_composition --features postgres,skills-db routing_tests`: 4/4 pass.
+- `cargo test -p brassclaw_reborn_composition --features postgres,skills-db q1_orchestrator`: 13/13 pass.
+
+**PKG-C+/PKG-F L001–L003 (commit `7985502eb`):**
+- `ValidationQueueStore::fire_q1_kick_if_wired()` — shared post-commit Q1 kick
+  helper for `submit_in_transaction` callers.
+- `PgPythonCodeStore::create_and_submit` and `PgRecipeStore::create_and_submit`
+  both call `fire_q1_kick_if_wired` after commit.
+- `PgSempaiProposalSink::with_validator_service` builder — attaches the bridge
+  to the internal queue_store so all three proposal paths (recipe/python_code/intent)
+  trigger Q1 via the retained IBS/Recipe path.
+- `runtime.rs`: new `skills-db` branch of proposal_sink construction wires
+  `installed_catalogue.validator_bridge()` into the sink.
+- `InstalledMontyCatalogue`: `#[allow(dead_code)]` removed from `validator_service`
+  field and `validator_bridge()` accessor (now wired).
+- L001 (`PC_EXEC_READ_FILE_CONTENT`): `usage_l001(inputs)` — `host.read_file` with typed inputs.
+- L002 (`PC_EXEC_WRITE_FILE_CONTENT`): `usage_l002(inputs)` — `host.write_file` with typed inputs.
+- L003 (`PC_EXEC_LIST_DIR_CONTENT`): `usage_l003(inputs)` — `host.list_dir` with typed inputs.
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db`: 0 warnings.
+
+**PKG-F L004–L012 (commit `017ccf2d6`):**
+- L004 (`pc-exec-glob`): `usage_l004(inputs)` — `host.glob` with typed inputs.
+- L005 (`pc-exec-grep`): `usage_l005(inputs)` — `host.grep` with typed inputs; variants `pc-exec-grep-case-insensitive` and `pc-exec-grep-type-filtered` reuse `usage_l005` interface.
+- L006 (`pc-exec-apply-patch`): `usage_l006(inputs)` — `host.apply_patch` with typed inputs.
+- L007 (`pc-exec-grep-invert`): `filter_lines_inverted(inputs)` — pure logic, no host call (no invert_match adapter).
+- L008 (`pc-exec-list-filter-by-type`): `filter_entries_by_type(inputs)` — pure logic.
+- L009 (`pc-exec-read-file-tail`): `compute_tail_window(inputs)` — pure arithmetic tail-window calculator; legacy two-call monolith split into Recipe steps.
+- L010 (`pc-exec-file-exists`): BLOCKED — placeholder body retained per spec (no typed `not_found` contract yet).
+- L011 (`pc-exec-read-then-grep`): `filter_text_lines(inputs)` — pure content filter.
+- L012 (`pc-exec-list-then-grep`): `filter_records(inputs)` — pure record filter.
+- `pc-exec-read-file-head`: `usage_read_file_head(inputs)` — single `host.read_file`.
+- `pc-path-join/basename/dirname`: `path_join/basename/dirname(inputs)` — pure path helpers.
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db`: 0 warnings.
+
+**Open after this session:**
+- `proposed-child-task-request` seed (PKG-E-R09): still uses legacy top-level body format — see Finding 2 in audit report. Requires preload-function migration.
+- L010 (`pc-exec-file-exists`) blocked on typed `not_found` contract.
+- L013–L101: remaining PythonCode body migrations to preloadable format.
+- `run_q1_validation` legacy path (`load_validator_program` + `run_validator_python_with_limits`) still active in parallel — removal is Step 6 completion gate.
+- `PgCompositionPort` wiring of `validator_bridge()` accessor not yet connected.
+- Validator Steps 7–12 (class routes, behavioral evidence, human Q2, production cutover).
+- General pure approval, K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences.
+
+
 ## 2026-11-01 — PKG-B/D/E-R09: ValidatorServiceBridge + q1_admission tests + proposed-child-task-request seed
 
 **PKG-B evidence (commit `a92e8e5e8`):**

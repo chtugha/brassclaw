@@ -4485,6 +4485,14 @@ const PC_PATH_DIRNAME_CONTENT: &str = r#"def path_dirname(inputs):
     return result
 "#;
 
+// R09 prerequisite: pure-logic typed goal/context passthrough for a separately
+// admitted child task request. No host call, no slot markers.
+// Inputs: goal (nonempty string), context (string).
+// Result: {goal: string, context: string} exact object, no extra fields.
+const PC_CHILD_TASK_REQUEST_CONTENT: &str = r#"def prepare_child_task_request(inputs):
+    return {"goal": inputs["goal"], "context": inputs["context"]}
+"#;
+
 // ---------------------------------------------------------------------------
 // Filesystem Leaf Skill bodies (class 1) — transcribed verbatim from
 // builtin_stuff_v3.md (the 2-space YAML `|` indent is stripped; trailing
@@ -10837,8 +10845,11 @@ async fn seed_process_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinB
             pc_row(
                 &tenant,
                 "proposed-child-task-request",
-                "Prepare reusable typed goal/context for a separately admitted child task.",
-                r#"result = {"goal": inputs["goal"], "context": inputs["context"]}"#,
+                "Preloadable prepare_child_task_request(inputs): maps goal+context inputs \
+                 to an identical result object. Pure logic — zero host calls. \
+                 Typed inputs: goal (nonempty string), context (string). \
+                 Returns {goal: string, context: string} exact object.",
+                PC_CHILD_TASK_REQUEST_CONTENT,
             ),
             "proposed-child-task-request",
         )

@@ -1,3 +1,47 @@
+## Latest — verify_receipt fingerprint fix + PKG-C+/PKG-F L001–L012 migrations
+
+### Session summary (2026-11-01)
+
+**Commits landed this session (in order):**
+
+| Commit | Package | Description |
+|--------|---------|-------------|
+| `d12dc8d2b` | PKG-A | `run_q1_validation_retained` — retained IBS/Recipe Q1 path |
+| `5194f096e` | PKG-FIX-0 + WP-4 | `pg_validator_q1_admission` — Q1 scheduling bridge |
+| `09580b0ec` | WP-1/WP-2 | Routing tests + provider_boot_tests arg fix |
+| `d5cb64787` | Step 6 A+B | `pg_review_admission_source.rs` + `capture_internal` routing |
+| `4f1790337` | Step 4 | Validator body preload format (12 unit tests pass) |
+| `a92e8e5e8` | PKG-B | `ValidatorServiceBridge` OnceLock injection |
+| `955007991` | PKG-D + PKG-E-R09 | `pg_validator_q1_admission` tests + `proposed-child-task-request` seed |
+| `a18b31fc6` | docs | Full lib test baseline (1208 pass / 89 pre-existing infra failures) |
+| `74b446367` | PKG-C | `ValidationQueueStore.submit` Q1 kick |
+| `36abdc26a` | PKG-C+ | `validator_bridge()` accessor |
+| `7985502eb` | PKG-C+ + PKG-F | Full Q1 wiring + L001–L003 migrations |
+| `017ccf2d6` | PKG-F + fix | L004–L012 migrations + **verify_receipt fingerprint fix** |
+
+**Key architectural achievements:**
+- The retained IBS/Recipe Q1 path (`run_q1_validation_retained`) is now fully wired end-to-end: `ValidationQueueStore.submit` → `fire_q1_kick_if_wired` → `submit_validator_review` → global Monty → `capture_internal` → `ReviewAdmissionSource` → `verify_receipt` (with correct fingerprint check).
+- `PgSempaiProposalSink`, `PgPythonCodeStore::create_and_submit`, and `PgRecipeStore::create_and_submit` all trigger the retained Q1 path after commit.
+- 12 PythonCode seed bodies migrated from legacy `{{vars.slotN}}` top-level assignment format to v3 preloadable function format (`def export_name(inputs):`).
+
+**Critical defect fixed:**
+- `verify_receipt` was missing the aggregate-step fingerprint check (`typed_value_checksum_with_limits(&json!(receipt), proof.data_limits())`), and was writing structural evidence before `observe_subject` ran. Both corrected.
+
+**Known open items after this session:**
+- `proposed-child-task-request` (PKG-E-R09) seed still uses legacy top-level body format — requires preload-function migration + `python-preload/2` declaration.
+- L010 (`pc-exec-file-exists`) blocked on typed `not_found` contract.
+- L013–L101 remaining PythonCode migrations.
+- `run_q1_validation` legacy path not yet removed (Step 6 completion gate).
+- `PgCompositionPort` wiring of `validator_bridge()` not yet connected.
+- Validator Steps 7–12 remain fully open.
+
+Root retains serial Cargo ownership. Format check clean; clippy 0 warnings on
+`brassclaw_reborn_composition --features postgres,skills-db`. Full plans,
+K3 formal closure, prefix C2/C3/D, general pure approval and dynamic occurrences
+remain open.
+
+---
+
 ## Latest — pure-component-approval store wired; fully verified and merged
 
 All source changes confirmed via `cargo fmt --check` and

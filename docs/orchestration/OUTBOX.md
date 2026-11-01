@@ -371,3 +371,43 @@ TEST_FILTER: q1_admission
 REASON: PKG-D pg_validator_q1_admission tests + dead_code comment update
 ```
 
+## OUT-002 → [SESSION-2026-11-01] EVIDENCE RECORD 2026-11-01T12:00Z
+
+**Scope:** Bob session — audit + verify_receipt fix + docs update
+**Status:** COMPLETE
+
+### Audit findings (see HTML artifact in chat)
+
+Three conformance issues identified across 10 commits (PKG-A through PKG-C+):
+
+1. **verify_receipt** (Critical — `pg_review_admission_source.rs`): aggregate-step
+   fingerprint check absent; `WorkflowReview::structural` written before `observe_subject`.
+   **Fixed in `017ccf2d6`** — fingerprint check added as step 3; ordering corrected.
+
+2. **proposed-child-task-request** (Non-conformant — `builtin_bootstrap.rs`):
+   seeded body `result = {"goal": …, "context": …}` uses legacy top-level assignment
+   format instead of `def prepare_child_task_request(inputs):` preload interface.
+   **Still open** — PKG-E-R09 requires preload-function migration.
+
+3. **Inner spawned `ValidationQueueStore`** (Minor — `validation_queue.rs`):
+   manual struct literal bypasses designated constructors; future field additions
+   will silently produce a mis-configured spawned store. **Still open** — maintenance
+   hazard, not an immediate bug.
+
+### verify_receipt fix evidence
+
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db -- -D warnings`: 0 warnings.
+- `cargo test … routing_tests`: 4/4 pass.
+- `cargo test … q1_orchestrator`: 13/13 pass.
+- `cargo test … run_q1_validation_retained`: 1/1 pass.
+- `rustfmt --edition 2021 --check pg_review_admission_source.rs`: clean.
+
+### Docs updated this session
+
+- `docs/implementation-status.md` — new top entry: verify_receipt fix + PKG-C+/PKG-F L001–L012
+- `docs/orchestration/TASKS.md` — TASK-006 through TASK-009 added; Open Items table added
+- `docs/development-handoff.md` — new top entry with full session summary + commit table
+- `CHANGELOG.md` — verify_receipt fingerprint fix entry prepended; PKG-C+ and PKG-F entries added; Item A description corrected (old 5-step sequence replaced with correct 6-step)
+
+---
+

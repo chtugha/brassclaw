@@ -7,22 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **verify_receipt aggregate-step fingerprint check** (`pg_review_admission_source.rs`,
+  commit `017ccf2d6`): Added the missing aggregate-step fingerprint verification
+  and corrected the step ordering. `verify_receipt` now performs the correct
+  6-step sequence: (1) identity guard via `RetainedRecipeSelection::checksum()`
+  comparison; (2) receipt JSON parse and per-step results map extraction;
+  **(3) aggregate-step fingerprint check** — `typed_value_checksum_with_limits(&json!(receipt), proof.data_limits())`
+  must match `proof.result_checksum()` for the aggregate step before any writes;
+  (4) `self.coverage.observe_subject` — per-step input/result fingerprint
+  verification across all steps, using `RetainedValidatorCoverage` derived once
+  at construction; (5) `WorkflowReview::structural` + `persist_workflow_review`;
+  (6) `persist_validator_q1_evidence`. No writes occur before step 3 passes.
+  All five `StructuralReviewFailure` variants exhaustively matched. Added
+  `typed_value_checksum_with_limits` import. Module-level and method docs updated.
+
+- **PKG-C+ full wiring** (`7985502eb`): `ValidationQueueStore::fire_q1_kick_if_wired()`
+  shared helper; `PgPythonCodeStore::create_and_submit` and
+  `PgRecipeStore::create_and_submit` both fire the retained Q1 kick after commit;
+  `PgSempaiProposalSink::with_validator_service` builder wires the bridge into
+  all three proposal paths (recipe/python_code/intent); `runtime.rs` new
+  `skills-db` branch connects `installed_catalogue.validator_bridge()` into the
+  proposal sink. Dead-code allowances removed from `validator_service` field and
+  `validator_bridge()` accessor in `InstalledMontyCatalogue`.
+
+- **PKG-F L001–L003 preloadable migrations** (`7985502eb`): `PC_EXEC_READ_FILE_CONTENT`
+  → `usage_l001(inputs)`; `PC_EXEC_WRITE_FILE_CONTENT` → `usage_l002(inputs)`;
+  `PC_EXEC_LIST_DIR_CONTENT` → `usage_l003(inputs)`. Legacy slot-substitution
+  bodies replaced with typed-input preload-function format.
+
+- **PKG-F L004–L012 preloadable migrations** (`017ccf2d6`): `usage_l004` (glob),
+  `usage_l005` (grep + two variants), `usage_l006` (apply_patch),
+  `filter_lines_inverted` (grep-invert pure), `filter_entries_by_type` (list-filter
+  pure), `compute_tail_window` (read-file-tail pure arithmetic),
+  `filter_text_lines` (read-then-grep pure), `filter_records` (list-then-grep
+  pure), `usage_read_file_head`, `path_join/basename/dirname`. L010
+  (file-exists) blocked — placeholder retained pending typed `not_found` contract.
+
 - Step 6 simplify_V3 — validator receipt verification and `capture_internal`
   routing (Items A + B):
 
   **Item A — `pg_review_admission_source.rs` (new file, fully authored):**
   Implements `ReviewAdmissionSource` and `InternalRecipeSource` for the sealed
-  structural validator admission path. `verify_receipt` now performs the correct
-  five-step sequence: (1) identity guard via `RetainedRecipeSelection::checksum()`
-  comparison (replaces fragile `std::ptr::eq`); (2) receipt JSON parse and
-  per-step results map extraction; (3) `WorkflowReview::structural` +
-  `persist_workflow_review` before any Q1 write; (4) `self.coverage.observe_subject`
-  using the `RetainedValidatorCoverage` derived once at construction in `new()`
-  (not re-derived per call); (5) `persist_validator_q1_evidence`. All five
-  `StructuralReviewFailure` variants are exhaustively matched. No evidence row is
-  written if any earlier guard fails. `VALIDATOR_REVIEW_PREFIX`, `make_validator_receipt`,
-  `parse_validator_receipt`, `subject_validator_task_inputs` and
-  `subject_inputs_with_default_limits` helpers retained for the wiring path.
+  structural validator admission path. `verify_receipt` initial authoring (later
+  corrected by the fingerprint fix above). `VALIDATOR_REVIEW_PREFIX`,
+  `make_validator_receipt`, `parse_validator_receipt`, `subject_validator_task_inputs`
+  and `subject_inputs_with_default_limits` helpers retained for the wiring path.
   Module registered in `lib.rs` under `#[cfg(all(feature = "postgres", feature =
   "skills-db"))]`. Plan docs `Step6_simplify_V3.md` and
   `correction_before_step6_simplify_v3.md` added.
