@@ -1,9 +1,9 @@
-//! Bootstrap qualification for L013–L101 PythonCode/Skill pairs.
+//! Bootstrap qualification for L010 and L013–L101 PythonCode/Skill pairs.
 //!
 //! Produces `"component-revision/1"` envelopes in `reborn_component_revisions`
 //! and `"skill-association-approval/1"` rows in `reborn_skill_association_approvals`
-//! for every Tool-calling (Skill, PythonCode) pair in the network, memory,
-//! management, Git/grep, plan, GitHub and path/filter groups.
+//! for every Tool-calling (Skill, PythonCode) pair in the filesystem (L010),
+//! network, memory, management, Git/grep, plan, GitHub and path/filter groups.
 //!
 //! Pure-logic components get `"pure-component-approval/1"` records in
 //! `reborn_pure_component_approvals`.
@@ -768,6 +768,19 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         arguments: || json!({"url":"repo"}),
         code_arguments: || json!({}),
         result: any_object_result,
+    },
+    // ---- Filesystem group (L010) -------------------------------------------
+    PairSpec {
+        pc_name: "pc-exec-file-exists",
+        skill_name: "skill-file-exists",
+        toolskill_name: "ts-file-exists",
+        tool_name: "file_exists",
+        callable: "host.file_exists",
+        export: "use_file_exists",
+        inputs: || json!({"path":req_string()}),
+        arguments: || json!({"path":"path"}),
+        code_arguments: || json!({}),
+        result: || json!({"type":"object","required":true,"fields":{"kind":{"type":"string","required":true},"path":{"type":"string","required":true}},"allow_extra_fields":false}),
     },
 ];
 
