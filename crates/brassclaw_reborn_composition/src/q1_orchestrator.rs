@@ -247,10 +247,12 @@ pub(crate) async fn run_q1_validation_retained(
     );
 
     // Step 4 — compile, prepare and inspect the retained program.
+    // Variant key must match what structural_validator_recipe_drafts emits.
+    let variant_key = format!("validator-class-{class_i16}");
     let instruction = compile_retained_recipe(
         snapshot,
         recipe_id,
-        "selected",
+        &variant_key,
         WorkflowClass::Deterministic,
     )
     .map_err(|e| Q1Error::Db {
@@ -456,5 +458,56 @@ mod tests {
             result.is_err(),
             "i32::MAX should not fit in i16 — confirms the range check fires"
         );
+    }
+
+    /// Confirm that the structural validator recipe drafts for all 8 classes can
+    /// be compiled and prepared without a database.  This catches variant-key and
+    /// value-contract issues before the integration tests run.
+    #[cfg(feature = "skills-db")]
+    #[test]
+    fn structural_validator_recipe_compiles_and_prepares_for_all_classes() {
+        use brassclaw_engine::memory::{
+            retained_inputs::prepare_retained_unbound_program,
+            retained_instruction::{WorkflowClass, compile_retained_recipe},
+        };
+        use brassclaw_skills::{
+            component_revision::RetainedComponentSnapshot,
+            validator_components::{
+                VALIDATOR_CLASS_CODES, structural_validator_recipe_drafts,
+                structural_validator_recipe_id,
+            },
+        };
+        use std::sync::Arc;
+
+        for &class_code in VALIDATOR_CLASS_CODES {
+            let label = format!("class-{class_code}");
+            // Use the same selector logic as retain_validator_check_drafts.
+            let pc_body = crate::builtin_bootstrap::validator_pc_body_for_class_test(class_code);
+            let drafts = structural_validator_recipe_drafts(class_code, &label, pc_body)
+                .unwrap_or_else(|e| panic!("class {class_code} drafts failed: {e}"));
+            let recipe_id = structural_validator_recipe_id(class_code);
+            let revisions: Vec<_> = drafts
+                .into_iter()
+                .enumerate()
+                .map(|(i, d)| {
+                    d.at_version((i + 1) as u64)
+                        .unwrap_or_else(|e| panic!("class {class_code} at_version failed: {e}"))
+                })
+                .collect();
+            let snapshot = Arc::new(
+                RetainedComponentSnapshot::new(&[recipe_id], revisions)
+                    .unwrap_or_else(|e| panic!("class {class_code} snapshot failed: {e}")),
+            );
+            let variant_key = format!("validator-class-{class_code}");
+            let instruction = compile_retained_recipe(
+                snapshot,
+                recipe_id,
+                &variant_key,
+                WorkflowClass::Deterministic,
+            )
+            .unwrap_or_else(|e| panic!("class {class_code} compile failed: {e}"));
+            prepare_retained_unbound_program(instruction)
+                .unwrap_or_else(|e| panic!("class {class_code} prepare failed: {e}"));
+        }
     }
 }

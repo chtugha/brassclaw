@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **`builtin_bootstrap.rs` — clarify system_seed Q1 contract in module comment**:
+  Replaced the misleading `"(bypassing Q1)"` phrase in the `#[doc]` comment with
+  an accurate description: `validation_status='validated'` is set by the
+  `system_seed` bootstrap path, which satisfies Q1 and behavioral evidence at
+  boot-time via `qualify_all` (L013–L101) and `qualify_all_validators` (eight
+  structural validator classes), not via inline Q1 queue submission. No behavior
+  change. (Audit finding C-3.)
+
 - **`target/validation` evidence policy — K3 cleanup and forward runner spec**:
   Recovered 219 GiB on `/Volumes/SSDE` (97% → 48% capacity) by removing uncited
   full-tree working-tree snapshot directories and superseded compiled binaries from

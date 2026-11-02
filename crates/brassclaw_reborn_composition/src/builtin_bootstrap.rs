@@ -25,7 +25,12 @@
 //! Seeded builtins use the same marker scope as
 //! [`crate::seed_builtin_host`]: `(tenant_id = runtime tenant,
 //! user_id = SYSTEM_RESERVED_ID, agent_id = "default", project_id = "system")`
-//! with `source = "system"` + `validation_status = "validated"` (bypassing Q1).
+//! with `source = "system"` + `validation_status = "validated"`. The
+//! `system_seed` bootstrap contract requires no additional external maintainer
+//! approval or human Q2 on the installed instance; Q1 and behavioral evidence
+//! are satisfied at boot-time via `qualify_all` (L013–L101) and
+//! `qualify_all_validators` (eight structural validator classes), not via inline
+//! Q1 queue submission.
 //! Every insert is idempotent (ON-CONFLICT / get-then-insert) and
 //! `append_child_component_ids` deduplicates, so the whole seeder is safe to
 //! call on every composition boot.
@@ -12524,8 +12529,8 @@ const PC_VALIDATOR_STRUCTURAL_BODY: &str = r#"def check_structural_presence(inpu
 // ---------------------------------------------------------------------------
 
 /// Class 0 — Tool: checks operation/effect contract, capability_id, param_schema presence.
-pub(crate) const PC_VALIDATOR_CLASS_0_BODY: &str = r#"def check_structural_presence(inputs):
-    import json as _json
+pub(crate) const PC_VALIDATOR_CLASS_0_BODY: &str = r#"import json as _json
+def check_structural_presence(inputs):
     _name = inputs["name"]
     _desc = inputs["description"]
     _content_str = inputs["content"]
@@ -12554,8 +12559,8 @@ pub(crate) const PC_VALIDATOR_CLASS_0_BODY: &str = r#"def check_structural_prese
 "#;
 
 /// Class 1–3 — Skill: checks body sections, skill-association/1 present, class_code.
-pub(crate) const PC_VALIDATOR_CLASS_SKILL_BODY: &str = r#"def check_structural_presence(inputs):
-    import json as _json
+pub(crate) const PC_VALIDATOR_CLASS_SKILL_BODY: &str = r#"import json as _json
+def check_structural_presence(inputs):
     _name = inputs["name"]
     _desc = inputs["description"]
     _content_str = inputs["content"]
@@ -12586,8 +12591,8 @@ pub(crate) const PC_VALIDATOR_CLASS_SKILL_BODY: &str = r#"def check_structural_p
 "#;
 
 /// Class 13 — ToolSkill: checks tool_name, param_schema, content (prose) non-empty.
-pub(crate) const PC_VALIDATOR_CLASS_13_BODY: &str = r#"def check_structural_presence(inputs):
-    import json as _json
+pub(crate) const PC_VALIDATOR_CLASS_13_BODY: &str = r#"import json as _json
+def check_structural_presence(inputs):
     _name = inputs["name"]
     _desc = inputs["description"]
     _content_str = inputs["content"]
@@ -12616,8 +12621,8 @@ pub(crate) const PC_VALIDATOR_CLASS_13_BODY: &str = r#"def check_structural_pres
 "#;
 
 /// Class 21 — Recipe: checks step_descriptions non-empty, at least one variant/step_link.
-pub(crate) const PC_VALIDATOR_CLASS_21_BODY: &str = r#"def check_structural_presence(inputs):
-    import json as _json
+pub(crate) const PC_VALIDATOR_CLASS_21_BODY: &str = r#"import json as _json
+def check_structural_presence(inputs):
     _name = inputs["name"]
     _desc = inputs["description"]
     _content_str = inputs["content"]
@@ -12645,8 +12650,8 @@ pub(crate) const PC_VALIDATOR_CLASS_21_BODY: &str = r#"def check_structural_pres
 "#;
 
 /// Class 22 — PythonCode: checks `def` function declaration, non-empty content.
-pub(crate) const PC_VALIDATOR_CLASS_22_BODY: &str = r#"def check_structural_presence(inputs):
-    import json as _json
+pub(crate) const PC_VALIDATOR_CLASS_22_BODY: &str = r#"import json as _json
+def check_structural_presence(inputs):
     _name = inputs["name"]
     _desc = inputs["description"]
     _content_str = inputs["content"]
@@ -12674,8 +12679,8 @@ pub(crate) const PC_VALIDATOR_CLASS_22_BODY: &str = r#"def check_structural_pres
 "#;
 
 /// Class 23 — ExtensionCatalogue: checks overview_doc non-empty, task_groups present.
-pub(crate) const PC_VALIDATOR_CLASS_23_BODY: &str = r#"def check_structural_presence(inputs):
-    import json as _json
+pub(crate) const PC_VALIDATOR_CLASS_23_BODY: &str = r#"import json as _json
+def check_structural_presence(inputs):
     _name = inputs["name"]
     _desc = inputs["description"]
     _content_str = inputs["content"]
@@ -12711,6 +12716,15 @@ fn validator_pc_body_for_class(class_code: i16) -> &'static str {
         23 => PC_VALIDATOR_CLASS_23_BODY,
         _ => PC_VALIDATOR_STRUCTURAL_BODY,
     }
+}
+
+/// Test-only re-export of the private body selector so unit tests in other
+/// modules can reproduce the exact body used by `retain_validator_check_drafts`
+/// without going through a database.
+#[cfg(feature = "skills-db")]
+#[cfg(test)]
+pub(crate) fn validator_pc_body_for_class_test(class_code: i16) -> &'static str {
+    validator_pc_body_for_class(class_code)
 }
 
 /// YAML `step_descriptions` source shared by all class validators (single step).
