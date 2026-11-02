@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Remove `docs/assumptions/` folder**: deleted
+  `docs/assumptions/reborn-event-stream-manager.md`, a one-off implementation
+  decision note from 2026-05-19 that recorded type mappings and sizing constants
+  chosen during the `brassclaw_event_streams` development. The code shipped; the
+  decisions are now captured in the crate source and contract tests. No other file
+  referenced this document.
+
 - **Remove stale v2-era architecture video and responses API draft doc**:
   Deleted `docs/architecture-video/` (Remotion-based animated video covering the
   engine v2 / v1-channel architecture, superseded by v3; the driving Bob skill was
