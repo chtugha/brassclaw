@@ -5770,6 +5770,20 @@ async fn seed_network_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinB
             "skill-http-delete",
         )
         .await?;
+    let skill_http_post_webhook = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-http-post-webhook",
+                "Leaf skill: how to send a JSON webhook POST notification to an \
+                 external endpoint.",
+                SKILL_HTTP_POST_WEBHOOK_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-http-post-webhook",
+        )
+        .await?;
     let skill_web_search = stores
         .upsert_skill(
             skill_row(
@@ -6188,6 +6202,7 @@ async fn seed_network_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinB
         pc_json_extract_field,
         skill_http_get,
         skill_http_post,
+        skill_http_post_webhook,
         skill_http_authenticated,
         skill_http_head,
         skill_http_put,
@@ -6677,6 +6692,15 @@ const SKILL_HTTP_DELETE_BODY: &str = r#"Use `ts-http-fetch` with method='delete'
 resource via REST API. DELETE has ExternalWrite semantics - always confirm with the
 user before dispatching. Include Authorization headers when required. Check the
 response status (204 No Content = success for many REST APIs; 404 = already gone).
+"#;
+
+const SKILL_HTTP_POST_WEBHOOK_BODY: &str = r#"Use `ts-http-fetch` with method='post' and a pre-structured JSON body to deliver a
+webhook notification to an external endpoint URL. The body must be fully formed before
+calling host.http — use pc-exec-http-post (usage_l017) directly. Include
+Content-Type: application/json in headers. Authentication uses kernel-staged secret
+injection; never supply raw tokens in inputs. Non-2xx responses are not tool errors —
+always inspect the status field. This skill is the approved binding for outbound
+webhook dispatches (event notifications, CI triggers, alerting integrations).
 "#;
 
 const SKILL_WEB_SEARCH_BODY: &str = r#"Web search is a composition, not a single tool. The pattern:
@@ -9386,6 +9410,17 @@ async fn seed_process_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinB
             "skill-shell-git-config-list",
         )
         .await?;
+    let skill_shell_git_log_n = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-log-n",
+                "Leaf skill: how to view the last N commits (1–100) as compact one-line summaries.",
+                SKILL_SHELL_GIT_LOG_N_BODY,
+            ),
+            "skill-shell-git-log-n",
+        )
+        .await?;
     let skill_shell_pwd = stores
         .upsert_skill(
             leaf_skill(
@@ -9573,6 +9608,39 @@ async fn seed_process_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinB
             "skill-shell-git-fetch",
         )
         .await?;
+    let skill_git_diff_unstaged = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-git-diff-unstaged",
+                "Leaf skill: how to view unstaged changes in the working tree (git diff).",
+                SKILL_GIT_DIFF_UNSTAGED_BODY,
+            ),
+            "skill-git-diff-unstaged",
+        )
+        .await?;
+    let skill_git_diff_staged = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-git-diff-staged",
+                "Leaf skill: how to view staged changes ready to commit (git diff --cached).",
+                SKILL_GIT_DIFF_STAGED_BODY,
+            ),
+            "skill-git-diff-staged",
+        )
+        .await?;
+    let skill_git_diff_head = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-git-diff-head",
+                "Leaf skill: how to view changes introduced by the last commit (git diff HEAD~1).",
+                SKILL_GIT_DIFF_HEAD_BODY,
+            ),
+            "skill-git-diff-head",
+        )
+        .await?;
 
     // 6. Domain Skill (class 2) — skill-shell. Body transcribed verbatim from the
     //    doc (references every leaf skill above; two-tier usage guide).
@@ -9636,6 +9704,10 @@ async fn seed_process_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinB
     // Append the 31 leaf skills + 1 domain skill to ext-shell and the primary
     // (recipes appended in chunk 6d).
     let ext_shell_skill_children: Vec<Uuid> = vec![
+        skill_shell_git_log_n,
+        skill_git_diff_unstaged,
+        skill_git_diff_staged,
+        skill_git_diff_head,
         skill_shell_git_status,
         skill_shell_git_log,
         skill_shell_git_diff_stat,
@@ -13563,6 +13635,30 @@ git-diff to compare local state against the latest remote refs. To merge or reba
 after fetching, use git-pull or shell-run (Tier 1).
 "#;
 
+const SKILL_SHELL_GIT_LOG_N_BODY: &str = r#"Use pc-exec-shell-git-log-n (§shell-safe-fixed variant) to run 'git log --oneline -N'
+where N is a validated integer (1–100). Returns the last N commits as compact one-line
+summaries (hash + subject). Use when you need a specific count of history entries
+rather than the default 20 (skill-shell-git-log). Input: count (integer 1–100).
+"#;
+
+const SKILL_GIT_DIFF_UNSTAGED_BODY: &str = r#"Use pc-git-diff-unstaged (§shell-safe-fixed) to run 'git diff'.
+Returns the full diff of all unstaged changes in the working tree — files modified
+since the last staging operation. Use before staging to know exactly what will be
+captured by git add. For staged changes, use skill-git-diff-staged.
+"#;
+
+const SKILL_GIT_DIFF_STAGED_BODY: &str = r#"Use pc-git-diff-staged (§shell-safe-fixed) to run 'git diff --cached'.
+Returns the full diff of all staged changes — exactly what will be included in the
+next commit. Always run this after git add and before git commit to confirm the
+staged content. For unstaged changes, use skill-git-diff-unstaged.
+"#;
+
+const SKILL_GIT_DIFF_HEAD_BODY: &str = r#"Use pc-git-diff-head (§shell-safe-fixed) to run 'git diff HEAD~1'.
+Returns the full diff introduced by the most recent commit relative to its parent.
+Use to review what the last commit actually changed. For the stats summary only,
+use skill-shell-git-show-stat; for older commits, use shell-run (Tier 1).
+"#;
+
 const SKILL_SHELL_BODY: &str = r#"Shell execution is the most powerful and most dangerous builtin. Use it only when no
 higher-level tool covers the need (prefer filesystem domain tools for file operations;
 prefer skill-http-fetch for network work).
@@ -17215,6 +17311,29 @@ async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuilti
         )
         .await?;
 
+    let skill_plan_read = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-plan-read",
+                "Leaf skill: how to read a plan document by its validated target path via memory_read.",
+                SKILL_PLAN_READ_BODY,
+            ),
+            "skill-plan-read",
+        )
+        .await?;
+    let skill_plan_search = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-plan-search",
+                "Leaf skill: how to search for all plan documents via memory_search query 'plan_id:'.",
+                SKILL_PLAN_SEARCH_BODY,
+            ),
+            "skill-plan-search",
+        )
+        .await?;
+
     // 14c. Domain skill
     let skill_plan_mode = stores
         .upsert_skill(
@@ -17432,6 +17551,8 @@ async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuilti
         pc_plan_search,
         pc_plan_status_update,
         skill_plan_create,
+        skill_plan_read,
+        skill_plan_search,
         skill_plan_track_progress,
         skill_plan_list,
         skill_plan_revise,
@@ -19206,6 +19327,16 @@ const SKILL_PLAN_TRACK_PROGRESS_BODY: &str = r#"Track plan step progress: (1) re
 const SKILL_PLAN_LIST_BODY: &str = r#"List plans: use memory_search with query "plan_id:" to find plan documents. For each result, extract: plan_id (slug), status (draft/executing/complete/failed), step count. If no plans found, say 'No plans found. Use /plan <description> to create one.'"#;
 
 const SKILL_PLAN_REVISE_BODY: &str = r#"Revise a plan: (1) read the plan from memory at plans/<slug>.md; (2) apply the user's feedback — update steps, reorder, split, or merge; (3) reset any failed/in-progress steps back to [ ] (pending); (4) rewrite the entire plan via memory_write with append=false; (5) present the revised plan and suggest /plan approve to re-execute."#;
+
+const SKILL_PLAN_READ_BODY: &str = r#"Read a plan document: use pc-plan-read to call host.memory_read with the validated target
+path (plans/<slug>.md from proposed-plan-target). The plan must exist at that path;
+a missing plan returns a not-found result. Use to inspect current step status before
+tracking progress or revising."#;
+
+const SKILL_PLAN_SEARCH_BODY: &str = r#"Search for plan documents: use pc-plan-search which calls host.memory_search with
+query 'plan_id:' — returns all memory entries prefixed plan_id:. Each result contains
+the plan slug, status, and step count. Use to list available plans before reading or
+tracking a specific one."#;
 
 const PC_PLAN_TARGET_CONTENT: &str = r#"def plan_target(inputs):
     # Pure-logic plan target builder (proposed-plan-target). No host calls, no I/O.

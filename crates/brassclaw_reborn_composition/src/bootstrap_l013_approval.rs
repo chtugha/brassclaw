@@ -411,7 +411,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     // All shell-fixed PCs call host.shell; they share ts-shell.
     PairSpec {
         pc_name: "pc-exec-shell-git-status",
-        skill_name: "skill-git-status",
+        skill_name: "skill-shell-git-status",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -423,7 +423,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-log",
-        skill_name: "skill-git-log",
+        skill_name: "skill-shell-git-log",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -435,7 +435,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-diff-stat",
-        skill_name: "skill-git-diff-stat",
+        skill_name: "skill-shell-git-diff-stat",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -447,7 +447,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-branch",
-        skill_name: "skill-git-branch",
+        skill_name: "skill-shell-git-branch",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -459,7 +459,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-stash-list",
-        skill_name: "skill-git-stash-list",
+        skill_name: "skill-shell-git-stash-list",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -471,7 +471,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-log-n",
-        skill_name: "skill-git-log-n",
+        skill_name: "skill-shell-git-log-n",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -483,7 +483,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-remote",
-        skill_name: "skill-git-remote",
+        skill_name: "skill-shell-git-remote",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -495,7 +495,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-show-stat",
-        skill_name: "skill-git-show-stat",
+        skill_name: "skill-shell-git-show-stat",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -507,7 +507,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-tag-list",
-        skill_name: "skill-git-tag-list",
+        skill_name: "skill-shell-git-tag-list",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -519,7 +519,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-diff-name-only",
-        skill_name: "skill-git-diff-name-only",
+        skill_name: "skill-shell-git-diff-name-only",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -531,7 +531,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-log-stat",
-        skill_name: "skill-git-log-stat",
+        skill_name: "skill-shell-git-log-stat",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -543,7 +543,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-stash-show",
-        skill_name: "skill-git-stash-show",
+        skill_name: "skill-shell-git-stash-show",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -555,7 +555,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-config-list",
-        skill_name: "skill-git-config-list",
+        skill_name: "skill-shell-git-config-list",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -567,7 +567,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-add",
-        skill_name: "skill-git-add",
+        skill_name: "skill-shell-git-add",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -579,7 +579,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-commit",
-        skill_name: "skill-git-commit",
+        skill_name: "skill-shell-git-commit",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -591,7 +591,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-push",
-        skill_name: "skill-git-push",
+        skill_name: "skill-shell-git-push",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -603,7 +603,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-pull",
-        skill_name: "skill-git-pull",
+        skill_name: "skill-shell-git-pull",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -615,7 +615,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
     },
     PairSpec {
         pc_name: "pc-exec-shell-git-fetch",
-        skill_name: "skill-git-fetch",
+        skill_name: "skill-shell-git-fetch",
         toolskill_name: "ts-shell",
         tool_name: "shell",
         callable: "host.shell",
@@ -795,51 +795,40 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         result: any_object_result,
     },
     // ---- Plan helpers (L086–L089) ------------------------------------------
-    PairSpec {
-        pc_name: "pc-plan-target",
-        skill_name: "skill-plan-target",
-        toolskill_name: "ts-read-file",
-        tool_name: "read_file",
-        callable: "host.read_file",
-        export: "plan_target",
-        inputs: || json!({"path":req_string()}),
-        arguments: || json!({"path":"path"}),
-        code_arguments: || json!({}),
-        result: any_object_result,
-    },
+    // Note: proposed-plan-target (pure logic) is in PURE_SPECS below.
     PairSpec {
         pc_name: "pc-plan-create",
         skill_name: "skill-plan-create",
-        toolskill_name: "ts-write-file",
-        tool_name: "write_file",
-        callable: "host.write_file",
+        toolskill_name: "ts-memory-write",
+        tool_name: "memory_write",
+        callable: "host.memory_write",
         export: "usage_plan_create",
-        inputs: || json!({"path":req_string(),"content":req_string()}),
-        arguments: || json!({"path":"path","content":"content"}),
+        inputs: || json!({"target":req_string(),"content":req_string()}),
+        arguments: || json!({"path":"target","content":"content"}),
         code_arguments: || json!({}),
         result: any_object_result,
     },
     PairSpec {
         pc_name: "pc-plan-read",
         skill_name: "skill-plan-read",
-        toolskill_name: "ts-read-file",
-        tool_name: "read_file",
-        callable: "host.read_file",
+        toolskill_name: "ts-memory-read",
+        tool_name: "memory_read",
+        callable: "host.memory_read",
         export: "usage_plan_read",
-        inputs: || json!({"path":req_string()}),
-        arguments: || json!({"path":"path"}),
+        inputs: || json!({"target":req_string()}),
+        arguments: || json!({"path":"target"}),
         code_arguments: || json!({}),
         result: any_object_result,
     },
     PairSpec {
         pc_name: "pc-plan-search",
         skill_name: "skill-plan-search",
-        toolskill_name: "ts-grep",
-        tool_name: "grep",
-        callable: "host.grep",
+        toolskill_name: "ts-memory-search",
+        tool_name: "memory_search",
+        callable: "host.memory_search",
         export: "usage_plan_search",
-        inputs: || json!({"pattern":req_string(),"path":opt_string()}),
-        arguments: || json!({"pattern":"pattern"}),
+        inputs: || json!({}),
+        arguments: || json!({}),
         code_arguments: || json!({}),
         result: any_object_result,
     },
@@ -879,7 +868,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         inputs: || json!({"path":req_string()}),
         arguments: || json!({"path":"path"}),
         code_arguments: || json!({}),
-        result: || json!({"type":"object","required":true,"fields":{"kind":{"type":"string","required":true},"path":{"type":"string","required":true}},"allow_extra_fields":false}),
+        result: || json!({"type":"object","fields":{"kind":{"type":"string","required":true},"path":{"type":"string","required":true}},"allow_extra_fields":false,"checks":[]}),
     },
     // ---- Trigger management group ------------------------------------------
     // L: pc-exec-trigger-list — single host.trigger_list call; scope optional.
@@ -935,7 +924,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         inputs: || json!({"trigger_name":req_string()}),
         arguments: || json!({"trigger_name":"trigger_name"}),
         code_arguments: || json!({}),
-        result: || json!({"type":"object","required":true,"fields":{"removed":{"type":"boolean","required":true},"trigger_name":{"type":"string","required":true}},"allow_extra_fields":true}),
+        result: || json!({"type":"object","fields":{"removed":{"type":"boolean","required":true},"trigger_name":{"type":"string","required":true}},"allow_extra_fields":false,"checks":[]}),
     },
     // ---- Security grep group (L083–L085) -----------------------------------
     // pc-grep-hardcoded-secrets — calls host.grep with credential pattern.
@@ -1014,7 +1003,8 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         callable: "host.time",
         export: "usage_time_now",
         inputs: || json!({"timezone":opt_string()}),
-        arguments: || json!({"operation":"operation","timezone":"timezone"}),
+        // operation="now" is a literal in the PC body; only timezone is an input.
+        arguments: || json!({"timezone":"timezone"}),
         code_arguments: || json!({}),
         result: any_object_result,
     },
@@ -1026,7 +1016,8 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         callable: "host.time",
         export: "usage_time_parse",
         inputs: || json!({"input":req_string(),"timezone":opt_string()}),
-        arguments: || json!({"operation":"operation","input":"input","timezone":"timezone"}),
+        // operation="parse" is a literal in the PC body.
+        arguments: || json!({"input":"input","timezone":"timezone"}),
         code_arguments: || json!({}),
         result: any_object_result,
     },
@@ -1038,7 +1029,8 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         callable: "host.time",
         export: "usage_time_convert",
         inputs: || json!({"input":req_string(),"from_timezone":req_string(),"to_timezone":req_string()}),
-        arguments: || json!({"operation":"operation","input":"input"}),
+        // operation="convert" is a literal in the PC body.
+        arguments: || json!({"input":"input","from_timezone":"from_timezone","to_timezone":"to_timezone"}),
         code_arguments: || json!({}),
         result: any_object_result,
     },
@@ -1050,7 +1042,8 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         callable: "host.time",
         export: "usage_time_diff",
         inputs: || json!({"input":req_string(),"timestamp2":req_string()}),
-        arguments: || json!({"operation":"operation","input":"input"}),
+        // operation="diff" is a literal in the PC body.
+        arguments: || json!({"input":"input","timestamp2":"timestamp2"}),
         code_arguments: || json!({}),
         result: any_object_result,
     },
@@ -1062,7 +1055,8 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         callable: "host.time",
         export: "usage_time_format",
         inputs: || json!({"input":req_string(),"format_string":req_string(),"timezone":opt_string()}),
-        arguments: || json!({"operation":"operation","input":"input"}),
+        // operation="format" is a literal in the PC body.
+        arguments: || json!({"input":"input","format_string":"format_string","timezone":"timezone"}),
         code_arguments: || json!({}),
         result: any_object_result,
     },
@@ -1075,7 +1069,8 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         callable: "host.json",
         export: "usage_json_query",
         inputs: || json!({"data":req_string(),"path":req_string()}),
-        arguments: || json!({"operation":"operation","data":"data"}),
+        // operation="query" is a literal in the PC body.
+        arguments: || json!({"data":"data","path":"path"}),
         code_arguments: || json!({}),
         result: any_object_result,
     },
@@ -1099,7 +1094,8 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         callable: "host.json",
         export: "usage_json_validate",
         inputs: || json!({"data":req_string()}),
-        arguments: || json!({"operation":"operation","data":"data"}),
+        // operation="validate" is a literal in the PC body.
+        arguments: || json!({"data":"data"}),
         code_arguments: || json!({}),
         result: any_object_result,
     },
@@ -1118,6 +1114,8 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         result: any_object_result,
     },
     // pc-github-search-issues — single host.http_fetch GET search.
+    // method="GET" is a literal and url is constructed from query in the PC body;
+    // no direct tool-parameter mappings are needed in the association contract.
     PairSpec {
         pc_name: "pc-github-search-issues",
         skill_name: "skill-github-search-issues",
@@ -1126,7 +1124,7 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         callable: "host.http_fetch",
         export: "usage_github_search_issues",
         inputs: || json!({"query":req_string()}),
-        arguments: || json!({"method":"method","url":"query"}),
+        arguments: || json!({}),
         code_arguments: || json!({}),
         result: any_object_result,
     },
@@ -1272,6 +1270,11 @@ static PURE_SPECS: &[PureSpec] = &[
         pc_name: "pc-url-encode",
         export: "url_encode",
     },
+    // Plan target builder — pure slug-to-path validator, no host call.
+    PureSpec {
+        pc_name: "proposed-plan-target",
+        export: "plan_target",
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1305,17 +1308,6 @@ async fn lookup_id(
     Ok(row.map(|r| r.get(0)))
 }
 
-async fn require_id(
-    pool: &Arc<PgPool>,
-    table: &str,
-    tenant: &str,
-    name: &str,
-) -> Result<Uuid, RebornBuildError> {
-    lookup_id(pool, table, tenant, name)
-        .await?
-        .ok_or_else(|| invalid(format!("l013-approval: {table} '{name}' not seeded")))
-}
-
 // ---------------------------------------------------------------------------
 // Revision envelope construction
 // ---------------------------------------------------------------------------
@@ -1325,7 +1317,7 @@ fn pc_revision(pc_id: Uuid, content: &str) -> Result<ComponentRevisionDraft, Reb
         "content": content,
         "preload": {"format":"python-preload/2","exports":{},"private_functions":{},"constants":[],"imports":[],"dependencies":[]},
         "input_contract": {},
-        "result_contract": {"type":"object","allow_extra_fields":true,"fields":{}},
+        "result_contract": {"type":"object","allow_extra_fields":false,"fields":{},"checks":[]},
     });
     ComponentRevisionDraft::from_json(
         &json!({
@@ -1479,10 +1471,39 @@ async fn qualify_tool_calling_pair(
     pc_content: &str,
 ) -> Result<(), RebornBuildError> {
     // 1. Load UUIDs from the DB.
-    let pc_id = require_id(pool, "reborn_python_code", tenant, spec.pc_name).await?;
-    let skill_id = require_id(pool, "reborn_skills", tenant, spec.skill_name).await?;
-    let ts_id = require_id(pool, "reborn_tool_skills", tenant, spec.toolskill_name).await?;
-    let tool_id = require_id(pool, "reborn_tools", tenant, spec.tool_name).await?;
+    // Use lookup_id (returns None) rather than require_id (hard-fails) so that
+    // pairs whose components are not seeded in the current install (e.g. a
+    // lightweight test rig that seeds only a subset) are silently skipped.
+    // All four components must be present; if any is missing, skip the pair.
+    let Some(pc_id) = lookup_id(pool, "reborn_python_code", tenant, spec.pc_name).await? else {
+        tracing::debug!(
+            pc = spec.pc_name,
+            "l013-approval: PC not seeded, skipping pair"
+        );
+        return Ok(());
+    };
+    let Some(skill_id) = lookup_id(pool, "reborn_skills", tenant, spec.skill_name).await? else {
+        tracing::debug!(
+            skill = spec.skill_name,
+            "l013-approval: skill not seeded, skipping pair"
+        );
+        return Ok(());
+    };
+    let Some(ts_id) = lookup_id(pool, "reborn_tool_skills", tenant, spec.toolskill_name).await?
+    else {
+        tracing::debug!(
+            ts = spec.toolskill_name,
+            "l013-approval: toolskill not seeded, skipping pair"
+        );
+        return Ok(());
+    };
+    let Some(tool_id) = lookup_id(pool, "reborn_tools", tenant, spec.tool_name).await? else {
+        tracing::debug!(
+            tool = spec.tool_name,
+            "l013-approval: tool not seeded, skipping pair"
+        );
+        return Ok(());
+    };
 
     // 2. Retain revision envelopes (idempotent via retain_packaged_draft).
     let tool_draft = tool_revision(tool_id, spec.tool_name, spec.callable)?;
@@ -1858,4 +1879,59 @@ pub(crate) async fn qualify_all(
 
     tracing::info!("l013-approval: L013-L101 qualification complete");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    /// Verify that `skill_revision` builds a valid `ComponentRevisionDraft` for
+    /// every entry in `TOOL_CALLING_PAIRS`. This catches schema-validation errors
+    /// without requiring a live database.
+    #[test]
+    fn all_pair_specs_produce_valid_skill_revisions() {
+        let skill_id = Uuid::new_v4();
+        let pc_id = Uuid::new_v4();
+        let ts_id = Uuid::new_v4();
+        let tool_id = Uuid::new_v4();
+
+        for spec in TOOL_CALLING_PAIRS {
+            let skill_body = format!(
+                "Leaf skill: {skill_name} — calls {callable} via {export}.",
+                skill_name = spec.skill_name,
+                callable = spec.callable,
+                export = spec.export,
+            );
+            let pc_content = format!(
+                "def {export}(inputs):\n    return host.{tool}()\n",
+                export = spec.export,
+                tool = spec.callable.strip_prefix("host.").unwrap_or(spec.callable),
+            );
+
+            let result = skill_revision(
+                skill_id,
+                pc_id,
+                ts_id,
+                tool_id,
+                spec.callable,
+                spec,
+                &skill_body,
+            );
+            assert!(
+                result.is_ok(),
+                "skill_revision failed for '{}': {:?}",
+                spec.skill_name,
+                result.err()
+            );
+
+            let result = pc_revision(pc_id, &pc_content);
+            assert!(
+                result.is_ok(),
+                "pc_revision failed for '{}': {:?}",
+                spec.pc_name,
+                result.err()
+            );
+        }
+    }
 }

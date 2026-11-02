@@ -1,4 +1,48 @@
 
+## 2026-11-02 — session-6: TASK-021 + dependency graph bugfix + integration test first run
+
+**Commits:**
+- `e94d4b141` — fix+feat: wave-5/6 approval coverage + critical dependency-graph fix
+
+**TASK-021 — Remaining approval coverage + 4 new PureSpecs:**
+- Pass 12 (QA): 4 new leaf skills added in `builtin_bootstrap.rs` Pass 12:
+  `skill-glob-test-files-rust/ts/py`, `skill-grep-fn-tests`. `qa_review_children` updated.
+- 16 new PairSpecs: `pc-exec-read-file-head` (ts-read-file), `pc-exec-shell-wc-l` (ts-shell-run),
+  `pc-exec-time-now/parse/convert/diff/format` (ts-time-*), `pc-exec-json-query/stringify/validate`
+  (ts-json-*), `pc-github-get-authenticated-user/search-issues` (ts-http-fetch),
+  `pc-glob-test-files-rust/ts/py` (ts-glob), `pc-grep-fn-tests` (ts-grep).
+- 4 new PureSpecs: `pc-plan-status-update`, `pc-exec-http-save`, `pc-json-extract-field`, `pc-url-encode`.
+- `bootstrap_l013_approval.rs` module doc updated.
+
+**BUGFIX — qualify_tool_calling_pair dependency graph traversal (critical):**
+- Symptom: T2–T5/T5b integration tests failing with
+  `"l013-approval: tool-calling pair 'skill-read-file' failed: ... missing dependency revision"`.
+- Root cause: `read_exact_in_transaction` was called with only `[skill_ref, pc_ref]`,
+  but the skill revision declares `dependencies: [pc_id, ts_id, tool_id]`.
+  `RetainedComponentSnapshot::new` traverses the full dependency graph and failed
+  when it could not find `ts_id` / `tool_id` in the provided revision set.
+- Fix: capture `tool_ref` and `ts_ref` from their respective `retain_packaged_draft`
+  calls; extend `PairIds` with `ts_ref` and `tool_ref` fields; pass all 4 refs
+  to `read_exact_in_transaction`.
+- T2–T5/T5b retest needed after this fix (TASK-022).
+
+**Integration tests first run (TASK-020):**
+- `cargo test -p brassclaw_reborn_composition --features postgres,skills-db run_q1_validation_retained`
+- T1 (unit, no Monty): PASS.
+- T2–T5/T5b (live Monty): FAILED — all 5 failed with "missing dependency revision" (now fixed).
+- **Retest required** after dependency-graph bugfix lands.
+
+**Validation:** fmt CLEAN. Clippy running in screen `build-wave5`.
+
+**Remaining open items (updated):**
+- TASK-022: Re-run T2–T5/T5b after build-wave5 completes (clippy clean required first).
+- Validator Steps 8–12 (behavioral evidence, Q2 path, catalogue activation).
+- K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences, R09/subagent migrations.
+
+---
+
+
+
 ## 2026-11-01 — session-5: trigger/security-grep approval coverage; Step 7-B fixture tests
 
 **Commits:**

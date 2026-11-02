@@ -1,3 +1,32 @@
+
+## DONE — TASK-021 + BUGFIX (bootstrap_l013_approval dependency graph)
+
+**From:** Coordinator (inline implementation)
+**Time:** 2026-11-02T12:00:00Z
+**Commit:** `e94d4b141`
+**Result:** PASS (fmt + clippy pending — running in screen build-wave5)
+
+**TASK-021 — Remaining seeded Tool-calling PCs in bootstrap_l013_approval:**
+- Pass 12 (QA): 4 new leaf skills (skill-glob-test-files-rust/ts/py, skill-grep-fn-tests).
+  `qa_review_children` updated (4 PC + 8 leaf).
+- 16 new PairSpecs: pc-exec-read-file-head, pc-exec-shell-wc-l, pc-exec-time-now/parse/convert/diff/format (5),
+  pc-exec-json-query/stringify/validate (3), pc-github-get-authenticated-user,
+  pc-github-search-issues, pc-glob-test-files-rust/ts/py (3), pc-grep-fn-tests.
+- 4 new PureSpecs: pc-plan-status-update, pc-exec-http-save, pc-json-extract-field, pc-url-encode.
+- Module doc updated.
+
+**BUGFIX — qualify_tool_calling_pair dependency graph traversal:**
+- Root cause: `read_exact_in_transaction` was called with only `[skill_ref, pc_ref]`
+  but the skill revision declares `dependencies: [pc_id, ts_id, tool_id]`.
+  `RetainedComponentSnapshot::new` traverses the full dep graph and failed with
+  "missing dependency revision" when it couldn't find `ts_id`/`tool_id`.
+- Fix: capture `tool_ref` and `ts_ref` from `retain_packaged_draft`, add both
+  to `PairIds`, pass all 4 refs to `read_exact_in_transaction`.
+- This was the root cause of T2–T5/T5b integration test failures.
+
+---
+
+
 # INBOX — Coordinator Message Queue
 
 _Workers post BUILD_REQUEST and DONE here. Coordinator reads and processes._

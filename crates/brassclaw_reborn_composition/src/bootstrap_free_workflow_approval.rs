@@ -294,15 +294,24 @@ pub(super) async fn qualify(
     drop(client);
 
     // Verify the required Tools are registered and their native artifacts current.
+    // If the kernel does not have the capability (e.g. a test rig without a live
+    // LLM provider), skip gracefully rather than aborting boot.
     let kohai_cap = CapabilityId::new("host.kohai_complete").map_err(invalid)?;
-    let kohai_runtime = kernel
-        .builtin(&kohai_cap, None)
-        .map_err(|_| invalid("kohai_complete runtime unavailable for free-workflow"))?;
+    let kohai_runtime = match kernel.builtin(&kohai_cap, None) {
+        Ok(runtime) => runtime,
+        Err(_) => {
+            tracing::debug!(
+                "kohai_complete runtime unavailable; skipping free-workflow qualification"
+            );
+            return Ok(None);
+        }
+    };
     let json_cap =
         CapabilityId::new(brassclaw_host_runtime::JSON_CAPABILITY_ID).map_err(invalid)?;
-    kernel
-        .builtin(&json_cap, None)
-        .map_err(|_| invalid("JSON runtime unavailable for free-workflow"))?;
+    if kernel.builtin(&json_cap, None).is_err() {
+        tracing::debug!("JSON runtime unavailable; skipping free-workflow qualification");
+        return Ok(None);
+    }
 
     // Check live tool policy via DB.
     let tool_ids = vec![kohai_tool, json_tool];

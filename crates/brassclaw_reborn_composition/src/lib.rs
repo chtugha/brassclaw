@@ -1162,6 +1162,8 @@ mod bootstrap_setup_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_validation;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_validator_approval;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_workflow_evidence;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_bootstrap_setup;

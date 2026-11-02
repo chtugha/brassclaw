@@ -4,6 +4,66 @@ _Coordinator writes ASSIGNMENT blocks here. Workers poll every 10 s._
 
 ---
 
+## TASK-023 — bootstrap_validator_approval.rs: Step 8 pure-component-approval/1 for validator PCs
+
+**Status:** ASSIGNED (inline coordinator)
+**Package:** PKG-VALIDATOR-STEP8
+**Assigned:** 2026-11-01T18:30:00Z
+
+### Goal
+
+Implement `bootstrap_validator_approval.rs` to produce `pure-component-approval/1`
+records for the eight structural validator PythonCode drafts (one per class route).
+This closes `missing4_v3_at_k3.md §Step 8` for the system-seed path and
+establishes behavioral evidence rows in `reborn_component_review_evidence`.
+
+### Prerequisites
+
+- TASK-021 / TASK-022: `bootstrap_l013_approval.rs` bugfix + retest (in progress).
+- All eight `ComponentRevisionDraft` envelopes already retained by
+  `retain_validator_check_drafts` via `structural_validator_recipe_drafts`.
+
+### Plan
+
+1. Create `crates/brassclaw_reborn_composition/src/bootstrap_validator_approval.rs`
+   modelled after `qualify_pure_component` in `bootstrap_l013_approval.rs`.
+   For each of the eight class codes, call the pattern:
+   - Look up `pc_id` via `structural_validator_pc_id(class_code)` (no DB lookup
+     needed — UUID is deterministic from `packaged_component_id`).
+   - Build `pc_draft = pc_revision(pc_id, pc_body)` using the class-specific body.
+   - Retain: `revision_store.retain_packaged_draft(&pc_draft)` → `pc_ref`.
+   - Deterministic approval UUIDs (VALIDATOR_QUAL_NAMESPACE, seed=`"validator:class-{N}:{pc_id}"`).
+   - Check idempotent guard: skip if `reborn_pure_component_approvals` row exists.
+   - Write Q1 + behavioral evidence in one RepeatableRead transaction, then
+     call `pg_pure_component_approval::record_pure_component_approval`.
+   - Q1 report: `["no-host-calls","effect-free-load","declared-export-matches-body"]`
+   - Behavior report: `["no-prohibited-identifiers","no-effectful-top-level","json-loads-used-for-candidate-decode"]`
+
+2. Export `pub(crate) async fn qualify_all_validators(pool, tenant_id)`.
+
+3. Register `mod bootstrap_validator_approval` in `lib.rs` under
+   `#[cfg(all(feature = "postgres", feature = "skills-db"))]`.
+
+4. Wire `qualify_all_validators` in `component_boot.rs` immediately after the
+   `qualify_all` call, also under `#[cfg(all(feature = "postgres", feature = "skills-db"))]`.
+
+5. Add acceptance test in `component_boot.rs` test module:
+   `validator_approval_writes_eight_pure_approvals_at_boot` — after
+   `initialize_runtime_components`, count rows in `reborn_pure_component_approvals`
+   WHERE `root_id IN (<8 validator pc IDs>)` and assert = 8.
+   Also assert idempotent: second boot produces no duplicates (still 8).
+
+6. `cargo fmt`, `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings`: 0 warnings.
+
+### Acceptance
+
+- `SELECT count(*) FROM reborn_pure_component_approvals WHERE root_id IN (<8 uuids>)` = 8 after boot.
+- Acceptance test passes in isolation.
+- `run_content_integrity_check` does not fail for any validator PC row.
+
+---
+
+
 ## TASK-002 — Wire validator_bridge into PgCompositionPort
 
 **Status:** ASSIGNED  

@@ -28,6 +28,17 @@ pub(crate) async fn initialize_runtime_components(
             reason: format!("L013-L101 qualification failed: {e}"),
         })?;
 
+    // Step 3c — qualify the eight structural validator PythonCode components.
+    // Idempotent: classes already approved are skipped. Must run after
+    // retain_validator_check_drafts (called inside seed_builtin_components above)
+    // has retained all eight ComponentRevisionDraft envelopes.
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    crate::bootstrap_validator_approval::qualify_all_validators(booted_db.pool().clone())
+        .await
+        .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+            reason: format!("validator PC qualification failed: {e}"),
+        })?;
+
     let recovered = crate::boot_integrity::run_boot_integrity_check(booted_db)
         .await
         .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
@@ -505,5 +516,99 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+
+    /// Verify that `qualify_all_validators` writes exactly eight
+    /// `pure-component-approval/1` rows — one per structural validator class —
+    /// and that a second boot is fully idempotent (still exactly eight rows).
+    #[cfg(feature = "skills-db")]
+    #[tokio::test]
+    async fn validator_approval_writes_eight_pure_approvals_at_boot() {
+        use brassclaw_skills::validator_components::{
+            VALIDATOR_CLASS_CODES, structural_validator_pc_id,
+        };
+
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let pool = std::sync::Arc::clone(&rig.pool);
+        let booted = crate::booted_db::run_migrations_and_return_booted_db(pool.clone())
+            .await
+            .expect("schema migrations");
+        let tenant = "validator-approval-test";
+
+        // First boot — should produce 8 approval rows.
+        initialize_runtime_components(&booted, tenant)
+            .await
+            .expect("first boot must succeed");
+
+        let pc_ids: Vec<uuid::Uuid> = VALIDATOR_CLASS_CODES
+            .iter()
+            .map(|&c| structural_validator_pc_id(c))
+            .collect();
+
+        let client = pool.get().await.expect("pool checkout");
+        let count: i64 = {
+            // Build a parameterised IN-list using positional params.
+            let placeholders: String = pc_ids
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("${}", i + 1))
+                .collect::<Vec<_>>()
+                .join(",");
+            let query = format!(
+                "SELECT count(*) FROM reborn_pure_component_approvals \
+                 WHERE root_id IN ({placeholders})"
+            );
+            let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = pc_ids
+                .iter()
+                .map(|id| id as &(dyn tokio_postgres::types::ToSql + Sync))
+                .collect();
+            client
+                .query_one(&query, &params[..])
+                .await
+                .expect("count query")
+                .get(0)
+        };
+        assert_eq!(
+            count, 8,
+            "expected 8 validator approval rows after first boot, got {count}"
+        );
+        drop(client);
+
+        // Second boot — idempotent, still exactly 8.
+        initialize_runtime_components(&booted, tenant)
+            .await
+            .expect("second boot must succeed");
+
+        let client = pool.get().await.expect("pool checkout");
+        let count2: i64 = {
+            let placeholders: String = pc_ids
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("${}", i + 1))
+                .collect::<Vec<_>>()
+                .join(",");
+            let query = format!(
+                "SELECT count(*) FROM reborn_pure_component_approvals \
+                 WHERE root_id IN ({placeholders})"
+            );
+            let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = pc_ids
+                .iter()
+                .map(|id| id as &(dyn tokio_postgres::types::ToSql + Sync))
+                .collect();
+            client
+                .query_one(&query, &params[..])
+                .await
+                .expect("count query")
+                .get(0)
+        };
+        assert_eq!(
+            count2, 8,
+            "idempotent second boot must still yield exactly 8 approval rows, got {count2}"
+        );
+        drop(client);
+        drop(booted);
+        pool.close();
+        drop(pool);
+        drop(rig);
     }
 }
