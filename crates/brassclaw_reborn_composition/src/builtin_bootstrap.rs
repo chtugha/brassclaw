@@ -989,7 +989,7 @@ pub(crate) async fn retain_validator_check_drafts(
         let drafts = structural_validator_recipe_drafts(
             *class_code,
             class_label,
-            PC_VALIDATOR_STRUCTURAL_BODY,
+            validator_pc_body_for_class(*class_code),
         )
         .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
             reason: error.to_string(),
@@ -12443,6 +12443,204 @@ const PC_VALIDATOR_STRUCTURAL_BODY: &str = r#"def check_structural_presence(inpu
     return {"pass": len(_errors) == 0, "errors": _errors}
 "#;
 
+// ---------------------------------------------------------------------------
+// Class-specific structural validator PC bodies (Step 7-A, missing4_v3_at_k3).
+// Each body receives: inputs["name"] (str), inputs["description"] (str),
+// inputs["content"] (str — JSON-serialized component document).
+// Returns {"pass": bool, "errors": [str]}.
+// Pure-logic, no imports, no host calls.
+// ---------------------------------------------------------------------------
+
+/// Class 0 — Tool: checks operation/effect contract, capability_id, param_schema presence.
+const PC_VALIDATOR_CLASS_0_BODY: &str = r#"def check_structural_presence(inputs):
+    import json as _json
+    _name = inputs["name"]
+    _desc = inputs["description"]
+    _content_str = inputs["content"]
+    _errors = []
+    if not _name or not _name.strip():
+        _errors.append("name is empty")
+    if not _desc or not _desc.strip():
+        _errors.append("description is empty")
+    if not _content_str or not _content_str.strip():
+        _errors.append("content is empty")
+        return {"pass": False, "errors": _errors}
+    try:
+        _doc = _json.loads(_content_str)
+    except Exception:
+        _errors.append("content is not valid JSON")
+        return {"pass": False, "errors": _errors}
+    if not _doc.get("capability_id") or not str(_doc["capability_id"]).strip():
+        _errors.append("capability_id is absent or empty")
+    if _doc.get("effect_type") not in ("read", "write", "read-write", "none"):
+        _errors.append("effect_type is absent or has unsupported value")
+    if not _doc.get("param_schema"):
+        _errors.append("param_schema is absent")
+    if not _doc.get("description") or not str(_doc["description"]).strip():
+        _errors.append("description field is absent or empty")
+    return {"pass": len(_errors) == 0, "errors": _errors}
+"#;
+
+/// Class 1–3 — Skill: checks body sections, skill-association/1 present, class_code.
+const PC_VALIDATOR_CLASS_SKILL_BODY: &str = r#"def check_structural_presence(inputs):
+    import json as _json
+    _name = inputs["name"]
+    _desc = inputs["description"]
+    _content_str = inputs["content"]
+    _errors = []
+    if not _name or not _name.strip():
+        _errors.append("name is empty")
+    if not _desc or not _desc.strip():
+        _errors.append("description is empty")
+    if not _content_str or not _content_str.strip():
+        _errors.append("content is empty")
+        return {"pass": False, "errors": _errors}
+    try:
+        _doc = _json.loads(_content_str)
+    except Exception:
+        _errors.append("content is not valid JSON")
+        return {"pass": False, "errors": _errors}
+    if not _doc.get("body") or not str(_doc["body"]).strip():
+        _errors.append("body is absent or empty")
+    _class = _doc.get("class_code")
+    if _class not in (1, 2, 3):
+        _errors.append("class_code is absent or not a Skill class (1, 2, or 3)")
+    _body = _doc.get("body", "")
+    if "def " not in _body and "export" not in _body and "usage" not in _body.lower():
+        _errors.append("body does not appear to declare a preloadable export function")
+    if not _doc.get("description") or not str(_doc["description"]).strip():
+        _errors.append("description field is absent or empty")
+    return {"pass": len(_errors) == 0, "errors": _errors}
+"#;
+
+/// Class 13 — ToolSkill: checks tool_name, param_schema, content (prose) non-empty.
+const PC_VALIDATOR_CLASS_13_BODY: &str = r#"def check_structural_presence(inputs):
+    import json as _json
+    _name = inputs["name"]
+    _desc = inputs["description"]
+    _content_str = inputs["content"]
+    _errors = []
+    if not _name or not _name.strip():
+        _errors.append("name is empty")
+    if not _desc or not _desc.strip():
+        _errors.append("description is empty")
+    if not _content_str or not _content_str.strip():
+        _errors.append("content is empty")
+        return {"pass": False, "errors": _errors}
+    try:
+        _doc = _json.loads(_content_str)
+    except Exception:
+        _errors.append("content is not valid JSON")
+        return {"pass": False, "errors": _errors}
+    if not _doc.get("tool_name") or not str(_doc["tool_name"]).strip():
+        _errors.append("tool_name is absent or empty")
+    if not _doc.get("content") or not str(_doc["content"]).strip():
+        _errors.append("prose content field is absent or empty")
+    if not _doc.get("param_schema"):
+        _errors.append("param_schema is absent")
+    if not _doc.get("description") or not str(_doc["description"]).strip():
+        _errors.append("description field is absent or empty")
+    return {"pass": len(_errors) == 0, "errors": _errors}
+"#;
+
+/// Class 21 — Recipe: checks step_descriptions non-empty, at least one variant/step_link.
+const PC_VALIDATOR_CLASS_21_BODY: &str = r#"def check_structural_presence(inputs):
+    import json as _json
+    _name = inputs["name"]
+    _desc = inputs["description"]
+    _content_str = inputs["content"]
+    _errors = []
+    if not _name or not _name.strip():
+        _errors.append("name is empty")
+    if not _desc or not _desc.strip():
+        _errors.append("description is empty")
+    if not _content_str or not _content_str.strip():
+        _errors.append("content is empty")
+        return {"pass": False, "errors": _errors}
+    try:
+        _doc = _json.loads(_content_str)
+    except Exception:
+        _errors.append("content is not valid JSON")
+        return {"pass": False, "errors": _errors}
+    _steps = _doc.get("step_descriptions")
+    if not _steps or not isinstance(_steps, list) or len(_steps) == 0:
+        _errors.append("step_descriptions is absent or empty")
+    if not _doc.get("description") or not str(_doc["description"]).strip():
+        _errors.append("description field is absent or empty")
+    if not _doc.get("name") or not str(_doc["name"]).strip():
+        _errors.append("name field is absent or empty")
+    return {"pass": len(_errors) == 0, "errors": _errors}
+"#;
+
+/// Class 22 — PythonCode: checks `def` function declaration, non-empty content.
+const PC_VALIDATOR_CLASS_22_BODY: &str = r#"def check_structural_presence(inputs):
+    import json as _json
+    _name = inputs["name"]
+    _desc = inputs["description"]
+    _content_str = inputs["content"]
+    _errors = []
+    if not _name or not _name.strip():
+        _errors.append("name is empty")
+    if not _desc or not _desc.strip():
+        _errors.append("description is empty")
+    if not _content_str or not _content_str.strip():
+        _errors.append("content is empty")
+        return {"pass": False, "errors": _errors}
+    try:
+        _doc = _json.loads(_content_str)
+    except Exception:
+        _errors.append("content is not valid JSON")
+        return {"pass": False, "errors": _errors}
+    _py_content = _doc.get("content", "")
+    if not _py_content or not str(_py_content).strip():
+        _errors.append("PythonCode content field is absent or empty")
+    elif "def " not in _py_content:
+        _errors.append("PythonCode content does not declare any function (missing 'def')")
+    if not _doc.get("description") or not str(_doc["description"]).strip():
+        _errors.append("description field is absent or empty")
+    return {"pass": len(_errors) == 0, "errors": _errors}
+"#;
+
+/// Class 23 — ExtensionCatalogue: checks overview_doc non-empty, task_groups present.
+const PC_VALIDATOR_CLASS_23_BODY: &str = r#"def check_structural_presence(inputs):
+    import json as _json
+    _name = inputs["name"]
+    _desc = inputs["description"]
+    _content_str = inputs["content"]
+    _errors = []
+    if not _name or not _name.strip():
+        _errors.append("name is empty")
+    if not _desc or not _desc.strip():
+        _errors.append("description is empty")
+    if not _content_str or not _content_str.strip():
+        _errors.append("content is empty")
+        return {"pass": False, "errors": _errors}
+    try:
+        _doc = _json.loads(_content_str)
+    except Exception:
+        _errors.append("content is not valid JSON")
+        return {"pass": False, "errors": _errors}
+    if not _doc.get("overview_doc") or not str(_doc["overview_doc"]).strip():
+        _errors.append("overview_doc is absent or empty")
+    if not _doc.get("description") or not str(_doc["description"]).strip():
+        _errors.append("description field is absent or empty")
+    return {"pass": len(_errors) == 0, "errors": _errors}
+"#;
+
+/// Select the class-specific validator PC body for the given class code.
+/// Falls back to the shared presence check for unknown classes.
+fn validator_pc_body_for_class(class_code: i16) -> &'static str {
+    match class_code {
+        0 => PC_VALIDATOR_CLASS_0_BODY,
+        1..=3 => PC_VALIDATOR_CLASS_SKILL_BODY,
+        13 => PC_VALIDATOR_CLASS_13_BODY,
+        21 => PC_VALIDATOR_CLASS_21_BODY,
+        22 => PC_VALIDATOR_CLASS_22_BODY,
+        23 => PC_VALIDATOR_CLASS_23_BODY,
+        _ => PC_VALIDATOR_STRUCTURAL_BODY,
+    }
+}
+
 /// YAML `step_descriptions` source shared by all class validators (single step).
 const VALIDATOR_YAML_SOURCE: &str = r#"step_descriptions:
   - step_id: "step-1"
@@ -12544,7 +12742,7 @@ async fn seed_validator_recipes(stores: &BootstrapStores) -> Result<(), SeedBuil
         let pc_name = format!("pc-validator-class-{class_code}");
         let recipe_name = format!("validator-class-{class_code}");
 
-        // Step 1 — PythonCode: shared structural-check body.
+        // Step 1 — PythonCode: class-specific structural-check body.
         let pc_id = stores
             .upsert_python_code(
                 pc_row(
@@ -12552,10 +12750,10 @@ async fn seed_validator_recipes(stores: &BootstrapStores) -> Result<(), SeedBuil
                     &pc_name,
                     &format!(
                         "Tier-0 structural validator executor for class {class_code} \
-                         ({class_label}). Checks name, description, and content/steps \
-                         are non-empty. Pure-logic, no host calls."
+                         ({class_label}). Performs class-specific structural checks \
+                         (Step 7-A). Pure-logic, no host calls."
                     ),
-                    PC_VALIDATOR_STRUCTURAL_BODY,
+                    validator_pc_body_for_class(*class_code),
                 ),
                 &pc_name,
             )
