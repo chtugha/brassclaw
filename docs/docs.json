@@ -101,13 +101,6 @@
                 ]
               },
               {
-                "group": "API",
-                "icon": "code",
-                "pages": [
-                  "api/responses"
-                ]
-              },
-              {
                 "group": "Extensions (Tools)",
                 "icon": "hammer",
                 "pages": [

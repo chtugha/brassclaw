@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Remove stale v2-era architecture video and responses API draft doc**:
+  Deleted `docs/architecture-video/` (Remotion-based animated video covering the
+  engine v2 / v1-channel architecture, superseded by v3; the driving Bob skill was
+  already retired) and its render helper `scripts/render-architecture-video.sh`.
+  Moved `docs/api/responses.mdx` to `docs/drafts/responses.mdx` and removed the
+  `"API"` navigation group from `docs/docs.json`: the Responses API endpoint is not
+  implemented in v3 and the e2e tests for it are explicitly skipped as unconfirmed
+  against Reborn.
+
 - **`builtin_bootstrap.rs` — clarify system_seed Q1 contract in module comment**:
   Replaced the misleading `"(bypassing Q1)"` phrase in the `#[doc]` comment with
   an accurate description: `validation_status='validated'` is set by the
