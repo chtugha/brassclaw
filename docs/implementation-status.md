@@ -1,4 +1,52 @@
 
+## 2026-11-02 — session-3: L010 builtin.file_exists; content_checksum fix; wave-3 packages
+
+**Commits:**
+- `ba629233f` — feat: L010 builtin.file_exists — Rust primitive, schema, seed rows, test updates
+- `ff7250e86` — fix: populate content_checksum in pc_row() and skill_row() helpers
+
+**L010 completion (PKG-L010):**
+
+`builtin.file_exists` is now a complete first-party capability:
+- `CodingCapabilityKind::FileExists` variant; `file_exists()` handler returns
+  `{kind: "success"|"not_found", path}` via `stat_optional`.
+- `FILE_EXISTS_CAPABILITY_ID = "builtin.file_exists"` constant; metadata entry in
+  `CODING_CAPABILITIES`; `file_exists.input.v1.json` schema in
+  `resolve_builtin_input_schema_ref` (required for `builtin_native_first_party_handlers`).
+- `tool_file_exists_row()` + `ts_file_exists_row()` in `builtin_bootstrap.rs`;
+  both added to `cat_read_file` and `cat_filesystem` children.
+  `let _ = tool_file_exists;` suppression removed.
+- Test: `first_party_builtin_tools.rs` updated in 5 places; 139/139 pass.
+- Closes `missing1_v3_at_k3.md` Steps 1–4 (Rust primitive + schema + seed rows).
+
+**content_checksum fix:**
+
+`pc_row()` and `skill_row()` helpers now compute `sha256_hex(content/body)` and
+populate `content_checksum`. ~200+ PythonCode/Skill rows are now visible to the
+`run_content_integrity_check` boot-time verifier. Closes the
+`content_checksum absent` root-cause in `missing2_v3_at_k3.md §2`.
+
+**Validation:**
+- `cargo fmt --all -- --check`: CLEAN
+- `cargo clippy -p brassclaw_first_party_extensions -p brassclaw_host_runtime
+  -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings`: 0 warnings
+- `cargo test -p brassclaw_first_party_extensions`: 38/38 pass
+- `cargo test -p brassclaw_host_runtime --test first_party_builtin_tools`: 139/139 pass
+- `cargo test -p brassclaw_skills`: 13/13 pass
+
+**Remaining open items (updated):**
+- Integration tests T3–T5 for `run_q1_validation_retained` require live Postgres + Monty.
+- L010 Skill/PythonCode association approval: `skill-association-approval/1` not yet
+  created for `pc-exec-file-exists`/`skill-file-exists` pair — tracked in `missing1_v3_at_k3.md`.
+- Validator Steps 7–12: structural class-22 route seeded; Steps 8–12 need behavioral
+  evidence + human Q2 + activation.
+- ToolSkill rows: 29 remaining `content_checksum: None` occurrences in inline ToolSkill
+  struct literals (not going through `pc_row()`/`skill_row()` helpers). Follow-up work.
+- K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences, R09/subagent migrations.
+
+---
+
+
 ## 2026-11-02 — bootstrap_l013_approval: L013–L101 qualification at boot; wave-2 audit
 
 **Commits:**

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **L010 `builtin.file_exists` Rust primitive** (commit `ba629233f`): Adds
+  `builtin.file_exists` as a full first-party capability. `FileExists` variant in
+  `CodingCapabilityKind`; `file_exists()` handler in `coding/file.rs` returns
+  `{kind: "success"|"not_found", path}` using `resolve_required_path` + `stat_optional`.
+  `FILE_EXISTS_CAPABILITY_ID`, `CodingCapabilityMetadata` entry, and
+  `file_exists.input.v1.json` JSON schema added. Seed rows: `tool_file_exists_row()`,
+  `ts_file_exists_row()`, `PC_EXEC_FILE_EXISTS_CONTENT` wired into
+  `seed_filesystem_group`; `tool_file_exists` + `ts_file_exists` added to
+  `cat_read_file` and `cat_filesystem` catalogue children. 6 test updates in
+  `first_party_builtin_tools.rs`; 139/139 pass.
+
+- **`content_checksum` for `pc_row()`/`skill_row()` helpers** (commit
+  `ff7250e86`): `pc_row()` and `skill_row()` in `builtin_bootstrap.rs` now compute
+  and populate `content_checksum = sha256_hex(content/body)`. Previously all
+  ~200+ PythonCode and Skill rows seeded through these helpers had
+  `content_checksum: None`, making them invisible to the boot-time
+  `run_content_integrity_check` (which filters `WHERE content_checksum IS NOT NULL`).
+  Closes the `content_checksum absent` root-cause in `missing2_v3_at_k3.md`.
 
 - **L013–L101 boot-time qualification** (`bootstrap_l013_approval.rs`,
   commit `68a0ebf7c`): New `bootstrap_l013_approval` module (969 lines) performs
