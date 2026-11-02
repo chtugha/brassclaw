@@ -188,6 +188,18 @@ clean the repository's entire `target` directory because it contains evidence.
 Follow the unchanged free-space rules and choose checks for the merged claim.
 A combined-root build does not retrospectively broaden older frozen receipts.
 
+**Evidence retention format (2026-11-02):** each validation run writes
+`source.json` (per-file SHA-256 manifest of all git-tracked files plus HEAD
+commit hash), `applied.json` (before/after SHA-256 for changed files),
+`original-runner.py`, per-step log files, `completed.json`, and the compiled
+test binaries. `accepted.json` is written by a separate post-run acceptance
+step. The runner must not copy the full working tree, `crates/`, `docs/`,
+root plan files, or changed-file copies (`owned-source/`) into
+`target/validation/`. Binary SHA-256 hashes in `accepted.json` are the
+immutable artifact identity; the binary is retained for re-execution
+capability for the accepted run only. Binaries from failed and superseded
+intermediate runs are disposable after the receipt is written.
+
 ## Reason before compiling
 
 Use the development LLM's reasoning capability to diagnose, design and review

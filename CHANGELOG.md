@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **`target/validation` evidence policy — K3 cleanup and forward runner spec**:
+  Recovered 219 GiB on `/Volumes/SSDE` (97% → 48% capacity) by removing uncited
+  full-tree working-tree snapshot directories and superseded compiled binaries from
+  `target/validation/`. Updated `original-runner.py` and `docs/development-policy.md`
+  with the authoritative forward evidence-retention format.
+  - **`target_validation_v3_at_k3.md`** (new) — authoritative plan documenting the
+    two historical evidence patterns (Pattern A: full-tree snapshot pairs; Pattern B:
+    `run-N/` with `source.json` manifest), the genuine evidence requirements vs
+    disposable content, a two-pass doc-citation–aware deletion filter (using exact
+    full-path `grep -qxF` matching to avoid `-r1`/`-r10` substring collisions), and
+    the forward runner spec with normative `source.json` and `accepted.json` schemas.
+    Covers Steps 1–7 with per-step shell commands, structural guards, and a §10
+    verification checklist.
+  - **`target/validation/` cleanup**: deleted 530 uncited Pattern A source snapshot
+    directories (~220 MB each); removed binaries from ~589 old-style `*-artifacts-*`
+    directories and from non-accepted runs in `issuer-expiry-20261026` and
+    `auth-dcr-common-20261026`; removed all `owned-source/` subdirectories (content
+    fully identified by `applied.json` + `source.json`/`owned-source.json` manifests).
+    63 cited "frozen source" directories retained intact.
+  - **`target/validation/issuer-expiry-20261026/run-8/original-runner.py`** — three
+    targeted changes: (1) four-line `owned-source/` file-copy loop removed (`applied.json`
+    already records every path and SHA-256); (2) `assert_no_tree_copy(out)` guard added
+    (called after setup copies and before `completed.json` write) to prevent accidental
+    re-introduction of Pattern A behavior; (3) `truncate_log_tail()` added (called after
+    every `command()` step) to cap log files at 500 KB tail, preventing unbounded log
+    growth. `report['applied']` reference and precondition assertion preserved — used by
+    the separate post-run acceptance step to populate `owned_paths`.
+  - **`docs/development-policy.md`** — evidence retention format paragraph added to
+    §"Shared source and central build ownership": specifies the required run outputs,
+    prohibits full-tree copies and `owned-source/` directories, and clarifies that
+    `accepted.json` is written by a separate post-run acceptance step (not the runner).
+
 - **`docs/agents-v3` second audit corrections** (7 fixes across 3 files): Corrected
   architectural inaccuracies against ground-truth guides (`recipe.md`, `skills.md`,
   `tools.md`, `toolskills.md`) found in a complete re-audit of the `docs/agents-v3/`
