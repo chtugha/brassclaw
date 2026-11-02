@@ -12452,7 +12452,7 @@ const PC_VALIDATOR_STRUCTURAL_BODY: &str = r#"def check_structural_presence(inpu
 // ---------------------------------------------------------------------------
 
 /// Class 0 — Tool: checks operation/effect contract, capability_id, param_schema presence.
-const PC_VALIDATOR_CLASS_0_BODY: &str = r#"def check_structural_presence(inputs):
+pub(crate) const PC_VALIDATOR_CLASS_0_BODY: &str = r#"def check_structural_presence(inputs):
     import json as _json
     _name = inputs["name"]
     _desc = inputs["description"]
@@ -12482,7 +12482,7 @@ const PC_VALIDATOR_CLASS_0_BODY: &str = r#"def check_structural_presence(inputs)
 "#;
 
 /// Class 1–3 — Skill: checks body sections, skill-association/1 present, class_code.
-const PC_VALIDATOR_CLASS_SKILL_BODY: &str = r#"def check_structural_presence(inputs):
+pub(crate) const PC_VALIDATOR_CLASS_SKILL_BODY: &str = r#"def check_structural_presence(inputs):
     import json as _json
     _name = inputs["name"]
     _desc = inputs["description"]
@@ -12514,7 +12514,7 @@ const PC_VALIDATOR_CLASS_SKILL_BODY: &str = r#"def check_structural_presence(inp
 "#;
 
 /// Class 13 — ToolSkill: checks tool_name, param_schema, content (prose) non-empty.
-const PC_VALIDATOR_CLASS_13_BODY: &str = r#"def check_structural_presence(inputs):
+pub(crate) const PC_VALIDATOR_CLASS_13_BODY: &str = r#"def check_structural_presence(inputs):
     import json as _json
     _name = inputs["name"]
     _desc = inputs["description"]
@@ -12544,7 +12544,7 @@ const PC_VALIDATOR_CLASS_13_BODY: &str = r#"def check_structural_presence(inputs
 "#;
 
 /// Class 21 — Recipe: checks step_descriptions non-empty, at least one variant/step_link.
-const PC_VALIDATOR_CLASS_21_BODY: &str = r#"def check_structural_presence(inputs):
+pub(crate) const PC_VALIDATOR_CLASS_21_BODY: &str = r#"def check_structural_presence(inputs):
     import json as _json
     _name = inputs["name"]
     _desc = inputs["description"]
@@ -12573,7 +12573,7 @@ const PC_VALIDATOR_CLASS_21_BODY: &str = r#"def check_structural_presence(inputs
 "#;
 
 /// Class 22 — PythonCode: checks `def` function declaration, non-empty content.
-const PC_VALIDATOR_CLASS_22_BODY: &str = r#"def check_structural_presence(inputs):
+pub(crate) const PC_VALIDATOR_CLASS_22_BODY: &str = r#"def check_structural_presence(inputs):
     import json as _json
     _name = inputs["name"]
     _desc = inputs["description"]
@@ -12602,7 +12602,7 @@ const PC_VALIDATOR_CLASS_22_BODY: &str = r#"def check_structural_presence(inputs
 "#;
 
 /// Class 23 — ExtensionCatalogue: checks overview_doc non-empty, task_groups present.
-const PC_VALIDATOR_CLASS_23_BODY: &str = r#"def check_structural_presence(inputs):
+pub(crate) const PC_VALIDATOR_CLASS_23_BODY: &str = r#"def check_structural_presence(inputs):
     import json as _json
     _name = inputs["name"]
     _desc = inputs["description"]
@@ -16792,6 +16792,51 @@ async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuilti
         )
         .await?;
 
+    // 13b-pre. Dedicated leaf skills for security-grep PC pairings — these provide
+    //     the skill-association/1 links required for skill-association-approval/1
+    //     at boot-time qualification in bootstrap_l013_approval.
+    let skill_grep_hardcoded_secrets = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-grep-hardcoded-secrets",
+                "Leaf skill: grep for hardcoded secret patterns using host.grep.",
+                "Use host.grep to search for hardcoded credential patterns \
+                 (password/api_key/token/secret/credential). Supply an optional \
+                 path input scoped to the workspace. Returns matching lines with \
+                 file context.",
+            ),
+            "skill-grep-hardcoded-secrets",
+        )
+        .await?;
+    let skill_grep_injection_patterns = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-grep-injection-patterns",
+                "Leaf skill: grep for injection-risk patterns using host.grep.",
+                "Use host.grep to search for injection-risk patterns \
+                 (eval/exec/subprocess/shell_exec/format!.*sql/query.*format). \
+                 Supply an optional path input scoped to the workspace. Returns \
+                 matching lines.",
+            ),
+            "skill-grep-injection-patterns",
+        )
+        .await?;
+    let skill_grep_env_files = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-grep-env-files",
+                "Leaf skill: glob for .env files using host.glob.",
+                "Use host.glob with pattern '**/.env*' to discover all .env \
+                 configuration files in the workspace. Returns a list of \
+                 matching paths.",
+            ),
+            "skill-grep-env-files",
+        )
+        .await?;
+
     // 13b. Leaf skills
     let skill_security_injection = stores
         .upsert_skill(leaf_skill(&tenant, "skill-security-injection",
@@ -16975,6 +17020,9 @@ async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuilti
         pc_grep_hardcoded_secrets,
         pc_grep_injection_patterns,
         pc_grep_env_files,
+        skill_grep_hardcoded_secrets,
+        skill_grep_injection_patterns,
+        skill_grep_env_files,
         skill_security_injection,
         skill_security_auth,
         skill_security_data_exposure,
@@ -16991,7 +17039,7 @@ async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuilti
         .await?;
 
     tracing::debug!(
-        "seeded workflow skills Pass 13: security-review (3 PC + 6 leaf + 1 domain + 3 recipes + ext-security-review)"
+        "seeded workflow skills Pass 13: security-review (3 PC + 9 leaf + 1 domain + 3 recipes + ext-security-review)"
     );
 
     // ------------------------------------------------------------------

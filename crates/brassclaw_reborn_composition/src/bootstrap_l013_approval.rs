@@ -3,8 +3,8 @@
 //! Produces `"component-revision/1"` envelopes in `reborn_component_revisions`
 //! and `"skill-association-approval/1"` rows in `reborn_skill_association_approvals`
 //! for every Tool-calling (Skill, PythonCode) pair in the filesystem (L001–L006,
-//! L010), network, memory, management, Git/grep, plan, GitHub and path/filter
-//! groups.
+//! L010), network, memory, management, Git/grep, plan, GitHub, trigger management,
+//! security-grep and path/filter groups.
 //!
 //! Pure-logic components get `"pure-component-approval/1"` records in
 //! `reborn_pure_component_approvals`.
@@ -879,6 +879,102 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         arguments: || json!({"path":"path"}),
         code_arguments: || json!({}),
         result: || json!({"type":"object","required":true,"fields":{"kind":{"type":"string","required":true},"path":{"type":"string","required":true}},"allow_extra_fields":false}),
+    },
+    // ---- Trigger management group ------------------------------------------
+    // L: pc-exec-trigger-list — single host.trigger_list call; scope optional.
+    PairSpec {
+        pc_name: "pc-exec-trigger-list",
+        skill_name: "skill-trigger-list",
+        toolskill_name: "ts-trigger-list",
+        tool_name: "trigger_list",
+        callable: "host.trigger_list",
+        export: "usage_trigger_list",
+        inputs: || json!({"scope":opt_string()}),
+        arguments: || json!({"scope":"scope"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    // pc-exec-trigger-list-active — single host.trigger_list(scope='active').
+    PairSpec {
+        pc_name: "pc-exec-trigger-list-active",
+        skill_name: "skill-trigger-list-active",
+        toolskill_name: "ts-trigger-list",
+        tool_name: "trigger_list",
+        callable: "host.trigger_list",
+        export: "usage_trigger_list_active",
+        inputs: || json!({}),
+        arguments: || json!({}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    // pc-exec-trigger-list-scheduled — single host.trigger_list(scope='scheduled').
+    PairSpec {
+        pc_name: "pc-exec-trigger-list-scheduled",
+        skill_name: "skill-trigger-list-scheduled",
+        toolskill_name: "ts-trigger-list",
+        tool_name: "trigger_list",
+        callable: "host.trigger_list",
+        export: "usage_trigger_list_scheduled",
+        inputs: || json!({}),
+        arguments: || json!({}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    // pc-exec-trigger-resolve-and-remove — dependent chain: trigger_list result
+    // directly feeds trigger_remove (find-by-name then remove). Approved under
+    // the direct-dependent-chain exception; binding ToolSkill is the effect tool
+    // (ts-trigger-remove). Paired with skill-trigger-list (list-first safety).
+    PairSpec {
+        pc_name: "pc-exec-trigger-resolve-and-remove",
+        skill_name: "skill-trigger-list",
+        toolskill_name: "ts-trigger-remove",
+        tool_name: "trigger_remove",
+        callable: "host.trigger_remove",
+        export: "usage_trigger_resolve_and_remove",
+        inputs: || json!({"trigger_name":req_string()}),
+        arguments: || json!({"trigger_name":"trigger_name"}),
+        code_arguments: || json!({}),
+        result: || json!({"type":"object","required":true,"fields":{"removed":{"type":"boolean","required":true},"trigger_name":{"type":"string","required":true}},"allow_extra_fields":true}),
+    },
+    // ---- Security grep group (L083–L085) -----------------------------------
+    // pc-grep-hardcoded-secrets — calls host.grep with credential pattern.
+    PairSpec {
+        pc_name: "pc-grep-hardcoded-secrets",
+        skill_name: "skill-grep-hardcoded-secrets",
+        toolskill_name: "ts-grep",
+        tool_name: "grep",
+        callable: "host.grep",
+        export: "usage_l084",
+        inputs: || json!({"path":opt_string()}),
+        arguments: || json!({"path":"path"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    // pc-grep-injection-patterns — calls host.grep with injection pattern.
+    PairSpec {
+        pc_name: "pc-grep-injection-patterns",
+        skill_name: "skill-grep-injection-patterns",
+        toolskill_name: "ts-grep",
+        tool_name: "grep",
+        callable: "host.grep",
+        export: "usage_l085",
+        inputs: || json!({"path":opt_string()}),
+        arguments: || json!({"path":"path"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    // pc-grep-env-files — calls host.glob to find .env files.
+    PairSpec {
+        pc_name: "pc-grep-env-files",
+        skill_name: "skill-grep-env-files",
+        toolskill_name: "ts-glob",
+        tool_name: "glob",
+        callable: "host.glob",
+        export: "glob_env_files",
+        inputs: || json!({}),
+        arguments: || json!({}),
+        code_arguments: || json!({}),
+        result: any_object_result,
     },
 ];
 

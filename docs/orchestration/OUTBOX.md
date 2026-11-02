@@ -496,3 +496,301 @@ The pure-logic helpers L007–L009, L011–L012 (filter helpers) should go in
 
 ---
 
+
+---
+
+## TASK-017 — Add trigger management PairSpecs to bootstrap_l013_approval
+
+**Status:** DONE (inline, 2026-11-01T18:45:00Z)
+**Package:** PKG-TRIGGER-APPROVAL
+
+### Summary
+
+4 trigger PairSpecs added to `TOOL_CALLING_PAIRS` in `bootstrap_l013_approval.rs`:
+- `pc-exec-trigger-list` / `skill-trigger-list` / `ts-trigger-list`
+- `pc-exec-trigger-list-active` / `skill-trigger-list-active` / `ts-trigger-list`
+- `pc-exec-trigger-list-scheduled` / `skill-trigger-list-scheduled` / `ts-trigger-list`
+- `pc-exec-trigger-resolve-and-remove` / `skill-trigger-list` / `ts-trigger-remove`
+  (dependent-chain exception: trigger_list result feeds trigger_remove)
+
+Module doc updated to mention trigger management group.
+
+`cargo fmt --all -- --check`: CLEAN
+`cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings`: 0 warnings
+
+---
+
+## TASK-018 — Validator Step 7-B: negative fixture tests per class route
+
+**Status:** ASSIGNED
+**Package:** PKG-VALIDATOR-STEP7B
+**Assigned:** 2026-11-01T18:45:00Z
+
+### Goal
+
+For each of the 8 class validator routes, add at least 2 fixture tests:
+1. Valid minimal candidate → `{"pass": true, "errors": []}`.
+2. Invalid candidate with a class-specific defect → `{"pass": false, "errors": [<non-empty>]}`.
+
+Tests run the PC body through the existing `brassclaw_skills` test infrastructure
+(not a live Monty; parse + eval the body as Python, feed inputs, check outputs).
+
+### Exact steps
+
+1. **Read** `crates/brassclaw_skills/src/validator_components.rs` to understand
+   the `structural_validator_recipe_drafts` API and what the 8 PC body constants
+   return. The body constants for classes 0,1–3,13,21,22,23 were added in TASK-015.
+
+2. **Locate** or **create** a test module in `validator_components.rs` (or a separate
+   file `crates/brassclaw_skills/src/validator_component_tests.rs` if the module is
+   too large). Use `#[cfg(test)]` blocks.
+
+3. **For each class**, write:
+   ```rust
+   // Class-N valid fixture
+   #[test]
+   fn class_N_valid_candidate_passes() {
+       let body = CLASS_N_STRUCTURAL_BODY;
+       // Construct a minimal valid JSON candidate for class N (must have all
+       // required fields per validator_v3.md §Step 7 for that class).
+       // Feed via a mock inputs dict: {"content": serde_json::to_string(&candidate)?}.
+       // Assert output has "pass": true.
+       // NOTE: use the same invoke mechanism as existing tests in brassclaw_skills.
+   }
+   // Class-N invalid fixture (class-specific defect)
+   #[test]
+   fn class_N_invalid_candidate_fails() { ... }
+   ```
+
+4. **Look at existing tests** in `brassclaw_skills` to understand how PC bodies are
+   invoked (e.g., `brassclaw_skills/src/tests/` or `#[cfg(test)]` blocks in
+   `validator_components.rs`). Reuse the same invocation pattern — no new test harness.
+
+5. **Verify** with:
+   ```
+   cargo test -p brassclaw_skills -- validator
+   ```
+   At least 16 tests (2 per class × 8 classes) must pass.
+
+6. **Acceptance gate from missing4_v3_at_k3.md §Step 7-B:**
+   - `cargo test -p brassclaw_skills validator_class`: ≥ 16 cases, all pass.
+   - Each test uses the actual PC body constant (not a stub).
+
+### Files to touch
+
+- `crates/brassclaw_skills/src/validator_components.rs` — add `#[cfg(test)]` module
+  (or new `validator_component_tests.rs` registered in `mod.rs`)
+
+### Dependencies
+
+- TASK-015 must be DONE (class-specific PC body constants in place). ✓ Already done.
+- Does NOT require TASK-017 (independent).
+
+---
+
+## TASK-019 — Security grep pairing: add leaf skills + PairSpecs for pc-grep-* components
+
+**Status:** ASSIGNED
+**Package:** PKG-SECURITY-APPROVAL
+**Assigned:** 2026-11-01T18:45:00Z
+
+### Goal
+
+Three seeded PythonCode components (`pc-grep-hardcoded-secrets`, `pc-grep-injection-patterns`,
+`pc-grep-env-files`) call `host.grep` / `host.glob` but currently have no dedicated leaf
+skill pairing in `bootstrap_l013_approval.rs`. This prevents `skill-association-approval/1`
+records from being written for them at boot.
+
+Resolution: add 3 lightweight leaf skill rows in `builtin_bootstrap.rs` (Pass 13 area,
+after the existing PC upserts) and add 3 PairSpecs to `TOOL_CALLING_PAIRS`.
+
+### Exact steps
+
+**Step 1 — Identify exact export function names:**
+```
+pc-grep-hardcoded-secrets  → export: "usage_l084"  (calls host.grep)
+pc-grep-injection-patterns → export: "usage_l085"  (calls host.grep)
+pc-grep-env-files          → export: "glob_env_files" (calls host.glob)
+```
+(Confirmed from PC body constants in `builtin_bootstrap.rs` ~line 18923–18936.)
+
+**Step 2 — Add 3 leaf skill rows in `builtin_bootstrap.rs`:**
+
+In Pass 13 (security-review stack), after `let pc_grep_env_files = ...` (~line 16793)
+and before the leaf skills block, add:
+
+```rust
+let skill_grep_hardcoded_secrets = stores
+    .upsert_skill(
+        leaf_skill(
+            &tenant,
+            "skill-grep-hardcoded-secrets",
+            "Leaf skill: grep for hardcoded secret patterns using host.grep.",
+            "Use host.grep to search for hardcoded credential patterns \
+             (password/api_key/token/secret/credential). Supply a path input. \
+             Returns matching lines with file context.",
+        ),
+        "skill-grep-hardcoded-secrets",
+    )
+    .await?;
+let skill_grep_injection_patterns = stores
+    .upsert_skill(
+        leaf_skill(
+            &tenant,
+            "skill-grep-injection-patterns",
+            "Leaf skill: grep for injection-risk patterns using host.grep.",
+            "Use host.grep to search for injection-risk patterns \
+             (eval/exec/subprocess/shell_exec/format!.*sql/query.*format). \
+             Supply a path input. Returns matching lines.",
+        ),
+        "skill-grep-injection-patterns",
+    )
+    .await?;
+let skill_grep_env_files = stores
+    .upsert_skill(
+        leaf_skill(
+            &tenant,
+            "skill-grep-env-files",
+            "Leaf skill: glob for .env files using host.glob.",
+            "Use host.glob with pattern '**/.env*' to discover all .env \
+             configuration files in the workspace. Returns a list of matching paths.",
+        ),
+        "skill-grep-env-files",
+    )
+    .await?;
+```
+
+Also add the 3 new skill UUIDs to the `security_review_children` Vec.
+
+**Step 3 — Add 3 PairSpecs to `TOOL_CALLING_PAIRS` in `bootstrap_l013_approval.rs`:**
+
+After the trigger management group (or before — ordering doesn't matter for correctness):
+
+```rust
+// ---- Security grep group (L083–L085) ----------------------------------------
+PairSpec {
+    pc_name: "pc-grep-hardcoded-secrets",
+    skill_name: "skill-grep-hardcoded-secrets",
+    toolskill_name: "ts-grep",
+    tool_name: "grep",
+    callable: "host.grep",
+    export: "usage_l084",
+    inputs: || json!({"path":opt_string()}),
+    arguments: || json!({"path":"path"}),
+    code_arguments: || json!({}),
+    result: any_object_result,
+},
+PairSpec {
+    pc_name: "pc-grep-injection-patterns",
+    skill_name: "skill-grep-injection-patterns",
+    toolskill_name: "ts-grep",
+    tool_name: "grep",
+    callable: "host.grep",
+    export: "usage_l085",
+    inputs: || json!({"path":opt_string()}),
+    arguments: || json!({"path":"path"}),
+    code_arguments: || json!({}),
+    result: any_object_result,
+},
+PairSpec {
+    pc_name: "pc-grep-env-files",
+    skill_name: "skill-grep-env-files",
+    toolskill_name: "ts-glob",
+    tool_name: "glob",
+    callable: "host.glob",
+    export: "glob_env_files",
+    inputs: || json!({}),
+    arguments: || json!({}),
+    code_arguments: || json!({}),
+    result: any_object_result,
+},
+```
+
+**Step 4 — Verify:**
+```
+cargo fmt --all -- --check
+cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings
+```
+0 warnings required.
+
+### Files to touch
+
+- `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs` — 3 new leaf_skill upserts + security_review_children update
+- `crates/brassclaw_reborn_composition/src/bootstrap_l013_approval.rs` — 3 new PairSpecs
+
+### Dependencies
+
+- TASK-017 DONE ✓ (can safely append after the trigger group)
+
+---
+
+## TASK-020 — ITEM-C: build monty_worker + run T2–T5 integration tests
+
+**Status:** ASSIGNED
+**Package:** PKG-MONTY-TESTS
+**Assigned:** 2026-11-01T18:45:00Z
+
+### Goal
+
+Run the 6 `run_q1_validation_retained` integration tests (T1–T5 + T5b) that require the
+`monty_worker` binary. Currently source-only; T1 passes under `--lib`; T2–T5/T5b need
+the binary present.
+
+### Exact steps
+
+**Step 1 — Disk check (required before every Cargo invocation):**
+```bash
+df -h /Users/ollama/brassclaw-target
+```
+Abort if < 15 GiB free.
+
+**Step 2 — Build test binary + monty_worker in a screen session:**
+```bash
+screen -dmS build-monty-tests bash -c '
+  cd /Volumes/SSDE/brassclaw
+  cargo build -p brassclaw_reborn_composition \
+    --features postgres,skills-db \
+    --tests \
+    2>&1 | tee /tmp/monty-test-build.log
+  echo "EXIT:$?" >> /tmp/monty-test-build.log
+'
+```
+Monitor: `tail -f /tmp/monty-test-build.log`
+
+**Step 3 — Locate test binary and confirm monty_worker present:**
+```bash
+ls $(cargo test -p brassclaw_reborn_composition \
+  --features postgres,skills-db --no-run 2>&1 \
+  | grep -oE '/[^ ]+brassclaw_reborn_composition[^ ]+' | head -1 | xargs dirname)/ \
+  | grep monty_worker
+```
+
+**Step 4 — Run integration tests:**
+```bash
+screen -dmS run-integration bash -c '
+  cd /Volumes/SSDE/brassclaw
+  cargo test -p brassclaw_reborn_composition \
+    --features postgres,skills-db \
+    run_q1_validation_retained \
+    2>&1 | tee /tmp/integration-tests.log
+  echo "EXIT:$?" >> /tmp/integration-tests.log
+'
+```
+Expected: T1 + T2 + T3 + T4 + T5 + T5b all pass (6 tests).
+
+**Step 5 — Verify T5 evidence rows** (per missing3_v3_at_k3.md §4 Step 3):
+After T5 passes, the test body asserts:
+- `reborn_component_review_evidence` has ≥ 1 row linked via `reborn_validator_q1_runs`
+  with `succeeded = true`.
+- Validation queue row at `STATE_Q1_PASSED` (state = 2).
+
+**Step 6 — Update docs/implementation-status.md** with exact cargo invocation, exit status,
+T5 evidence confirmation, and note that `missing3_v3_at_k3.md` ITEM-C is CLOSED.
+
+### Dependencies
+
+- Requires the `monty_worker` binary to be available (built via Step 2).
+- Independent of TASK-017/018/019.
+- This is a compilation-heavy task: build it in a screen session and do other work
+  while it compiles.
+
