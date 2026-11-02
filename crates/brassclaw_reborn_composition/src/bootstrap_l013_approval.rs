@@ -1,9 +1,10 @@
-//! Bootstrap qualification for L010 and L013–L101 PythonCode/Skill pairs.
+//! Bootstrap qualification for L001–L006, L010 and L013–L101 PythonCode/Skill pairs.
 //!
 //! Produces `"component-revision/1"` envelopes in `reborn_component_revisions`
 //! and `"skill-association-approval/1"` rows in `reborn_skill_association_approvals`
-//! for every Tool-calling (Skill, PythonCode) pair in the filesystem (L010),
-//! network, memory, management, Git/grep, plan, GitHub and path/filter groups.
+//! for every Tool-calling (Skill, PythonCode) pair in the filesystem (L001–L006,
+//! L010), network, memory, management, Git/grep, plan, GitHub and path/filter
+//! groups.
 //!
 //! Pure-logic components get `"pure-component-approval/1"` records in
 //! `reborn_pure_component_approvals`.
@@ -126,6 +127,103 @@ struct PureSpec {
 
 /// Tool-calling pairs that need skill-association-approval/1.
 static TOOL_CALLING_PAIRS: &[PairSpec] = &[
+    // ---- Filesystem group (L001–L006, L010) --------------------------------
+    PairSpec {
+        pc_name: "pc-exec-read-file",
+        skill_name: "skill-read-file",
+        toolskill_name: "ts-read-file",
+        tool_name: "read_file",
+        callable: "host.read_file",
+        export: "usage_l001",
+        inputs: || json!({"path":req_string()}),
+        arguments: || json!({"path":"path"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-write-file",
+        skill_name: "skill-write-file-new",
+        toolskill_name: "ts-write-file",
+        tool_name: "write_file",
+        callable: "host.write_file",
+        export: "usage_l002",
+        inputs: || json!({"path":req_string(),"content":req_string()}),
+        arguments: || json!({"path":"path","content":"content"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-list-dir",
+        skill_name: "skill-list-dir",
+        toolskill_name: "ts-list-dir",
+        tool_name: "list_dir",
+        callable: "host.list_dir",
+        export: "usage_l003",
+        inputs: || json!({"path":opt_string()}),
+        arguments: || json!({"path":"path"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-glob",
+        skill_name: "skill-glob-by-extension",
+        toolskill_name: "ts-glob",
+        tool_name: "glob",
+        callable: "host.glob",
+        export: "usage_l004",
+        inputs: || json!({"pattern":req_string(),"path":opt_string()}),
+        arguments: || json!({"pattern":"pattern"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-grep",
+        skill_name: "skill-grep-files",
+        toolskill_name: "ts-grep",
+        tool_name: "grep",
+        callable: "host.grep",
+        export: "usage_l005",
+        inputs: || json!({"pattern":req_string(),"path":opt_string()}),
+        arguments: || json!({"pattern":"pattern"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-grep-case-insensitive",
+        skill_name: "skill-grep-case-insensitive",
+        toolskill_name: "ts-grep",
+        tool_name: "grep",
+        callable: "host.grep",
+        export: "usage_l005",
+        inputs: || json!({"pattern":req_string(),"path":opt_string()}),
+        arguments: || json!({"pattern":"pattern"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-grep-type-filtered",
+        skill_name: "skill-grep-type-filtered",
+        toolskill_name: "ts-grep",
+        tool_name: "grep",
+        callable: "host.grep",
+        export: "usage_l005",
+        inputs: || json!({"pattern":req_string(),"path":opt_string(),"type_filter":opt_string()}),
+        arguments: || json!({"pattern":"pattern"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-apply-patch",
+        skill_name: "skill-apply-patch-single",
+        toolskill_name: "ts-apply-patch",
+        tool_name: "apply_patch",
+        callable: "host.apply_patch",
+        export: "usage_l006",
+        inputs: || json!({"path":req_string(),"old_string":req_string(),"new_string":req_string()}),
+        arguments: || json!({"path":"path","old_string":"old_string","new_string":"new_string"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
     // ---- Network group (L016–L023) -----------------------------------------
     PairSpec {
         pc_name: "pc-exec-http-get",
@@ -832,6 +930,19 @@ static PURE_SPECS: &[PureSpec] = &[
     PureSpec {
         pc_name: "pc-exec-memory-append",
         export: "prepare_append_content",
+    },
+    // Filesystem path helpers (L011–L012)
+    PureSpec {
+        pc_name: "pc-path-join",
+        export: "path_join",
+    },
+    PureSpec {
+        pc_name: "pc-path-basename",
+        export: "path_basename",
+    },
+    PureSpec {
+        pc_name: "pc-path-dirname",
+        export: "path_dirname",
     },
     // Plan pure helpers (L090–L091)
     PureSpec {

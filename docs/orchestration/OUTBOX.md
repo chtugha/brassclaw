@@ -356,3 +356,143 @@ Blocked by: none (read-only audit)
 
 ---
 
+
+---
+
+## TASK-013 — Add content_checksum to remaining inline ToolSkill struct literals
+
+**Status:** DONE (inline implementation 2026-11-02)
+**Package:** PKG-TS-CHECKSUM
+**Commit:** `5d186ce05`
+
+### Result: PASS
+- Modified `upsert_tool_skill()` in `builtin_bootstrap.rs` to auto-compute
+  `sha256_hex(content)` when `source = "system"` and `content_checksum.is_none()`.
+- Covers all 29 remaining inline ToolSkill literals without modifying each one.
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings`: 0 warnings.
+
+---
+
+## TASK-014 — Add L010 file_exists to bootstrap_l013_approval TOOL_CALLING_PAIRS
+
+**Status:** DONE (inline implementation 2026-11-02)
+**Package:** PKG-L010-APPROVAL
+**Commit:** `71c17a5fa`
+
+### Result: PASS
+- `PairSpec` for `pc-exec-file-exists` / `skill-file-exists` / `ts-file-exists`
+  added to `TOOL_CALLING_PAIRS` array with `host.file_exists`, `use_file_exists` export,
+  `{path: req_string()}` input and typed `{kind, path}` result.
+- Module doc updated to mention L010.
+- `cargo clippy`: 0 warnings.
+
+---
+
+## WAVE-4 ASSIGNMENTS
+
+### TASK-015 — Verify and document validator Step 7 class-1 (Skill) PC body coverage
+
+**Status:** ASSIGNED
+**Package:** PKG-VALIDATOR-STEP7
+**Assigned:** 2026-11-02
+
+### Goal
+
+`validator_v3.md` Step 7 lists 8 class-specific validator Recipes. The structural
+scaffolding in `brassclaw_skills::structural_validator_recipe_drafts` produces
+`ComponentRevisionDraft` JSON for all 8 classes (1–3, 0, 13, 21, 22, 23) but the
+actual per-class PythonCode body content (the structural check logic for each class)
+needs to be verified and documented.
+
+### Exact steps
+
+1. Read `validator_v3.md` §Step 7 lines covering class-1 (Skill), class-22
+   (PythonCode) and class-21 (Recipe) route specifications. Understand what
+   checks are required.
+
+2. Read `crates/brassclaw_skills/src/validator_components.rs`:
+   - Find `structural_validator_recipe_drafts(class_code, label, pc_body)` — note
+     what `pc_body` is expected to contain.
+   - Find where actual class-specific `pc_body` constants are defined for each of
+     the 8 classes (search: `MINIMAL_PC_BODY` in tests, and real constants elsewhere).
+
+3. Run `cargo test -p brassclaw_skills structural_validator_recipe` to confirm
+   existing tests pass.
+
+4. Document findings in a brief audit note: which class routes have a substantive
+   `pc_body` vs a placeholder, and what Step 7 says each must check.
+
+5. If any class route has a placeholder body where a specific structural check is
+   specified: write the bounded implementation for that class route's PythonCode body
+   (the body is stored in the `ComponentRevisionDraft`, not in `reborn_python_code`).
+
+### Files to read
+
+- `validator_v3.md` §Step 7 (especially class-1/Skill and class-22/PythonCode rows)
+- `crates/brassclaw_skills/src/validator_components.rs`
+
+### Acceptance
+
+- `cargo test -p brassclaw_skills structural_validator_recipe`: all pass
+- Brief audit note in INBOX confirming coverage vs placeholder state for each class
+- If bodies updated: `cargo clippy -p brassclaw_skills --all-targets -- -D warnings`: 0 warnings
+
+### Dependencies
+
+- Blocked by: none
+
+---
+
+### TASK-016 — Add L001–L009 filesystem group to bootstrap_l013_approval
+
+**Status:** ASSIGNED
+**Package:** PKG-L001-APPROVAL
+**Assigned:** 2026-11-02
+
+### Goal
+
+The filesystem Tool-calling pairs L001–L006 (read_file, write_file, list_dir,
+glob, grep, apply_patch) are seeded through `seed_filesystem_group` but are
+absent from `bootstrap_l013_approval.rs` `TOOL_CALLING_PAIRS`. They need
+`skill-association-approval/1` records just like L010 and L013–L101.
+
+The pure-logic helpers L007–L009, L011–L012 (filter helpers) should go in
+`PURE_SPECS`.
+
+### Exact steps
+
+1. Read `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs` to confirm
+   the exact `pc_name`, `skill_name`, `ts_name`, `callable`, and `export` for
+   L001–L006. Search:
+   ```bash
+   grep -n "pc-exec-read-file\|pc-exec-write-file\|pc-exec-list-dir\|pc-exec-glob\|pc-exec-grep\|pc-exec-apply-patch\|skill-read-file\|skill-write-file\|skill-list-dir\|skill-glob\|skill-grep\|skill-apply-patch" builtin_bootstrap.rs | head -40
+   ```
+
+2. For each of L001–L006, add a `PairSpec` entry to `TOOL_CALLING_PAIRS` in
+   `bootstrap_l013_approval.rs` with the correct:
+   - `pc_name`, `skill_name`, `toolskill_name`, `tool_name`, `callable`, `export`
+   - `inputs` (at minimum `path: req_string()`)
+   - `result: any_object_result`
+
+3. For L007–L009, L011–L012 (filter/path helpers), add `PureSpec` entries to
+   `PURE_SPECS`:
+   ```
+   pc-exec-grep-case-insensitive / pc-exec-grep-type-filtered (L007 area)
+   pc-path-join / pc-path-basename / pc-path-dirname (L011–L012 area)
+   ```
+   Search for their export names in `builtin_bootstrap.rs`.
+
+4. Verify: `cargo fmt --all -- --check` and
+   `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings`
+
+### Acceptance
+
+- L001–L006 PairSpec entries added; L007–L009/L011–L012 PureSpec entries added
+- `cargo clippy`: 0 warnings
+
+### Dependencies
+
+- Blocked by: none
+
+---
+
