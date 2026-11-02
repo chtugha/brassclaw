@@ -13,5 +13,9 @@
 | TASK-010 | Wave-3 audit: identify next bounded packages | PKG-AUDIT-3 | DONE | 2026-11-02 | 2026-11-02 | none |
 | TASK-011 | Commit implementation-status update for wave-2 audit findings | PKG-DOC | DONE | 2026-11-02 | 2026-11-02 | none |
 | TASK-012 | L010 builtin.file_exists: Rust primitive + schema + seed rows + test updates | PKG-L010 | DONE | 2026-11-02 | 2026-11-02 | none |
+| TASK-013 | content_checksum for pc_row()/skill_row() helpers + ToolSkill auto-compute | PKG-TS-CHECKSUM | DONE | 2026-11-02 | 2026-11-02 | none |
+| TASK-014 | L010 file_exists in bootstrap_l013_approval TOOL_CALLING_PAIRS | PKG-L010-APPROVAL | DONE | 2026-11-02 | 2026-11-02 | none |
+| TASK-015 | Validator Step 7-A: class-specific PC bodies for all 8 class routes | PKG-VALIDATOR-STEP7 | DONE | 2026-11-02 | 2026-11-02 | none |
+| TASK-016 | L001–L006 filesystem + L011–L012 path helpers in bootstrap_l013_approval | PKG-L001-APPROVAL | DONE | 2026-11-02 | 2026-11-02 | none |
 
 <!-- Append rows as tasks are created/completed -->

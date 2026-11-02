@@ -1,4 +1,54 @@
 
+## 2026-11-02 — session-4: approval coverage expansion; validator Step 7-A class-specific PC bodies
+
+**Commits:**
+- `ff7250e86` — fix: populate content_checksum in pc_row() and skill_row() helpers
+- `5d186ce05` — fix: auto-compute content_checksum for system ToolSkill rows in upsert_tool_skill
+- `71c17a5fa` — feat: add L010 file_exists to bootstrap_l013_approval TOOL_CALLING_PAIRS
+- `b824f0092` — feat: add L001–L006 filesystem + L011–L012 path helpers to bootstrap_l013_approval
+- `1f0337469` — feat: class-specific validator PC bodies for all 8 class routes (Step 7-A)
+
+**TASK-013 — content_checksum completeness:**
+- `pc_row()` and `skill_row()` now set `content_checksum = sha256_hex(content/body)`.
+- `upsert_tool_skill()` auto-computes `sha256_hex(content)` for `source='system'` rows
+  with `content_checksum.is_none()`, covering all 29 inline ToolSkill literals.
+- All system-seeded PythonCode, Skill, and ToolSkill rows now carry boot-time
+  verifiable checksums.
+
+**TASK-014/016 — bootstrap_l013_approval coverage expansion:**
+- L001–L006 filesystem Tool-calling PairSpec entries added (read_file, write_file,
+  list_dir, glob, grep, apply_patch + grep case-insensitive + grep type-filtered variants).
+- L011–L012 path helper PureSpec entries added (pc-path-join/basename/dirname).
+- All filesystem + L010 pairs now receive `skill-association-approval/1` at boot.
+
+**TASK-015 — Validator Step 7-A class-specific PC bodies:**
+- 6 new PC body constants: `PC_VALIDATOR_CLASS_0_BODY` (Tool), `PC_VALIDATOR_CLASS_SKILL_BODY`
+  (class 1–3 Skill), `PC_VALIDATOR_CLASS_13_BODY` (ToolSkill), `PC_VALIDATOR_CLASS_21_BODY`
+  (Recipe), `PC_VALIDATOR_CLASS_22_BODY` (PythonCode), `PC_VALIDATOR_CLASS_23_BODY`
+  (ExtensionCatalogue).
+- `validator_pc_body_for_class(class_code)` selector wired into both call sites:
+  `retain_validator_check_drafts()` and `seed_validator_recipes()`.
+- Each body parses `inputs["content"]` as JSON and performs class-relevant structural checks
+  per `validator_v3.md` §Step 7 requirements.
+
+**Validation:**
+- `cargo fmt --all -- --check`: CLEAN
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings`: 0 warnings
+- `cargo test -p brassclaw_skills`: 13/13 pass
+
+**Remaining open items (updated):**
+- Integration tests T3–T5 require live Postgres + Monty.
+- Validator Steps 7-B through 12: behavioral evidence, human Q2, production cutover
+  (tracked in `missing4_v3_at_k3.md`).
+- `pure-component-review.md` 8-item cutover contract: all open.
+- K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences, R09/subagent migrations.
+- Shell/git/memory/management groups in `bootstrap_l013_approval`: not yet covered
+  (L036–L049, L060–L067, L080–L085, L086–L089 — covered in L013+ pairs but grep/apply
+  filesystem variants confirmed above).
+
+---
+
+
 ## 2026-11-02 — session-3: L010 builtin.file_exists; content_checksum fix; wave-3 packages
 
 **Commits:**
