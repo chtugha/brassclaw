@@ -16624,6 +16624,59 @@ async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuilti
         )
         .await?;
 
+    // 12b-pre. Dedicated leaf skills for QA glob/grep PC pairings — provide
+    //     the skill-association/1 links required for skill-association-approval/1
+    //     at boot-time qualification in bootstrap_l013_approval.
+    let skill_glob_test_files_rust = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-glob-test-files-rust",
+                "Leaf skill: glob for Rust test files using host.glob.",
+                "Use host.glob with pattern '**/*_test.rs' to locate all Rust \
+                 test files in the workspace. Returns a list of matching file paths.",
+            ),
+            "skill-glob-test-files-rust",
+        )
+        .await?;
+    let skill_glob_test_files_ts = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-glob-test-files-ts",
+                "Leaf skill: glob for TypeScript test files using host.glob.",
+                "Use host.glob with pattern '**/*.test.ts' to locate all TypeScript \
+                 test files in the workspace. Returns a list of matching file paths.",
+            ),
+            "skill-glob-test-files-ts",
+        )
+        .await?;
+    let skill_glob_test_files_py = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-glob-test-files-py",
+                "Leaf skill: glob for Python test files using host.glob.",
+                "Use host.glob with pattern '**/*_test.py' to locate all Python \
+                 test files in the workspace. Returns a list of matching file paths.",
+            ),
+            "skill-glob-test-files-py",
+        )
+        .await?;
+    let skill_grep_fn_tests = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-grep-fn-tests",
+                "Leaf skill: grep for test functions matching a pattern using host.grep.",
+                "Use host.grep with a pattern input and include='*test*' to find \
+                 test functions that reference the given symbol. Returns matching \
+                 lines with file context.",
+            ),
+            "skill-grep-fn-tests",
+        )
+        .await?;
+
     // 12b. Leaf skills
     let skill_qa_coverage_analysis = stores
         .upsert_skill(
@@ -16742,6 +16795,10 @@ async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuilti
         pc_glob_test_files_ts,
         pc_glob_test_files_py,
         pc_grep_fn_tests,
+        skill_glob_test_files_rust,
+        skill_glob_test_files_ts,
+        skill_glob_test_files_py,
+        skill_grep_fn_tests,
         skill_qa_coverage_analysis,
         skill_qa_edge_cases,
         skill_qa_test_plan,
@@ -16755,7 +16812,7 @@ async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuilti
         .await?;
 
     tracing::debug!(
-        "seeded workflow skills Pass 12: qa-review (4 PC + 4 leaf + 1 domain + 2 recipes + ext-qa-review)"
+        "seeded workflow skills Pass 12: qa-review (4 PC + 8 leaf + 1 domain + 2 recipes + ext-qa-review)"
     );
 
     // ------------------------------------------------------------------

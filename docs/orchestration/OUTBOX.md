@@ -794,3 +794,76 @@ T5 evidence confirmation, and note that `missing3_v3_at_k3.md` ITEM-C is CLOSED.
 - This is a compilation-heavy task: build it in a screen session and do other work
   while it compiles.
 
+
+---
+
+## TASK-021 — Cover remaining seeded Tool-calling PCs in bootstrap_l013_approval
+
+**Status:** ASSIGNED
+**Package:** PKG-REMAINING-PAIRS
+**Assigned:** 2026-11-01T19:30:00Z
+
+### Goal
+
+Several seeded PythonCode components that call `host.*` are not yet covered by
+`TOOL_CALLING_PAIRS` in `bootstrap_l013_approval.rs`. This task audits and adds
+the missing PairSpecs (and any required paired leaf skills in `builtin_bootstrap.rs`).
+
+### Step 1 — Identify each uncovered PC's host callable and skill pairing
+
+For each of these component names, read their body constants in `builtin_bootstrap.rs`
+to determine:
+(a) which `host.*` call they make (→ determines toolskill + tool_name)
+(b) whether a dedicated leaf skill already exists with the same name pattern
+    (e.g., `skill-read-file-head` for `pc-exec-read-file-head`)
+(c) export function name
+
+**Known gaps (from session-5 audit):**
+- `pc-exec-http-save` — writes response body to file; calls host.write_file?
+- `pc-exec-list-then-grep` — dependent chain: list_dir → grep
+- `pc-exec-read-file-head`, `pc-exec-read-file-tail` — calls host.read_file with head/tail variant
+- `pc-exec-read-then-grep` — dependent chain: read_file → grep
+- `pc-exec-shell-wc-l` — calls host.shell with ts-shell-run
+- `pc-exec-time-now`, `pc-exec-time-parse`, `pc-exec-time-convert`, `pc-exec-time-diff`,
+  `pc-exec-time-format` — call host.time_now / host.time_parse (management group)
+- `pc-github-get-authenticated-user`, `pc-github-search-issues` — call host.http
+- `pc-glob-test-files-py/rust/ts` — call host.glob
+- `pc-grep-fn-tests` — call host.grep
+- `pc-plan-status-update` — calls host.write_file or host.apply_patch
+- `pc-exec-json-query`, `pc-exec-json-stringify`, `pc-exec-json-validate` — may be pure-logic
+- `pc-json-extract-field`, `pc-url-encode` — likely pure-logic → PURE_SPECS
+- `pc-exec-list-filter-by-type` — likely pure-logic → PURE_SPECS
+- `pc-host-assemble-prefix-bundle`, `pc-host-post-reply` — internal orchestrator PCs;
+  check if they should be excluded from approval (they may be class-10 / system-only paths)
+- `pc-exec-echo` — diagnostic-only per AGENTS.md; skip
+
+### Step 2 — For each Tool-calling PC without a dedicated skill, add a leaf skill
+
+If the PC has no named leaf skill pairing (e.g., `skill-read-file-head`), add one in
+the appropriate Pass section of `builtin_bootstrap.rs` (same pattern as TASK-019).
+
+### Step 3 — Add PairSpecs to TOOL_CALLING_PAIRS
+
+For dependent-chain pairs (e.g., `pc-exec-read-then-grep`), use the effect Tool's
+ToolSkill as the binding ToolSkill, per the dependent-chain exception.
+
+For pure-logic components (`pc-json-extract-field`, `pc-url-encode`,
+`pc-exec-list-filter-by-type`, `pc-exec-json-*`), add PureSpec entries instead.
+
+### Step 4 — Verify
+
+```
+cargo fmt --all -- --check
+cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings
+```
+0 warnings required.
+
+### Files to touch
+
+- `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs` — new leaf skills where needed
+- `crates/brassclaw_reborn_composition/src/bootstrap_l013_approval.rs` — new PairSpecs + PureSpecs
+
+### Dependencies
+
+- TASK-019 DONE ✓
+

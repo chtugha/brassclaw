@@ -21,5 +21,6 @@
 | TASK-018 | Validator Step 7-B: negative fixture tests per class route | PKG-VALIDATOR-STEP7B | DONE (source) | 2026-11-01 | 2026-11-01 | live exec → TASK-020 |
 | TASK-019 | Security grep leaf skill pairing + 3 PairSpecs | PKG-SECURITY-APPROVAL | DONE | 2026-11-01 | 2026-11-01 | none |
 | TASK-020 | ITEM-C: build monty_worker + run T2–T5 + Step 7-B integration tests | PKG-MONTY-TESTS | IN_PROGRESS | 2026-11-01 | — | monty_worker build |
+| TASK-021 | Cover remaining seeded Tool-calling PCs in bootstrap_l013_approval | PKG-REMAINING-PAIRS | ASSIGNED | 2026-11-01 | — | TASK-019 ✓ |
 
 <!-- Append rows as tasks are created/completed -->

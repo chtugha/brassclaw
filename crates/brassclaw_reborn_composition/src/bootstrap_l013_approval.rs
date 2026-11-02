@@ -4,7 +4,8 @@
 //! and `"skill-association-approval/1"` rows in `reborn_skill_association_approvals`
 //! for every Tool-calling (Skill, PythonCode) pair in the filesystem (L001–L006,
 //! L010), network, memory, management, Git/grep, plan, GitHub, trigger management,
-//! security-grep and path/filter groups.
+//! security-grep, read_file variants, shell-wc-l, time, JSON, GitHub extended,
+//! QA glob/grep and path/filter groups.
 //!
 //! Pure-logic components get `"pure-component-approval/1"` records in
 //! `reborn_pure_component_approvals`.
@@ -976,6 +977,208 @@ static TOOL_CALLING_PAIRS: &[PairSpec] = &[
         code_arguments: || json!({}),
         result: any_object_result,
     },
+    // ---- read_file variant group -------------------------------------------
+    // pc-exec-read-file-head — single host.read_file call (first-N-lines pattern).
+    PairSpec {
+        pc_name: "pc-exec-read-file-head",
+        skill_name: "skill-read-file-head",
+        toolskill_name: "ts-read-file",
+        tool_name: "read_file",
+        callable: "host.read_file",
+        export: "usage_read_file_head",
+        inputs: || json!({"path":req_string()}),
+        arguments: || json!({"path":"path"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    // ---- shell-wc-l group --------------------------------------------------
+    // pc-exec-shell-wc-l — single host.shell call (wc -l, validated filepath).
+    PairSpec {
+        pc_name: "pc-exec-shell-wc-l",
+        skill_name: "skill-shell-wc-l",
+        toolskill_name: "ts-shell-run",
+        tool_name: "shell",
+        callable: "host.shell",
+        export: "usage_shell_wc_l",
+        inputs: || json!({"filepath":req_string()}),
+        arguments: || json!({"command":"filepath"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    // ---- Time management group ---------------------------------------------
+    PairSpec {
+        pc_name: "pc-exec-time-now",
+        skill_name: "skill-time-now",
+        toolskill_name: "ts-time-now",
+        tool_name: "time",
+        callable: "host.time",
+        export: "usage_time_now",
+        inputs: || json!({"timezone":opt_string()}),
+        arguments: || json!({"operation":"operation","timezone":"timezone"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-time-parse",
+        skill_name: "skill-time-parse",
+        toolskill_name: "ts-time-parse",
+        tool_name: "time",
+        callable: "host.time",
+        export: "usage_time_parse",
+        inputs: || json!({"input":req_string(),"timezone":opt_string()}),
+        arguments: || json!({"operation":"operation","input":"input","timezone":"timezone"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-time-convert",
+        skill_name: "skill-time-convert",
+        toolskill_name: "ts-time-convert",
+        tool_name: "time",
+        callable: "host.time",
+        export: "usage_time_convert",
+        inputs: || json!({"input":req_string(),"from_timezone":req_string(),"to_timezone":req_string()}),
+        arguments: || json!({"operation":"operation","input":"input"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-time-diff",
+        skill_name: "skill-time-diff",
+        toolskill_name: "ts-time-diff",
+        tool_name: "time",
+        callable: "host.time",
+        export: "usage_time_diff",
+        inputs: || json!({"input":req_string(),"timestamp2":req_string()}),
+        arguments: || json!({"operation":"operation","input":"input"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-time-format",
+        skill_name: "skill-time-format",
+        toolskill_name: "ts-time-format",
+        tool_name: "time",
+        callable: "host.time",
+        export: "usage_time_format",
+        inputs: || json!({"input":req_string(),"format_string":req_string(),"timezone":opt_string()}),
+        arguments: || json!({"operation":"operation","input":"input"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    // ---- JSON management group --------------------------------------------
+    PairSpec {
+        pc_name: "pc-exec-json-query",
+        skill_name: "skill-json-query",
+        toolskill_name: "ts-json-query",
+        tool_name: "json",
+        callable: "host.json",
+        export: "usage_json_query",
+        inputs: || json!({"data":req_string(),"path":req_string()}),
+        arguments: || json!({"operation":"operation","data":"data"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-json-stringify",
+        skill_name: "skill-json-stringify",
+        toolskill_name: "ts-json-stringify",
+        tool_name: "json",
+        callable: "host.json",
+        export: "usage_json_operation",
+        inputs: || json!({"operation":req_string(),"data":req_string()}),
+        arguments: || json!({"operation":"operation","data":"data"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-exec-json-validate",
+        skill_name: "skill-json-validate",
+        toolskill_name: "ts-json-validate",
+        tool_name: "json",
+        callable: "host.json",
+        export: "usage_json_validate",
+        inputs: || json!({"data":req_string()}),
+        arguments: || json!({"operation":"operation","data":"data"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    // ---- GitHub extended group --------------------------------------------
+    // pc-github-get-authenticated-user — single host.http_fetch GET /user.
+    PairSpec {
+        pc_name: "pc-github-get-authenticated-user",
+        skill_name: "skill-github-get-authenticated-user",
+        toolskill_name: "ts-http-fetch",
+        tool_name: "http",
+        callable: "host.http_fetch",
+        export: "usage_github_get_authenticated_user",
+        inputs: || json!({}),
+        arguments: || json!({}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    // pc-github-search-issues — single host.http_fetch GET search.
+    PairSpec {
+        pc_name: "pc-github-search-issues",
+        skill_name: "skill-github-search-issues",
+        toolskill_name: "ts-http-fetch",
+        tool_name: "http",
+        callable: "host.http_fetch",
+        export: "usage_github_search_issues",
+        inputs: || json!({"query":req_string()}),
+        arguments: || json!({"method":"method","url":"query"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    // ---- QA glob/grep group -----------------------------------------------
+    PairSpec {
+        pc_name: "pc-glob-test-files-rust",
+        skill_name: "skill-glob-test-files-rust",
+        toolskill_name: "ts-glob",
+        tool_name: "glob",
+        callable: "host.glob",
+        export: "usage_glob_test_rust",
+        inputs: || json!({}),
+        arguments: || json!({}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-glob-test-files-ts",
+        skill_name: "skill-glob-test-files-ts",
+        toolskill_name: "ts-glob",
+        tool_name: "glob",
+        callable: "host.glob",
+        export: "usage_glob_test_ts",
+        inputs: || json!({}),
+        arguments: || json!({}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-glob-test-files-py",
+        skill_name: "skill-glob-test-files-py",
+        toolskill_name: "ts-glob",
+        tool_name: "glob",
+        callable: "host.glob",
+        export: "usage_glob_test_py",
+        inputs: || json!({}),
+        arguments: || json!({}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
+    PairSpec {
+        pc_name: "pc-grep-fn-tests",
+        skill_name: "skill-grep-fn-tests",
+        toolskill_name: "ts-grep",
+        tool_name: "grep",
+        callable: "host.grep",
+        export: "usage_grep_fn_tests",
+        inputs: || json!({"pattern":req_string()}),
+        arguments: || json!({"pattern":"pattern"}),
+        code_arguments: || json!({}),
+        result: any_object_result,
+    },
 ];
 
 /// Pure-logic components that need pure-component-approval/1.
@@ -1048,6 +1251,26 @@ static PURE_SPECS: &[PureSpec] = &[
     PureSpec {
         pc_name: "pc-format-component-header",
         export: "format_component_header",
+    },
+    // Plan status update helper (L089 successor) — pure string manipulation.
+    PureSpec {
+        pc_name: "pc-plan-status-update",
+        export: "usage_plan_status_update",
+    },
+    // HTTP save request builder — pure data transformation, no host call.
+    PureSpec {
+        pc_name: "pc-exec-http-save",
+        export: "prepare_http_save_request",
+    },
+    // JSON path traversal helper — pure recursive traversal, no host call.
+    PureSpec {
+        pc_name: "pc-json-extract-field",
+        export: "extract_json_field",
+    },
+    // URL percent-encoder — pure UTF-8 encoding, no host call.
+    PureSpec {
+        pc_name: "pc-url-encode",
+        export: "url_encode",
     },
 ];
 
@@ -1234,6 +1457,8 @@ fn skill_revision(
 struct PairIds {
     skill_ref: ComponentRevisionRef,
     pc_ref: ComponentRevisionRef,
+    ts_ref: ComponentRevisionRef,
+    tool_ref: ComponentRevisionRef,
 }
 
 fn build_components_array(ids: &PairIds) -> Value {
@@ -1273,12 +1498,13 @@ async fn qualify_tool_calling_pair(
         skill_body,
     )?;
 
-    // Retain dependencies first, then the Skill that references them.
-    revision_store
+    // Retain dependencies first (tool → toolskill → pc), then the Skill.
+    // All four refs are needed for the complete dependency graph verification.
+    let tool_ref = revision_store
         .retain_packaged_draft(&tool_draft)
         .await
         .map_err(invalid)?;
-    revision_store
+    let ts_ref = revision_store
         .retain_packaged_draft(&ts_draft)
         .await
         .map_err(invalid)?;
@@ -1305,7 +1531,12 @@ async fn qualify_tool_calling_pair(
     let behavior_id = Uuid::new_v5(&identity, b"behavior");
     let approval_id = Uuid::new_v5(&identity, b"approval");
 
-    let ids = PairIds { skill_ref, pc_ref };
+    let ids = PairIds {
+        skill_ref,
+        pc_ref,
+        ts_ref,
+        tool_ref,
+    };
     let components = build_components_array(&ids);
 
     // 5. Open RepeatableRead transaction and write evidence + approval.
@@ -1343,10 +1574,13 @@ async fn qualify_tool_calling_pair(
     }
 
     // Verify revision envelopes are readable in this snapshot.
+    // Must include all dependency revisions (tool, toolskill, pc, skill) so
+    // RetainedComponentSnapshot::new can traverse the full dependency graph
+    // without hitting "missing dependency revision" on ts_id or tool_id.
     PgComponentRevisionStore::read_exact_in_transaction(
         &tx,
         &[ids.skill_ref.uuid, ids.pc_ref.uuid],
-        &[ids.skill_ref, ids.pc_ref],
+        &[ids.skill_ref, ids.pc_ref, ids.ts_ref, ids.tool_ref],
     )
     .await
     .map_err(invalid)?;
