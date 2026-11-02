@@ -461,6 +461,16 @@ pub(super) async fn apply_patch(
     ))
 }
 
+pub(super) async fn file_exists(
+    request: &CodingCapabilityRequest<'_>,
+) -> Result<Value, CodingCapabilityError> {
+    let resolved = resolve_required_path(request, "path", FilesystemOperation::Stat)?;
+    match stat_optional(request, &resolved.virtual_path).await? {
+        Some(_) => Ok(json!({"kind": "success", "path": resolved.scoped_path.as_str()})),
+        None => Ok(json!({"kind": "not_found", "path": resolved.scoped_path.as_str()})),
+    }
+}
+
 fn filesystem_error_with_summary(
     operation: &str,
     scoped_path: &str,

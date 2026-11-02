@@ -402,6 +402,14 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
             "required": ["path", "old_string", "new_string"],
             "additionalProperties": false
         }),
+        "schemas/builtin/file_exists.input.v1.json" => json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "description": "Scoped path to check for existence" }
+            },
+            "required": ["path"],
+            "additionalProperties": false
+        }),
         "schemas/builtin/extension_search.input.v1.json" => json!({
             "type": "object",
             "properties": {

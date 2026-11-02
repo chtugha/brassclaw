@@ -95,6 +95,7 @@ pub const LIST_DIR_CAPABILITY_ID: &str = "builtin.list_dir";
 pub const GLOB_CAPABILITY_ID: &str = "builtin.glob";
 pub const GREP_CAPABILITY_ID: &str = "builtin.grep";
 pub const APPLY_PATCH_CAPABILITY_ID: &str = "builtin.apply_patch";
+pub const FILE_EXISTS_CAPABILITY_ID: &str = "builtin.file_exists";
 
 /// Maximum input size (bytes) for first-party tool calls (1 MiB).
 const MAX_FIRST_PARTY_INPUT_BYTES: usize = 1_048_576;
@@ -148,6 +149,12 @@ const CODING_CAPABILITIES: &[CodingCapabilityMetadata] = &[
         kind: CodingCapabilityKind::ApplyPatch,
         description: "Apply exact/fuzzy search-replace edits through scoped mounts",
         effects: &[EffectKind::ReadFilesystem, EffectKind::WriteFilesystem],
+    },
+    CodingCapabilityMetadata {
+        id: FILE_EXISTS_CAPABILITY_ID,
+        kind: CodingCapabilityKind::FileExists,
+        description: "Probe whether a scoped file exists. Returns {kind: \"success\" | \"not_found\", path}. Absence is distinguished from access-denied and other failures.",
+        effects: &[EffectKind::ReadFilesystem],
     },
 ];
 

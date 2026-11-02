@@ -38,20 +38,20 @@ use brassclaw_host_api::*;
 use brassclaw_host_runtime::{
     APPLY_PATCH_CAPABILITY_ID, COMPONENT_DB_CAPABILITY_ID, CapabilitySurfacePolicy,
     CapabilitySurfaceVersion, CommandExecutionOutput, CommandExecutionRequest, ECHO_CAPABILITY_ID,
-    GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID, HTTP_SAVE_CAPABILITY_ID,
-    HostRuntime, HostRuntimeServices, JSON_CAPABILITY_ID, LIST_DIR_CAPABILITY_ID,
-    MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID,
-    MEMORY_WRITE_CAPABILITY_ID, READ_FILE_CAPABILITY_ID, RuntimeCapabilityFailure,
-    RuntimeCapabilityOutcome, RuntimeCapabilityRequest, RuntimeFailureKind, RuntimeProcessError,
-    RuntimeProcessPort, SHELL_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID,
-    STORE_PREFIX_BUNDLE_CAPABILITY_ID, SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID,
-    SandboxCommandTransport, SurfaceKind, TIME_CAPABILITY_ID, TRIGGER_CREATE_CAPABILITY_ID,
-    TRIGGER_GET_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID,
-    TRIGGER_RUN_HISTORY_CAPABILITY_ID, TRIGGER_SET_STATE_CAPABILITY_ID,
-    TRIGGER_UPDATE_CAPABILITY_ID, TenantSandboxProcessPort, ToolCallHttpEgress, TriggerCreateHook,
-    VisibleCapabilityAccess, VisibleCapabilityRequest, WRITE_FILE_CAPABILITY_ID,
-    builtin_first_party_handlers, builtin_first_party_handlers_with_trigger_create_hook,
-    builtin_first_party_package,
+    FILE_EXISTS_CAPABILITY_ID, GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID,
+    HTTP_SAVE_CAPABILITY_ID, HostRuntime, HostRuntimeServices, JSON_CAPABILITY_ID,
+    LIST_DIR_CAPABILITY_ID, MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID,
+    MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, READ_FILE_CAPABILITY_ID,
+    RuntimeCapabilityFailure, RuntimeCapabilityOutcome, RuntimeCapabilityRequest,
+    RuntimeFailureKind, RuntimeProcessError, RuntimeProcessPort, SHELL_CAPABILITY_ID,
+    SPAWN_SUBAGENT_CAPABILITY_ID, STORE_PREFIX_BUNDLE_CAPABILITY_ID,
+    SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID, SandboxCommandTransport, SurfaceKind,
+    TIME_CAPABILITY_ID, TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_GET_CAPABILITY_ID,
+    TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID, TRIGGER_RUN_HISTORY_CAPABILITY_ID,
+    TRIGGER_SET_STATE_CAPABILITY_ID, TRIGGER_UPDATE_CAPABILITY_ID, TenantSandboxProcessPort,
+    ToolCallHttpEgress, TriggerCreateHook, VisibleCapabilityAccess, VisibleCapabilityRequest,
+    WRITE_FILE_CAPABILITY_ID, builtin_first_party_handlers,
+    builtin_first_party_handlers_with_trigger_create_hook, builtin_first_party_package,
 };
 #[cfg(feature = "test-support")]
 use brassclaw_host_runtime::{
@@ -565,6 +565,7 @@ fn is_coding_capability_id(id: &str) -> bool {
             | GLOB_CAPABILITY_ID
             | GREP_CAPABILITY_ID
             | APPLY_PATCH_CAPABILITY_ID
+            | FILE_EXISTS_CAPABILITY_ID
     )
 }
 
@@ -626,6 +627,7 @@ async fn builtin_first_party_surface_lists_allowed_tools_in_registry_order() {
                     | brassclaw_host_runtime::GLOB_CAPABILITY_ID
                     | brassclaw_host_runtime::GREP_CAPABILITY_ID
                     | brassclaw_host_runtime::APPLY_PATCH_CAPABILITY_ID
+                    | brassclaw_host_runtime::FILE_EXISTS_CAPABILITY_ID
             ))
             .all(|capability| capability.estimated_resources.output_bytes.is_some())
     );
@@ -645,6 +647,7 @@ async fn builtin_first_party_surface_lists_allowed_tools_in_registry_order() {
         brassclaw_host_runtime::GLOB_CAPABILITY_ID,
         brassclaw_host_runtime::GREP_CAPABILITY_ID,
         brassclaw_host_runtime::APPLY_PATCH_CAPABILITY_ID,
+        brassclaw_host_runtime::FILE_EXISTS_CAPABILITY_ID,
     ] {
         let capability = surface
             .capabilities
@@ -5877,6 +5880,7 @@ fn all_builtin_capability_ids() -> Vec<&'static str> {
         GLOB_CAPABILITY_ID,
         GREP_CAPABILITY_ID,
         APPLY_PATCH_CAPABILITY_ID,
+        FILE_EXISTS_CAPABILITY_ID,
         TRIGGER_CREATE_CAPABILITY_ID,
         TRIGGER_LIST_CAPABILITY_ID,
         TRIGGER_REMOVE_CAPABILITY_ID,

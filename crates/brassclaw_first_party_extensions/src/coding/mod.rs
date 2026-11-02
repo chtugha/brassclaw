@@ -34,6 +34,7 @@ pub enum CodingCapabilityKind {
     Glob,
     Grep,
     ApplyPatch,
+    FileExists,
 }
 
 #[derive(Clone)]
@@ -169,6 +170,9 @@ async fn dispatch(
             .await
             .map(CodingCapabilityOutput::new),
         CodingCapabilityKind::ApplyPatch => file::apply_patch(request, edit_locks).await,
+        CodingCapabilityKind::FileExists => file::file_exists(request)
+            .await
+            .map(CodingCapabilityOutput::new),
     }
 }
 

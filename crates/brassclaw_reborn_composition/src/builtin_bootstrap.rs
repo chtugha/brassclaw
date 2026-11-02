@@ -1667,6 +1667,9 @@ async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
     let tool_apply_patch = stores
         .upsert_tool(tool_apply_patch_row(&tenant), "apply_patch")
         .await?;
+    let tool_file_exists = stores
+        .upsert_tool(tool_file_exists_row(&tenant), "file_exists")
+        .await?;
 
     // 3. ToolSkill rows (class 13).
     let ts_read_file = stores
@@ -1686,6 +1689,9 @@ async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
         .await?;
     let ts_apply_patch = stores
         .upsert_tool_skill(ts_apply_patch_row(&tenant), "ts-apply-patch")
+        .await?;
+    let ts_file_exists = stores
+        .upsert_tool_skill(ts_file_exists_row(&tenant), "ts-file-exists")
         .await?;
 
     // 4. PythonCode rows (class 22) — the orchestrator executor bodies that
@@ -1866,9 +1872,10 @@ async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
             pc_row(
                 &tenant,
                 "pc-exec-file-exists",
-                "Orchestrator executor: checks whether a file exists by attempting to \
-                 read line 1. Input: vars.slot0 = file path. Output: {exists: bool, \
-                 path: string}.",
+                "Preloadable use_file_exists(inputs): probes file existence via \
+                 host.file_exists. Typed input: path (nonempty string). Returns \
+                 {exists: bool, path: string}. Absence is kind: not_found; classified \
+                 failures (denied, backend) raise ValueError.",
                 PC_EXEC_FILE_EXISTS_CONTENT,
             ),
             "pc-exec-file-exists",
@@ -3186,14 +3193,14 @@ async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
                 step_entry(
                     1,
                     "rust",
-                    "Pre-load ts-read-file ToolSkill binding (used for existence probe)",
+                    "Pre-load ts-file-exists ToolSkill binding",
                     "component",
-                    &[ts_read_file],
+                    &[ts_file_exists],
                 ),
                 step_entry(
                     2,
                     "orchestrator",
-                    "PythonCode tries reading line 1; returns {exists: bool, path}",
+                    "PythonCode calls host.file_exists; classifies {kind} outcome into {exists: bool, path}",
                     "component",
                     &[pc_file_exists],
                 ),
@@ -3295,6 +3302,8 @@ async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
             &[
                 tool_read_file,
                 ts_read_file,
+                tool_file_exists,
+                ts_file_exists,
                 pc_read_file,
                 pc_read_file_head,
                 pc_read_file_tail,
@@ -3421,6 +3430,8 @@ async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
             &[
                 tool_read_file,
                 ts_read_file,
+                tool_file_exists,
+                ts_file_exists,
                 pc_read_file,
                 pc_read_file_head,
                 pc_read_file_tail,
@@ -3506,7 +3517,7 @@ async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
         )
         .await?;
 
-    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 3f: 6 base + 12 variant/helper PythonCode + 25 leaf skills + 1 domain skill + 27 read/write/list/glob/grep/patch recipes — complete)");
+    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 3f: 7 tools + 7 toolskills + 12 variant/helper PythonCode + 25 leaf skills + 1 domain skill + 27 read/write/list/glob/grep/patch/file-exists recipes — complete)");
     Ok(())
 }
 
@@ -3529,6 +3540,7 @@ paths.
 - builtin.glob — find files by name/extension pattern
 - builtin.grep — search file contents by regex or literal
 - builtin.apply_patch — make targeted edits to a file (search-and-replace)
+- builtin.file_exists — check whether a path exists (returns {kind: success|not_found})
 
 ## When to use which tool
 - Locate files: glob (by name/extension) or grep (by content)
@@ -3536,6 +3548,7 @@ paths.
 - Create/replace: write_file
 - Targeted edits: apply_patch (preferred over read+write for partial changes)
 - Explore structure: list_dir
+- Check presence: file_exists (before conditionally reading or writing)
 
 ## Scope and safety
 - All paths are resolved relative to the session root. Absolute paths outside
@@ -3919,6 +3932,41 @@ fn tool_apply_patch_row(tenant: &str) -> NewPgTool {
     }
 }
 
+fn tool_file_exists_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "file_exists".to_string(),
+        description: "Probe whether a file exists at a scoped workspace path. Returns \
+                       {kind: \"success\" | \"not_found\", path}. Absence is \
+                       distinguished from access-denied and other failures. Does not \
+                       read file content."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Scoped workspace path to probe"}
+            },
+            "required": ["path"],
+            "additionalProperties": false
+        })),
+        param_template: Some(json!({"path": "{{path}}"})),
+        effect_type: "read".to_string(),
+        preconditions: Some("path within workspace mount scope".into()),
+        error_handling: Some(
+            "not_found is a typed success outcome, not an error; \
+             access-denied and backend errors surface as classified failures"
+                .into(),
+        ),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.file_exists".into(),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Row builders — ToolSkill (class 13). `content` is the canonical ToolSkill
 // body ("Call `host.<tool>(...)` …"); the doc's Step X.2 blocks specify
@@ -4157,6 +4205,39 @@ fn ts_apply_patch_row(tenant: &str) -> NewPgToolSkill {
         param_template: Some(json!({
             "path": "{{path}}", "old_string": "{{old_string}}", "new_string": "{{new_string}}"
         })),
+        consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+        content_checksum: None,
+    }
+}
+
+fn ts_file_exists_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-file-exists".to_string(),
+        description: "Probe whether a scoped workspace file exists via builtin.file_exists. \
+                       Returns {kind: \"success\" | \"not_found\", path}. Absence is a typed \
+                       success outcome; only access errors and backend failures are errors."
+            .to_string(),
+        content: "Call `host.file_exists(path=<scoped workspace path>)` to probe file \
+                  presence. Returns {kind: \"success\", path} when the file exists, \
+                  {kind: \"not_found\", path} when it is absent. Access-denied and \
+                  backend errors surface as classified failures, not not_found."
+            .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("file_exists".to_string()),
+        param_schema: Some(json!([
+            {"name": "path", "param_type": "string", "required": true,
+             "description": "Workspace-relative scoped path to probe"}
+        ])),
+        param_template: Some(json!({"path": "{{path}}"})),
         consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
         intent_examples: None,
         source: "system".into(),
@@ -4433,14 +4514,15 @@ const PC_EXEC_READ_FILE_TAIL_CONTENT: &str = r#"def compute_tail_window(inputs):
     return result
 "#;
 
-// L010 BLOCKED: current read failures do not establish a typed not_found contract.
-// Body retained as a placeholder; do not activate as a Tool usage.
-const PC_EXEC_FILE_EXISTS_CONTENT: &str = r#"def check_existence_from_outcome(inputs):
-    outcome = inputs["outcome"]
+// L010: one host.file_exists call; classifier over typed kind outcome.
+// Dependent-chain: the classification directly uses the tool result.
+// Preloadable export: use_file_exists(inputs).
+const PC_EXEC_FILE_EXISTS_CONTENT: &str = r#"def use_file_exists(inputs):
+    outcome = host.file_exists(path=inputs["path"])
     if outcome["kind"] == "success":
-        result = {"exists": True, "path": inputs["path"]}
+        result = {"exists": True, "path": outcome["path"]}
     elif outcome["kind"] == "not_found":
-        result = {"exists": False, "path": inputs["path"]}
+        result = {"exists": False, "path": outcome["path"]}
     else:
         raise ValueError("existence indeterminate")
     return result
