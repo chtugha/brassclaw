@@ -40,13 +40,15 @@ and durable recovery remain open; see the current implementation status index.
 
 ## Binding Skill definition (v3)
 
-A **Skill** is one reusable tool-usage pattern for the Orchestrator. It comprises
-**both prose instructions and explicitly associated executable PythonCode**:
-the prose explains purpose, parameters, prerequisites and result/error handling;
-the PythonCode implements that usage. “Leaf Skill” means this same unit, not a
-different kind of Skill. A broader domain or multi-tool overview belongs to an
-**Extension**, documented by its ExtensionCatalogue; a **Recipe** defines the
-ordered workflow and references reusable components by UUID.
+A **Skill** is one reusable Tool-usage pattern exposed as a **preloadable
+function interface**: prose plus explicitly associated PythonCode, exported
+names/signatures, helper/constant dependencies and typed invocation/result
+contracts. Loading defines functions without executing the usage. The prose
+explains the exported commands; associated PythonCode implements them. "Leaf
+Skill" means this same unit, not a different kind of Skill. A broader domain or
+multi-tool overview belongs to an **Extension**, documented by its
+ExtensionCatalogue; a **Recipe** defines the ordered workflow and references
+reusable components by UUID.
 
 **Tool + ToolSkill belong to the Rust side.** The Tool provides the primitive;
 the ToolSkill describes its IBS binding. Binding executes nothing and grants no
@@ -167,8 +169,9 @@ pub struct SkillManifest {
 - `ActivationCriteria` caps keywords (20), patterns (5), tags (10); filters short (< 3 char)
   tokens; `setup_marker` is for one-time onboarding skills. Selection must stay **deterministic**
   (no ambient time/network/filesystem in scoring — `brassclaw_skills/AGENTS.md`).
-- `source CHECK ('authored','extracted','migrated','imported')` today — **no `'system'`** until
-  V057 (FIND-P7-12). The Phase L seeder needs `'system'` (FIND-P6-02).
+- `source CHECK ('authored','extracted','migrated','imported','system')` — V066 widened both
+  `reborn_tools` and `reborn_skills` to include `'system'` (same migration, FIND-P7-12). The
+  Phase L seeder uses `'system'` for first-party seeds (FIND-P6-02).
 - The markdown **body** is the prose part of the Skill; it is stored in the DB column
   (`body` / `prior_knowledge_content`) — there is no `SKILL.md` file. The WebUI can **export** a
   row back to `SKILL.md` (frontmatter + body) on demand.

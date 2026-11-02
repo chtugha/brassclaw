@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **`docs/agents-v3` second audit corrections** (7 fixes across 3 files): Corrected
+  architectural inaccuracies against ground-truth guides (`recipe.md`, `skills.md`,
+  `tools.md`, `toolskills.md`) found in a complete re-audit of the `docs/agents-v3/`
+  documentation set.
+  - **`DOC_CONVERSION_MECHANISM_DESIGN.md`** — Four fixes: (1) §4.3 step 4 changed
+    from invalid `type: llm` step (no such persisted enum value per recipe.md §7) to
+    `type: component` wired through the supported execution path; (2) `channel:"rust"`
+    / `channel:"orchestrator"` changed to `knowledge:"rust"` / `knowledge:"orchestrator"`
+    everywhere — `channel` is a diagram label only, `knowledge` is the persisted field;
+    (3) `rust_items`/`orchestrator_items` corrected to `rust_steps`/`orchestrator_steps`;
+    (4) "Binding Skill definition" updated to binding v3 wording — "preloadable function
+    interface", loading defines functions without executing the usage, "pinned export".
+  - **`05-skills-system.md`** — Two fixes: (1) "Binding Skill definition" updated to
+    binding v3 wording (same as above); (2) `source CHECK` V057 reference corrected to
+    V066 — V066 widened **both** `reborn_tools` and `reborn_skills` to include `'system'`
+    (consistent with `15-component-catalog.md`).
+  - **`03-recipe-system.md`** — Two fixes: (1) `input_layouts` (`recipe-input-layout/1`)
+    and `invocations` fields added to the §3 data model table — both are required in
+    the persisted Recipe document per recipe.md §7; (2) `RecipeStep` Rust struct
+    labelled as "legacy data model" with a note distinguishing it from the v3 IBS
+    authoring format (`step_descriptions` JSONB with `knowledge`/`stepnumber`/`type`/
+    `include` — one UUID per component step).
+
 - **`docs/agents-v3` audit corrections** (7 fixes across 5 files): Corrected
   architectural inaccuracies, internal contradictions, and stale claims found
   during a full audit of the `docs/agents-v3/` documentation set against the

@@ -40,18 +40,21 @@ and durable recovery remain open; see the current implementation status index.
 
 ## Binding Skill definition (v3)
 
-A **Skill** is one reusable tool-usage pattern for the Orchestrator. It comprises
-**both prose instructions and explicitly associated executable PythonCode**:
-the prose explains purpose, parameters, prerequisites and result/error handling;
-the PythonCode implements that usage. “Leaf Skill” means this same unit, not a
-different kind of Skill. A broader domain or multi-tool overview belongs to an
-**Extension**, documented by its ExtensionCatalogue; a **Recipe** defines the
-ordered workflow and references reusable components by UUID.
+A **Skill** is one reusable Tool-usage pattern exposed as a **preloadable
+function interface**: prose plus explicitly associated PythonCode, exported
+names/signatures, helper/constant dependencies and typed invocation/result
+contracts. Loading defines functions without executing the usage. The prose
+explains the exported commands; associated PythonCode implements them. "Leaf
+Skill" means this same unit, not a different kind of Skill. A broader domain or
+multi-tool overview belongs to an **Extension**, documented by its
+ExtensionCatalogue; a **Recipe** defines the ordered workflow and references
+reusable components by UUID.
 
 **Tool + ToolSkill belong to the Rust side.** The Tool provides the primitive;
 the ToolSkill describes its IBS binding. Binding executes nothing and grants no
-permission. The Orchestrator executes the associated PythonCode, which calls
-`host.<tool>(...)`; the kernel checks the current global tool policy.
+permission. The Orchestrator invokes a pinned export from the preloaded associated
+PythonCode, which calls `host.<tool>(...)`; the kernel checks the current global
+tool policy.
 
 **Storage is not the definition:** today Skill prose is stored in `reborn_skills`
 (classes 1–3), while executable code is stored separately in `reborn_python_code`
@@ -67,8 +70,9 @@ records sharing the table, not additional tool-usage Skill types.
 **Execution and validation:** deterministic Tier-0 execution uses the associated
 PythonCode without an LLM interpreting prose. Tier 1 can use the prose in its
 explicit LLM steps. Prose must never be executed as Python. ToolSkill UUIDs stay
-in `channel:"rust"`; executable PythonCode UUIDs stay in
-`channel:"orchestrator"`. Q1/Q2, step isolation and the existing dependent-chain
+in steps with `knowledge:"rust"`; executable PythonCode UUIDs stay in steps with
+`knowledge:"orchestrator"` (the persisted field is `knowledge`, not `channel` —
+see recipe.md §7). Q1/Q2, step isolation and the existing dependent-chain
 exception remain applicable. This documentation change does not implement a
 new database schema, association editor or runtime path.
 
@@ -328,15 +332,17 @@ general-purpose, not doc-specific.
 | **PythonCode** | 22 | orchestrator (`orchestrator_items`) | the orchestrator | executable Skill part calling `host.<tool>(...)`, or standalone pure-logic helper; no direct I/O/DB. |
 | **ExtensionCatalogue** | 23 | (namespace) | humans / overview | the `doc-sync` namespace + `overview_doc`. |
 
-**Channel rule.** The IBS splits a Recipe's `include` list into
-`orchestrator_items` (Skill + PythonCode) and `rust_items` (ToolSkill). The
-orchestrator never holds a DB handle. A Rust-channel step binds the ToolSkill;
-an Orchestrator-channel PythonCode step calls `host.component_db(...)`.
-Rust performs the actual database I/O. PythonCode must not implement direct
-database access. The LLM prompt is authored
-**in the Recipe's `type: llm` step**, built *from* the Skill body — the
-Skill is the reusable method, not the prompt (the earlier draft overlapped
-them).
+**Channel rule.** The IBS splits a Recipe's steps into
+`orchestrator_steps` (Skill + PythonCode, `knowledge:"orchestrator"`) and
+`rust_steps` (ToolSkill, `knowledge:"rust"`). The persisted step field is
+`knowledge`, not `channel` — `channel` is a diagram label only (recipe.md §7).
+The orchestrator never holds a DB handle. A `knowledge:"rust"` step binds the
+ToolSkill; the immediately following `knowledge:"orchestrator"` PythonCode step
+calls `host.component_db(...)`. Rust performs the actual database I/O. PythonCode
+must not implement direct database access. The Tier-1 LLM call is wired through
+the supported execution path — the persisted step enum has no `type: llm` value
+(recipe.md §7); `type: text` is annotation-only and does not invoke an LLM —
+and the Skill body supplies reusable context, not the assembled prompt.
 
 ### 4.0.1 Tool vs Skill — the generic-DB-tool rule (Answer 3)
 
@@ -463,23 +469,24 @@ variants share most steps; `by-llm-compress` inserts the LLM step.
   documents the leaves and ordering. Use `type: text` for a non-executable
   annotation; supply overview context explicitly to the Tier-1 LLM step only.
 - **Step 2 (binding + execution):** first include the `read_file` ToolSkill
-  in `channel:"rust"`; then include the `file-read` Skill's associated
-  PythonCode in `channel:"orchestrator"` to read `{path}`.
-- **Step 3 (orchestrator, `type: component`):** `include` `markdown-section`
-  (PythonCode) → extract §7; run the `hash-compute` PythonCode helper in a
-  separate step → `content_hash`.
+  in a `knowledge:"rust"` step; then include the `file-read` Skill's associated
+  PythonCode in a `knowledge:"orchestrator"` step to read `{path}`.
+- **Step 3 (`knowledge:"orchestrator"`, `type: component`):** `include`
+  `markdown-section` (PythonCode) → extract §7; run the `hash-compute` PythonCode
+  helper in a separate step → `content_hash`.
   (No `token-estimate` — there is no token budget, Answer 5.)
-- **Step 4 (orchestrator, `type: llm`) — `by-llm-compress` variant only:**
-  use the `prompt-compress` rubric in the explicit LLM step; the
-  prompt is assembled here from the Extension overview (step 1) + the §7 text
-  (step 3). Sempai reviews before shipment (`09-sempai-kohai.md`) when a
-  Sempai is connected. The rubric is LLM context, not a tool-usage Skill;
-  the prompt is assembled per call.
-- **Step 5 (orchestrator, `type: component`):** `include` `component-header-render`
-  (PythonCode) → render the `## 17:…` header.
-- **Step 6 (binding + execution):** bind the `component_db` ToolSkill in
-  `channel:"rust"`, then execute the `db-upsert-docus` Skill's associated
-  PythonCode in `channel:"orchestrator"` with `op=upsert`. The Rust Tool
+- **Step 4 (`knowledge:"orchestrator"`, `type: component`) — `by-llm-compress`
+  variant only:** include the qualified Tier-1 LLM execution component (the
+  `prompt-compress` usage, wired through the supported execution path — the
+  persisted step enum has no `type: llm` value; the LLM call must be wired
+  through the supported mechanism). The prompt is assembled from the Extension
+  overview (step 1) + the §7 text (step 3). Sempai reviews before shipment
+  (`09-sempai-kohai.md`) when connected.
+- **Step 5 (`knowledge:"orchestrator"`, `type: component`):** `include`
+  `component-header-render` (PythonCode) → render the `## 17:…` header.
+- **Step 6 (binding + execution):** bind the `component_db` ToolSkill in a
+  `knowledge:"rust"` step, then execute the `db-upsert-docus` Skill's associated
+  PythonCode in a `knowledge:"orchestrator"` step with `op=upsert`. The Rust Tool
   writes **both** `reborn_docus` rows (§2.1.1): the source row and the
   converted row, each with `validation_status='pending'` (they go to the
   Q1+Q2 queue — never `'validated'` on write, §7), `consumer_tags={03:llm}`,

@@ -159,6 +159,8 @@ explanation of what happens** carried alongside the machine form.
 | `step_descriptions` | 31 | JSONB | the authored `StepDescription` array (§0.4.1, the IBS authoring model) — **added V050** |
 | `variants` | 32 | JSONB | `Vec<RecipeVariant>` — variant_key, step_link, intent_examples, nested variable_patterns (§0.16.1). **Recipe-specific; no other component table has this column. Added V050.** |
 | `dependency_registry` | 33 | JSONB | the component dependency-graph entry (§0.19) — **added V050** |
+| `input_layouts` | (persisted in the Recipe document, not a separate DB column) | JSONB | maps each variant key → step local input bindings (`recipe-input-layout/1` format: `task_inputs` + `steps` map of `step_id → {local_name: {kind, value}}`). Required in the persisted Recipe document per recipe.md §7. |
+| `invocations` | (persisted in the Recipe document, not a separate DB column) | JSONB | maps each variant key → step ID → export function name (e.g. `{"fixed-reply": {"0:2": "publish_turn_reply"}}`). Required in the persisted Recipe document per recipe.md §7. |
 
 Unique: `(scope, name)`. Indexes: scope, scope+status, scope+prompt_uid (assembly order),
 `consumer_tags` GIN, partial `WHERE validation_status='validated'` on (scope, tier). (The
@@ -177,9 +179,12 @@ hit `reborn_skills`/`reborn_actions`/the memory-class tables/`reborn_extensions_
 - `RecipeVariant` — `variant_key`, `step_link` (the machine-readable IBS formula), `description:
   Option<String>` (the Phase HI human-readable explanation), `intent_examples`, nested
   `variable_patterns`.
-- `RecipeStep` (data model) = `{ skill: String, tool: String, params: Value, description: String }`
+- `RecipeStep` (legacy data model) = `{ skill: String, tool: String, params: Value, description: String }`
   — references a `ToolSkill` by name; `tool` denormalized for cheap lookup; `params` are Tier-0
-  overrides; `description` is the Tier-1 prompt-injection text.
+  overrides; `description` is the Tier-1 prompt-injection text. **This is the old v2 Rust struct,
+  not the v3 IBS authoring format.** The v3 authoring format is the `step_descriptions` JSONB
+  (`StepDescriptionEntry` containing `steps` with `knowledge`, `stepnumber`, `type`, `include`
+  — one UUID per component step, per recipe.md §7 and `04-ibs.md`). Do not conflate the two.
 - `ToolSkill` = tight description of one tool-usage pattern; target < 5000 tokens
   (agentskills.io progressive disclosure; `RecipeValidator` enforces the ceiling). Fields include
   `param_template`, `param_schema: Vec<ToolSkillParam>`, `preconditions`, `error_handling`,
