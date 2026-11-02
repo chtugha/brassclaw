@@ -156,9 +156,8 @@ Inside the SPA, the settings surface is:
   `TokensTab`, `UsersTab`, `LanguageTab`, …). The `tab` URL param defaults
   to `inference`; an unknown or admin-gated tab redirects.
 - `static/js/pages/settings/lib/settings-schema.js` — `SETTINGS_TABS`, the
-  ordered list of 17 tabs (`{ id, labelKey, icon }`). **There is no
-  `prefix` tab today** — confirmed by reading the file: the list ends at
-  `language`.
+  ordered list of **18 tabs** (`{ id, labelKey, icon }`), including the
+  `prefix` tab (item 17, shipped — see §3.4 and §6).
 - `static/js/app/routes.js` — `SETTINGS_SUB_ROUTES`, the sidebar
   navigation. Tabs whose `lib/*-api.js` are still stubs are commented out
   (hidden) until their v2 endpoints land; the unhide rule is documented
@@ -213,8 +212,8 @@ against a stub `RebornServicesApi` ("Test Through the Caller").
 
 ### 3.2 The settings tabs (today)
 
-`SETTINGS_TABS` (`settings-schema.js`) lists 17 tabs. The chat-relevant
-operator tabs and their backend reality (per `settings-api.js`):
+`SETTINGS_TABS` (`settings-schema.js`) lists **18 tabs** (including the `prefix` tab — shipped).
+The chat-relevant operator tabs and their backend reality (per `settings-api.js`):
 
 | Tab id | Component | Backend | Status |
 |--------|-----------|---------|--------|
@@ -302,17 +301,19 @@ The dedicated store + the tab (user item 8) are both **shipped**:
 
 ```sql
 CREATE TABLE reborn_basic_prompt_store (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id     TEXT NOT NULL,
-    user_id       TEXT,
-    agent_id      TEXT,
-    project_id    TEXT,
-    fingerprint   TEXT NOT NULL,   -- SHA-256 of bundle content
-    bundle_json   JSONB NOT NULL,
-    is_stale      BOOLEAN NOT NULL DEFAULT false,
-    assembled_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(tenant_id, user_id, agent_id, project_id)
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       TEXT        NOT NULL DEFAULT '',
+    user_id         TEXT        NOT NULL DEFAULT '',
+    agent_id        TEXT        NOT NULL DEFAULT '',
+    project_id      TEXT        NOT NULL DEFAULT '',
+    fingerprint     TEXT        NOT NULL DEFAULT '',    -- SHA-256 of bundle content
+    bundle_json     JSONB       NOT NULL DEFAULT '""',  -- assembled bundle text as a JSON string
+    is_stale        BOOLEAN     NOT NULL DEFAULT false,
+    assembled_at    TIMESTAMPTZ,
+    prewarm_last_at TIMESTAMPTZ,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT reborn_basic_prompt_store_scope_unique
+        UNIQUE (tenant_id, user_id, agent_id, project_id)
 );
 ```
 

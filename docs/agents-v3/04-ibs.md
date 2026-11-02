@@ -170,14 +170,19 @@ BuildInstruction
 ├── basic_prompt_section_refs[]      ← navigation hints into cached base-prompt (no re-fetch)
 ├── rust_steps[]                     ← CHANNEL R: Rust execution layer reads this only
 │   └── IbsRecipeStep { step_id, knowledge: Rust|Both,
-│                        include: Vec<Uuid>,            // ToolSkill UUIDs
-│                        tool_bindings: Vec<ToolBinding> }
+│                        include: Vec<Uuid>,            // internal representation; authoring rule:
+│                        tool_bindings: Vec<ToolBinding> }  //   exactly ONE UUID per component step
 └── orchestrator_steps[]            ← CHANNEL O: serialized into orchestrator_content
     └── IbsRecipeStep { step_id, knowledge: Orchestrator|Both,
                         step_type: Text|Component,
-                        include: Vec<Uuid>,            // Skill / PythonCode UUIDs
-                        info: Option<String> }         // WebUI annotation only; NOT emitted
+                        include: Vec<Uuid>,            // internal representation; authoring rule:
+                        info: Option<String> }         //   exactly ONE UUID per component step
 ```
+
+> **Authoring invariant:** the `include` field is a `Vec<Uuid>` in the Rust type, but every
+> `component` step **must reference exactly one stable UUID** per the Recipe authoring contract.
+> Zero or multiple UUIDs in a single step are a Q1 hard error. The Vec type permits the empty
+> case only for `text` steps; multi-UUID steps are rejected before activation.
 
 The per-step struct is **`IbsRecipeStep`** (renamed from `RecipeStep` to avoid colliding with the
 existing v2 `RecipeStep { skill, tool, params, description }` in `types/recipe.rs` — FIND-NEW-02).

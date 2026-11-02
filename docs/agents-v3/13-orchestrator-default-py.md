@@ -130,7 +130,7 @@ surface (seeded C.2):
 | `host.validate_component(component_id)` | read | Run the Q1 validator on a component. f3. |
 | `host.assemble_prior_knowledge(scope, …)` | read | Tier-0/Tier-1 prior-knowledge assembly (`PkrAssemblyResult`). |
 | `host.non_match_llm_answer(scope, user_text, …)` | read/llm | Non-Matching-Mode: build the prompt + get the LLM answer. |
-| `host.post_reply(scope, text)` | write | The single end-of-turn emit (both modes). |
+| `host.post_reply(answer=<string>)` | write | The single end-of-turn emit (both modes). Accepts the reply string as `answer=` keyword arg (or as the first positional argument); there is no `scope` parameter. |
 | `host.save_history(scope, …)` | write | Persist the turn transcript. |
 | `host.check_signals()` | read | Cooperative stop/inject signal check. |
 | `host.kohai_complete(…)` | write | Mark a Kohai self-improvement cycle done. f7. |

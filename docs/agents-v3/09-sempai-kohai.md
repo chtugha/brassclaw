@@ -218,20 +218,22 @@ Orchestrator (Monty). The **Sempai** is an optional reviewing LLM. The intercept
 prompt assembly and the Kohai call, so the Kohai's duties split by whether a Sempai is connected
 (`InterceptorMode::Routing` vs `Rerouting`):
 
-**Kohai's duties — without a Sempai (Routing):**
-- Be the **sole execution authority**: iterate the composed `steplist`, consult the `skills`
-  array for exact tool usage, and run each step's `executable_code` via `host.run_program`.
-- Assemble every LLM prompt it needs (there is no Sempai to do it).
+**Kohai's historical duties — without a Sempai (Routing):**
+- In the legacy loop driver, Kohai iterated the composed `steplist`, consulted the `skills`
+  array for exact tool usage, and ran each step's `executable_code` via `host.run_program`.
+  **v3 target:** sequencing belongs to Monty/Recipes; Kohai is the LLM responder, not the
+  execution authority. The Orchestrator (Monty) iterates the steplist and drives step execution.
+- Assemble every LLM prompt needed (there is no Sempai to do it).
 - Receive the prompt **unchanged** from the interceptor and produce the turn's answer.
 - Its work is **memorized** every turn (the `ForensicPacket` capture happens regardless of
   Sempai), so the self-optimization loop still accumulates telemetry.
 
-**Kohai's duties — with a Sempai (Rerouting):**
+**Kohai's historical duties — with a Sempai (Rerouting):**
 - All of the above, **except** the outgoing prompt is first **reviewed and adjusted** by the
   Sempai (volatile tail replaced, bridge messages injected; the stable KV-cached base Part A is
   kept). The Kohai runs on the **adjusted** prompt.
 - The Kohai does **not** propose components — that is the Sempai's role. The Kohai's duty remains
-  execution + answering; the Sempai's duty is review + proposal.
+  answering; the Sempai's duty is review + proposal.
 
 **Sempai's duties (only when connected):**
 - **Review** the outgoing Kohai prompt (audit prompt = Kohai prompt + segment metadata + token

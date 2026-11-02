@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **`docs/agents-v3` audit corrections** (7 fixes across 5 files): Corrected
+  architectural inaccuracies, internal contradictions, and stale claims found
+  during a full audit of the `docs/agents-v3/` documentation set against the
+  ground-truth guides (`recipe.md`, `skills.md`, `tools.md`, `toolskills.md`)
+  and `path_to_v3.5.md`.
+  - **`README.md`** — "Prior planning documents" section rewrote false claims
+    that `saved_plan_to_v3.md` is "archived" and "fully executed"; it is still
+    active with C.5/C.6, Phase K, Phase L, Phase N pending. DOC_CONVERSION table
+    entry corrected: three separate Tools (`component_get_content_hash`,
+    `docu_upsert`, `mark_prefix_stale`) replaced with one generic `component_db`
+    Tool + three leaf Skills per the actual design.
+  - **`04-ibs.md`** — `BuildInstruction` diagram annotated `include: Vec<Uuid>`
+    as "internal representation; authoring rule: exactly ONE UUID per component
+    step" and added an explicit callout block resolving the contradiction with the
+    step-table's one-UUID requirement.
+  - **`06-tools-system.md`** — §4 step 3 clarified that the `effect_type`-based
+    "read tools run freely" gate is the legacy `CapabilityHost` compatibility
+    path; the simplified v3 binding target requires current instance-wide global
+    policy to be checked before every dispatch regardless of `effect_type`.
+  - **`09-sempai-kohai.md`** — §4.0 Kohai duty descriptions changed to past-tense
+    "historical duties"; removed the present-tense claim that Kohai is the "sole
+    execution authority" iterating the steplist; added v3-target note that
+    Monty/Orchestrator owns sequencing and Kohai is the LLM responder.
+  - **`13-orchestrator-default-py.md`** — `host.post_reply` table entry corrected
+    from `host.post_reply(scope, text)` to `host.post_reply(answer=<string>)`;
+    the `scope` parameter does not exist (verified against `orchestrator.rs`).
+  - **`17-webui-prefix-tab.md`** — Two fixes: (1) stale "There is no `prefix`
+    tab today" and "17 tabs" corrected to 18 tabs with the `prefix` tab shipped,
+    consistent with §3.4 and §6; (2) V063 DDL corrected — `user_id`, `agent_id`,
+    `project_id` were shown as nullable but are `NOT NULL DEFAULT ''` in the
+    actual migration; `assembled_at`/`prewarm_last_at` are nullable `TIMESTAMPTZ`;
+    named constraint and correct column defaults added.
+
+
 - **L010 `builtin.file_exists` Rust primitive** (commit `ba629233f`): Adds
   `builtin.file_exists` as a full first-party capability. `FileExists` variant in
   `CodingCapabilityKind`; `file_exists()` handler in `coding/file.rs` returns

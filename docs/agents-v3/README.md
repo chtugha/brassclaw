@@ -135,7 +135,7 @@ documentation effort.
 | 15 | `15-component-catalog.md` | Full class-code taxonomy (0–23), `COMPONENT_TABLES` + `class_label`, common content-table shape (V036 canonical), content-column dispatch (`fetch_component_by_id`), `prompt_uid` stable ordering key, SCH-02 `prior_knowledge_content`, lineage, legacy `MemoryDoc`→class-table import (`component_import.rs`), hierarchy (§0.1), ExtensionCatalogue (§0.2), StepContextSpec (§0.5), cognitive-weight/`FINDING B` (frozen `DocType`), V050–V059 additive migrations | done |
 | 16 | `16-kernel-composition.md` | Kernel authority crates (`brassclaw_trust`/`secrets`/`safety`/`capabilities`/`runtime_policy`/`process_sandbox`/`reborn_identity`/`outbound`/`approvals`) with non-negotiable boundaries; composition wiring (`brassclaw_reborn_composition`: `factory.rs` `RebornServices`/`build_reborn_services`, `runtime.rs` `RebornRuntime`, `webui_v2_app` security middleware stack); runtime profile (Goal 1 done: `RebornCompositionProfile` removed, `BRASSCLAW_RUNTIME_PROFILE` = capability policy only; Goal 2 done: Postgres always, no DB-less mode); `PostgresSource`/`PgBasicPromptStore`/15 loop ports/`ValidationQueueStore` all shipped; kernel is not a v3 migration target | done |
 | 17 | `17-webui-prefix-tab.md` | WebUI v2 SPA (React + Rust route layer + host ingress), descriptor-driven routes, 18 settings tabs incl. `prefix`; **Prefix Tab shipped** (item 8: `prefix` SPA route + `usePrefixes` hook + `fetchPrefixes`/`regeneratePrefix` API; `GET /api/webchat/v2/prefixes` + `POST …/prefixes/{name}/regenerate`; `do_assemble_bundle`/`regenerate_prefix`/`get_system_bundle`; `reborn_basic_prompt_store` V063 + `PgBasicPromptStore`; `mark_stale`-on-graduation; `base-prompt` placeholder substitution §0.13); SKILL.md export (item 5.1, pending) | done |
-| — | `DOC_CONVERSION_MECHANISM_DESIGN.md` | Design/approach (presented, not yet implemented, stopped for approval) for the auto-conversion mechanism (repeat item 4): converts each `docs/agents-v3/*.md` to LLM-optimized form, stores as `reborn_docus` (class 17) components, auto-updates via `content_hash` + idle-time Sempai-Kohai loop, injects into base prompt (Prefix Tab) + per-turn retrieval; built AS v3 artifacts per the **recycling principle** (§4.0: many one-tool reusable leaf skills/tools the library recycles + ONE doc-specific Extension overview `doc-convert-method`) — Recipe `doc-convert` (class 21) + Action `doc-sync` (class 16, no-LLM) **compose** the leaves; PythonCode `sha256`/`hash_changed`/`markdown_section`/`token_estimate`/`format_component_header` (class 22, pure logic); Tools `component_get_content_hash`/`docu_upsert`/`mark_prefix_stale` (class 0) + ToolSkills (class 13); ExtensionCatalogue `doc-sync` (class 23) | presented |
+| — | `DOC_CONVERSION_MECHANISM_DESIGN.md` | Design/approach (presented, not yet implemented, stopped for approval) for the auto-conversion mechanism (repeat item 4): converts each `docs/agents-v3/*.md` to LLM-optimized form, stores as `reborn_docus` (class 17) components, auto-updates via `content_hash` + idle-time Sempai-Kohai loop, injects into base prompt (Prefix Tab) + per-turn retrieval; built AS v3 artifacts per the **recycling principle** (§4.0: many one-tool reusable leaf skills/tools the library recycles + ONE doc-specific Extension overview `doc-convert-method`) — Recipe `doc-convert` (class 21) + Action `doc-sync` (class 16, no-LLM) **compose** the leaves; PythonCode `sha256`/`hash_changed`/`markdown_section`/`token_estimate`/`format_component_header` (class 22, pure logic); one generic `component_db` Tool (class 0) with three leaf Skills (`component_get_content_hash`, `docu_upsert`, `mark_prefix_stale`) each covering one operation + ToolSkills (class 13); ExtensionCatalogue `doc-sync` (class 23) | presented |
 
 ---
 
@@ -191,14 +191,18 @@ README is the index for the source docs that the mechanism consumes.
 
 ## Prior planning documents
 
-The planning and audit documents that informed this system have been archived to
-[`docs/archive/`](../archive/) and are no longer referenced from active code or documentation:
+The planning documents that informed this system remain active references:
 
-- `saved_plan_to_v3.md` — the v3 implementation plan (phases A–N), now fully executed
-- `Goals_pre_v3_review.md` — two-goals audit, both goals accomplished
-- `saved_plan_to_v3_review.md` — 18-finding plan review, all findings resolved
-- `MESSAGE_FLOW_AND_PLAN_AUDIT.md` — message-flow audit
+- `saved_plan_to_v3.md` — the v3 implementation plan (phases A–N); **still active** — phases
+  C.5/C.6, Phase K, Phase L, Phase N and other sub-phases remain pending. It is the primary
+  source of per-phase/per-migration tracking referenced throughout these docs.
+- `Goals_pre_v3_review.md` — two-goals audit (both goals accomplished).
+- `saved_plan_to_v3_review.md` — 18-finding plan review (all findings resolved).
+- `MESSAGE_FLOW_AND_PLAN_AUDIT.md` — message-flow audit.
 - `builtin_stuff_v3.md`, `tomedo_v3.md`, `automations_v3.md`, others — reference material
+  (historical; specific sections may be superseded by the four ground-truth guides).
 
-These are preserved for historical reference. The `docs/agents-v3/` files are the
-current authoritative documentation.
+These are preserved for reference. The `docs/agents-v3/` files are the current
+authoritative documentation; where they conflict with historical planning documents,
+the agents-v3 docs and the four ground-truth guides (`recipe.md`, `skills.md`,
+`tools.md`, `toolskills.md`) take precedence.

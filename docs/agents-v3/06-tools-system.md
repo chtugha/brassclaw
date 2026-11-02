@@ -158,9 +158,14 @@ its registered handler. For the seeded `host.*` meta-tools `capability_id` equal
    the Executioner dispatches each through `CapabilityHost`:
    **authorization → obligations → approval gate → invoke**.
 3. **Approval / auth:** `CapabilityHost` is the **single caller-facing authority path** — no
-   parallel dispatch, no dispatch before authorization/obligations/approval gates. `effect_type`
-   drives the gate: `read` tools run freely; `write`/`exec`/`network`/`mixed` require the approval
-   flow. `shell` and `spawn_subagent` carry extra safety invariants (below).
+   parallel dispatch, no dispatch before authorization/obligations/approval gates. The current
+   `CapabilityHost` gate uses `effect_type` to decide the legacy approval flow: `read` tools
+   run without it; `write`/`exec`/`network`/`mixed` require the legacy approval flow.
+   **Simplified v3 target:** current instance-wide allow/block policy (from `reborn_tools`
+   `validation_status` and the kernel's global policy) is checked before every dispatch regardless
+   of `effect_type`; the legacy per-invocation `effect_type`-based gate is a pre-cutover
+   compatibility path, not the binding v3 requirement. `shell` and `spawn_subagent` carry extra
+   safety invariants (below).
 4. **Validation:** an authored Tool enters `pending` with `05:validator`; Q1 auto-validation + Q2
    manual review graduate it to `validated` (the `05:validator` tag is removed). System tools skip
    Q2 (Q1 still runs inside the seeder; Q1 errors are a build-time/CI bug, not a runtime failure).
