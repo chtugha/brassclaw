@@ -79,3 +79,29 @@ _Workers post BUILD_REQUEST and DONE here. Coordinator reads and processes._
 - WP-2: fmt CLEAN, clippy 0w, routing_tests 4/4 PASS.
 - WP-4b/4c: q1_admission unit tests PASS; clippy 3 dead_code warnings for pre-`965793bd9` source (resolved).
 
+
+## DONE — L010 (builtin.file_exists)
+
+**From:** Coordinator (inline implementation)
+**Time:** 2026-11-02T00:08:30Z
+**Commit:** `ba629233f`
+**Result:** PASS
+
+**Notes:**
+- `builtin.file_exists` Rust primitive added: `FileExists` variant in `CodingCapabilityKind`;
+  `file_exists()` handler in `coding/file.rs` (stat_optional path, returns `{kind, path}`).
+- `FILE_EXISTS_CAPABILITY_ID`, `CodingCapabilityMetadata` entry, `file_exists.input.v1.json`
+  schema added to `brassclaw_host_runtime`.
+- `tool_file_exists_row()`, `ts_file_exists_row()` constructors added to `builtin_bootstrap.rs`;
+  `let _ = tool_file_exists;` suppression removed; tool+toolskill added to `cat_read_file`
+  and `cat_filesystem` children lists.
+- `CAT_FILESYSTEM_OVERVIEW` updated to list `builtin.file_exists`.
+- 6 test additions in `first_party_builtin_tools.rs` (capability list, effects, is_coding, etc.).
+- `cargo fmt --all -- --check`: CLEAN
+- `cargo clippy -p brassclaw_first_party_extensions -p brassclaw_host_runtime
+  -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings`: 0 warnings
+- `cargo test -p brassclaw_first_party_extensions`: 38/38 PASS
+- `cargo test -p brassclaw_host_runtime --test first_party_builtin_tools`: 139/139 PASS
+- Pre-existing `reborn_durable_restart_integration` failures (2) unrelated; not introduced.
+
+---

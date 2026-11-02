@@ -4272,7 +4272,7 @@ fn pc_row(tenant: &str, name: &str, description: &str, content: &str) -> NewPgPy
         source: "system".into(),
         dependency_registry: None,
         includes: vec![],
-        content_checksum: None,
+        content_checksum: Some(sha256_hex(content)),
     }
 }
 
@@ -4320,7 +4320,7 @@ fn skill_row(
         intent_examples: json!([]),
         source: "system".into(),
         validation_status: "validated".into(),
-        content_checksum: None,
+        content_checksum: Some(sha256_hex(body)),
     }
 }
 
