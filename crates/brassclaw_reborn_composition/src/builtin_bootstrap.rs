@@ -282,9 +282,14 @@ impl BootstrapStores {
     /// Insert-or-recover a ToolSkill id (class 13). Same ON-CONFLICT pattern.
     async fn upsert_tool_skill(
         &self,
-        row: NewPgToolSkill,
+        mut row: NewPgToolSkill,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        // Ensure every system-seeded ToolSkill carries a content checksum so
+        // run_content_integrity_check can verify reborn_tool_skills rows.
+        if row.source == "system" && row.content_checksum.is_none() {
+            row.content_checksum = Some(sha256_hex(&row.content));
+        }
         let map =
             |e: crate::pg_tool_skill_store::PgToolSkillStoreError| SeedBuiltinBootstrapError::Db {
                 reason: e.to_string(),
