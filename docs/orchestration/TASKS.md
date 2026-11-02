@@ -18,8 +18,8 @@
 | TASK-015 | Validator Step 7-A: class-specific PC bodies for all 8 class routes | PKG-VALIDATOR-STEP7 | DONE | 2026-11-02 | 2026-11-02 | none |
 | TASK-016 | L001–L006 filesystem + L011–L012 path helpers in bootstrap_l013_approval | PKG-L001-APPROVAL | DONE | 2026-11-02 | 2026-11-02 | none |
 | TASK-017 | Trigger management PairSpecs in bootstrap_l013_approval | PKG-TRIGGER-APPROVAL | DONE | 2026-11-01 | 2026-11-01 | none |
-| TASK-018 | Validator Step 7-B: negative fixture tests per class route | PKG-VALIDATOR-STEP7B | IN_PROGRESS | 2026-11-01 | — | TASK-015 ✓ |
-| TASK-019 | Security grep leaf skill pairing + 3 PairSpecs | PKG-SECURITY-APPROVAL | IN_PROGRESS | 2026-11-01 | — | TASK-017 ✓ |
-| TASK-020 | ITEM-C: build monty_worker + run T2–T5 integration tests | PKG-MONTY-TESTS | IN_PROGRESS | 2026-11-01 | — | none |
+| TASK-018 | Validator Step 7-B: negative fixture tests per class route | PKG-VALIDATOR-STEP7B | DONE (source) | 2026-11-01 | 2026-11-01 | live exec → TASK-020 |
+| TASK-019 | Security grep leaf skill pairing + 3 PairSpecs | PKG-SECURITY-APPROVAL | DONE | 2026-11-01 | 2026-11-01 | none |
+| TASK-020 | ITEM-C: build monty_worker + run T2–T5 + Step 7-B integration tests | PKG-MONTY-TESTS | IN_PROGRESS | 2026-11-01 | — | monty_worker build |
 
 <!-- Append rows as tasks are created/completed -->

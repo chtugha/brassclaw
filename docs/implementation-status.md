@@ -1,4 +1,51 @@
 
+## 2026-11-01 — session-5: trigger/security-grep approval coverage; Step 7-B fixture tests
+
+**Commits:**
+- `5387fe588` — feat: wave-5 trigger/security-grep approval + Step 7-B validator PC body tests
+
+**TASK-017 — Trigger management PairSpecs:**
+- 4 trigger PairSpecs added to `TOOL_CALLING_PAIRS` in `bootstrap_l013_approval.rs`:
+  - `pc-exec-trigger-list` / `skill-trigger-list` / `ts-trigger-list`
+  - `pc-exec-trigger-list-active` / `skill-trigger-list-active` / `ts-trigger-list`
+  - `pc-exec-trigger-list-scheduled` / `skill-trigger-list-scheduled` / `ts-trigger-list`
+  - `pc-exec-trigger-resolve-and-remove` / `skill-trigger-list` / `ts-trigger-remove`
+    (direct dependent-chain exception: trigger_list result feeds trigger_remove)
+- Module doc updated to mention trigger management group.
+
+**TASK-018 — Validator Step 7-B fixture tests:**
+- New file `validator_pc_body_tests.rs` (16 tests, 2 per class × 8 classes).
+- Uses `UtilityRequest::Evaluate` to call each `check_structural_presence()` body
+  with valid and invalid candidates through the real Monty worker.
+- PC body constants made `pub(crate)` in `builtin_bootstrap.rs`.
+- Registered in `runtime.rs` under `postgres,skills-db` feature gate.
+- **Source-authored; live execution receipt pending TASK-020 (`monty_worker` build).**
+- Closes `missing4_v3_at_k3.md §Step 7-B` source gate.
+
+**TASK-019 — Security grep leaf skill pairing:**
+- 3 new dedicated leaf skills in Pass 13 (`builtin_bootstrap.rs`):
+  `skill-grep-hardcoded-secrets`, `skill-grep-injection-patterns`, `skill-grep-env-files`.
+- 3 PairSpecs added to `TOOL_CALLING_PAIRS` for `pc-grep-hardcoded-secrets`/
+  `pc-grep-injection-patterns` (host.grep / ts-grep) and `pc-grep-env-files`
+  (host.glob / ts-glob).
+- `security_review_children` updated to include 3 new skill UUIDs (3 PC + 9 leaf).
+
+**Validation:**
+- `cargo fmt --all -- --check`: CLEAN
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings`: 0 warnings
+
+**Remaining open items (updated):**
+- TASK-020 (ITEM-C): `monty_worker` build + live execution of T2–T5/T5b integration tests +
+  Step 7-B 16 validator PC body tests — build in progress in screen `build-monty-tests`.
+- Validator Steps 8–12: behavioral evidence, human Q2, catalogue activation (missing4_v3_at_k3.md §3).
+- K3 formal closure (BUILD-036 native/browser/worker/lint receipts still pending).
+- Prefix Phase C2/C3/D, dynamic occurrences (V35-13/14), R09/subagent migrations.
+- `pure-component-review.md` 8-item cutover contract: all open.
+
+---
+
+
+
 ## 2026-11-02 — session-4: approval coverage expansion; validator Step 7-A class-specific PC bodies
 
 **Commits:**
