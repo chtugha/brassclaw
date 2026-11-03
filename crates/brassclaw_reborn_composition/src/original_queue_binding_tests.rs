@@ -14,6 +14,7 @@ fn document(name: &str) -> Value {
     json!({"name":name,"description":"Original complete queue capture","content":"def retain(inputs):\n    return inputs['text']\n",
         "consumer_tags":["02:orchestrator"],"prior_knowledge_content":null,"override_prompt_creation":false,
         "intent_examples":null,"dependency_registry":null,"includes":[],
+        "similarity_parent_id":null,"replaces_id":null,"parent_version":null,
         "input_contract":{"text":{"type":"string","required":true,"checks":[]}},"result_contract":{"type":"string"},
         "preload":{"format":"python-preload/2","exports":{"retain":{"symbol":"retain","parameters":["inputs"],"mapping":true}},
         "private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":"retain"}})
@@ -191,7 +192,11 @@ async fn original_queue_lost_commit_ack_reads_the_original_without_reinsert() {
     let request = proposal(Uuid::new_v4(), component, document("ack-original"));
     transport.arm(1).unwrap();
     let (status, _) = super::tests::send(&app, "POST", URI, Some(&request), true).await;
-    assert!(!status.is_success());
+    assert_eq!(
+        status,
+        axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        "lost commit ACK must remain infrastructure uncertainty"
+    );
     assert_eq!(transport.cut_count(), 1);
     let native = super::tests::app(rig.pool.clone());
     let (status, original) = super::tests::send(&native, "POST", URI, Some(&request), true).await;
@@ -327,8 +332,10 @@ async fn original_queue_recipe_and_catalogue_create_preserve_complete_documents(
         let operation = Uuid::new_v4();
         let mut doc = json!({"name":format!("queued-projection-{class}"),"description":"Complete original projection fixture",
             "consumer_tags":["02:orchestrator"],"prior_knowledge_content":null,"override_prompt_creation":false,
-            "intent_examples":null,"dependency_registry":null});
+            "intent_examples":null,"dependency_registry":null,
+            "similarity_parent_id":null,"replaces_id":null,"parent_version":null});
         if class == 21 {
+            doc["status"] = json!("active");
             doc["trigger"] = Value::Null;
             doc["steps"] = json!([]);
             doc["step_descriptions"] = json!([]);
@@ -476,4 +483,612 @@ async fn original_queue_upgrade_preserves_old_pending_bytes_without_backfill() {
         .batch_execute("SET search_path TO public")
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn original_queue_escaped_source_near_revision_limit_roundtrips_without_seal_quota() {
+    use brassclaw_skills::component_revision::REVISION_LIMITS;
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let app = super::tests::app(rig.pool.clone());
+    let component = Uuid::new_v4();
+    let operation = Uuid::new_v4();
+    let line = "# source: \"quoted\" \\directory\\file \"tail\"\n";
+    let mut doc = document("escaped-original");
+    // Size against the existing revision envelope owner, including its JSON
+    // escaping. No independent binding quota is introduced by this fixture.
+    doc["content"] = json!(line);
+    let sample = proposal(operation, component, doc.clone());
+    let envelope_len = sample["candidate_bytes"].as_str().unwrap().len();
+    let encoded_line = serde_json::to_string(line).unwrap().len() - 2;
+    let count = (REVISION_LIMITS.max_bytes - envelope_len) / encoded_line;
+    doc["content"] = json!(line.repeat(count));
+    let mut input = proposal(operation, component, doc.clone());
+    let original = input["candidate_bytes"].as_str().unwrap().to_owned();
+    assert!(original.len() <= REVISION_LIMITS.max_bytes);
+    assert!(REVISION_LIMITS.max_bytes - original.len() < encoded_line * 2);
+    // The existing operator route's 14-MiB transport limit remains in force.
+    assert!(serde_json::to_vec(&input).unwrap().len() < 14 * 1024 * 1024);
+    // A real migrated row may also carry formatter output, which is not
+    // revision input and has no 64-MiB combined-seal policy. Keep this on the
+    // server side: do not broaden the existing HTTP/revision input contract.
+    let sc = scope();
+    let store = ValidationQueueStore::new(rig.pool.clone());
+    let client = rig.pool.get().await.unwrap();
+    client.execute("INSERT INTO reborn_python_code(id,tenant_id,user_id,agent_id,project_id,name,description,content,consumer_tags) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        &[&component,&sc.tenant_id,&sc.user_id,&sc.agent_id,&sc.project_id,&doc["name"].as_str().unwrap(),&doc["description"].as_str().unwrap(),&doc["content"].as_str().unwrap(),&vec!["02:orchestrator".to_string()]]).await.unwrap();
+    let cache_unit = r#"\""#;
+    let repeats = i32::try_from(REVISION_LIMITS.max_bytes / cache_unit.len()).unwrap();
+    client
+        .execute(
+            "UPDATE reborn_python_code SET formatted_content=repeat($2::text,$3::int) WHERE id=$1",
+            &[&component, &cache_unit, &repeats],
+        )
+        .await
+        .unwrap();
+    drop(client);
+    store.submit(&sc, component, 22, None).await.unwrap();
+    let queue_id = store.list(&sc, None).await.unwrap()[0].id;
+    input
+        .as_object_mut()
+        .unwrap()
+        .remove("create_queue_project");
+    input["queue_ids"] = json!([queue_id]);
+    let (status, receipt) = super::tests::send(&app, "POST", URI, Some(&input), true).await;
+    assert!(status.is_success(), "{status}: {receipt}");
+    let seal_bytes:i32=rig.pool.get().await.unwrap().query_one("SELECT octet_length(binding_bytes) FROM reborn_component_review_queue_bindings WHERE queue_id=$1",&[&queue_id]).await.unwrap().get(0);
+    assert!(
+        seal_bytes > 64 * 1024 * 1024,
+        "regression: legal expanded seal must exceed the removed arbitrary ceiling"
+    );
+    let captured = ValidationQueueStore::new(rig.pool.clone())
+        .capture_q1_candidate(&scope(), component)
+        .await
+        .unwrap();
+    let live: Value = serde_json::from_str(captured.original().unwrap().component_bytes()).unwrap();
+    assert_eq!(live["content"], doc["content"]);
+    let original_subject = PgReviewSubmissionStore::new(rig.pool.clone())
+        .read(operation)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        original_subject.snapshot.revisions()[&component]
+            .draft()
+            .exact_bytes(),
+        original
+    );
+    let (status, retry) = super::tests::send(&app, "POST", URI, Some(&input), true).await;
+    assert!(status.is_success());
+    assert_eq!(receipt, retry);
+}
+
+#[tokio::test]
+async fn original_queue_http_projects_unresolved_historical_and_bound_states_without_mutation() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let app = super::tests::app(rig.pool.clone());
+    let sc = scope();
+    let store = ValidationQueueStore::new(rig.pool.clone());
+    let legacy = Uuid::new_v4();
+    rig.pool.get().await.unwrap().execute("INSERT INTO reborn_recipes(id,tenant_id,user_id,agent_id,project_id,name,description,steps) VALUES($1,$2,$3,$4,$5,'legacy-unresolved-recipe','Preserved draft','[]')",
+        &[&legacy,&sc.tenant_id,&sc.user_id,&sc.agent_id,&sc.project_id]).await.unwrap();
+    store.submit(&sc, legacy, 21, None).await.unwrap();
+    let historical = Uuid::new_v4();
+    let client = rig.pool.get().await.unwrap();
+    client.execute("INSERT INTO reborn_recipes(id,tenant_id,user_id,agent_id,project_id,name,description,steps) VALUES($1,$2,$3,$4,$5,'historical-custody-recipe','Preserved old draft','[]')",
+        &[&historical,&sc.tenant_id,&sc.user_id,&sc.agent_id,&sc.project_id]).await.unwrap();
+    client.execute("INSERT INTO reborn_validation_queue(tenant_id,user_id,agent_id,project_id,component_id,component_class,original_binding_required) VALUES($1,$2,$3,$4,$5,21,false)",
+        &[&sc.tenant_id,&sc.user_id,&sc.agent_id,&sc.project_id,&historical]).await.unwrap();
+    drop(client);
+    let component = Uuid::new_v4();
+    let input = proposal(Uuid::new_v4(), component, document("bound-code-projection"));
+    let (status, receipt) = super::tests::send(&app, "POST", URI, Some(&input), true).await;
+    assert!(status.is_success());
+    let before: String = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT to_jsonb(q)::text FROM reborn_validation_queue q WHERE component_id=$1",
+            &[&legacy],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let uri = "/api/webchat/v2/validation-queue?project_id=default&q=auto";
+    let (status, view) = super::tests::send(&app, "GET", uri, None, true).await;
+    assert!(status.is_success(), "{status}: {view}");
+    let rows = view["items"].as_array().unwrap();
+    let old = rows.iter().find(|r| r["id"] == legacy.to_string()).unwrap();
+    assert_eq!(old["original_review"]["state"], "unresolved");
+    assert!(old["original_review"]["queue_id"].is_string());
+    assert!(old["original_review"]["submission_id"].is_null());
+    let bound = rows
+        .iter()
+        .find(|r| r["id"] == component.to_string())
+        .unwrap();
+    assert_eq!(bound["original_review"]["state"], "bound");
+    assert_eq!(
+        bound["original_review"]["submission_id"],
+        receipt["submission_id"]
+    );
+    let (status, count) = super::tests::send(
+        &app,
+        "GET",
+        "/api/webchat/v2/validation-queue/count?project_id=default&status=pending",
+        None,
+        true,
+    )
+    .await;
+    assert!(status.is_success());
+    assert_eq!(count["count"], 3);
+    let after: String = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT to_jsonb(q)::text FROM reborn_validation_queue q WHERE component_id=$1",
+            &[&legacy],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(before, after, "diagnosis must not rewrite queue/evidence");
+    let old = view["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == historical.to_string())
+        .unwrap();
+    assert_eq!(old["original_review"]["state"], "legacy_unresolved");
+}
+
+#[tokio::test]
+async fn original_queue_broken_transport_preserves_unavailable_and_original_readback() {
+    use brassclaw_pg::test_support::{AckCutRule, AckCutTransport};
+    use brassclaw_product_workflow::RecipeStoreError;
+    use secrecy::ExposeSecret;
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let app = super::tests::app(rig.pool.clone());
+    let component = Uuid::new_v4();
+    let operation = Uuid::new_v4();
+    let input = proposal(operation, component, document("transport-original"));
+    let (status, receipt) = super::tests::send(&app, "POST", URI, Some(&input), true).await;
+    assert!(status.is_success());
+    let draft = ReviewSubmissionDraft::new(
+        operation,
+        &scope().user_id,
+        ComponentRevisionDraft::from_json(input["candidate_bytes"].as_str().unwrap()).unwrap(),
+        None,
+        vec![],
+    )
+    .unwrap();
+    let transport =
+        AckCutTransport::start(rig.url.expose_secret(), vec![AckCutRule::next_commit(1)])
+            .await
+            .unwrap();
+    let pool = transport.pool.clone();
+    let mut client = pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    // Close the real wire while the original read transaction is alive.
+    transport.shutdown().await.unwrap();
+    let result = ValidationQueueStore::read_original_create(&tx, &draft, &scope()).await;
+    let error = match result {
+        Err(error) => error,
+        Ok(_) => panic!("disconnected original read must fail"),
+    };
+    assert!(matches!(
+        crate::validation_queue::original_review_error(error),
+        RecipeStoreError::Unavailable(_)
+    ));
+    let queue_id: Uuid = receipt["queue_ids"][0].as_str().unwrap().parse().unwrap();
+    let error = match queue::read_in_transaction(&tx, queue_id).await {
+        Err(error) => error,
+        Ok(_) => panic!("disconnected binding read must fail"),
+    };
+    assert!(matches!(
+        crate::validation_queue::original_review_error(
+            crate::validation_queue::map_original_store(error, component)
+        ),
+        RecipeStoreError::Unavailable(_)
+    ));
+    drop(tx);
+    drop(client);
+    let (status, retry) = super::tests::send(&app, "POST", URI, Some(&input), true).await;
+    assert!(status.is_success());
+    assert_eq!(receipt, retry);
+}
+
+#[tokio::test]
+async fn original_queue_v1_projection_inventories_every_current_class_column() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let client = rig.pool.get().await.unwrap();
+    for class in [0_i16, 1, 2, 3, 13, 21, 22, 23] {
+        // Inventory against the migrated database, not a second Rust field list.
+        // A new semantic column must deliberately version the projection owner;
+        // it cannot silently disappear or reinterpret an old immutable seal.
+        let row=client.query_one("SELECT review_queue_fields($1::smallint),
+            (SELECT array_agg(a.attname::text ORDER BY a.attnum) FROM pg_attribute a
+             WHERE a.attrelid=to_regclass(review_queue_table($1::smallint)) AND a.attnum>0 AND NOT a.attisdropped
+               AND review_component_bytes(jsonb_build_object(a.attname,true))::jsonb ? a.attname::text
+               AND NOT a.attname::text=ANY(review_queue_derived_fields()))",&[&class]).await.unwrap();
+        let mut declared: Vec<String> = row.get(0);
+        let mut actual: Vec<String> = row.get(1);
+        declared.sort();
+        actual.sort();
+        assert_eq!(
+            declared, actual,
+            "class {class} has unclassified or missing projection fields"
+        );
+    }
+}
+
+#[tokio::test]
+async fn original_queue_tool_skill_and_binding_capture_rejects_missing_and_mismatched_metadata() {
+    use brassclaw_skills::{
+        review_submission_store::FunctionReviewPartnerDraft,
+        revision_store::PgComponentRevisionStore,
+    };
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let sc = scope();
+    let store = ValidationQueueStore::new(rig.pool.clone());
+    let revisions = PgComponentRevisionStore::new(rig.pool.clone());
+    for class in [0_i16, 1, 2, 3, 13] {
+        let root = Uuid::new_v4();
+        let tool = Uuid::new_v4();
+        let binding = Uuid::new_v4();
+        let code = Uuid::new_v4();
+        // These exact retained prerequisites are deliberately unreviewed context,
+        // not fake executable/Q1 evidence. Only original capture is under test.
+        let primitive = |id, class, deps: Vec<Uuid>| {
+            ComponentRevisionDraft::from_json(
+                &json!({"format":"component-revision/1","uuid":id,"class_code":class,
+            "document":{},"dependencies":deps,"association":null})
+                .to_string(),
+            )
+            .unwrap()
+        };
+        let tool_ref = revisions
+            .stage(&primitive(tool, 0, vec![]), 0)
+            .await
+            .unwrap();
+        let binding_ref = revisions
+            .stage(&primitive(binding, 13, vec![tool]), 0)
+            .await
+            .unwrap();
+        let code_ref = revisions
+            .stage(&primitive(code, 22, vec![]), 0)
+            .await
+            .unwrap();
+        let table = crate::validation_queue::resolve_component_table(i32::from(class)).unwrap();
+        let name = format!("original-class-{class}-{}", root.simple());
+        let client = rig.pool.get().await.unwrap();
+        client.execute(&format!("INSERT INTO {table}(id,tenant_id,user_id,agent_id,project_id,name,description,class_code) VALUES($1,$2,$3,$4,$5,$6,'Exact original metadata fixture',$7)"),
+            &[&root,&sc.tenant_id,&sc.user_id,&sc.agent_id,&sc.project_id,&name,&class]).await.unwrap();
+        let registry = match class {
+            0 => json!({"helper":code}),
+            13 => json!({"tool":tool}),
+            _ => json!({"tool":tool,"binding":binding,"code":code}),
+        };
+        client.execute(&format!("UPDATE {table} SET dependency_registry=$2,prior_knowledge_content='Exact original guidance',override_prompt_creation=true WHERE id=$1"),&[&root,&registry]).await.unwrap();
+        if (1..=3).contains(&class) {
+            let compatibility = match class {
+                1 => "brassclaw-class:rusty",
+                2 => "brassclaw-class:monty",
+                _ => "brassclaw-class:llm",
+            };
+            client.execute("UPDATE reborn_skills SET body='Original usage',compatibility=$2,license='MIT',allowed_tools=ARRAY['host.read_file'],version='1.2.3',
+                keywords=ARRAY['original'],exclude_keywords=ARRAY['excluded'],patterns=ARRAY['exact'],tags=ARRAY['review'],max_context_tokens=4096,
+                setup_marker='ready',required_binaries=ARRAY['read-helper'],required_env=ARRAY['ORIGINAL_ENV'],required_config=ARRAY['read.mode'] WHERE id=$1",&[&root,&compatibility]).await.unwrap();
+        } else if class == 0 {
+            client.execute("UPDATE reborn_tools SET capability_id='host.read_file',param_schema='{\"path\":\"string\"}',param_template='{\"path\":\"original\"}' WHERE id=$1",&[&root]).await.unwrap();
+        } else {
+            client.execute("UPDATE reborn_tool_skills SET tool_name='host.read_file',content='Original binding',param_schema='{\"path\":\"string\"}',param_template='{\"path\":\"original\"}' WHERE id=$1",&[&root]).await.unwrap();
+        }
+        let document:Value=client.query_one(&format!("SELECT review_queue_projection($2::smallint,to_jsonb(c)) FROM {table} c WHERE id=$1"),&[&root,&class]).await.unwrap().get(0);
+        drop(client);
+        store
+            .submit(&sc, root, i32::from(class), None)
+            .await
+            .unwrap();
+        let queued = store
+            .list(&sc, None)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|r| r.component_id == root)
+            .unwrap();
+        let queue_id = queued.id;
+        let association = if (1..=3).contains(&class) {
+            Some(json!({"format":"skill-association/1","skill_uuid":root,"python_code_uuid":code,"tool_skill_uuid":binding,"tool_uuid":tool,
+            "callable":"host.read_file","inputs":{},"arguments":{},"code_arguments":{},"result":{"type":"string"},
+            "failure":{"action":"stop","max_attempts":1,"idempotency":"not_assumed","idempotency_evidence_ref":null,"retryable_outcomes":[]}}).to_string())
+        } else {
+            None
+        };
+        let declared = match class {
+            0 => vec![code],
+            13 => vec![tool],
+            _ => vec![tool, binding, code],
+        };
+        let selected = match class {
+            0 => vec![code_ref],
+            13 => vec![tool_ref],
+            _ => vec![tool_ref, binding_ref],
+        };
+        let make = |doc: Value| {
+            let candidate = ComponentRevisionDraft::from_json(
+                &json!({"format":"component-revision/1","uuid":root,"class_code":class,
+                "document":doc,"dependencies":declared,"association":association})
+                .to_string(),
+            )
+            .unwrap();
+            if (1..=3).contains(&class) {
+                ReviewSubmissionDraft::new_function(
+                    Uuid::new_v4(),
+                    "operator",
+                    candidate,
+                    None,
+                    selected.clone(),
+                    0,
+                    FunctionReviewPartnerDraft::Context {
+                        reference: code_ref,
+                    },
+                )
+                .unwrap()
+            } else {
+                ReviewSubmissionDraft::new(
+                    Uuid::new_v4(),
+                    "operator",
+                    candidate,
+                    None,
+                    selected.clone(),
+                )
+                .unwrap()
+            }
+        };
+        let mut mismatches = Vec::new();
+        let mut missing = document.clone();
+        missing
+            .as_object_mut()
+            .unwrap()
+            .remove("dependency_registry");
+        mismatches.push(missing);
+        for (field, value) in [
+            ("dependency_registry", json!({"other":"wrong"})),
+            ("prior_knowledge_content", json!("wrong usage")),
+            ("override_prompt_creation", json!(false)),
+            ("replaces_id", json!(Uuid::new_v4())),
+        ] {
+            let mut bad = document.clone();
+            bad[field] = value;
+            mismatches.push(bad);
+        }
+        let specialized: Vec<(&str, Value)> = match class {
+            0 => vec![
+                ("capability_id", json!("host.other")),
+                ("param_schema", json!({})),
+                ("effect_type", json!("write")),
+            ],
+            13 => vec![
+                ("tool_name", json!("host.other")),
+                ("param_schema", json!({})),
+                ("includes", json!([Uuid::new_v4()])),
+            ],
+            _ => vec![
+                ("compatibility", json!("wrong")),
+                ("allowed_tools", json!([])),
+                ("license", json!("other")),
+                ("version", json!("2.0.0")),
+                ("required_binaries", json!([])),
+                ("required_env", json!([])),
+                ("required_config", json!([])),
+                ("setup_marker", Value::Null),
+                ("max_context_tokens", json!(1)),
+            ],
+        };
+        for (field, value) in specialized {
+            let mut bad = document.clone();
+            bad[field] = value;
+            mismatches.push(bad);
+        }
+        let original_queue: String = rig
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT to_jsonb(q)::text FROM reborn_validation_queue q WHERE id=$1",
+                &[&queue_id],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        for bad in mismatches {
+            let draft = make(bad);
+            let mut client = rig.pool.get().await.unwrap();
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .start()
+                .await
+                .unwrap();
+            let result = ValidationQueueStore::submit_original_in_transaction(
+                &tx,
+                &draft,
+                &[(sc.clone(), root, queue_id)],
+                &[queue_id],
+                "existing_queue",
+            )
+            .await;
+            assert!(
+                matches!(result, Err(ValidationQueueError::ReviewChanged { .. })),
+                "class {class} must reject incomplete/different original metadata"
+            );
+            tx.rollback().await.unwrap();
+        }
+        // Independently challenge the DB trigger: a legitimate immutable
+        // subject and correctly checksummed seal still cannot certify different
+        // actual authored metadata, even when bypassing the caller precheck.
+        let mut bad_document = document.clone();
+        bad_document["dependency_registry"] = json!({"wrong":"different original"});
+        let bad_original = make(bad_document);
+        let mut client = rig.pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .unwrap();
+        let queue_bytes:String=tx.query_one("SELECT review_queue_bytes(q) FROM reborn_validation_queue q WHERE id=$1 FOR UPDATE",&[&queue_id]).await.unwrap().get(0);
+        let component_bytes:String=tx.query_one(&format!("SELECT review_component_bytes(to_jsonb(c)) FROM {table} c WHERE id=$1 FOR UPDATE"),&[&root]).await.unwrap().get(0);
+        let bad_subject = PgReviewSubmissionStore::submit_in_transaction(&tx, &bad_original)
+            .await
+            .unwrap();
+        tx.execute("INSERT INTO reborn_component_review_queue_requests(submission_id,queue_ids,request_kind) VALUES($1,$2,'existing_queue')",&[&bad_subject.id,&vec![queue_id]]).await.unwrap();
+        let forged = queue::retain_in_transaction(
+            &tx,
+            &bad_subject,
+            queue_id,
+            root,
+            component_bytes.clone(),
+            queue_bytes,
+            component_bytes,
+        )
+        .await;
+        assert!(
+            matches!(
+                forged,
+                Err(brassclaw_skills::review_submission_store::SubmissionStoreError::Database(_))
+            ),
+            "real binding trigger must reject class {class} metadata mismatch"
+        );
+        tx.rollback().await.unwrap();
+        drop(client);
+        let client = rig.pool.get().await.unwrap();
+        let row=client.query_one("SELECT (SELECT count(*) FROM reborn_component_revisions WHERE component_id=$1),to_jsonb(q)::text FROM reborn_validation_queue q WHERE id=$2",&[&root,&queue_id]).await.unwrap();
+        assert_eq!(row.get::<_, i64>(0), 0);
+        assert_eq!(row.get::<_, String>(1), original_queue);
+        drop(client);
+        let original = make(document);
+        let mut client = rig.pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .unwrap();
+        let subject = ValidationQueueStore::submit_original_in_transaction(
+            &tx,
+            &original,
+            &[(sc.clone(), root, queue_id)],
+            &[queue_id],
+            "existing_queue",
+        )
+        .await
+        .unwrap();
+        assert_eq!(subject.candidate.class_code, i32::from(class));
+        if (1..=3).contains(&class) {
+            assert!(
+                subject
+                    .function_partner
+                    .is_some_and(|p| !p.changed && p.reference == code_ref)
+            );
+        }
+        tx.commit().await.unwrap();
+        drop(client);
+        let captured = store.capture_q1_candidate(&sc, root).await.unwrap();
+        assert_eq!(captured.original().unwrap().submission_id(), subject.id);
+    }
+}
+
+#[tokio::test]
+async fn original_queue_http_pages_full_recipe_stock_without_class_starvation() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let app = super::tests::app(rig.pool.clone());
+    let sc = scope();
+    let size = crate::pg_recipe_store::MAX_RECIPE_LIST_ROWS;
+    let client = rig.pool.get().await.unwrap();
+    client.execute("INSERT INTO reborn_recipes(tenant_id,user_id,agent_id,project_id,name,description,steps,created_at)
+        SELECT $1,$2,$3,$4,'page-recipe-'||i,'Pending original needed','[]',TIMESTAMPTZ '2000-01-01 00:00:00+00'+i*interval '1 second' FROM generate_series(1,$5::bigint) i",
+        &[&sc.tenant_id,&sc.user_id,&sc.agent_id,&sc.project_id,&size]).await.unwrap();
+    let early = Uuid::new_v4();
+    let late = Uuid::new_v4();
+    for (component, name, time) in [
+        (early, "page-early-code", "1999-01-01T00:00:00Z"),
+        (late, "page-late-code", "2002-01-01T00:00:00Z"),
+    ] {
+        client.execute("INSERT INTO reborn_python_code(id,tenant_id,user_id,agent_id,project_id,name,description) VALUES($1,$2,$3,$4,$5,$6,'Unresolved original')",
+            &[&component,&sc.tenant_id,&sc.user_id,&sc.agent_id,&sc.project_id,&name]).await.unwrap();
+        client.execute("INSERT INTO reborn_validation_queue(tenant_id,user_id,agent_id,project_id,component_id,component_class,submitted_at)
+            VALUES($1,$2,$3,$4,$5,22,$6::text::timestamptz)",&[&sc.tenant_id,&sc.user_id,&sc.agent_id,&sc.project_id,&component,&time]).await.unwrap();
+    }
+    drop(client);
+    let uri = "/api/webchat/v2/validation-queue?project_id=default&q=auto";
+    let (status, first) = super::tests::send(&app, "GET", uri, None, true).await;
+    assert!(status.is_success(), "{status}: {first}");
+    assert_eq!(first["page_size"], size);
+    assert_eq!(first["items"].as_array().unwrap().len() as i64, size);
+    assert_eq!(
+        first["items"][0]["id"],
+        early.to_string(),
+        "global ordering must precede Recipe-only ordering"
+    );
+    let after = first["next_cursor"]
+        .as_str()
+        .expect("full page must expose remaining rows");
+    let (status, second) =
+        super::tests::send(&app, "GET", &format!("{uri}&after={after}"), None, true).await;
+    assert!(status.is_success(), "{status}: {second}");
+    assert_eq!(second["items"].as_array().unwrap().len(), 2);
+    assert!(second["next_cursor"].is_null());
+    assert_eq!(
+        second["items"][1]["id"],
+        late.to_string(),
+        "later non-Recipe original must be reachable"
+    );
+    assert_eq!(second["items"][1]["original_review"]["state"], "unresolved");
+    let all = first["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(second["items"].as_array().unwrap())
+        .collect::<Vec<_>>();
+    let unique = all
+        .iter()
+        .map(|row| row["id"].as_str().unwrap())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(unique.len() as i64, size + 2);
+    for pair in all.windows(2) {
+        let key = |row: &Value| {
+            (
+                row["queued_at"].as_str().unwrap().to_owned(),
+                row["class_code"].as_u64().unwrap(),
+                row["id"].as_str().unwrap().to_owned(),
+            )
+        };
+        assert!(
+            key(pair[0]) < key(pair[1]),
+            "all classes/pages share one strict oldest-first order"
+        );
+    }
+    let (status, _) = super::tests::send(
+        &app,
+        "GET",
+        &format!("/api/webchat/v2/validation-queue?project_id=default&q=manual&after={after}"),
+        None,
+        true,
+    )
+    .await;
+    assert_eq!(
+        status,
+        axum::http::StatusCode::BAD_REQUEST,
+        "a cursor cannot silently switch queue buckets"
+    );
 }

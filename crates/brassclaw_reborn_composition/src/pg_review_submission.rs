@@ -72,6 +72,7 @@ pub(crate) fn selection(value: ComponentRevisionRef) -> ComponentRevisionSelecti
 fn receipt(value: &RetainedReviewSubmission) -> ComponentReviewSubmissionReceipt {
     ComponentReviewSubmissionReceipt {
         queue_ids: vec![],
+        queue_binding_status: brassclaw_product_workflow::ReviewQueueBindingStatus::Standalone,
         submission_id: value.id.to_string(),
         subject_checksum: value.checksum.clone(),
         candidate: selection(value.candidate),
@@ -107,6 +108,9 @@ async fn original_receipt(
             .into_iter()
             .map(|id| id.to_string())
             .collect();
+    }
+    if !result.queue_ids.is_empty() {
+        result.queue_binding_status = brassclaw_product_workflow::ReviewQueueBindingStatus::Bound;
     }
     Ok(result)
 }
@@ -342,6 +346,10 @@ pub(crate) async fn get(
             .collect();
     }
 
+    if !retained_receipt.queue_ids.is_empty() {
+        retained_receipt.queue_binding_status =
+            brassclaw_product_workflow::ReviewQueueBindingStatus::Bound;
+    }
     tx.commit()
         .await
         .map_err(|_| RecipeStoreError::Unavailable("review snapshot commit unavailable".into()))?;

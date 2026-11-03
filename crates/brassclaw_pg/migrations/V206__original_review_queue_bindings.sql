@@ -21,16 +21,34 @@ LANGUAGE sql IMMUTABLE STRICT AS $$
  WHEN 21 THEN 'reborn_recipes' WHEN 22 THEN 'reborn_python_code'
  WHEN 23 THEN 'reborn_extension_catalogues' END
 $$;
--- All existing author-controlled projection fields must be supplied explicitly.
--- v3-only metadata remains in the original revision, not synthesized here.
+-- Single v1 projection owner, inventoried against V027/V030/V033/V037,
+-- V046/V050/V052/V053/V055/V064/V069-V072/V077/V079/V082/V085.
+-- Identity/scope/class are checked independently against the locked queue/root.
+-- prompt_uid is sequence-derived; source is host provenance, never approval;
+-- hashes are derived similarity/bootstrap checks; formatted_content is V055
+-- formatter output, not an alternate authored executable definition.
+-- Lifecycle/accounting exclusions reuse review_component_bytes above.
+CREATE FUNCTION review_queue_derived_fields() RETURNS text[]
+LANGUAGE sql IMMUTABLE AS $$
+ SELECT ARRAY['id','tenant_id','user_id','agent_id','project_id','class_code',
+   'prompt_uid','source','content_hash','content_checksum','formatted_content']::text[]
+$$;
+-- This is the fixed /1 projection, not a runtime latest-schema lookup. A new
+-- semantic column needs an explicit successor contract and reader migration;
+-- the schema inventory test rejects an unclassified addition. Old seals keep
+-- their original projection and are never reinterpreted by a newer table shape.
 CREATE FUNCTION review_queue_fields(code smallint) RETURNS text[]
 LANGUAGE sql IMMUTABLE STRICT AS $$
- SELECT ARRAY['name','description','consumer_tags']::text[] ||
+ SELECT ARRAY['name','description','consumer_tags','dependency_registry',
+   'prior_knowledge_content','override_prompt_creation',
+   'similarity_parent_id','replaces_id','parent_version']::text[] ||
  CASE code WHEN 0 THEN ARRAY['param_schema','param_template','effect_type','preconditions','error_handling','capability_id']
- ELSE ARRAY['prior_knowledge_content','override_prompt_creation','intent_examples','dependency_registry'] ||
- CASE WHEN code BETWEEN 1 AND 3 THEN ARRAY['body']
+ ELSE ARRAY['intent_examples'] ||
+ CASE WHEN code BETWEEN 1 AND 3 THEN ARRAY['body','compatibility','license','allowed_tools','version',
+   'keywords','exclude_keywords','patterns','tags','max_context_tokens','setup_marker',
+   'required_binaries','required_env','required_config']
  WHEN code=13 THEN ARRAY['content','tool_name','param_schema','param_template','includes']
- WHEN code=21 THEN ARRAY['trigger','steps','step_descriptions','variants','validates_class_code']
+ WHEN code=21 THEN ARRAY['trigger','steps','status','step_descriptions','variants','validates_class_code']
  WHEN code=22 THEN ARRAY['content','includes']
  WHEN code=23 THEN ARRAY['version','overview_doc','task_groups','child_component_ids','intent_index']
  ELSE ARRAY[]::text[] END END
@@ -38,6 +56,13 @@ $$;
 CREATE FUNCTION review_queue_projection(code smallint, document jsonb) RETURNS jsonb
 LANGUAGE sql IMMUTABLE STRICT AS $$
  SELECT jsonb_object_agg(k,document->k) FROM unnest(review_queue_fields(code)) k
+$$;
+CREATE FUNCTION review_queue_agrees(code smallint, document jsonb, actual jsonb) RETURNS boolean
+LANGUAGE sql IMMUTABLE STRICT AS $$
+ SELECT document ?& review_queue_fields(code)
+   AND review_queue_projection(code,document)=review_queue_projection(code,actual)
+   AND NOT EXISTS(SELECT 1 FROM jsonb_each(document) d JOIN jsonb_each(actual) a ON d.key=a.key
+     WHERE d.value IS DISTINCT FROM a.value)
 $$;
 CREATE FUNCTION review_queue_proposed(code smallint, component jsonb, proposal jsonb) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE AS $$
@@ -71,7 +96,9 @@ CREATE TABLE reborn_component_review_queue_bindings (
  queue_id UUID PRIMARY KEY,
  submission_id UUID NOT NULL REFERENCES reborn_component_review_submissions(submission_id),
  component_id UUID NOT NULL,
- binding_bytes TEXT NOT NULL CHECK(octet_length(binding_bytes) BETWEEN 1 AND 67108864),
+ -- Host-generated escaped copies: no independent quota on legal originals.
+ -- PostgreSQL TEXT capacity remains a technical storage/transport constraint.
+ binding_bytes TEXT NOT NULL CHECK(octet_length(binding_bytes)>0),
  checksum TEXT NOT NULL CHECK(checksum=encode(sha256(convert_to(binding_bytes,'UTF8')),'hex')),
  UNIQUE(submission_id,component_id)
 );
@@ -98,10 +125,8 @@ BEGIN
  SELECT * INTO STRICT r FROM reborn_component_revisions WHERE component_id=NEW.component_id
    AND version=(ref->>'version')::bigint AND class_code=(ref->>'class_code')::smallint AND checksum=ref->>'checksum';
  document := r.revision_bytes::jsonb->'document';
- IF NOT document ?& review_queue_fields(r.class_code) THEN RAISE EXCEPTION 'incomplete legacy projection' USING ERRCODE='23514'; END IF;
- IF review_queue_projection(r.class_code,document) IS DISTINCT FROM
-    review_queue_projection(r.class_code,(b->>'reviewed_bytes')::jsonb) THEN
-   RAISE EXCEPTION 'candidate differs from queued payload' USING ERRCODE='23514';
+ IF review_queue_agrees(r.class_code,document,(b->>'reviewed_bytes')::jsonb) IS NOT TRUE THEN
+   RAISE EXCEPTION 'candidate differs from complete queued projection' USING ERRCODE='23514';
  END IF;
  SELECT * INTO STRICT q FROM reborn_validation_queue WHERE id=NEW.queue_id FOR UPDATE;
  IF q.component_id<>NEW.component_id OR q.component_class<>r.class_code OR q.state<>1
@@ -120,14 +145,9 @@ BEGIN
    SELECT revision_bytes::jsonb->'document' INTO STRICT document FROM reborn_component_revisions
      WHERE component_id=NEW.component_id AND version=(base->>'version')::bigint
        AND class_code=(base->>'class_code')::smallint AND checksum=base->>'checksum';
-   IF NOT document ?& review_queue_fields(q.component_class)
-     OR review_queue_projection(q.component_class,document) IS DISTINCT FROM review_queue_projection(q.component_class,current_bytes::jsonb) THEN
+   IF review_queue_agrees(q.component_class,document,current_bytes::jsonb) IS NOT TRUE THEN
      RAISE EXCEPTION 'original base differs from live comparison' USING ERRCODE='23514';
    END IF;
- END IF;
- IF EXISTS(SELECT 1 FROM jsonb_each(r.revision_bytes::jsonb->'document') d
-     JOIN jsonb_each(expected) e ON d.key=e.key WHERE d.value IS DISTINCT FROM e.value) THEN
-   RAISE EXCEPTION 'shared legacy metadata differs from original revision' USING ERRCODE='23514';
  END IF;
  IF b->>'component_bytes' IS DISTINCT FROM current_bytes OR (b->>'reviewed_bytes')::jsonb IS DISTINCT FROM expected THEN
    RAISE EXCEPTION 'queued candidate changed' USING ERRCODE='23514';

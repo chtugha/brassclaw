@@ -211,7 +211,7 @@ impl Backend {
                     receipts.push(json!({"submission_id":stored.id,"subject_checksum":stored.checksum,
                         "candidate":{"uuid":stored.candidate.uuid,"version":stored.candidate.version,
                             "class_code":stored.candidate.class_code,"checksum":hex::encode(stored.candidate.checksum)},
-                        "review_status":"unreviewed","catalogue_activated":false}));
+                        "review_status":"unreviewed","queue_binding_status":"standalone", "queue_review_ready":false,"catalogue_activated":false}));
                 }
                 self.transition("model_returned", "submitted").await?;
                 Ok(json!({"attempt_ref":self.attempt,"response_checksum":record["response_checksum"],

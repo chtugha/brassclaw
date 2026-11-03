@@ -439,7 +439,7 @@ async fn native_sempai_intent_proposal_does_not_slice_inside_unicode() {
         .submit_proposals("author", "default", &[], &[json!({"input":input})], &[])
         .await
         .unwrap();
-    assert_eq!(result.intent_examples_queued, 1);
+    assert_eq!(result.intent_drafts_saved, 1);
     let client = rig.pool.get().await.unwrap();
     let row = client.query_one("SELECT name,intent_examples,validation_status FROM reborn_recipes WHERE source='sempai_intent_proposal'", &[]).await.unwrap();
     let name: String = row.get(0);

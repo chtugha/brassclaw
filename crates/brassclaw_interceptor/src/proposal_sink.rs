@@ -7,7 +7,10 @@
 //! (`validation_status = 'pending'`, `queue_code = 'q1_auto'`) rather than
 //! being written directly to production tables.
 //!
-//! This trait is the submission port.  Composition implements it via
+//! This is the legacy constructor-draft port, not immutable v3 review admission.
+//! The payload carries no original revision/graph/response identity. Saving a
+//! draft must not be reported as a successful sealed review submission.
+//! Composition implements it via
 //! `PgSempaiProposalSink` (backed by per-class stores); a no-op
 //! implementation is provided for builds where no store is wired.
 
@@ -19,12 +22,12 @@ use crate::packet::ComponentProposal;
 /// Result of a [`SempaiProposalSink::submit_proposals`] call.
 #[derive(Debug, Clone)]
 pub struct ProposalSubmitResult {
-    /// Number of recipe/skill update proposals successfully enqueued in Q1.
-    pub recipe_updates_queued: u32,
-    /// Number of intent-example proposals successfully enqueued in Q1.
-    pub intent_examples_queued: u32,
-    /// Number of generalised component proposals successfully enqueued in Q1.
-    pub components_queued: u32,
+    /// Number of legacy Recipe drafts saved, without an immutable review seal.
+    pub recipe_drafts_saved: u32,
+    /// Number of intent-example drafts saved, without an immutable review seal.
+    pub intent_drafts_saved: u32,
+    /// Number of legacy component drafts saved, without an immutable review seal.
+    pub component_drafts_saved: u32,
 }
 
 /// Submission port for Sempai-proposed component updates and intent examples.
@@ -50,7 +53,7 @@ pub trait SempaiProposalSink: Send + Sync {
     /// - `proposed_components` — generalised multi-class proposals (§0.23.6);
     ///   each carries a `class_code` and a raw JSON payload.
     ///
-    /// Returns counts of successfully queued items.
+    /// Returns saved draft counts, never successful immutable review-submission counts.
     async fn submit_proposals(
         &self,
         user_id: &str,
@@ -78,9 +81,9 @@ impl SempaiProposalSink for NoopProposalSink {
         _proposed_components: &[ComponentProposal],
     ) -> Result<ProposalSubmitResult, InterceptorError> {
         Ok(ProposalSubmitResult {
-            recipe_updates_queued: 0,
-            intent_examples_queued: 0,
-            components_queued: 0,
+            recipe_drafts_saved: 0,
+            intent_drafts_saved: 0,
+            component_drafts_saved: 0,
         })
     }
 }

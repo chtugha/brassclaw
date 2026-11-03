@@ -115,8 +115,8 @@ mod inner {
     /// (`tenant_id`, `agent_id`) that are baked into the runtime at startup.
     /// Per-call `user_id` / `project_id` are provided by the caller.
     ///
-    /// All proposals are non-builtin — they must go through the Q1→Q2
-    /// validation queue before becoming usable. `create_and_submit` on the
+    /// All proposals are non-builtin constructor drafts. The pending queue
+    /// explicitly requires original resubmission before retained Q1/Q2 is possible. `create_and_submit` on the
     /// recipe/python_code stores commits the draft and its state-1 queue entry
     /// together. No passing review or activation is recorded here.
     #[derive(Clone)]
@@ -208,7 +208,7 @@ mod inner {
                 .await
             {
                 Ok(id) => {
-                    debug!(%id, "sempai_proposal: recipe row inserted and submitted to Q1");
+                    debug!(%id, "sempai_proposal: Recipe draft saved; original review unresolved");
                     true
                 }
                 Err(err) => {
@@ -257,7 +257,7 @@ mod inner {
                 .await
             {
                 Ok(id) => {
-                    debug!(%id, "sempai_proposal: python_code row inserted and submitted to Q1");
+                    debug!(%id, "sempai_proposal: PythonCode draft saved; original review unresolved");
                     true
                 }
                 Err(err) => {
@@ -278,9 +278,9 @@ mod inner {
             proposed_intent_examples: &[serde_json::Value],
             proposed_components: &[ComponentProposal],
         ) -> Result<ProposalSubmitResult, InterceptorError> {
-            let mut recipe_updates_queued: u32 = 0;
-            let mut intent_examples_queued: u32 = 0;
-            let mut components_queued: u32 = 0;
+            let mut recipe_drafts_saved: u32 = 0;
+            let mut intent_drafts_saved: u32 = 0;
+            let mut component_drafts_saved: u32 = 0;
 
             // ── Recipe/skill update proposals ────────────────────────────
             for blob in proposed_recipe_updates {
@@ -288,7 +288,7 @@ mod inner {
                     .insert_recipe_proposal(blob, user_id, project_id, "sempai_proposal")
                     .await
                 {
-                    recipe_updates_queued += 1;
+                    recipe_drafts_saved += 1;
                 }
             }
 
@@ -325,7 +325,7 @@ mod inner {
                     )
                     .await
                 {
-                    intent_examples_queued += 1;
+                    intent_drafts_saved += 1;
                 }
             }
 
@@ -357,14 +357,14 @@ mod inner {
                     }
                 };
                 if queued {
-                    components_queued += 1;
+                    component_drafts_saved += 1;
                 }
             }
 
             Ok(ProposalSubmitResult {
-                recipe_updates_queued,
-                intent_examples_queued,
-                components_queued,
+                recipe_drafts_saved,
+                intent_drafts_saved,
+                component_drafts_saved,
             })
         }
     }

@@ -1,7 +1,8 @@
 //! Exact legacy Q1 candidate retention. This is not v3 combination approval.
 use super::{
-    ComponentScope, STATE_Q1_PENDING, ValidationQueueError, ValidationQueueStore, map_pg, map_pool,
-    resolve_component_table, resolve_content_column, validate_upgrade_payload,
+    ComponentScope, STATE_Q1_PENDING, ValidationQueueError, ValidationQueueStore,
+    map_original_store, map_pg, map_pool, resolve_component_table, resolve_content_column,
+    validate_upgrade_payload,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -20,6 +21,7 @@ pub(crate) struct Q1Candidate {
     queue_bytes: String,
     reviewed: Value,
     queue_id: Uuid,
+    original_binding_required: bool,
     binding: Option<brassclaw_skills::review_submission_store::queue::RetainedQueueReview>,
 }
 impl Q1Candidate {
@@ -29,11 +31,17 @@ impl Q1Candidate {
         &brassclaw_skills::review_submission_store::queue::RetainedQueueReview,
         ValidationQueueError,
     > {
-        self.binding
-            .as_ref()
-            .ok_or(ValidationQueueError::OriginalReviewUnresolved {
-                component_id: self.component_id,
-            })
+        self.binding.as_ref().ok_or_else(|| {
+            if self.original_binding_required {
+                ValidationQueueError::OriginalReviewUnresolved {
+                    component_id: self.component_id,
+                }
+            } else {
+                ValidationQueueError::LegacyReviewCustodyUnresolved {
+                    component_id: self.component_id,
+                }
+            }
+        })
     }
     pub(crate) fn class_code(&self) -> i16 {
         self.class_code
@@ -102,7 +110,7 @@ impl ValidationQueueStore {
         component_id: Uuid,
     ) -> Result<Q1Candidate, ValidationQueueError> {
         let sql = String::from(
-            "SELECT state, component_class, proposed_payload, review_queue_bytes(q), id
+            "SELECT state, component_class, proposed_payload, review_queue_bytes(q), id, original_binding_required
              FROM reborn_validation_queue q WHERE tenant_id=$1 AND user_id=$2
              AND agent_id=$3 AND project_id=$4 AND component_id=$5 FOR UPDATE",
         );
@@ -133,25 +141,39 @@ impl ValidationQueueStore {
         let component_bytes = component_bytes(tx, scope, component_id, class_code).await?;
         let mut reviewed: Value = serde_json::from_str(&component_bytes)
             .map_err(|_| ValidationQueueError::InvalidPayload { component_id })?;
-        let fields = reviewed
-            .as_object_mut()
-            .ok_or(ValidationQueueError::InvalidPayload { component_id })?;
-        if let Some(proposal) = proposal {
-            for name in ["name", "description"] {
-                if let Some(value) = proposal.get(name) {
-                    fields.insert(name.to_owned(), value.clone());
+        if matches!(class_code, 0 | 1..=3 | 13 | 21..=23) {
+            // The retained projection/overlay has one SQL owner, reused by the
+            // capture precheck, immutable reader and independent insert trigger.
+            reviewed = tx
+                .query_one(
+                    "SELECT review_queue_proposed($1::smallint,$2::jsonb,$3::jsonb)",
+                    &[&class_code, &reviewed, &proposal],
+                )
+                .await
+                .map_err(map_pg)?
+                .get(0);
+        } else {
+            // Preserve the existing non-retained document/note lifecycle.
+            let fields = reviewed
+                .as_object_mut()
+                .ok_or(ValidationQueueError::InvalidPayload { component_id })?;
+            if let Some(proposal) = proposal {
+                for name in ["name", "description"] {
+                    if let Some(value) = proposal.get(name) {
+                        fields.insert(name.to_owned(), value.clone());
+                    }
                 }
-            }
-            if let Some(value) = proposal.get("content") {
-                let (column, _) = resolve_content_column(class_code)
-                    .ok_or(ValidationQueueError::InvalidPayload { component_id })?;
-                fields.insert(column.to_owned(), value.clone());
+                if let Some(value) = proposal.get("content") {
+                    let (column, _) = resolve_content_column(class_code)
+                        .ok_or(ValidationQueueError::InvalidPayload { component_id })?;
+                    fields.insert(column.to_owned(), value.clone());
+                }
             }
         }
         let binding =
             brassclaw_skills::review_submission_store::queue::read_in_transaction(tx, queue_id)
                 .await
-                .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?;
+                .map_err(|error| map_original_store(error, component_id))?;
         if let Some(binding) = &binding {
             if binding.component_bytes() != component_bytes || binding.queue_bytes() != queue_bytes
             {
@@ -165,6 +187,7 @@ impl ValidationQueueStore {
             queue_bytes,
             reviewed,
             queue_id,
+            original_binding_required: row.get(5),
             binding,
         })
     }
@@ -275,10 +298,10 @@ impl ValidationQueueStore {
         let current =
             brassclaw_skills::review_submission_store::queue::read_in_transaction(tx, queue_id)
                 .await
-                .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?
+                .map_err(|error| map_original_store(error, component_id))?
                 .ok_or(ValidationQueueError::OriginalReviewUnresolved { component_id })?;
         let subject=brassclaw_skills::review_submission_store::PgReviewSubmissionStore::read_in_transaction(tx,current.submission_id()).await
-            .map_err(|_|ValidationQueueError::ReviewChanged{component_id})?.ok_or(ValidationQueueError::ReviewChanged{component_id})?;
+            .map_err(|error| map_original_store(error, component_id))?.ok_or(ValidationQueueError::ReviewChanged{component_id})?;
         if subject.function_partner.is_some() {
             return Err(ValidationQueueError::OriginalReviewUnresolved { component_id });
         }
@@ -298,7 +321,7 @@ impl ValidationQueueStore {
     > {
         let component_id = draft.candidate().uuid;
         let existing=brassclaw_skills::review_submission_store::PgReviewSubmissionStore::read_in_transaction(tx,draft.submission_id()).await
-            .map_err(|_|ValidationQueueError::ReviewChanged{component_id})?;
+            .map_err(|error| map_original_store(error, component_id))?;
         if existing.is_none() {
             return Ok(None);
         }
@@ -310,10 +333,10 @@ impl ValidationQueueStore {
         let original =
             brassclaw_skills::review_submission_store::queue::read_in_transaction(tx, ids[0])
                 .await
-                .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?
+                .map_err(|error| map_original_store(error, component_id))?
                 .ok_or(ValidationQueueError::ReviewChanged { component_id })?;
         let queue: Value = serde_json::from_str(original.queue_bytes())
-            .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?;
+            .map_err(|_| ValidationQueueError::InvalidPayload { component_id })?;
         if queue["tenant_id"] != scope.tenant_id
             || queue["user_id"] != scope.user_id
             || queue["agent_id"] != scope.agent_id
@@ -349,12 +372,12 @@ impl ValidationQueueStore {
             draft.submission_id(),
         )
         .await
-        .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?
+        .map_err(|error| map_original_store(error, component_id))?
         .is_some()
         {
             // Verify identical subject bytes before returning any original ACK.
             let subject=brassclaw_skills::review_submission_store::PgReviewSubmissionStore::submit_in_transaction(tx,draft).await
-                .map_err(|_|ValidationQueueError::ReviewChanged{component_id})?;
+                .map_err(|error| map_original_store(error, component_id))?;
             let old=tx.query_opt("SELECT queue_ids,request_kind FROM reborn_component_review_queue_requests WHERE submission_id=$1",&[&draft.submission_id()]).await.map_err(map_pg)?;
             match old {
                 Some(row)
@@ -367,7 +390,7 @@ impl ValidationQueueStore {
                                 tx, *queue_id,
                             )
                             .await
-                            .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?
+                            .map_err(|error| map_original_store(error, component_id))?
                             .ok_or(ValidationQueueError::ReviewChanged { component_id })?;
                         if binding.submission_id() != subject.id
                             || binding.subject_checksum() != subject.checksum
@@ -412,13 +435,52 @@ impl ValidationQueueStore {
         let mut captures = Vec::new();
         for (scope, id, queue_id) in &targets {
             let capture = Self::capture_candidate_in_transaction(tx, scope, *id).await?;
+            if !capture.original_binding_required {
+                return Err(ValidationQueueError::LegacyReviewCustodyUnresolved {
+                    component_id: *id,
+                });
+            }
             if capture.queue_id != *queue_id {
                 return Err(ValidationQueueError::ReviewChanged { component_id: *id });
             }
             captures.push(capture);
         }
+        // Validate the complete original projection before allocating revisions.
+        // SQL owns the one field/agreement contract; the insert trigger repeats
+        // it against independently loaded original bytes and locked actual rows.
+        if !captures.is_empty() {
+            let documents = draft
+                .changed_root_documents()
+                .map_err(|error| map_original_store(error, component_id))?;
+            for capture in &captures {
+                let (reference, document) = documents
+                    .iter()
+                    .find(|(r, _)| r.uuid == capture.component_id)
+                    .ok_or(ValidationQueueError::InvalidPayload {
+                        component_id: capture.component_id,
+                    })?;
+                let class = i16::try_from(reference.class_code).map_err(|_| {
+                    ValidationQueueError::InvalidPayload {
+                        component_id: capture.component_id,
+                    }
+                })?;
+                let agrees: Option<bool> = tx
+                    .query_one(
+                        "SELECT review_queue_agrees($1::smallint,$2::jsonb,$3::jsonb)",
+                        &[&class, document, &capture.reviewed],
+                    )
+                    .await
+                    .map_err(map_pg)?
+                    .get(0);
+                if agrees != Some(true) {
+                    return Err(ValidationQueueError::ReviewChanged {
+                        component_id: capture.component_id,
+                    });
+                }
+            }
+        }
         let subject=brassclaw_skills::review_submission_store::PgReviewSubmissionStore::submit_in_transaction(tx,draft).await
-            .map_err(|_|ValidationQueueError::ReviewChanged{component_id:draft.candidate().uuid})?;
+            .map_err(|error|map_original_store(error,draft.candidate().uuid))?;
         tx.execute("INSERT INTO reborn_component_review_queue_requests(submission_id,queue_ids,request_kind) VALUES($1,$2,$3)",
             &[&subject.id,&original_ids,&request_kind]).await.map_err(map_pg)?;
         for capture in captures {
@@ -432,9 +494,7 @@ impl ValidationQueueStore {
                 capture.reviewed.to_string(),
             )
             .await
-            .map_err(|_| ValidationQueueError::ReviewChanged {
-                component_id: capture.component_id,
-            })?;
+            .map_err(|error| map_original_store(error, capture.component_id))?;
         }
         Ok(subject)
     }
@@ -489,7 +549,7 @@ impl ValidationQueueStore {
                 Some(
                     PgComponentRevisionStore::stage_in_transaction(&tx, &revision(document)?, 0)
                         .await
-                        .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?,
+                        .map_err(|error| map_original_store(error.into(), component_id))?,
                 )
             } else {
                 None

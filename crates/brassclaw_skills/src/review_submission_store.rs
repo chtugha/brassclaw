@@ -160,6 +160,21 @@ impl ReviewSubmissionDraft {
         Ok(roots)
     }
 
+    /// Original documents for changed roots only. Unchanged partners remain
+    /// exact context, never additional queued/approval candidates.
+    pub fn changed_root_documents(
+        &self,
+    ) -> Result<Vec<(ComponentRevisionRef, serde_json::Value)>, SubmissionStoreError> {
+        let mut documents = vec![(self.reference, self.candidate.document().clone())];
+        if let Some(partner) = &self.function_partner {
+            if let FunctionReviewPartnerDraft::Changed { candidate, .. } = partner.to_draft()? {
+                documents.push((partner.reference()?, candidate.document().clone()));
+            }
+        }
+        documents.sort_by_key(|(reference, _)| reference.uuid);
+        Ok(documents)
+    }
+
     pub fn new(
         id: Uuid,
         actor: &str,

@@ -1210,7 +1210,7 @@ pub async fn list_validation_queue(
     let filter = query.q.unwrap_or_default();
     let response = state
         .services()
-        .list_validation_queue(caller, &query.project_id, filter)
+        .list_validation_queue(caller, &query.project_id, filter, query.after.as_deref())
         .await?;
     Ok(Json(response))
 }
@@ -1269,6 +1269,7 @@ pub struct ValidationQueueQuery {
     #[serde(default = "default_project_id")]
     pub project_id: String,
     pub q: Option<ValidationQueueFilter>,
+    pub after: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

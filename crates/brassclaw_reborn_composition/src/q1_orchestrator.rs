@@ -166,6 +166,18 @@ pub(crate) async fn run_q1_validation_retained(
         }
     };
 
+    // Step 2 — convert class_code and check if the structural validator revision
+    // draft is seeded for this class.
+    let class_i16: i16 = class_code
+        .try_into()
+        .map_err(|_| Q1Error::InvalidClassCode { class_code })?;
+
+    if !matches!(class_i16, 0 | 1..=3 | 13 | 21..=23) {
+        return Ok(Q1Outcome::deferred(format!(
+            "no structural validator revision draft for class {class_code}"
+        )));
+    }
+
     // Compatibility callers carry a component key, but resolution is solely
     // through its explicit original queue link. Unbound legacy work is visible
     // and never admitted by guessing a later immutable subject.
@@ -173,21 +185,96 @@ pub(crate) async fn run_q1_validation_retained(
         let client = pool.get().await.map_err(|_| Q1Error::Db {
             reason: "original queue read unavailable".into(),
         })?;
-        let row=client.query_opt("SELECT b.submission_id FROM reborn_validation_queue q LEFT JOIN reborn_component_review_queue_bindings b ON b.queue_id=q.id WHERE q.tenant_id=$1 AND q.user_id=$2 AND q.agent_id=$3 AND q.project_id=$4 AND q.component_id=$5",
+        let row=client.query_opt("SELECT b.submission_id, q.component_class, q.original_binding_required FROM reborn_validation_queue q LEFT JOIN reborn_component_review_queue_bindings b ON b.queue_id=q.id WHERE q.tenant_id=$1 AND q.user_id=$2 AND q.agent_id=$3 AND q.project_id=$4 AND q.component_id=$5",
             &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&component_id]).await.map_err(q1_db)?
             .ok_or(crate::validation_queue::ValidationQueueError::NotFound{component_id})?;
+        if row.get::<_, i16>(1) != class_i16 {
+            return Err(
+                crate::validation_queue::ValidationQueueError::ReviewChanged { component_id }
+                    .into(),
+            );
+        }
         if row.get::<_, Option<Uuid>>(0).is_none() {
+            if !row.get::<_, bool>(2) {
+                return Ok(Q1Outcome::deferred(format!(
+                    "legacy review custody unresolved for component {component_id}; safe disposition and fencing are not connected; do not replay"
+                )));
+            }
             return Ok(Q1Outcome::deferred(format!(
-                "original review binding unresolved; no active submission for component {component_id}; explicit resubmission required"
+                "original review binding unresolved for component {component_id}; explicit resubmission required"
             )));
         }
     }
 
-    // Step 2 — convert class_code and check if the structural validator revision
-    // draft is seeded for this class.
-    let class_i16: i16 = class_code
-        .try_into()
-        .map_err(|_| Q1Error::InvalidClassCode { class_code })?;
+    // The queued original, never the newest unrelated subject for this UUID.
+    let review = queue_store
+        .capture_q1_candidate(scope, component_id)
+        .await?;
+    if review.class_code() != class_i16 {
+        return Err(
+            crate::validation_queue::ValidationQueueError::ReviewChanged { component_id }.into(),
+        );
+    }
+    let original = match review.original() {
+        Ok(original) => original,
+        Err(crate::validation_queue::ValidationQueueError::OriginalReviewUnresolved { .. }) => {
+            return Ok(Q1Outcome::deferred(format!(
+                "original review binding unresolved for component {component_id}; explicit resubmission required"
+            )));
+        }
+        Err(crate::validation_queue::ValidationQueueError::LegacyReviewCustodyUnresolved {
+            ..
+        }) => {
+            return Ok(Q1Outcome::deferred(format!(
+                "legacy review custody unresolved for component {component_id}; safe disposition and fencing are not connected; do not replay"
+            )));
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let submission_id = original.submission_id();
+
+    // Read the sealed validator subject from the review-submission store.
+    let subject = {
+        let mut client = pool.get().await.map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .map_err(q1_db)?;
+        let subject = PgReviewSubmissionStore::read_validator_subject_in_transaction(
+            &tx,
+            submission_id,
+            REVISION_LIMITS,
+        )
+        .await
+        .map_err(|error| crate::validation_queue::map_original_store(error, component_id))?;
+        tx.commit().await.map_err(q1_db)?;
+        subject
+    };
+    let subject = match subject {
+        Some(s) => s,
+        None => {
+            return Err(
+                crate::validation_queue::ValidationQueueError::ReviewChanged { component_id }
+                    .into(),
+            );
+        }
+    };
+
+    original
+        .require_subject(&subject)
+        .map_err(|error| crate::validation_queue::map_original_store(error, component_id))?;
+    // Current /1 validator preparation cannot cover a joint function. Keep the
+    // complete /3 subject; never graduate only its primary class/root.
+    if subject.is_function_review() {
+        return Ok(Q1Outcome::deferred(
+            "joint function validator selection not yet supported",
+        ));
+    }
 
     let revision_store = PgComponentRevisionStore::new(Arc::new(pool.clone()));
     let recipe_id = structural_validator_recipe_id(class_i16);
@@ -327,64 +414,6 @@ pub(crate) async fn run_q1_validation_retained(
             reason: format!("InspectedRetainedProgram::inspect_with_limits: {e}"),
         })?,
     );
-
-    // The queued original, never the newest unrelated subject for this UUID.
-    let review = queue_store
-        .capture_q1_candidate(scope, component_id)
-        .await?;
-    if review.class_code() != class_i16 {
-        return Err(
-            crate::validation_queue::ValidationQueueError::ReviewChanged { component_id }.into(),
-        );
-    }
-    let original = review.original()?;
-    let submission_id = original.submission_id();
-
-    // Read the sealed validator subject from the review-submission store.
-    let subject = {
-        let mut client = pool.get().await.map_err(|e| Q1Error::Db {
-            reason: e.to_string(),
-        })?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-            .read_only(true)
-            .start()
-            .await
-            .map_err(q1_db)?;
-        let subject = PgReviewSubmissionStore::read_validator_subject_in_transaction(
-            &tx,
-            submission_id,
-            REVISION_LIMITS,
-        )
-        .await
-        .map_err(|e| Q1Error::Db {
-            reason: format!("read_validator_subject_in_transaction: {e}"),
-        })?;
-        tx.commit().await.map_err(q1_db)?;
-        subject
-    };
-    let subject = match subject {
-        Some(s) => s,
-        None => {
-            return Ok(Q1Outcome::deferred(format!(
-                "no active submission for component {component_id}"
-            )));
-        }
-    };
-
-    original
-        .require_subject(&subject)
-        .map_err(|_| Q1Error::Db {
-            reason: "original queue subject changed".into(),
-        })?;
-    // Current /1 validator preparation cannot cover a joint function. Keep the
-    // complete /3 subject; never graduate only its primary class/root.
-    if subject.is_function_review() {
-        return Ok(Q1Outcome::deferred(
-            "joint function validator selection not yet supported",
-        ));
-    }
 
     // Step 6 — retain the sealed validator selection (idempotent).
     let retained_selection =

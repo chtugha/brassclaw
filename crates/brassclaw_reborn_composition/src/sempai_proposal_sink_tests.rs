@@ -68,8 +68,30 @@ async fn native_sempai_preserves_constructor_fields_and_rejects_lossy_proposals(
         )
         .await
         .unwrap();
-    assert_eq!(result.recipe_updates_queued, 1);
-    assert_eq!(result.components_queued, 2);
+    assert_eq!(result.recipe_drafts_saved, 1);
+    assert_eq!(result.component_drafts_saved, 2);
+    let scope = brassclaw_engine::memory::retrieval_source::ComponentScope {
+        tenant_id: TENANT.into(),
+        user_id: AUTHOR.into(),
+        agent_id: AGENT.into(),
+        project_id: PROJECT.into(),
+    };
+    let pending = crate::validation_queue::ValidationQueueStore::new(rig.pool.clone())
+        .list(&scope, None)
+        .await
+        .unwrap();
+    assert_eq!(pending.len(), 3);
+    for draft in pending {
+        let original = draft.original_review.unwrap();
+        assert_eq!(
+            original.state,
+            brassclaw_product_workflow::OriginalReviewBindingState::Unresolved
+        );
+        assert!(
+            original.submission_id.is_none(),
+            "legacy saved drafts must not claim an original review seal"
+        );
+    }
     // Exercise the real delivery readers: routing metadata and the newly
     // supported provenance label must not make these candidates deliverable.
     assert!(
@@ -239,7 +261,7 @@ async fn native_sempai_preserves_constructor_fields_and_rejects_lossy_proposals(
         .submit_proposals(AUTHOR, PROJECT, &[], &[], &rejected)
         .await
         .unwrap();
-    assert_eq!(result.components_queued, 0);
+    assert_eq!(result.component_drafts_saved, 0);
     assert_eq!(
         client
             .query_one(
@@ -302,7 +324,7 @@ async fn native_sempai_queue_and_commit_failures_leave_no_orphan_drafts() {
             .submit_proposals(AUTHOR, PROJECT, &[], &[], &proposals)
             .await
             .unwrap();
-        assert_eq!(failed.components_queued, 0);
+        assert_eq!(failed.component_drafts_saved, 0);
         for table in [
             "reborn_recipes",
             "reborn_python_code",
@@ -326,7 +348,7 @@ async fn native_sempai_queue_and_commit_failures_leave_no_orphan_drafts() {
             .submit_proposals(AUTHOR, PROJECT, &[], &[], &proposals)
             .await
             .unwrap();
-        assert_eq!(submitted.components_queued, 2);
+        assert_eq!(submitted.component_drafts_saved, 2);
         client.batch_execute("DELETE FROM reborn_validation_queue; DELETE FROM reborn_recipes; DELETE FROM reborn_python_code").await.unwrap();
     }
 }

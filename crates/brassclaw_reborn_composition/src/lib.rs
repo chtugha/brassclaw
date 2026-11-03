@@ -281,11 +281,13 @@ pub mod content_integrity;
 #[cfg(feature = "postgres")]
 pub mod q1_orchestrator;
 #[cfg(feature = "postgres")]
+mod queue_original_projection;
+#[cfg(feature = "postgres")]
+mod queued_review_submission;
+#[cfg(feature = "postgres")]
 pub mod repair;
 #[cfg(feature = "postgres")]
 pub mod validation_queue;
-#[cfg(feature = "postgres")]
-mod queued_review_submission;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod validator_task_driver;
 

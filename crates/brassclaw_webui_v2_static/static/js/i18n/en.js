@@ -1,6 +1,19 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("en", {
+  "validationQueue.original.actionUnavailable": "The original remains visible. The manual review action for this component class is not connected yet.",
+  "componentSubmission.queueTarget": "Review target",
+  "componentSubmission.queueStandalone": "Retain original only — no queue binding",
+  "componentSubmission.queueExisting": "Bind explicit existing queue IDs",
+  "componentSubmission.queueCreate": "Create pending Recipe, PythonCode or ExtensionCatalogue",
+  "componentSubmission.queueIds": "Queue IDs (JSON array; all changed roots)",
+  "componentSubmission.queueProject": "Project for the new pending component",
+  "componentSubmission.queueBoundReceipt": "The original queue binding is retained. Work admission, validation and activation remain separate.",
+  "componentSubmission.queueStandaloneReceipt": "The original subject is retained without a legacy queue binding; it cannot graduate a legacy queue.",
+  "validationQueue.original.unresolved": "Original review is missing. Submit the complete original candidate with this queue ID before review can proceed.",
+  "validationQueue.original.legacy_unresolved": "Legacy custody is unresolved. Original evidence and component identity are preserved. A safe disposition, fencing and queue-generation transition is not connected yet; do not replay or resubmit this old operation.",
+  "validationQueue.original.missing_queue": "Original review queue is missing. Submit a complete original candidate explicitly before review can proceed.",
+  "validationQueue.original.joint_unsupported": "The complete joint Skill/code review is retained. Validator support is pending; partial approval is blocked.",
   "extensions.oauth.reconcile": "Reconcile original cleanup",
   "extensions.oauth.cleanupHttp": "Provider cleanup HTTP status:",
   "extensions.oauth.cleanupError": "Unconfirmed cleanup outcome:",

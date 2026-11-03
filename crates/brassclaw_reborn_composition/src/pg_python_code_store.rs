@@ -520,9 +520,10 @@ impl PgPythonCodeStore {
         };
         let id = draft.candidate().uuid;
         if draft.candidate().class_code != 22 || draft.candidate().version != 1 {
-            return Err(PgPythonCodeStoreError::Queue {
-                reason: "new candidate identity required".into(),
-            });
+            return Err(
+                crate::validation_queue::ValidationQueueError::InvalidPayload { component_id: id }
+                    .into(),
+            );
         }
         let mut client = self.pool.get().await.map_err(map_pool)?;
         let tx = client
@@ -556,6 +557,9 @@ impl PgPythonCodeStore {
         queue_store.fire_q1_kick_if_wired(&scope, id, 22);
         Ok(subject)
     }
+    /// Legacy constructor-only draft save. Its queue entry is visibly unresolved;
+    /// this cannot acknowledge an immutable v3 review submission or approval.
+    /// Complete review callers use create_and_submit_review with original bytes.
     pub(crate) async fn create_and_submit(
         &self,
         row: NewPgPythonCode,

@@ -1,6 +1,19 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("de", {
+  "validationQueue.original.actionUnavailable": "Das Original bleibt sichtbar. Die manuelle Reviewaktion für diese Komponentenklasse ist noch nicht verbunden.",
+  "componentSubmission.queueTarget": "Prüfungsziel",
+  "componentSubmission.queueStandalone": "Nur Original sichern — ohne Queue-Bindung",
+  "componentSubmission.queueExisting": "Ausdrückliche bestehende Queue-IDs binden",
+  "componentSubmission.queueCreate": "Ausstehende Recipe, PythonCode oder ExtensionCatalogue anlegen",
+  "componentSubmission.queueIds": "Queue-IDs (JSON-Array; alle geänderten Wurzeln)",
+  "componentSubmission.queueProject": "Projekt für die neue ausstehende Komponente",
+  "componentSubmission.queueBoundReceipt": "Die ursprüngliche Queue-Bindung ist gesichert. Auftragsannahme, Prüfung und Aktivierung erfolgen separat.",
+  "componentSubmission.queueStandaloneReceipt": "Der Originalgegenstand ist ohne Legacy-Queue-Bindung gesichert; damit kann keine Legacy-Queue freigegeben werden.",
+  "validationQueue.original.unresolved": "Die ursprüngliche Revieweinreichung fehlt. Den vollständigen Originalkandidaten mit dieser Queue-ID einreichen, bevor die Prüfung fortgesetzt werden kann.",
+  "validationQueue.original.legacy_unresolved": "Die Legacy-Kustodie ist ungeklärt. Alte Belege und Komponentenidentität bleiben erhalten. Sichere Disposition, Fencing und Queue-Generationswechsel sind noch nicht verbunden; diese alte Operation nicht erneut ausführen oder einreichen.",
+  "validationQueue.original.missing_queue": "Die Queue der ursprünglichen Einreichung fehlt. Vor der Prüfung den vollständigen Originalkandidaten ausdrücklich einreichen.",
+  "validationQueue.original.joint_unsupported": "Das gemeinsame Skill/Code-Review ist vollständig erhalten. Validator-Unterstützung steht aus; eine Teilfreigabe ist gesperrt.",
   "onboarding.codexSignInSempai": "Für Sempai anmelden",
   "onboarding.codexNewConfirm": "Eine neue Anmeldung für diesen Provider und diese Rolle starten? Die bisherige Anmeldung bleibt gespeichert.",
   "onboarding.codexResume": "Ursprüngliche Anmeldung fortsetzen",

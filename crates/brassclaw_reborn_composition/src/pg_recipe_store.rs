@@ -46,7 +46,7 @@ use crate::validation_queue::{ValidationQueueError, ValidationQueueStore};
 
 /// Hard cap on how many recipes `list_all` / `fetch_validated` may return in a
 /// single call.  Guards against accidental full-table scans on large tenants.
-const MAX_RECIPE_LIST_ROWS: i64 = 1_000;
+pub(crate) const MAX_RECIPE_LIST_ROWS: i64 = 1_000;
 /// Consumer tag that marks a recipe as being evaluated by the validator;
 /// delivery filter excludes rows carrying this tag (SEC-01, §3.9).
 const VALIDATOR_CONSUMER_TAG: &str = "05:validator";
@@ -397,9 +397,10 @@ impl PgRecipeStore {
         };
         let id = draft.candidate().uuid;
         if draft.candidate().class_code != 21 || draft.candidate().version != 1 {
-            return Err(PgRecipeStoreError::Queue {
-                reason: "new candidate identity required".into(),
-            });
+            return Err(
+                crate::validation_queue::ValidationQueueError::InvalidPayload { component_id: id }
+                    .into(),
+            );
         }
         let mut client = self.pool.get().await.map_err(map_pool)?;
         let tx = client
@@ -442,6 +443,9 @@ impl PgRecipeStore {
     /// components must go through the queue; builtins bypass it via
     /// `builtin_bootstrap.rs` (exempt by design). Returns the new UUID.
 
+    /// Legacy constructor-only draft save. Its queue entry is visibly unresolved;
+    /// this cannot acknowledge an immutable v3 review submission or approval.
+    /// Complete review callers use create_and_submit_review with original bytes.
     pub(crate) async fn create_and_submit(
         &self,
         row: NewPgRecipe,
@@ -1395,87 +1399,6 @@ fn recipe_to_detail(r: &PgRecipe) -> brassclaw_product_workflow::RecipeDetail {
 }
 
 #[cfg(feature = "postgres")]
-fn recipe_to_queue_item(
-    r: &PgRecipe,
-    counter: i32,
-    review_feedback: Option<String>,
-    validation_errors: Vec<String>,
-    queue_state: Option<i32>,
-    q2_actor: Option<String>,
-) -> brassclaw_product_workflow::ValidationQueueItem {
-    // Derive queue_code from reborn_validation_queue.state:
-    // 1 = q1_auto, 2 = q2_manual, 3 = q3_revision (counter<3) or q4_rejection (counter>=3), 4 = garbage.
-    // Fall back to status-based derivation when no queue row exists yet.
-    let queue_code = match queue_state {
-        Some(1) => "q1_auto".to_string(),
-        Some(2) => "q2_manual".to_string(),
-        Some(3) if counter < 3 => "q3_revision".to_string(),
-        Some(3) => "q4_rejection".to_string(),
-        Some(4) => "garbage".to_string(),
-        _ => match r.validation_status.as_str() {
-            "pending" | "auto_failed" => "q1_auto".to_string(),
-            "auto_passed" | "review_requested" | "upgrade_queued" => "q2_manual".to_string(),
-            "rejected" if counter < 3 => "q3_revision".to_string(),
-            "rejected" => "q4_rejection".to_string(),
-            "garbage" => "garbage".to_string(),
-            _ => "q2_manual".to_string(),
-        },
-    };
-    let trigger_summary = r
-        .trigger
-        .as_ref()
-        .and_then(|t| t.get("payload"))
-        .and_then(|p| {
-            if let Some(s) = p.as_str() {
-                Some(s.to_string())
-            } else {
-                serde_json::to_string(p).ok()
-            }
-        })
-        .unwrap_or_default();
-    brassclaw_product_workflow::ValidationQueueItem {
-        id: r.id.to_string(),
-        name: r.name.clone(),
-        item_type: brassclaw_product_workflow::RecipeKind::Recipe,
-        category: "recipe".to_string(),
-        description: r.description.clone(),
-        trigger_summary,
-        estimated_tokens: None,
-        validation_status: r.validation_status.clone(),
-        validation_errors,
-        review_feedback,
-        review_attempts: counter.max(0) as u32,
-        similarity_parent_id: None,
-        created_at: r.created_at.to_rfc3339(),
-        source: r.source.clone(),
-        class_code: 21,
-        class_label: "RECIPE".to_string(),
-        queue_code,
-        validator_tag_present: r.has_validator_tag(),
-        consumer_tags: r.consumer_tags.clone(),
-        // reborn_recipes has no llm_audit_status column — always not_applicable.
-        llm_audit_status: "not_applicable".to_string(),
-        llm_audit_findings: vec![],
-        q2_actor,
-    }
-}
-
-/// Map ValidationQueueFilter → the set of validation_status values to query.
-#[cfg(feature = "postgres")]
-fn queue_filter_statuses(
-    filter: brassclaw_product_workflow::ValidationQueueFilter,
-) -> &'static [&'static str] {
-    match filter {
-        brassclaw_product_workflow::ValidationQueueFilter::Auto => &["pending", "auto_failed"],
-        brassclaw_product_workflow::ValidationQueueFilter::Manual => {
-            &["auto_passed", "review_requested", "upgrade_queued"]
-        }
-        brassclaw_product_workflow::ValidationQueueFilter::Revision => &["rejected"],
-        brassclaw_product_workflow::ValidationQueueFilter::Rejection => &["rejected"],
-    }
-}
-
-#[cfg(feature = "postgres")]
 #[async_trait]
 impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
     #[cfg(feature = "skills-db")]
@@ -1763,92 +1686,30 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         user_id: &str,
         project_id: &str,
         filter: brassclaw_product_workflow::ValidationQueueFilter,
+        after: Option<&str>,
     ) -> Result<
-        Vec<brassclaw_product_workflow::ValidationQueueItem>,
+        brassclaw_product_workflow::ValidationQueueListResponse,
         brassclaw_product_workflow::RecipeStoreError,
     > {
-        let statuses = queue_filter_statuses(filter);
-        let client = self.inner.pool.get().await.map_err(|e| {
-            brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
+        let client = self.inner.pool.get().await.map_err(|_| {
+            brassclaw_product_workflow::RecipeStoreError::Unavailable(
+                "queue projection connection unavailable".into(),
+            )
         })?;
-
-        // Build a query with a dynamic IN clause.  LEFT JOIN reborn_validation_queue
-        // to get counter/review_feedback/validation_errors/state — these columns were
-        // dropped from reborn_recipes in Phase N.4.
-        let placeholders: String = statuses
-            .iter()
-            .enumerate()
-            .map(|(i, _)| format!("${}", i + 5))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let q = format!(
-            "SELECT {RECIPE_SELECT},
-                    COALESCE(q.counter, 0)                    AS q_counter,
-                    q.review_feedback                         AS q_review_feedback,
-                    COALESCE(q.validation_errors, ARRAY[]::TEXT[]) AS q_validation_errors,
-                    q.state                                   AS q_state,
-                    q.q2_actor                                AS q_q2_actor
-             FROM reborn_recipes r
-             LEFT JOIN reborn_validation_queue q
-                    ON q.component_id  = r.id
-                   AND q.component_class = 21
-                   AND q.tenant_id    = r.tenant_id
-                   AND q.user_id      = r.user_id
-                   AND q.agent_id     = r.agent_id
-                   AND q.project_id   = r.project_id
-             WHERE r.tenant_id = $1 AND r.user_id = $2
-               AND r.agent_id  = $3 AND r.project_id = $4
-               AND r.validation_status IN ({placeholders})
-             ORDER BY r.created_at ASC
-             LIMIT {MAX_RECIPE_LIST_ROWS}"
-        );
-
-        // Build params: 4 scope values + dynamic status values.
-        let tenant_id = self.tenant_id.as_str();
-        let agent_id = self.agent_id.as_str();
-        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            vec![&tenant_id, &user_id, &agent_id, &project_id];
-        for s in statuses.iter() {
-            params.push(s);
-        }
-
-        let rows = client.query(q.as_str(), &params).await.map_err(|e| {
-            brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-        })?;
-
-        let mut items: Vec<brassclaw_product_workflow::ValidationQueueItem> =
-            Vec::with_capacity(rows.len());
-        for row in &rows {
-            let recipe = decode_recipe_row(row).map_err(|e| {
-                brassclaw_product_workflow::RecipeStoreError::Internal(e.to_string())
-            })?;
-            // Queue columns appended after the 30 RECIPE_SELECT columns (indices 30–34).
-            // RECIPE_SELECT now has 30 columns (0–29) after V079 added validates_class_code.
-            let counter: i32 = row.get(30);
-            let review_feedback: Option<String> = row.get(31);
-            let validation_errors: Vec<String> = row.get(32);
-            let queue_state: Option<i32> = row.try_get::<_, i16>(33).ok().map(|s| s as i32);
-            let q2_actor: Option<String> = row.try_get(34).unwrap_or(None);
-
-            // For Rejection filter: only include rows with counter >= 3.
-            // For Revision filter: only include rows with counter < 3.
-            let include = match filter {
-                brassclaw_product_workflow::ValidationQueueFilter::Rejection => counter >= 3,
-                brassclaw_product_workflow::ValidationQueueFilter::Revision => counter < 3,
-                _ => true,
-            };
-            if include {
-                items.push(recipe_to_queue_item(
-                    &recipe,
-                    counter,
-                    review_feedback,
-                    validation_errors,
-                    queue_state,
-                    q2_actor,
-                ));
-            }
-        }
-        Ok(items)
+        crate::queue_original_projection::list_page(
+            &client,
+            &ComponentScope {
+                tenant_id: self.tenant_id.clone(),
+                user_id: user_id.into(),
+                agent_id: self.agent_id.clone(),
+                project_id: project_id.into(),
+            },
+            filter,
+            after,
+            MAX_RECIPE_LIST_ROWS,
+            self.queue_store.reject_threshold(),
+        )
+        .await
     }
 
     async fn count_by_status(
@@ -1857,28 +1718,22 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         project_id: &str,
         status: &str,
     ) -> Result<u32, brassclaw_product_workflow::RecipeStoreError> {
-        let client = self.inner.pool.get().await.map_err(|e| {
-            brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-        })?;
-        let row = client
-            .query_one(
-                "SELECT COUNT(*) FROM reborn_recipes
-                 WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
-                   AND validation_status = $5",
-                &[
-                    &self.tenant_id.as_str(),
-                    &user_id,
-                    &self.agent_id.as_str(),
-                    &project_id,
-                    &status,
-                ],
+        let client = self.inner.pool.get().await.map_err(|_| {
+            brassclaw_product_workflow::RecipeStoreError::Unavailable(
+                "queue count connection unavailable".into(),
             )
-            .await
-            .map_err(|e| {
-                brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-            })?;
-        let count: i64 = row.get(0);
-        Ok(count.max(0) as u32)
+        })?;
+        crate::queue_original_projection::count_by_status(
+            &client,
+            &ComponentScope {
+                tenant_id: self.tenant_id.clone(),
+                user_id: user_id.into(),
+                agent_id: self.agent_id.clone(),
+                project_id: project_id.into(),
+            },
+            status,
+        )
+        .await
     }
 
     async fn update_recipe_validation_status(
@@ -2669,5 +2524,99 @@ mod tests {
         let mut r = base_recipe();
         r.consumer_tags = vec!["05:validator".to_string()];
         assert!(r.is_deliverable());
+    }
+    #[tokio::test]
+    async fn native_queue_projection_uses_the_reject_writer_threshold_for_every_class() {
+        use brassclaw_product_workflow::{RecipeStore, ValidationQueueFilter};
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let scope = review_scope();
+        let writer = ValidationQueueStore::with_reject_threshold(rig.pool.clone(), 5);
+        let recipe = pending_recipe(&rig.pool, &scope).await;
+        let code = Uuid::new_v4();
+        rig.pool.get().await.unwrap().execute("INSERT INTO reborn_python_code(id,tenant_id,user_id,agent_id,project_id,name,description) VALUES($1,$2,$3,$4,$5,'threshold-code','Legacy rejection fixture')",
+            &[&code,&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id]).await.unwrap();
+        for (component, class) in [(recipe, 21), (code, 22)] {
+            writer.submit(&scope, component, class, None).await.unwrap();
+            // Queue lifecycle fixture only. No Q1 execution/evidence is claimed:
+            // exercise the actual rejection writer from its existing Q2 state.
+            rig.pool
+                .get()
+                .await
+                .unwrap()
+                .execute(
+                    "UPDATE reborn_validation_queue SET state=2,counter=3 WHERE component_id=$1",
+                    &[&component],
+                )
+                .await
+                .unwrap();
+            writer
+                .reject(&scope, component, "Revision needed")
+                .await
+                .unwrap();
+        }
+        let mut facade =
+            PgRecipeStoreFacade::new(rig.pool.clone(), &scope.tenant_id, &scope.agent_id);
+        facade.queue_store = writer;
+        let revision = facade
+            .list_validation_queue(
+                &scope.user_id,
+                &scope.project_id,
+                ValidationQueueFilter::Revision,
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(revision.items.len(), 2);
+        assert!(
+            revision
+                .items
+                .iter()
+                .all(|row| row.review_attempts == 4 && row.queue_code == "q3_revision")
+        );
+        assert!(
+            facade
+                .list_validation_queue(
+                    &scope.user_id,
+                    &scope.project_id,
+                    ValidationQueueFilter::Rejection,
+                    None
+                )
+                .await
+                .unwrap()
+                .items
+                .is_empty()
+        );
+        // Existing per-store configuration changed: both class projections now
+        // use that exact owner value, never another fixed counter threshold.
+        facade.queue_store = ValidationQueueStore::with_reject_threshold(rig.pool.clone(), 2);
+        assert!(
+            facade
+                .list_validation_queue(
+                    &scope.user_id,
+                    &scope.project_id,
+                    ValidationQueueFilter::Revision,
+                    None
+                )
+                .await
+                .unwrap()
+                .items
+                .is_empty()
+        );
+        let rejection = facade
+            .list_validation_queue(
+                &scope.user_id,
+                &scope.project_id,
+                ValidationQueueFilter::Rejection,
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(rejection.items.len(), 2);
+        assert!(
+            rejection
+                .items
+                .iter()
+                .all(|row| row.queue_code == "q4_rejection")
+        );
     }
 }

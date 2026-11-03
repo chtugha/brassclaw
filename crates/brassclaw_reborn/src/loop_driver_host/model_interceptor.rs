@@ -826,10 +826,10 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
                 Ok(result) => {
                     tracing::debug!(
                         packet_id,
-                        recipe_updates = result.recipe_updates_queued,
-                        intent_examples = result.intent_examples_queued,
-                        components = result.components_queued,
-                        "interceptor: sempai proposals queued in Q1"
+                        recipe_drafts = result.recipe_drafts_saved,
+                        intent_drafts = result.intent_drafts_saved,
+                        component_drafts = result.component_drafts_saved,
+                        "interceptor: Sempai legacy drafts saved; original review submission still required"
                     );
                 }
                 Err(error) => {

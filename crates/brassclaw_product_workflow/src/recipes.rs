@@ -32,6 +32,7 @@ use crate::error::ProductWorkflowError;
 pub enum RecipeKind {
     Recipe,
     ToolSkill,
+    Component,
 }
 
 /// 4-queue filter for `GET /api/webchat/v2/validation-queue?q=…`.
@@ -133,6 +134,23 @@ pub struct ToolSkillDetail {
     pub tool_skill: serde_json::Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OriginalReviewBindingState {
+    Bound,
+    Unresolved,
+    LegacyUnresolved,
+    MissingQueue,
+    JointUnsupported,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OriginalReviewBindingView {
+    pub state: OriginalReviewBindingState,
+    pub queue_id: Option<String>,
+    pub submission_id: Option<String>,
+}
+
 /// One row in the validation queue — surfaced by
 /// `GET /api/webchat/v2/validation-queue` (the post-extraction review
 /// tab) and the per-kind counters.
@@ -143,6 +161,12 @@ pub struct ToolSkillDetail {
 /// Phase P.0: extended with `q2_actor` audit field.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationQueueItem {
+    /// Original-candidate diagnosis, separate from queue lifecycle and Work status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_review: Option<OriginalReviewBindingView>,
+    /// Stable list ordering time: queue submission, or creation without a queue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queued_at: Option<String>,
     pub id: String,
     pub name: String,
     pub item_type: RecipeKind,
@@ -181,6 +205,11 @@ pub struct ValidationQueueItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationQueueListResponse {
     pub items: Vec<ValidationQueueItem>,
+    /// Existing list bound is a visible page size, never a silent total ceiling.
+    #[serde(default)]
+    pub page_size: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -298,11 +327,23 @@ pub struct ComponentRevisionHeadView {
     pub last_allocated_version: u64,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewQueueBindingStatus {
+    #[default]
+    Standalone,
+    Bound,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentReviewSubmissionReceipt {
     /// Original immutable queue selectors, also readable after Q2 removes rows.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub queue_ids: Vec<String>,
+    /// Standalone means an original immutable subject, without a legacy queue seal.
+    /// Neither state establishes Work admission or validator readiness.
+    #[serde(default)]
+    pub queue_binding_status: ReviewQueueBindingStatus,
     pub submission_id: String,
     pub subject_checksum: String,
     pub candidate: ComponentRevisionSelection,
@@ -713,13 +754,15 @@ pub trait RecipeStore: Send + Sync {
     ) -> Result<Option<ToolSkillDetail>, RecipeStoreError>;
 
     /// List rows in the validation queue filtered by the given queue bucket.
-    /// Sorted by `created_at` ascending so the operator reviews oldest-first.
+    /// Live keyset pages across all classes, oldest queue/creation time first.
+    /// Follow next_cursor; concurrent lifecycle changes may change membership.
     async fn list_validation_queue(
         &self,
         user_id: &str,
         project_id: &str,
         filter: ValidationQueueFilter,
-    ) -> Result<Vec<ValidationQueueItem>, RecipeStoreError>;
+        after: Option<&str>,
+    ) -> Result<ValidationQueueListResponse, RecipeStoreError>;
 
     /// Count rows by validation status. Used for tab badges.
     async fn count_by_status(

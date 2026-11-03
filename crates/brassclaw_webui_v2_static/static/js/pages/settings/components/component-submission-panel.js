@@ -14,6 +14,9 @@ export function ComponentSubmissionPanel() {
   const [base, setBase] = React.useState("null");
   const [dependencies, setDependencies] = React.useState("[]");
   const [partner, setPartner] = React.useState("null");
+  const [queueMode, setQueueMode] = React.useState("standalone");
+  const [queueIds, setQueueIds] = React.useState("[]");
+  const [queueProject, setQueueProject] = React.useState("default");
   const [pending, setPending] = React.useState(null);
   const [view, setView] = React.useState(null);
   const [receipt, setReceipt] = React.useState(null);
@@ -41,6 +44,8 @@ export function ComponentSubmissionPanel() {
         expected_previous_version: head,
         base: JSON.parse(base), dependencies: JSON.parse(dependencies),
         ...(selectedPartner === null ? {} : { function_partner: selectedPartner }),
+        ...(queueMode === "existing" ? { queue_ids: JSON.parse(queueIds) } : {}),
+        ...(queueMode === "create" ? { create_queue_project: queueProject } : {}),
       };
       // Serialize before locking: syntax/transport errors make no request.
       const bytes = JSON.stringify(request);
@@ -91,6 +96,7 @@ export function ComponentSubmissionPanel() {
     catch (err) { setError(err.message); return; }
     setPending(null); setReceipt(null); setView(null); setError(""); setAllocation("");
     uncertain.current = false;
+    setQueueMode("standalone"); setQueueIds("[]"); setQueueProject("default");
   };
   const locked = busy || Boolean(pending) || Boolean(receipt);
   return html`
@@ -132,6 +138,22 @@ export function ComponentSubmissionPanel() {
               value=${partner} disabled=${locked} onChange=${e => setPartner(e.target.value)} />
             <span className="mt-1 block text-xs">${t("componentSubmission.partnerHelp")}</span>
           </label>
+          <label className="block text-sm">${t("componentSubmission.queueTarget")}
+            <select className="mt-1 w-full rounded border p-2 bg-transparent" value=${queueMode}
+              disabled=${locked} onChange=${e => setQueueMode(e.target.value)}>
+              <option value="standalone">${t("componentSubmission.queueStandalone")}</option>
+              <option value="existing">${t("componentSubmission.queueExisting")}</option>
+              <option value="create">${t("componentSubmission.queueCreate")}</option>
+            </select>
+          </label>
+          ${queueMode === "existing" && html`<label className="block text-sm">${t("componentSubmission.queueIds")}
+            <textarea className="mt-1 w-full rounded border p-2 bg-transparent font-mono text-xs" value=${queueIds}
+              disabled=${locked} onChange=${e => setQueueIds(e.target.value)} />
+          </label>`}
+          ${queueMode === "create" && html`<label className="block text-sm">${t("componentSubmission.queueProject")}
+            <input className="mt-1 w-full rounded border p-2 bg-transparent" value=${queueProject}
+              disabled=${locked} onChange=${e => setQueueProject(e.target.value)} />
+          </label>`}
           <button type="button" className="rounded border px-3 py-2 text-sm" disabled=${busy || Boolean(receipt) || !id.trim() || !candidate.trim()} onClick=${submit}>
             ${t(pending ? "componentSubmission.retry" : "componentSubmission.submit")}
           </button>
@@ -139,7 +161,9 @@ export function ComponentSubmissionPanel() {
             ${t("componentSubmission.load")}
           </button>
           ${error && html`<p role="alert" className="text-sm text-[var(--v2-danger-text)]">${error}</p>`}
-          ${receipt && html`<p role="status" className="break-all text-sm">${t("componentSubmission.retained", { id: receipt.submission_id })}</p>`}
+          ${receipt && html`<p role="status" className="break-all text-sm">${t("componentSubmission.retained", { id: receipt.submission_id })}
+            <span className="block">${t(receipt.queue_binding_status === "bound" ? "componentSubmission.queueBoundReceipt" : "componentSubmission.queueStandaloneReceipt")}</span>
+          </p>`}
           ${view && html`
             <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all text-xs">${view.subject_bytes}</pre>
             ${view.component_bytes.map((bytes, index) => html`

@@ -1,9 +1,6 @@
 //! Immutable original queue/subject seals. No work claim, approval or Tool grant.
 use super::{Reference, RetainedReviewSubmission, SubmissionStoreError, database, hex};
-use crate::{
-    association_contract::ComponentRevisionRef, component_revision::REVISION_LIMITS,
-    value_contract::strict_json,
-};
+use crate::association_contract::ComponentRevisionRef;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio_postgres::Transaction;
@@ -130,17 +127,13 @@ pub async fn read_in_transaction(
     let Some(row)=tx.query_opt("SELECT submission_id,component_id,binding_bytes,checksum FROM reborn_component_review_queue_bindings WHERE queue_id=$1",&[&queue_id]).await.map_err(database)? else {return Ok(None)};
     let bytes: String = row.get(2);
     let checksum: String = row.get(3);
-    let binding: Binding = serde_json::from_value(
-        strict_json(
-            &bytes,
-            crate::value_contract::ContractLimits {
-                max_bytes: 67_108_864,
-                ..REVISION_LIMITS
-            },
-        )
-        .map_err(|_| SubmissionStoreError::Invalid)?,
-    )
-    .map_err(|_| SubmissionStoreError::Invalid)?;
+    // This host-generated seal contains multiple escaped copies of already
+    // validated inputs and unbounded legacy row fields. Applying revision or
+    // snapshot byte/node quotas to that expansion rejects legal originals.
+    // Serde's struct rejects duplicate/unknown fields; PostgreSQL TEXT and the
+    // existing ingress/revision owners remain the technical transport limits.
+    let binding: Binding =
+        serde_json::from_str(&bytes).map_err(|_| SubmissionStoreError::Invalid)?;
     let subject = super::PgReviewSubmissionStore::read_in_transaction(tx, binding.submission_id)
         .await?
         .ok_or(SubmissionStoreError::Invalid)?;
@@ -180,8 +173,18 @@ pub async fn read_in_transaction(
         .draft()
         .document();
     let class = i16::try_from(candidate.class_code).map_err(|_| SubmissionStoreError::Invalid)?;
-    let row=tx.query_one("SELECT $2::jsonb ?& review_queue_fields($1::smallint) AND review_queue_projection($1::smallint,$2::jsonb)=review_queue_projection($1::smallint,$3::jsonb) AND NOT EXISTS(SELECT 1 FROM jsonb_each($2::jsonb) d JOIN jsonb_each($3::jsonb) e ON d.key=e.key WHERE d.value IS DISTINCT FROM e.value)",
-        &[&class,document,&serde_json::from_str::<serde_json::Value>(&binding.reviewed_bytes).map_err(|_|SubmissionStoreError::Invalid)?]).await.map_err(database)?;
+    let row = tx
+        .query_one(
+            "SELECT review_queue_agrees($1::smallint,$2::jsonb,$3::jsonb)",
+            &[
+                &class,
+                document,
+                &serde_json::from_str::<serde_json::Value>(&binding.reviewed_bytes)
+                    .map_err(|_| SubmissionStoreError::Invalid)?,
+            ],
+        )
+        .await
+        .map_err(database)?;
     if row.get::<_, Option<bool>>(0) != Some(true) {
         return Err(SubmissionStoreError::Invalid);
     }

@@ -263,8 +263,26 @@ export function updateChatPreference(key, value) {
 // Phase 6 — Validation queue (operator review surface).
 // Reuses the existing v2 recipe/tool-skill validation-queue endpoints.
 // project_id defaults to "default" for the global settings scope.
-export function fetchValidationQueue() {
-  return apiFetch("/api/webchat/v2/validation-queue?project_id=default");
+export async function fetchValidationQueue() {
+  const readBucket = async (bucket) => {
+    const items = [];
+    let after = null;
+    do {
+      const query = new URLSearchParams({ project_id: "default", q: bucket });
+      if (after) query.set("after", after);
+      const page = await apiFetch(`/api/webchat/v2/validation-queue?${query}`);
+      items.push(...(page.items ?? []));
+      if (page.next_cursor && page.next_cursor === after) throw new Error("Queue page did not advance");
+      after = page.next_cursor ?? null;
+    } while (after);
+    return items;
+  };
+  const [manual, automatic] = await Promise.all([readBucket("manual"), readBucket("auto")]);
+  const items = new Map();
+  for (const item of [...automatic, ...manual]) items.set(`${item.class_code}:${item.id}`, item);
+  return { items: [...items.values()].sort((a, b) =>
+    (a.queued_at ?? a.created_at).localeCompare(b.queued_at ?? b.created_at)
+      || a.class_code - b.class_code || a.id.localeCompare(b.id)) };
 }
 export function fetchValidationQueueCount() {
   return apiFetch("/api/webchat/v2/validation-queue/count?project_id=default&status=pending");

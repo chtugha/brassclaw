@@ -1262,6 +1262,7 @@ pub trait RebornServicesApi: Send + Sync {
         _caller: WebUiAuthenticatedCaller,
         _project_id: &str,
         _filter: crate::recipes::ValidationQueueFilter,
+        _after: Option<&str>,
     ) -> Result<crate::recipes::ValidationQueueListResponse, RebornServicesError> {
         Err(RebornServicesError::from_status(
             RebornServicesErrorCode::InvalidRequest,
@@ -4583,17 +4584,17 @@ impl RebornServicesApi for RebornServices {
         caller: WebUiAuthenticatedCaller,
         project_id: &str,
         filter: crate::recipes::ValidationQueueFilter,
+        after: Option<&str>,
     ) -> Result<crate::recipes::ValidationQueueListResponse, RebornServicesError> {
         let store = self
             .recipe_store
             .as_ref()
             .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
-        let items = store
-            .list_validation_queue(&user_id, project_id, filter)
+        store
+            .list_validation_queue(&user_id, project_id, filter, after)
             .await
-            .map_err(map_recipe_store_error)?;
-        Ok(crate::recipes::ValidationQueueListResponse { items })
+            .map_err(map_recipe_store_error)
     }
 
     async fn count_validation_queue(

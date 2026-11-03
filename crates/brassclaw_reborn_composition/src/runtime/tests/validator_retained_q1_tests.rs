@@ -106,6 +106,7 @@ async fn run_q1_validation_retained_passes_and_persists_evidence() {
         "document": {
             "consumer_tags":["02:orchestrator","05:validator"],"prior_knowledge_content":null,
             "override_prompt_creation":false,"intent_examples":null,"dependency_registry":null,"includes":[],
+            "similarity_parent_id":null,"replaces_id":null,"parent_version":null,
             "name": component_name,
             "description": "Minimal test PythonCode component for Q1 retained integration test.",
             "content": "def retain_value(inputs):\n    return inputs['value']\n",
@@ -334,6 +335,7 @@ async fn run_q1_validation_retained_fails_for_empty_content() {
         "document": {
             "consumer_tags":["02:orchestrator","05:validator"],"prior_knowledge_content":null,
             "override_prompt_creation":false,"intent_examples":null,"dependency_registry":null,"includes":[],
+            "similarity_parent_id":null,"replaces_id":null,"parent_version":null,
             "name": fail_name,
             "description": "A component whose content is deliberately empty.",
             "content": "",

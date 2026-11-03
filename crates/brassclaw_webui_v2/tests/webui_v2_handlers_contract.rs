@@ -1130,8 +1130,11 @@ impl RebornServicesApi for StubServices {
         _caller: WebUiAuthenticatedCaller,
         _project_id: &str,
         _filter: ValidationQueueFilter,
+        _after: Option<&str>,
     ) -> Result<ValidationQueueListResponse, RebornServicesError> {
         Ok(ValidationQueueListResponse {
+            page_size: 0,
+            next_cursor: None,
             items: Vec::<ValidationQueueItem>::new(),
         })
     }

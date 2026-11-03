@@ -94,6 +94,10 @@ pub enum ValidationQueueError {
         "component {component_id}: original review binding unresolved; explicit submission required"
     )]
     OriginalReviewUnresolved { component_id: Uuid },
+    #[error(
+        "component {component_id}: legacy review custody unresolved; safe disposition/fencing and a queue-generation transition are not connected; do not replay"
+    )]
+    LegacyReviewCustodyUnresolved { component_id: Uuid },
     #[error("component {component_id} or its submission changed since Q1 review")]
     ReviewChanged { component_id: Uuid },
     #[error(
@@ -117,9 +121,40 @@ pub(crate) fn original_review_error(
                 "original review storage unavailable; retain original request for readback".into(),
             )
         }
+        ValidationQueueError::LegacyReviewCustodyUnresolved { .. } =>
+            brassclaw_product_workflow::RecipeStoreError::Unavailable("legacy review custody requires the unconnected disposition/fencing owner; do not replay".into()),
+        ValidationQueueError::InvalidPayload { .. }
+        | ValidationQueueError::UnknownClass { .. }
+        | ValidationQueueError::InvalidGate1Result { .. }
+        | ValidationQueueError::InvalidQ2Actor { .. } => {
+            brassclaw_product_workflow::RecipeStoreError::Invalid(
+                "invalid original review capture".into(),
+            )
+        }
         _ => brassclaw_product_workflow::RecipeStoreError::Conflict(
             "original queue candidate differs or requires explicit resubmission".into(),
         ),
+    }
+}
+
+/// Preserve infrastructure/uncertain-write failures from the immutable owner.
+/// Only actual byte/reference/CAS mismatches become candidate conflicts.
+pub(crate) fn map_original_store(
+    error: brassclaw_skills::review_submission_store::SubmissionStoreError,
+    component_id: Uuid,
+) -> ValidationQueueError {
+    use brassclaw_skills::{
+        review_submission_store::SubmissionStoreError as E, revision_store::RevisionStoreError as R,
+    };
+    match error {
+        E::Database(_) | E::Revisions(R::Database(_)) => ValidationQueueError::Db {
+            reason: "original review storage unavailable; retain original request for readback"
+                .into(),
+        },
+        E::Conflict | E::Revisions(R::Conflict) => {
+            ValidationQueueError::ReviewChanged { component_id }
+        }
+        _ => ValidationQueueError::InvalidPayload { component_id },
     }
 }
 
@@ -144,10 +179,39 @@ fn map_pg(e: tokio_postgres::Error) -> ValidationQueueError {
 // Row type
 // ---------------------------------------------------------------------------
 
+pub(crate) fn original_review_view(
+    class: i16,
+    queue_id: Option<Uuid>,
+    required: Option<bool>,
+    submission: Option<Uuid>,
+    joint: bool,
+) -> Option<brassclaw_product_workflow::OriginalReviewBindingView> {
+    use brassclaw_product_workflow::{OriginalReviewBindingState as S, OriginalReviewBindingView};
+    if !matches!(class, 0 | 1..=3 | 13 | 21..=23) {
+        return None;
+    }
+    Some(OriginalReviewBindingView {
+        state: if queue_id.is_none() {
+            S::MissingQueue
+        } else if submission.is_some() && joint {
+            S::JointUnsupported
+        } else if submission.is_some() {
+            S::Bound
+        } else if required == Some(false) {
+            S::LegacyUnresolved
+        } else {
+            S::Unresolved
+        },
+        queue_id: queue_id.map(|id| id.to_string()),
+        submission_id: submission.map(|id| id.to_string()),
+    })
+}
+
 /// A decoded `reborn_validation_queue` row (without scope — the caller knows
 /// the scope it queried). Returned by [`ValidationQueueStore::list`].
 #[derive(Debug, Clone)]
 pub struct QueueRow {
+    pub original_review: Option<brassclaw_product_workflow::OriginalReviewBindingView>,
     pub id: Uuid,
     pub component_id: Uuid,
     pub component_class: i16,
@@ -227,6 +291,10 @@ impl ValidationQueueStore {
     pub(crate) fn with_validator_service(mut self, bridge: Arc<ValidatorServiceBridge>) -> Self {
         self.validator_bridge = Some(bridge);
         self
+    }
+
+    pub(crate) fn reject_threshold(&self) -> u8 {
+        self.reject_threshold
     }
 
     /// Fire a detached Q1 kick for a component that was just committed to the
@@ -505,7 +573,10 @@ impl ValidationQueueStore {
             .query_opt(
                 "SELECT id, component_id, component_class, state, counter,
                     review_feedback, validation_errors, proposed_payload,
-                    submitted_at, updated_at, q2_actor
+                    submitted_at, updated_at, q2_actor, original_binding_required,
+                    (SELECT b.submission_id FROM reborn_component_review_queue_bindings b WHERE b.queue_id=reborn_validation_queue.id),
+                    EXISTS(SELECT 1 FROM reborn_component_review_queue_bindings b JOIN reborn_component_review_submissions s USING(submission_id)
+                      WHERE b.queue_id=reborn_validation_queue.id AND s.subject_bytes::jsonb ? 'function_partner')
              FROM reborn_validation_queue
              WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
                AND component_id=$5 FOR UPDATE",
@@ -547,7 +618,10 @@ impl ValidationQueueStore {
                    AND state = 2
                  RETURNING id, component_id, component_class, state, counter,
                            review_feedback, validation_errors, proposed_payload,
-                           submitted_at, updated_at, q2_actor",
+                           submitted_at, updated_at, q2_actor, original_binding_required,
+                    (SELECT b.submission_id FROM reborn_component_review_queue_bindings b WHERE b.queue_id=reborn_validation_queue.id),
+                    EXISTS(SELECT 1 FROM reborn_component_review_queue_bindings b JOIN reborn_component_review_submissions s USING(submission_id)
+                      WHERE b.queue_id=reborn_validation_queue.id AND s.subject_bytes::jsonb ? 'function_partner')",
                 &[
                     &scope.tenant_id,
                     &scope.user_id,
@@ -638,7 +712,7 @@ impl ValidationQueueStore {
             .query_opt(
                 &format!(
                     "SELECT state, proposed_payload, component_class, id, to_jsonb(q)::text,
-                         q1_component_bytes, q1_queue_bytes, (to_jsonb(q)-{})::text
+                         q1_component_bytes, q1_queue_bytes, (to_jsonb(q)-{})::text, original_binding_required
                  FROM reborn_validation_queue q
                  WHERE tenant_id = $1 AND user_id = $2
                    AND agent_id = $3 AND project_id = $4
@@ -670,6 +744,9 @@ impl ValidationQueueStore {
         let class_code: i16 = row.get(2);
         let queue_id: Uuid = row.get(3);
         let queue_bytes: String = row.get(4);
+        if matches!(class_code,0|1..=3|13|21..=23) && !row.get::<_, bool>(8) {
+            return Err(ValidationQueueError::LegacyReviewCustodyUnresolved { component_id });
+        }
 
         // Resolve only a trusted table literal; unknown classes roll back
         // without mutating the queue or component.
@@ -700,7 +777,7 @@ impl ValidationQueueStore {
                 &tx, queue_id,
             )
             .await
-            .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?
+            .map_err(|error| map_original_store(error, component_id))?
             .ok_or(ValidationQueueError::OriginalReviewUnresolved { component_id })?;
             Self::verify_original_in_transaction(&tx, queue_id, &original).await?;
             if original.component_bytes() != current_component
@@ -900,7 +977,10 @@ impl ValidationQueueStore {
                 .query(
                     "SELECT id, component_id, component_class, state, counter,
                             review_feedback, validation_errors, proposed_payload,
-                            submitted_at, updated_at, q2_actor
+                            submitted_at, updated_at, q2_actor, original_binding_required,
+                    (SELECT b.submission_id FROM reborn_component_review_queue_bindings b WHERE b.queue_id=reborn_validation_queue.id),
+                    EXISTS(SELECT 1 FROM reborn_component_review_queue_bindings b JOIN reborn_component_review_submissions s USING(submission_id)
+                      WHERE b.queue_id=reborn_validation_queue.id AND s.subject_bytes::jsonb ? 'function_partner')
                      FROM reborn_validation_queue
                      WHERE tenant_id = $1 AND user_id = $2
                        AND agent_id = $3 AND project_id = $4
@@ -921,7 +1001,10 @@ impl ValidationQueueStore {
                 .query(
                     "SELECT id, component_id, component_class, state, counter,
                             review_feedback, validation_errors, proposed_payload,
-                            submitted_at, updated_at, q2_actor
+                            submitted_at, updated_at, q2_actor, original_binding_required,
+                    (SELECT b.submission_id FROM reborn_component_review_queue_bindings b WHERE b.queue_id=reborn_validation_queue.id),
+                    EXISTS(SELECT 1 FROM reborn_component_review_queue_bindings b JOIN reborn_component_review_submissions s USING(submission_id)
+                      WHERE b.queue_id=reborn_validation_queue.id AND s.subject_bytes::jsonb ? 'function_partner')
                      FROM reborn_validation_queue
                      WHERE tenant_id = $1 AND user_id = $2
                        AND agent_id = $3 AND project_id = $4
@@ -1149,6 +1232,13 @@ impl ValidationQueueStore {
 
 fn decode_queue_row(row: tokio_postgres::Row) -> Result<QueueRow, ValidationQueueError> {
     Ok(QueueRow {
+        original_review: original_review_view(
+            row.get(2),
+            Some(row.get(0)),
+            Some(row.get(11)),
+            row.get(12),
+            row.get(13),
+        ),
         id: row.get(0),
         component_id: row.get(1),
         component_class: row.get(2),

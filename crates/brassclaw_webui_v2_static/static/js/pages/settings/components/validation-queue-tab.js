@@ -163,7 +163,12 @@ function QueueRow({ item }) {
   // For class 10 (Orchestrator) and 50 (Scaffold) it is additionally
   // disabled when the LLM audit is pending or has flagged issues — the
   // backend enforces the same rule and returns 403 if bypassed.
+  const originalState = item.original_review?.state;
+  const originalBlocked = originalState && originalState !== "bound";
   const isQ2 = item.queue_code === "q2_manual";
+  // The current facade only supports the Recipe manual action. Listing an
+  // original for other classes does not create their B2 approval writer.
+  const showQ2Actions = isQ2 && item.class_code === 21;
   const auditBlocked =
     LLM_AUDIT_CLASS_CODES.has(item.class_code) &&
     item.llm_audit_status !== "clean" &&
@@ -207,6 +212,11 @@ function QueueRow({ item }) {
                 ${item.description}
               </p>`}
           </div>
+          ${isQ2 && !showQ2Actions && html`<p role="status" className="mt-1 text-xs text-[var(--v2-text-muted)]">${t("validationQueue.original.actionUnavailable")}</p>`}
+          ${originalBlocked && html`<p role="status" className="mt-1 text-xs text-[var(--v2-warning-text)]">
+            ${t(`validationQueue.original.${originalState}`)}
+            ${item.original_review?.queue_id && html`<span className="block font-mono">${item.original_review.queue_id}</span>`}
+          </p>`}
           ${actionError &&
             html`<p className="mt-1 text-xs text-[var(--v2-danger-text)]">${actionError}</p>`}
         </div>
@@ -223,7 +233,7 @@ function QueueRow({ item }) {
               size="sm"
             />
           </span>`}
-          ${isQ2 && html`
+          ${showQ2Actions && html`
             <button
               onClick=${() => {
                 setActionError("");
@@ -236,7 +246,7 @@ function QueueRow({ item }) {
             </button>
             <button
               onClick=${() => { setActionError(""); validateMutation.mutate(); }}
-              disabled=${isBusy || auditBlocked}
+              disabled=${isBusy || auditBlocked || originalBlocked}
               title=${validateTooltip ?? ""}
               className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-accent-text)] hover:bg-[var(--v2-accent-bg)] disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -246,7 +256,7 @@ function QueueRow({ item }) {
         </div>
       </div>
 
-      ${rejectOpen && isQ2 &&
+      ${rejectOpen && showQ2Actions &&
         html`<div className="mt-3 rounded border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-2">
           <label
             htmlFor=${`reject-feedback-${item.id}`}

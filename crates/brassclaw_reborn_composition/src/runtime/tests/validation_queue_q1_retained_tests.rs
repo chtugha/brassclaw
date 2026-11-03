@@ -29,7 +29,7 @@ fn test_scope() -> ComponentScope {
 /// `initialize_runtime_components` → `retain_validator_check_drafts`), so step 2
 /// always passes. The bridge is provided so step 1 also passes.
 /// The component is added to the validation queue but no review submission is
-/// created, so step 5 defers with "no active submission".
+/// created, so the original check defers before validator preparation.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_q1_validation_retained_defers_when_no_revision_draft_seeded() {
     let rig = crate::runtime::test_pg::pg_rig().await;
@@ -54,7 +54,7 @@ async fn run_q1_validation_retained_defers_when_no_revision_draft_seeded() {
     let store = ValidationQueueStore::new(rig.pool.clone());
     let cid = Uuid::new_v4();
     store.submit(&scope, cid, 22, None).await.unwrap();
-    // No review submission created — step 5 defers.
+    // No original binding: defer before validator preparation, without inferring latest.
 
     let outcome = run_q1_validation_retained(
         &rig.pool,
@@ -76,16 +76,45 @@ async fn run_q1_validation_retained_defers_when_no_revision_draft_seeded() {
         panic!("expected Deferred")
     };
     assert!(
-        reason.contains("no active submission for component"),
-        "deferred reason must mention missing submission; got: {reason}"
+        reason
+            == &format!(
+                "original review binding unresolved for component {cid}; explicit resubmission required"
+            ),
+        "deferred reason must identify the unresolved original and required action; got: {reason}"
     );
+    // A retained pre-migration queue is unknown custody, not a new unbound
+    // draft that the operator can already safely re-submit. No replay/admission.
+    let historical = Uuid::new_v4();
+    rig.pool.get().await.unwrap().execute("INSERT INTO reborn_validation_queue(tenant_id,user_id,agent_id,project_id,component_id,component_class,original_binding_required) VALUES($1,$2,$3,$4,$5,22,false)",
+        &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&historical]).await.unwrap();
+    let legacy = run_q1_validation_retained(
+        &rig.pool,
+        &scope,
+        historical,
+        22,
+        &store,
+        brassclaw_monty_host::utility::UtilityLimits::from_execution(Default::default()).unwrap(),
+        Some(&bridge),
+    )
+    .await
+    .unwrap();
+    let Q1Outcome::Deferred { reason } = legacy else {
+        panic!("legacy custody must defer before validator work")
+    };
+    assert_eq!(
+        reason,
+        format!(
+            "legacy review custody unresolved for component {historical}; safe disposition and fencing are not connected; do not replay"
+        )
+    );
+    assert!(!reason.contains("resubmit"));
 }
 
 /// PKG-D test case C: `run_q1_validation_retained` returns `Deferred` when no
 /// active submission exists for the component in `reborn_component_review_submissions`.
 ///
 /// The bridge is provided and drafts are seeded so steps 1–4 pass.
-/// No submission is created → step 5 defers.
+/// No submission is created → original binding check defers before worker inspection.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_q1_validation_retained_defers_when_no_submission() {
     let rig = crate::runtime::test_pg::pg_rig().await;
@@ -117,7 +146,7 @@ async fn run_q1_validation_retained_defers_when_no_submission() {
     // Create a test note component and submit it to the queue.
     let cid = Uuid::new_v4();
     store.submit(&scope, cid, 22, None).await.unwrap();
-    // Do NOT create a review submission — so step 5 defers.
+    // Do NOT create an original binding; the explicit unresolved check must defer.
 
     // class_code=22 has drafts seeded — no submission for cid → defers at step 5.
     let outcome = run_q1_validation_retained(
@@ -140,8 +169,11 @@ async fn run_q1_validation_retained_defers_when_no_submission() {
         panic!("expected Deferred")
     };
     assert!(
-        reason.contains("no active submission for component"),
-        "deferred reason must mention missing submission; got: {reason}"
+        reason
+            == &format!(
+                "original review binding unresolved for component {cid}; explicit resubmission required"
+            ),
+        "deferred reason must identify the unresolved original and required action; got: {reason}"
     );
 }
 
