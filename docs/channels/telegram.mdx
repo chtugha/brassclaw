@@ -9,6 +9,10 @@ You can create a Telegram bot and connect your BrassClaw agent to it. Once confi
 If you haven't set up your agent yet, follow our [Quickstart guide](../quickstart)
 </Note>
 
+<Warning>
+**Telegram v2 adapter (in development).** BrassClaw is migrating to a new native Telegram adapter. The setup described on this page reflects the current default experience. The new adapter is available behind the `REBORN_TELEGRAM_V2_ENABLED=true` flag and its documentation will replace this page once it reaches general availability. Do not enable both simultaneously — BrassClaw will refuse to start if both are configured for the same installation.
+</Warning>
+
 ---
 
 ## Set up a Telegram channel
@@ -27,37 +31,32 @@ In order to create a new Telegram bot, you need to talk to [BotFather](https://t
     Send the command `/newbot` to BotFather and follow the instructions to create a new bot. You will need to choose a name and a username for your bot. The username must end with "bot". For example, "my_agent_bot".
     </Step>
     <Step title="Get your bot token">
-    After creating your bot, BotFather will give you a token that looks like this: `123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ`. This token is used to authenticate your bot and allow it to access the Telegram API. Keep this token safe and do not share it with anyone. You will need it later to configure the Telegram channel in BrassClaw.
+    After creating your bot, BotFather will give you a token that looks like this: `123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ`. This token is used to authenticate your bot and allow it to access the Telegram API. Keep this token safe and do not share it with anyone. You will need it in the next step.
     </Step>
 </Steps>
 
 </Step>
+
 <Step title="Configure the Telegram channel in BrassClaw">
 
-    Invoke the BrassClaw CLI onboard wizard using the `--channels-only` flag to configure only the channels without going through the entire onboarding process again:
+Run the BrassClaw onboarding wizard to configure the Telegram channel:
 
-    ```
-    brassclaw onboard --channels-only
-    ```
+```
+brassclaw onboard
+```
 
-    <Steps>
-        <Step title="Config the Tunnel">
-            If you have not setup a `Tunnel` yet, the wizard will ask you to choose a tunnel provider and set it up. We recommend using [ngrok](https://dashboard.ngrok.com/) for its ease of use and reliability.
+When prompted for channels, select Telegram and enter the bot token you received from BotFather. If you have already completed onboarding and only want to add the channel, re-run:
 
-            ![ngrok setup](/images/channels/tunnel.png)
-        </Step>
-        <Step title="Install the Telegram channel">
-        Select the Telegram channel from the list of available channels to install it.
-        ![select channel](/images/channels/telegram-channel.png)
-        </Step>
-        <Step title="Add your bot token">
-            Enter the bot token you got from BotFather in the previous step.
-        </Step>
-    </Steps>
+```
+brassclaw onboard
+```
+
+and proceed to the channel configuration step.
+
 </Step>
 
 <Step title="Test your Telegram channel">
-    Now that you have configured your Telegram channel, it is time to test it out. Start the `brassclaw` agent if it is not already running:
+    Now that you have configured your Telegram channel, start the `brassclaw` agent if it is not already running:
 
     ```
     brassclaw
@@ -77,7 +76,7 @@ In order to create a new Telegram bot, you need to talk to [BotFather](https://t
 ## Telegram Side Settings
 
 <Accordion title="Privacy mode and group visibility">
-Telegram bots default to Privacy Mode, which limits what group messages they receive.If the bot must see all group messages, either:
+Telegram bots default to Privacy Mode, which limits what group messages they receive. If the bot must see all group messages, either:
 
     - disable privacy mode via `/setprivacy`, or
     - make the bot a group admin.
@@ -85,7 +84,7 @@ Telegram bots default to Privacy Mode, which limits what group messages they rec
 When toggling privacy mode, remove and re-add the bot in each group so Telegram applies the change.
 </Accordion>
 <Accordion title="Group permissions">
-    Admin status is controlled in Telegram group settings.Admin bots receive all group messages, which is useful for always-on group behavior.
+    Admin status is controlled in Telegram group settings. Admin bots receive all group messages, which is useful for always-on group behavior.
 </Accordion>
 <Accordion title="Helpful BotFather toggles">
     - `/setjoingroups` to allow/deny group adds
@@ -98,7 +97,7 @@ When toggling privacy mode, remove and re-add the bot in each group so Telegram 
 ## Configuration Options
 
 You can configure the behavior of the Telegram channel through the
-`.brassclaw/channels/telegram.capabilities.json` file, which is created
+`~/.brassclaw/channels/telegram.capabilities.json` file, which is created
 automatically after you set up the channel for the first time.
 
 <Accordion title="Options Overview">
@@ -130,7 +129,7 @@ The `dm_policy` option controls who can send direct messages to the bot:
 
 Related options:
 - The `allow_from` option is a list of Telegram user IDs that are allowed to DM the bot when `dm_policy` is set to `allowlist`.
-- The `owner_id` option restricts the bot to answer only messages from a specific Telegram user ID
+- The `owner_id` option restricts the bot to answer only messages from a specific Telegram user ID.
 
 <Tip> 
 
@@ -141,16 +140,17 @@ Message [@userinfobot](https://t.me/userinfobot) to get your Telegram user ID.
 </Tip>
 
 ### Respond to all group messages
+
 By default, the Telegram channel will only respond to messages that mention the bot in groups.
-If you want the bot to respond to all group messages, set the `respond_to_all_group_messages`
+If you want the bot to respond to all group messages, set `respond_to_all_group_messages` to `true`.
 
 Relevant options:
 - If `respond_to_all_group_messages` is set to `false`, the bot will only respond to messages that mention it.
-In this case, make sure to set the `bot_username` option with the bot's username (without the `@`)
+In this case, make sure to set the `bot_username` option with the bot's username (without the `@`).
 
 ### Polling
 
-In case you do not want to configure a `tunnel`, you can setup the Telegram channel to poll for
+In case you do not want to configure a tunnel, you can set up the Telegram channel to poll for
 new messages every certain interval of time.
 
 To do this, set the `polling_enabled` option to `true` and configure the `poll_interval_ms` option
@@ -167,12 +167,12 @@ with the desired polling interval in milliseconds (default is 30000ms, which is 
 }
 ```
 
-**Always-On Expert** — responds to all messages:
+**Always-On Expert** — responds to all messages, open DMs:
 ```json
 {
   "bot_username": "DevOpsBot",
   "respond_to_all_group_messages": true,
-  "allow_from": ["*"]
+  "dm_policy": "open"
 }
 ```
 
@@ -189,7 +189,7 @@ with the desired polling interval in milliseconds (default is 30000ms, which is 
 
 ## Group Chat Participation
 
-BrassClaw can be configured to participate in Telegram group chats, by default the bot will only respond to commands (use `/help` to see the
+BrassClaw can be configured to participate in Telegram group chats. By default the bot will only respond to commands (use `/help` to see the
 list of available commands). If you want the bot to respond to mentions or all messages in a group you need to configure it.
 
 ### Adding the Bot to Groups
@@ -283,7 +283,7 @@ When BrassClaw is running in webhook mode, Telegram delivers messages by sending
 
 A webhook secret is a shared token you configure in BrassClaw. Telegram includes that token in every request it sends. BrassClaw rejects any request that does not carry the correct token, so only genuine Telegram traffic reaches your agent.
 
-To enable it, add `telegram_webhook_secret` to your `.brassclaw/channels/telegram.capabilities.json`:
+To enable it, add `telegram_webhook_secret` to your `~/.brassclaw/channels/telegram.capabilities.json`:
 
 ```json
 {
@@ -333,6 +333,6 @@ The webhook secret is only relevant when `polling_enabled` is `false`. If you ar
   </Accordion>
 
   <Accordion title="Owner binding timeout during setup">
-    The wizard waits 120 seconds for the first message. If it times out, send `/start` to your bot in Telegram and re-run `brassclaw onboard --channels-only`.
+    The wizard waits 120 seconds for the first message. If it times out, send `/start` to your bot in Telegram and re-run `brassclaw onboard`.
   </Accordion>
 </AccordionGroup>

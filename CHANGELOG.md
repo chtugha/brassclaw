@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **`docs/channels` — remove stale v1/unimplemented channel docs, revise remaining files**:
+  Audited all seven files in `docs/channels/` against the current codebase. Four
+  files described channels that no longer exist or were never implemented in v3:
+  - Deleted `docs/channels/signal.mdx`: described configuration via plain env vars
+    (`SIGNAL_HTTP_URL`, `SIGNAL_ACCOUNT`, `SIGNAL_ALLOW_FROM`) with no matching
+    code in the workspace; the v2 Signal adapter is declared `[not implemented]` in
+    `docs/reborn/contracts/product-adapters.md`.
+  - Deleted `docs/channels/discord.mdx`: v2 Discord adapter declared
+    `[not implemented]`.
+  - Deleted `docs/channels/webhook.mdx`: `HTTP_ENABLED`/`HTTP_PORT`/
+    `HTTP_WEBHOOK_SECRET` env vars absent from the codebase; v2 webhook route
+    declared `[not implemented]`.
+  - Deleted `docs/channels/building-a-channel.mdx`: described the WASM
+    component-model channel SDK (`wasm32-wasip2`, `wit-bindgen`, `channel_host`
+    host API). The WASM adapter build was retired in Phase 4
+    (`docs/reborn/contracts/telegram-v2.md`) and `channels-src/` was removed
+    entirely in Phase 6 (`Cargo.toml`). Nothing in this file corresponds to
+    current code.
+  - Revised `docs/channels/overview.mdx`: removed the Tunnel prerequisite card,
+    Signal, Discord, and HTTP Webhook cards; updated intro copy to remove
+    "webhooks" reference. Now lists only Local and Telegram.
+  - Revised `docs/channels/telegram.mdx`: added a `<Warning>` block naming the
+    new native v2 adapter (`brassclaw_telegram_v2_adapter`) and its
+    `REBORN_TELEGRAM_V2_ENABLED` flag; replaced the removed
+    `brassclaw onboard --channels-only` flag (v1 WASM channel wizard) with
+    `brassclaw onboard`; fixed truncated "Respond to all group messages" sentence;
+    fixed misleading `"allow_from": ["*"]` example to use `"dm_policy": "open"`;
+    corrected both capabilities file paths from `.brassclaw/` to `~/.brassclaw/`;
+    fixed two missing spaces in accordion prose; removed `--channels-only` from
+    the troubleshooting accordion.
+  - Kept `docs/channels/local.md` unchanged: env vars (`GATEWAY_ENABLED`,
+    `GATEWAY_HOST`, `GATEWAY_PORT`, `GATEWAY_AUTH_TOKEN`, `CLI_ENABLED`) are live
+    and used by the e2e test harness; file is referenced as a source of truth in
+    `crates/brassclaw_tui/AGENTS.md`.
+
 - **Remove `docs/assumptions/` folder**: deleted
   `docs/assumptions/reborn-event-stream-manager.md`, a one-off implementation
   decision note from 2026-05-19 that recorded type mappings and sizing constants
