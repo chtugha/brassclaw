@@ -1446,9 +1446,12 @@ async fn native_device_actual_custodian_rejects_changed_request_duplicate_prefli
         .await
         .unwrap();
     tx.commit().await.unwrap();
-    let captured: RuntimeHttpEgressRequest =
-        serde_json::from_str(captured.expose_secret()).unwrap();
-    assert_eq!(captured, request);
+    // System runtime identity is host-assigned and intentionally cannot be
+    // deserialized from JSON. Verify the exact stored request bytes instead.
+    assert_eq!(
+        captured.expose_secret(),
+        &serde_json::to_string(&request).unwrap()
+    );
 
     let failing = prepare(&auth, &transport, 60).await.original;
     let client = rig.pool.get().await.unwrap();

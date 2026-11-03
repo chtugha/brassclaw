@@ -240,3 +240,15 @@ filesystem selectors are already named above. All ten are cause-reviewed here,
 **not rerun or claimed repaired by execution**. The supervisor owns the next
 combined native compile, relevant lints and real acceptance, including any
 downstream failure revealed after these formerly blocking failures.
+
+The supervisor's run-6 completed 71/73 selected cases. Its remaining device
+custody failure (`test-044.log`) reaches the retained request read, then the
+fixture tries to deserialize the host-created `RuntimeKind::System` from JSON.
+`RuntimeKind` deliberately rejects that privileged identity during plain serde
+deserialization. The fixture now compares the captured original with the exact
+`serde_json::to_string(&request)` bytes used by the production writer. No host
+identity policy changes. The subsequent actual deferred-commit fault, rolled-back
+original, unchanged issuer count and restart/no-repeat assertions remain intact.
+This correction has source/format checks only; its runtime result remains pending
+the supervisor's combined run. The other remaining run-6 case is the factory
+fixture's callback admission-state assertion, corrected separately in `39d4c0c8d`.
