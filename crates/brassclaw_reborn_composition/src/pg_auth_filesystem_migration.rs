@@ -2,6 +2,7 @@
 //! Source records stay immutable and readable. No account/flow IDs, secret
 //! handles, original requests, timestamps or historical bytes are regenerated.
 use super::*;
+use crate::auth::RebornAuthCustodyState;
 use crate::product_auth_durable::paths;
 use brassclaw_auth::{CredentialRefreshAction, CredentialRefreshId};
 use brassclaw_host_api::ScopedPath;
@@ -106,16 +107,33 @@ impl PgAuthProductServices {
     pub(crate) async fn migrate_filesystem_auth(
         &self,
         tenant: &str,
-    ) -> Result<(), AuthProductError> {
+    ) -> Result<RebornAuthCustodyState, AuthProductError> {
         let mut client = self.pool.get().await.map_err(pool_err)?;
         let tx = client.transaction().await.map_err(db_err)?;
-        tx.batch_execute("LOCK TABLE root_filesystem_entries IN SHARE ROW EXCLUSIVE MODE")
+        tx.batch_execute("LOCK TABLE root_filesystem_entries, brassclaw_product_auth_accounts, brassclaw_product_auth_flows, brassclaw_product_auth_interactions, brassclaw_product_auth_requirement_selections, brassclaw_product_auth_refreshes IN SHARE ROW EXCLUSIVE MODE")
             .await
             .map_err(db_err)?;
         tx.batch_execute("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='root_filesystem_entries'::regclass AND tgname='brassclaw_retained_auth_custody') THEN CREATE TRIGGER brassclaw_retained_auth_custody BEFORE INSERT OR UPDATE OR DELETE ON root_filesystem_entries FOR EACH ROW EXECUTE FUNCTION brassclaw_fence_retained_auth_filesystem(); END IF; END $$").await.map_err(db_err)?;
         if tx.query_opt("SELECT source_checksum FROM brassclaw_product_auth_filesystem_cutovers WHERE tenant_id=$1",&[&tenant]).await.map_err(db_err)?.is_some() {
-            tx.commit().await.map_err(db_err)?; return Ok(());
+            if tx.query_opt("SELECT tenant_id FROM brassclaw_product_auth_filesystem_recoveries WHERE tenant_id=$1",&[&tenant]).await.map_err(db_err)?.is_some() { return Err(conflict()); }
+            tx.commit().await.map_err(db_err)?; return Ok(RebornAuthCustodyState::Native);
         }
+        // Inspect all five native stores before transient import. A pending FS
+        // owner may not conceal ANY pre-existing native state, even an exact
+        // copy: there is no supported partial dual-custody handoff.
+        let native_present: bool = tx.query_one("SELECT EXISTS (SELECT 1 FROM brassclaw_product_auth_accounts WHERE tenant_id=$1 UNION ALL SELECT 1 FROM brassclaw_product_auth_flows WHERE tenant_id=$1 UNION ALL SELECT 1 FROM brassclaw_product_auth_interactions WHERE tenant_id=$1 UNION ALL SELECT 1 FROM brassclaw_product_auth_requirement_selections WHERE tenant_id=$1 UNION ALL SELECT 1 FROM brassclaw_product_auth_refreshes WHERE tenant_id=$1)",&[&tenant]).await.map_err(db_err)?.get(0);
+        // All writers are locked. Removing this fence is transaction-local:
+        // failure restores it; pending reinstates it before releasing locks;
+        // native commit replaces it atomically with the FS writer fence.
+        tx.execute(
+            "DELETE FROM brassclaw_product_auth_filesystem_recoveries WHERE tenant_id=$1",
+            &[&tenant],
+        )
+        .await
+        .map_err(db_err)?;
+        tx.batch_execute("SAVEPOINT auth_filesystem_import")
+            .await
+            .map_err(db_err)?;
         // Identity comes from validated typed scope plus its actual mount
         // resolution below, not merely a filename or caller-supplied tenant.
         let rows=tx.query("SELECT path,contents,version FROM root_filesystem_entries WHERE NOT is_dir AND split_part(path,'/',3)=$1 AND path LIKE '/tenants/%/users/%/secrets/%/product-auth/%' ORDER BY path",&[&tenant]).await.map_err(db_err)?;
@@ -130,6 +148,7 @@ impl PgAuthProductServices {
         > = BTreeMap::new();
         let mut refreshes = Vec::new();
         let mut selections = Vec::new();
+        let mut recovery_pending = false;
         for row in &rows {
             let path: String = row.get(0);
             let bytes: Vec<u8> = row.get(1);
@@ -203,7 +222,7 @@ impl PgAuthProductServices {
                     // A live old process can still receive an external return.
                     // Cut over only after that original has reconciled; never
                     // strand its late result behind the source writer fence.
-                    return Err(conflict());
+                    recovery_pending = true;
                 }
                 import_record(
                     &tx,
@@ -224,7 +243,7 @@ impl PgAuthProductServices {
                 if data.get("publication").is_some_and(|p| !p.is_null())
                     && interaction.consumed_at.is_none()
                 {
-                    return Err(conflict());
+                    recovery_pending = true;
                 }
                 import_record(
                     &tx,
@@ -300,7 +319,7 @@ impl PgAuthProductServices {
                 action.outcome,
                 brassclaw_auth::CredentialRefreshOutcome::Submitted
             ) {
-                return Err(conflict());
+                recovery_pending = true;
             }
             import_refresh_record(&tx, tenant, &action).await?;
             if !imported.insert((action.original.account_id, action.original.id)) {
@@ -314,11 +333,30 @@ impl PgAuthProductServices {
                 }
             }
         }
+        if recovery_pending {
+            if native_present {
+                return Err(conflict());
+            }
+            // Every original, index and cross-reference has now been checked.
+            // Discard the transient import, then persist ONLY the native writer
+            // fence. The original filesystem remains the exclusive custodian.
+            tx.batch_execute("ROLLBACK TO SAVEPOINT auth_filesystem_import")
+                .await
+                .map_err(db_err)?;
+            tx.execute(
+                "INSERT INTO brassclaw_product_auth_filesystem_recoveries (tenant_id) VALUES ($1)",
+                &[&tenant],
+            )
+            .await
+            .map_err(db_err)?;
+            tx.commit().await.map_err(db_err)?;
+            return Ok(RebornAuthCustodyState::FilesystemRecoveryPending);
+        }
         let checksum = format!("{:x}", source.finalize());
         let count = i64::try_from(rows.len()).map_err(|_| conflict())?;
         tx.execute("INSERT INTO brassclaw_product_auth_filesystem_cutovers (tenant_id,source_checksum,source_records) VALUES ($1,$2,$3)",&[&tenant,&checksum,&count]).await.map_err(db_err)?;
         tx.commit().await.map_err(db_err)?;
-        Ok(())
+        Ok(RebornAuthCustodyState::Native)
     }
 }
 
@@ -326,7 +364,7 @@ impl PgAuthProductServices {
 mod tests {
     use super::*;
     use brassclaw_auth::{AuthContinuationRef, AuthGateRef, AuthSurface, TurnRunRef};
-    use brassclaw_filesystem::{CasExpectation, Entry, RootFilesystem};
+    use brassclaw_filesystem::{CasExpectation, Entry};
     use brassclaw_host_api::{InvocationId, ResourceScope, TenantId, UserId};
 
     #[tokio::test]
@@ -423,7 +461,10 @@ mod tests {
         };
         // A potentially live old claim must not be stranded by cutover. These
         // are actual FS journal writes, with no provider execution or success.
-        assert!(native.migrate_filesystem_auth("reborn-cli").await.is_err());
+        assert_eq!(
+            native.migrate_filesystem_auth("reborn-cli").await.unwrap(),
+            RebornAuthCustodyState::FilesystemRecoveryPending
+        );
         assert!(
             native
                 .read_account(&scope, account.id)

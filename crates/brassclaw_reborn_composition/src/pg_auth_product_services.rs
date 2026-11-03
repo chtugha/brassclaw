@@ -152,6 +152,46 @@ CREATE TABLE IF NOT EXISTS brassclaw_product_auth_interactions (
 );
 CREATE INDEX IF NOT EXISTS brassclaw_product_auth_interactions_tenant_user_idx
     ON brassclaw_product_auth_interactions (tenant_id, user_id);
+
+-- Composition-internal custody, owned by the same schema attachment as the
+-- five Auth tables above. This records a writer fence, never credentials.
+CREATE TABLE IF NOT EXISTS brassclaw_product_auth_filesystem_recoveries (
+    tenant_id TEXT PRIMARY KEY
+);
+CREATE OR REPLACE FUNCTION brassclaw_fence_native_auth_during_filesystem_recovery()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM brassclaw_product_auth_filesystem_recoveries
+        WHERE tenant_id IN (
+            CASE WHEN TG_OP <> 'INSERT' THEN OLD.tenant_id END,
+            CASE WHEN TG_OP <> 'DELETE' THEN NEW.tenant_id END
+        )
+    ) THEN
+        RAISE EXCEPTION 'product auth remains under original filesystem recovery custody'
+            USING ERRCODE = '55000';
+    END IF;
+    IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+END;
+$$;
+DO $$
+DECLARE target TEXT;
+BEGIN
+    FOREACH target IN ARRAY ARRAY[
+        'brassclaw_product_auth_accounts',
+        'brassclaw_product_auth_flows',
+        'brassclaw_product_auth_interactions',
+        'brassclaw_product_auth_requirement_selections',
+        'brassclaw_product_auth_refreshes'
+    ] LOOP
+        IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                       WHERE tgrelid=target::regclass
+                       AND tgname='brassclaw_native_auth_recovery_custody') THEN
+            EXECUTE format('CREATE TRIGGER brassclaw_native_auth_recovery_custody BEFORE INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION brassclaw_fence_native_auth_during_filesystem_recovery()', target);
+        END IF;
+    END LOOP;
+END;
+$$;
 "#;
 
 // ---------------------------------------------------------------------------

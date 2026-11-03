@@ -976,32 +976,60 @@ async fn build_local_dev(
                                     .to_string(),
                         })?,
                 ));
-                if tenant_id.is_none() {
-                    pg_auth.migrate_filesystem_auth("reborn-cli").await.map_err(|_| RebornBuildError::InvalidConfig {
-                        reason: "default-tenant Auth custody migration could not reconcile its original records; preserved filesystem custody requires inspection before native startup".to_string(),
-                    })?;
-                }
-                #[cfg(feature = "root-llm-provider")]
-                let native_codex_auth = Arc::clone(&pg_auth);
-                let auth_services = compose_durable_product_auth_services(
-                    pg_auth,
-                    turn_coordinator.clone(),
-                    &provider_composition,
-                );
-                #[cfg(feature = "root-llm-provider")]
-                let auth_services = Arc::new(
-                    Arc::unwrap_or_clone(auth_services)
-                        .with_native_codex_owners(
-                            native_codex_auth,
-                            product_auth_runtime_ports.clone(),
-                        )
+                let custody_state = if tenant_id.as_deref().unwrap_or("reborn-cli") == "reborn-cli"
+                {
+                    pg_auth
+                        .migrate_filesystem_auth("reborn-cli")
+                        .await
                         .map_err(|_| RebornBuildError::InvalidConfig {
-                            reason:
-                                "native Codex owners conflict with composed product-auth services"
+                            reason: "default-tenant Auth custody contains conflicting or unavailable original records; native cutover was not performed".to_string(),
+                        })?
+                } else {
+                    crate::RebornAuthCustodyState::Native
+                };
+                if custody_state == crate::RebornAuthCustodyState::FilesystemRecoveryPending {
+                    // Migration rolled back before exposing any native Auth. The
+                    // original metadata owner remains the ONE active backend so
+                    // its exact callback/manual/refresh reconciliation stays usable.
+                    eprintln!(
+                        "brassclaw: Auth custody recovery pending; original filesystem Auth remains active, native Codex is unavailable. Reconcile original work, then retry startup."
+                    );
+                    let original = Arc::new(FilesystemAuthProductServices::new(
+                        Arc::clone(&local_dev_product_auth_filesystem),
+                        Arc::clone(&secret_store),
+                    ));
+                    let auth = compose_durable_product_auth_services(
+                        original,
+                        turn_coordinator.clone(),
+                        &provider_composition,
+                    );
+                    Some(Arc::new(
+                        Arc::unwrap_or_clone(auth).with_custody_state(custody_state),
+                    ))
+                } else {
+                    #[cfg(feature = "root-llm-provider")]
+                    let native_codex_auth = Arc::clone(&pg_auth);
+                    let auth_services = compose_durable_product_auth_services(
+                        pg_auth,
+                        turn_coordinator.clone(),
+                        &provider_composition,
+                    );
+                    #[cfg(feature = "root-llm-provider")]
+                    let auth_services = Arc::new(
+                        Arc::unwrap_or_clone(auth_services)
+                            .with_native_codex_owners(
+                                native_codex_auth,
+                                product_auth_runtime_ports.clone(),
+                            )
+                            .map_err(|_| RebornBuildError::InvalidConfig {
+                                reason: "native Codex owners conflict with composed product-auth services"
                                     .to_string(),
-                        })?,
-                );
-                Some(auth_services)
+                            })?,
+                    );
+                    Some(Arc::new(
+                        Arc::unwrap_or_clone(auth_services).with_custody_state(custody_state),
+                    ))
+                }
             } else {
                 None
             };
@@ -1014,10 +1042,14 @@ async fn build_local_dev(
                     local_dev_product_auth_filesystem,
                     Arc::clone(&secret_store),
                 ));
-                compose_durable_product_auth_services(
+                let auth = compose_durable_product_auth_services(
                     durable_services,
                     turn_coordinator.clone(),
                     &provider_composition,
+                );
+                Arc::new(
+                    Arc::unwrap_or_clone(auth)
+                        .with_custody_state(crate::RebornAuthCustodyState::Filesystem),
                 )
             }
         }

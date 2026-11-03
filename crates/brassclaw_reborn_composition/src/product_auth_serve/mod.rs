@@ -75,6 +75,8 @@ use crate::{
     RebornOAuthCallbackResponse, RebornProductAuthServices,
 };
 
+pub(crate) const AUTH_CUSTODY_PATH: &str = "/api/reborn/product-auth/custody";
+
 pub(crate) const OAUTH_START_PATH: &str = "/api/reborn/product-auth/oauth/start";
 pub(crate) const OAUTH_CALLBACK_PATH: &str = "/api/reborn/product-auth/oauth/callback/{flow_id}";
 pub(crate) const GOOGLE_OAUTH_START_PATH: &str = "/api/reborn/product-auth/oauth/google/start";
@@ -352,6 +354,7 @@ pub(crate) struct ProductAuthRouteMount {
 pub(crate) fn product_auth_route_mount(state: ProductAuthRouteState) -> ProductAuthRouteMount {
     ProductAuthRouteMount {
         protected: Router::new()
+            .route(AUTH_CUSTODY_PATH, get(auth_custody_status))
             .route(OAUTH_START_PATH, post(oauth::oauth_start_handler))
             .route(
                 GOOGLE_OAUTH_START_PATH,
@@ -422,6 +425,13 @@ pub(crate) fn product_auth_route_mount(state: ProductAuthRouteState) -> ProductA
     }
 }
 
+async fn auth_custody_status(
+    State(state): State<ProductAuthRouteState>,
+    Extension(_caller): Extension<WebUiAuthenticatedCaller>,
+) -> Json<crate::RebornAuthCustodyStatus> {
+    Json(state.product_auth.custody_status())
+}
+
 pub(crate) fn product_auth_route_descriptors() -> Vec<IngressRouteDescriptor> {
     // All protected mutations share the same LocalGateway + Bearer + per-caller
     // policy. Listing them as a table keeps the policy choice next to the path
@@ -470,6 +480,12 @@ pub(crate) fn product_auth_route_descriptors() -> Vec<IngressRouteDescriptor> {
             )
         })
         .collect();
+    descriptors.push(descriptor(
+        "product_auth.custody",
+        NetworkMethod::Get,
+        AUTH_CUSTODY_PATH,
+        protected_policy_with_body_limit(BodyLimitPolicy::NoBody),
+    ));
     // New refresh originals can call the issuer; repeats read their original.
     // Retain the existing tighter per-caller policy, including readback requests.
     descriptors.push(descriptor(
@@ -504,15 +520,19 @@ pub(super) fn descriptor(
 }
 
 pub(super) fn protected_mutation_policy() -> IngressPolicy {
+    protected_policy_with_body_limit(BodyLimitPolicy::Limited {
+        max_bytes: PRODUCT_AUTH_MUTATION_BODY_LIMIT_BYTES,
+    })
+}
+
+fn protected_policy_with_body_limit(body_limit: BodyLimitPolicy) -> IngressPolicy {
     IngressPolicy::new(IngressPolicyParts {
         listener_class: ListenerClass::LocalGateway,
         auth: IngressAuthPolicy::Required {
             schemes: vec![IngressAuthScheme::BearerToken],
         },
         scope_source: brassclaw_host_api::IngressScopeSource::AuthenticatedCaller,
-        body_limit: BodyLimitPolicy::Limited {
-            max_bytes: PRODUCT_AUTH_MUTATION_BODY_LIMIT_BYTES,
-        },
+        body_limit,
         rate_limit: RateLimitPolicy::Limited {
             scope: RateLimitScope::PerCaller,
             max_requests: PRODUCT_AUTH_MUTATION_MAX_REQUESTS,

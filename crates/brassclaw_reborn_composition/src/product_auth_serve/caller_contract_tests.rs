@@ -468,6 +468,64 @@ fn build_app_with_product_auth_service(
     build_app_with_product_auth_service_and_config(product_auth, None)
 }
 
+#[tokio::test]
+async fn auth_custody_status_requires_bearer_and_rejects_request_body() {
+    // A facade projection test only: no provider exchange or native cutover is
+    // simulated. The factory test supplies actual original filesystem custody.
+    let auth = Arc::new(
+        RebornProductAuthServices::from_shared(
+            Arc::new(InMemoryAuthProductServices::new()),
+            Arc::new(RecordingAuthDispatcher::default()),
+        )
+        .with_custody_state(crate::RebornAuthCustodyState::FilesystemRecoveryPending),
+    );
+    let app = build_app_with_product_auth_service(auth);
+    let unauthenticated = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(super::AUTH_CUSTODY_PATH)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unauthenticated.status(), StatusCode::UNAUTHORIZED);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(super::AUTH_CUSTODY_PATH)
+                .header(header::AUTHORIZATION, format!("Bearer {VALID_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let status: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(
+        status,
+        json!({
+            "state": "filesystem_recovery_pending",
+            "native_codex_available": false,
+            "retry_cutover_on_next_start": true
+        })
+    );
+    let with_body = app
+        .oneshot(
+            Request::builder()
+                .uri(super::AUTH_CUSTODY_PATH)
+                .header(header::AUTHORIZATION, format!("Bearer {VALID_TOKEN}"))
+                .body(Body::from("unexpected"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(with_body.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
 fn build_app_with_product_auth_service_and_config(
     product_auth: Arc<RebornProductAuthServices>,
     google_oauth: Option<GoogleOAuthRouteConfig>,

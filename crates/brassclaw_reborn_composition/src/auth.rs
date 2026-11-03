@@ -567,6 +567,7 @@ impl RebornProductAuthServicePorts {
         .with_manual_token_flow_service(self.manual_token_flow_service)
         .with_credential_account_record_source(self.credential_account_record_source);
         if let Some(original) = self.composed_support {
+            services.custody_state = original.custody_state;
             services.flow_record_source = original.flow_record_source.clone();
             services.primitive_settings = original.primitive_settings.clone();
             services.dcr_oauth_registry = original.dcr_oauth_registry.clone();
@@ -590,6 +591,26 @@ impl RebornProductAuthServicePorts {
     }
 }
 
+/// The active metadata custodian selected before exposing Auth consumers.
+/// Recovery mode retains the original filesystem owner, not SDK token files.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RebornAuthCustodyState {
+    #[default]
+    External,
+    Filesystem,
+    FilesystemRecoveryPending,
+    Native,
+}
+
+/// Safe installation status; native support is separate from account readiness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RebornAuthCustodyStatus {
+    pub state: RebornAuthCustodyState,
+    pub native_codex_available: bool,
+    pub retry_cutover_on_next_start: bool,
+}
+
 /// Reborn product-auth service bundle exposed by the composition root.
 ///
 /// This is the single composition seam for product-facing auth flows,
@@ -599,6 +620,7 @@ impl RebornProductAuthServicePorts {
 /// lower auth stores, provider clients, or route-local state.
 #[derive(Clone)]
 pub struct RebornProductAuthServices {
+    custody_state: RebornAuthCustodyState,
     /// Native ownership is either the actual coherent composed pair or
     /// unavailable; externally supplied/non-PG Auth never adopts another store.
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
@@ -667,6 +689,29 @@ impl std::fmt::Debug for RebornProductAuthServices {
 }
 
 impl RebornProductAuthServices {
+    pub(crate) fn with_custody_state(mut self, state: RebornAuthCustodyState) -> Self {
+        self.custody_state = state;
+        self
+    }
+
+    pub fn custody_status(&self) -> RebornAuthCustodyStatus {
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        let native_codex_available = match &self.native_codex {
+            native_codex::NativeCodexOwners::Composed { ports, .. } => {
+                ports.original_http_egress().is_some()
+            }
+            native_codex::NativeCodexOwners::Unavailable => false,
+        };
+        #[cfg(not(all(feature = "postgres", feature = "root-llm-provider")))]
+        let native_codex_available = false;
+        RebornAuthCustodyStatus {
+            state: self.custody_state,
+            native_codex_available,
+            retry_cutover_on_next_start: self.custody_state
+                == RebornAuthCustodyState::FilesystemRecoveryPending,
+        }
+    }
+
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     pub(crate) fn with_primitive_settings_source(
         mut self,
@@ -756,6 +801,7 @@ impl RebornProductAuthServices {
             interaction_service.clone(),
         ));
         Self {
+            custody_state: RebornAuthCustodyState::External,
             flow_manager,
             interaction_service,
             manual_token_flow_service,

@@ -288,11 +288,12 @@ pub mod validation_queue;
 pub(crate) mod validator_task_driver;
 
 pub use auth::{
-    RebornAuthContinuationDispatcher, RebornAuthProductError, RebornCredentialLifecycleError,
-    RebornManualTokenChallenge, RebornManualTokenError, RebornManualTokenSetupReceipt,
-    RebornManualTokenSetupRequest, RebornManualTokenSubmitRequest, RebornManualTokenSubmitResponse,
-    RebornOAuthCallbackError, RebornOAuthCallbackOutcome, RebornOAuthCallbackRequest,
-    RebornOAuthCallbackResponse, RebornProductAuthServicePorts, RebornProductAuthServices,
+    RebornAuthContinuationDispatcher, RebornAuthCustodyState, RebornAuthCustodyStatus,
+    RebornAuthProductError, RebornCredentialLifecycleError, RebornManualTokenChallenge,
+    RebornManualTokenError, RebornManualTokenSetupReceipt, RebornManualTokenSetupRequest,
+    RebornManualTokenSubmitRequest, RebornManualTokenSubmitResponse, RebornOAuthCallbackError,
+    RebornOAuthCallbackOutcome, RebornOAuthCallbackRequest, RebornOAuthCallbackResponse,
+    RebornProductAuthServicePorts, RebornProductAuthServices,
 };
 pub use automation::RebornWebuiAutomationFacade;
 pub use brassclaw_auth::GoogleOAuthRouteConfig;
