@@ -1,76 +1,92 @@
 ---
 title: Jobs & Parallel Execution
 sidebarTitle: Jobs
-description: Parallel job scheduling and the job state machine
+description: Job scheduling, state tracking, and parallel execution
 ---
 
-Every unit of work in BrassClaw is a **job**. Jobs run in parallel, each with isolated context, and each progressing through a defined state machine until they complete, fail, or get recovered.
+**Jobs** are units of work produced by the trigger system, routines, and direct
+user messages. All jobs are admitted as tasks to the **global Monty
+orchestrator** — a single VM that processes admitted work through the matched
+Recipe execution path.
 
----
-
-## Configuration
-
-```bash
-# Maximum parallel jobs
-MAX_PARALLEL_JOBS=5
-
-# Sandbox timeout (affects when jobs are considered stuck)
-SANDBOX_TIMEOUT_SECS=1800
-```
+Concurrent job capacity is managed through the orchestrator's shared heap and
+task admission limits, not through a pool of independent agent-loop instances.
+Each job has isolated task context: its own pinned component snapshot, typed
+inputs, and result state. No shared mutable state crosses job boundaries.
 
 ---
 
-## Job State Machine
+## Job state
+
+Each job is tracked through the following states:
 
 ```
-Pending
+pending
     ↓
-InProgress ──────────────┬──► Completed
-    ↑                    │
-    │  (self-repair)     └──► Failed
+running ────────────────────┬──► completed
+    ↑                        │
+    │  (repair attempt)       └──► failed
     │
-  Stuck ────────────────────► Failed (if unrecoverable)
+  stuck ──────────────────────► failed (repair limit reached)
 ```
 
-### States
+| State | Description | Next states |
+|-------|-------------|-------------|
+| `pending` | Created, queued for orchestrator admission | `running` |
+| `running` | Actively executing in the orchestrator | `completed`, `failed`, `stuck` |
+| `completed` | Finished successfully | — (terminal) |
+| `failed` | Unrecoverable error or explicit cancellation | — (terminal) |
+| `stuck` | No progress within the configured timeout | `running` (repair), `failed` |
 
-| State          | Description                                         | Next States                   |
-|----------------|-----------------------------------------------------|-------------------------------|
-| **Pending**    | Job created, queued for a worker slot               | InProgress                    |
-| **InProgress** | Worker actively running — LLM calls, tool execution | Completed, Failed, Stuck      |
-| **Completed**  | Job finished successfully                           | — (terminal)                  |
-| **Failed**     | Unrecoverable error or explicit cancellation        | — (terminal)                  |
-| **Stuck**      | No progress detected within timeout window          | InProgress (recovery), Failed |
-
-### Transitions
-
-A job enters **Stuck** when the self-repair system detects it has been InProgress with no activity for longer than the configured timeout. The system then attempts recovery by re-entering InProgress with a fresh worker. If recovery fails repeatedly, the job transitions to **Failed**.
+State and audit records are stored in the `agent_jobs` table (`stuck_since`,
+`repair_attempts`, `started_at`, `completed_at`). Each job's tool call history
+is stored in `job_actions`.
 
 ---
 
-## Parallel Execution
+## Tool-failure tracking and repair
 
-BrassClaw runs multiple jobs concurrently. Each job has its own isolated context — memory, tool call history, and conversation state.
-
-| Config Variable     | Default | Description                          |
-|---------------------|---------|--------------------------------------|
-| `MAX_PARALLEL_JOBS` | `5`     | Maximum concurrent jobs per instance |
-
-When all job slots are occupied, new jobs queue as **Pending** until a slot opens. The scheduler dispatches queued jobs in order of creation time.
-
-<Note>
-Increasing `MAX_PARALLEL_JOBS` increases LLM API concurrency. Set it according to your API rate limits and available system resources.
-</Note>
+The `tool_failures` table records repeated execution failures per tool name
+across jobs. This data is used by the self-repair system to assess recovery
+feasibility and inform retry decisions. See [Self-Repair](/capabilities/jobs/self-repair).
 
 ---
 
-## Job Tools
+## Parallel execution
 
-Four built-in tools let the agent manage jobs at runtime:
+Multiple jobs can be admitted and run concurrently. Concurrency is bounded by
+the orchestrator's shared heap allocation and task scheduling capacity. Each
+running job occupies its own isolated execution context within the single global
+Monty VM.
 
-| Tool         | Description                                                    |
-|--------------|----------------------------------------------------------------|
-| `create_job` | Create a new job with a given description and optional context |
-| `list_jobs`  | List all active jobs with their current state and metadata     |
-| `job_status` | Get detailed status for a specific job by ID                   |
-| `cancel_job` | Cancel an InProgress or Pending job                            |
+When the orchestrator is at capacity, new jobs queue in the `pending` state
+until a running job completes or a slot becomes available.
+
+---
+
+## Job-management tools
+
+Four first-party tools let the agent interact with jobs at runtime:
+
+| Tool | Description |
+|------|-------------|
+| `create_job` | Create a new job with a description and optional context |
+| `list_jobs` | List active jobs with their current state and metadata |
+| `job_status` | Get detailed status for a specific job by ID |
+| `cancel_job` | Cancel a running or pending job |
+
+These are class-0 Rust primitives registered through `builtin_bootstrap.rs`,
+each backed by a ToolSkill, PythonCode, Skill, and Recipe component stack in
+the standard v3 pattern.
+
+---
+
+## Execution time limits
+
+The default task compute time limit is **600 seconds of executing VM time**,
+excluding idle time, queue waits, and external waits (e.g., awaiting a tool
+response from an external service). This limit applies to the job's active
+execution time, not its total wall-clock lifetime.
+
+The limit is configured via **Settings → Monty VM** → task duration. It governs
+individual task execution, not the global orchestrator's lifetime.

@@ -1,68 +1,106 @@
 ---
 title: Inference Providers
-description: BrassClaw readily supports multiple LLM providers
+description: Configure LLM providers for BrassClaw
 ---
 
-BrassClaw supports multiple LLM providers out of the box, including NEAR AI , Anthropic, OpenAI, Google Gemini, GitHub Copilot, Ollama, AWS Bedrock, and any OpenAI-compatible endpoint.
+BrassClaw routes inference through a **database-backed provider catalogue**.
+Provider definitions, credentials, and model selections are managed via
+**Settings → Inference** in the WebUI and stored in PostgreSQL. Provider files
+and LLM environment variables do not override an active database definition.
 
-Providers can be configured via environment variables or the onboarding wizard. BrassClaw's modular architecture allows seamless integration with new providers by implementing the `LLMProvider` trait.
+<Note>
+Legacy environment variables (`LLM_BACKEND`, `LLM_API_KEY`, `LLM_BASE_URL`,
+`LLM_MODEL`, and provider-specific vars like `ANTHROPIC_API_KEY`) may still be
+recognised by the underlying provider resolution layer when no database
+definition is present. They are a fallback for first-run bootstrap and the
+onboarding wizard — not the primary configuration mechanism for a running
+instance. Use Settings → Inference to manage providers after initial setup.
+</Note>
 
-#### Configuring a Provider
-To config a new provider, simply run the onboarding wizard:
+---
+
+## Adding a provider
+
+1. Open **Settings → Inference** with your instance operator session.
+2. Choose **Add provider** and select the protocol (Anthropic, OpenAI,
+   OpenAI-compatible, Bedrock, Gemini OAuth, GitHub Copilot, Ollama, etc.).
+3. Enter the endpoint and model. Supply any required credential through the
+   credential field — credentials are stored through the encrypted secret store,
+   not as plaintext.
+4. Test the provider connection or load its available models.
+5. Select the provider and model for the **primary** role. Configure **Sempai**
+   separately if you enable post-turn review.
+
+A provider's stable identifier is independent of its protocol. Changing the
+display name does not change the protocol adapter. Removing a provider hides and
+deactivates its retained definition; re-adding it does not reinstate the previous
+role selection automatically.
+
+---
+
+## First-run / bootstrap configuration
+
+For initial setup and the onboarding wizard, the following environment variables
+are read before a database definition is established:
 
 ```bash
-brassclaw onboard --provider-only
+# Select provider backend
+LLM_BACKEND=anthropic     # anthropic | openai | openai_compatible |
+                          # gemini_oauth | bedrock | github_copilot |
+                          # ollama | nearai | minimax | mistral |
+                          # yandex | cloudflare | ionet
+
+# API key (provider-specific vars also work — see per-provider sections below)
+LLM_API_KEY=sk-...
+
+# Model selection
+LLM_MODEL=claude-sonnet-4-20250514
+
+# For OpenAI-compatible endpoints
+LLM_BASE_URL=https://api.openrouter.ai/v1
+```
+
+Run the onboarding wizard to write these into the database:
+
+```bash
+brassclaw onboard
 ```
 
 ---
 
-## Provider Overview
+## Supported providers
 
-| Provider              | Backend value       | Requires API key       | Notes                           |
-|-----------------------|---------------------|------------------------|---------------------------------|
-| NEAR AI               | `nearai`            | OAuth (browser)        | Multi-model                     |
-| Anthropic             | `anthropic`         | `ANTHROPIC_API_KEY`    | Claude models                   |
-| OpenAI                | `openai`            | `OPENAI_API_KEY`       | GPT models                      |
-| Google Gemini         | `gemini_oauth`      | OAuth (browser)        | Gemini models; function calling |
-| io.net                | `ionet`             | `IONET_API_KEY`        | Intelligence API                |
-| Mistral               | `mistral`           | `MISTRAL_API_KEY`      | Mistral models                  |
-| Yandex AI Studio      | `yandex`            | `YANDEX_API_KEY`       | YandexGPT models                |
-| MiniMax               | `minimax`           | `MINIMAX_API_KEY`      | MiniMax-M2.7 models             |
-| Cloudflare Workers AI | `cloudflare`        | `CLOUDFLARE_API_KEY`   | Access to Workers AI            |
-| GitHub Copilot        | `github_copilot`    | `GITHUB_COPILOT_TOKEN` | Multi-models                    |
-| Ollama                | `ollama`            | No                     | Local inference                 |
-| AWS Bedrock           | `bedrock`           | AWS credentials        | Native Converse API             |
-| OpenRouter            | `openai_compatible` | `LLM_API_KEY`          | 300+ models                     |
-| Together AI           | `openai_compatible` | `LLM_API_KEY`          | Fast inference                  |
-| Fireworks AI          | `openai_compatible` | `LLM_API_KEY`          | Fast inference                  |
-| vLLM / LiteLLM        | `openai_compatible` | Optional               | Self-hosted                     |
-| LM Studio             | `openai_compatible` | No                     | Local GUI                       |
+| Provider | Backend value | Auth |
+|----------|---------------|------|
+| Anthropic (Claude) | `anthropic` | `ANTHROPIC_API_KEY` |
+| OpenAI (GPT) | `openai` | `OPENAI_API_KEY` |
+| NEAR AI | `nearai` | OAuth (browser) |
+| Google Gemini | `gemini_oauth` | OAuth (browser) |
+| GitHub Copilot | `github_copilot` | `GITHUB_COPILOT_TOKEN` |
+| Ollama (local) | `ollama` | None |
+| AWS Bedrock | `bedrock` | AWS credentials |
+| Mistral | `mistral` | `MISTRAL_API_KEY` |
+| MiniMax | `minimax` | `MINIMAX_API_KEY` |
+| Yandex AI Studio | `yandex` | `YANDEX_API_KEY` |
+| Cloudflare Workers AI | `cloudflare` | `CLOUDFLARE_API_KEY` |
+| io.net | `ionet` | `IONET_API_KEY` |
+| OpenAI-compatible | `openai_compatible` | `LLM_API_KEY` + `LLM_BASE_URL` |
 
 ---
 
-## NEAR AI
+## Provider-specific notes
 
-```env
-NEARAI_MODEL=claude-3-5-sonnet-20241022
-NEARAI_BASE_URL=https://private.near.ai
-```
-
-Popular models: `Qwen/Qwen3.5-122B-A10B`, `black-forest-labs/FLUX.2-klein-4B`, `zai-org/GLM-5-FP8`
-
----
-
-## Anthropic (Claude)
+### Anthropic
 
 ```env
 LLM_BACKEND=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Popular models: `claude-sonnet-4-20250514`, `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`
+Popular models: `claude-sonnet-4-20250514`, `claude-3-5-sonnet-20241022`,
+`claude-3-5-haiku-20241022`
 
----
-
-## OpenAI (GPT)
+### OpenAI
 
 ```env
 LLM_BACKEND=openai
@@ -71,171 +109,66 @@ OPENAI_API_KEY=sk-...
 
 Popular models: `gpt-4o`, `gpt-4o-mini`, `o3-mini`
 
----
-
-## Google Gemini (OAuth)
+### Google Gemini (OAuth)
 
 Uses Google OAuth with PKCE (S256) for authentication — no API key required.
-On first run, a browser opens for Google account login. Credentials (including
-refresh token) are saved to `~/.gemini/oauth_creds.json` with `0600` permissions.
+On first run, a browser opens for Google account login. Credentials are stored
+in the encrypted secret store.
 
 ```env
 LLM_BACKEND=gemini_oauth
-GEMINI_MODEL=gemini-2.5-flash
+LLM_MODEL=gemini-2.5-flash
 ```
 
-### Supported features
+| Feature | Status |
+|---------|--------|
+| Function calling | ✅ |
+| `generationConfig` | ✅ |
+| `thinkingConfig` | ✅ |
+| SSE streaming | ✅ |
+| Token refresh | ✅ |
 
-| Feature            | Status | Notes                                                                                         |
-|--------------------|--------|-----------------------------------------------------------------------------------------------|
-| Function calling   | ✅      | `functionDeclarations` / `functionCall` / `functionResponse`                                  |
-| `generationConfig` | ✅      | `temperature`, `maxOutputTokens` passed from request                                          |
-| `thinkingConfig`   | ✅      | `thinkingBudget`/`thinkingLevel` for thinking-capable models (does NOT set `includeThoughts`) |
-| `toolConfig`       | ✅      | `functionCallingConfig.mode`: `AUTO`/`ANY`/`NONE`                                             |
-| SSE streaming      | ✅      | Cloud Code API with `streamGenerateContent?alt=sse`                                           |
-| Token refresh      | ✅      | Automatic via refresh token                                                                   |
+Popular models: `gemini-3.1-pro-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`
 
-### Popular models
-
-| Model                       | ID                                   | Notes                       |
-|-----------------------------|--------------------------------------|-----------------------------|
-| Gemini 3.1 Pro              | `gemini-3.1-pro-preview`             | Latest, strongest reasoning |
-| Gemini 3.1 Pro Custom Tools | `gemini-3.1-pro-preview-customtools` | Enhanced tool use           |
-| Gemini 3 Pro                | `gemini-3-pro-preview`               | Preview                     |
-| Gemini 3 Flash              | `gemini-3-flash-preview`             | Fast preview with thinking  |
-| Gemini 3.1 Flash Lite       | `gemini-3.1-flash-lite-preview`      | Preview, lightweight        |
-| Gemini 2.5 Pro              | `gemini-2.5-pro`                     | Stable, strong reasoning    |
-| Gemini 2.5 Flash            | `gemini-2.5-flash`                   | Fast, good quality          |
-| Gemini 2.5 Flash Lite       | `gemini-2.5-flash-lite`              | Fastest, lightweight        |
-
-### Cloud Code API vs standard API
-
-Models containing `-preview` (with hyphen) or `gemini-3` in the name, as well
-as any `gemini-` model with major version >= 2, route through the Cloud Code
-API (`cloudcode-pa.googleapis.com`) which supports SSE streaming
-and project-scoped access. Other models use the standard Generative Language
-API (`generativelanguage.googleapis.com`).
-
----
-
-## GitHub Copilot
-
-GitHub Copilot exposes chat endpoint at
-`https://api.githubcopilot.com`. BrassClaw uses that endpoint directly through the
-built-in `github_copilot` provider.
+### GitHub Copilot
 
 ```env
 LLM_BACKEND=github_copilot
 GITHUB_COPILOT_TOKEN=gho_...
-GITHUB_COPILOT_MODEL=gpt-4o
-# Optional advanced headers if your setup needs them:
-# GITHUB_COPILOT_EXTRA_HEADERS=Copilot-Integration-Id:vscode-chat
+LLM_MODEL=gpt-4o
 ```
 
-`brassclaw onboard` can acquire this token for you using GitHub device login. If you
-already signed into Copilot through VS Code or a JetBrains IDE, you can also reuse
-the `oauth_token` stored in `~/.config/github-copilot/apps.json`. If you prefer,
-`LLM_BACKEND=github-copilot` also works as an alias.
+`brassclaw onboard` can acquire this token via GitHub device login.
 
-Popular models vary by subscription, but `gpt-4o` is a safe default. BrassClaw keeps
-model entry manual for this provider because GitHub Copilot model listing may require
-extra integration headers on some clients. BrassClaw automatically injects the standard
-VS Code identity headers (`User-Agent`, `Editor-Version`, `Editor-Plugin-Version`,
-`Copilot-Integration-Id`) and lets you override them with
-`GITHUB_COPILOT_EXTRA_HEADERS`.
-
----
-
-## Ollama (local)
-
-Install Ollama from [ollama.com](https://ollama.com), pull a model, then:
+### Ollama (local)
 
 ```env
 LLM_BACKEND=ollama
-OLLAMA_MODEL=llama3.2
+LLM_MODEL=llama3.2
 # OLLAMA_BASE_URL=http://localhost:11434   # default
 ```
 
 Pull a model first: `ollama pull llama3.2`
 
----
+### AWS Bedrock
 
-## MiniMax
-
-[MiniMax](https://platform.minimax.io) provides high-performance language models with 204,800 token context windows.
-
-```env
-LLM_BACKEND=minimax
-MINIMAX_API_KEY=...
-```
-
-Available models: `MiniMax-M2.7` (default), `MiniMax-M2.7-highspeed`, `MiniMax-M2.5`, `MiniMax-M2.5-highspeed`
-
-To use the China mainland endpoint, set:
-
-```env
-MINIMAX_BASE_URL=https://api.minimaxi.com/v1
-```
-
----
-
-## AWS Bedrock (requires `--features bedrock`)
-
-Uses the native AWS Converse API via `aws-sdk-bedrockruntime`. Supports standard AWS
-authentication methods: IAM credentials, SSO profiles, and instance roles.
-
-> **Build prerequisite:** The `aws-lc-sys` crate (transitive dependency via AWS SDK)
-> requires **CMake** to compile. Install it before building with `--features bedrock`:
-> - macOS: `brew install cmake`
-> - Ubuntu/Debian: `sudo apt install cmake`
-> - Fedora: `sudo dnf install cmake`
-
-### With AWS credentials (IAM, SSO, instance roles)
+Requires `--features bedrock` at build time. Uses the native AWS Converse API.
 
 ```env
 LLM_BACKEND=bedrock
-BEDROCK_MODEL=anthropic.claude-opus-4-6-v1
+LLM_MODEL=anthropic.claude-opus-4-6-v1
 BEDROCK_REGION=us-east-1
-BEDROCK_CROSS_REGION=us
-# AWS_PROFILE=my-sso-profile   # optional, for named profiles
 ```
 
-The AWS SDK credential chain automatically resolves credentials from environment
-variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`), shared credentials file
-(`~/.aws/credentials`), SSO profiles, and EC2/ECS instance roles.
+Popular models: `anthropic.claude-opus-4-6-v1`,
+`anthropic.claude-sonnet-4-5-20250929-v1:0`, `amazon.nova-pro-v1:0`
 
-### Cross-region inference
+> **Build prerequisite:** The AWS SDK requires **CMake**.
+> macOS: `brew install cmake` · Ubuntu: `sudo apt install cmake`
 
-Set `BEDROCK_CROSS_REGION` to route requests across AWS regions for capacity:
+### OpenAI-compatible endpoints
 
-| Prefix    | Routing                                      |
-|-----------|----------------------------------------------|
-| `us`      | US regions (us-east-1, us-east-2, us-west-2) |
-| `eu`      | European regions                             |
-| `apac`    | Asia-Pacific regions                         |
-| `global`  | All commercial AWS regions                   |
-| _(unset)_ | Single-region only                           |
-
-### Popular Bedrock model IDs
-
-| Model             | ID                                          |
-|-------------------|---------------------------------------------|
-| Claude Opus 4.6   | `anthropic.claude-opus-4-6-v1`              |
-| Claude Sonnet 4.5 | `anthropic.claude-sonnet-4-5-20250929-v1:0` |
-| Claude Haiku 4.5  | `anthropic.claude-haiku-4-5-20251001-v1:0`  |
-| Amazon Nova Pro   | `amazon.nova-pro-v1:0`                      |
-| Llama 4 Maverick  | `meta.llama4-maverick-17b-instruct-v1:0`    |
-
----
-
-## OpenAI-Compatible Endpoints
-
-All providers below use `LLM_BACKEND=openai_compatible`. Set `LLM_BASE_URL` to the
-provider's OpenAI-compatible endpoint and `LLM_API_KEY` to your API key.
-
-### OpenRouter
-
-[OpenRouter](https://openrouter.ai) routes to 300+ models from a single API key.
+All OpenAI-compatible providers use `LLM_BACKEND=openai_compatible`:
 
 ```env
 LLM_BACKEND=openai_compatible
@@ -244,75 +177,21 @@ LLM_API_KEY=sk-or-...
 LLM_MODEL=anthropic/claude-sonnet-4
 ```
 
-Popular OpenRouter model IDs:
+Supported endpoints: OpenRouter (300+ models), Together AI, Fireworks AI,
+vLLM, LiteLLM, LM Studio, and any OpenAI-compatible server.
 
-| Model            | ID                                         |
-|------------------|--------------------------------------------|
-| Claude Sonnet 4  | `anthropic/claude-sonnet-4`                |
-| GPT-4o           | `openai/gpt-4o`                            |
-| Llama 4 Maverick | `meta-llama/llama-4-maverick`              |
-| Gemini 2.0 Flash | `google/gemini-2.0-flash-001`              |
-| Mistral Small    | `mistralai/mistral-small-3.1-24b-instruct` |
+---
 
-Browse all models at [openrouter.ai/models](https://openrouter.ai/models).
+## Provider technical settings
 
-### Together AI
+After a provider is configured, tune its reliability via Settings → Inference:
 
-[Together AI](https://www.together.ai) provides fast inference for open-source models.
-
-```env
-LLM_BACKEND=openai_compatible
-LLM_BASE_URL=https://api.together.xyz/v1
-LLM_API_KEY=...
-LLM_MODEL=meta-llama/Llama-3.3-70B-Instruct-Turbo
-```
-
-Popular Together AI model IDs:
-
-| Model         | ID                                        |
-|---------------|-------------------------------------------|
-| Llama 3.3 70B | `meta-llama/Llama-3.3-70B-Instruct-Turbo` |
-| DeepSeek R1   | `deepseek-ai/DeepSeek-R1`                 |
-| Qwen 2.5 72B  | `Qwen/Qwen2.5-72B-Instruct-Turbo`         |
-
-### Fireworks AI
-
-[Fireworks AI](https://fireworks.ai) offers fast inference with compound AI system support.
-
-```env
-LLM_BACKEND=openai_compatible
-LLM_BASE_URL=https://api.fireworks.ai/inference/v1
-LLM_API_KEY=fw_...
-LLM_MODEL=accounts/fireworks/models/llama4-maverick-instruct-basic
-```
-
-### vLLM / LiteLLM (self-hosted)
-
-For self-hosted inference servers:
-
-```env
-LLM_BACKEND=openai_compatible
-LLM_BASE_URL=http://localhost:8000/v1
-LLM_API_KEY=token-abc123        # set to any string if auth is not configured
-LLM_MODEL=meta-llama/Llama-3.1-8B-Instruct
-```
-
-LiteLLM proxy (forwards to any backend, including Bedrock, Vertex, Azure):
-
-```env
-LLM_BACKEND=openai_compatible
-LLM_BASE_URL=http://localhost:4000/v1
-LLM_API_KEY=sk-...
-LLM_MODEL=gpt-4o                 # as configured in litellm config.yaml
-```
-
-### LM Studio (local GUI)
-
-Start LM Studio's local server, then:
-
-```env
-LLM_BACKEND=openai_compatible
-LLM_BASE_URL=http://localhost:1234/v1
-LLM_MODEL=llama-3.2-3b-instruct-q4_K_M
-# LLM_API_KEY is not required for LM Studio
-```
+| Setting | Meaning |
+|---------|---------|
+| Request timeout | Maximum time for an individual HTTP request |
+| Additional retries | Attempts after the initial request for eligible transient failures |
+| Retry delay and jitter | Backoff and randomisation between retries |
+| Provider-hint ceiling | Maximum wait from a provider's retry-after hint |
+| Circuit threshold and recovery | Temporary circuit break after repeated failures |
+| Response bytes | Optional model-response size ceiling |
+| Completed-response cache | Retention of identical responses; zero disables |

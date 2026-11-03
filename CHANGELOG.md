@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **`docs/capabilities/` — complete correctness audit and rewrite against v3 ground truth**:
+  Audited all 14 files in `docs/capabilities/` against the four ground-truth guides
+  (`recipe.md`, `skills.md`, `tools.md`, `toolskills.md`) and confirmed codebase state.
+  Every file was rewritten or corrected; key changes:
+  - **`skills.mdx`** — full v3 rewrite: removed v1 SKILL.md filesystem model (keyword
+    scoring, ClawHub, token-budget injection); added preloadable function interface
+    contract, component-role table, Tier 0/1 execution path, class table (1–3, 10, 50),
+    and the complete `skill-association/1` field table (all 11 required fields including
+    `callable`, `arguments`, `code_arguments`).
+  - **`sandboxed-tools.mdx`** — renamed to "Extension Tools"; removed WASM/wasmtime
+    sandbox model (retired in Phase 4); documented real runtime lanes (`first_party`,
+    `mcp`, `system`), manifest v2 structure, host-mediated egress and credential
+    injection, and resource limits via Monty VM settings.
+  - **`database.mdx`** — removed libSQL/SQLite as a production backend option; added
+    accurate embedded PostgreSQL vs external PostgreSQL split; corrected all env vars to
+    canonical names (`BRASSCLAW_PG_URL`, `BRASSCLAW_EMBEDDED_PG_PORT`,
+    `BRASSCLAW_EMBEDDED_PG_LISTEN_ADDRESSES`); removed `DATABASE_BACKEND`,
+    `DATABASE_URL`, `LIBSQL_PATH` (legacy/removed).
+  - **`llm-providers.md`** — reframed as DB-backed Settings → Inference as primary
+    config; legacy env vars (`LLM_BACKEND`, `LLM_API_KEY`, `LLM_MODEL`) documented as
+    first-run bootstrap fallback only; removed per-provider env var details that
+    are now managed via Settings.
+  - **`mcp.md`** — corrected direction inversion: BrassClaw IS the MCP server (not a
+    client); `tools/list` derived from activated approved `mcp-call-skill-recipes`, not
+    raw Skill rows; extension `kind = "mcp"` client lane documented separately.
+  - **`configuration.mdx`** — added canonical env-var table matching `AGENTS.md`.
+  - **`jobs/jobs.mdx`** — removed `MAX_PARALLEL_JOBS` env var (removed); replaced
+    per-job agent-loop model with accurate single global Monty orchestrator model;
+    documented real `agent_jobs` / `job_actions` schema; added confirmed job-management
+    tools (`create_job`, `list_jobs`, `job_status`, `cancel_job`).
+  - **`jobs/self-repair.mdx`** — removed `SELF_REPAIR_ENABLED/TIMEOUT/MAX_RETRIES`
+    (confirmed removed); removed unsafe "resumes from last saved checkpoint" claim;
+    added explicit `<Warning>` block: completed Tool calls are never replayed after a
+    timeout; documented real `tool_failures` and `agent_jobs` schema fields; replaced
+    speculative Settings UI table with a `<Note>` marking the specific knob location as
+    implementation-pending.
+  - **`routines/cron.mdx`** — replaced per-trigger agent-loop model with trigger
+    poller → trusted trigger ingress → orchestrator path; documented real `routines`
+    table schema; removed unconfirmed `routine_history` tool reference.
+  - **`routines/heartbeat.mdx`** — fixed `HEARTBEAT.md` as a real protected memory
+    path (confirmed in `brassclaw_memory/src/safety.rs`), not a config file; described
+    trigger-poller execution path; corrected against v3 no-separate-agent-loop model.
+  - **`routines/reactive.mdx`** — fixed guardrails model: per-routine `allowed_tools`
+    restricts one routine; instance-wide Tool policy (Settings → Tool Permissions)
+    applies globally and cannot be overridden by a routine allowlist.
+  - **`memory/memory.mdx`** — added confirmed protected-path list from
+    `brassclaw_memory/src/safety.rs` (`DEFAULT_PROMPT_PROTECTED_PATHS`); described
+    memory tools as class-0 Rust primitives with full v3 component stacks.
+  - **`memory/identity.mdx`** — removed claim that identity files are "injected into
+    every LLM system prompt"; described prompt-safety write policy, 8,000-token
+    identity ceiling, and identity context subsystem; removed "agent loop" reference.
+  - **`overview.mdx`** — updated Skills and Extensions cards to match v3 model.
+
 - **`docs/channels` — remove stale v1/unimplemented channel docs, revise remaining files**:
   Audited all seven files in `docs/channels/` against the current codebase. Four
   files described channels that no longer exist or were never implemented in v3:

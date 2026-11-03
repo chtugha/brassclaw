@@ -1,35 +1,42 @@
 ---
-title: Heartbeat System
+title: Heartbeat
 sidebarTitle: Heartbeat
-description: Periodic checks and execution
+description: Periodic background checks using a workspace checklist document
 ---
 
-The heartbeat system gives BrassClaw agency between conversations. Every 30 minutes (by default), it reads `HEARTBEAT.md` from the workspace and executes a checklist of proactive tasks — without you having to ask.
+The heartbeat system gives BrassClaw proactive agency between conversations.
+On each configured tick it reads `HEARTBEAT.md` from the workspace memory and
+submits its contents as an action to the orchestrator — without you having to
+explicitly ask.
 
-<Tip>
-You can setup how often the agent checks the heartbeat list
-</Tip>
+`HEARTBEAT.md` is one of the **protected memory paths** in BrassClaw's prompt
+safety registry. Changes to it are tracked, and it can be read and written
+using the memory tools (`memory_read`, `memory_write`).
 
 ---
 
-## What Heartbeat Does
+## How it works
 
 On each heartbeat tick:
 
-1. Reads `HEARTBEAT.md` from the workspace root
-2. Runs the checklist items as an agent job
-3. If the job produces findings or output, sends a notification to the configured channel
-4. Records the run in the `heartbeat_state` table
+1. The trigger poller detects that the heartbeat interval has elapsed.
+2. A trigger event is submitted through the trusted trigger ingress.
+3. The orchestrator receives it as an admitted task and executes the
+   heartbeat Recipe, which reads `HEARTBEAT.md` and runs its instructions
+   as an action.
+4. If the run produces output that warrants attention, a notification is
+   sent to the configured channel.
+5. The run is recorded in `routine_runs` with a status of `ok`, `attention`,
+   or `failed`.
 
 If `HEARTBEAT.md` does not exist or is empty, the tick is a no-op.
 
-The heartbeat job runs through the full agent loop — LLM reasoning, tool calls, safety layer — with the same capabilities as a manually triggered job.
-
 ---
 
-## HEARTBEAT.md Format
+## HEARTBEAT.md format
 
-Write `HEARTBEAT.md` as a checklist of tasks. The agent reads this as its instructions for each periodic run:
+Write `HEARTBEAT.md` as a checklist of tasks. The action runs these
+instructions on each tick:
 
 ```markdown
 # Heartbeat Checklist
@@ -48,37 +55,30 @@ Write `HEARTBEAT.md` as a checklist of tasks. The agent reads this as its instru
 - [ ] Only notify the user if there are actionable items — do not send empty pings.
 ```
 
-The agent interprets the checklist and executes each item using available tools. Conditional items ("run only on Mondays") are evaluated by the LLM using the current date.
-
 ---
 
-## Notification Behavior
+## Notification behavior
 
-After each tick, if the job produces output that warrants user attention, the heartbeat system sends a notification to the configured channel. If nothing actionable was found, no notification is sent — heartbeat is designed to be quiet unless it has something useful to say.
-
-Findings are also written to memory at `heartbeat/latest.md` (if your HEARTBEAT.md instructs this), making them searchable in future sessions.
+After each tick, if the run produces output with status `attention`, the
+heartbeat system sends a notification to the configured channel. Runs with
+status `ok` and no significant findings do not notify — heartbeat is designed
+to be quiet unless it has something useful to say.
 
 ---
 
 ## Configuration
 
-```bash
-# Enable heartbeat (default: true)
-HEARTBEAT_ENABLED=true
+Heartbeat interval and notification target are configured via routine settings:
 
-# Interval between ticks in seconds (default: 1800 = 30 minutes)
-HEARTBEAT_INTERVAL_SECS=1800
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Heartbeat interval | 1800 s (30 min) | Seconds between ticks |
+| Notify channel | `tui` | Channel for attention notifications |
+| Notify user | `default` | User ID to notify |
 
-# Channel to send notifications to
-HEARTBEAT_NOTIFY_CHANNEL=tui     # tui, web, telegram, webhook
-
-# User ID to notify
-HEARTBEAT_NOTIFY_USER=default
-```
-
-<Note>
-Set `HEARTBEAT_INTERVAL_SECS=3600` (1 hour) or higher if the heartbeat job is too frequent for your LLM API rate limits or budget. The heartbeat runs as a normal job and consumes tokens.
-</Note>
+To adjust the interval, update the heartbeat routine via `routine_create` or
+Settings → Routines. Increasing the interval reduces LLM API usage and is
+recommended if the heartbeat action is token-intensive.
 
 ---
 
@@ -91,11 +91,11 @@ Write HEARTBEAT.md with tasks to check my inbox/ folder every 30 minutes
 and summarize any new items.
 ```
 
-Or edit the file manually:
+Or use the memory tool directly:
 
 ```
 memory_write path="HEARTBEAT.md" content="
-# Heartbeat Checklist
+# Heartbeat
 
 - [ ] List all memory documents in inbox/ — if any exist, summarize and move to processed/
 - [ ] Check if daily/<today>.md exists — if not, create a daily entry template
@@ -105,60 +105,18 @@ memory_write path="HEARTBEAT.md" content="
 
 ---
 
-## Example HEARTBEAT.md Files
+## Heartbeat vs Cron routines
 
-### Minimal — Inbox Monitor
+| Feature | Heartbeat | Cron Routine |
+|---------|-----------|--------------|
+| Configuration | Single `HEARTBEAT.md` file | Per-routine record in `routines` table |
+| Schedule | Fixed global interval | Custom per-routine cron expression |
+| Scope | Single checklist action | Multiple independent routines |
+| Complexity | Simple — edit one file | Flexible — manage multiple routines |
 
-```markdown
-# Heartbeat
-
-- [ ] Check inbox/ for new documents. Process and move to processed/. Notify only if items were found.
-```
-
----
-
-### Developer Workflow
-
-```markdown
-# Heartbeat Checklist
-
-## Checks
-- [ ] Read ops/incidents/ — summarize any open incidents older than 24 hours
-- [ ] Check for stuck jobs in the last hour
-- [ ] Look for daily/<today>.md — create it with a timestamp if missing
-
-## Output
-- [ ] Write findings to heartbeat/latest.md
-- [ ] Notify only if there are open incidents or stuck jobs
-```
-
----
-
-### Personal Assistant
-
-```markdown
-# Heartbeat
-
-- [ ] Search memory for items tagged "reminder" or "todo"
-- [ ] Check if any items are due today based on their content
-- [ ] Summarize time-sensitive items and notify
-- [ ] Do not notify if nothing is due
-```
-
----
-
-## Heartbeat vs Routines
-
-Heartbeat and cron routines serve similar purposes but differ in design:
-
-| Feature       | Heartbeat                | Cron Routine                        |
-|---------------|--------------------------|-------------------------------------|
-| Configuration | Single HEARTBEAT.md file | Per-routine configuration           |
-| Schedule      | Fixed global interval    | Custom per-routine cron expression  |
-| Scope         | Single checklist job     | Multiple independent jobs           |
-| Complexity    | Simple — edit one file   | Flexible — manage multiple routines |
-
-Use heartbeat for a unified set of periodic checks. Use cron routines when you need different schedules for different tasks, or when tasks should run independently.
+Use heartbeat for a unified set of periodic checks. Use cron routines when
+you need different schedules for different tasks, or when tasks should track
+independent run histories.
 
 ---
 
@@ -166,21 +124,22 @@ Use heartbeat for a unified set of periodic checks. Use cron routines when you n
 
 <AccordionGroup>
   <Accordion title="Heartbeat not firing" icon="clock">
-    - Verify `HEARTBEAT_ENABLED=true` in your configuration
-    - Check startup logs for `heartbeat` to confirm the system started
-    - Confirm `HEARTBEAT_INTERVAL_SECS` is set to a reasonable value
-    - Verify `HEARTBEAT.md` exists in the workspace root via `memory_read path="HEARTBEAT.md"`
+    - Confirm `HEARTBEAT.md` exists in the workspace root
+      (`memory_read path="HEARTBEAT.md"`)
+    - Check startup logs for the trigger poller startup message
+    - Verify the heartbeat routine is enabled in Settings → Routines
   </Accordion>
 
   <Accordion title="Getting too many notifications" icon="bell">
-    - Update HEARTBEAT.md to add a condition: "only notify if there are actionable items"
-    - Increase `HEARTBEAT_INTERVAL_SECS` to reduce frequency
-    - Make checklist items more specific so the agent doesn't over-report
+    - Update `HEARTBEAT.md` with an explicit condition:
+      "only notify if there are actionable items"
+    - Increase the heartbeat interval in the routine settings
+    - Make checklist items more specific to reduce over-reporting
   </Accordion>
 
-  <Accordion title="Heartbeat job consuming too many tokens" icon="coins">
-    - Simplify HEARTBEAT.md — fewer checklist items mean fewer LLM calls
-    - Increase `HEARTBEAT_INTERVAL_SECS` to reduce frequency
-    - Add guardrails-style instructions to HEARTBEAT.md: "Use at most 5 tool calls per run"
+  <Accordion title="Heartbeat run consuming too many tokens" icon="coins">
+    - Simplify `HEARTBEAT.md` — fewer checklist items mean fewer steps
+    - Increase the interval to reduce frequency
+    - Add constraints like "use at most 5 tool calls per run" in the checklist
   </Accordion>
 </AccordionGroup>

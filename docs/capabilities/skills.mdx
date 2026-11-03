@@ -1,147 +1,197 @@
 ---
 title: Skills
-description: Prompt extensions that activate based on context
+description: Reusable Tool-usage components invoked deterministically by the orchestrator
 ---
 
-Skills are markdown files that contain domain-specific instructions. When a skill activates, its markdown body is injected into the LLM context — giving the agent specialized knowledge and behavior without retraining.
+A **Skill** is one reusable Tool-usage pattern: prose describing the usage plus
+explicitly associated executable PythonCode, declared exported function names
+and signatures, typed input/result contracts, and dependencies. Skills are
+class 1–3 components stored as rows in `reborn_skills` alongside their
+associated class-22 PythonCode in `reborn_python_code`.
 
-<Tip>
-BrassClaw can search and install skills from the ClawHub registry, a community-driven repository of pre-built skills covering various domains and use cases.
-</Tip>
-
----
-
-## What Skills Do
-
-A skill is a self-contained expertise module. It defines:
-
-- **When to activate** — patterns, keywords, and regex that match incoming messages
-- **What to inject** — a markdown body with instructions, examples, and domain knowledge
-- **What tools to require** — binaries, environment variables, and configuration needed
-- **How much context to use** — a token budget cap per activation
-
-Skills are evaluated on every turn. The agent selects the most relevant skills that fit within the prompt budget and injects them before the LLM reasons about the request.
+<Note>
+The v1 SKILL.md filesystem subsystem — keyword scoring, token-budget injection,
+ClawHub registry, and trust-level attenuation — was removed. Skills are now v3
+component-library entries invoked by the global Monty orchestrator through
+matched Recipes, not injected into LLM prompts at turn time.
+</Note>
 
 ---
 
-## Activation Pipeline
+## What a Skill does
 
-Skills pass through four stages before injection:
+A Skill tells the orchestrator how to use exactly **one** Rust Tool for one
+specific purpose. It has two inseparable parts stored as separate rows:
 
-<Steps>
-  <Step title="Gate">
-    Check that all prerequisites are met: required binaries exist on `PATH`, required environment variables are set, required configuration is present. Skills that fail gating are skipped entirely — they never score or consume budget.
-  </Step>
+- **Prose** (class 1–3 row in `reborn_skills`) — describes the purpose, exact
+  inputs and outputs, prerequisites, when the usage applies, and failure
+  handling. Tier-1 Recipes can supply this prose as explicit LLM context.
+- **Associated PythonCode** (class-22 row in `reborn_python_code`) — declares
+  public export names, signatures, private helpers/constants, and dependencies.
+  This is what the orchestrator actually executes; it calls `host.<tool>(...)`
+  during invocation.
 
-  <Step title="Score">
-    Each gated skill is scored against the current message using a deterministic algorithm: keyword matches, tag overlaps, and regex pattern matches. Higher scores indicate stronger relevance.
-
-    Scoring is fully deterministic — no LLM involved. A skill must declare its activation criteria in the frontmatter so the scorer knows what to match. Legacy agent-loop selection can use this score to inject full skill context.
-
-    Set `SKILLS_REGEX_ACTIVATION_ENABLED=false` to disable regex pattern auto-activation. Keyword/tag activation and explicit skill mentions, such as `$my-skill`, still inject skills.
-
-    Reborn local-dev uses Codex-style selection: `skill_list` exposes a compact catalog, natural-language keyword/tag/pattern matches do not inject full skill bodies, and full `SKILL.md` context is loaded only after an explicit `$skill` mention or a model-selected local-dev `skill_activate` call.
-
-    <Warning>
-    A skill without an `activation` block scores zero on every message and is never injected.
-    </Warning>
-
-    ```yaml
-    ---
-    name: my-skill
-    version: 0.1.0
-    description: Short description shown in skill list
-    activation:
-      keywords:
-        - deploy
-        - rollback
-      patterns:
-        - "deploy to.*production"
-        - "rollback.*release"
-      tags:
-        - devops
-      exclude_keywords:
-        - dry-run
-      max_context_tokens: 2000
-    ---
-    ```
-
-    | Field                | Purpose                                                                                         |
-    |----------------------|-------------------------------------------------------------------------------------------------|
-    | `keywords`           | Word or phrase matches. Exact word match scores higher than substring.                          |
-    | `patterns`           | Regex patterns. Each match adds significant weight — use for intent-specific phrases.           |
-    | `tags`               | Short labels for broad domain matching (e.g. `blockchain`, `cli`).                             |
-    | `exclude_keywords`   | Veto list — if any appear in the message, the skill scores zero regardless of other matches.    |
-    | `max_context_tokens` | Token budget this skill may consume per turn. Omitting it leaves the skill with a 2000-token budget, effectively excluding it. |
-
-    <Tip>
-    If a skill appears in `brassclaw skills list` but the agent doesn't use it, the most common cause is a missing or empty `activation` block.
-    </Tip>
-
-  </Step>
-
-  <Step title="Budget">
-    Skills are sorted by score descending. Starting from the highest-scoring skill, each is selected until the `SKILLS_MAX_TOKENS` budget is exhausted. Lower-scoring skills that don't fit are dropped for this turn.
-  </Step>
-
-  <Step title="Attenuate">
-    Trust-based tool ceiling is applied. Installed skills (from ClawHub) lose access to dangerous tools regardless of what the skill requests. Trusted skills retain full tool access. See Trust Levels below.
-  </Step>
-</Steps>
+Loading a Skill's PythonCode makes its exported functions available for later
+invocation. Loading is never itself an invocation or a Tool call.
 
 ---
 
-## Trust Levels
+## Component roles
 
-| Trust Level   | Source                                                      | Tool Access                                             |
-|---------------|-------------------------------------------------------------|---------------------------------------------------------|
-| **Trusted**   | User-placed in `~/.brassclaw/skills/` or workspace `skills/` | All tools available to the agent                        |
-| **Installed** | Downloaded from ClawHub registry via `skill_install`        | Read-only tools only — no shell, no file write, no HTTP |
+| Component | Class | Role |
+|-----------|-------|------|
+| **Tool** | 0 | Registered Rust primitive; performs one declared operation |
+| **ToolSkill** | 13 | IBS binding descriptor for one Tool usage; executes nothing |
+| **Skill** | 1–3 | One usage: prose + explicitly associated PythonCode interface |
+| **PythonCode** | 22 | Small executable building block; calls `host.<tool>(...)` or pure logic |
+| **Recipe** | 21 | Ordered instructions; IBS assembles, Monty executes |
+| **ExtensionCatalogue** | 23 | Domain overview and Recipe inventory |
 
-<Warning>
-Never place a skill file in the trusted directories unless you have reviewed its contents. A skill in `~/.brassclaw/skills/` has the same tool access as you do.
-</Warning>
+A Skill never hides a multi-Tool sequence. Discovery, read, transform, write,
+and reply are separate Recipe steps, each backed by its own Skill usage.
 
 ---
 
-## Skill Directories
+## Execution path
 
-BrassClaw discovers skills from three locations, checked in order:
+When a user message matches a Recipe variant, the global Monty orchestrator
+executes it. For a Skill-backed step the sequence is:
 
-| Directory                       | Trust     | Description                                                 |
-|---------------------------------|-----------|-------------------------------------------------------------|
-| `~/.brassclaw/skills/`           | Trusted   | User's global skills, available in all sessions             |
-| `<workspace>/skills/`           | Trusted   | Per-workspace skills, activated in that workspace's context |
-| `~/.brassclaw/installed_skills/` | Installed | Registry-installed skills from ClawHub                      |
+1. **IBS** reads one consistent approved catalogue snapshot at task start and pins
+   exact UUID/version/checksum references for the Recipe, its ToolSkills, Skill
+   prose, associated PythonCode, and all transitive dependencies.
+2. A `knowledge:"rust"` Recipe step references exactly one ToolSkill UUID.
+   The ToolSkill prepares the Tool binding — no operation happens here.
+3. The immediately following `knowledge:"orchestrator"` step references exactly
+   one PythonCode UUID. Composition preloads the exported function definitions
+   without effects.
+4. Monty invokes the pinned export with typed step-local inputs from the
+   Recipe's `input_layouts`.
+5. The PythonCode calls `host.<tool>(...)`. The kernel checks current
+   instance-wide Tool policy and technical constraints before the actual
+   operation.
+6. The Tool result is returned through the supported adapter. Monty retains
+   it as a typed step result for subsequent Recipe steps.
 
-Skills in trusted directories are loaded as-is. Skills in `installed_skills/` have their tool access capped by the attenuation layer regardless of what they declare.
+**Tier 0** — Deterministic, zero LLM calls: the orchestrator invokes the
+preloaded export directly. The Skill's prose is never executed as Python and
+never injected into a prompt at dispatch time.
 
-Each skill lives in its own subdirectory named after the skill:
+**Tier 1** — A Recipe may explicitly supply Skill prose as context to an LLM
+reasoning step. All Tool calls still go through the same binding and policy path.
 
-```
-~/.brassclaw/skills/
-└── my-skill/
-    └── SKILL.md
+---
+
+## Preloadable function interface
+
+Every Skill declares:
+
+- **Public export names and signatures** — the exact function names and
+  parameters callers may invoke.
+- **Private helpers and constants** — not callable externally; share only
+  genuinely immutable values.
+- **Dependencies** — other PythonCode UUIDs whose exports this code depends on,
+  loaded in deterministic dependency-first order.
+- **Input and result contracts** — recursive typed schemas per skills.md §7.
+
+Mutable state — arrays, buffers, closures, defaults — is allocated per
+invocation and must not be shared across tasks or attempts.
+
+The step-local binding convention inside PythonCode is `inputs["local_name"]`.
+The Recipe's `input_layouts` maps task-level captures, constants, and prior step
+results to these local names. Runtime values are always typed data, never
+substitutions into Python source.
+
+```python
+# Illustrative — exact exports/contracts must be declared before use.
+def publish_turn_reply(inputs):
+    return host.post_reply(answer=inputs["answer"])
 ```
 
-To verify that a skill was picked up correctly:
+---
 
-```bash
-brassclaw skills list
-```
+## Association record
 
-A correctly installed skill appears with its name, version, and trust level. If a skill is missing from the list, check the directory structure and SKILL.md validity.
+A Skill's PythonCode association is recorded as a `skill-association/1` record.
+The record has exactly these fields:
+
+| Field | Meaning |
+|-------|---------|
+| `format` | Exactly `"skill-association/1"` |
+| `skill_uuid` | Stable UUID of the class 1–3 Skill |
+| `python_code_uuid` | Stable UUID of the class-22 PythonCode entry point |
+| `tool_skill_uuid` | Stable UUID of the class-13 ToolSkill binding descriptor |
+| `tool_uuid` | Stable UUID of the class-0 Tool primitive |
+| `callable` | Exact registered `host.<name>` identifier; no expression |
+| `inputs` | Object keyed by unique step-local names (`[a-z][a-z0-9_]*`) |
+| `arguments` | Object mapping Tool parameter names to declared local input names |
+| `code_arguments` | Object declaring Tool arguments computed or fixed by approved code |
+| `result` | Explicit successful-result contract |
+| `failure` | Explicit stop/retry contract |
+
+All four UUIDs must be distinct, valid, non-nil and resolve to the indicated
+classes. The record has no version field; IBS resolves exact component
+versions/checksums in the task manifest at assembly time. This record is separate
+from both the component rows and the approval record.
+
+Authored revisions require Q1, behavioral evidence, and human Q2 before
+activation. First-party components shipped with BrassClaw use the controlled
+`system_seed` bootstrap path with integrity/Q1/behavior evidence and no
+additional installed-instance human Q2.
 
 ---
 
-## Auto-Discovery
+## Skill classes
 
-When `SKILLS_AUTO_DISCOVER=true` (the default), BrassClaw scans all skill directories at startup and indexes all valid SKILL.md files. New skills added while the agent is running are picked up on the next restart.
+The existing consumer classifications in `reborn_skills`:
 
-```bash
-# Enable auto-discovery (default: true)
-SKILLS_AUTO_DISCOVER=true
+| Class code | Label | When used |
+|------------|-------|-----------|
+| 1 | `skill_rusty` | Rust-side binding consumer classification |
+| 2 | `skill_monty` | Orchestrator-side usage consumer classification |
+| 3 | `skill_llm` | Explicit Tier-1 LLM context usage |
+| 10 | Orchestrator | Protected class-10 root; not a user-authored Skill |
+| 50 | Scaffold | Historical storage only; new capabilities belong in class-21 Recipes |
 
-# Max tokens injected per turn across all active skills
-SKILLS_MAX_TOKENS=4000
-```
+Classes 1–3 are existing consumer routing labels, not a hierarchy of Skill
+types. "Leaf Skill" means the same one-usage unit regardless of class.
+
+---
+
+## Reuse before creating
+
+Before creating a new Skill, follow this decision order:
+
+1. The same Tool usage already exists → reuse its Skill and PythonCode UUID.
+2. Only the user's phrasing differs → update the Recipe's intent examples.
+3. The task order differs → compose a new Recipe from existing Skill usages.
+4. The same Tool has a distinct purpose or parameter approach → author a new
+   Skill reusing compatible PythonCode and ToolSkill references.
+5. A small reusable pure-logic operation is missing → author a class-22
+   PythonCode component (no ToolSkill, no Skill needed for pure logic).
+6. No existing Tool provides the primitive → follow tools.md to implement a
+   new Rust Tool through its full build/validation/registration path.
+
+---
+
+## MCP exposure
+
+A Skill does **not** require a dedicated Recipe or command to exist. Many
+Recipes may reuse the same Skill. Only usages intended for MCP publication need
+a separately qualified `mcp-call-skill-recipe` with an exact command contract.
+
+The MCP server's `tools/list` is derived from available activated, approved
+mcp-call-skill-recipes — not from raw Skill rows in the database.
+
+---
+
+## Storage and approval
+
+Skills are stored in `reborn_skills` (prose) and `reborn_python_code` (code)
+via `builtin_bootstrap.rs` for first-party components or through the
+`POST /api/webchat/v2/component-review-submissions` authored submission path
+for installed-instance changes.
+
+The Settings → Component Catalog → Skills tab in the WebUI shows active
+`reborn_skills` rows. The old v1 SKILL.md plugin installer UI ("Skill Packages")
+was removed; this tab now shows only v3 DB component rows.

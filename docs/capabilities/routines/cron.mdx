@@ -3,13 +3,20 @@ title: Cron Routines
 description: Schedule recurring tasks with cron expressions
 ---
 
-Cron routines fire on a repeating schedule using standard cron expressions. Use them for any task that should happen at a predictable time — daily reports, weekly cleanups, hourly checks.
+Cron routines fire on a repeating schedule using standard cron expressions.
+Each routine is a persistent, user-owned record in the `routines` table with
+a trigger definition, action definition, and runtime state.
+
+When a cron routine fires, a trigger event is produced and submitted through
+the ordinary trusted trigger ingress. The orchestrator receives it as a normal
+admitted task, matches it against the registered Recipe, and executes the
+matched workflow. No separate agent loop is spawned per trigger.
 
 ---
 
-## Creating a Cron Routine
+## Creating a cron routine
 
-Describe the schedule and task to the agent. It will call `routine_create` on your behalf:
+Use the `routine_create` tool in chat, describing the schedule and action:
 
 ```
 Create a routine that runs every weekday at 9am and summarizes
@@ -17,30 +24,101 @@ what I worked on yesterday by reading my daily notes, then
 writes a standup draft to memory at daily/standup.md.
 ```
 
----
-
-## Execution Model
-
-When a cron routine fires:
-
-1. The routine engine creates a new agent job with the action prompt
-2. The job runs through the full agent loop — LLM reasoning, tool calls, safety layer
-3. Output is written to memory or sent via a channel notification (if configured)
-4. The run is recorded in routine history, accessible via `routine_history`
-
-Routine jobs run as standard jobs and count against `MAX_PARALLEL_JOBS`. If the limit is reached when a cron fires, the routine job queues as Pending.
+The agent calls `routine_create` with a cron expression, action prompt, and
+configuration. The routine is stored in the `routines` table.
 
 ---
 
-## Configuration
+## Cron expression format
 
-```bash
-# Enable routines
-ROUTINES_ENABLED=true
+Routines accept standard 5-field cron expressions (`minute hour day month weekday`):
 
-# Cron tick interval (how often the engine checks for due jobs)
-ROUTINES_CRON_INTERVAL=60    # seconds
+| Example | Meaning |
+|---------|---------|
+| `0 9 * * 1-5` | Every weekday at 9:00 AM |
+| `*/30 * * * *` | Every 30 minutes |
+| `0 8 * * *` | Daily at 8:00 AM |
+| `0 0 * * 0` | Every Sunday at midnight |
 
-# Max routines running simultaneously
-ROUTINES_MAX_CONCURRENT=3
+The next fire time is pre-computed and stored in `next_fire_at` when the routine
+is created or updated. The trigger poller checks `next_fire_at` on a configurable
+tick interval (default: 60 seconds).
+
+---
+
+## Routine schema
+
+Each routine record contains:
+
+| Field | Description |
+|-------|-------------|
+| `trigger_type` | `cron` — evaluated against `next_fire_at` |
+| `trigger_config` | JSONB with the cron expression and timezone |
+| `action_type` | `lightweight` (single prompt) or `full_job` (full task with iterations) |
+| `action_config` | Prompt text, optional context paths, token/iteration bounds |
+| `cooldown_secs` | Minimum seconds between consecutive runs (default: 300) |
+| `max_concurrent` | Maximum simultaneous runs of this routine (default: 1) |
+| `dedup_window_secs` | Optional deduplication window to skip rapid-fire triggers |
+| `notify_channel` | Channel for output notifications (`null` = use default) |
+| `notify_on_success` | Whether to notify on successful completion |
+| `notify_on_failure` | Whether to notify on failure (default: true) |
+| `consecutive_failures` | Running failure count; resets on success |
+
+---
+
+## Execution model
+
 ```
+Cron trigger fires (next_fire_at reached)
+    ↓
+Trigger poller validates: no active concurrent run,
+cooldown elapsed, dedup window clear
+    ↓
+Trigger event submitted through trusted trigger ingress
+    ↓
+Ordinary task admitted to global Monty orchestrator
+    ↓
+Orchestrator matches action prompt to Recipe, executes steps
+    ↓
+Result written to memory or sent to notification channel
+    ↓
+routine_runs record created (status: ok / attention / failed)
+next_fire_at updated for the next occurrence
+```
+
+Routine jobs share the orchestrator's task queue with other admitted work.
+If the orchestrator is at capacity when a trigger fires, the routine job is
+queued in the `pending` state.
+
+---
+
+## Notification
+
+Routines can notify a channel after each run:
+
+| Setting | Values |
+|---------|--------|
+| `notify_channel` | `tui`, `web`, `telegram`, `webhook`, or `null` for default |
+| `notify_on_success` | `false` by default — routines are quiet unless needed |
+| `notify_on_failure` | `true` by default |
+| `notify_on_attention` | `true` by default — fires when result status is `attention` |
+
+The `attention` status is set when the orchestrator completes successfully but
+the action's output warrants user review (e.g. the action explicitly flagged
+items needing follow-up).
+
+---
+
+## Run history
+
+Each execution is recorded in `routine_runs`:
+
+| Field | Description |
+|-------|-------------|
+| `status` | `running`, `ok`, `attention`, `failed` |
+| `result_summary` | Text summary of the run output |
+| `tokens_used` | LLM tokens consumed by the run |
+| `job_id` | Reference to `agent_jobs` for `full_job` runs |
+
+Query run history using the `routine_runs` table directly via database access,
+or ask the agent to summarize recent runs.

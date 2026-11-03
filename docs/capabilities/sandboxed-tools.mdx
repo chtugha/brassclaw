@@ -1,201 +1,180 @@
 ---
-title: WASM Tools
-sidebarTitle: Sandboxed Tools
-description: Sandboxed tool execution via WebAssembly (wasmtime)
+title: Extension Tools
+sidebarTitle: Extension Tools
+description: First-party and MCP-backed tool extensions with explicit capability declarations
 ---
 
-WASM tools run inside a WebAssembly sandbox powered by [wasmtime](https://wasmtime.dev/). They have access to BrassClaw's host functions (logging, time, workspace), but all other capabilities — network, filesystem, credentials — must be explicitly declared in a `capabilities.json` file.
+BrassClaw tools run as **registered Rust primitives** (class-0 components) or
+as **extension capabilities** backed by one of two runtime lanes:
+**First-party** (host-owned Rust code) or **Hosted MCP** (external MCP server
+with host-mediated egress). The WASM/wasmtime sandbox and Docker-script lanes
+were removed in Phase 4 of the v2 consolidation.
 
-This is BrassClaw's recommended approach for custom integrations that need stronger isolation than a built-in Rust tool provides.
-
----
-
-## How It Works
-
-```
-LLM selects tool
-    ↓
-BrassClaw loads WASM module (from cache or disk)
-    ↓
-Tool executes inside wasmtime sandbox
-    ↓
-Network requests route through the network proxy
-    ↓
-Proxy validates domain against allowlist
-    ↓
-Proxy injects credentials from encrypted store
-    ↓
-Response returns to WASM module
-    ↓
-Tool output passes through Safety Layer
-    ↓
-LLM receives sanitized result
-```
+<Note>
+The old `sandboxed-tools` WASM model no longer exists. If you have existing
+documentation or tooling referring to `capabilities.json`, `wasmtime` fuel,
+or `workspace_read`/`workspace_write` WASM host functions, those belong to
+the removed subsystem. See the [Extension guide](/extensions/building-a-tool)
+for current patterns.
+</Note>
 
 ---
 
-## Sandbox Architecture
+## Runtime lanes
 
-### Fuel Metering
+Every extension tool declares exactly one runtime lane in its `manifest.toml`:
 
-Every WASM instruction consumes "fuel." When a module runs out of fuel, it is terminated immediately. This prevents infinite loops and runaway computation.
+| Lane | Use when | Examples |
+|------|----------|---------|
+| `first_party` | Logic is host-owned — a Rust crate shipped with the binary | Internal HTTP wrappers, cron, memory tools, file tools |
+| `mcp` | Provider already exposes an MCP server; host locks egress to that endpoint | Notion, GitHub hosted MCP |
+| `system` | Host-owned system fixtures — not user-installable | Regression test fixtures and reference implementations |
 
-```bash
-# Configure fuel limit (default: 100,000,000 instructions)
-export WASM_FUEL_LIMIT=100000000
-```
-
-### Memory Limits
-
-WASM modules are allocated a fixed linear memory. Attempting to allocate beyond the limit traps and terminates the module.
-
-```bash
-# Configure memory limit (default: 16 MB)
-export WASM_MEMORY_LIMIT=16777216
-```
-
-### Rate Limiting
-
-Each WASM tool has a per-tool rate limiter to prevent a misbehaving or compromised tool from making excessive API calls.
-
-Rate limits are declared in `capabilities.json`:
-
-```json
-{
-  "rate_limit": {
-    "requests_per_minute": 60,
-    "requests_per_day": 1000
-  }
-}
-```
+The `wasm` and `script` lanes are no longer wired. Do not use them.
 
 ---
 
-## capabilities.json
+## Capability declaration
 
-Every WASM tool must include a `capabilities.json` alongside its `.wasm` binary. This file is the single source of truth for what the tool is allowed to do.
+Every model-visible tool capability is declared in the extension manifest via
+`[[host_api]]` with `brassclaw.capability_provider/v1`:
 
-```json
-{
-  "name": "my-tool",
-  "version": "0.1.0",
-  "description": "Fetches data from example.com API",
+```toml
+schema_version = "reborn.extension_manifest.v2"
+id = "my-tool"
+name = "My Tool"
+version = "0.1.0"
+description = "Fetches data from example.com"
+trust = "third_party"
 
-  "network": {
-    "allowed_hosts": [
-      "api.example.com",
-      "auth.example.com"
-    ]
-  },
+[runtime]
+kind = "mcp"
+transport = "stdio"
+command = "my-mcp-server"
+args = ["--stdio"]
 
-  "filesystem": {
-    "read": ["/workspace/data/*"],
-    "write": ["/workspace/output/*"]
-  },
+[[host_api]]
+id = "brassclaw.capability_provider/v1"
+section = "capability_provider.tools"
 
-  "credentials": [
-    {
-      "name": "example_api_key",
-      "inject_as": "Authorization",
-      "format": "Bearer {value}"
-    }
-  ],
+[capability_provider.tools]
 
-  "rate_limit": {
-    "requests_per_minute": 30,
-    "requests_per_day": 500
-  }
-}
+[[capability_provider.tools.capabilities]]
+id = "my-tool.search"
+description = "Search records in example.com"
+effects = ["dispatch_capability", "network", "use_secret"]
+default_permission = "ask"
+visibility = "model"
+input_schema_ref  = "schemas/my-tool/search.input.v1.json"
+output_schema_ref = "schemas/my-tool/search.output.v1.json"
+prompt_doc_ref    = "prompts/my-tool/search.md"
+required_host_ports = ["host.runtime.http_egress"]
+runtime_credentials = [
+  { handle = "my_api_key", source = { type = "product_auth_account", provider = "my-tool" },
+    audience = { scheme = "https", host_pattern = "api.example.com" },
+    target = { type = "header", name = "authorization", prefix = "Bearer " } },
+]
 ```
 
-### Network allowlist
+---
 
-The `network.allowed_hosts` list controls which domains the tool can reach. Requests to any domain not in this list are rejected by the network proxy before the TCP connection is established.
+## Network and credentials
 
-HTTPS traffic uses the `CONNECT` tunnel method. The proxy validates the target hostname against the allowlist before establishing the tunnel.
+All network access is **host-mediated**. Runtime code does not create its own
+HTTP clients or read raw secrets.
 
-### Filesystem access
+- **Hosted MCP** — requests go through `McpHostHttpClient` with
+  `McpRuntimeHttpAdapter` and a host-owned egress planner.
+- **First-party** — calls `brassclaw_host_runtime` HTTP helpers directly.
 
-WASM tools cannot access the host filesystem by default. Paths declared under `filesystem.read` and `filesystem.write` are mounted into the WASM module's sandbox at the declared paths.
+Credentials listed in `runtime_credentials` are never passed into the runtime
+as raw token values. The host egress layer intercepts each outbound request and
+injects the declared credential header before forwarding. The runtime module
+never sees the raw secret material.
 
-### Credential injection
-
-Credentials listed in `capabilities.json` are never passed into the WASM module's memory. Instead, when the module makes an outbound HTTP request, the proxy intercepts the request and injects the specified header before forwarding it.
-
-The WASM module never sees the raw credential value — it only makes an unauthenticated HTTP request, and the proxy adds the auth header transparently.
+Network policy (allowed hosts, TLS enforcement, credential scoping) is enforced
+at the host layer:
+- Hosted MCP policy: `crates/brassclaw_reborn_composition/src/mcp.rs`
+- Host HTTP enforcement: `crates/brassclaw_host_runtime/src/egress/`
 
 ---
 
-## Host Functions
+## Effects and permissions
 
-WASM modules can call the following host functions provided by BrassClaw:
+`effects` in the capability declaration are authorization inputs, not
+documentation labels:
 
-| Function | Description |
-|----------|-------------|
-| `log(level, message)` | Write to the BrassClaw log at the given severity level |
-| `now_unix_secs()` | Return the current Unix timestamp |
-| `workspace_read(path)` | Read a document from the workspace |
-| `workspace_write(path, content)` | Write a document to the workspace |
+| Effect | When to include |
+|--------|-----------------|
+| `dispatch_capability` | Always for a dispatchable capability |
+| `network` | Any external HTTP/TCP call |
+| `use_secret` | Any credential injection (including product auth accounts) |
+| `external_write` | Provider mutations, sends, deletes, workflow dispatches |
+| `read_filesystem` | Local file reads |
+| `write_filesystem` / `delete_filesystem` | Local file writes or deletes |
+| `execute_code` / `spawn_process` | Process execution |
+| `financial` | Irreversible financial actions |
 
-These are the only host capabilities available. A WASM tool cannot call arbitrary OS functions, fork processes, or access the network directly — all network access goes through the proxy.
-
----
-
-## Tool Discovery
-
-WASM tools are discovered at startup from two locations:
-
-- `~/.brassclaw/tools/` — User-installed tools
-- `<workspace>/tools/` — Per-workspace tools
-
-Each tool directory must contain:
-- `<toolname>.wasm` — The compiled WebAssembly module
-- `capabilities.json` — The capability declaration
+`default_permission = "ask"` is the standard for anything with `external_write`,
+`financial`, local write/delete, or process execution.
 
 ---
 
-## Installing WASM Tools
+## Resource limits
 
-```bash
-# Install from a local file
-brassclaw tool install ./my-tool.wasm
+Resource limits are enforced by the host runtime and Monty VM settings, not
+per-capability configuration files:
 
-# Install from a URL
-brassclaw tool install https://example.com/tools/my-tool.wasm
-
-# List installed tools
-brassclaw tool list
-```
-
-Or via the `extension_install` tool in chat:
-> "Install the tool from https://example.com/tools/my-tool.wasm"
+| Limit | Control |
+|-------|---------|
+| Task compute time | **Settings → Monty VM** → task duration (default: 600 seconds of executing VM time, excluding idle/queue/external waits) |
+| Shared heap | **Settings → Monty VM** → shared heap (minimum 512 MiB; ceiling, not reserved) |
+| HTTP response size | **Settings → Monty VM** → host HTTP defaults (default 10 MiB) |
+| HTTP request timeout | **Settings → Monty VM** → host HTTP defaults (default 30 s) |
+| HTTP client retention | **Settings → Monty VM** → retained clients (default 128) |
 
 ---
 
-## Module Compilation and Caching
+## Discovery and installation
 
-WASM modules are compiled by wasmtime on first load and cached. Subsequent loads use the compiled artifact, so only the first invocation of a new tool incurs compilation overhead.
+Extensions are discovered from `crates/brassclaw_first_party_extensions/assets/`
+for built-in packages and from the virtual filesystem for operator-installed
+packages. Every extension goes through:
 
-The cache is stored at `~/.brassclaw/wasm-cache/`.
+1. Manifest schema validation (`brassclaw_extensions::v2::validate`)
+2. Host-API contract parsing
+3. Effect/credential consistency check
+4. Trust ceiling check
+5. Schema and prompt reference resolution
+6. Runtime adapter health probe (for hosted MCP lanes)
+7. Catalogue publication into the prompt-envelope tool surface
+
+A failure at any step rejects the extension at install time. There is no
+partial-load path.
 
 ---
 
-## Security Notes
+## First-party tools
 
-<Warning>
-Review `capabilities.json` before installing any WASM tool from an untrusted source. The capability file determines exactly what the tool can access — network hosts, filesystem paths, and which credentials are injected.
-</Warning>
+Built-in tools (memory, file, shell, HTTP, JSON, etc.) are registered as
+class-0 Rust primitives through `builtin_bootstrap.rs`. They are not extension
+packages — they are part of the system. Each has:
 
-<AccordionGroup>
-  <Accordion title="Credential injection is one-way" icon="lock">
-    The proxy injects credentials into outgoing requests. There is no mechanism for a WASM module to read stored secrets directly. Even if a WASM module is compromised, it cannot access the secrets store.
-  </Accordion>
+- A **Tool** row (class 0) identifying the primitive and its `capability_id`
+- A **ToolSkill** row (class 13) describing the IBS binding
+- One or more **PythonCode** rows (class 22) implementing specific usages
+- **Skill** rows (class 1–3) associating prose with each PythonCode usage
+- **Recipe** rows (class 21) providing the matched workflow
 
-  <Accordion title="No process spawning" icon="shield">
-    WASM modules cannot spawn child processes, execute shell commands, or load dynamic libraries. The WASI interface exposed to modules is minimal.
-  </Accordion>
+The current first-party tool inventory includes: `read_file`, `write_file`,
+`shell`, `json`, `http_get`, `http_post`, `memory_search`, `memory_write`,
+`memory_read`, `memory_tree`, `post_reply`, and others. See the
+[Extension overview](/extensions/overview) for the full surfaced catalog.
 
-  <Accordion title="Fuel prevents denial-of-service" icon="zap">
-    A buggy or malicious WASM tool that enters an infinite loop will be terminated when it exhausts its fuel allocation. This prevents a single tool from blocking the agent indefinitely.
-  </Accordion>
-</AccordionGroup>
+---
+
+## Building a custom extension
+
+See [Building a tool](/extensions/building-a-tool) for the complete authoring
+guide covering manifest structure, runtime lane selection, schema and prompt
+assets, credential wiring, network policy, and the operational checklist.

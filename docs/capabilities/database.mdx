@@ -1,49 +1,75 @@
 ---
-title: Database Backends
-description: PostgreSQL vs libSQL — choosing your database
+title: Database
+description: PostgreSQL — BrassClaw's persistence layer
 ---
 
-BrassClaw supports two database backends: **PostgreSQL** and **libSQL** (embedded SQLite). **PostgreSQL is the default** — if you don't set `DATABASE_BACKEND`, BrassClaw will use PostgreSQL and require a `DATABASE_URL`. Choose libSQL for zero-config personal use.
+BrassClaw uses **PostgreSQL** as its sole persistence layer. All component
+storage, conversation history, Monty VM settings, provider definitions, secrets,
+and routine state live in PostgreSQL.
 
 <Warning>
-If you start BrassClaw without configuring a database, you'll see: `DATABASE_URL is required`. Run `brassclaw onboard` or set the environment variables manually.
+libSQL/SQLite is not a supported production or personal-use backend. The
+`libsql` feature flag in the BrassClaw repository gates a one-way migration
+importer for upgrading from an old single-user libSQL installation to
+PostgreSQL — it is not an active backend choice. If you see references to
+`DATABASE_BACKEND=libsql` or `LIBSQL_PATH`, those belong to that
+migration-only path.
 </Warning>
 
-## Quick Comparison
+---
 
-| Feature | PostgreSQL (default) | libSQL |
-|---------|----------------------|--------|
-| **Setup** | Requires PostgreSQL server | Zero-dependency, auto-created |
-| **Best For** | Production, multi-user | Personal use, single-user |
-| **Search** | Hybrid (FTS + vector) | FTS only (vector via Turso) |
-| **Scaling** | Horizontal (read replicas) | Single node |
-| **Backup** | pg_dump, replication | File copy, Turso sync |
-| **Size** | 100MB+ installed | ~5MB binary |
+## Quick start
 
-## PostgreSQL
+### Embedded PostgreSQL (default for local single-host installs)
 
-Recommended for production deployments, multi-user scenarios, and high-throughput use cases.
+When `BRASSCLAW_PG_URL` is not set, BrassClaw starts an embedded PostgreSQL
+instance automatically on first launch. No external database server or
+installation steps are needed.
 
-### Requirements
+```bash
+# Optional: override the embedded Postgres port (default: 5434)
+export BRASSCLAW_EMBEDDED_PG_PORT=5434
+
+# Optional: allow LAN access (written to postgresql.conf on first boot only)
+export BRASSCLAW_EMBEDDED_PG_LISTEN_ADDRESSES=0.0.0.0
+```
+
+The embedded database stores its data under `$BRASSCLAW_REBORN_HOME`
+(default: `~/.brassclaw/reborn`).
+
+### External PostgreSQL
+
+For production deployments, multi-host setups, or existing PostgreSQL
+infrastructure, point BrassClaw at an external instance:
+
+```bash
+export BRASSCLAW_PG_URL="postgres://brassclaw:your-password@localhost/brassclaw"
+```
+
+`BRASSCLAW_PG_URL` is required for all non-local runtime profiles. When set,
+the embedded PostgreSQL instance is not started.
+
+---
+
+## Requirements
 
 - PostgreSQL 15 or later
-- pgvector extension for embeddings
+- The `pgvector` extension for embeddings and hybrid search
 
-### Installation
+### Install pgvector
 
 <AccordionGroup>
-  <Accordion title="Docker Compose (recommended)" icon="container">
-    The fastest way to get started. A `docker-compose.yml` is included in the BrassClaw repository:
-
+  <Accordion title="Docker Compose (recommended for development)" icon="container">
     ```bash
     cd brassclaw
     docker compose up -d postgres
     ```
-
-    This starts `pgvector/pgvector:pg16` on `127.0.0.1:5432` with database, user, and password all set to `brassclaw`.
+    This starts `pgvector/pgvector:pg16` on `127.0.0.1:5432` with database,
+    user, and password all set to `brassclaw`.
 
     <Warning>
-    These credentials are for local development only. Change `POSTGRES_PASSWORD` for any non-local deployment.
+    These credentials are for local development only. Change `POSTGRES_PASSWORD`
+    before any non-local deployment.
     </Warning>
   </Accordion>
 
@@ -56,190 +82,58 @@ Recommended for production deployments, multi-user scenarios, and high-throughpu
 
   <Accordion title="macOS (Homebrew)" icon="terminal">
     ```bash
-    brew install postgresql
-    brew install pgvector
+    brew install postgresql pgvector
     brew services start postgresql
     ```
   </Accordion>
 </AccordionGroup>
 
-### Configuration
+---
+
+## External PostgreSQL setup
 
 ```bash
-# Create database
 sudo -u postgres psql -c "CREATE DATABASE brassclaw;"
 sudo -u postgres psql -c "CREATE USER brassclaw WITH PASSWORD 'your-password';"
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE brassclaw TO brassclaw;"
-
-# Enable pgvector
 sudo -u postgres psql -d brassclaw -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
-### BrassClaw Configuration
+---
 
-```bash
-# Select backend (optional — postgres is the default)
-# Accepted values: postgres, postgresql, pg | libsql, turso, sqlite
-export DATABASE_BACKEND=postgres
+## TLS / SSL
 
-# Required for PostgreSQL
-export DATABASE_URL="postgres://brassclaw:***@localhost/brassclaw"
-export DATABASE_POOL_SIZE=30  # default; increase for high-throughput workloads
-```
-
-<Warning>
-`DATABASE_URL` is **required** when using PostgreSQL. If not set, BrassClaw will fail to start with the error: `DATABASE_URL is required — Run 'brassclaw onboard' or set DATABASE_URL environment variable`.
-</Warning>
-
-Or in the wizard:
-1. Select "PostgreSQL"
-2. Enter connection string
-3. Test connection
-
-### SSL Modes
-
-| Mode | Behavior | Use Case |
+| Mode | Behavior | Use case |
 |------|----------|----------|
-| `disable` | Never use TLS | Local development |
-| `prefer` | Try TLS, fallback to plaintext | **Default** — works everywhere |
-| `require` | Require TLS | Production with TLS |
+| `disable` | Never use TLS | Trusted local loopback only |
+| `prefer` | Try TLS, fall back to plaintext | Embedded and simple local setups |
+| `require` | Require TLS | Remote production connections |
+
+For remote connections, `require` (or stronger) is recommended. The local
+embedded Postgres uses `prefer` by default.
 
 ```bash
-export DATABASE_SSLMODE=require
+# Append sslmode to the connection URL:
+export BRASSCLAW_PG_URL="postgres://user:pw@host/db?sslmode=require"
 ```
 
-## libSQL
+---
 
-Recommended for personal use, development, and single-user deployments. Zero setup required.
+## Search
 
-### How It Works
+BrassClaw uses hybrid search combining full-text search (FTS) and vector
+similarity when `pgvector` is installed:
 
-libSQL is an embedded SQLite-compatible database:
-- Database is a single file (`~/.brassclaw/brassclaw.db`)
-- No separate server process
-- Auto-created on first connection
-- Full SQLite feature set
-
-### BrassClaw Configuration
-
-```bash
-export DATABASE_BACKEND=libsql
-export LIBSQL_PATH="/home/user/.brassclaw/brassclaw.db"
+```
+Keyword matches (FTS)  +  semantic similarity (pgvector)
+         └──── Reciprocal Rank Fusion (RRF) ranking ────┘
 ```
 
-Or just use the wizard defaults:
-1. Select "libSQL"
-2. Accept default path
-3. Done!
+Without pgvector, only full-text search is available.
 
-### Turso Cloud Sync
+---
 
-libSQL supports syncing to Turso for cloud backup:
-
-```bash
-export DATABASE_BACKEND=libsql
-export LIBSQL_PATH="/home/user/.brassclaw/brassclaw.db"
-export LIBSQL_URL="libsql://your-db.turso.io"
-export LIBSQL_AUTH_TOKEN="***"
-```
-
-<Warning>
-`LIBSQL_AUTH_TOKEN` is **required** when `LIBSQL_URL` is set. BrassClaw will fail to start without it.
-</Warning>
-
-This keeps a local copy with automatic cloud sync.
-
-## Feature Comparison
-
-### Hybrid Search
-
-**PostgreSQL:** Full hybrid search (FTS + vector via RRF)
-```
-Keyword matches + semantic similarity
-Reciprocal Rank Fusion ranking
-```
-
-**libSQL:** FTS only (text search)
-```
-Keyword matching via FTS5
-Vector search via Turso cloud only
-```
-
-### Embeddings
-
-Both backends support embeddings, but with different implementations:
-
-| Backend | Embeddings | Notes |
-|---------|------------|-------|
-| PostgreSQL | Yes | pgvector for vector storage |
-| libSQL local | FTS only | No local vector storage |
-| libSQL + Turso | Yes | Via Turso vector indexes |
-
-<Warning>
-**Encryption at rest:** The local SQLite database stores conversation and workspace data in plaintext. Only secrets (API tokens) are encrypted with AES-256-GCM. If you handle sensitive data, use full-disk encryption (FileVault, LUKS, BitLocker) or choose PostgreSQL with TDE.
-</Warning>
-
-## Migration
-
-### From libSQL to PostgreSQL
-
-<Warning>
-SQLite and PostgreSQL have different SQL dialects. A raw `sqlite3 .dump` output may fail on PostgreSQL due to PRAGMA statements, type differences, and quoting. Use a conversion tool like [pgloader](https://pgloader.io/) or [pgloader Docker](https://hub.docker.com/r/dimitri/pgloader) for reliable migration.
-</Warning>
-
-1. **Using pgloader (recommended):**
-   ```bash
-   pgloader ~/.brassclaw/brassclaw.db postgresql://brassclaw:***@localhost/brassclaw
-   ```
-
-2. **Manual export (may require editing):**
-   ```bash
-   sqlite3 ~/.brassclaw/brassclaw.db ".dump" > brassclaw.sql
-   # Edit brassclaw.sql to remove PRAGMAs and fix type incompatibilities
-   psql -d brassclaw -f brassclaw.sql
-   ```
-
-3. **Update BrassClaw config:**
-   ```bash
-   export DATABASE_BACKEND=postgres
-   export DATABASE_URL="postgres://user:***@localhost/brassclaw"
-   ```
-
-4. **Restart BrassClaw**
-
-### From PostgreSQL to libSQL
-
-1. **Export:**
-   ```bash
-   pg_dump -h localhost -U brassclaw brassclaw > brassclaw.sql
-   ```
-
-2. **Convert and import to SQLite** (requires conversion tools)
-
-3. **Update BrassClaw config**
-
-## When to Choose Which
-
-### Choose libSQL if:
-
-- Running BrassClaw on a personal laptop/desktop
-- Single-user deployment
-- Want zero database administration
-- Don't need horizontal scaling
-- FTS-only search is sufficient
-
-### Choose PostgreSQL if:
-
-- Production multi-user deployment
-- Need hybrid (FTS + vector) search locally
-- High-throughput scenario
-- Existing PostgreSQL infrastructure
-- Require advanced backup/recovery
-- Team or shared deployment
-
-## Backup
-
-### PostgreSQL
+## Backup and restore
 
 ```bash
 # Backup
@@ -249,65 +143,63 @@ pg_dump -h localhost -U brassclaw brassclaw > backup.sql
 psql -d brassclaw -f backup.sql
 ```
 
-### libSQL
+For the embedded PostgreSQL instance, the data directory is under
+`$BRASSCLAW_REBORN_HOME`. Stopping BrassClaw before copying the directory is
+strongly recommended.
 
-```bash
-# Backup (simple file copy)
-cp ~/.brassclaw/brassclaw.db ~/.brassclaw/brassclaw.db.backup
+---
 
-# Restore
-cp ~/.brassclaw/brassclaw.db.backup ~/.brassclaw/brassclaw.db
+## Migrations
 
-# With Turso: automatic cloud backup
-```
+BrassClaw applies Flyway-style versioned migrations at startup
+(`V1__initial.sql` through the current version). Migrations run automatically
+before the component seeder, integrity checker, and turn workers start.
+
+Never edit an already-applied migration. Add a new numbered migration file for
+schema changes.
+
+---
 
 ## Troubleshooting
 
 <AccordionGroup>
   <Accordion title="pgvector not found" icon="x-circle">
     ```bash
-    # Install pgvector
     sudo apt install postgresql-15-pgvector
-
-    # Or compile manually
+    # or compile from source:
     git clone https://github.com/pgvector/pgvector.git
-    cd pgvector
-    make
-    sudo make install
+    cd pgvector && make && sudo make install
     ```
   </Accordion>
 
-  <Accordion title="Database file is locked" icon="lock">
-    ```bash
-    # Find and kill process
-    lsof ~/.brassclaw/brassclaw.db
-    kill -9 <pid>
-
-    # Or wait for it to release
-    ```
-  </Accordion>
-
-  <Accordion title="Connection refused (PostgreSQL)" icon="network">
+  <Accordion title="Connection refused" icon="network">
     ```bash
     # Check PostgreSQL is running
     sudo systemctl status postgresql
 
-    # Check listen addresses
+    # Verify listen addresses
     sudo -u postgres psql -c "SHOW listen_addresses;"
+    ```
+  </Accordion>
 
-    # Should be '*' or 'localhost'
+  <Accordion title="Embedded Postgres port conflict" icon="warning">
+    ```bash
+    # Change the port BrassClaw's embedded instance binds to:
+    export BRASSCLAW_EMBEDDED_PG_PORT=5435
     ```
   </Accordion>
 </AccordionGroup>
 
-## Next Steps
+---
+
+## Next steps
 
 <CardGroup cols={2}>
   <Card title="Configuration" icon="settings" href="/capabilities/configuration">
-    Full environment variable reference
+    Full environment variable reference and Monty VM settings
   </Card>
 
   <Card title="VPS Install" icon="server" href="/infrastructure/droplet">
-    Production deployment guide with PostgreSQL
+    Production deployment guide with external PostgreSQL
   </Card>
 </CardGroup>

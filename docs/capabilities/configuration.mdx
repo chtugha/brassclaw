@@ -95,3 +95,20 @@ an active startup fallback.
 Dedicated OAuth/signed setup metadata and cross-platform acceptance are still
 being completed in the v3 implementation. Use the supported configuration
 controls and consult release acceptance before relying on those paths.
+
+## Key environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `BRASSCLAW_REBORN_HOME` | Reborn state root (default: `~/.brassclaw/reborn`) |
+| `BRASSCLAW_RUNTIME_PROFILE` | Runtime-policy selector. The local CLI defaults to `full`; the serve entry point preserves any supplied policy. Do not use the removed `BRASSCLAW_REBORN_PROFILE`. |
+| `BRASSCLAW_PG_URL` | External PostgreSQL URL. Required for all non-local runtime profiles. When absent, an embedded PostgreSQL instance starts on `BRASSCLAW_EMBEDDED_PG_PORT` (default: 5434). |
+| `BRASSCLAW_EMBEDDED_PG_PORT` | Override the embedded PostgreSQL port (default: 5434). |
+| `BRASSCLAW_EMBEDDED_PG_LISTEN_ADDRESSES` | Override embedded PostgreSQL listen addresses (default: `127.0.0.1`). Set `0.0.0.0` for LAN access. First-boot only. |
+| `BRASSCLAW_REBORN_LOG` | Log filter for the Reborn runtime (e.g. `brassclaw=debug`). |
+| `BRASSCLAW_SECRETS_PASSPHRASE_FILE` | Path to the master-key passphrase file; set only for passphrase-wrapped key ceremony. |
+
+Operator-trusted secrets (API keys, webhook auth tokens, the WebUI bearer token)
+are stored in the encrypted secrets store via **Settings → Credentials**, not in
+plain environment variables. Do not place secret values in
+`BRASSCLAW_REBORN_LOG` or other non-secret variables.

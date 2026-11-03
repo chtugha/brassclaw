@@ -1,148 +1,159 @@
 ---
 title: Self-Repair & Stuck Jobs
 sidebarTitle: Self-Repair
-description: Automatic detection and recovery of stuck jobs
+description: Detection and recovery for jobs that stop making progress
 ---
 
-BrassClaw monitors all running jobs and automatically recovers those that stop making progress — without requiring human intervention.
+BrassClaw monitors running jobs and attempts recovery when a job stops
+producing output or tool call activity for longer than the configured timeout.
 
 ---
 
-## What Is a Stuck Job?
+## What makes a job stuck?
 
-A job is considered **stuck** when it has been in the **InProgress** state for longer than the configured timeout without producing any output, tool calls, or state updates.
+A job is classified as **stuck** when it has been in the `running` state for
+longer than the configured inactivity threshold without recording any new tool
+call activity, output, or state update in `job_actions`.
 
 Common causes:
 - LLM provider timeout or rate limit with no retry budget remaining
 - Tool call hanging on an unresponsive external service
-- Container resource exhaustion (OOM, CPU throttle)
-- Network partition between the agent and a sandboxed worker
-
----
-
-## Configuration
-
-```bash
-# Enable self-repair (default: true)
-SELF_REPAIR_ENABLED=true
-
-# How long before a job is considered stuck (seconds)
-SELF_REPAIR_TIMEOUT_SECS=300
-
-# Maximum recovery attempts before marking job as Failed
-SELF_REPAIR_MAX_RETRIES=3
-
-# How often the monitor checks for stuck jobs (seconds)
-SELF_REPAIR_CHECK_INTERVAL_SECS=60
-```
-
-<Note>
-`SELF_REPAIR_TIMEOUT_SECS` should be set lower than `SANDBOX_TIMEOUT_SECS`. The sandbox enforces a hard kill; self-repair is a soft recovery that runs before the hard kill triggers.
-</Note>
+- Resource exhaustion at the orchestrator or host level
+- Network partition between the orchestrator and a sandboxed subprocess
 
 ---
 
 ## Detection
 
-The self-repair system runs as a background task alongside the scheduler. It periodically scans all InProgress jobs and compares the last-activity timestamp against the stuck threshold.
+The self-repair monitor runs as a background task. It periodically scans all
+running jobs and compares the last-activity timestamp in `job_actions` against
+the stuck threshold.
 
 ```
 [Self-Repair Monitor]
          ↓
-For each InProgress job:
-    last_activity > SELF_REPAIR_TIMEOUT?
+For each running job:
+    last_activity > stuck threshold?
          ↓ yes
-    Transition: InProgress → Stuck
+    Mark job stuck (set stuck_since)
          ↓
-    Log failure to tool_failures table
+    Record in tool_failures table
          ↓
-    Attempt recovery
+    Evaluate recovery eligibility
 ```
 
-The `tool_failures` table accumulates failure records per job and per tool. This data is used to assess whether recovery is worth attempting again or whether the job should be moved directly to **Failed**.
+The `tool_failures` table accumulates failure records per tool name. The repair
+system checks this history to determine whether the job has exceeded its retry
+budget.
 
 ---
 
-## Recovery Flow
+## Recovery
 
-When a stuck job is detected, the self-repair system attempts to restart it:
+When a stuck job is detected:
 
 <Steps>
-  <Step title="Transition to Stuck">
-    The job state changes from InProgress to Stuck. The event is logged with the failure reason and timestamp.
+  <Step title="Mark stuck">
+    The job's `stuck_since` timestamp is set. The event is logged.
   </Step>
 
-  <Step title="Inspect failure history">
-    The system checks the `tool_failures` table for this job. If the job has exceeded the maximum retry count, it is transitioned directly to **Failed** and recovery is skipped.
+  <Step title="Check repair budget">
+    The system reads `repair_attempts` on the `agent_jobs` row. If the job has
+    reached the maximum, it transitions directly to `failed`.
   </Step>
 
-  <Step title="Re-enter InProgress">
-    If retries remain, the job transitions back to InProgress. A new worker picks it up and resumes execution from the last saved checkpoint.
+  <Step title="Re-admit">
+    If retries remain, `repair_attempts` is incremented and the job is returned
+    to the `running` state. The task is re-admitted to the orchestrator.
   </Step>
 
   <Step title="Evaluate outcome">
-    If the job completes successfully, the failure records are cleared. If it gets stuck again, the cycle repeats until the retry limit is reached, at which point the job fails permanently.
+    If the job completes successfully, it reaches `completed`. If it gets
+    stuck again, the cycle repeats until the repair limit is reached.
   </Step>
 </Steps>
 
----
-
-### State Diagram
-
-```
-InProgress
-    ↓ (timeout detected)
-  Stuck ──────────────────────► Failed (retry limit reached)
-    ↓ (retry available)
-InProgress
-    ↓
-Completed (or back to Stuck)
-```
+<Warning>
+Re-admitting a job does **not** replay its already-completed Tool calls.
+The orchestrator uses durable effect state to identify where execution was
+interrupted. Completed Tool invocations are not reissued — only unstarted or
+verifiably incomplete steps are resumed. A job whose last Tool call produced
+an unknown completion outcome (e.g. a timeout after an external write) is
+stopped and classified as failed rather than replayed automatically.
+</Warning>
 
 ---
 
-## Tool Failure Tracking
+## Tool-failure history
 
-Every time a tool fails during job execution, the event is recorded:
+Every tool call failure during job execution is recorded in `tool_failures`:
 
-| Field         | Description                          |
-|---------------|--------------------------------------|
-| `job_id`      | The job that experienced the failure |
-| `tool_name`   | Which tool failed                    |
-| `error`       | Error message or failure reason      |
-| `occurred_at` | Timestamp of the failure             |
+| Field | Description |
+|-------|-------------|
+| `tool_name` | Which tool failed |
+| `error_message` | Error reason |
+| `error_count` | Cumulative failure count for this tool name |
+| `last_failure` | Timestamp of most recent failure |
+| `repair_attempts` | How many repair attempts have been made |
+| `repaired_at` | Timestamp when the tool was last considered repaired |
 
-This history is available to the worker on retry, allowing it to avoid repeating the same failing tool call or to select an alternative approach.
+The repair monitor uses `error_count` and `repair_attempts` to decide whether
+re-admission is appropriate. A tool that fails on every attempt across all
+repair tries contributes to moving the job to `failed`.
+
+---
+
+## Configuration
+
+Stuck detection and repair thresholds are tracked per-job in the `agent_jobs`
+table (`stuck_since`, `repair_attempts`) and per-tool in `tool_failures`
+(`error_count`, `repair_attempts`). The monitor's check frequency and the
+stuck inactivity threshold are runtime parameters of the self-repair subsystem.
+
+<Note>
+The specific Settings → UI path for adjusting stuck detection timeout,
+maximum repair attempts, and monitor check interval is implementation-pending.
+Confirm the current control surface via Settings → Monty VM before relying on
+a specific knob location.
+</Note>
+
+Regardless of how repair thresholds are configured, the hard task-duration
+limit (Settings → Monty VM → task duration, default 600 s executing VM time)
+is independent: it terminates a task regardless of repair state when the
+execution-time ceiling is reached.
 
 ---
 
 ## Observability
 
-Stuck and recovered jobs are visible in:
+- **`list_jobs` tool** — Shows current job state including `stuck` jobs
+- **`job_status` tool** — Detailed per-job state including `stuck_since` and
+  `repair_attempts`
+- **Logs** — Enable debug logging for the repair subsystem to see detailed
+  stuck detection and re-admission events
 
-- **Job history** — The web gateway's job list shows state transitions with timestamps
-- **Logs** — `RUST_LOG=brassclaw::agent::self_repair=debug` for detailed repair events
-- **`list_jobs` tool** — Shows current state including Stuck jobs
+---
 
 ## Troubleshooting
 
 <AccordionGroup>
   <Accordion title="Job repeatedly gets stuck" icon="refresh-cw">
-    - Check `RUST_LOG=brassclaw::agent::self_repair=debug` for failure reasons
-    - Inspect tool failure records via `job_status` tool
-    - Consider increasing `SELF_REPAIR_TIMEOUT_SECS` if the job is legitimately long-running
-    - Check network connectivity to LLM provider and external services
+    - Use `job_status` to inspect `stuck_since` and `repair_attempts`
+    - Check tool failure records for the specific failing tool
+    - Verify network connectivity to LLM provider and external services
+    - If the job is legitimately long-running, increase the stuck detection
+      timeout via Settings → Monty VM
   </Accordion>
 
   <Accordion title="Job fails immediately after recovery" icon="x-circle">
-    - The tool failure history may reveal a specific tool that always fails
+    - Tool failure history may show a specific tool that consistently fails
     - Check whether the external service the tool depends on is available
-    - Review sandbox logs if the job runs in a container (`SANDBOX_ENABLED=true`)
+    - Review the job's `job_actions` history for the last recorded activity
   </Accordion>
 
   <Accordion title="Stuck jobs not being detected" icon="search">
-    - Verify `SELF_REPAIR_ENABLED=true`
-    - Check that `SELF_REPAIR_TIMEOUT_SECS` is not set too high
-    - Confirm the self-repair monitor is running: look for `self_repair` in startup logs
+    - Verify the self-repair monitor is running (check startup logs)
+    - Check that the stuck detection timeout is not set unreasonably high
+    - Confirm the job is actually in `running` state via `list_jobs`
   </Accordion>
 </AccordionGroup>
