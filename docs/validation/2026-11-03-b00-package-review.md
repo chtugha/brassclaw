@@ -101,7 +101,7 @@ startup delta needs a multi-minute CLI compile (prior compatible remote Cargo
 4m47s / controller 404.52s; native test batch is separately much longer).
 Use estimated local 600 seconds. Billing estimate is below USD 1 for the single
 900-second bounded build, reusing the existing qualified profile; this is an
-estimate, not an actual billing measurement. Actual receipt will be appended.
+estimate, not an actual billing measurement. The actual receipt is recorded below.
 
 Recommended Composition native selectors (`--features postgres,skills-db --lib`;
 real installed worker and native PG required, zero-selected/ignored is failure):
@@ -127,3 +127,44 @@ against that list; names are source selectors, not claims of observed execution.
 Actual in-flight cancellation between provisional observation and settlement,
 lost settlement ACK and stale-claim graduation need native interruption acceptance;
 the new pure classification regression does not establish these stronger claims.
+
+
+## Terminal Modal receipt
+
+Build source commit: `f62e911cf2b994298d5a16a026b9da14b1352779`.
+Job: `cf5e67e0-597d-4cc3-ae4a-0854fccb0f5c`.
+[Completed Modal App](https://modal.com/apps/chtugha/brassclaw/ap-DCukHBS0sru814J6FKViwj).
+The controller returned zero and reports completed, after exact remote/local
+receipt equality and artifact checksum verification. The shared lock was held
+through upload/readback, execution and receipt/artifact collection.
+
+```text
+python scripts/modal_build.py --platform apple run --confirmed-modal --estimated-local-secs 600 -- cargo build --locked -p brassclaw_reborn_cli --bin brassclaw-reborn --target aarch64-apple-darwin
+```
+
+- Source manifest SHA-256:
+  `27e8526e699dfcebd2a0b6f4bc1053e632d00f0c1b2ad840b8576a034d5f8737`.
+- `q1_orchestrator.rs` manifest/current worktree SHA-256:
+  `cf06578f0bde92ee7ed25e432fabe1b09574f1075d21a2373bdf0e4238d9e57b`.
+- Exact qualified image: `im-S1cpT9G1fsMPpwjISvBSlK`, Rust 1.96.0,
+  Apple arm64 dev profile. CLI defaults propagate `postgres,skills-db` and
+  root provider support to Composition; no test target was compiled remotely.
+- Resources: 8 reserved/maximum cores, 32768 MiB reserved/maximum RAM, 8 Cargo
+  jobs, nonpreemptible, 900-second deadline. Actual worker duration 543.590205s;
+  Cargo duration 7m14s. No compiler warnings/errors in the retained complete log.
+- Mach-O arm64 CLI size: 336727712 bytes; SHA-256:
+  `809e6ff0648b2aa701e806d1cc9ce4215d0229f83962a499a83b1353e8573d76`.
+- Completion receipt SHA-256:
+  `3ce79ebdc9f5a59545285bc43201c251b206e3ec22dabe843a00db494333ed17`.
+- Runtime cost estimate using the repository's earlier same-profile estimate
+  (USD 0.43 / 808.41s): about USD 0.29. This extrapolation is not a current
+  account billing measurement and excludes storage/transfer/setup.
+
+Full request/source/applied/original-runner/provenance/log/completion/artifact
+records remain in the existing owner directory:
+`/Users/ollama/brassclaw-target/modal-build/jobs/cf5e67e0-597d-4cc3-ae4a-0854fccb0f5c/`.
+No second job, image creation, remote test, local Cargo, native executable run
+or Clippy invocation occurred. Test sources remain uncompiled/unexecuted.
+The final report-only commit does not change compiled Rust inputs. The observed
+native linker unwind warning from earlier acceptance is still unresolved;
+its absence from this cross-build log does not establish a native-linker fix.
