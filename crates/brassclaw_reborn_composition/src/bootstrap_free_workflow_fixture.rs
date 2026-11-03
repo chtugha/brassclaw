@@ -304,6 +304,46 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn native_packaged_protocol_oracle_observes_every_declared_case() {
+        let worker = brassclaw_monty_host::process::installed_worker().unwrap();
+        let limits = UtilityLimits::from_execution(Default::default()).unwrap();
+        // Real packaged pure functions and real native execution. This checks
+        // the finite oracle contract, not model/Tool or workflow qualification.
+        let mut source = format!(
+            "{}\n{}\n",
+            brassclaw_skills::prefix_bootstrap_components::ANSWER_SOURCE,
+            brassclaw_skills::bootstrap_answer_workflow::BOOTSTRAP_PROTOCOL_SOURCE,
+        );
+        append_observed_invocation(
+            &mut source,
+            "result = validate_captured_bootstrap_answer(inputs=inputs)",
+        );
+        for &case in CASES {
+            let (packet_bytes, answer_bytes, _) = case_inputs(case).unwrap();
+            let output = execute(
+                &worker,
+                UtilityRequest::Evaluate {
+                    source: source.clone(),
+                    inputs: BTreeMap::from([(
+                        "inputs".into(),
+                        json!({"packet_bytes":packet_bytes,"answer_bytes":answer_bytes}),
+                    )]),
+                    bounds: limits.bounds,
+                    max_compute_time: std::time::Duration::from_secs(1),
+                },
+                limits.process,
+            )
+            .await
+            .unwrap();
+            let UtilityOutput::Evaluated { value, stdout } = output else {
+                panic!("native packaged oracle returned the wrong operation output")
+            };
+            assert!(stdout.is_empty());
+            verify_case_observation(case, &value).unwrap();
+        }
+    }
+
+    #[tokio::test]
     async fn native_oracle_only_classifies_the_expected_protocol_rejection() {
         let worker = brassclaw_monty_host::process::installed_worker().unwrap();
         let limits = UtilityLimits::from_execution(Default::default()).unwrap();
