@@ -275,7 +275,8 @@ impl GlobalMontyDriver {
 
     /// Attach a pool so that `drive_admitted` can resolve trusted-internal
     /// turn threads (e.g. the "bootstrap-validation" namespace) independently
-    /// of the primary `threads` service tenant. No-op if already set.
+    /// of the primary `threads` service tenant. This configures the owner before
+    /// either entry starts driving work; it does not create another VM.
     pub(crate) fn with_admission_pool(mut self, pool: Arc<PgPool>) -> Self {
         self.admission_pool = Some(pool);
         self
@@ -591,14 +592,19 @@ impl GlobalMontyDriver {
         &self,
         host: Arc<MontyTaskHost>,
     ) -> Result<LoopExit, AgentLoopDriverError> {
+        if !host.is_result_only_completion() {
+            return Err(failed("monty_internal_completion_contract_invalid"));
+        }
+        self.drive_host(host).await
+    }
+
+    /// One lifecycle for ordinary and already admitted hosts. Admission chooses
+    /// the original namespace and completion contract; neither entry replays
+    /// work, starts a VM or substitutes a different host after a failure.
+    async fn drive_host(&self, host: Arc<MontyTaskHost>) -> Result<LoopExit, AgentLoopDriverError> {
         let entry = self.register(host.clone())?;
         let guard = DriveGuard(entry.clone());
         let context = host.run_context();
-        // For trusted-internal turns (e.g. validator reviews), the thread was
-        // created under a different tenant (bootstrap-validation namespace) by
-        // bootstrap_validation::prepare_admission. Use a per-tenant service
-        // built from the admission pool when the scope tenant differs from the
-        // primary threads service tenant.
         let alt_threads: Option<brassclaw_threads::PgSessionThreadService> =
             if context.trusted_internal_turn {
                 self.admission_pool.as_ref().map(|pool| {
@@ -616,201 +622,6 @@ impl GlobalMontyDriver {
             .unwrap_or_else(|| self.threads.as_ref());
         let input = match crate::monty_task_input::load_monty_task_input(
             threads,
-            &context.scope,
-            context.accepted_message_ref.as_ref(),
-            context.turn_id,
-            context.run_id,
-        )
-        .await
-        {
-            Ok(input) => input,
-            Err(error) => {
-                drop(guard);
-                self.remove(host.attempt())?;
-                return Err(error);
-            }
-        };
-        let Some(user_input) = input.message.content else {
-            drop(guard);
-            self.remove(host.attempt())?;
-            return Err(failed("monty_admitted_input_invalid"));
-        };
-        let input = TaskInput {
-            entry: brassclaw_monty_host::service::TaskEntry::Chat,
-            conversation_id: context.thread_id.to_string(),
-            message_id: input.message.message_id.to_string(),
-            turn_id: context.turn_id.to_string(),
-            run_id: context.run_id.to_string(),
-            user_input,
-            history: input
-                .prior_context
-                .messages
-                .into_iter()
-                .map(|message| {
-                    serde_json::json!({
-                        "message_id": message.message_id, "sequence": message.sequence,
-                        "kind": message.kind, "content": message.content,
-                    })
-                })
-                .collect(),
-        };
-        if let Err(error) = entry.retention.ensure_active(&host) {
-            drop(guard);
-            self.remove(host.attempt())?;
-            return Err(error);
-        }
-        let PreparedGlobalTask { input, ports } = match self.ports.build(host.clone(), input).await
-        {
-            Ok(prepared) => prepared,
-            Err(error) => {
-                if let AgentLoopDriverError::Failed { reason_kind } = &error {
-                    tracing::warn!(run_id = %host.attempt().run_id, %reason_kind,
-                            "global task preparation stopped before submission");
-                    #[cfg(test)]
-                    eprintln!(
-                        "global task preparation stopped: run={} reason={reason_kind}",
-                        host.attempt().run_id
-                    );
-                }
-                drop(guard);
-                self.remove(host.attempt())?;
-                return Err(error);
-            }
-        };
-        let internal_entry = matches!(
-            &input.entry,
-            brassclaw_monty_host::service::TaskEntry::InternalRecipe { .. }
-        );
-        let submission = match self.prepare_submission(&entry, input, ports)?.await {
-            Ok(submission) => submission,
-            Err(error) => {
-                drop(guard);
-                self.remove(host.attempt())?;
-                return Err(error);
-            }
-        };
-        let ticket = match submission.as_ref() {
-            AdmissionOutcome::Accepted(ticket) => ticket.clone(),
-            AdmissionOutcome::Unsubmitted(proof) => {
-                let policy = self.ports.cancellation_acknowledgement()?.validate()?;
-                tokio::time::timeout(
-                    policy.timeout,
-                    self.acknowledge_unsubmitted(&entry, proof.clone()),
-                )
-                .await
-                .map_err(|_| AgentLoopDriverError::Unavailable {
-                    reason: "Monty unstarted settlement acknowledgement pending".into(),
-                })??;
-                drop(guard);
-                self.remove(host.attempt())?;
-                if matches!(proof.reason(), UnsubmittedReason::Rejected(_)) {
-                    return Err(failed(proof.reason().reason_kind()));
-                }
-                return Ok(LoopExit::Cancelled(LoopCancelled {
-                    reason_kind: LoopCancelledReasonKind::HostCancellation,
-                    checkpoint_id: None,
-                    interrupted_message_refs: Vec::new(),
-                    exit_id: LoopExitId::new(format!("exit:{}-cancelled", context.run_id))
-                        .map_err(|_| failed("monty_exit_reference_invalid"))?,
-                }));
-            }
-        };
-        let waiting = ticket.wait();
-        tokio::pin!(waiting);
-        let receipt = tokio::select! {
-            biased;
-            receipt = &mut waiting => receipt,
-            _ = host.cancellation_requested() => {
-                self.stop_attempt(host.attempt()).await?;
-                waiting.await
-            }
-        };
-        let receipt = match receipt {
-            Ok(receipt) => receipt,
-            Err(_) => {
-                let proof = self
-                    .retain_rejection(&entry, &ticket.control())?
-                    .ok_or_else(|| failed("monty_service_reconciliation_required"))?;
-                let policy = self.ports.cancellation_acknowledgement()?.validate()?;
-                tokio::time::timeout(
-                    policy.timeout,
-                    self.acknowledge_unsubmitted(&entry, proof.clone()),
-                )
-                .await
-                .map_err(|_| AgentLoopDriverError::Unavailable {
-                    reason: "Monty unstarted rejection acknowledgement pending".into(),
-                })??;
-                drop(guard);
-                self.remove(host.attempt())?;
-                return Err(failed(proof.reason().reason_kind()));
-            }
-        };
-        match &receipt.outcome {
-            TaskOutcome::InternalCompleted { receipt_ref } => {
-                if !internal_entry
-                    || !host.is_result_only_completion()
-                    || host.finalized_reply_ref().is_some()
-                    || !receipt.withheld.is_empty()
-                    || host.has_withheld_results()
-                {
-                    return Err(failed("monty_internal_result_invalid"));
-                }
-                let reference =
-                    crate::monty_result_reference::result_reference(context.run_id, receipt_ref)
-                        .ok_or_else(|| failed("monty_internal_result_invalid"))?;
-                self.settle_attempt(&entry, receipt.clone()).await?;
-                let exit = LoopExit::Completed(LoopCompleted {
-                    completion_kind: LoopCompletionKind::ResultOnly,
-                    reply_message_refs: Vec::new(),
-                    result_refs: vec![reference],
-                    final_checkpoint_id: None,
-                    usage_summary_ref: None,
-                    exit_id: LoopExitId::new(format!("exit:{}-completed", context.run_id))
-                        .map_err(|_| failed("monty_exit_reference_invalid"))?,
-                });
-                drop(guard);
-                self.remove(host.attempt())?;
-                Ok(exit)
-            }
-            TaskOutcome::Completed { .. } => {
-                // An internal task must not return a normal Completed outcome.
-                Err(failed("monty_internal_result_invalid"))
-            }
-            TaskOutcome::Failed { reason_kind } => {
-                self.settle_attempt(&entry, receipt.clone()).await?;
-                if reason_kind == "task_cancelled"
-                    && entry
-                        .state
-                        .lock()
-                        .map_err(|_| failed("monty_attempt_state_failed"))?
-                        .cancelled
-                {
-                    return Ok(LoopExit::Cancelled(LoopCancelled {
-                        reason_kind: LoopCancelledReasonKind::HostCancellation,
-                        checkpoint_id: None,
-                        interrupted_message_refs: Vec::new(),
-                        exit_id: LoopExitId::new(format!("exit:{}-cancelled", context.run_id))
-                            .map_err(|_| failed("monty_exit_reference_invalid"))?,
-                    }));
-                }
-                Err(failed(reason_kind))
-            }
-        }
-    }
-}
-
-#[async_trait]
-impl MontyTurnDriverPort for GlobalMontyDriver {
-    async fn drive_turn(
-        &self,
-        handoff: MontyTaskHandoff,
-    ) -> Result<LoopExit, AgentLoopDriverError> {
-        let host = Arc::new(MontyTaskHost::new(handoff));
-        let entry = self.register(host.clone())?;
-        let guard = DriveGuard(entry.clone());
-        let context = host.run_context();
-        let input = match crate::monty_task_input::load_monty_task_input(
-            self.threads.as_ref(),
             &context.scope,
             context.accepted_message_ref.as_ref(),
             context.turn_id,
@@ -866,11 +677,6 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                 if let AgentLoopDriverError::Failed { reason_kind } = &error {
                     tracing::warn!(run_id = %host.attempt().run_id, %reason_kind,
                         "global task preparation stopped before submission");
-                    #[cfg(test)]
-                    eprintln!(
-                        "global task preparation stopped: run={} reason={reason_kind}",
-                        host.attempt().run_id
-                    );
                 }
                 drop(guard);
                 self.remove(host.attempt())?;
@@ -980,7 +786,7 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                 Ok(exit)
             }
             TaskOutcome::Completed { reply_ref } => {
-                if internal_entry {
+                if internal_entry || host.is_result_only_completion() {
                     return Err(failed("monty_internal_result_invalid"));
                 }
                 let reference = LoopMessageRef::new(reply_ref.clone())
@@ -1033,6 +839,16 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                 Err(failed(reason_kind))
             }
         }
+    }
+}
+
+#[async_trait]
+impl MontyTurnDriverPort for GlobalMontyDriver {
+    async fn drive_turn(
+        &self,
+        handoff: MontyTaskHandoff,
+    ) -> Result<LoopExit, AgentLoopDriverError> {
+        self.drive_host(Arc::new(MontyTaskHost::new(handoff))).await
     }
 
     async fn stop_attempt(&self, attempt: MontyTaskAttempt) -> Result<(), AgentLoopDriverError> {

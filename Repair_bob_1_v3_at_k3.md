@@ -96,7 +96,12 @@ technical contracts, not arbitrary constants to replace with guessed values.
 
 ## 2. Source baseline and reconciliation before edits
 
-- [ ] **B1-01 — Reconcile the exact current source and active work.**
+- [x] **B1-01 — Reconcile the exact current source and active work.**
+
+**Completed source reconciliation — 2026-11-03:** the
+[committed-source map](docs/validation/2026-11-03-bob-committed-reconciliation.md)
+rebases this plan on `0f1236a6c`, preserves the other agent's committed work and
+records which defects remain. This closes inventory only, not runtime gates.
 
 Read the affected crate guides and record HEAD plus before-hashes for affected
 paths. At the reviewed baseline the shared worktree already contained edits in
@@ -170,6 +175,13 @@ the public submission DTO cannot manufacture this seal.
 ## 4. Use one canonical validator graph and honest coverage
 
 - [ ] **B1-03 — Reconcile typed inputs, rule results, aggregation and receipts.**
+
+**Already implemented, scoped:** `0f1236a6c` supplies the canonical separate
+receipt encoder and its fingerprint observation, while retaining the aggregate
+object and strict rule result shape. T1–T5b and twelve utility body cases are
+recorded in the implementation index. Complete eight-class retained admission,
+required checks and historical format compatibility remain to be accepted here;
+do not repeat the former aggregate-object/string repair.
 
 1. Keep one canonical construction of each packaged validator graph in the
    existing `validator_components`/bootstrap owner. Seeder and qualifier reuse
@@ -467,6 +479,11 @@ later changes apply through their supported live boundary, never rewrite a
 stored subject/selection or silently truncate it.
 
 - [ ] **B1-08 — Persist and graduate a subject-bound verdict.**
+
+**Already implemented, scoped:** `71d5c4f49` routes the recorded negative
+structural outcome to failure instead of inferring pass from ResultOnly.
+Exact original request/run binding, actual diagnostics and post-terminal sealed
+settlement are still open; the latest-row boolean query is not this full gate.
 
 1. Inside `GlobalRecipePorts::finish`, the internal source verifies the original
    selected program, actual input/result observations and all required checks.

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Bob approval boundary repair (partial)**: Restrict raw pure-approval JSON
+  to resolving an exact existing decision. Check exact evidence stages,
+  immutable dependency closure and root/submission relationships in the
+  internal writer; V203 enforces new exact pure links in PostgreSQL. Share the
+  global driver's ordinary/internal lifecycle. Seventeen selected native tests
+  pass. Trusted functional approval, real seed behavior, durable review work
+  and complete publication remain open; existing stored positive rows alone
+  do not establish those guarantees.
+
 - **Validator Step 6 — retained Q1 execution fully closed**: All six
   `run_q1_validation_retained` integration tests pass (T1–T5/T5b). Fixes include:
   dependency-graph traversal in `bootstrap_l013_approval` (pass all four component

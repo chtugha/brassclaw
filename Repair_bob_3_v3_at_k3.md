@@ -46,7 +46,14 @@ Tier 1. Infrastructure protocol mechanics do not become a new agent workflow.
 
 ## 2. Reconcile the current implementation and actual interfaces
 
-- [ ] **B3-01 — Establish current owners and feature matrix before edits.**
+- [x] **B3-01 — Establish current owners and feature matrix before edits.**
+
+**Completed source reconciliation — 2026-11-03:** see the
+[current owner map](docs/validation/2026-11-03-bob-committed-reconciliation.md).
+Postgres/skills-db private admission now uses the correct thread namespace;
+native Codex remains tied to actual root-provider/PG composition. Generic
+injected/non-PG Auth remains explicitly unsupported for native Codex. Existing
+source and native evidence are reused only within their recorded scopes.
 
 Record current HEAD, affected before-hashes, current uncommitted diffs and valid
 evidence. The reviewed tree already had edits to bootstrap/internal admission,
@@ -392,6 +399,11 @@ original-state reconciliation, with no duplicate native validation effects.
 ## 6. Consolidate the global driver lifecycle
 
 - [ ] **B3-08 — Share drive logic and preserve admission provenance.**
+
+**Already implemented, scoped:** `0f1236a6c` supplies the admission-pool builder
+and its runtime attachment, fixing private review thread lookup. The two drive
+methods still duplicate submission/cancellation/receipt/settlement lifecycle;
+the remaining steps below are not completed by that namespace repair.
 
 1. Compare the full current `drive_turn` and `drive_admitted`, including any
    ongoing internal-tenant/thread repair. Extract one private implementation

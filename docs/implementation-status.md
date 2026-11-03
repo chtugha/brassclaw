@@ -1,4 +1,18 @@
 
+## 2026-11-03 — Bob repair: first scoped native acceptance
+
+The [active repair record](validation/2026-11-03-bob-repair-progress.md) records
+the current implementation and ownership. Raw pure-approval declarations can
+resolve an identical existing decision but cannot create one. Internal checks
+now resolve the real immutable closure and exact evidence stages; V203 enforces
+new submission/root links. Ordinary and admitted internal work share one global
+driver lifecycle. All 17 selected native PG/HTTP/Q1/driver/Auth tests passed
+using one compiled executable; exact commands, hashes and logs are retained at
+`target/validation/bob-native-repair-20261103/run-1/`. The Apple linker unwind
+size warning remains visible. This does not establish general trusted pure
+approval, genuine seed behavior, durable scheduling, publication or full v3.
+The older Step-6 closure below covers its six execution cases only.
+
 ## 2026-11-03 — session-7: T5b fix + all run_q1_validation_retained tests passing (Step 6 fully closed)
 
 **Fix:** [`q1_orchestrator.rs`](crates/brassclaw_reborn_composition/src/q1_orchestrator.rs) —

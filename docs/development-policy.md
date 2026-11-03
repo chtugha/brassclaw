@@ -131,6 +131,20 @@ current checkout and perform implementation, review and validation directly.
 This changes development coordination only; BrassClaw's product architecture
 and its Recipe-defined child/subagent workflows keep their existing contracts.
 
+**Narrow two-chat exception — explicit user instruction, 2026-11-03:** one
+additional user-owned chat may implement the Codex/Auth portion of Bob 3 in a
+separate Git worktree and use the qualified Modal compiler. The leading chat
+keeps Bob 1, Bob 2, shared Q1/driver lifecycle, native Cargo/tests and final main
+integration. The user explicitly approved that worktree. Do not expand this into
+further delegation. The second chat runs no local Cargo or remote tests, writes
+only its assigned source/contracts and commits on its own branch without pushing
+or merging main. Necessary eligible Modal builds within this assignment have
+the user's location authorization; retain the existing resource/cost rules and
+one remote job at a time. Independent source snapshots/caches and per-environment
+locks permit that compiler to overlap the leading chat's one native Cargo job.
+The leading chat reviews/merges its commits and runs actual native acceptance;
+neither branch's receipt certifies the other branch's different inputs.
+
 Use the common repository-root checkout and Git index for all current work.
 Compile that source directly with one canonical Cargo target; on this host it is
 `/Users/ollama/brassclaw-target`. Native Cargo executions are serial under

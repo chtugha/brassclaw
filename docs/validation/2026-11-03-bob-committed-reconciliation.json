@@ -1,0 +1,30 @@
+{
+  "baseline": "0f1236a6c8a0f9d5ba4d7145bd040bf8c4576149",
+  "scope": "Source reconciliation B1-01/B2-01/B3-01 before implementation; not runtime acceptance",
+  "before_sha256": {
+    "crates/brassclaw_reborn_composition/src/q1_orchestrator.rs": "d530a7e278f76af91d45c16eb19e958ebe374cddeb669c91acc59e9686633e29",
+    "crates/brassclaw_reborn_composition/src/pg_review_admission_source.rs": "28480623fa6fd4bfe5fb61341528bd31bd87fcfe017b18d29559ec85d1dbc223",
+    "crates/brassclaw_reborn_composition/src/pg_validator_q1_admission.rs": "1eb2806bdb956fc08dfd1235fa10e5172b4768e9e87c149b3084ccea6ac6ee84",
+    "crates/brassclaw_reborn_composition/src/pg_validator_q1_evidence.rs": "4ab1802d549f306b95e2f3bbf4829afac65f62bd57a3ce3c84ab7c6f2832747f",
+    "crates/brassclaw_reborn_composition/src/validation_queue.rs": "3a491f53af3a19a51f12e713ceec2346777c6d162b542f3f3d0267e14deddf64",
+    "crates/brassclaw_reborn_composition/src/validation_review.rs": "bcc92e673808113d37677d91ebb3a429a7bdf56fa5919aae26c73eeacd7391fc",
+    "crates/brassclaw_reborn_composition/src/bootstrap_validator_approval.rs": "67d1b57db9ad518ca429a45ffb45a435e2f6a0cc47215fb2da86d539297e27e5",
+    "crates/brassclaw_reborn_composition/src/bootstrap_l013_approval.rs": "8a9bf036532168a71543e0d20304756235a25508b5284a2ecbf24c705deaba1d",
+    "crates/brassclaw_reborn_composition/src/bootstrap_evidence.rs": "5b43b8b50b0399c1fe10fe1b11f25569c3ddfe083d04b3f54de03f04d0642e7b",
+    "crates/brassclaw_reborn_composition/src/installed_monty_catalogue.rs": "da51753386ec52a1338f07ba8d63e2d2921b96582d3469bfa2661962238a6ec3",
+    "crates/brassclaw_reborn_composition/src/authored_monty_catalogue.rs": "945fbfa3f20ed48bdd2e2779689ad07a2bc903ad2c79e699f70460c2a082b389",
+    "crates/brassclaw_reborn_composition/src/pg_pure_component_approval.rs": "9ac3b33c792a606893981565beb24466f0f59fad14c548b76d41c8c7788f7284",
+    "crates/brassclaw_reborn_composition/src/global_monty_driver.rs": "ec00c540393b2a9840da78802fd3360fc953a9669a2a43cf6933ec34cd66aa44",
+    "crates/brassclaw_reborn_composition/src/validator_task_driver.rs": "783d6f7f6da4f561c6b0b153582b54befca349a07b4baff7b1fd91acd2c4a2d0",
+    "crates/brassclaw_reborn_composition/src/factory.rs": "7b3912e8be30c2840c690676dc419b4c5c10875ec6a6e919e3690a70eed44d32",
+    "crates/brassclaw_reborn_composition/src/auth_native_codex.rs": "d5972af4db412e91c83a31d30b27c47c493bab5a1a365a73e429ea49aa304145",
+    "crates/brassclaw_reborn_composition/src/pg_auth_codex_access.rs": "4e06da7591cdf4356a9a4831aa960bcc00e55ea72e069eecd43d0911c5190c29",
+    "crates/brassclaw_reborn_composition/src/pg_auth_codex_publication.rs": "121e39b0904da7ac46976d8c21a78e0bd34d296fad66cbce6fd726aaba78aa12",
+    "crates/brassclaw_reborn_composition/src/llm_catalog.rs": "4adb49f8db8a5e5b7aa3c9a7b03e9c4fd04f44b16823a2e243da3f3398f81a26",
+    "crates/brassclaw_reborn_composition/src/llm_reload.rs": "a07a0cde3068fdb0ca68b6d38087d4b0bbce94f214d8685b98a8146d23aeefa6",
+    "crates/brassclaw_skills/src/review_submission_store.rs": "9efc029913052014bfd4da80bec82f64ad196726a9a8e4bcfb87e05221f7c4ab",
+    "crates/brassclaw_skills/src/validator_components.rs": "10cf0d65a6ad931f280a9285c25e07d4d013ceaeb779708f1153ef218b429c0f",
+    "crates/brassclaw_engine/src/memory/retained_validator.rs": "4a04fa04d9e8f03cc66254911b816b49375449f29710780c8b91b84c22332f0d"
+  },
+  "observed_prior_test_scope": "Committed implementation index reports six retained Q1 cases and twelve utility body cases; full Bob gates remain open."
+}

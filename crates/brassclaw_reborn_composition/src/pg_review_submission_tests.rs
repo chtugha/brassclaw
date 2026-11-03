@@ -98,8 +98,13 @@ pub(super) fn app(pool: Arc<PgPool>) -> Router {
         ))),
     )
     .with_recipe_store(Arc::new(crate::pg_recipe_store::PgRecipeStoreFacade::new(
-        pool, tenant, "default",
-    )));
+        pool.clone(),
+        tenant,
+        "default",
+    )))
+    .with_pure_approval_store(Arc::new(
+        crate::pg_pure_approval_store::PgPureApprovalStore::new(pool),
+    ));
     webui_v2_app(
         crate::RebornWebuiBundle {
             api: Arc::new(api),
@@ -113,6 +118,65 @@ pub(super) fn app(pool: Arc<PgPool>) -> Router {
         ),
     )
     .unwrap()
+}
+
+#[tokio::test]
+async fn native_http_pure_declaration_cannot_mint_approval_even_with_positive_rows() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let candidate = draft(
+        Uuid::new_v4(),
+        &[],
+        "def value(inputs):\n    return 'data'\n",
+    );
+    let root = store.stage(&candidate, 0).await.unwrap();
+    let q1 = Uuid::new_v4();
+    let behavior = Uuid::new_v4();
+    let approval = Uuid::new_v4();
+    let component = json!({"uuid":root.uuid,"class_code":22,"version":root.version,
+        "checksum":hex::encode(root.checksum)});
+    let client = rig.pool.get().await.unwrap();
+    // Deliberately positive untrusted rows exercise the public boundary; they
+    // are not observed behavior or human review and must not produce approval.
+    for (id, kind) in [(q1, "q1"), (behavior, "behavior")] {
+        let bytes = json!({"format":"component-review-evidence/1","evidence_id":id,
+            "kind":kind,"validation_mode":"system_seed","association_checksum":"a".repeat(64),
+            "components":[component.clone()],"succeeded":true,"reviewed_evidence":[],
+            "report":{"untrusted_fixture":true}})
+        .to_string();
+        client
+            .execute(
+                "INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum)
+            VALUES($1,$2,encode(sha256(convert_to($2::text,'UTF8')),'hex'))",
+                &[&id, &bytes],
+            )
+            .await
+            .unwrap();
+    }
+    let app = app(rig.pool.clone());
+    let value = json!({"format":"pure-component-approval/1","approval_id":approval,
+        "root":component.clone(),"components":[component],"validation_mode":"system_seed",
+        "q1_ref":q1,"q2_ref":null,"behavioral_refs":[behavior]});
+    let uri = "/api/webchat/v2/pure-component-approvals";
+    assert_eq!(
+        send(&app, "POST", uri, Some(&value), false).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(&app, "POST", uri, Some(&value), true).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        client
+            .query_one(
+                "SELECT count(*) FROM reborn_pure_component_approvals WHERE approval_id=$1",
+                &[&approval]
+            )
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
 }
 
 #[tokio::test]

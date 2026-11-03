@@ -2236,10 +2236,11 @@ pub trait RebornServicesApi: Send + Sync {
         ))
     }
 
-    /// Parse and record a `pure-component-approval/1` JSON declaration.
+    /// Resolve an exact existing `pure-component-approval/1` decision.
     ///
     /// The request body is the raw JSON text of the approval declaration.
-    /// Returns the approved root component UUID on success.
+    /// Returns its root UUID. This legacy declaration surface creates no approval,
+    /// evidence, human decision or system-seed provenance.
     ///
     /// Defaults to `501 Not Implemented` so facades that don't wire a
     /// [`PureApprovalStore`] inherit a safe surface.
@@ -2256,14 +2257,14 @@ pub trait RebornServicesApi: Send + Sync {
     }
 }
 
-/// Port trait for submitting pure-component approval declarations.
+/// Compatibility port for resolving already recorded pure approval declarations.
 ///
 /// The concrete implementation lives in
 /// `brassclaw_reborn_composition::pg_pure_component_approval`.
 #[async_trait]
 pub trait PureApprovalStore: Send + Sync {
-    /// Parse and record a `pure-component-approval/1` JSON declaration.
-    /// Returns the approved root component UUID on success.
+    /// Resolve an exact existing declaration and return its root UUID.
+    /// Caller JSON cannot manufacture a successful review or create approval.
     async fn submit_pure_component_approval(
         &self,
         json_body: &str,

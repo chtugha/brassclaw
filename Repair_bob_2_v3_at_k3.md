@@ -43,7 +43,13 @@ the resulting original selections without creating another reader or queue.
 
 ## 2. Reconcile actual source and build the complete reader inventory
 
-- [ ] **B2-01 — Record current producer-to-consumer paths.**
+- [x] **B2-01 — Record current producer-to-consumer paths.**
+
+**Completed source inventory — 2026-11-03:** the detailed inventory below is
+reconciled with the now committed receipt/admission changes in the
+[current source map](docs/validation/2026-11-03-bob-committed-reconciliation.md).
+Its pure-coverage, approval-pin, strict-reader and relationship findings remain
+open implementation work, not reasons to recreate the repaired validator graph.
 
 **Source inventory recorded — 2026-11-03:** the
 [reader/format inventory](docs/reborn/bob2-retained-reader-inventory.md) records

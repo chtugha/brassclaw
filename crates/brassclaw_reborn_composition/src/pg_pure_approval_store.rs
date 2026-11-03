@@ -1,7 +1,7 @@
 //! Postgres-backed [`PureApprovalStore`] wiring.
 //!
 //! Delegates directly to
-//! [`pg_pure_component_approval::parse_and_record_pure_component_approval`];
+//! [`pg_pure_component_approval::resolve_existing_pure_component_approval`];
 //! this module adds only the trait adapter needed by
 //! [`brassclaw_product_workflow::RebornServices`].
 
@@ -12,7 +12,9 @@ use brassclaw_pg::PgPool;
 use brassclaw_product_workflow::PureApprovalStore;
 
 /// Postgres-backed [`PureApprovalStore`] that delegates to
-/// `pg_pure_component_approval::parse_and_record_pure_component_approval`.
+/// `pg_pure_component_approval::resolve_existing_pure_component_approval`.
+/// The legacy declaration endpoint resolves an exact existing decision only;
+/// it cannot create an approval from caller-selected evidence or provenance.
 #[derive(Clone)]
 pub(crate) struct PgPureApprovalStore {
     pool: Arc<PgPool>,
@@ -30,7 +32,7 @@ impl PureApprovalStore for PgPureApprovalStore {
         &self,
         json_body: &str,
     ) -> Result<uuid::Uuid, Box<dyn std::error::Error + Send + Sync>> {
-        let root_id = crate::pg_pure_component_approval::parse_and_record_pure_component_approval(
+        let root_id = crate::pg_pure_component_approval::resolve_existing_pure_component_approval(
             &self.pool, json_body,
         )
         .await?;

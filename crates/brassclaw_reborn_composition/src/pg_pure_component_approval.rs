@@ -2,8 +2,8 @@
 //!
 //! A `PureComponentApprovalDeclaration` is an untrusted declaration that
 //! references existing `reborn_component_review_evidence` records. This module
-//! verifies that every referenced evidence record exists and has `succeeded=true`,
-//! that every component in the closure matches `reborn_component_revisions`, and
+//! verifies stored checksums, distinct evidence stages and exact component coverage,
+//! resolves the full immutable dependency graph, and
 //! then stores the approval in `reborn_pure_component_approvals` and its closure
 //! in `reborn_pure_component_approval_closure`.
 //!
@@ -15,11 +15,14 @@
 
 use brassclaw_pg::PgPool;
 use brassclaw_skills::{
+    association_contract::ValidationMode,
     component_revision::REVISION_LIMITS,
     pure_component_contract::{PureComponentApprovalDeclaration, PureComponentContractError},
-    value_contract::ContractLimits,
+    revision_store::{PgComponentRevisionStore, RevisionStoreError},
+    value_contract::{ContractLimits, strict_json},
 };
 use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
 use tokio_postgres::IsolationLevel;
 use uuid::Uuid;
 
@@ -31,6 +34,8 @@ pub enum PureApprovalError {
     Database(#[source] tokio_postgres::Error),
     #[error("pure component approval database connection failed")]
     Connection(#[source] deadpool_postgres::PoolError),
+    #[error("pure component approval selected revision read failed")]
+    Revisions(#[from] RevisionStoreError),
 }
 fn invalid(reason: &'static str) -> PureApprovalError {
     PureApprovalError::Invalid(reason)
@@ -53,10 +58,12 @@ fn db(error: tokio_postgres::Error) -> PureApprovalError {
 /// - The component class_code for every closure member must be 22 (PythonCode).
 /// - The root must be present in the closure.
 /// - An existing stored approval with the same `approval_id` must be byte-identical.
-/// - No evidence record is verified as Q1 or behavior by its format alone; the
-///   stored `succeeded` flag in the evidence bytes is the only machine-readable gate.
-///   Semantic agreement and human Q2 authenticity remain separate.
-pub async fn record_pure_component_approval(
+/// - Evidence checksums, IDs, distinct stage kinds, modes and exact component
+///   coverage agree; human Q2 covers the exact selected Q1/behavior set.
+/// - These mechanical checks do not authenticate a behavioral execution or
+///   human interaction by themselves. Only the internal owning producer writes;
+///   public declarations cannot create approval or select provenance.
+pub(crate) async fn record_pure_component_approval(
     pool: &PgPool,
     declaration: &PureComponentApprovalDeclaration,
 ) -> Result<Uuid, PureApprovalError> {
@@ -69,13 +76,15 @@ pub async fn record_pure_component_approval(
     let q2 = declaration.q2_reference();
     let behaviors = declaration.behavioral_references();
 
-    // Collect all evidence UUIDs that must be verified.
-    let mut evidence_ids: Vec<Uuid> = Vec::with_capacity(1 + behaviors.len());
-    evidence_ids.push(q1);
+    // Stage identity is not supplied by a positive flag. Each reference has
+    // exactly one role and must cover the same exact immutable subject graph.
+    let mut evidence_kinds = BTreeMap::from([(q1, "q1")]);
     if let Some(q2_id) = q2 {
-        evidence_ids.push(q2_id);
+        evidence_kinds.insert(q2_id, "human_q2");
     }
-    evidence_ids.extend_from_slice(behaviors);
+    for id in behaviors {
+        evidence_kinds.insert(*id, "behavior");
+    }
 
     let mut client = pool.get().await.map_err(PureApprovalError::Connection)?;
     let tx = client
@@ -85,75 +94,58 @@ pub async fn record_pure_component_approval(
         .await
         .map_err(db)?;
 
-    // 1. Verify all evidence records exist with succeeded=true.
-    //    V102: reborn_component_review_evidence has evidence_bytes TEXT containing JSON.
-    for &evidence_id in &evidence_ids {
-        let row = tx
-            .query_opt(
-                "SELECT evidence_bytes FROM reborn_component_review_evidence WHERE evidence_id=$1",
-                &[&evidence_id],
-            )
-            .await
-            .map_err(db)?
-            .ok_or_else(|| invalid("referenced evidence record is missing"))?;
-        let evidence_bytes: &str = row.get(0);
-        let evidence_json: serde_json::Value = serde_json::from_str(evidence_bytes)
-            .map_err(|_| invalid("evidence bytes are not valid JSON"))?;
-        if evidence_json.get("succeeded").and_then(|v| v.as_bool()) != Some(true) {
-            return Err(invalid("referenced evidence did not succeed"));
-        }
-    }
-
-    // 2. Verify all components in the closure exist in reborn_component_revisions
-    //    with matching version and checksum, and are class 22.
-    let mut comp_ids: Vec<Uuid> = Vec::with_capacity(components.len());
-    let mut comp_versions: Vec<i64> = Vec::with_capacity(components.len());
-    let mut comp_classes: Vec<i16> = Vec::with_capacity(components.len());
-    let mut comp_checksums: Vec<&str> = Vec::with_capacity(components.len());
-    // We need a stable String backing for the checksums.
-    let checksum_strings: Vec<String> = components
-        .values()
-        .map(|r| {
-            r.checksum
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect::<String>()
-        })
-        .collect();
-    for (reference, hex_checksum) in components.values().zip(checksum_strings.iter()) {
-        comp_ids.push(reference.uuid);
-        comp_versions.push(
-            i64::try_from(reference.version)
-                .map_err(|_| invalid("component version exceeds i64 range"))?,
-        );
-        comp_classes.push(22i16); // always class 22 (enforced by PureComponentApprovalDeclaration)
-        comp_checksums.push(hex_checksum.as_str());
-    }
-    // Use text[] for checksums since tokio_postgres doesn't have a native array type for &str easily
-    let matching: bool = tx
-        .query_one(
-            "SELECT count(*) = cardinality($1::uuid[]) FROM
-             unnest($1::uuid[], $2::bigint[], $3::smallint[], $4::text[])
-             AS e(id, version, class_code, checksum)
-             JOIN reborn_component_revisions r
-               ON r.component_id = e.id AND r.version = e.version
-              AND r.class_code = e.class_code AND r.checksum = e.checksum",
-            &[
-                &comp_ids,
-                &comp_versions,
-                &comp_classes,
-                &comp_checksums
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect::<Vec<String>>(),
-            ],
+    let ids: Vec<_> = evidence_kinds.keys().copied().collect();
+    let evidence_rows = tx
+        .query(
+            "SELECT evidence_id,evidence_bytes,checksum FROM reborn_component_review_evidence
+         WHERE evidence_id=ANY($1::uuid[])",
+            &[&ids],
         )
         .await
-        .map_err(db)?
-        .get(0);
-    if !matching || comp_ids.is_empty() {
-        return Err(invalid("component closure does not match stored revisions"));
+        .map_err(db)?;
+    if evidence_rows.len() != evidence_kinds.len() {
+        return Err(invalid("referenced evidence record is missing"));
     }
+    let mut original_context = None;
+    for row in evidence_rows {
+        let id: Uuid = row.get(0);
+        let evidence_bytes: &str = row.get(1);
+        if format!("{:x}", Sha256::digest(evidence_bytes.as_bytes())) != row.get::<_, &str>(2) {
+            return Err(invalid("referenced evidence checksum differs"));
+        }
+        let value = strict_json(evidence_bytes, REVISION_LIMITS)
+            .map_err(|_| invalid("evidence bytes violate the strict data contract"))?;
+        let expected_kind = evidence_kinds
+            .get(&id)
+            .ok_or_else(|| invalid("unexpected evidence identity"))?;
+        validate_evidence_declaration(&value, id, expected_kind, declaration)?;
+        let context = value["association_checksum"]
+            .as_str()
+            .ok_or_else(|| invalid("evidence original context missing"))?;
+        if original_context
+            .as_ref()
+            .is_some_and(|previous| previous != context)
+        {
+            return Err(invalid(
+                "evidence stages refer to different original contexts",
+            ));
+        }
+        original_context = Some(context.to_owned());
+    }
+
+    let selected: Vec<_> = components.values().copied().collect();
+    let snapshot =
+        PgComponentRevisionStore::read_exact_in_transaction(&tx, &[root.uuid], &selected).await?;
+    declaration
+        .require_selected_snapshot(&snapshot)
+        .map_err(|_| invalid("component closure differs from the complete immutable graph"))?;
+
+    // The revision owner above validates exact bytes and the complete graph;
+    // keep only checksum strings needed by the immutable closure index.
+    let checksum_strings: Vec<_> = components
+        .values()
+        .map(|reference| hex::encode(reference.checksum))
+        .collect();
 
     // 3. Verify the lengths satisfy the contract limits.
     if bytes.len() > REVISION_LIMITS.max_bytes {
@@ -222,6 +214,29 @@ pub async fn record_pure_component_approval(
         .map_err(db)?;
     }
 
+    let stored_closure = tx
+        .query(
+            "SELECT component_id,component_version,component_checksum
+         FROM reborn_pure_component_approval_closure WHERE approval_id=$1",
+            &[&declaration.approval_id()],
+        )
+        .await
+        .map_err(db)?;
+    if stored_closure.len() != components.len() {
+        return Err(invalid("stored approval closure membership differs"));
+    }
+    for row in stored_closure {
+        let id: Uuid = row.get(0);
+        let reference = components
+            .get(&id)
+            .ok_or_else(|| invalid("stored approval closure has a foreign component"))?;
+        if row.get::<_, i64>(1) as u64 != reference.version
+            || row.get::<_, &str>(2) != hex::encode(reference.checksum)
+        {
+            return Err(invalid("stored approval closure revision differs"));
+        }
+    }
+
     tx.commit().await.map_err(db)?;
     Ok(root.uuid)
 }
@@ -245,9 +260,9 @@ pub async fn read_pure_component_approval_root(
     Ok(row.map(|r| r.get(0)))
 }
 
-/// Parse a `pure-component-approval/1` JSON declaration from bytes and
-/// immediately record it. Returns the approved root UUID.
-pub async fn parse_and_record_pure_component_approval(
+/// Resolve an exact already recorded declaration. This compatibility operation
+/// performs no INSERT, evidence production, Q2 or provenance selection.
+pub async fn resolve_existing_pure_component_approval(
     pool: &PgPool,
     json_bytes: &str,
 ) -> Result<Uuid, PureApprovalError> {
@@ -264,7 +279,136 @@ pub async fn parse_and_record_pure_component_approval(
             }
         },
     )?;
-    record_pure_component_approval(pool, &declaration).await
+    let client = pool.get().await.map_err(PureApprovalError::Connection)?;
+    let row = client.query_opt(
+        "SELECT approval_bytes,checksum,root_id FROM reborn_pure_component_approvals WHERE approval_id=$1",
+        &[&declaration.approval_id()],
+    ).await.map_err(db)?.ok_or_else(|| invalid("approval requires an existing trusted review decision"))?;
+    let stored: &str = row.get(0);
+    if stored != declaration.exact_bytes()
+        || format!("{:x}", Sha256::digest(stored.as_bytes())) != row.get::<_, &str>(1)
+        || row.get::<_, Uuid>(2) != declaration.root().uuid
+    {
+        return Err(invalid(
+            "stored approval differs from the requested original",
+        ));
+    }
+    Ok(declaration.root().uuid)
+}
+
+/// Shape and exact-stage checks are necessary, not proof that a producer ran
+/// behavior or received human input. Only the internal review/installation owner
+/// may write approval; the public legacy declaration route resolves originals.
+fn validate_evidence_declaration(
+    value: &serde_json::Value,
+    id: Uuid,
+    kind: &str,
+    declaration: &PureComponentApprovalDeclaration,
+) -> Result<(), PureApprovalError> {
+    let fields = [
+        "format",
+        "evidence_id",
+        "kind",
+        "validation_mode",
+        "association_checksum",
+        "components",
+        "succeeded",
+        "report",
+        "reviewed_evidence",
+    ];
+    let object = value
+        .as_object()
+        .ok_or_else(|| invalid("evidence must be an object"))?;
+    if object.len() != fields.len() || fields.iter().any(|field| !object.contains_key(*field)) {
+        return Err(invalid("evidence fields differ from the declared format"));
+    }
+    if !value["association_checksum"].as_str().is_some_and(|text| {
+        text.len() == 64
+            && text
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    }) {
+        return Err(invalid("evidence context checksum invalid"));
+    }
+    let mode = match declaration.mode() {
+        ValidationMode::Authored => "authored",
+        ValidationMode::SystemSeed => "system_seed",
+    };
+    if value.get("format").and_then(|v| v.as_str()) != Some("component-review-evidence/1")
+        || value.get("evidence_id").and_then(|v| v.as_str()) != Some(id.to_string().as_str())
+        || value.get("kind").and_then(|v| v.as_str()) != Some(kind)
+        || value.get("validation_mode").and_then(|v| v.as_str()) != Some(mode)
+        || value.get("succeeded").and_then(|v| v.as_bool()) != Some(true)
+        || !value
+            .get("report")
+            .is_some_and(serde_json::Value::is_object)
+    {
+        return Err(invalid("evidence identity, stage, mode or result differs"));
+    }
+    let rows = value
+        .get("components")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| invalid("evidence exact component coverage missing"))?;
+    let mut seen = BTreeSet::new();
+    for row in rows {
+        let fields = row
+            .as_object()
+            .ok_or_else(|| invalid("evidence component must be an object"))?;
+        let id = fields
+            .get("uuid")
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or_else(|| invalid("evidence component identity invalid"))?;
+        let reference = declaration
+            .components()
+            .get(&id)
+            .ok_or_else(|| invalid("evidence covers a different component"))?;
+        if fields.len() != 4
+            || !seen.insert(id)
+            || fields.get("uuid").and_then(|v| v.as_str())
+                != Some(reference.uuid.to_string().as_str())
+            || fields.get("class_code").and_then(|v| v.as_i64())
+                != Some(i64::from(reference.class_code))
+            || fields.get("version").and_then(|v| v.as_u64()) != Some(reference.version)
+            || fields.get("checksum").and_then(|v| v.as_str())
+                != Some(hex::encode(reference.checksum).as_str())
+        {
+            return Err(invalid("evidence exact revision coverage differs"));
+        }
+    }
+    if seen.len() != declaration.components().len() {
+        return Err(invalid("evidence dependency coverage is incomplete"));
+    }
+    let reviewed = value
+        .get("reviewed_evidence")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| invalid("evidence reviewed-stage set missing"))?;
+    let expected: BTreeSet<_> = if kind == "human_q2" {
+        std::iter::once(declaration.q1_reference())
+            .chain(declaration.behavioral_references().iter().copied())
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
+    let mut actual = BTreeSet::new();
+    for item in reviewed {
+        let text = item
+            .as_str()
+            .ok_or_else(|| invalid("reviewed evidence identity invalid"))?;
+        let parsed =
+            Uuid::parse_str(text).map_err(|_| invalid("reviewed evidence identity invalid"))?;
+        if parsed.is_nil() || parsed.to_string() != text || !actual.insert(parsed) {
+            return Err(invalid(
+                "reviewed evidence identity is duplicate or invalid",
+            ));
+        }
+    }
+    if actual != expected {
+        return Err(invalid(
+            "human review covers a different evidence selection",
+        ));
+    }
+    Ok(())
 }
 
 /// Read the set of approved pure-component root UUIDs for the given component
@@ -360,17 +504,26 @@ pub async fn record_pure_evidence_submission_link(
         ));
     }
 
-    // Verify the approval exists.
-    let approval_exists: bool = tx
-        .query_one(
-            "SELECT EXISTS(SELECT 1 FROM reborn_pure_component_approvals WHERE approval_id = $1)",
-            &[&approval_id],
+    // Independent FKs do not bind the approval's root to the subject. Compare
+    // the exact immutable identity and digest before retaining this link.
+    let approval = tx
+        .query_opt(
+            "SELECT p.root_id,p.root_version,p.root_checksum,r.checksum
+             FROM reborn_pure_component_approvals p
+             JOIN reborn_component_revisions r ON r.component_id=$2 AND r.version=$3 AND r.class_code=22
+             WHERE p.approval_id=$1",
+            &[&approval_id, &component_id, &version],
         )
         .await
         .map_err(db)?
-        .get(0);
-    if !approval_exists {
-        return Err(invalid("approval_id not found in pure component approvals"));
+        .ok_or_else(|| invalid("approval_id not found in pure component approvals"))?;
+    if approval.get::<_, Uuid>(0) != component_id
+        || approval.get::<_, i64>(1) != version
+        || approval.get::<_, &str>(2) != approval.get::<_, &str>(3)
+    {
+        return Err(invalid(
+            "approval root differs from the submission candidate",
+        ));
     }
 
     // Insert idempotently.
@@ -413,69 +566,5 @@ pub async fn record_pure_evidence_submission_link(
 }
 
 #[cfg(all(test, feature = "skills-db"))]
-mod tests {
-    use super::*;
-    use brassclaw_skills::{
-        pure_component_contract::PureComponentApprovalDeclaration, value_contract::ContractLimits,
-    };
-    use serde_json::json;
-
-    fn limits() -> ContractLimits {
-        ContractLimits {
-            max_depth: REVISION_LIMITS.max_depth,
-            max_nodes: REVISION_LIMITS.max_nodes,
-            max_bytes: REVISION_LIMITS.max_bytes,
-        }
-    }
-
-    fn fake_checksum() -> String {
-        "a".repeat(64)
-    }
-
-    fn declaration_json(
-        approval_id: Uuid,
-        root_id: Uuid,
-        version: u64,
-        q1: Uuid,
-        behavioral: Uuid,
-    ) -> String {
-        json!({
-            "format": "pure-component-approval/1",
-            "approval_id": approval_id.to_string(),
-            "root": {
-                "uuid": root_id.to_string(),
-                "class_code": 22,
-                "version": version,
-                "checksum": fake_checksum(),
-            },
-            "components": [{
-                "uuid": root_id.to_string(),
-                "class_code": 22,
-                "version": version,
-                "checksum": fake_checksum(),
-            }],
-            "validation_mode": "authored",
-            "q1_ref": q1.to_string(),
-            "q2_ref": Uuid::new_v4().to_string(),
-            "behavioral_refs": [behavioral.to_string()],
-        })
-        .to_string()
-    }
-
-    #[tokio::test]
-    async fn missing_evidence_record_is_rejected() {
-        let rig = crate::runtime::test_pg::pg_rig().await;
-        let q1 = Uuid::new_v4();
-        let behavioral = Uuid::new_v4();
-        let root_id = Uuid::new_v4();
-        let approval_id = Uuid::new_v4();
-        let json = declaration_json(approval_id, root_id, 1, q1, behavioral);
-        let decl = PureComponentApprovalDeclaration::from_json(&json, limits()).unwrap();
-        // No evidence records exist — must fail.
-        let result = record_pure_component_approval(&rig.pool, &decl).await;
-        assert!(
-            matches!(result, Err(PureApprovalError::Invalid(msg)) if msg.contains("evidence record is missing")),
-            "expected missing-evidence error, got: {result:?}"
-        );
-    }
-}
+#[path = "pg_pure_component_approval_tests.rs"]
+mod tests;

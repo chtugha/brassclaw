@@ -2526,15 +2526,16 @@ pub async fn update_docus(
 /// Response type for `POST /api/webchat/v2/pure-component-approvals`.
 #[derive(Debug, serde::Serialize)]
 pub struct PureComponentApprovalResponse {
-    /// The approved root component UUID.
+    /// Root of the exact retained decision; this response creates no approval.
     pub root_id: uuid::Uuid,
 }
 
 /// `POST /api/webchat/v2/pure-component-approvals`
 ///
-/// Parse and record a `pure-component-approval/1` JSON declaration.
+/// Resolve an exact existing `pure-component-approval/1` decision.
 /// The request body must be the raw JSON text of the declaration.
-/// Returns the approved root component UUID on success.
+/// Returns its root UUID. Approval creation belongs to the trusted review owner;
+/// this compatibility endpoint cannot create evidence or choose provenance.
 pub async fn submit_pure_component_approval(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,

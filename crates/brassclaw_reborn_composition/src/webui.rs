@@ -394,7 +394,8 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
 
     // Wire the pure-component approval store.
     // When the pool is available, POST /api/webchat/v2/pure-component-approvals
-    // parses and records `pure-component-approval/1` declarations to DB.
+    // resolves exact existing `pure-component-approval/1` decisions only.
+    // Public declaration bytes cannot create approval or select seed provenance.
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     if let Some(pool) = services.pg_pool.as_ref() {
         let store = crate::pg_pure_approval_store::PgPureApprovalStore::new(Arc::clone(pool));
