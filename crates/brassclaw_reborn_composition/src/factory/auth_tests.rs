@@ -918,7 +918,14 @@ async fn pg_factory_pending_auth_custody_exposes_original_recovery_then_retries_
     let OAuthCallbackAdmission::Dispatch(original) = admission else {
         panic!("actual original FS claim")
     };
-    assert_eq!(original.flow.status, AuthFlowStatus::Completing);
+    // The acknowledged callback claim records CallbackReceived + Submitted.
+    // Completing is a later publication phase; this fixture performs no issuer
+    // call or result publication and must retain the original claimed state.
+    assert_eq!(original.flow.status, AuthFlowStatus::CallbackReceived);
+    assert_eq!(
+        original.action.outcome,
+        brassclaw_auth::OAuthCallbackOutcome::Submitted
+    );
     // No provider is contacted: this is a durable unknown/pending original,
     // never a synthetic successful exchange or permission to submit it again.
     let input = || {

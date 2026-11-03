@@ -80,7 +80,8 @@ generic external ports report external custody without acquiring a native owner.
 Additional written tests, **uncompiled/unexecuted here**:
 
 - `pg_factory_pending_auth_custody_exposes_original_recovery_then_retries_native_cutover`
-  drives the actual PG-backed filesystem claim into `Completing`, recreates the
+  drives the actual PG-backed filesystem claim into `CallbackReceived` with a
+  `Submitted` original outcome, recreates the
   real factory, reads/reconciles the same unconfirmed original, projects status
   through the real Auth router, explicitly cancels, then restarts with the
   explicit default tenant and verifies native cutover retains the original.
