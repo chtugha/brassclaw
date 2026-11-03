@@ -158,22 +158,7 @@ CREATE INDEX IF NOT EXISTS brassclaw_product_auth_interactions_tenant_user_idx
 CREATE TABLE IF NOT EXISTS brassclaw_product_auth_filesystem_recoveries (
     tenant_id TEXT PRIMARY KEY
 );
-CREATE OR REPLACE FUNCTION brassclaw_fence_native_auth_during_filesystem_recovery()
-RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM brassclaw_product_auth_filesystem_recoveries
-        WHERE tenant_id IN (
-            CASE WHEN TG_OP <> 'INSERT' THEN OLD.tenant_id END,
-            CASE WHEN TG_OP <> 'DELETE' THEN NEW.tenant_id END
-        )
-    ) THEN
-        RAISE EXCEPTION 'product auth remains under original filesystem recovery custody'
-            USING ERRCODE = '55000';
-    END IF;
-    IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
-END;
-$$;
+-- V205 owns the snapshot-safe function shared with filesystem custody.
 DO $$
 DECLARE target TEXT;
 BEGIN

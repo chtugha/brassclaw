@@ -96,6 +96,45 @@ fn action(document: &StoredAuthFlow) -> Result<&NativeDeviceLoginAction, AuthPro
     Ok(action)
 }
 impl PgAuthProductServices {
+    /// Immutable originals are not runtime credentials. Make the existing
+    /// exact-source retained output inside the caller's transaction, then use
+    /// a one-shot lease of THAT output. Callers authenticate the original's
+    /// protocol context before entering this private material boundary.
+    async fn read_native_device_original_in_transaction(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+        source: &SecretCustodySource,
+    ) -> Result<SecretString, AuthProductError> {
+        let handle = SecretHandle::new(format!("{}-retained-read", source.handle.as_str()))
+            .map_err(|_| AuthProductError::BackendConflict)?;
+        let retained = self
+            .secret_store
+            .put_retained_from_original_in_transaction(
+                tx,
+                source.scope.clone(),
+                handle,
+                source.clone(),
+            )
+            .await
+            .map_err(|_| AuthProductError::BackendUnavailable)?
+            .ok_or(AuthProductError::BackendConflict)?;
+        let lease = self
+            .secret_store
+            .lease_once_if_record_reference_in_transaction(
+                tx,
+                &source.scope,
+                &retained.handle,
+                &retained.reference,
+            )
+            .await
+            .map_err(|_| AuthProductError::BackendUnavailable)?
+            .ok_or(AuthProductError::BackendConflict)?;
+        self.secret_store
+            .consume_in_transaction(tx, &source.scope, lease.id)
+            .await
+            .map_err(|_| AuthProductError::BackendUnavailable)
+    }
+
     async fn authenticate_device_source(
         &self,
         tx: &tokio_postgres::Transaction<'_>,
@@ -275,21 +314,8 @@ impl PgAuthProductServices {
                 original.definition.preparation_context()?,
             )
             .await?;
-        let lease = self
-            .secret_store
-            .lease_once_if_record_reference_in_transaction(
-                tx,
-                &metadata.scope,
-                &metadata.handle,
-                &metadata.reference,
-            )
+        self.read_native_device_original_in_transaction(tx, &source_from(&metadata))
             .await
-            .map_err(|_| AuthProductError::BackendUnavailable)?
-            .ok_or(AuthProductError::BackendConflict)?;
-        self.secret_store
-            .consume_in_transaction(tx, &metadata.scope, lease.id)
-            .await
-            .map_err(|_| AuthProductError::BackendUnavailable)
     }
     async fn claim_native_device(
         &self,
@@ -1176,22 +1202,9 @@ impl PgAuthProductServices {
         {
             return Err(AuthProductError::BackendConflict);
         }
-        let lease = self
-            .secret_store
-            .lease_once_if_record_reference_in_transaction(
-                tx,
-                &ready.response.scope,
-                &ready.response.handle,
-                &ready.response.reference,
-            )
-            .await
-            .map_err(|_| AuthProductError::BackendUnavailable)?
-            .ok_or(AuthProductError::BackendConflict)?;
         let material = self
-            .secret_store
-            .consume_in_transaction(tx, &ready.response.scope, lease.id)
-            .await
-            .map_err(|_| AuthProductError::BackendUnavailable)?;
+            .read_native_device_original_in_transaction(tx, &ready.response)
+            .await?;
         let raw = raw_from_material(&material)?;
         if !(200..300).contains(&raw.response.status) {
             return Err(AuthProductError::BackendConflict);
@@ -1252,22 +1265,9 @@ impl PgAuthProductServices {
                 result_context(original, &submitted, transport_original(action, request)?),
             )
             .await?;
-        let lease = self
-            .secret_store
-            .lease_once_if_record_reference_in_transaction(
-                &tx,
-                &actual.scope,
-                &actual.handle,
-                &actual.reference,
-            )
-            .await
-            .map_err(|_| AuthProductError::BackendUnavailable)?
-            .ok_or(AuthProductError::BackendConflict)?;
         let material = self
-            .secret_store
-            .consume_in_transaction(&tx, &actual.scope, lease.id)
-            .await
-            .map_err(|_| AuthProductError::BackendUnavailable)?;
+            .read_native_device_original_in_transaction(&tx, &source_from(&actual))
+            .await?;
         let raw = raw_from_material(&material)?;
         let parsed = brassclaw_llm::parse_codex_device_start(&raw.response.body, raw.received_at)
             .map_err(|_| AuthProductError::MalformedCallback)?;

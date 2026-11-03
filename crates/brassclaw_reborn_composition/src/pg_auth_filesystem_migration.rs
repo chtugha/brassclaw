@@ -14,6 +14,27 @@ fn conflict() -> AuthProductError {
 fn value<T: DeserializeOwned>(data: &serde_json::Value) -> Result<T, AuthProductError> {
     serde_json::from_value(data.clone()).map_err(|_| conflict())
 }
+fn source_json(bytes: &[u8]) -> Result<serde_json::Value, AuthProductError> {
+    use brassclaw_common::json::{DuplicateKeys, JsonReadLimits, read_json};
+    let text = std::str::from_utf8(bytes).map_err(|_| conflict())?;
+    // Every JSON node/name/depth requires source bytes. Bound the existing
+    // common reader by the actual admitted record, without a new size quota.
+    let strict = read_json(
+        text,
+        JsonReadLimits {
+            max_depth: bytes.len(),
+            max_nodes: bytes.len(),
+            max_bytes: bytes.len(),
+        },
+        DuplicateKeys::Reject,
+    )
+    .map_err(|_| conflict())?;
+    // Keep the former Value reader's technical recursion/numeric admission
+    // unchanged before existing Clone/SQL consumers take this tree. This pass
+    // grants nothing: the only returned tree is the duplicate-rejecting owner's.
+    let _: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| conflict())?;
+    Ok(strict.into_value())
+}
 fn canonical(
     scope: &AuthProductScope,
     path: &ScopedPath,
@@ -116,12 +137,16 @@ impl PgAuthProductServices {
         tx.batch_execute("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='root_filesystem_entries'::regclass AND tgname='brassclaw_retained_auth_custody') THEN CREATE TRIGGER brassclaw_retained_auth_custody BEFORE INSERT OR UPDATE OR DELETE ON root_filesystem_entries FOR EACH ROW EXECUTE FUNCTION brassclaw_fence_retained_auth_filesystem(); END IF; END $$").await.map_err(db_err)?;
         if tx.query_opt("SELECT source_checksum FROM brassclaw_product_auth_filesystem_cutovers WHERE tenant_id=$1",&[&tenant]).await.map_err(db_err)?.is_some() {
             if tx.query_opt("SELECT tenant_id FROM brassclaw_product_auth_filesystem_recoveries WHERE tenant_id=$1",&[&tenant]).await.map_err(db_err)?.is_some() { return Err(conflict()); }
+            tx.query_one("SELECT brassclaw_require_product_auth_custody($1, 'native')", &[&tenant]).await.map_err(db_err)?;
             tx.commit().await.map_err(db_err)?; return Ok(RebornAuthCustodyState::Native);
         }
         // Inspect all five native stores before transient import. A pending FS
         // owner may not conceal ANY pre-existing native state, even an exact
         // copy: there is no supported partial dual-custody handoff.
         let native_present: bool = tx.query_one("SELECT EXISTS (SELECT 1 FROM brassclaw_product_auth_accounts WHERE tenant_id=$1 UNION ALL SELECT 1 FROM brassclaw_product_auth_flows WHERE tenant_id=$1 UNION ALL SELECT 1 FROM brassclaw_product_auth_interactions WHERE tenant_id=$1 UNION ALL SELECT 1 FROM brassclaw_product_auth_requirement_selections WHERE tenant_id=$1 UNION ALL SELECT 1 FROM brassclaw_product_auth_refreshes WHERE tenant_id=$1)",&[&tenant]).await.map_err(db_err)?.get(0);
+        // Only this locked cutover transaction changes the permanent custodian
+        // row. Its update fences fixed-snapshot writers as well as current ones.
+        tx.execute("INSERT INTO brassclaw_product_auth_custody (tenant_id,owner) VALUES ($1,'native') ON CONFLICT (tenant_id) DO UPDATE SET owner=EXCLUDED.owner", &[&tenant]).await.map_err(db_err)?;
         // All writers are locked. Removing this fence is transaction-local:
         // failure restores it; pending reinstates it before releasing locks;
         // native commit replaces it atomically with the FS writer fence.
@@ -158,7 +183,7 @@ impl PgAuthProductServices {
             source.update(version.to_be_bytes());
             source.update((bytes.len() as u64).to_be_bytes());
             source.update(&bytes);
-            let data: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| conflict())?;
+            let data = source_json(&bytes)?;
             let parent = path.rsplit('/').nth(1).ok_or_else(conflict)?;
             if !matches!(
                 parent,
@@ -349,6 +374,12 @@ impl PgAuthProductServices {
             )
             .await
             .map_err(db_err)?;
+            tx.execute(
+                "UPDATE brassclaw_product_auth_custody SET owner='filesystem' WHERE tenant_id=$1",
+                &[&tenant],
+            )
+            .await
+            .map_err(db_err)?;
             tx.commit().await.map_err(db_err)?;
             return Ok(RebornAuthCustodyState::FilesystemRecoveryPending);
         }
@@ -380,7 +411,7 @@ mod tests {
         let secrets = Arc::new(
             PgSecretStore::new(
                 rig.pool.as_ref().clone(),
-                "auth-cutover-test-key".into(),
+                brassclaw_secrets::keychain::generate_master_key_hex().into(),
                 "reborn-cli",
             )
             .unwrap(),
@@ -459,12 +490,41 @@ mod tests {
         let brassclaw_auth::CredentialRefreshAdmission::Dispatch(action) = admission else {
             panic!("original filesystem admission")
         };
+        // Connection A fixes its snapshot before B publishes pending custody.
+        // It performs NO DML until after B commits, so table-lock serialization
+        // alone cannot protect this insertion from a stale marker lookup.
+        let mut stale_native_client = rig.pool.get().await.unwrap();
+        let stale_native = stale_native_client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .unwrap();
+        let absent: i64 = stale_native.query_one(
+            "SELECT count(*) FROM brassclaw_product_auth_filesystem_recoveries WHERE tenant_id=$1",
+            &[&"reborn-cli"],
+        ).await.unwrap().get(0);
+        assert_eq!(absent, 0);
         // A potentially live old claim must not be stranded by cutover. These
         // are actual FS journal writes, with no provider execution or success.
         assert_eq!(
             native.migrate_filesystem_auth("reborn-cli").await.unwrap(),
             RebornAuthCustodyState::FilesystemRecoveryPending
         );
+        let rejected = stale_native.execute(
+            "INSERT INTO brassclaw_product_auth_accounts (tenant_id,id,user_id,data) VALUES ($1,'fixed-snapshot-native','blocked','{}'::jsonb)",
+            &[&"reborn-cli"],
+        ).await.unwrap_err();
+        assert_eq!(
+            rejected.as_db_error().map(|e| e.code().code()),
+            Some("40001")
+        );
+        stale_native.rollback().await.unwrap();
+        drop(stale_native_client);
+        assert!(rig.pool.get().await.unwrap().query_opt(
+            "SELECT id FROM brassclaw_product_auth_accounts WHERE tenant_id=$1 AND id='fixed-snapshot-native'",
+            &[&"reborn-cli"],
+        ).await.unwrap().is_none());
         assert!(
             native
                 .read_account(&scope, account.id)
@@ -520,7 +580,51 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        native.migrate_filesystem_auth("reborn-cli").await.unwrap();
+        // A fixes a second snapshot while the unchanged source row still
+        // belongs to FS. B then commits native cutover, changing only custody
+        // and destination rows; no concurrent source-row update can accidentally
+        // supply the serialization failure this test requires from the fence.
+        let mut stale_fs_client = rig.pool.get().await.unwrap();
+        let stale_fs = stale_fs_client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .unwrap();
+        let source_path: String = stale_fs
+            .query_one(
+                "SELECT path FROM root_filesystem_entries WHERE path LIKE $1",
+                &[&format!("%/accounts/{}.json", account.id)],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        let before: String = stale_fs
+            .query_one(
+                "SELECT owner FROM brassclaw_product_auth_custody WHERE tenant_id=$1",
+                &[&"reborn-cli"],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(before, "filesystem");
+        assert_eq!(
+            native.migrate_filesystem_auth("reborn-cli").await.unwrap(),
+            RebornAuthCustodyState::Native
+        );
+        let rejected = stale_fs
+            .execute(
+                "UPDATE root_filesystem_entries SET contents=contents WHERE path=$1",
+                &[&source_path],
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            rejected.as_db_error().map(|e| e.code().code()),
+            Some("40001")
+        );
+        stale_fs.rollback().await.unwrap();
+        drop(stale_fs_client);
         assert_eq!(
             native.read_refresh_action(&request).await.unwrap(),
             Some(stopped)
@@ -603,6 +707,233 @@ mod conflict_tests {
     use brassclaw_filesystem::{CasExpectation, Entry, RootFilesystem};
     use brassclaw_host_api::VirtualPath;
     #[tokio::test]
+    async fn native_auth_migration_rejects_duplicate_original_keys_and_retains_exact_bytes() {
+        use brassclaw_auth::{AuthContinuationRef, AuthSurface};
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        run_auth_migrations(&rig.pool).await.unwrap();
+        let root = Arc::new(brassclaw_filesystem::PostgresRootFilesystem::new(
+            rig.pool.as_ref().clone(),
+        ));
+        root.run_migrations().await.unwrap();
+        let fs = crate::wrap_scoped(root);
+        let secrets = Arc::new(
+            PgSecretStore::new(
+                rig.pool.as_ref().clone(),
+                brassclaw_secrets::keychain::generate_master_key_hex().into(),
+                "reborn-cli",
+            )
+            .unwrap(),
+        );
+        let old = crate::product_auth_durable::FilesystemAuthProductServices::new(
+            fs.clone(),
+            secrets.clone(),
+        );
+        let native = PgAuthProductServices::new(rig.pool.clone(), secrets);
+        let scope = AuthProductScope::new(
+            brassclaw_host_api::ResourceScope {
+                tenant_id: brassclaw_host_api::TenantId::new("reborn-cli").unwrap(),
+                user_id: brassclaw_host_api::UserId::new("zz-original").unwrap(),
+                agent_id: None,
+                project_id: None,
+                thread_id: None,
+                invocation_id: brassclaw_host_api::InvocationId::new(),
+            },
+            AuthSurface::SetupAdmin,
+        );
+        let new_account = |scope| NewCredentialAccount {
+            scope,
+            provider: AuthProviderId::new("google").unwrap(),
+            label: CredentialAccountLabel::new("Parser custody fixture").unwrap(),
+            status: CredentialAccountStatus::PendingSetup,
+            ownership: CredentialOwnership::UserReusable,
+            owner_extension: None,
+            granted_extensions: vec![],
+            access_secret: None,
+            access_expires_at: None,
+            refresh_secret: None,
+            scopes: vec![],
+        };
+        let mut earlier_scope = scope.clone();
+        earlier_scope.resource.user_id = brassclaw_host_api::UserId::new("aa-earlier").unwrap();
+        let earlier = old
+            .create_account(new_account(earlier_scope.clone()))
+            .await
+            .unwrap();
+        let account = old
+            .create_account(new_account(scope.clone()))
+            .await
+            .unwrap();
+        let challenge = old
+            .request_secret_input(ManualTokenSetupRequest {
+                requirement_setup: None,
+                scope: scope.clone(),
+                provider: account.provider.clone(),
+                label: account.label.clone(),
+                continuation: AuthContinuationRef::SetupOnly,
+                update_binding: None,
+                expires_at: Utc::now() + chrono::Duration::minutes(5),
+            })
+            .await
+            .unwrap();
+        let flow = old
+            .create_flow(NewAuthFlow {
+                requirement_setup: None,
+                id: None,
+                scope: scope.clone(),
+                kind: brassclaw_auth::AuthFlowKind::IntegrationCredential,
+                provider: account.provider.clone(),
+                challenge,
+                continuation: AuthContinuationRef::SetupOnly,
+                update_binding: None,
+                opaque_state_hash: None,
+                pkce_verifier_hash: None,
+                expires_at: Utc::now() + chrono::Duration::minutes(5),
+            })
+            .await
+            .unwrap();
+        let account_path = paths::account_path(&scope, account.id);
+        let flow_path = paths::flow_path(&scope, flow.id);
+        let account_bytes = fs
+            .get(&scope.resource, &account_path)
+            .await
+            .unwrap()
+            .unwrap()
+            .entry
+            .body;
+        let flow_bytes = fs
+            .get(&scope.resource, &flow_path)
+            .await
+            .unwrap()
+            .unwrap()
+            .entry
+            .body;
+        let account_text = std::str::from_utf8(&account_bytes).unwrap();
+        let flow_text = std::str::from_utf8(&flow_bytes).unwrap();
+        let user = format!(
+            "\"user_id\":{}",
+            serde_json::to_string(&scope.resource.user_id).unwrap()
+        );
+        assert_eq!(account_text.matches(&user).count(), 1);
+        assert!(!flow_text.contains("\"auth_custody\""));
+        let cases = [
+            (
+                account_path.clone(),
+                format!("{{\"id\":\"{}\",{}", account.id, &account_text[1..]),
+                false,
+                account_bytes.clone(),
+            ),
+            (
+                account_path.clone(),
+                account_text.replace(&user, &format!("\"user_id\":\"conflicting-user\",{user}")),
+                false,
+                account_bytes.clone(),
+            ),
+            (
+                flow_path,
+                format!(
+                    "{{\"auth_custody\":{{\"oauth_callback\":null,\"oauth_callback\":null}},{}",
+                    &flow_text[1..]
+                ),
+                true,
+                flow_bytes,
+            ),
+        ];
+        for (path, ambiguous, is_flow, original) in cases {
+            // These are ambiguous actual record fields, not malformed JSON or
+            // a fabricated provider result. Direct typed readers reject them.
+            if is_flow {
+                assert!(
+                    serde_json::from_str::<crate::auth_flow_custody::StoredAuthFlow>(&ambiguous)
+                        .is_err()
+                );
+            } else {
+                assert!(serde_json::from_str::<CredentialAccount>(&ambiguous).is_err());
+            }
+            fs.put(
+                &scope.resource,
+                &path,
+                Entry::bytes(ambiguous.as_bytes().to_vec()),
+                CasExpectation::Any,
+            )
+            .await
+            .unwrap();
+            let before = fs.get(&scope.resource, &path).await.unwrap().unwrap();
+            assert_eq!(
+                native
+                    .migrate_filesystem_auth("reborn-cli")
+                    .await
+                    .unwrap_err(),
+                AuthProductError::BackendConflict
+            );
+            let after = fs.get(&scope.resource, &path).await.unwrap().unwrap();
+            assert_eq!(after.entry.body, ambiguous.as_bytes());
+            assert_eq!(after.entry.body, before.entry.body);
+            assert_eq!(after.version, before.version);
+            assert!(
+                native
+                    .read_account(&earlier_scope, earlier.id)
+                    .await
+                    .unwrap()
+                    .is_none(),
+                "earlier transient imports roll back"
+            );
+            let count: i64 = rig.pool.get().await.unwrap().query_one(
+                "SELECT (SELECT count(*) FROM brassclaw_product_auth_accounts) + (SELECT count(*) FROM brassclaw_product_auth_flows) + (SELECT count(*) FROM brassclaw_product_auth_interactions) + (SELECT count(*) FROM brassclaw_product_auth_refreshes) + (SELECT count(*) FROM brassclaw_product_auth_requirement_selections) + (SELECT count(*) FROM brassclaw_product_auth_custody) + (SELECT count(*) FROM brassclaw_product_auth_filesystem_cutovers) + (SELECT count(*) FROM brassclaw_product_auth_filesystem_recoveries)", &[],
+            ).await.unwrap().get(0);
+            assert_eq!(count, 0);
+            fs.put(
+                &scope.resource,
+                &path,
+                Entry::bytes(original),
+                CasExpectation::Any,
+            )
+            .await
+            .unwrap();
+        }
+        // JSON-looking source/response strings stay opaque data. The strict
+        // owner must not recursively parse their deliberately duplicated keys.
+        let embedded = r#"{"id":"first","id":"second","source":"print('data')"}"#;
+        let with_text = format!(
+            "{{\"historical_source_text\":{},{}",
+            serde_json::to_string(embedded).unwrap(),
+            &account_text[1..]
+        );
+        fs.put(
+            &scope.resource,
+            &account_path,
+            Entry::bytes(with_text.as_bytes().to_vec()),
+            CasExpectation::Any,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            native.migrate_filesystem_auth("reborn-cli").await.unwrap(),
+            RebornAuthCustodyState::Native
+        );
+        let stored: serde_json::Value = rig
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT data FROM brassclaw_product_auth_accounts WHERE tenant_id=$1 AND id=$2",
+                &[&"reborn-cli", &account.id.to_string()],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(stored["historical_source_text"], embedded);
+        assert_eq!(
+            fs.get(&scope.resource, &account_path)
+                .await
+                .unwrap()
+                .unwrap()
+                .entry
+                .body,
+            with_text.as_bytes()
+        );
+    }
+    #[tokio::test]
     async fn native_auth_migration_malformed_original_rolls_back_without_cutover_or_source_loss() {
         let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
         run_auth_migrations(&rig.pool).await.unwrap();
@@ -624,7 +955,7 @@ mod conflict_tests {
             Arc::new(
                 PgSecretStore::new(
                     rig.pool.as_ref().clone(),
-                    "migration-negative-key".into(),
+                    brassclaw_secrets::keychain::generate_master_key_hex().into(),
                     "reborn-cli",
                 )
                 .unwrap(),

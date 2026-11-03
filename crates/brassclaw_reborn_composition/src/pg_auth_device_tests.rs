@@ -1418,21 +1418,34 @@ async fn native_device_actual_custodian_rejects_changed_request_duplicate_prefli
         .unwrap();
     assert_eq!(state.action.transport_originals.len(), 1);
     let saved = &state.action.transport_originals[0];
-    let lease = auth
-        .secret_store
-        .lease_once_if_record_reference(
-            &original.definition.scope.resource,
-            &saved.source.handle,
-            &saved.source.reference,
+    assert!(
+        auth.secret_store
+            .lease_once_if_record_reference(
+                &original.definition.scope.resource,
+                &saved.source.handle,
+                &saved.source.reference,
+            )
+            .await
+            .unwrap()
+            .is_none(),
+        "an immutable request Original must never be leased as a runtime credential"
+    );
+    let mut connection = rig.pool.get().await.unwrap();
+    let tx = connection.transaction().await.unwrap();
+    let authenticated = auth
+        .authenticate_device_source(
+            &tx,
+            &original,
+            &saved.source,
+            request_context(&original, &dispatch.request),
         )
         .await
-        .unwrap()
         .unwrap();
     let captured = auth
-        .secret_store
-        .consume(&original.definition.scope.resource, lease.id)
+        .read_native_device_original_in_transaction(&tx, &source_from(&authenticated))
         .await
         .unwrap();
+    tx.commit().await.unwrap();
     let captured: RuntimeHttpEgressRequest =
         serde_json::from_str(captured.expose_secret()).unwrap();
     assert_eq!(captured, request);
