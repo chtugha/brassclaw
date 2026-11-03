@@ -106,22 +106,18 @@ into Recipes, model prompts or a route-local helper.
 
 - [ ] **B3-02 — Wire native Codex owners in the production factory.**
 
-**In progress — 2026-11-03:** reviewed factory attachment is applied under the
-shared Cargo lock. Original/proposed hashes and review details remain in
-`/private/tmp/brassclaw-b3-02-native-auth-20261103.json` beside the patch.
-The existing PostgreSQL Auth Arc now supplies native Codex ownership and the
-already-composed host ports; obsolete suppressions are removed. A real explicit-
-tenant factory regression checks shared ownership, and the injected generic Auth
-case rejects accidental adoption of another PG owner. No Cargo/native tests have
-run for this patch; applicability/hash/whitespace checks alone close no gate.
-
-Review found that PostgreSQL inputs without an explicit tenant currently choose
-filesystem Auth. Switching that backend blindly could orphan persisted legacy
-accounts, flows, interactions and original custody. Preserve the existing choice
-in this bounded attachment patch. Complete checked original-state migration/
-reconciliation and default-tenant native coverage here before B3-02 completion.
-Injected production capability scope, actual native login/refresh and feature-
-matrix acceptance also remain open.
+**Scoped implementation/acceptance — 2026-11-03:** A-01 is integrated through
+`a63100515`. The existing PostgreSQL Auth Arc and composed host ports supply the
+native owner. Explicit/default tenant and injected-facade cases passed. Default
+custody now has an atomic exact original import, complete conflict inventory,
+V204/V205 writer fences and a reachable exclusive filesystem recovery owner
+while supported originals remain pending. Fixed-snapshot and strict-JSON tests,
+original native refresh cases and affected strict lint passed; see
+[the exact current receipts](docs/validation/2026-11-03-bob-repair-progress.md)
+and [Auth follow-ups](docs/validation/2026-11-03-b3-auth-followups.md).
+Do not repeat or bypass this migration. Actual issuer login, full product
+projections and remaining feature/platform matrix still need their named gates;
+local endpoint/source acceptance does not close all of B3-02 through B3-05.
 
 1. Keep the existing `Arc<PgAuthProductServices>` when composing durable product
    auth. Attach that exact Arc and the actual injected
@@ -406,18 +402,23 @@ repair batch). Completed internal work now returns an opaque proof only after
 the actual receipt and durable factory acknowledgement; Q1 consumes that proof
 instead of ResultOnly alone. The second batch compiled; one newly added decoy
 fixture needed correction before its positive integration case could execute.
+That corrected positive/foreign-result case, exact verdicts and all six Q1
+callers have since passed in the latest scoped acceptance, including incomplete
+execution classification and affected strict lint. Preserve the earlier failed
+receipt as history; it is no longer a pending fixture repair.
 Private typed non-chat provenance and complete durable work/recovery gates
 remain open, so the full step is not completed.
 
 **Already implemented, scoped:** `0f1236a6c` supplies the admission-pool builder
-and its runtime attachment, fixing private review thread lookup. The two drive
-methods still duplicate submission/cancellation/receipt/settlement lifecycle;
-the remaining steps below are not completed by that namespace repair.
+and its runtime attachment, fixing private review thread lookup. At that earlier
+baseline the two drive methods duplicated lifecycle logic. The later shared
+`drive_host` completed that extraction; non-chat provenance and durable recovery
+remain open.
 
-1. Compare the full current `drive_turn` and `drive_admitted`, including any
-   ongoing internal-tenant/thread repair. Extract one private implementation
-   operating on the already constructed `Arc<MontyTaskHost>` and the original
-   completion contract. Thin entry wrappers construct/accept the host only.
+1. **Completed, scoped:** retain the shared private `drive_host` operating on
+   the already constructed `Arc<MontyTaskHost>` and original completion contract.
+   Thin wrappers construct/accept the host only. Reconcile later changes against
+   this owner rather than extracting a second implementation.
 2. Preserve original conversation/message/turn/run/attempt, accepted input and
    history. Internal admission may use a different original data namespace;
    resolve it through the actual admitted thread-store owner/injected resolver.
@@ -760,3 +761,11 @@ scope in [the Auth custody receipt](docs/validation/2026-11-03-b3-auth-custody.m
 No implementation checkbox is closed by these source or SQL results. B3-04's
 actual human issuer login, full product projections and the B3-11 native matrix
 remain required; the existing login/device owner is reused, not replaced.
+
+**Subsequent supervisor acceptance:** the connected A-01 package and follow-ups
+were integrated and locally executed: 71 passing run-6 cases plus the two
+corrected run-7 fixtures, applicable LLM/Auth cases and strict eight-package lint.
+The worktree itself ran no native Cargo. The earlier source/SQL-only observations
+above remain historical, not the latest test state. See the active repair record
+for exact hashes, failures/corrections and limitations. No real OpenAI issuer,
+full product/platform/release or whole Bob-plan completion is inferred.

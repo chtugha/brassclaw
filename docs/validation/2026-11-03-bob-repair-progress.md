@@ -5,8 +5,48 @@ do not stop at a commit/checkpoint. Baseline `0f1236a6c`, main. B1-01/B2-01/B3-0
 source inventories are checked complete; B3-10 was already complete. Existing
 T1–T5b/receipt fixes are reused in their narrow scope, not entire Bob completion.
 
-The leading chat owns B1/B2 and B3 scheduling/shared-driver lifecycle, native
-Cargo and final integration. First package accepted within the following scope:
+The leading chat supervises, reviews, owns native validation/final acceptance and
+integrates; it writes no new product implementation. Fresh isolated package
+chats implement under the current [package board](../development-package-board.md)
+and [development policy](../development-policy.md). At most two implement
+concurrently; all must complete the full architecture reading.
+
+## Latest scoped acceptance and active packages
+
+Integrated source through `a63100515`: A-01 native Codex/Auth custody and B-00
+inherited Q1/Oracle repair are accepted within their documented boundaries.
+Run-6 executed 73 exact Composition cases: 71 passed; run-7 subsequently passed
+the two corrected Auth fixtures after one compile in 157.93 seconds. The unchanged
+71 cases remain applicable, rather than being reported as a new 73-case single
+binary run. Run-4 retains five passing LLM host cases and the Auth no-send contract.
+New Q1 incomplete-execution classification, all six retained Q1 callers, Oracle,
+pure-link/public-write, shared-driver and native custody cases have actual evidence.
+
+Eight affected packages passed native `--all-targets` Clippy with
+`postgres,skills-db` and `-D warnings` in 124.17 seconds on Rust 1.98.1. Exact
+source/commands/artifacts/logs are in
+`target/validation/bob-native-repair-20261103/{run-6,run-7,lint-2}/`.
+The native Apple unwind linker warning remains visible and unresolved; passing
+Clippy does not fix it. Actual OpenAI compatibility, complete platform/product
+acceptance and all three full Bob plans remain open.
+
+B-01 owns the original queue/submission binding, V206, in its fresh worktree.
+Its source-only `957b493c` is **not integrated or accepted**. Supervisor review
+requires visible unresolved-state projection, correct infrastructure error
+classification, aligned deferral tests, justified resource bounds and connected
+caller capture before compilation. A fresh A-02 is being created for exact
+Pure-approval reader investigation; shared responsibilities stay assigned once.
+General own approval/required checks, genuine seed qualification, exact retained
+carriage/publication and durable private Work/claims/wakes remain open. No new
+approval service, scheduler, Rust workflow loop or VM is authorized.
+
+## Earlier scoped receipts (preserved history)
+
+Earlier iteration notes below retain their actual evidence; newer acceptance and
+the package board supersede statements that a corrected fixture/Oracle remains
+untested or that only the old narrow delegation exception is authorized.
+
+First package accepted within the following scope:
 
 - `global_monty_driver::drive_host` is the single shared drive lifecycle.
 - Public raw pure-approval JSON resolves only an exact existing decision;
@@ -38,7 +78,8 @@ Explicitly authorized second chat:
 and focused acceptance tests, commits only its branch, uses Modal only and no
 native Cargo/tests. Leading chat polls via `wait_threads` and integrates its
 commits. V203 is reserved here; V204 is reserved for Auth if actually necessary.
-No further agents are authorized. Created-thread client ID:
+That earlier narrow exception is superseded by the current two-package/supervisor
+workflow above. Created-thread client ID:
 `client-new-thread:bf7d3095-4c65-48a4-b3a4-1d35e0c7850c` (resolved ID above).
 
 Next: exact original review binding,

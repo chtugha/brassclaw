@@ -221,6 +221,15 @@ alone establishes structural execution, not complete class Q1 or behavior.
 
 - [ ] **B1-04 — Implement the required checks and a sealed verdict.**
 
+**Implemented narrow transport boundary:** B-00 now authenticates the exact
+observed verdict only after native terminal settlement; cancellation/incomplete
+execution cannot become a negative candidate verdict. The incomplete-execution
+regression, all six retained Q1 callers and exact diagnostics/Oracle cases passed
+in the latest [scoped acceptance](docs/validation/2026-11-03-bob-repair-progress.md),
+with affected strict lint. Reuse that proof/reader. Required complete class rules,
+genuine behavior and trusted approval production below remain open; this does
+not close B1-04 or general own approval.
+
 Build the required-rule manifest in the existing validator owner; bind its
 revision/checksum to the selected validator graph. A candidate may supply data,
 never its required rule list, passing expectations or empty behavior matrix.

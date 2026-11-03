@@ -35,13 +35,14 @@ Its handoff names base/final commits, changed contracts, genuine compilation
 receipts, unexecuted tests, known gaps and proposed exact native test selectors.
 The supervisor accepts the connected behavior, not a successful build alone.
 
-## Active packages
+## Packages and exact acceptance
 
 | Package | Chat/worktree | Scope and state |
 | --- | --- | --- |
-| A-01 — native Codex/Auth custody | `01a1a022-90b1-7932-8dcf-c0ef34b79fee`, host `local`, title “Bob 3 — Native Codex/Auth via Modal”; `/Users/ollama/.codex/worktrees/e8ba/brassclaw`, branch `codex/bob3-auth-custody` | Initial and review follow-ups integrated through `7936dc29e`. Run-6 passed all five new Codex-refresh cases, migration/index/strict-JSON/fence cases and original Device failures except one later fixture assertion. The two remaining fixture corrections `39d4c0c8d`/`c7ec0ef89` are integrated; their actual connected execution and relevant lint remain pending. Full mandatory architecture reading confirmed; no independent new Auth task. |
-| B-00 — review inherited Q1/Oracle repair and finish its acceptance fixes | `01a1a062-b1c4-7ba0-8506-b7c8b3ee4b33`, host `local`, title “Paket B-00 — Q1- und Oracle-Reparatur”; `/Users/ollama/.codex/worktrees/ac66/brassclaw` | Inherited source commits `548254e43`, `a534c4654`, `626e9fddc`, `fdc1f0bc2` reviewed. Correction `f62e911cf` and report `25a9536bd` integrated as `3223415ff`/`6c2041ab6`: incomplete execution no longer writes a negative candidate verdict. Exact-source Modal CLI and local native CLI smoke checks passed; new regression compilation/execution and affected lint remain pending. Chat is idle awaiting supervisor acceptance, not assigned another package. |
+| A-01 — native Codex/Auth custody | `01a1a022-90b1-7932-8dcf-c0ef34b79fee`, host `local`, title “Bob 3 — Native Codex/Auth via Modal”; `/Users/ollama/.codex/worktrees/e8ba/brassclaw`, branch `codex/bob3-auth-custody` | Accepted within the recorded source/native scope, integrated through `a63100515`. Run-6's 71 passing cases plus run-7's two corrected cases cover the selected 73-case matrix; eight-package strict Clippy passed. Actual OpenAI issuer, full product/platform/release and broader B3 gates remain open. Full mandatory reading confirmed. Package closed; no independent new task in this chat. |
+| B-00 — review inherited Q1/Oracle repair and finish its acceptance fixes | `01a1a062-b1c4-7ba0-8506-b7c8b3ee4b33`, host `local`, title “Paket B-00 — Q1- und Oracle-Reparatur”; `/Users/ollama/.codex/worktrees/ac66/brassclaw` | Accepted in its bounded inherited repair scope: exact-source Modal CLI/native smoke, actual incomplete-execution regression and all six retained Q1 callers passed, along with Oracle/pure-link/shared-driver cases. Eight-package strict Clippy passed. General pure approval, canonical genuine qualification, durable scheduling and B2 cutover remain open. Package closed; no new task here. |
 | B-01 — original immutable review request | `01a1a0d0-de89-7a73-9fd2-af06d5d1ca81`, host `local`, title “Paket B-01 — Originale Review-Anforderung”; `/Users/ollama/.codex/worktrees/2f1e/brassclaw` | Complete mandatory reading and revised contract reviewed. Bounded implementation authorized after the terminal run-6 and passing B-00 native cases; final predecessor lint remains supervisor-owned. Implement exact immutable request/queue binding, coherent supported caller capture and final CAS in the existing owners. V206 reserved. Keep actual legacy and joint-runner gaps explicit; no replacement scheduler/approval owner or blanket disabling of authors. |
+| A-02 — exact Pure-approval readers | `01a1a139-eac1-7e32-9ac9-5ddfff64994a`, host `local`, title “Paket A-02 — Exakte Pure-Approval-Reader”; `/Users/ollama/.codex/worktrees/27f9/brassclaw` | Fresh chat performs complete mandatory reading and a read-only B2-03 reader/identity/caller inventory plus contract proposal. No product implementation or paid compilation until supervisor review. Preserve old narrow qualification profiles; no independent new approval owner or partial unversioned format cutover. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for
@@ -49,6 +50,8 @@ A-01's snapshot-safe custody successor; do not modify applied V203/V204. Coordin
 any later migration with the supervisor before using its number. V206 is reserved
 for B-01 if its reviewed original-request contract needs a migration. B-00 requires no migration by default;
 it must explain any actual schema need before implementation.
+V207 may be reserved for A-02 only after its contract explains an actual need;
+it is not permission to edit or reinterpret prior migration bytes.
 
 ## Current native evidence and handoff
 
@@ -118,8 +121,18 @@ it must explain any actual schema need before implementation.
   `/private/tmp/brassclaw-native-deletion-result.json`.
 - Run-7 is prepared to compile the two corrected test sources once, execute only
   those two failed cases and then run affected-package Clippy serially if both
-  pass. The unchanged 71 passing run-6 cases and LLM/Auth run-4 evidence are
-  reusable; final lint/product/platform claims remain open.
+  pass. **Terminal result:** source `82a8fd1eb`, compile 157.93 seconds, both
+  real native cases passed (6.44/1.96 seconds). Actual Composition SHA-256:
+  `09d75e1d29dcfb0b7662f48a27433ad15288f443ff968bc83b123ca1a4e5eb29`.
+  The unchanged 71 passing run-6 cases and LLM/Auth run-4 evidence are reused;
+  this is not a new single-executable 73-test result. First lint stopped at a
+  redundant field initializer, corrected by A-01 and integrated as `a63100515`.
+- `.../lint-2/` captured `a63100515`; actual eight-package Clippy with
+  `postgres,skills-db`, `--all-targets` and `-D warnings` passed in 124.17 seconds
+  on native Rust 1.98.1, aarch64 Apple, LLVM 22.1.8. It did not repeat runtime
+  tests or link a new product executable. No warning suppression. Native
+  Apple unwind-size warnings from linked test executables remain open and are
+  not repaired merely because metadata-only Clippy passes.
 - The Apple linker unwind-size warning remains visible and unresolved. No
   panic/exception behavior change or warning suppression is accepted as a fix.
 - Private canonical-factory draft:

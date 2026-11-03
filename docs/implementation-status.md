@@ -1,5 +1,22 @@
 
-## 2026-11-03 — Bob repair: first scoped native acceptance
+## 2026-11-03 — Bob repair: current bounded native acceptance
+
+The [active repair record](validation/2026-11-03-bob-repair-progress.md) and
+[package board](development-package-board.md) contain current exact evidence and
+ownership. A-01 native Auth/Codex custody and B-00 shared-driver/exact-verdict/
+Oracle repair are integrated through `a63100515` and accepted in their narrow
+source/native scopes: 71 unchanged passing run-6 cases plus two corrected passing
+run-7 cases, applicable LLM/Auth cases and an actual eight-package strict Clippy
+run. No new single-binary 73-case result or real OpenAI/platform/product/release
+acceptance is inferred. The native Apple linker warning remains unresolved.
+
+B-01 original queue binding is source-only and under review; general own Pure
+approval, required full class checks, genuine noncircular qualification,
+versioned retained approval/export carriage and durable original private Work
+remain open. Component source inventory, a successful binding write, terminal
+Monty result or passing code lint does not close these boundaries.
+
+## 2026-11-03 — Bob repair: first scoped native acceptance (historical)
 
 The [active repair record](validation/2026-11-03-bob-repair-progress.md) records
 the current implementation and ownership. Raw pure-approval declarations can
