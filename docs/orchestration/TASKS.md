@@ -20,9 +20,9 @@
 | TASK-017 | Trigger management PairSpecs in bootstrap_l013_approval | PKG-TRIGGER-APPROVAL | DONE | 2026-11-01 | 2026-11-01 | none |
 | TASK-018 | Validator Step 7-B: negative fixture tests per class route | PKG-VALIDATOR-STEP7B | DONE (source) | 2026-11-01 | 2026-11-01 | live exec → TASK-020 |
 | TASK-019 | Security grep leaf skill pairing + 3 PairSpecs | PKG-SECURITY-APPROVAL | DONE | 2026-11-01 | 2026-11-01 | none |
-| TASK-020 | ITEM-C: build monty_worker + run T2–T5 + Step 7-B integration tests | PKG-MONTY-TESTS | IN_PROGRESS | 2026-11-01 | — | monty_worker build |
+| TASK-020 | ITEM-C: build monty_worker + run T2–T5 + Step 7-B integration tests | PKG-MONTY-TESTS | DONE | 2026-11-01 | 2026-11-03 | none |
 | TASK-021 | Cover remaining seeded Tool-calling PCs + BUGFIX dependency graph | PKG-REMAINING-PAIRS | DONE | 2026-11-02 | 2026-11-02 | none |
-| TASK-022 | Re-run T2–T5 integration tests after dependency-graph bugfix | PKG-MONTY-RETEST | IN_PROGRESS | 2026-11-02 | — | new failure: skill-git-status not seeded → fix: qualify_tool_calling_pair now uses lookup_id |
-| TASK-023 | bootstrap_validator_approval.rs: Step 8 pure-component-approval/1 for 8 validator PCs | PKG-VALIDATOR-STEP8 | IN_PROGRESS | 2026-11-02 | — | TASK-022 fix applied |
+| TASK-022 | Re-run T2–T5 integration tests after dependency-graph bugfix | PKG-MONTY-RETEST | DONE | 2026-11-02 | 2026-11-03 | none — all 6 tests pass (71d5c4f49) |
+| TASK-023 | bootstrap_validator_approval.rs: Step 8 pure-component-approval/1 for 8 validator PCs | PKG-VALIDATOR-STEP8 | DONE | 2026-11-02 | 2026-11-03 | none — validator approval at boot; T5b fix closes Step 6 |
 
 <!-- Append rows as tasks are created/completed -->

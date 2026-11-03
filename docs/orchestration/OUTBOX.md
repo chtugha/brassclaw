@@ -6,7 +6,7 @@ _Coordinator writes ASSIGNMENT blocks here. Workers poll every 10 s._
 
 ## TASK-023 — bootstrap_validator_approval.rs: Step 8 pure-component-approval/1 for validator PCs
 
-**Status:** ASSIGNED (inline coordinator)
+**Status:** DONE (2026-11-03 — commit e4552e558 + T5b fix 71d5c4f49)
 **Package:** PKG-VALIDATOR-STEP8
 **Assigned:** 2026-11-01T18:30:00Z
 

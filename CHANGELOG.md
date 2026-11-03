@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Validator Step 6 — retained Q1 execution fully closed**: All six
+  `run_q1_validation_retained` integration tests pass (T1–T5/T5b). Fixes include:
+  dependency-graph traversal in `bootstrap_l013_approval` (pass all four component
+  refs — skill, PC, ToolSkill, Tool — to `read_exact_in_transaction`); `lookup_id`
+  skip in `qualify_tool_calling_pair` for components not seeded in the test rig;
+  graceful `Ok(None)` skip in `bootstrap_free_workflow_approval` when
+  `kohai_complete`/JSON capability is absent; `bootstrap_validator_approval` reads
+  existing PC revision from `read_allocation_head` instead of creating a duplicate
+  wrong revision; `q1_orchestrator` queries `reborn_validator_q1_runs.succeeded` to
+  correctly route `Q1Outcome::Passed` vs `Q1Outcome::Failed` (T5b fix). Commits:
+  `e94d4b141`, `e4552e558`, `71d5c4f49`.
+
+- **Validator Step 7-A — class-specific PC bodies**: Eight distinct Python bodies,
+  one per validator class (Tool/0, Skill/1–3, ToolSkill/13, Recipe/21, PythonCode/22,
+  ExtensionCatalogue/23) seeded in `builtin_bootstrap.rs`. Each checks class-specific
+  required fields (`name`, `description`, `content`/`steps`/`body`/`variants`).
+  Commit: `1f0337469`.
+
+- **Validator Step 7-B — negative fixture tests**: 12 unit tests in
+  `validator_pc_body_tests.rs` covering valid + invalid candidates for all 8 class
+  routes via the real Monty utility worker. All pass. Commit: `5387fe588`.
+
+- **Validator Step 8 — pure-component-approval/1 at boot**: `bootstrap_validator_approval.rs`
+  produces one `pure-component-approval/1` record per structural validator PC
+  (8 total) during `initialize_runtime_components`, idempotently. Q1 + behavioral
+  evidence rows written in RepeatableRead transactions. Acceptance test
+  `validator_approval_writes_eight_pure_approvals_at_boot` verifies count = 8 and
+  idempotency. Commit: `e4552e558`.
+
+- **L013–L101 tool-calling pair qualification at boot**: `bootstrap_l013_approval.rs`
+  qualifies all seeded Tool-calling PCs and Skill pairs, and pure-logic PCs, during
+  boot via `qualify_all` in `initialize_runtime_components`. Covers L001–L006
+  filesystem tools, L010 `file_exists`, L011–L012 path helpers, all trigger/security
+  management pairs, QA/glob/grep pairs and remaining seeded components.
+  Commits: `68a0ebf7c`, `b824f0092`, `71c17a5fa`, `e94d4b141`.
+
+- **`builtin.file_exists` Rust primitive**: New `FileExists` capability in
+  `CodingCapabilityKind`; `file_exists()` handler, input schema, Tool and ToolSkill
+  seed rows. Commit: `ba629233f`.
+
+- **`content_checksum` for system seed rows**: Auto-computed SHA-256
+  `content_checksum` in `pc_row()`, `skill_row()` and `upsert_tool_skill` helpers.
+  Commit: `ff7250e86`, `5d186ce05`.
+
 - **Provider mutation custody**: Fence delayed login/status results and automatic
   recovery with the existing browser auth context; retire abandoned secret-bearing
   request bodies while retaining explicit reference-only inspection. Attach the

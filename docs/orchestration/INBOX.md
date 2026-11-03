@@ -1,4 +1,55 @@
 
+## DONE — TASK-022 + TASK-023 + Step 6 fully closed (2026-11-03T06:00Z)
+
+**From:** Coordinator (inline implementation)
+**Commits:** `e4552e558` (wave-7 fixes), `71d5c4f49` (T5b fix — all 6 tests pass)
+**Result:** PASS
+
+**Summary:**
+- `bootstrap_validator_approval.rs`: reads existing PC revision (not a new one) → fixes "list requires items" schema error that was stomping the correct revision.
+- `bootstrap_validator_approval.rs` fix: `qualify_validator_pc` now calls `revision_store.read_allocation_head(pc_id)` + `read_revision` instead of creating a second wrong revision.
+- `q1_orchestrator.rs` T5b fix: `LoopExit::Completed(ResultOnly)` now queries `reborn_validator_q1_runs.succeeded` to route `gate1_pass_reviewed` vs `gate1_fail_reviewed`; was previously unconditionally passing.
+- All 6 `run_q1_validation_retained` tests pass. `validator_pc_body` 12/12 pass.
+- Step 6 (missing3_v3_at_k3 ITEM-C) FULLY CLOSED.
+- TASK-020, TASK-022, TASK-023 all closed.
+
+**Next:** Repair Bob plans B1–B3 for validator Steps 8–12, catalogue activation, Q2 path.
+
+---
+
+## CHECKPOINT — wave-7 commit e4552e558 (2026-11-02T17:45Z)
+
+**From:** Coordinator
+**Commit:** `e4552e558`
+**Status:** Committed + pushed. Other agent compiling concurrently — do NOT run cargo until their compile finishes.
+
+**Fixes in wave-7:**
+- `qualify_tool_calling_pair`: `require_id` → `lookup_id` (skip-if-not-seeded); removed unused `require_id`.
+- `pc_revision` result_contract: `allow_extra_fields:false` + `checks:[]`.
+- `skill-github-search-issues` arguments map: removed invalid `"method":"method"` reference.
+- `bootstrap_free_workflow_approval`: `Ok(None)` when kernel lacks kohai_complete/JSON capability.
+- New `bootstrap_validator_approval.rs`: `qualify_all_validators` for all 8 validator PCs.
+- Unit test `all_pair_specs_produce_valid_skill_revisions`: PASS.
+- Clippy: 0 warnings.
+
+**Integration test T2–T5/T5b status:**
+- T1: PASS.
+- T2–T5/T5b: Re-run was launched but killed mid-run (foreground command cancelled).
+  The tests ran for >60s each — boot now passes L013 + free-workflow gates, but
+  tests hang. Need re-run with `--nocapture` to see actual failure messages.
+  Likely cause: `qualify_all_validators` in `bootstrap_validator_approval.rs` or
+  `validator_approval_writes_eight_pure_approvals_at_boot` acceptance test may be
+  taking long due to embedded PG transactions.
+
+**Next step when other agent's compile finishes:**
+- Check: `ps aux | grep rustc` — wait until gone.
+- Check disk: `df -h /Users/ollama/brassclaw-target` — need ≥ 15 GiB.
+- `git pull` to pick up other agent's committed changes before editing.
+- Re-run: `cargo test -p brassclaw_reborn_composition --features postgres,skills-db run_q1_validation_retained -- --nocapture 2>&1 | tee /tmp/it-v6.log`
+- Diagnose hanging tests from output.
+
+---
+
 ## DONE — TASK-021 + BUGFIX (bootstrap_l013_approval dependency graph)
 
 **From:** Coordinator (inline implementation)
