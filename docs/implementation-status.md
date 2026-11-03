@@ -1,4 +1,55 @@
 
+## 2026-11-03 — session-7: T5b fix + all run_q1_validation_retained tests passing (Step 6 fully closed)
+
+**Fix:** [`q1_orchestrator.rs`](crates/brassclaw_reborn_composition/src/q1_orchestrator.rs) —
+`LoopExit::Completed(ResultOnly)` branch now queries `reborn_validator_q1_runs.succeeded`
+for the given `submission_id` before routing `gate1_pass_reviewed` vs `gate1_fail_reviewed`.
+Previously the branch unconditionally called `gate1_pass_reviewed`, making T5b
+(`runs_q1_validation_retained_fails_for_empty_content`) return `Q1Outcome::Passed`
+instead of `Q1Outcome::Failed`.
+
+**Live test receipts:**
+
+```
+cargo test -p brassclaw_reborn_composition --features postgres,skills-db \
+    -- run_q1_validation_retained --nocapture
+```
+
+| Test | Result |
+|------|--------|
+| T1 `defers_when_no_service_wired` | ok |
+| T2 `defers_when_no_revision_draft_seeded` | ok |
+| T3 `defers_when_no_submission` | ok |
+| T4 `errors_not_defers_when_no_queue_row` | ok |
+| T5 `passes_and_persists_evidence` | ok — evidence row `succeeded=true`, queue state 2 confirmed |
+| T5b `fails_for_empty_content` | ok — `Q1Outcome::Failed`, errors contain "content", queue stays state 1 |
+
+`test result: ok. 6 passed; 0 failed; 0 ignored; finished in 145.31s`
+
+**validator_pc_body_tests:**
+
+```
+cargo test -p brassclaw_reborn_composition --features postgres,skills-db \
+    -- validator_pc_body --nocapture
+```
+
+`test result: ok. 12 passed; 0 failed; 0 ignored; finished in 0.24s`
+
+**Validation:**
+- `cargo fmt -p brassclaw_reborn_composition -- --check`: CLEAN
+- `cargo clippy -p brassclaw_reborn_composition --features postgres,skills-db --all-targets -- -D warnings`: 0 warnings (pre-existing `__eh_frame` linker note only)
+
+**Step 6 status:** FULLY CLOSED.
+- ITEM-A (legacy `run_q1_validation` path removed): closed PKG-H (`942ff5c69`).
+- ITEM-B (`PgCompositionPort` validator_bridge investigation): closed wave-2 audit — `compose` is read-only, Q1 already fires at `create_and_submit`.
+- ITEM-C (live execution T1–T5/T5b): **closed this session** — all 6 tests pass.
+
+**Remaining open items (updated):**
+- Validator Steps 8–12 (behavioral evidence, Q2 path, catalogue activation).
+- K3 formal closure, prefix Phase C2/C3/D, dynamic occurrences, R09/subagent migrations.
+
+---
+
 ## 2026-11-02 — session-6: TASK-021 + dependency graph bugfix + integration test first run
 
 **Commits:**

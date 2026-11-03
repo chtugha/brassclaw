@@ -21,7 +21,7 @@ The gap comprised two originally-open items at the time of the
 |------|----------------------|----------------|
 | **ITEM-A** | Remove `run_q1_validation` legacy path (`load_validator_program`, `run_validator_python_with_limits`, `ComponentContentFields`, `reviewed_content_fields`, `Q1Error::AmbiguousValidator`, `Q1Error::InvalidValidator`) from `q1_orchestrator.rs` | **CLOSED** — removed in commit `942ff5c69` (PKG-H, 2026-11-01) |
 | **ITEM-B** | Wire `PgCompositionPort` `validator_bridge()` to trigger Q1 on composition | **CLOSED** — TASK-006/007/008 closed by wave-2 audit (2026-11-02): `compose` is a read-only composition path; Q1 kicks already fire from `create_and_submit` callers; no bridge needed in `PgCompositionPort` |
-| **ITEM-C** | Live execution of integration tests T2–T5 for `run_q1_validation_retained` | **OPEN** — tests compile; full live execution requires the `monty_worker` binary beside the test executable |
+| **ITEM-C** | Live execution of integration tests T2–T5 for `run_q1_validation_retained` | **CLOSED** — all 6 tests (T1–T5b) pass as of 2026-11-03 session-7; see `docs/implementation-status.md` dated entry |
 
 The five tests T1–T5 cover the complete `run_q1_validation_retained` contract.
 T1 passes under `--lib` without Monty. T2–T5 require a live `monty_worker`

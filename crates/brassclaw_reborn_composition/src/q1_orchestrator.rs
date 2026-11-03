@@ -22,12 +22,18 @@
 
 #![forbid(unsafe_code)]
 
-use brassclaw_engine::memory::retrieval_source::ComponentScope;
-use brassclaw_pg::PgPool;
 use thiserror::Error;
+
+#[cfg(feature = "skills-db")]
+use brassclaw_engine::memory::retrieval_source::ComponentScope;
+#[cfg(feature = "skills-db")]
+use brassclaw_pg::PgPool;
+#[cfg(feature = "skills-db")]
 use uuid::Uuid;
 
-use crate::validation_queue::{ValidationQueueError, ValidationQueueStore};
+use crate::validation_queue::ValidationQueueError;
+#[cfg(feature = "skills-db")]
+use crate::validation_queue::ValidationQueueStore;
 
 // ---------------------------------------------------------------------------
 // Outcome
@@ -92,6 +98,7 @@ pub enum Q1Error {
     Admission(String),
 }
 
+#[cfg(feature = "skills-db")]
 fn q1_db(error: tokio_postgres::Error) -> Q1Error {
     Q1Error::Db {
         reason: error
@@ -142,7 +149,8 @@ pub(crate) async fn run_q1_validation_retained(
         revision_store::PgComponentRevisionStore,
         validator_components::{
             structural_validator_aggregate_id, structural_validator_collect_id,
-            structural_validator_pc_id, structural_validator_recipe_id,
+            structural_validator_pc_id, structural_validator_receipt_id,
+            structural_validator_recipe_id,
         },
     };
     use brassclaw_turns::LoopCompleted;
@@ -175,10 +183,11 @@ pub(crate) async fn run_q1_validation_retained(
         )));
     };
 
-    // Step 3 — read all 4 drafts and build a RetainedComponentSnapshot.
+    // Step 3 — read all 5 drafts and build a RetainedComponentSnapshot.
     let pc_id = structural_validator_pc_id(class_i16);
     let collect_id = structural_validator_collect_id(class_i16);
     let aggregate_id = structural_validator_aggregate_id(class_i16);
+    let receipt_id = structural_validator_receipt_id(class_i16);
 
     let pc_version = revision_store
         .read_allocation_head(pc_id)
@@ -210,6 +219,18 @@ pub(crate) async fn run_q1_validation_retained(
         .ok_or_else(|| Q1Error::Db {
             reason: format!("structural validator aggregate draft missing for class {class_code}"),
         })?;
+    let receipt_version = revision_store
+        .read_allocation_head(receipt_id)
+        .await
+        .map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?
+        .map(|(_, v)| v)
+        .ok_or_else(|| Q1Error::Db {
+            reason: format!(
+                "structural validator receipt encoder draft missing for class {class_code}"
+            ),
+        })?;
 
     let recipe_rev = revision_store
         .read_revision(recipe_id, recipe_version)
@@ -235,11 +256,17 @@ pub(crate) async fn run_q1_validation_retained(
         .map_err(|e| Q1Error::Db {
             reason: e.to_string(),
         })?;
+    let receipt_rev = revision_store
+        .read_revision(receipt_id, receipt_version)
+        .await
+        .map_err(|e| Q1Error::Db {
+            reason: e.to_string(),
+        })?;
 
     let snapshot = Arc::new(
         RetainedComponentSnapshot::new(
             &[recipe_id],
-            vec![recipe_rev, pc_rev, collect_rev, aggregate_rev],
+            vec![recipe_rev, pc_rev, collect_rev, aggregate_rev, receipt_rev],
         )
         .map_err(|e| Q1Error::Db {
             reason: e.to_string(),
@@ -389,8 +416,50 @@ pub(crate) async fn run_q1_validation_retained(
             ..
         }) => {
             // InternalCompleted path: verify_receipt ran and persisted evidence.
-            queue_store.gate1_pass_reviewed(scope, &review, &[]).await?;
-            Ok(Q1Outcome::Passed)
+            // The actual pass/fail outcome is stored by verify_receipt in
+            // reborn_validator_q1_runs.succeeded. Read it now to route correctly —
+            // the loop exit alone does not indicate whether the aggregate step passed.
+            let succeeded: Option<bool> = {
+                let client = pool.get().await.map_err(|e| Q1Error::Db {
+                    reason: e.to_string(),
+                })?;
+                client
+                    .query_opt(
+                        "SELECT succeeded FROM reborn_validator_q1_runs \
+                         WHERE submission_id = $1 \
+                         ORDER BY recorded_at DESC LIMIT 1",
+                        &[&submission_id],
+                    )
+                    .await
+                    .map_err(q1_db)?
+                    .map(|row| row.get(0))
+            };
+            match succeeded {
+                Some(true) => {
+                    queue_store.gate1_pass_reviewed(scope, &review, &[]).await?;
+                    Ok(Q1Outcome::Passed)
+                }
+                Some(false) => {
+                    // Aggregate step produced pass:false — record the failure.
+                    let errors =
+                        vec!["structural validator: one or more content checks failed".into()];
+                    queue_store
+                        .gate1_fail_reviewed(scope, &review, &errors)
+                        .await?;
+                    Ok(Q1Outcome::Failed { errors })
+                }
+                None => {
+                    // verify_receipt should have written the run row; if it is
+                    // absent the evidence path did not complete — treat as failure.
+                    let errors = vec![
+                        "retained validator: no Q1 run evidence found after completion".into(),
+                    ];
+                    queue_store
+                        .gate1_fail_reviewed(scope, &review, &errors)
+                        .await?;
+                    Ok(Q1Outcome::Failed { errors })
+                }
+            }
         }
         brassclaw_turns::LoopExit::Completed(_) => {
             // Unexpected normal Completed (FinalReply) for an internal task.
