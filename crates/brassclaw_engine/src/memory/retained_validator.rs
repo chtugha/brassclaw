@@ -19,6 +19,9 @@ struct Declaration {
     format: String,
     rules: Vec<Rule>,
     aggregate_step: String,
+    /// Step whose result is the JSON receipt string returned by the recipe.
+    /// Must follow aggregate_step in the ordered step list.
+    receipt_step: String,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -34,6 +37,7 @@ pub struct RetainedValidatorCoverage {
     rules: BTreeMap<String, String>,
     aggregate_step: String,
     collection_step: String,
+    receipt_step: String,
     selection_checksum: [u8; 32],
 }
 
@@ -297,11 +301,30 @@ impl RetainedValidatorCoverage {
         {
             return Err("aggregation result contract is incomplete");
         }
+        // Validate receipt_step: must be present in the ordered step list,
+        // come after aggregate_step, and have a string result contract.
+        let receipt_position = *order
+            .get(declaration.receipt_step.as_str())
+            .ok_or("selected receipt step required")?;
+        if receipt_position <= aggregate_position {
+            return Err("receipt step must follow aggregation");
+        }
+        let receipt_component = inputs
+            .components()
+            .get(declaration.receipt_step.as_str())
+            .ok_or("receipt step component missing")?;
+        let receipt_result = &instruction.snapshot().revisions()[&receipt_component.uuid]
+            .draft()
+            .document()["result_contract"];
+        if receipt_result["type"] != "string" {
+            return Err("receipt step result contract must be string");
+        }
         Ok(Self {
             class_code,
             rules,
             aggregate_step: declaration.aggregate_step,
             collection_step: step_id.clone(),
+            receipt_step: declaration.receipt_step,
             selection_checksum: instruction
                 .retained_selection()
                 .map_err(|_| "validator selection cannot be retained")?
@@ -436,6 +459,10 @@ impl RetainedValidatorCoverage {
     }
     pub fn aggregate_step(&self) -> &str {
         &self.aggregate_step
+    }
+    /// The step whose result is the JSON receipt string for `verify_receipt`.
+    pub fn receipt_step(&self) -> &str {
+        &self.receipt_step
     }
 }
 

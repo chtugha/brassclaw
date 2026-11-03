@@ -503,6 +503,13 @@ pub fn structural_validator_aggregate_id(class_code: i16) -> Uuid {
     ))
 }
 
+/// Stable packaged ID for the receipt encoder step of a class validator Recipe.
+pub fn structural_validator_receipt_id(class_code: i16) -> Uuid {
+    crate::global_bootstrap_components::packaged_component_id(&format!(
+        "validator:structural:receipt:class-{class_code}"
+    ))
+}
+
 /// Stable packaged ID for a class validator Recipe (immutable revision path).
 pub fn structural_validator_recipe_id(class_code: i16) -> Uuid {
     crate::global_bootstrap_components::packaged_component_id(&format!(
@@ -518,11 +525,12 @@ pub const VALIDATOR_CLASS_CODES: &[i16] = &[0, 1, 2, 3, 13, 21, 22, 23];
 /// for `RetainedValidatorCoverage::from_inputs()`; it is separate from the
 /// legacy mutable `reborn_recipes` seeder in `seed_validator_recipes`.
 ///
-/// Returns four drafts (in dependency-first order):
-/// 1. PythonCode — the structural check body (pure-logic, `inputs["name/description/content"]`).
+/// Returns five drafts (in dependency-first order):
+/// 1. PythonCode — the structural check body (pure-logic, `inputs["subject_json"]`).
 /// 2. PythonCode — collect step (single-rule wrapper).
 /// 3. PythonCode — aggregate step.
-/// 4. Recipe (class 21) — the validator Recipe with `validator_coverage`.
+/// 4. PythonCode — receipt encoder step (serialises results into the receipt JSON string).
+/// 5. Recipe (class 21) — the validator Recipe with `validator_coverage`.
 ///
 /// The PythonCode body must already be published via the existing
 /// `PC_VALIDATOR_STRUCTURAL_BODY` constant in `builtin_bootstrap.rs`; the
@@ -541,6 +549,7 @@ pub fn structural_validator_recipe_drafts(
     let pc_id = structural_validator_pc_id(class_code);
     let collect_id = structural_validator_collect_id(class_code);
     let aggregate_id = structural_validator_aggregate_id(class_code);
+    let receipt_id = structural_validator_receipt_id(class_code);
     let recipe_id = structural_validator_recipe_id(class_code);
 
     // Rule name for the single structural check.
@@ -548,14 +557,18 @@ pub fn structural_validator_recipe_drafts(
     let rule_step = "0:1";
     let collect_step = "0:2";
     let aggregate_step = "0:3";
+    let receipt_step = "0:4";
 
     // 1. PythonCode for the structural-check body.
+    // The input contract uses `subject_json` (a single required string containing
+    // the serialised submission subject JSON) so that
+    // RetainedValidatorCoverage::subject_task_inputs finds a step binding for
+    // `subject_json` and satisfies its "consume its complete subject input" check.
     let pc_description = format!(
         "Tier-0 structural validator executor for class {class_code} ({class_label}). \
-         Checks name, description, and content/steps are non-empty. \
-         Pure-logic, no host calls. Inputs: inputs[\"name\"], \
-         inputs[\"description\"], inputs[\"content\"]. Returns \
-         {{\"pass\": bool, \"errors\": [str]}}."
+         Receives the complete sealed subject as inputs[\"subject_json\"] (a JSON string). \
+         Parses it to extract name/description/content and checks they are non-empty. \
+         Pure-logic, no host calls. Returns {{\"pass\": bool, \"errors\": [str]}}."
     );
     let rule_contract = rule_contract();
     let pc_draft = ComponentRevisionDraft::from_json(
@@ -570,9 +583,7 @@ pub fn structural_validator_recipe_drafts(
                 "includes": [],
                 "dependency_registry": null,
                 "input_contract": {
-                    "name": {"type": "string", "required": true, "checks": []},
-                    "description": {"type": "string", "required": true, "checks": []},
-                    "content": {"type": "string", "required": true, "checks": []}
+                    "subject_json": {"type": "string", "required": true, "checks": []}
                 },
                 "result_contract": rule_contract,
                 "preload": {
@@ -586,7 +597,7 @@ pub fn structural_validator_recipe_drafts(
                     },
                     "private_functions": {},
                     "constants": [],
-                    "imports": [],
+                    "imports": ["json"],
                     "dependencies": [],
                     "default_export": "check_structural_presence"
                 }
@@ -603,7 +614,73 @@ pub fn structural_validator_recipe_drafts(
     // 3. Aggregate step.
     let aggregate_draft = aggregate_draft(aggregate_id)?;
 
-    // 4. Recipe with validator_coverage.
+    // 4. Receipt encoder step — serialises the per-step results into the
+    //    `validator-structural-receipt/1` JSON string that becomes the task's
+    //    internal receipt. All executed step results are included so that
+    //    observe_subject can verify each step's fingerprint against the receipt.
+    //    Pure-logic; no host calls; imports json only.
+    let receipt_encoder_body = concat!(
+        "def encode_structural_receipt(inputs):\n",
+        "    import json as _json\n",
+        "    _receipt = _json.dumps({\n",
+        "        \"format\": \"validator-structural-receipt/1\",\n",
+        "        \"results\": {\n",
+        "            \"0:1\": inputs[\"rule_result\"],\n",
+        "            \"0:2\": inputs[\"collect_result\"],\n",
+        "            \"0:3\": inputs[\"aggregate\"],\n",
+        "        }\n",
+        "    })\n",
+        "    return _receipt\n",
+    );
+    let receipt_draft = ComponentRevisionDraft::from_json(
+        &json!({
+            "format": "component-revision/1",
+            "uuid": receipt_id,
+            "class_code": 22,
+            "document": {
+                "name": format!("encode-structural-receipt-class-{class_code}"),
+                "description": format!(
+                    "Encode class-{class_code} structural validator step results into \
+                     the validator-structural-receipt/1 JSON string. Pure-logic, no host calls."
+                ),
+                "content": receipt_encoder_body,
+                "includes": [],
+                "dependency_registry": null,
+                "input_contract": {
+                    "rule_result": {
+                        "type": "object", "required": true, "checks": [], "allow_extra_fields": false,
+                        "fields": rule_contract["fields"].clone()
+                    },
+                    "collect_result": {"type": "list", "required": true, "checks": [], "items": rule_contract.clone()},
+                    "aggregate": {
+                        "type": "object", "required": true, "checks": [], "allow_extra_fields": false,
+                        "fields": aggregate_draft.document()["result_contract"]["fields"].clone()
+                    }
+                },
+                "result_contract": {"type": "string"},
+                "preload": {
+                    "format": "python-preload/2",
+                    "exports": {
+                        "encode_structural_receipt": {
+                            "symbol": "encode_structural_receipt",
+                            "parameters": ["inputs"],
+                            "mapping": true
+                        }
+                    },
+                    "private_functions": {},
+                    "constants": [],
+                    "imports": ["json"],
+                    "dependencies": [],
+                    "default_export": "encode_structural_receipt"
+                }
+            },
+            "dependencies": [],
+            "association": null
+        })
+        .to_string(),
+    )?;
+
+    // 5. Recipe with validator_coverage.
     // Build document using Value directly because the variant_key is dynamic.
     let recipe_description = format!(
         "Tier-0 structural validator for class {class_code} ({class_label}). \
@@ -611,10 +688,10 @@ pub fn structural_validator_recipe_drafts(
          Seeds the trusted-root Q1 gate. Private: consumer_tags=[05:validator]."
     );
     let variant_key = format!("validator-class-{class_code}");
+    // The task input is the full sealed subject JSON string. The PC body parses
+    // it internally; no source substitution occurs — subject_json is typed data.
     let pc_input_contract = json!({
-        "name":    {"type": "string", "required": true, "checks": []},
-        "description": {"type": "string", "required": true, "checks": []},
-        "content": {"type": "string", "required": true, "checks": []}
+        "subject_json": {"type": "string", "required": true, "checks": []}
     });
 
     // Verify the aggregate result contract has the expected shape required by
@@ -631,14 +708,16 @@ pub fn structural_validator_recipe_drafts(
     }
 
     // Build the input_layouts and invocations with dynamic keys.
+    // Step 0:1 receives subject_json as its sole task_input; the PC body parses
+    // it internally. This satisfies RetainedValidatorCoverage::subject_task_inputs
+    // which checks that at least one step binding references a task input named
+    // "subject_json".
     let layout_steps = {
         let mut steps = serde_json::Map::new();
         steps.insert(
             "0:1".into(),
             json!({
-                "name":        {"kind": "task_input", "reference": "{{vars.name}}"},
-                "description": {"kind": "task_input", "reference": "{{vars.description}}"},
-                "content":     {"kind": "task_input", "reference": "{{vars.content}}"}
+                "subject_json": {"kind": "task_input", "reference": "{{vars.subject_json}}"}
             }),
         );
         let mut collect_inputs = serde_json::Map::new();
@@ -652,6 +731,15 @@ pub fn structural_validator_recipe_drafts(
             json!({
                 "required_rule_ids": {"kind": "constant", "value": [rule_id]},
                 "checks": {"kind": "result", "step_id": collect_step, "path": []}
+            }),
+        );
+        // Receipt encoder: takes the rule result, collect result and aggregate result.
+        steps.insert(
+            receipt_step.to_string(),
+            json!({
+                "rule_result":    {"kind": "result", "step_id": rule_step,      "path": []},
+                "collect_result": {"kind": "result", "step_id": collect_step,   "path": []},
+                "aggregate":      {"kind": "result", "step_id": aggregate_step, "path": []}
             }),
         );
         serde_json::Value::Object(steps)
@@ -673,7 +761,8 @@ pub fn structural_validator_recipe_drafts(
             json!({
                 "0:1": "check_structural_presence",
                 "0:2": "collect_validator_checks",
-                "0:3": "aggregate_validator_checks"
+                "0:3": "aggregate_validator_checks",
+                "0:4": "encode_structural_receipt"
             }),
         );
         serde_json::Value::Object(inv)
@@ -687,7 +776,8 @@ pub fn structural_validator_recipe_drafts(
         "validator_coverage": {
             "format": "validator-coverage/1",
             "rules": [{"rule_id": rule_id, "step_id": rule_step}],
-            "aggregate_step": aggregate_step
+            "aggregate_step": aggregate_step,
+            "receipt_step": receipt_step
         },
         "variants": [{
             "variant_key": variant_key,
@@ -698,7 +788,8 @@ pub fn structural_validator_recipe_drafts(
         "step_descriptions": [{"desc_idx": 0, "label": format!("Structural check class {class_code}"), "yaml_source": "", "steps": [
             {"stepnumber": 1, "knowledge": "orchestrator", "goal": "Run structural presence check", "content": "", "type": "component", "include": [pc_id]},
             {"stepnumber": 2, "knowledge": "orchestrator", "goal": "Collect rule results", "content": "", "type": "component", "include": [collect_id]},
-            {"stepnumber": 3, "knowledge": "orchestrator", "goal": "Aggregate required rule set", "content": "", "type": "component", "include": [aggregate_id]}
+            {"stepnumber": 3, "knowledge": "orchestrator", "goal": "Aggregate required rule set", "content": "", "type": "component", "include": [aggregate_id]},
+            {"stepnumber": 4, "knowledge": "orchestrator", "goal": "Encode step results into receipt JSON string", "content": "", "type": "component", "include": [receipt_id]}
         ]}],
         "input_layouts": input_layouts,
         "invocations": invocations
@@ -710,13 +801,19 @@ pub fn structural_validator_recipe_drafts(
             "uuid": recipe_id,
             "class_code": 21,
             "document": recipe_doc,
-            "dependencies": [pc_id, collect_id, aggregate_id],
+            "dependencies": [pc_id, collect_id, aggregate_id, receipt_id],
             "association": null
         })
         .to_string(),
     )?;
 
-    Ok(vec![pc_draft, collect_draft, aggregate_draft, recipe_draft])
+    Ok(vec![
+        pc_draft,
+        collect_draft,
+        aggregate_draft,
+        receipt_draft,
+        recipe_draft,
+    ])
 }
 
 #[cfg(test)]
@@ -726,19 +823,21 @@ mod structural_validator_recipe_tests {
 
     const MINIMAL_PC_BODY: &str = concat!(
         "def check_structural_presence(inputs):\n",
-        "    # Tier-0 structural validator (pure-logic).\n",
-        "    _name = inputs[\"name\"]\n",
-        "    _desc = inputs[\"description\"]\n",
-        "    _content = inputs[\"content\"]\n",
+        "    import json as _json\n",
+        "    _subj = _json.loads(inputs[\"subject_json\"])\n",
+        "    _doc = _subj[\"candidate\"][\"revision\"][\"document\"]\n",
+        "    _name = _doc.get(\"name\", \"\")\n",
+        "    _desc = _doc.get(\"description\", \"\")\n",
+        "    _content = _doc.get(\"content\", \"\")\n",
         "    _errors = []\n",
-        "    if not _name or not _name.strip(): _errors.append(\"name is empty\")\n",
-        "    if not _desc or not _desc.strip(): _errors.append(\"description is empty\")\n",
-        "    if not _content or not _content.strip(): _errors.append(\"content/steps is empty\")\n",
-        "    return {\"pass\": len(_errors) == 0, \"errors\": _errors}\n",
+        "    if not _name or not str(_name).strip(): _errors.append(\"name is empty\")\n",
+        "    if not _desc or not str(_desc).strip(): _errors.append(\"description is empty\")\n",
+        "    if not _content or not str(_content).strip(): _errors.append(\"content/steps is empty\")\n",
+        "    return {\"rule_id\": \"structural_presence\", \"ok\": len(_errors) == 0, \"errors\": _errors}\n",
     );
 
     #[test]
-    fn all_eight_class_codes_produce_four_drafts() {
+    fn all_eight_class_codes_produce_five_drafts() {
         for &class_code in VALIDATOR_CLASS_CODES {
             let label = format!("class-{class_code}");
             let drafts = structural_validator_recipe_drafts(class_code, &label, MINIMAL_PC_BODY)
@@ -747,8 +846,8 @@ mod structural_validator_recipe_tests {
                 });
             assert_eq!(
                 drafts.len(),
-                4,
-                "expected 4 drafts for class {class_code}, got {}",
+                5,
+                "expected 5 drafts for class {class_code}, got {}",
                 drafts.len()
             );
         }
@@ -784,11 +883,11 @@ mod structural_validator_recipe_tests {
                 MINIMAL_PC_BODY,
             )
             .unwrap();
-            let recipe = &drafts[3];
+            let recipe = &drafts[4];
             assert_eq!(
                 recipe.class_code(),
                 21,
-                "fourth draft must be Recipe (class 21) for class {class_code}"
+                "fifth draft must be Recipe (class 21) for class {class_code}"
             );
             let doc = recipe.document();
             let coverage = doc.get("validator_coverage").unwrap_or_else(|| {
@@ -856,12 +955,13 @@ mod structural_validator_recipe_tests {
     }
 
     #[test]
-    fn recipe_draft_dependencies_match_pc_collect_aggregate() {
+    fn recipe_draft_dependencies_match_pc_collect_aggregate_receipt() {
         let drafts = structural_validator_recipe_drafts(22, "PythonCode", MINIMAL_PC_BODY).unwrap();
         let pc_id = drafts[0].uuid();
         let collect_id = drafts[1].uuid();
         let aggregate_id = drafts[2].uuid();
-        let recipe_deps = drafts[3].dependencies();
+        let receipt_id = drafts[3].uuid();
+        let recipe_deps = drafts[4].dependencies();
         assert!(recipe_deps.contains(&pc_id), "recipe deps must include pc");
         assert!(
             recipe_deps.contains(&collect_id),
@@ -871,17 +971,21 @@ mod structural_validator_recipe_tests {
             recipe_deps.contains(&aggregate_id),
             "recipe deps must include aggregate"
         );
+        assert!(
+            recipe_deps.contains(&receipt_id),
+            "recipe deps must include receipt encoder"
+        );
         assert_eq!(
             recipe_deps.len(),
-            3,
-            "recipe should have exactly 3 dependencies"
+            4,
+            "recipe should have exactly 4 dependencies"
         );
     }
 
     #[test]
     fn input_layouts_uses_variant_key() {
         let drafts = structural_validator_recipe_drafts(0, "Tool", MINIMAL_PC_BODY).unwrap();
-        let doc = drafts[3].document();
+        let doc = drafts[4].document();
         let expected_key = "validator-class-0";
         assert!(
             doc["input_layouts"]

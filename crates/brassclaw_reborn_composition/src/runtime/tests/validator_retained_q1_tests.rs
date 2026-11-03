@@ -18,6 +18,7 @@
 use super::*;
 use crate::{
     installed_monty_catalogue::ValidatorServiceBridge,
+    pg_python_code_store::{NewPgPythonCode, PgPythonCodeStore},
     q1_orchestrator::{Q1Outcome, run_q1_validation_retained},
     validation_queue::ValidationQueueStore,
     validator_task_driver::ValidatorTaskDriver,
@@ -71,9 +72,33 @@ async fn run_q1_validation_retained_passes_and_persists_evidence() {
     let scope = q1_retained_scope();
     let store = ValidationQueueStore::new(rig.pool.clone());
 
-    // Create a minimal class-22 component and submit it for review.
-    let component_id = Uuid::new_v4();
-    let component_name = format!("test-component-{}", component_id.as_simple());
+    // Insert the component row into reborn_python_code first — capture_q1_candidate
+    // requires the row to exist in the component table (component_bytes query).
+    let component_name = format!("test-component-{}", Uuid::new_v4().as_simple());
+    let pc_store = PgPythonCodeStore::new(rig.pool.clone());
+    let component_id = pc_store
+        .insert(NewPgPythonCode {
+            tenant_id: scope.tenant_id.clone(),
+            user_id: scope.user_id.clone(),
+            agent_id: scope.agent_id.clone(),
+            project_id: scope.project_id.clone(),
+            name: component_name.clone(),
+            description: "Minimal test PythonCode component for Q1 retained integration test."
+                .into(),
+            content: "def retain_value(inputs):\n    return inputs['value']\n".into(),
+            prior_knowledge_content: None,
+            override_prompt_creation: false,
+            consumer_tags: vec!["02:orchestrator".into(), "05:validator".into()],
+            intent_examples: None,
+            source: "authored".into(),
+            dependency_registry: None,
+            includes: vec![],
+            content_checksum: None,
+        })
+        .await
+        .expect("PgPythonCodeStore::insert must succeed");
+
+    // Build the ComponentRevisionDraft referencing the assigned component_id.
     let doc = serde_json::json!({
         "format": "component-revision/1",
         "uuid": component_id,
@@ -123,6 +148,7 @@ async fn run_q1_validation_retained_passes_and_persists_evidence() {
         .expect("PgReviewSubmissionStore::submit must succeed");
 
     // Submit to the validation queue (required for capture_q1_candidate).
+    // Fire-and-forget kick from submit() is a no-op here (bridge not wired on the store).
     store
         .submit(&scope, component_id, 22, None)
         .await
@@ -215,14 +241,38 @@ async fn run_q1_validation_retained_fails_for_empty_content() {
     };
     let store = ValidationQueueStore::new(rig.pool.clone());
 
-    // Malformed component: empty content — structural validator rejects it.
-    let component_id = Uuid::new_v4();
+    // Insert the component row into reborn_python_code first — capture_q1_candidate
+    // requires the row to exist in the component table (component_bytes query).
+    // The content is deliberately empty so the structural validator rejects it.
+    let fail_name = format!("fail-component-{}", Uuid::new_v4().as_simple());
+    let pc_store = PgPythonCodeStore::new(rig.pool.clone());
+    let component_id = pc_store
+        .insert(NewPgPythonCode {
+            tenant_id: scope.tenant_id.clone(),
+            user_id: scope.user_id.clone(),
+            agent_id: scope.agent_id.clone(),
+            project_id: scope.project_id.clone(),
+            name: fail_name.clone(),
+            description: "A component whose content is deliberately empty.".into(),
+            content: "".into(),
+            prior_knowledge_content: None,
+            override_prompt_creation: false,
+            consumer_tags: vec!["02:orchestrator".into(), "05:validator".into()],
+            intent_examples: None,
+            source: "authored".into(),
+            dependency_registry: None,
+            includes: vec![],
+            content_checksum: None,
+        })
+        .await
+        .expect("PgPythonCodeStore::insert must succeed");
+
     let doc = serde_json::json!({
         "format": "component-revision/1",
         "uuid": component_id,
         "class_code": 22,
         "document": {
-            "name": format!("fail-component-{}", component_id.as_simple()),
+            "name": fail_name,
             "description": "A component whose content is deliberately empty.",
             "content": "",
             "input_contract": {},

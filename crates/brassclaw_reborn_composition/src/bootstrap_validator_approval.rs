@@ -26,7 +26,7 @@ use crate::{
 };
 use brassclaw_pg::PgPool;
 use brassclaw_skills::{
-    component_revision::{ComponentRevisionDraft, REVISION_LIMITS},
+    component_revision::REVISION_LIMITS,
     pure_component_contract::PureComponentApprovalDeclaration,
     revision_store::PgComponentRevisionStore,
     validator_components::{VALIDATOR_CLASS_CODES, structural_validator_pc_id},
@@ -44,81 +44,6 @@ use uuid::Uuid;
 const VALIDATOR_QUAL_NAMESPACE: Uuid = Uuid::from_u128(0xb8a7_3c5f_1d92_4e6a_9f30_2c84_e7d1_5b02);
 
 // ---------------------------------------------------------------------------
-// Validator class bodies imported from builtin_bootstrap
-// ---------------------------------------------------------------------------
-
-use crate::builtin_bootstrap::{
-    PC_VALIDATOR_CLASS_0_BODY, PC_VALIDATOR_CLASS_13_BODY, PC_VALIDATOR_CLASS_21_BODY,
-    PC_VALIDATOR_CLASS_22_BODY, PC_VALIDATOR_CLASS_23_BODY, PC_VALIDATOR_CLASS_SKILL_BODY,
-};
-
-/// Return the class-specific PC body for the given class code.
-fn validator_body_for_class(class_code: i16) -> &'static str {
-    match class_code {
-        0 => PC_VALIDATOR_CLASS_0_BODY,
-        1..=3 => PC_VALIDATOR_CLASS_SKILL_BODY,
-        13 => PC_VALIDATOR_CLASS_13_BODY,
-        21 => PC_VALIDATOR_CLASS_21_BODY,
-        22 => PC_VALIDATOR_CLASS_22_BODY,
-        23 => PC_VALIDATOR_CLASS_23_BODY,
-        // Fallback: should not occur given VALIDATOR_CLASS_CODES is bounded.
-        _ => PC_VALIDATOR_CLASS_22_BODY,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Revision construction
-// ---------------------------------------------------------------------------
-
-fn validator_pc_revision(
-    pc_id: Uuid,
-    content: &str,
-) -> Result<ComponentRevisionDraft, RebornBuildError> {
-    ComponentRevisionDraft::from_json(
-        &json!({
-            "format": "component-revision/1",
-            "uuid": pc_id,
-            "class_code": 22,
-            "document": {
-                "content": content,
-                "preload": {
-                    "format": "python-preload/2",
-                    "exports": {
-                        "check_structural_presence": {
-                            "symbol": "check_structural_presence",
-                            "parameters": ["inputs"],
-                            "mapping": true
-                        }
-                    },
-                    "private_functions": {},
-                    "constants": [],
-                    "imports": ["json"],
-                    "dependencies": [],
-                    "default_export": "check_structural_presence"
-                },
-                "input_contract": {
-                    "name": {"type": "string", "required": true, "checks": []},
-                    "description": {"type": "string", "required": true, "checks": []},
-                    "content": {"type": "string", "required": true, "checks": []}
-                },
-                "result_contract": {
-                    "type": "object",
-                    "allow_extra_fields": false,
-                    "fields": {
-                        "pass": {"type": "boolean", "required": true, "checks": []},
-                        "errors": {"type": "list", "required": true, "checks": []}
-                    }
-                }
-            },
-            "dependencies": [],
-            "association": null
-        })
-        .to_string(),
-    )
-    .map_err(invalid)
-}
-
-// ---------------------------------------------------------------------------
 // Per-class qualification
 // ---------------------------------------------------------------------------
 
@@ -128,14 +53,27 @@ async fn qualify_validator_pc(
     class_code: i16,
 ) -> Result<(), RebornBuildError> {
     let pc_id = structural_validator_pc_id(class_code);
-    let body = validator_body_for_class(class_code);
 
-    // 1. Retain the revision draft (idempotent).
-    let pc_draft = validator_pc_revision(pc_id, body)?;
-    let pc_ref = revision_store
-        .retain_packaged_draft(&pc_draft)
+    // 1. Read the PC revision already retained by retain_validator_check_drafts.
+    //    We must NOT retain our own version — doing so would store a different
+    //    revision (different checksum) than what the recipe drafts reference,
+    //    causing compile_retained_recipe / prepare_retained_unbound_program to
+    //    pick up the wrong PC when reading the allocation head.
+    let (_, pc_version) = revision_store
+        .read_allocation_head(pc_id)
+        .await
+        .map_err(invalid)?
+        .ok_or_else(|| RebornBuildError::InvalidConfig {
+            reason: format!(
+                "validator-approval: structural validator PC draft not found for class {class_code}; \
+                 retain_validator_check_drafts must run before qualify_all_validators"
+            ),
+        })?;
+    let pc_revision = revision_store
+        .read_revision(pc_id, pc_version)
         .await
         .map_err(invalid)?;
+    let pc_ref = pc_revision.reference();
 
     // 2. Deterministic approval UUIDs derived from class code + PC UUID.
     let seed = format!("validator:class-{class_code}:{pc_id}");

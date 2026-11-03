@@ -23,10 +23,13 @@ fn test_scope() -> ComponentScope {
 }
 
 /// PKG-D test case B: `run_q1_validation_retained` returns `Deferred` when the
-/// structural validator revision draft is not seeded for the class code.
+/// component has no active review submission.
 ///
-/// The bridge is provided so step 1 passes; no drafts are seeded
-/// so `read_allocation_head` returns `None` and step 2 defers.
+/// `build_reborn_runtime` seeds the validator drafts at boot (via
+/// `initialize_runtime_components` → `retain_validator_check_drafts`), so step 2
+/// always passes. The bridge is provided so step 1 also passes.
+/// The component is added to the validation queue but no review submission is
+/// created, so step 5 defers with "no active submission".
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_q1_validation_retained_defers_when_no_revision_draft_seeded() {
     let rig = crate::runtime::test_pg::pg_rig().await;
@@ -51,8 +54,8 @@ async fn run_q1_validation_retained_defers_when_no_revision_draft_seeded() {
     let store = ValidationQueueStore::new(rig.pool.clone());
     let cid = Uuid::new_v4();
     store.submit(&scope, cid, 22, None).await.unwrap();
+    // No review submission created — step 5 defers.
 
-    // No validator drafts seeded → read_allocation_head returns None for class 22.
     let outcome = run_q1_validation_retained(
         &rig.pool,
         &scope,
@@ -67,14 +70,14 @@ async fn run_q1_validation_retained_defers_when_no_revision_draft_seeded() {
 
     assert!(
         matches!(outcome, Q1Outcome::Deferred { .. }),
-        "expected Deferred when no revision draft seeded for class 22; got {outcome:?}"
+        "expected Deferred when no submission exists; got {outcome:?}"
     );
     let Q1Outcome::Deferred { reason } = &outcome else {
         panic!("expected Deferred")
     };
     assert!(
-        reason.contains("no structural validator revision draft for class"),
-        "deferred reason must mention the missing draft; got: {reason}"
+        reason.contains("no active submission for component"),
+        "deferred reason must mention missing submission; got: {reason}"
     );
 }
 

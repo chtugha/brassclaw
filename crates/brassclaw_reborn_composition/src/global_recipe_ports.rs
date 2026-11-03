@@ -870,10 +870,13 @@ fn retain(
     capacity: RecipeCapacity,
 ) -> Result<(Uuid, String), PortFailure> {
     let program = selected.inspected.program();
-    if matches!(
-        program,
-        brassclaw_engine::executor::retained_recipe::RetainedProgram::Tools(_)
-    ) && selected.tools.is_none()
+    // Tools programs require a tool port only when they have actual Tool bindings.
+    // Pure-logic internal programmes (e.g. structural validators) are represented
+    // as Tools programmes with an empty bindings map and must not require a port.
+    if let brassclaw_engine::executor::retained_recipe::RetainedProgram::Tools(tool_program) =
+        program
+        && !tool_program.bindings().is_empty()
+        && selected.tools.is_none()
     {
         return Err(failure("recipe_composition_failed"));
     }

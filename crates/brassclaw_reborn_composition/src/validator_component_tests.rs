@@ -6,7 +6,10 @@ use brassclaw_monty_host::{
 };
 use brassclaw_skills::{
     component_revision::REVISION_LIMITS,
-    validator_components::{AGGREGATE_SOURCE, COLLECT_SOURCE, aggregate_draft, collect_draft},
+    validator_components::{
+        AGGREGATE_SOURCE, COLLECT_SOURCE, aggregate_draft, collect_draft,
+        structural_validator_receipt_id,
+    },
     value_contract::{InputContract, ValueContract},
 };
 use serde_json::{Value, json};
@@ -321,7 +324,98 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
     };
     use brassclaw_skills::component_revision::{ComponentRevisionDraft, RetainedComponentSnapshot};
     let (root, rule_id) = (Uuid::new_v4(), Uuid::new_v4());
+    let receipt_id = structural_validator_receipt_id(22);
     let aggregate = aggregate_draft(Uuid::new_v4()).unwrap();
+    // Receipt encoder draft: pure-logic, takes rule/collect/aggregate results, returns string.
+    // Build piece-by-piece to stay within the json! macro recursion limit.
+    let receipt_encoder_body = concat!(
+        "def encode_structural_receipt(inputs):\n",
+        "    import json as _json\n",
+        "    _receipt = _json.dumps({\n",
+        "        \"format\": \"validator-structural-receipt/1\",\n",
+        "        \"results\": {\n",
+        "            \"0:1\": inputs[\"rule_result\"],\n",
+        "            \"0:2\": inputs[\"collect_result\"],\n",
+        "            \"0:3\": inputs[\"aggregate\"],\n",
+        "        }\n",
+        "    })\n",
+        "    return _receipt\n",
+    );
+    // nonempty_str: used as list items (Position::Value) — no "required" field needed.
+    let nonempty_str = json!({"type":"string","checks":[{"kind":"min_length","value":1}]});
+    // rule_contract_fields: used as object fields (Position::Field) — each has "required".
+    let rule_contract_fields = {
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "rule_id".into(),
+            json!({"type":"string","required":true,"checks":[{"kind":"min_length","value":1}]}),
+        );
+        fields.insert(
+            "ok".into(),
+            json!({"type":"boolean","required":true,"checks":[]}),
+        );
+        fields.insert(
+            "errors".into(),
+            json!({"type":"list","required":true,"checks":[],"items":nonempty_str.clone()}),
+        );
+        Value::Object(fields)
+    };
+    // rule_contract_value: used as list items (Position::Value) — no "required" at top level.
+    let rule_contract_value = json!({"type":"object","checks":[],"allow_extra_fields":false,"fields":rule_contract_fields.clone()});
+    // rule_result input field: Position::Input — needs "required": true at top level.
+    let rule_result_input = json!({"type":"object","required":true,"checks":[],"allow_extra_fields":false,"fields":rule_contract_fields.clone()});
+    let collect_contract =
+        json!({"type":"list","required":true,"checks":[],"items":rule_contract_value});
+    let aggregate_error_item = {
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "rule_id".into(),
+            json!({"type":"string","required":true,"checks":[{"kind":"min_length","value":1}]}),
+        );
+        fields.insert(
+            "errors".into(),
+            json!({"type":"list","required":true,"checks":[],"items":nonempty_str.clone()}),
+        );
+        json!({"type":"object","checks":[],"allow_extra_fields":false,"fields":fields})
+    };
+    let aggregate_fields = {
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "pass".into(),
+            json!({"type":"boolean","required":true,"checks":[]}),
+        );
+        fields.insert(
+            "errors".into(),
+            json!({"type":"list","required":true,"checks":[],"items":aggregate_error_item}),
+        );
+        Value::Object(fields)
+    };
+    // aggregate input field: Position::Input — needs "required": true at top level.
+    let aggregate_input = json!({"type":"object","required":true,"checks":[],"allow_extra_fields":false,"fields":aggregate_fields});
+    let receipt_input_contract = {
+        let mut m = serde_json::Map::new();
+        m.insert("rule_result".into(), rule_result_input);
+        m.insert("collect_result".into(), collect_contract);
+        m.insert("aggregate".into(), aggregate_input);
+        Value::Object(m)
+    };
+    let receipt_draft = brassclaw_skills::component_revision::ComponentRevisionDraft::from_json(
+        &json!({
+            "format":"component-revision/1","uuid":receipt_id,"class_code":22,
+            "document":{
+                "name":"encode-structural-receipt-class-22",
+                "description":"Encode structural validator step results into receipt JSON string.",
+                "content":receipt_encoder_body,"includes":[],"dependency_registry":null,
+                "input_contract": receipt_input_contract,
+                "result_contract":{"type":"string"},
+                "preload":{"format":"python-preload/2","exports":{
+                    "encode_structural_receipt":{"symbol":"encode_structural_receipt","parameters":["inputs"],"mapping":true}
+                },"private_functions":{},"constants":[],"imports":["json"],"dependencies":[],"default_export":"encode_structural_receipt"}
+            },"dependencies":[],"association":null
+        })
+        .to_string(),
+    )
+    .unwrap();
     let rule=ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":rule_id,"class_code":22,
         "document":{"content":"def inspect_identity(inputs):\n    if inputs['subject'] == 'large diagnostics':\n        return {'rule_id': 'identity', 'ok': False, 'errors': ['observed diagnostic'] * 300000}\n    return {'rule_id': 'identity', 'ok': inputs['subject'] != '', 'errors': [] if inputs['subject'] != '' else ['subject missing']}",
             "input_contract":{"subject":{"type":"string","required":true,"checks":[]}},
@@ -343,21 +437,26 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
     // This is only a preparation fixture, not a complete identity rule/validator
     // or fabricated successful execution/approval observation.
     let base = json!({"validates_class_code":22,"consumer_tags":["05:validator"],
-    "validator_coverage":{"format":"validator-coverage/1","rules":[{"rule_id":"identity","step_id":"0:1"}],"aggregate_step":"0:3"},
+    "validator_coverage":{"format":"validator-coverage/1","rules":[{"rule_id":"identity","step_id":"0:1"}],"aggregate_step":"0:3","receipt_step":"0:4"},
     "variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":[],"variable_patterns":[]}],
     "step_descriptions":[{"desc_idx":0,"label":"coverage preparation","yaml_source":"","steps":[
         {"stepnumber":1,"knowledge":"orchestrator","goal":"Observe rule","content":"","type":"component","include":[rule_id]},
         {"stepnumber":2,"knowledge":"orchestrator","goal":"Collect rule results","content":"","type":"component","include":[collector_id]},
-        {"stepnumber":3,"knowledge":"orchestrator","goal":"Aggregate rules","content":"","type":"component","include":[aggregate.uuid()]}
+        {"stepnumber":3,"knowledge":"orchestrator","goal":"Aggregate rules","content":"","type":"component","include":[aggregate.uuid()]},
+        {"stepnumber":4,"knowledge":"orchestrator","goal":"Encode receipt","content":"","type":"component","include":[receipt_id]}
     ]}],"input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":{
         "subject_json":{"type":"string","required":true,"checks":[]}},
         "steps":{"0:1":{"subject":{"kind":"task_input","reference":"{{vars.subject_json}}"}},"0:2":{"identity":{"kind":"result","step_id":"0:1","path":[]}},"0:3":{
             "checks":{"kind":"result","step_id":"0:2","path":[]},"required_rule_ids":{"kind":"constant","value":["identity"]}
+        },"0:4":{
+            "rule_result":{"kind":"result","step_id":"0:1","path":[]},
+            "collect_result":{"kind":"result","step_id":"0:2","path":[]},
+            "aggregate":{"kind":"result","step_id":"0:3","path":[]}
         }}}}});
     let prepare_with_collector = |document: Value, collector: &ComponentRevisionDraft| {
         let recipe = ComponentRevisionDraft::from_json(
             &json!({"format":"component-revision/1","uuid":root,"class_code":21,
-            "document":document,"dependencies":[rule_id,collector_id,aggregate.uuid()],"association":null})
+            "document":document,"dependencies":[rule_id,collector_id,aggregate.uuid(),receipt_id],"association":null})
             .to_string(),
         )
         .unwrap();
@@ -369,6 +468,7 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
                     rule.clone().at_version(1).unwrap(),
                     aggregate.clone().at_version(1).unwrap(),
                     collector.clone().at_version(1).unwrap(),
+                    receipt_draft.clone().at_version(1).unwrap(),
                 ],
             )
             .unwrap(),
@@ -387,6 +487,7 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
         &BTreeMap::from([("identity".into(), "0:1".into())])
     );
     assert_eq!(coverage.aggregate_step(), "0:3");
+    assert_eq!(coverage.receipt_step(), "0:4");
     RetainedValidatorCoverage::validate_catalogue([program.inputs()]).unwrap();
     assert_eq!(
         RetainedValidatorCoverage::validate_catalogue([program.inputs(), program.inputs()]).err(),
@@ -557,6 +658,14 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
             "0:3",
             json!({"required_rule_ids":["identity"],"checks":[{"rule_id":"identity","ok":true,"errors":[]}]}),
         ),
+        (
+            "0:4",
+            json!({
+                "rule_result":{"rule_id":"identity","ok":true,"errors":[]},
+                "collect_result":[{"rule_id":"identity","ok":true,"errors":[]}],
+                "aggregate":{"pass":true,"errors":[]}
+            }),
+        ),
     ] {
         let value = execution
             .run_step(&transport, step, &inputs, None)
@@ -617,7 +726,7 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
     let mut large_results: BTreeMap<String, Value> = BTreeMap::new();
     let mut later_bounds = admitted_bounds;
     later_bounds.max_value_nodes = 600_000;
-    for step in ["0:1", "0:2", "0:3"] {
+    for step in ["0:1", "0:2", "0:3", "0:4"] {
         if step == "0:2" {
             let updated = observation_exchange(
                 &transport,
@@ -647,6 +756,11 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
             "0:1" => json!({"subject":"large diagnostics"}),
             "0:2" => json!({"identity":large_results["0:1"]}),
             "0:3" => json!({"required_rule_ids":["identity"],"checks":large_results["0:2"]}),
+            "0:4" => json!({
+                "rule_result": large_results["0:1"],
+                "collect_result": large_results["0:2"],
+                "aggregate": large_results["0:3"]
+            }),
             _ => unreachable!(),
         };
         let value = large_execution
@@ -897,9 +1011,23 @@ async fn retained_validator_coverage_requires_private_exact_steps_and_pinned_rul
             )
             .await
             .unwrap();
+        let receipt = execution
+            .run_step(
+                transport,
+                "0:4",
+                &json!({
+                    "rule_result": rule,
+                    "collect_result": collection,
+                    "aggregate": aggregation
+                }),
+                None,
+            )
+            .await
+            .unwrap();
         results.insert("0:1".into(), rule);
         results.insert("0:2".into(), collection);
         results.insert("0:3".into(), aggregation);
+        results.insert("0:4".into(), receipt);
         (execution, results)
     }
     let (subject_execution, subject_results) = execute_subject(

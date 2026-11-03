@@ -411,7 +411,12 @@ async fn prepare_admission(
         PgMontyAdmission::prepare(pool, &context, attempt, Some(&original_source))
             .map_err(invalid)?,
     );
-    admission.persist_reservation().await.map_err(invalid)?;
+    // ValidatorInternal delegates persist_reservation to OwnedGlobalTaskFactory::build
+    // (via GlobalMontyDriver::drive_admitted → ports.build) to avoid a double-insert
+    // on brassclaw_monty_task_admissions. All other modes persist here.
+    if !matches!(mode, AdmissionMode::ValidatorInternal) {
+        admission.persist_reservation().await.map_err(invalid)?;
+    }
     if matches!(mode, AdmissionMode::Contained) {
         admission.check_and_start().await.map_err(invalid)?;
     }

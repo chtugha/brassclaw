@@ -3114,7 +3114,8 @@ pub async fn build_reborn_runtime(
             )
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
-            })?,
+            })?
+            .with_admission_pool(pool.clone()),
         );
         #[cfg(test)]
         {

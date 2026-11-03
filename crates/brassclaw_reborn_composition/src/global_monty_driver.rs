@@ -10,6 +10,8 @@ use std::{
     time::Duration,
 };
 
+use brassclaw_pg::PgPool;
+
 use crate::monty_attempt_retention::{AttemptRetentionLease, AttemptRetentionRegistry};
 use async_trait::async_trait;
 use brassclaw_monty_host::service::{
@@ -130,6 +132,10 @@ struct Settlement {
 pub(crate) struct GlobalMontyDriver {
     service: ServiceClient,
     threads: Arc<dyn SessionThreadService>,
+    /// When set, `drive_admitted` uses this pool to build a per-tenant
+    /// `PgSessionThreadService` for `trusted_internal_turn` tasks whose
+    /// scope tenant differs from `self.threads` (e.g. "bootstrap-validation").
+    admission_pool: Option<Arc<PgPool>>,
     ports: Arc<dyn GlobalTaskPortsFactory>,
     attempts: Mutex<HashMap<MontyTaskAttempt, Arc<Attempt>>>,
     retention: Arc<AttemptRetentionRegistry>,
@@ -260,10 +266,19 @@ impl GlobalMontyDriver {
         Ok(Self {
             service,
             threads,
+            admission_pool: None,
             ports,
             attempts: Mutex::new(HashMap::new()),
             retention,
         })
+    }
+
+    /// Attach a pool so that `drive_admitted` can resolve trusted-internal
+    /// turn threads (e.g. the "bootstrap-validation" namespace) independently
+    /// of the primary `threads` service tenant. No-op if already set.
+    pub(crate) fn with_admission_pool(mut self, pool: Arc<PgPool>) -> Self {
+        self.admission_pool = Some(pool);
+        self
     }
 
     fn register(&self, host: Arc<MontyTaskHost>) -> Result<Arc<Attempt>, AgentLoopDriverError> {
@@ -579,8 +594,28 @@ impl GlobalMontyDriver {
         let entry = self.register(host.clone())?;
         let guard = DriveGuard(entry.clone());
         let context = host.run_context();
+        // For trusted-internal turns (e.g. validator reviews), the thread was
+        // created under a different tenant (bootstrap-validation namespace) by
+        // bootstrap_validation::prepare_admission. Use a per-tenant service
+        // built from the admission pool when the scope tenant differs from the
+        // primary threads service tenant.
+        let alt_threads: Option<brassclaw_threads::PgSessionThreadService> =
+            if context.trusted_internal_turn {
+                self.admission_pool.as_ref().map(|pool| {
+                    brassclaw_threads::PgSessionThreadService::new(
+                        Arc::clone(pool),
+                        context.scope.tenant_id.as_str().to_owned(),
+                    )
+                })
+            } else {
+                None
+            };
+        let threads: &dyn brassclaw_threads::SessionThreadService = alt_threads
+            .as_ref()
+            .map(|s| s as &dyn brassclaw_threads::SessionThreadService)
+            .unwrap_or_else(|| self.threads.as_ref());
         let input = match crate::monty_task_input::load_monty_task_input(
-            self.threads.as_ref(),
+            threads,
             &context.scope,
             context.accepted_message_ref.as_ref(),
             context.turn_id,

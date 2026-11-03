@@ -277,24 +277,24 @@ impl InternalRecipeSource for ReviewAdmissionSource {
             .get("results")
             .and_then(Value::as_object)
             .ok_or_else(|| failure("validator_receipt_results_missing"))?;
-        let results: BTreeMap<String, Value> = results_value
+        let mut results: BTreeMap<String, Value> = results_value
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
 
-        // Step 3: verify the aggregate-step fingerprint.
+        // Step 3: verify the receipt-step fingerprint.
         //
-        // The Python orchestrator returns the receipt as a string value at the
-        // aggregate step. The executor records its SHA-256 fingerprint (as
-        // typed-value-sha256/1 of Value::String(receipt)) in the observation.
-        // Verifying this before any writes proves the receipt came from the actual
-        // Monty execution rather than being supplied externally. A spoofed or
-        // truncated receipt string would produce a different checksum and is
-        // rejected here, before observe_subject runs.
-        let aggregate_step = self.coverage.aggregate_step();
+        // The Python orchestrator returns the receipt JSON string as the result
+        // of the receipt encoder step (the final recipe step). The executor
+        // records its SHA-256 fingerprint (typed-value-sha256/1 of
+        // Value::String(receipt)) in the step observation. Verifying this before
+        // any writes proves the receipt came from the actual Monty execution.
+        // A spoofed or truncated receipt string produces a different checksum
+        // and is rejected here, before observe_subject runs.
+        let receipt_step = self.coverage.receipt_step();
         let proof = execution
             .observations()
-            .get(aggregate_step)
+            .get(receipt_step)
             .ok_or_else(|| failure("validator_receipt_aggregate_observation_missing"))?;
         // The receipt string is what Python returned — it is typed as
         // Value::String, so json!(receipt) wraps it correctly.
@@ -304,6 +304,9 @@ impl InternalRecipeSource for ReviewAdmissionSource {
         if proof.result_checksum() != Some(expected_checksum) {
             return Err(failure("validator_receipt_fingerprint_mismatch"));
         }
+        // Add the receipt encoder step's own result (the receipt string) so that
+        // observe_subject can verify its fingerprint alongside the other steps.
+        results.insert(receipt_step.to_owned(), serde_json::json!(receipt));
 
         // Step 4: produce sealed subject-bound observations. This verifies per-step
         // input and result fingerprints for every step using the stored coverage
