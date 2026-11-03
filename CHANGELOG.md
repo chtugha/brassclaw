@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Modal Apple Silicon cross-build**: Add a pinned Linux/amd64 compiler image
+  and verified source synchronization for `aarch64-apple-darwin` builds, with
+  retained caches, build receipts and explicit activation controls. Build pgvector
+  using checksum-bound target PostgreSQL metadata and real cross-compilers;
+  reject empty cross-build extension placeholders. Qualify the default-feature
+  Reborn CLI through a successful Modal build and native macOS CLI/pgvector checks.
+
 - **`docs/capabilities/` — complete correctness audit and rewrite against v3 ground truth**:
   Audited all 14 files in `docs/capabilities/` against the four ground-truth guides
   (`recipe.md`, `skills.md`, `tools.md`, `toolskills.md`) and confirmed codebase state.

@@ -55,6 +55,7 @@ fn needs_pgvector_compile(target: &str) -> bool {
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=pg_config-aarch64-apple-darwin.txt");
     println!("cargo:rerun-if-changed=Cargo.toml");
     println!("cargo:rerun-if-changed=src/checksums.rs");
 
@@ -112,6 +113,10 @@ fn main() {
             || pgvector_archive.metadata().map(|m| m.len()).unwrap_or(0) < 1024
         {
             if !try_build_pgvector(&out_dir, &pg_archive, &pgvector_archive, &target) {
+                assert!(
+                    !cross_apple_build(&target),
+                    "Required cross-compiled pgvector failed; refusing an empty extension"
+                );
                 // Build failed (e.g. missing SDK on macOS dev machine). Write
                 // an empty placeholder so `include_bytes!` compiles; pgvector
                 // will not be embedded and `install_pgvector` will emit a
@@ -210,6 +215,12 @@ fn try_build_pgvector(
         eprintln!("build.rs: downloading pgvector {PGVECTOR_VERSION} source");
         download_with_curl(PGVECTOR_URL, &pgvector_src_archive);
     }
+    assert!(
+        verify_sha256(&pgvector_src_archive, target, |_| Some(
+            "867a2c328d4928a5a9d6f052cd3bc78c7d60228a9b914ad32aa3db88e9de27b0"
+        )),
+        "SHA-256 mismatch for pgvector source"
+    );
     // Extract.
     let pgvector_src = build_dir.join(format!("pgvector-{PGVECTOR_VERSION}"));
     if !pgvector_src.exists()
@@ -236,7 +247,11 @@ fn try_build_pgvector(
     //     appended by pgxs, belt-and-suspenders against future stale tokens.
     // Compiling an extension against headers only does not need the full PG
     // server sysroot on the same OS family.
-    let pg_config = pg_install.join("bin").join("pg_config");
+    let pg_config = if cross_apple_build(target) {
+        cross_pg_config(&pg_install, target)
+    } else {
+        pg_install.join("bin").join("pg_config")
+    };
     let pg_config_str = pg_config.display().to_string();
 
     // Probe pg_config --cflags to detect a stale sysroot before wasting time.
@@ -256,6 +271,7 @@ fn try_build_pgvector(
     eprintln!("build.rs: compiling pgvector with pg_config={pg_config_str}");
     eprintln!("build.rs: using sanitised CFLAGS: {sanitised_cflags}");
 
+    let make_args = cross_make_args(target);
     if !run_or_warn(
         Command::new("make")
             .args([
@@ -263,6 +279,7 @@ fn try_build_pgvector(
                 &format!("PG_CFLAGS={sanitised_cflags}"),
                 "all",
             ])
+            .args(&make_args)
             .current_dir(&pgvector_src)
             .env_remove("PROFILE"),
         "make pgvector",
@@ -284,6 +301,7 @@ fn try_build_pgvector(
                 &format!("DESTDIR={staging_str}"),
                 "install",
             ])
+            .args(&make_args)
             .current_dir(&pgvector_src)
             .env_remove("PROFILE"),
         "make install pgvector",
@@ -325,6 +343,72 @@ fn try_build_pgvector(
     pack_pgvector_files(&files, &staging, pgvector_archive, target);
     eprintln!("build.rs: pgvector built and packed successfully");
     true
+}
+
+/// Linux cannot execute a Mach-O pg_config. Use only metadata captured from
+/// the exact verified archive, checking the extracted binary identity as well.
+fn cross_apple_build(target: &str) -> bool {
+    std::env::var("HOST").is_ok_and(|host| host.contains("linux"))
+        && target.contains("apple-darwin")
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn cross_pg_config(pg_install: &Path, target: &str) -> PathBuf {
+    use sha2::Digest;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    assert_eq!(
+        target, "aarch64-apple-darwin",
+        "No qualified pg_config metadata for target"
+    );
+    let metadata = include_str!("pg_config-aarch64-apple-darwin.txt");
+    let archive_sha = metadata
+        .lines()
+        .find_map(|line| line.strip_prefix("# archive-sha256: "))
+        .expect("archive identity");
+    assert_eq!(Some(archive_sha), expected_pg_sha256(target));
+    let binary_sha = metadata
+        .lines()
+        .find_map(|line| line.strip_prefix("# pg_config-sha256: "))
+        .expect("pg_config identity");
+    let binary = std::fs::read(pg_install.join("bin/pg_config")).expect("read target pg_config");
+    assert_eq!(hex::encode(sha2::Sha256::digest(binary)), binary_sha);
+    let root = pg_install.to_str().expect("UTF-8 PG installation path");
+    let mut script = String::from("#!/bin/sh\nset -eu\nfor arg in \"$@\"; do\ncase \"$arg\" in\n");
+    for line in metadata.lines().filter(|line| !line.starts_with('#')) {
+        let (key, value) = line.split_once(" = ").expect("captured pg_config record");
+        let option = key.to_ascii_lowercase();
+        let relocated = value.replace("@PGROOT@", root);
+        script.push_str(&format!(
+            "--{option}) printf '%s\\n' {} ;;\n",
+            shell_quote(&relocated)
+        ));
+    }
+    script.push_str("*) echo \"Unsupported pg_config option: $arg\" >&2; exit 1 ;;\nesac\ndone\n");
+    let path = pg_install.join("bin/pg_config-host");
+    std::fs::write(&path, script).expect("write host pg_config reader");
+    #[cfg(unix)]
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+        .expect("chmod pg_config reader");
+    path
+}
+
+fn cross_make_args(target: &str) -> Vec<String> {
+    if !cross_apple_build(target) {
+        return Vec::new();
+    }
+    let suffix = target.replace('-', "_");
+    let mut args = vec!["OPTFLAGS=".to_string()];
+    for name in ["CC", "CXX", "AR", "RANLIB"] {
+        let value = std::env::var(format!("{name}_{suffix}"))
+            .unwrap_or_else(|_| panic!("Cross pgvector requires {name}_{suffix}"));
+        args.push(format!("{name}={value}"));
+    }
+    args
 }
 
 /// Sanitise the pre-built PostgreSQL `Makefile.global` so pgvector compiles

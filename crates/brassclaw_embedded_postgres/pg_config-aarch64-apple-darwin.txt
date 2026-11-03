@@ -1,0 +1,26 @@
+# PostgreSQL 16.4.0 aarch64-apple-darwin; captured natively from checksum-verified archive.
+# archive-sha256: 0ec91e77eff381e43e3963f012aff3acb9de12ad3739a625e57cce9671b28b0f
+# pg_config-sha256: dfc52b7ac104c5b5d37c365179a2c264097b7fb14321c3c9cf687dd22667b2f9
+BINDIR = @PGROOT@/bin
+DOCDIR = @PGROOT@/share/doc
+HTMLDIR = @PGROOT@/share/doc
+INCLUDEDIR = @PGROOT@/include
+PKGINCLUDEDIR = @PGROOT@/include
+INCLUDEDIR-SERVER = @PGROOT@/include/server
+LIBDIR = @PGROOT@/lib
+PKGLIBDIR = @PGROOT@/lib
+LOCALEDIR = @PGROOT@/share/locale
+MANDIR = @PGROOT@/share/man
+SHAREDIR = @PGROOT@/share
+SYSCONFDIR = @PGROOT@/etc
+PGXS = @PGROOT@/lib/pgxs/src/makefiles/pgxs.mk
+CONFIGURE =  '--prefix' '/Users/runner/work/postgresql-binaries/postgresql-binaries/postgresql-16.4.0-aarch64-apple-darwin' '--enable-integer-datetimes' '--enable-option-checking=fatal' '--enable-thread-safety' '--without-icu' '--without-ldap' '--with-libxml' '--with-libxslt' '--with-pgport=5432' '--with-readline' '--with-system-tzdata=/usr/share/zoneinfo' '--with-uuid=e2fs' 'LDFLAGS=-L/Users/runner/brew/opt/icu4c/lib' 'CPPFLAGS=-I/Users/runner/brew/opt/icu4c/include' 'LLVM_CONFIG=/Users/runner/brew/opt/llvm/bin/llvm-config'
+CC = gcc
+CPPFLAGS = -isysroot /Applications/Xcode_15.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk -I/Users/runner/brew/opt/icu4c/include
+CFLAGS = -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Werror=unguarded-availability-new -Wendif-labels -Wmissing-format-attribute -Wcast-function-type -Wformat-security -fno-strict-aliasing -fwrapv -Wno-unused-command-line-argument -Wno-compound-token-split-by-macro -O2
+CFLAGS_SL = 
+LDFLAGS = -isysroot /Applications/Xcode_15.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk -L/Users/runner/brew/opt/icu4c/lib -Wl,-dead_strip_dylibs
+LDFLAGS_EX = 
+LDFLAGS_SL = 
+LIBS = -lpgcommon -lpgport -lxslt -lxml2 -lz -lreadline -lm 
+VERSION = PostgreSQL 16.4
