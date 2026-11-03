@@ -1,11 +1,5 @@
 //! Native device originals inside the existing PostgreSQL AuthFlow/SecretStore
 //! owner. No database transaction spans issuer I/O. No File/ENV/session map.
-//
-// This file contains the complete native device login implementation that will
-// be wired to Root's publisher once the credential head/account flow is
-// connected.  All pub(crate) items are used by that future caller; suppress
-// dead-code lints until the wiring is complete.
-#![allow(dead_code)]
 use super::*;
 use crate::auth_flow_custody::StoredAuthFlow;
 use brassclaw_auth::Timestamp;

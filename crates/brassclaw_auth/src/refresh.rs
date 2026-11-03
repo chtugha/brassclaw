@@ -58,6 +58,7 @@ impl CredentialRefreshOriginal {
 pub enum CredentialRefreshStopReason {
     MissingRefreshCredential,
     SnapshotChanged,
+    HostPreparationFailed,
 }
 
 /// A failed/malformed HTTP reply never establishes that no issuer effect occurred.
@@ -270,8 +271,15 @@ impl CredentialRefreshAction {
             CredentialRefreshOutcome::Returned(_) => (CredentialRefreshOutcomeKind::Returned, None),
             CredentialRefreshOutcome::NotSubmitted(reason) => (
                 CredentialRefreshOutcomeKind::NotSubmitted,
-                (*reason == CredentialRefreshStopReason::MissingRefreshCredential)
-                    .then_some(AuthErrorCode::CredentialMissing),
+                match reason {
+                    CredentialRefreshStopReason::MissingRefreshCredential => {
+                        Some(AuthErrorCode::CredentialMissing)
+                    }
+                    CredentialRefreshStopReason::HostPreparationFailed => {
+                        Some(AuthErrorCode::BackendUnavailable)
+                    }
+                    CredentialRefreshStopReason::SnapshotChanged => None,
+                },
             ),
         };
         Ok(CredentialRefreshReceipt {
@@ -446,6 +454,11 @@ impl CredentialRefreshAction {
                 }
             }
             outcome @ CredentialRefreshOutcome::Unknown(_) => outcome,
+            // Only the trusted host can establish that its completed preflight
+            // never installed request custody and therefore permitted no send.
+            outcome @ CredentialRefreshOutcome::NotSubmitted(
+                CredentialRefreshStopReason::HostPreparationFailed,
+            ) => outcome,
             _ => return Err(AuthProductError::BackendConflict),
         };
         if !matches!(self.outcome, CredentialRefreshOutcome::Submitted) {
@@ -484,6 +497,13 @@ impl CredentialRefreshAction {
             return Ok(());
         }
         match &self.outcome {
+            CredentialRefreshOutcome::NotSubmitted(
+                CredentialRefreshStopReason::HostPreparationFailed,
+            ) => {
+                self.publication = CredentialRefreshPublication::Applied;
+                self.published_account = Some(current.clone());
+                return Ok(());
+            }
             CredentialRefreshOutcome::Returned(result) => {
                 current.status = CredentialAccountStatus::Configured;
                 current.access_secret = Some(result.access_secret.clone());

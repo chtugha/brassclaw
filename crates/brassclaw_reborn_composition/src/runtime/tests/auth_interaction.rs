@@ -127,6 +127,38 @@ async fn pg_factory_explicit_tenant_reuses_native_auth_owner() {
         .expect("explicit-tenant factory attaches native owner");
     let original: Arc<dyn brassclaw_auth::AuthFlowManager> = native;
     assert!(Arc::ptr_eq(&auth.flow_manager(), &original));
+    let injected = crate::build_reborn_services(
+        rig.build_input("auth-explicit-tenant", root.path())
+            .with_tenant_id("auth-explicit-tenant")
+            .with_runtime_policy(local_dev_runtime_policy())
+            .with_runtime_process_binding(RebornRuntimeProcessBinding::None)
+            .with_product_auth_ports(RebornProductAuthServicePorts::from_composed(auth.clone())),
+    )
+    .await
+    .unwrap();
+    let retained = injected.product_auth.as_ref().unwrap();
+    let native: Arc<dyn brassclaw_auth::AuthFlowManager> = retained.native_codex_owner().unwrap();
+    assert!(Arc::ptr_eq(&original, &native));
+    assert!(Arc::ptr_eq(&auth.flow_manager(), &retained.flow_manager()));
+}
+
+#[cfg(feature = "root-llm-provider")]
+#[tokio::test]
+async fn pg_factory_default_tenant_attaches_native_auth_after_custody_migration() {
+    let root = tempfile::tempdir().unwrap();
+    let rig = super::test_pg::pg_rig().await;
+    let services = crate::build_reborn_services(
+        rig.build_input("auth-default-tenant", root.path())
+            .with_runtime_policy(local_dev_runtime_policy())
+            .with_runtime_process_binding(RebornRuntimeProcessBinding::None),
+    )
+    .await
+    .unwrap();
+    let auth = services.product_auth.as_ref().unwrap();
+    let native = auth.native_codex_owner().unwrap();
+    let original: Arc<dyn brassclaw_auth::AuthFlowManager> = native;
+    assert!(Arc::ptr_eq(&auth.flow_manager(), &original));
+    assert!(rig.pool.get().await.unwrap().query_opt("SELECT source_checksum FROM brassclaw_product_auth_filesystem_cutovers WHERE tenant_id=$1",&[&"reborn-cli"]).await.unwrap().is_some());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

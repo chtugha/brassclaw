@@ -107,7 +107,6 @@ impl PgAuthProductServices {
     /// action -> encrypted-head lock order and COMMIT before actual issuer I/O.
     /// Caller labels, this metadata or a returned Dispatch are not permission
     /// before that winning acknowledged commit. No HTTP occurs in this helper.
-    #[allow(dead_code)] // PRIVATE036: used by the native host refresh caller once login/publication wiring lands.
     pub(crate) async fn begin_host_instance_refresh_in_transaction(
         &self,
         transaction: &tokio_postgres::Transaction<'_>,
@@ -196,9 +195,21 @@ impl PgAuthProductServices {
         &self,
         completion: CredentialRefreshCompletion,
     ) -> Result<CredentialRefreshAction, AuthProductError> {
-        let (tenant, scope_ref, id) = key(&completion.dispatched.original)?;
         let mut client = self.pool.get().await.map_err(pool_err)?;
         let transaction = client.transaction().await.map_err(db_err)?;
+        let action = self
+            .record_refresh_result_in_transaction(&transaction, completion)
+            .await?;
+        transaction.commit().await.map_err(db_err)?;
+        Ok(action)
+    }
+
+    pub(super) async fn record_refresh_result_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        completion: CredentialRefreshCompletion,
+    ) -> Result<CredentialRefreshAction, AuthProductError> {
+        let (tenant, scope_ref, id) = key(&completion.dispatched.original)?;
         let row=transaction.query_opt(
             "SELECT data,revision FROM brassclaw_product_auth_refreshes WHERE tenant_id=$1 AND scope_ref=$2 AND id=$3 FOR UPDATE",
             &[&tenant,&scope_ref,&id],
@@ -208,7 +219,6 @@ impl PgAuthProductServices {
         let before = action.clone();
         action.record_result(completion, Utc::now())?;
         if before == action {
-            transaction.rollback().await.map_err(db_err)?;
             return Ok(action);
         }
         let json =
@@ -220,8 +230,6 @@ impl PgAuthProductServices {
         if rows != 1 {
             return Err(AuthProductError::BackendConflict);
         }
-        // The exact response survives a later failed account publication.
-        transaction.commit().await.map_err(db_err)?;
         Ok(action)
     }
     pub(super) async fn reconcile_refresh_action(

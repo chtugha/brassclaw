@@ -1,0 +1,589 @@
+//! One-time installation migration from the actual PostgreSQL filesystem owner.
+//! Source records stay immutable and readable. No account/flow IDs, secret
+//! handles, original requests, timestamps or historical bytes are regenerated.
+use super::*;
+use crate::product_auth_durable::paths;
+use brassclaw_auth::{CredentialRefreshAction, CredentialRefreshId};
+use brassclaw_host_api::ScopedPath;
+use std::collections::BTreeMap;
+
+fn conflict() -> AuthProductError {
+    AuthProductError::BackendConflict
+}
+fn value<T: DeserializeOwned>(data: &serde_json::Value) -> Result<T, AuthProductError> {
+    serde_json::from_value(data.clone()).map_err(|_| conflict())
+}
+fn canonical(
+    scope: &AuthProductScope,
+    path: &ScopedPath,
+    stored: &str,
+    tenant: &str,
+) -> Result<(), AuthProductError> {
+    if scope.resource.tenant_id.as_str() != tenant
+        || crate::invocation_mount_view(&scope.resource)
+            .map_err(|_| conflict())?
+            .resolve(path)
+            .map_err(|_| conflict())?
+            .as_str()
+            != stored
+    {
+        return Err(conflict());
+    }
+    Ok(())
+}
+async fn import_record(
+    tx: &tokio_postgres::Transaction<'_>,
+    table: &str,
+    scope: &AuthProductScope,
+    id: &str,
+    data: &serde_json::Value,
+) -> Result<(), AuthProductError> {
+    // Only this module's constant table names reach this query. Existing native
+    // rows must agree exactly; migration never overwrites a newer native subject.
+    let query = format!(
+        "INSERT INTO {table} (tenant_id,user_id,id,data) VALUES ($1,$2,$3,$4) ON CONFLICT (tenant_id,id) DO NOTHING"
+    );
+    tx.execute(
+        &query,
+        &[
+            &scope.resource.tenant_id.as_str(),
+            &scope.resource.user_id.as_str(),
+            &id,
+            &data,
+        ],
+    )
+    .await
+    .map_err(db_err)?;
+    let query = format!("SELECT data FROM {table} WHERE tenant_id=$1 AND id=$2");
+    let row = tx
+        .query_one(&query, &[&scope.resource.tenant_id.as_str(), &id])
+        .await
+        .map_err(db_err)?;
+    if row.get::<_, serde_json::Value>(0) != *data {
+        return Err(conflict());
+    }
+    Ok(())
+}
+
+impl PgAuthProductServices {
+    /// Before exposing the default-tenant native Auth owner. The table lock also
+    /// fences old filesystem processes: their queued writes resume behind the
+    /// installed trigger and fail, rather than publishing into an abandoned store.
+    pub(crate) async fn migrate_filesystem_auth(
+        &self,
+        tenant: &str,
+    ) -> Result<(), AuthProductError> {
+        let mut client = self.pool.get().await.map_err(pool_err)?;
+        let tx = client.transaction().await.map_err(db_err)?;
+        tx.batch_execute("LOCK TABLE root_filesystem_entries IN SHARE ROW EXCLUSIVE MODE")
+            .await
+            .map_err(db_err)?;
+        tx.batch_execute("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='root_filesystem_entries'::regclass AND tgname='brassclaw_retained_auth_custody') THEN CREATE TRIGGER brassclaw_retained_auth_custody BEFORE INSERT OR UPDATE OR DELETE ON root_filesystem_entries FOR EACH ROW EXECUTE FUNCTION brassclaw_fence_retained_auth_filesystem(); END IF; END $$").await.map_err(db_err)?;
+        if tx.query_opt("SELECT source_checksum FROM brassclaw_product_auth_filesystem_cutovers WHERE tenant_id=$1",&[&tenant]).await.map_err(db_err)?.is_some() {
+            tx.commit().await.map_err(db_err)?; return Ok(());
+        }
+        // Identity comes from validated typed scope plus its actual mount
+        // resolution below, not merely a filename or caller-supplied tenant.
+        let rows=tx.query("SELECT path,contents,version FROM root_filesystem_entries WHERE NOT is_dir AND split_part(path,'/',3)=$1 AND path LIKE '/tenants/%/users/%/secrets/%/product-auth/%' ORDER BY path",&[&tenant]).await.map_err(db_err)?;
+        let mut source = sha2::Sha256::new();
+        use sha2::Digest as _;
+        let mut accounts: BTreeMap<
+            CredentialAccountId,
+            (
+                CredentialAccount,
+                BTreeMap<CredentialRefreshId, CredentialRefreshAction>,
+            ),
+        > = BTreeMap::new();
+        let mut refreshes = Vec::new();
+        let mut selections = Vec::new();
+        for row in &rows {
+            let path: String = row.get(0);
+            let bytes: Vec<u8> = row.get(1);
+            let version: i64 = row.get(2);
+            source.update((path.len() as u64).to_be_bytes());
+            source.update(path.as_bytes());
+            source.update(version.to_be_bytes());
+            source.update((bytes.len() as u64).to_be_bytes());
+            source.update(&bytes);
+            let data: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| conflict())?;
+            let parent = path.rsplit('/').nth(1).ok_or_else(conflict)?;
+            if !matches!(
+                parent,
+                "accounts" | "flows" | "interactions" | "requirement-selections"
+            ) && path.contains("/refresh-actions/")
+            {
+                let action: CredentialRefreshAction = value(&data)?;
+                canonical(
+                    &action.original.scope,
+                    &paths::refresh_action_path(&action.original)?,
+                    &path,
+                    tenant,
+                )?;
+                refreshes.push(action);
+            } else if parent == "accounts" {
+                let account: CredentialAccount = value(&data)?;
+                canonical(
+                    &account.scope,
+                    &paths::account_path(&account.scope, account.id),
+                    &path,
+                    tenant,
+                )?;
+                let journal: BTreeMap<CredentialRefreshId, CredentialRefreshAction> = data
+                    .get("auth_refresh_actions")
+                    .map(value)
+                    .transpose()?
+                    .unwrap_or_default();
+                if accounts
+                    .insert(account.id, (account.clone(), journal))
+                    .is_some()
+                {
+                    return Err(conflict());
+                }
+                import_record(
+                    &tx,
+                    "brassclaw_product_auth_accounts",
+                    &account.scope,
+                    &account.id.to_string(),
+                    &data,
+                )
+                .await?;
+            } else if parent == "flows" {
+                let document: crate::auth_flow_custody::StoredAuthFlow = value(&data)?;
+                canonical(
+                    &document.flow.scope,
+                    &paths::flow_path(&document.flow.scope, document.flow.id),
+                    &path,
+                    tenant,
+                )?;
+                // A CAS-only decision still awaiting its account receipt is not
+                // a native publication. Preserve everything and require original
+                // filesystem reconciliation before this installation cutover.
+                if document.fs_callback_publication.is_some()
+                    || matches!(
+                        document.flow.status,
+                        AuthFlowStatus::Completing | AuthFlowStatus::CallbackReceived
+                    )
+                    || (!is_terminal_status(document.flow.status)
+                        && document.auth_custody.dcr_registration.is_some())
+                {
+                    // A live old process can still receive an external return.
+                    // Cut over only after that original has reconciled; never
+                    // strand its late result behind the source writer fence.
+                    return Err(conflict());
+                }
+                import_record(
+                    &tx,
+                    "brassclaw_product_auth_flows",
+                    &document.flow.scope,
+                    &document.flow.id.to_string(),
+                    &data,
+                )
+                .await?;
+            } else if parent == "interactions" {
+                let interaction: StoredManualTokenInteraction = value(&data)?;
+                canonical(
+                    &interaction.scope,
+                    &paths::interaction_path(&interaction.scope, interaction.id),
+                    &path,
+                    tenant,
+                )?;
+                if data.get("publication").is_some_and(|p| !p.is_null())
+                    && interaction.consumed_at.is_none()
+                {
+                    return Err(conflict());
+                }
+                import_record(
+                    &tx,
+                    "brassclaw_product_auth_interactions",
+                    &interaction.scope,
+                    &interaction.id.to_string(),
+                    &data,
+                )
+                .await?;
+            } else if parent == "requirement-selections" {
+                let selected: brassclaw_auth::CredentialRequirementSelection = value(&data)?;
+                let scope = selected.original_scope();
+                let key = selected.key()?;
+                canonical(
+                    scope,
+                    &paths::requirement_selection_path(scope, &key),
+                    &path,
+                    tenant,
+                )?;
+                import_record(
+                    &tx,
+                    "brassclaw_product_auth_requirement_selections",
+                    scope,
+                    key.as_str(),
+                    &data,
+                )
+                .await?;
+                selections.push(selected);
+            } else {
+                return Err(conflict());
+            }
+        }
+        for selected in selections {
+            let row = tx
+                .query_opt(
+                    "SELECT data FROM brassclaw_product_auth_flows WHERE tenant_id=$1 AND id=$2",
+                    &[&tenant, &selected.original_flow().to_string()],
+                )
+                .await
+                .map_err(db_err)?
+                .ok_or_else(conflict)?;
+            let document: crate::auth_flow_custody::StoredAuthFlow = value(&row.get(0))?;
+            if document
+                .auth_custody
+                .original_requirement_selection(
+                    selected.original_scope(),
+                    selected.original_flow(),
+                    &document.flow,
+                    selected.requirement(),
+                )?
+                .as_ref()
+                != Some(&selected)
+            {
+                return Err(conflict());
+            }
+        }
+        let mut imported = std::collections::BTreeSet::new();
+        for locator in refreshes {
+            let (account, journal) = accounts
+                .get(&locator.original.account_id)
+                .ok_or_else(conflict)?;
+            let request = locator.original.request();
+            let action = crate::product_auth_durable::refresh::selected_original(
+                &request,
+                Some(locator),
+                journal.get(&request.id),
+            )?
+            .ok_or_else(conflict)?;
+            if account.scope != action.expected_account.scope {
+                return Err(conflict());
+            }
+            if matches!(
+                action.outcome,
+                brassclaw_auth::CredentialRefreshOutcome::Submitted
+            ) {
+                return Err(conflict());
+            }
+            let json = serde_json::to_value(&action).map_err(|_| conflict())?;
+            let scope_ref = action.original.scope_ref()?;
+            let id = action.original.id.to_string();
+            let refresh = action
+                .expected_account
+                .refresh_secret
+                .as_ref()
+                .map(|h| h.as_str());
+            let blocks = action
+                .expected_account
+                .refresh_secret
+                .as_ref()
+                .is_some_and(|h| action.blocks_credential(h));
+            tx.execute("INSERT INTO brassclaw_product_auth_refreshes (tenant_id,scope_ref,id,account_id,refresh_handle,blocks_refresh,data) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (tenant_id,scope_ref,id) DO NOTHING",
+                &[&tenant,&scope_ref,&id,&action.original.account_id.to_string(),&refresh,&blocks,&json]).await.map_err(db_err)?;
+            let found=tx.query_one("SELECT data FROM brassclaw_product_auth_refreshes WHERE tenant_id=$1 AND scope_ref=$2 AND id=$3",&[&tenant,&scope_ref,&id]).await.map_err(db_err)?;
+            if found.get::<_, serde_json::Value>(0) != json
+                || !imported.insert((action.original.account_id, action.original.id))
+            {
+                return Err(conflict());
+            }
+        }
+        for (id, (_, journal)) in &accounts {
+            for action in journal.keys() {
+                if !imported.contains(&(*id, *action)) {
+                    return Err(conflict());
+                }
+            }
+        }
+        let checksum = format!("{:x}", source.finalize());
+        let count = i64::try_from(rows.len()).map_err(|_| conflict())?;
+        tx.execute("INSERT INTO brassclaw_product_auth_filesystem_cutovers (tenant_id,source_checksum,source_records) VALUES ($1,$2,$3)",&[&tenant,&checksum,&count]).await.map_err(db_err)?;
+        tx.commit().await.map_err(db_err)?;
+        Ok(())
+    }
+}
+
+#[cfg(all(test, feature = "skills-db"))]
+mod tests {
+    use super::*;
+    use brassclaw_auth::{AuthContinuationRef, AuthGateRef, AuthSurface, TurnRunRef};
+    use brassclaw_filesystem::{CasExpectation, Entry, RootFilesystem};
+    use brassclaw_host_api::{InvocationId, ResourceScope, TenantId, UserId};
+
+    #[tokio::test]
+    async fn native_default_auth_migration_retains_accounts_flows_interactions_and_fences_old_writers()
+     {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        run_auth_migrations(&rig.pool).await.unwrap();
+        let root = Arc::new(brassclaw_filesystem::PostgresRootFilesystem::new(
+            rig.pool.as_ref().clone(),
+        ));
+        root.run_migrations().await.unwrap();
+        let filesystem = crate::wrap_scoped(root.clone());
+        let secrets = Arc::new(
+            PgSecretStore::new(
+                rig.pool.as_ref().clone(),
+                "auth-cutover-test-key".into(),
+                "reborn-cli",
+            )
+            .unwrap(),
+        );
+        let legacy = crate::product_auth_durable::FilesystemAuthProductServices::new(
+            filesystem.clone(),
+            secrets.clone(),
+        );
+        let native = PgAuthProductServices::new(rig.pool.clone(), secrets.clone());
+        let scope = AuthProductScope::new(
+            ResourceScope {
+                tenant_id: TenantId::new("reborn-cli").unwrap(),
+                user_id: UserId::new("original-installer").unwrap(),
+                agent_id: None,
+                project_id: None,
+                thread_id: None,
+                invocation_id: InvocationId::new(),
+            },
+            AuthSurface::SetupAdmin,
+        );
+        let account = legacy
+            .create_account(NewCredentialAccount {
+                scope: scope.clone(),
+                provider: AuthProviderId::new("google").unwrap(),
+                label: CredentialAccountLabel::new("Existing reusable account").unwrap(),
+                status: CredentialAccountStatus::Configured,
+                ownership: CredentialOwnership::UserReusable,
+                owner_extension: None,
+                granted_extensions: vec![],
+                access_secret: Some(SecretHandle::new("retained-api-access").unwrap()),
+                access_expires_at: None,
+                refresh_secret: Some(SecretHandle::new("retained-refresh-input").unwrap()),
+                scopes: vec![],
+            })
+            .await
+            .unwrap();
+        let refresh = account.refresh_secret.clone().unwrap();
+        secrets
+            .put(
+                scope.resource.clone(),
+                refresh.clone(),
+                "migration-only-original-refresh".into(),
+            )
+            .await
+            .unwrap();
+        let reference = secrets
+            .record_reference(&scope.resource, &refresh)
+            .await
+            .unwrap()
+            .unwrap();
+        let request = brassclaw_auth::CredentialRefreshRequest::new(
+            scope.clone(),
+            account.provider.clone(),
+            account.id,
+        );
+        let admission = legacy
+            .begin_refresh(brassclaw_auth::CredentialRefreshPrepared {
+                original: brassclaw_auth::CredentialRefreshOriginal::from(&request),
+                expected_account: account.clone(),
+                preparation: Some(brassclaw_auth::OAuthProviderRefreshPreparation {
+                    destinations: brassclaw_auth::OAuthTokenDestinations {
+                        access_secret: SecretHandle::new("unused-migration-access-destination")
+                            .unwrap(),
+                        refresh_secret: SecretHandle::new("unused-migration-refresh-destination")
+                            .unwrap(),
+                    },
+                    source: brassclaw_auth::OAuthRefreshSource {
+                        scope: scope.resource.clone(),
+                        handle: refresh,
+                        record_reference: reference,
+                    },
+                }),
+            })
+            .await
+            .unwrap();
+        let brassclaw_auth::CredentialRefreshAdmission::Dispatch(action) = admission else {
+            panic!("original filesystem admission")
+        };
+        // A potentially live old claim must not be stranded by cutover. These
+        // are actual FS journal writes, with no provider execution or success.
+        assert!(native.migrate_filesystem_auth("reborn-cli").await.is_err());
+        assert!(
+            native
+                .read_account(&scope, account.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        // This test runner performed no transport. Retain that original stop
+        // through the real FS result/account publication, then migrate it.
+        let stopped = legacy
+            .complete_refresh(brassclaw_auth::CredentialRefreshCompletion {
+                dispatched: action,
+                outcome: brassclaw_auth::CredentialRefreshOutcome::NotSubmitted(
+                    brassclaw_auth::CredentialRefreshStopReason::HostPreparationFailed,
+                ),
+            })
+            .await
+            .unwrap();
+        let challenge = legacy
+            .request_secret_input(ManualTokenSetupRequest {
+                requirement_setup: None,
+                scope: scope.clone(),
+                provider: account.provider.clone(),
+                label: account.label.clone(),
+                continuation: AuthContinuationRef::SetupOnly,
+                update_binding: None,
+                expires_at: Utc::now() + chrono::Duration::minutes(5),
+            })
+            .await
+            .unwrap();
+        let flow = legacy
+            .create_flow(NewAuthFlow {
+                requirement_setup: None,
+                id: None,
+                scope: scope.clone(),
+                kind: brassclaw_auth::AuthFlowKind::IntegrationCredential,
+                provider: account.provider.clone(),
+                challenge: challenge.clone(),
+                continuation: AuthContinuationRef::TurnGateResume {
+                    turn_run_ref: TurnRunRef::new("original-run").unwrap(),
+                    gate_ref: AuthGateRef::new("original-gate").unwrap(),
+                },
+                update_binding: None,
+                opaque_state_hash: None,
+                pkce_verifier_hash: None,
+                expires_at: Utc::now() + chrono::Duration::minutes(5),
+            })
+            .await
+            .unwrap();
+        let account_path = paths::account_path(&scope, account.id);
+        let original = filesystem
+            .get(&scope.resource, &account_path)
+            .await
+            .unwrap()
+            .unwrap();
+        native.migrate_filesystem_auth("reborn-cli").await.unwrap();
+        assert_eq!(
+            native.read_refresh_action(&request).await.unwrap(),
+            Some(stopped)
+        );
+        assert_eq!(
+            native
+                .read_account(&scope, account.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .0,
+            account
+        );
+        assert_eq!(
+            native.read_flow(&scope, flow.id).await.unwrap().unwrap().0,
+            flow
+        );
+        let AuthChallenge::ManualTokenRequired { interaction_id, .. } = challenge else {
+            panic!("manual challenge")
+        };
+        assert!(
+            native
+                .read_interaction(&scope, interaction_id)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        let retained = filesystem
+            .get(&scope.resource, &account_path)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(retained.entry.body, original.entry.body);
+        assert_eq!(retained.version, original.version);
+        assert!(
+            filesystem
+                .put(
+                    &scope.resource,
+                    &account_path,
+                    Entry::bytes(original.entry.body),
+                    CasExpectation::Any
+                )
+                .await
+                .is_err()
+        );
+        let next = paths::account_path(&scope, CredentialAccountId::new());
+        assert!(
+            filesystem
+                .put(
+                    &scope.resource,
+                    &next,
+                    Entry::bytes(b"{}".to_vec()),
+                    CasExpectation::Absent
+                )
+                .await
+                .is_err()
+        );
+        // Restart/readback does not import archived bytes over newer native state.
+        native
+            .update_status(&scope, account.id, CredentialAccountStatus::Revoked)
+            .await
+            .unwrap();
+        native.migrate_filesystem_auth("reborn-cli").await.unwrap();
+        assert_eq!(
+            native
+                .read_account(&scope, account.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .0
+                .status,
+            CredentialAccountStatus::Revoked
+        );
+    }
+}
+
+#[cfg(all(test, feature = "skills-db"))]
+mod conflict_tests {
+    use super::*;
+    use brassclaw_filesystem::{CasExpectation, Entry, RootFilesystem};
+    use brassclaw_host_api::VirtualPath;
+    #[tokio::test]
+    async fn native_auth_migration_malformed_original_rolls_back_without_cutover_or_source_loss() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        run_auth_migrations(&rig.pool).await.unwrap();
+        let fs = brassclaw_filesystem::PostgresRootFilesystem::new(rig.pool.as_ref().clone());
+        fs.run_migrations().await.unwrap();
+        let path = VirtualPath::new(
+            "/tenants/reborn-cli/users/operator/secrets/scope/product-auth/web/flows/invalid.json",
+        )
+        .unwrap();
+        fs.put(
+            &path,
+            Entry::bytes(b"malformed original".to_vec()),
+            CasExpectation::Absent,
+        )
+        .await
+        .unwrap();
+        let auth = PgAuthProductServices::new(
+            rig.pool.clone(),
+            Arc::new(
+                PgSecretStore::new(
+                    rig.pool.as_ref().clone(),
+                    "migration-negative-key".into(),
+                    "reborn-cli",
+                )
+                .unwrap(),
+            ),
+        );
+        assert!(auth.migrate_filesystem_auth("reborn-cli").await.is_err());
+        assert_eq!(
+            fs.get(&path).await.unwrap().unwrap().entry.body,
+            b"malformed original"
+        );
+        assert!(rig.pool.get().await.unwrap().query_opt("SELECT tenant_id FROM brassclaw_product_auth_filesystem_cutovers WHERE tenant_id=$1",&[&"reborn-cli"]).await.unwrap().is_none());
+        fs.put(
+            &path,
+            Entry::bytes(b"still owned by filesystem".to_vec()),
+            CasExpectation::Any,
+        )
+        .await
+        .unwrap();
+    }
+}

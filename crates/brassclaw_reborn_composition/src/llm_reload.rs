@@ -19,8 +19,7 @@ pub(crate) struct RebornLlmReloadAdapter {
     /// Authenticated PG bridge for native Codex credential consumption.
     /// Absent for non-root runtimes and protocols that do not use Codex.
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-    codex_native_owner:
-        Option<std::sync::Arc<crate::pg_auth_product_services::PgAuthProductServices>>,
+    codex_native_owner: Option<crate::auth::native_codex::NativeCodexSessionOwner>,
 }
 
 impl RebornLlmReloadAdapter {
@@ -47,7 +46,7 @@ impl RebornLlmReloadAdapter {
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
     pub(crate) fn with_codex_native_owner(
         mut self,
-        owner: Option<std::sync::Arc<crate::pg_auth_product_services::PgAuthProductServices>>,
+        owner: Option<crate::auth::native_codex::NativeCodexSessionOwner>,
     ) -> Self {
         self.codex_native_owner = owner;
         self
@@ -80,8 +79,7 @@ struct PgPrimaryPreparation {
     tenant_id: String,
     sempai: Option<Arc<dyn brassclaw_llm::ProviderSelectionPreparer>>,
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-    codex_native_owner:
-        Option<std::sync::Arc<crate::pg_auth_product_services::PgAuthProductServices>>,
+    codex_native_owner: Option<crate::auth::native_codex::NativeCodexSessionOwner>,
 }
 
 #[async_trait]
@@ -123,9 +121,7 @@ impl LlmReloadTrigger for RebornLlmReloadAdapter {
         #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
         let codex_native_owner = self.codex_native_owner.clone();
         #[cfg(not(all(feature = "postgres", feature = "root-llm-provider")))]
-        let codex_native_owner: Option<
-            std::sync::Arc<crate::pg_auth_product_services::PgAuthProductServices>,
-        > = None;
+        let codex_native_owner: Option<crate::auth::native_codex::NativeCodexSessionOwner> = None;
         self.reload_handle
             .publish_primary_from(|| async {
                 let captured =

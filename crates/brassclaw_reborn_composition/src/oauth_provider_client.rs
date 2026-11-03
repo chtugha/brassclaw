@@ -336,7 +336,6 @@ impl HostOAuthProviderClient {
     /// Trusted composition only; never selected by a Serde field or a runtime
     /// request flag. Root must supply the SAME real host HTTP service instance.
     #[cfg(feature = "root-llm-provider")]
-    #[allow(dead_code)]
     pub(crate) fn with_original_egress(
         mut self,
         egress: Option<Arc<dyn brassclaw_host_runtime::HostHttpOriginalEgress>>,
@@ -345,7 +344,6 @@ impl HostOAuthProviderClient {
         self
     }
     #[cfg(feature = "root-llm-provider")]
-    #[allow(dead_code)]
     pub(crate) fn native_original_egress(
         &self,
     ) -> Result<Arc<dyn brassclaw_host_runtime::HostHttpOriginalEgress>, AuthProductError> {
@@ -430,7 +428,6 @@ impl HostOAuthProviderClient {
         })
     }
     #[cfg(feature = "root-llm-provider")]
-    #[allow(dead_code)]
     pub(crate) fn native_device_exchange_body(
         &self,
         client_id: &str,
@@ -449,6 +446,21 @@ impl HostOAuthProviderClient {
             code,
             verifier,
         ))
+    }
+
+    /// Native host-instance refresh uses the same OAuth protocol encoder as
+    /// scoped refresh. The caller still owns its authenticated original claim,
+    /// final request/response custody and atomic token publication.
+    #[cfg(feature = "root-llm-provider")]
+    pub(crate) fn native_refresh_body(
+        &self,
+        client_id: &str,
+        refresh_token: &str,
+    ) -> Result<Vec<u8>, AuthProductError> {
+        if self.spec.resource.is_some() {
+            return Err(AuthProductError::MalformedConfig);
+        }
+        Ok(refresh_body(&self.spec, client_id, None, refresh_token))
     }
 
     async fn execute_token_request(

@@ -57,3 +57,26 @@ impl RebornProductAuthServices {
             .await
     }
 }
+
+/// Captured internal preparation capability. Carries the original composed host
+/// ports alongside Auth; model consumers never reconstruct storage or egress.
+#[derive(Clone)]
+pub(crate) struct NativeCodexSessionOwner {
+    pub(crate) auth: Arc<crate::pg_auth_product_services::PgAuthProductServices>,
+    pub(crate) ports: ProductAuthProviderRuntimePorts,
+    pub(crate) settings: Option<Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
+}
+impl RebornProductAuthServices {
+    pub(crate) fn native_codex_session_owner(
+        &self,
+    ) -> Result<NativeCodexSessionOwner, AuthProductError> {
+        match &self.native_codex {
+            NativeCodexOwners::Composed { auth, ports } => Ok(NativeCodexSessionOwner {
+                auth: auth.clone(),
+                ports: ports.clone(),
+                settings: self.primitive_settings.clone(),
+            }),
+            NativeCodexOwners::Unavailable => Err(AuthProductError::BackendUnavailable),
+        }
+    }
+}

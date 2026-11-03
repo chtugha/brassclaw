@@ -1,6 +1,5 @@
-#![allow(dead_code)] // PRIVATE036: staged native credential APIs; callers land with the full login/publication wiring.
 //! Native instance registration metadata in the existing provider/secret owners.
-//! PRIVATE036 draft: not mounted, compiled, tested or a model dispatch grant.
+//! Selected by native login publication and immutable per-request access guards.
 use brassclaw_auth::{
     AuthProductScope, AuthSurface, CredentialAccount, CredentialAccountId, CredentialOwnership,
 };
@@ -28,7 +27,7 @@ pub(crate) struct CodexCredentialBinding {
     login_id: Uuid,
     account_id: CredentialAccountId,
     account_scope: AuthProductScope,
-    client: CodexOAuthClient,
+    pub(crate) client: CodexOAuthClient,
 }
 
 impl CodexCredentialBinding {

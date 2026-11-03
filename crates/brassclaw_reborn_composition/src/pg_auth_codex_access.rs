@@ -1,4 +1,3 @@
-#![allow(dead_code)] // PRIVATE036: staged access APIs; callers land with the full login/refresh/startup wiring.
 //! PRIVATE036: existing native Auth owner, request-local access consumption.
 //! The `NativeCodexSourceSupplier` is now the live call-site bridge; it is
 //! constructed per-resolved-selection by `resolve_captured_provider_selection`.
@@ -223,12 +222,13 @@ impl PgAuthProductServices {
 /// Constructed once per resolved Codex selection; each `session()` call consumes
 /// one token generation and pins a new immutable `NativeCodexAccessGuard`.
 pub(crate) struct NativeCodexSourceSupplier {
-    owner: Arc<PgAuthProductServices>,
+    owner: crate::auth::native_codex::NativeCodexSessionOwner,
     namespace: String,
     provider_id: String,
     head_reference: String,
     api_base_url: String,
     provider_guard: Arc<dyn ProviderDispatchGuard>,
+    refresh_margin_secs: u64,
 }
 
 impl std::fmt::Debug for NativeCodexSourceSupplier {
@@ -240,11 +240,12 @@ impl std::fmt::Debug for NativeCodexSourceSupplier {
 
 impl NativeCodexSourceSupplier {
     pub(crate) fn new(
-        owner: Arc<PgAuthProductServices>,
+        owner: crate::auth::native_codex::NativeCodexSessionOwner,
         namespace: impl Into<String>,
         provider_id: impl Into<String>,
         head_reference: impl Into<String>,
         api_base_url: impl Into<String>,
+        refresh_margin_secs: u64,
         provider_guard: Arc<dyn ProviderDispatchGuard>,
     ) -> Self {
         Self {
@@ -254,6 +255,7 @@ impl NativeCodexSourceSupplier {
             head_reference: head_reference.into(),
             api_base_url: api_base_url.into(),
             provider_guard,
+            refresh_margin_secs,
         }
     }
 }
@@ -262,6 +264,21 @@ impl NativeCodexSourceSupplier {
 impl CodexHostSessionSource for NativeCodexSourceSupplier {
     async fn session(&self) -> Result<CodexHostSession, LlmError> {
         self.owner
+            .auth
+            .prepare_codex_access(
+                &self.owner.ports,
+                self.owner.settings.clone(),
+                super::codex_refresh::CodexAccessSelection {
+                    namespace: &self.namespace,
+                    provider_id: &self.provider_id,
+                    head: &self.head_reference,
+                    api_base_url: &self.api_base_url,
+                    margin_secs: self.refresh_margin_secs,
+                },
+            )
+            .await?;
+        self.owner
+            .auth
             .take_codex_access_session(
                 &self.namespace,
                 &self.provider_id,

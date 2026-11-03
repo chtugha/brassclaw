@@ -1,7 +1,6 @@
-#![allow(dead_code)] // PRIVATE036: staged publication APIs; callers land with the full login/startup wiring.
 //! PRIVATE036 publication fragment in the existing native Auth owner.
 //! Caller owns provider mutation/definition/role locks and the single COMMIT.
-//! Not mounted/compiled; actual native Flow finish and callers remain required.
+//! Used by the native provider mutation transaction and original Flow finish.
 use super::PgAuthProductServices;
 use std::sync::Arc;
 

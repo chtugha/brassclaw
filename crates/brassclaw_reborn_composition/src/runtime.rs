@@ -865,7 +865,7 @@ impl RebornRuntime {
                     .services
                     .product_auth
                     .as_ref()
-                    .and_then(|auth| auth.native_codex_owner().ok());
+                    .and_then(|auth| auth.native_codex_session_owner().ok());
                 adapter = adapter.with_codex_native_owner(codex_owner);
             }
             Some(adapter)
@@ -2090,7 +2090,7 @@ pub async fn build_reborn_runtime(
                 let boot_codex_owner = services
                     .product_auth
                     .as_ref()
-                    .and_then(|auth| auth.native_codex_owner().ok());
+                    .and_then(|auth| auth.native_codex_session_owner().ok());
                 let boot = crate::llm_catalog::resolve_boot_provider_selection_db(
                     pool,
                     validated_identity.tenant_id.as_str(),
@@ -2627,7 +2627,7 @@ pub async fn build_reborn_runtime(
             let codex_owner = services
                 .product_auth
                 .as_ref()
-                .and_then(|auth| auth.native_codex_owner().ok());
+                .and_then(|auth| auth.native_codex_session_owner().ok());
             configuration.with_codex_native_owner(codex_owner)
         };
         #[cfg(feature = "skills-db")]
@@ -2756,7 +2756,7 @@ pub async fn build_reborn_runtime(
         let prep_codex_owner = services
             .product_auth
             .as_ref()
-            .and_then(|auth| auth.native_codex_owner().ok());
+            .and_then(|auth| auth.native_codex_session_owner().ok());
         crate::llm_reload::RebornLlmReloadAdapter::new(
             parts.reload_handle.clone(),
             parts.session.clone(),

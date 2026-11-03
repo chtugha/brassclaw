@@ -1219,6 +1219,29 @@ impl PgSecretStore {
         format!("{:x}", digest.finalize())
     }
 
+    /// Authenticate and fence a selected setup generation without rewriting it.
+    /// The caller keeps this writer lock until its transaction ends. This is
+    /// storage integrity only; it grants no refresh, lease or dispatch authority.
+    pub async fn lock_matches_if_record_reference_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+        reference: &str,
+        material: &SecretMaterial,
+    ) -> Result<bool, SecretStoreError> {
+        self.lock_secret_records(transaction, &[(scope, handle)])
+            .await?;
+        self.inspect_matches_if_record_reference_in_transaction(
+            transaction,
+            scope,
+            handle,
+            reference,
+            material,
+        )
+        .await
+    }
+
     /// Compare an exact authenticated record in the caller's existing read
     /// snapshot. No raw value, lease, lock, migration or write crosses this port.
     /// A missing, changed or non-material record cannot match the selection.

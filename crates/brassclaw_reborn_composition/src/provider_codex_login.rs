@@ -269,11 +269,17 @@ impl RebornLlmConfigService {
             .ok_or(LlmConfigServiceError::Unavailable)?;
         let expires_at = state.action.expiry();
         let (user_code, verification_uri) = match challenge {
-            Some(challenge) => (
-                Some(challenge.user_code.expose_secret().to_owned()),
-                Some(challenge.verification_uri),
-            ),
-            None => (None, None),
+            Some(challenge)
+                if !brassclaw_auth::is_terminal_status(state.flow.status)
+                    && challenge.expires_at == expires_at
+                    && expires_at > Utc::now() =>
+            {
+                (
+                    Some(challenge.user_code.expose_secret().to_owned()),
+                    Some(challenge.verification_uri),
+                )
+            }
+            _ => (None, None),
         };
         if let Some(driver) = driver
             && !matches!(

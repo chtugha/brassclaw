@@ -955,14 +955,11 @@ async fn build_local_dev(
             compose_product_auth_services(ports, turn_coordinator.clone(), provider_composition)
         }
         None => {
-            // When a PG pool and tenant_id are both present (hybrid serve path),
-            // use PgAuthProductServices so OAuth credentials and flows survive
-            // process restart. Falls back to FilesystemAuthProductServices for
-            // pure local-dev (tests, no pool, or no tenant_id).
+            // Every PostgreSQL product uses its native Auth owner. Default-
+            // tenant legacy filesystem custody transfers atomically before any
+            // consumers start; pure local-dev retains its explicit filesystem path.
             #[cfg(feature = "postgres")]
-            let pg_auth_services = if let (Some(pool), Some(_)) =
-                (pg_pool.as_ref(), tenant_id.as_ref())
-            {
+            let pg_auth_services = if let Some(pool) = pg_pool.as_ref() {
                 // Run product-auth DDL (CREATE TABLE IF NOT EXISTS, idempotent).
                 crate::pg_auth_product_services::run_auth_migrations(pool)
                     .await
@@ -979,6 +976,11 @@ async fn build_local_dev(
                                     .to_string(),
                         })?,
                 ));
+                if tenant_id.is_none() {
+                    pg_auth.migrate_filesystem_auth("reborn-cli").await.map_err(|_| RebornBuildError::InvalidConfig {
+                        reason: "default-tenant Auth custody migration could not reconcile its original records; preserved filesystem custody requires inspection before native startup".to_string(),
+                    })?;
+                }
                 #[cfg(feature = "root-llm-provider")]
                 let native_codex_auth = Arc::clone(&pg_auth);
                 let auth_services = compose_durable_product_auth_services(

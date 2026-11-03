@@ -60,11 +60,16 @@ pub(crate) mod codex_access;
 #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 #[path = "pg_auth_codex_publication.rs"]
 pub(crate) mod codex_publication;
+#[cfg(feature = "root-llm-provider")]
+#[path = "pg_auth_codex_refresh.rs"]
+pub(crate) mod codex_refresh;
 #[path = "pg_auth_dcr.rs"]
 mod dcr;
 #[cfg(feature = "root-llm-provider")]
 #[path = "pg_auth_device.rs"]
 mod device;
+#[path = "pg_auth_filesystem_migration.rs"]
+mod filesystem_migration;
 #[path = "pg_auth_manual.rs"]
 mod manual;
 #[path = "pg_auth_manual_setup.rs"]

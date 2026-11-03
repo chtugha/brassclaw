@@ -35,9 +35,9 @@ mod interactions;
 mod manual;
 mod manual_setup;
 mod oauth_setup;
-mod paths;
+pub(crate) mod paths;
 mod provider;
-mod refresh;
+pub(crate) mod refresh;
 mod requirement;
 mod selection;
 #[cfg(test)]

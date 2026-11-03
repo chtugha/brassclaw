@@ -325,13 +325,43 @@ pub fn parse_codex_device_authorization(body: &[u8]) -> Result<CodexDeviceAuthor
         code_verifier: value.code_verifier.into(),
     })
 }
+// Host protocol parsing has no standalone file-session lifetime fallback.
+// Omission and explicit null/empty refresh credentials remain distinct.
+#[derive(Deserialize)]
+struct HostTokenResponse {
+    access_token: String,
+    #[serde(default, deserialize_with = "host_optional_refresh_token")]
+    refresh_token: Option<String>,
+    expires_in: u64,
+    #[serde(default)]
+    token_type: String,
+}
+fn host_optional_refresh_token<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<String>, D::Error> {
+    let value = String::deserialize(d)?;
+    if value.is_empty() || value.chars().any(char::is_control) {
+        return Err(serde::de::Error::custom("invalid refresh credential"));
+    }
+    Ok(Some(value))
+}
+
 pub fn parse_codex_device_tokens(
     body: &[u8],
     request_started_at: DateTime<Utc>,
 ) -> Result<CodexDeviceTokens, LlmError> {
-    let value: TokenResponse =
+    let value: HostTokenResponse =
         serde_json::from_slice(body).map_err(|_| invalid_oauth_response())?;
-    let session = value.into_session_at(None, request_started_at)?;
+    if value.expires_in == 0 {
+        return Err(invalid_oauth_response());
+    }
+    let session = TokenResponse {
+        access_token: value.access_token,
+        refresh_token: value.refresh_token.unwrap_or_default(),
+        expires_in: value.expires_in,
+        token_type: value.token_type,
+    }
+    .into_session_at(None, request_started_at)?;
     Ok(CodexDeviceTokens {
         access_token: session.access_token.into(),
         refresh_token: session.refresh_token.into(),
@@ -929,6 +959,7 @@ mod native_tests;
 #[cfg(test)]
 mod shared_native_protocol_tests {
     use super::*;
+    use secrecy::ExposeSecret;
     #[test]
     fn shared_device_expiry_distinguishes_issuer_origin_and_keeps_legacy_default_only_in_legacy_result()
      {
@@ -955,5 +986,24 @@ mod shared_native_protocol_tests {
             parse_codex_device_tokens(br#"{"access_token":"bad\nheader","expires_in":60}"#, first)
                 .is_err()
         );
+    }
+    #[test]
+    fn host_tokens_require_actual_issuer_lifetime_and_distinguish_refresh_omission() {
+        let start = Utc::now();
+        for body in [
+            r#"{"access_token":"access"}"#,
+            r#"{"access_token":"access","expires_in":0}"#,
+            r#"{"access_token":"access","expires_in":null}"#,
+            r#"{"access_token":"access","expires_in":1.5}"#,
+            r#"{"access_token":"access","expires_in":60,"refresh_token":null}"#,
+            r#"{"access_token":"access","expires_in":60,"refresh_token":""}"#,
+        ] {
+            assert!(parse_codex_device_tokens(body.as_bytes(), start).is_err());
+        }
+        let tokens =
+            parse_codex_device_tokens(br#"{"access_token":"access","expires_in":60}"#, start)
+                .unwrap();
+        assert_eq!(tokens.expires_at, start + chrono::Duration::seconds(60));
+        assert!(tokens.refresh_token.expose_secret().is_empty());
     }
 }

@@ -1,0 +1,147 @@
+{
+  "baseline": "0f1236a6c8a0f9d5ba4d7145bd040bf8c4576149",
+  "modal_job": "5a57353c-8738-4146-a730-f90d0414ffe4",
+  "scope": "Captured hashes identify source transfer, not test execution. Final OAuth encoder consolidation and test-only refinements require the leading chat native integration batch.",
+  "files": {
+    "crates/brassclaw_auth/src/refresh.rs": {
+      "baseline_sha256": "4b8c14c0bfdfbccdc6a630cae0865654007da5e8c955c988cb8488e02ffe3ece",
+      "final_sha256": "8300b4c90f3d3e069f4795629d11891be8f43c1cc4696312dab2f38506b392d9",
+      "captured_sha256": "8300b4c90f3d3e069f4795629d11891be8f43c1cc4696312dab2f38506b392d9"
+    },
+    "crates/brassclaw_auth/tests/auth_product_contract/refresh_contract.rs": {
+      "baseline_sha256": "7696343316dd3d47f56e59e48283733c13a678bad4f2773c7f9b023dee228c33",
+      "final_sha256": "8ffec2fb75687dacae4dc58eed65ec6dc9906e487760f7f29a6ef9139f671a06",
+      "captured_sha256": "8ffec2fb75687dacae4dc58eed65ec6dc9906e487760f7f29a6ef9139f671a06"
+    },
+    "crates/brassclaw_llm/src/openai_codex_session.rs": {
+      "baseline_sha256": "0354595de4d66fe485a6778fbf7edd4be21a3a5eabb4a4df8b59e3044facf8f9",
+      "final_sha256": "69253a33fe0c887477f2bb0b7ddd5c3b42a8b99b8c6a5f935bb47cc525edd867",
+      "captured_sha256": "69253a33fe0c887477f2bb0b7ddd5c3b42a8b99b8c6a5f935bb47cc525edd867"
+    },
+    "crates/brassclaw_pg/migrations/V204__product_auth_filesystem_cutover.sql": {
+      "baseline_sha256": null,
+      "final_sha256": "b5f40e5df73a06ef4cdbb2ecf0de083405805972f6040bf96c2ced4c3fe48226",
+      "captured_sha256": "b5f40e5df73a06ef4cdbb2ecf0de083405805972f6040bf96c2ced4c3fe48226"
+    },
+    "crates/brassclaw_reborn_composition/src/auth.rs": {
+      "baseline_sha256": "5e9877a7421b7634d20c3037bdfcd65fdfd8b631773e41dadad48654ef0e1a84",
+      "final_sha256": "9e80b861d2992d6c7e0fb7748997e05968bf2c010b355f362d18c82f5af3344d",
+      "captured_sha256": "9e80b861d2992d6c7e0fb7748997e05968bf2c010b355f362d18c82f5af3344d"
+    },
+    "crates/brassclaw_reborn_composition/src/auth_native_codex.rs": {
+      "baseline_sha256": "d5972af4db412e91c83a31d30b27c47c493bab5a1a365a73e429ea49aa304145",
+      "final_sha256": "d962b5e131216a72e82d5b9ce3dd9afe4d76bdc4544bcd7f18fde8bdadf4a0d6",
+      "captured_sha256": "d962b5e131216a72e82d5b9ce3dd9afe4d76bdc4544bcd7f18fde8bdadf4a0d6"
+    },
+    "crates/brassclaw_reborn_composition/src/factory.rs": {
+      "baseline_sha256": "7b3912e8be30c2840c690676dc419b4c5c10875ec6a6e919e3690a70eed44d32",
+      "final_sha256": "e858d59afd1919ac6a23ec9d58bdf535d865edbb4097ed0b8845d158fd802551",
+      "captured_sha256": "e858d59afd1919ac6a23ec9d58bdf535d865edbb4097ed0b8845d158fd802551"
+    },
+    "crates/brassclaw_reborn_composition/src/llm_catalog.rs": {
+      "baseline_sha256": "4adb49f8db8a5e5b7aa3c9a7b03e9c4fd04f44b16823a2e243da3f3398f81a26",
+      "final_sha256": "d8a4623e646e4169ca3c54f2c05605c330fbd2c25b99ced109ff048929eacc01",
+      "captured_sha256": "d8a4623e646e4169ca3c54f2c05605c330fbd2c25b99ced109ff048929eacc01"
+    },
+    "crates/brassclaw_reborn_composition/src/llm_reload.rs": {
+      "baseline_sha256": "a07a0cde3068fdb0ca68b6d38087d4b0bbce94f214d8685b98a8146d23aeefa6",
+      "final_sha256": "2f01ea14bdb780a35a981d3bc1fa093a0641218f0b3e817ffbd91371bc1094ea",
+      "captured_sha256": "2f01ea14bdb780a35a981d3bc1fa093a0641218f0b3e817ffbd91371bc1094ea"
+    },
+    "crates/brassclaw_reborn_composition/src/oauth_provider_client.rs": {
+      "baseline_sha256": "468556d720033c13218663e79cb330aaf5e1efaa2d78c78cc324240bb9f1d2a9",
+      "final_sha256": "8ef3d68c137d65f2be16edc3c5e7a2126d8d73198e851e234160e1e3901c6368",
+      "captured_sha256": "42735fae266954232e3c66735b74415bbb11779a41fd87b2ba5a3984c6c27e06"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_codex_access.rs": {
+      "baseline_sha256": "4e06da7591cdf4356a9a4831aa960bcc00e55ea72e069eecd43d0911c5190c29",
+      "final_sha256": "d05c72f21f504cf14c270051dfab47cdf00247a028d3d2e7a4f33c1c90a15852",
+      "captured_sha256": "d05c72f21f504cf14c270051dfab47cdf00247a028d3d2e7a4f33c1c90a15852"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_codex_publication.rs": {
+      "baseline_sha256": "121e39b0904da7ac46976d8c21a78e0bd34d296fad66cbce6fd726aaba78aa12",
+      "final_sha256": "9551244b77f6a73b888f65b2d44450d0ac56eace859650c7483f78cd63bea941",
+      "captured_sha256": "9551244b77f6a73b888f65b2d44450d0ac56eace859650c7483f78cd63bea941"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_codex_refresh.rs": {
+      "baseline_sha256": null,
+      "final_sha256": "8891186730e19895305e7f1b65407575f6d060b73243bff1b647ddab69b09200",
+      "captured_sha256": "d31108617f60123a1356de5995ba31da828f07abb0dd133cb2a8a8ce5a1fe6ab"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_codex_refresh_tests.rs": {
+      "baseline_sha256": null,
+      "final_sha256": "c397aca3c04e2b4d705a39aca8a108b4361a0f6b85ff917d99406645aaae1b7d",
+      "captured_sha256": "8c5ed5356374c3580b39c5d1af05ce84fdff48ef6f14bdae844017619cea48a5"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_device.rs": {
+      "baseline_sha256": "c21b4dd6bcaca1b5131564cfc077daff2bb0f66304d30f3351e111c4ba650487",
+      "final_sha256": "fbb0082dbd0523e7bf5a2538fc65991b2a49649ac172b4d04253b974b239c2a0",
+      "captured_sha256": "fbb0082dbd0523e7bf5a2538fc65991b2a49649ac172b4d04253b974b239c2a0"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_device_tests.rs": {
+      "baseline_sha256": "afcc58308c3ac5096e273f9469598ecbe7afd7bbfa10652333b69efe98546c52",
+      "final_sha256": "ffc41b4fa7797bfc54ae3e16d64b512bbe719ca70716aba86e7a51e6caac27c3",
+      "captured_sha256": "23479e36c64a4beaa2d3e2da10a8f80ac1e948852c2a429d764b34bc8ce0e09c"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_filesystem_migration.rs": {
+      "baseline_sha256": null,
+      "final_sha256": "09e478e17d654fc741294e1aedbfc4bc2f4accaf81436c161629e4ef1a97a069",
+      "captured_sha256": "2abd3bd6cdb4e01671d2b0acb80ec6685d5273ce02159d3f98f33ce1ef9bf793"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs": {
+      "baseline_sha256": "67d121d7ff4aed476b87cccc5fb0eed6c5466ffa7904554d8fca82f0d3d93500",
+      "final_sha256": "51436d03280b2d428225c1dcf0277d50fbb4532d1425f6d3c49e6d1a9db71571",
+      "captured_sha256": "51436d03280b2d428225c1dcf0277d50fbb4532d1425f6d3c49e6d1a9db71571"
+    },
+    "crates/brassclaw_reborn_composition/src/pg_auth_refresh.rs": {
+      "baseline_sha256": "17acc7bf502203892e035a3b091536da18bf395871f3bd5200cc7f195f1f2123",
+      "final_sha256": "1ef326b5f8119774e6224bbad2440f2f61decaa20c8a50c9fc6626c865086a7c",
+      "captured_sha256": "1ef326b5f8119774e6224bbad2440f2f61decaa20c8a50c9fc6626c865086a7c"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_durable.rs": {
+      "baseline_sha256": "78ad47bae97944181606513ca9d253b35bc8807a95e09cf8c1ad2ec1325efcca",
+      "final_sha256": "5700be427bbb9313cbfb35055a4f0b4617b800ed14737b3cb0e924a3ec69a987",
+      "captured_sha256": "5700be427bbb9313cbfb35055a4f0b4617b800ed14737b3cb0e924a3ec69a987"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_durable/paths.rs": {
+      "baseline_sha256": "f603ea179ca6b5ea12bdcae40896f79f13dab0e07e4e4d47247f89646a86de62",
+      "final_sha256": "c115280819bb31feca15c153272d0c4191126667f781bbc0e87c2838bdf41d6f",
+      "captured_sha256": "c115280819bb31feca15c153272d0c4191126667f781bbc0e87c2838bdf41d6f"
+    },
+    "crates/brassclaw_reborn_composition/src/product_auth_durable/refresh.rs": {
+      "baseline_sha256": "6b4c40793a4e6bfb505a6ae9d87e006b4b4a49cb13e4d60ed040cc14272f1023",
+      "final_sha256": "a7b29bb47fa53670a5b20ae7e75c5466e4e64c1591e99072c60546039c00a311",
+      "captured_sha256": "a7b29bb47fa53670a5b20ae7e75c5466e4e64c1591e99072c60546039c00a311"
+    },
+    "crates/brassclaw_reborn_composition/src/provider_codex_credentials.rs": {
+      "baseline_sha256": "81cc7a262c9243305e81a7e635b39e2876550d8becc7176b38dca9a282f321b1",
+      "final_sha256": "4274630c40be2036cceffcabb41c0f585ad9da5444ce6d4d0eba430837acd6af",
+      "captured_sha256": "4274630c40be2036cceffcabb41c0f585ad9da5444ce6d4d0eba430837acd6af"
+    },
+    "crates/brassclaw_reborn_composition/src/provider_codex_login.rs": {
+      "baseline_sha256": "78b9145df00cf7a6b8583aa8802d21c6bb000b40ef07c86a3905fcfee06ab379",
+      "final_sha256": "a2409ebc2193147afdee75c5bee9b47ae17da033a03c8745d9e51bdbd787c7e3",
+      "captured_sha256": "a2409ebc2193147afdee75c5bee9b47ae17da033a03c8745d9e51bdbd787c7e3"
+    },
+    "crates/brassclaw_reborn_composition/src/runtime.rs": {
+      "baseline_sha256": "9a1c125c8c337ea3e14af5545e37a7ce0ef64c545e7474b6e436c0eb647dbe47",
+      "final_sha256": "0e2b462a5eeeba82a33c4ae86636087a701db46735ed7bd517c167a2a17f46b6",
+      "captured_sha256": "0e2b462a5eeeba82a33c4ae86636087a701db46735ed7bd517c167a2a17f46b6"
+    },
+    "crates/brassclaw_reborn_composition/src/runtime/tests/auth_interaction.rs": {
+      "baseline_sha256": "b4a9e983d0e5e8647f6dcf707c7e0624f887d46fa2fb909056da9ec9b99f10e4",
+      "final_sha256": "cd6756d8c3b2d33dcb00df0025e91c91bd5b902ceaa49df127f9e7aab62ce0c3",
+      "captured_sha256": "cd6756d8c3b2d33dcb00df0025e91c91bd5b902ceaa49df127f9e7aab62ce0c3"
+    },
+    "crates/brassclaw_reborn_composition/src/task_model_provider.rs": {
+      "baseline_sha256": "a14892e7583d65018e6bce2d4aec7a53d1adc8959360367e5d9ad6ef96921829",
+      "final_sha256": "51b966c33f1caad5dbc058b8443764fd7f1386cb47f1854be9c2350d78b564b5",
+      "captured_sha256": "51b966c33f1caad5dbc058b8443764fd7f1386cb47f1854be9c2350d78b564b5"
+    },
+    "crates/brassclaw_secrets/src/pg_store.rs": {
+      "baseline_sha256": "080d5b60b055e3c83e24b87595815053ae4cc0c189b203c382f30a52fd6ae69b",
+      "final_sha256": "ff5b1e6c49583d734e07fd7cad8d13e8665a7406b4b1042b04978fb44cd2049e",
+      "captured_sha256": "ff5b1e6c49583d734e07fd7cad8d13e8665a7406b4b1042b04978fb44cd2049e"
+    }
+  }
+}

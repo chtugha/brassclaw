@@ -736,3 +736,27 @@ complete. At this audit all implementation checkboxes remained open; B3-10's
 subsequent config-only acceptance is recorded in that step. The other steps still
 require their named native evidence. No Cargo or source implementation was
 performed by the architecture/source audit itself.
+
+
+## 11. Isolated Codex/Auth source repair — 2026-11-03
+
+The explicitly authorized second worktree (`codex/bob3-auth-custody`, baseline
+`0f1236a6c`) implements the B3-02 default-tenant custody transfer and explicit
+injected-facade native support, B3-03 session-capability propagation and B3-05
+original native refresh. It reuses the existing Auth journal, secret CAS and
+host egress owners. V204 is reserved for the Auth filesystem cutover; B1's V203
+remains separate. Archived filesystem bytes remain unchanged and old writers
+are fenced after atomic import. In-flight old originals and incomplete
+filesystem publication decisions must reconcile before cutover, without invented
+completion. Generic injected/non-PG ports remain explicitly unsupported for Codex.
+
+The native host parser no longer invents a one-hour lifetime when issuer expiry
+is absent/zero. Added real-PG/local-HTTP regression sources cover generation
+coalescing, retained refresh omission, unknown/invalid returns, original response
+reconciliation, default factory attachment and migration preservation/fencing.
+No local Cargo or native Rust tests were run in this worktree. SQL-only PostgreSQL
+17 fence acceptance passed; compilation/native/issuer gates have their distinct
+scope in [the Auth custody receipt](docs/validation/2026-11-03-b3-auth-custody.md).
+No implementation checkbox is closed by these source or SQL results. B3-04's
+actual human issuer login, full product projections and the B3-11 native matrix
+remain required; the existing login/device owner is reused, not replaced.

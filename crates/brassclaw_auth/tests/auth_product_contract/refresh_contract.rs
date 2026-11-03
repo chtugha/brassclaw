@@ -1362,4 +1362,35 @@ mod host_instance_state_contract {
             CredentialRefreshAdmission::Dispatch(_)
         ));
     }
+    #[test]
+    fn host_confirmed_no_send_preserves_account_and_never_grants_redispatch() {
+        let (mut account, prepared) = preparation();
+        let before = account.clone();
+        let CredentialRefreshAdmission::Dispatch(mut action) =
+            CredentialRefreshAction::begin_host_instance(&mut account, &[], prepared, Utc::now())
+                .unwrap()
+        else {
+            panic!("initial metadata admission")
+        };
+        let dispatched = action.clone();
+        action
+            .record_result(
+                CredentialRefreshCompletion {
+                    dispatched,
+                    outcome: CredentialRefreshOutcome::NotSubmitted(
+                        brassclaw_auth::CredentialRefreshStopReason::HostPreparationFailed,
+                    ),
+                },
+                Utc::now(),
+            )
+            .unwrap();
+        action.publish(&mut account, Utc::now()).unwrap();
+        assert_eq!(account, before);
+        assert!(!action.receipt().unwrap().confirmed_refresh());
+        assert_eq!(
+            action.receipt().unwrap().outcome,
+            brassclaw_auth::CredentialRefreshOutcomeKind::NotSubmitted
+        );
+        assert!(action.provider_dispatch_host_instance().is_err());
+    }
 }

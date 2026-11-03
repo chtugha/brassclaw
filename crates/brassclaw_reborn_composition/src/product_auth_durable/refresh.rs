@@ -29,7 +29,7 @@ pub(super) struct StoredCredentialAccount {
         BTreeMap<brassclaw_auth::AuthInteractionId, super::manual::ManualReceipt>,
 }
 
-fn selected_original(
+pub(crate) fn selected_original(
     request: &CredentialRefreshRequest,
     locator: Option<CredentialRefreshAction>,
     journal: Option<&CredentialRefreshAction>,

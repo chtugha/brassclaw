@@ -167,9 +167,7 @@ pub(crate) async fn resolve_boot_provider_selection_db(
     pool: &brassclaw_pg::PgPool,
     tenant_id: &str,
     keys: &crate::LlmKeyStore,
-    codex_native_owner: Option<
-        std::sync::Arc<crate::pg_auth_product_services::PgAuthProductServices>,
-    >,
+    codex_native_owner: Option<crate::auth::native_codex::NativeCodexSessionOwner>,
 ) -> Result<BootProviderResolution, RebornLlmCatalogError> {
     use brassclaw_llm::{ProviderPublication, ProviderRole};
     let admin = crate::RebornProviderAdmin::new(pool.clone(), tenant_id);
@@ -231,9 +229,7 @@ pub(crate) async fn resolve_provider_selection_db(
     pool: &brassclaw_pg::PgPool,
     tenant_id: &str,
     keys: &crate::LlmKeyStore,
-    codex_native_owner: Option<
-        std::sync::Arc<crate::pg_auth_product_services::PgAuthProductServices>,
-    >,
+    codex_native_owner: Option<crate::auth::native_codex::NativeCodexSessionOwner>,
 ) -> Result<Option<ResolvedProviderSelection>, RebornLlmCatalogError> {
     let captured = crate::RebornProviderAdmin::new(pool.clone(), tenant_id)
         .capture_selection(
@@ -265,9 +261,7 @@ pub(crate) fn resolve_captured_provider_selection(
     tenant_id: &str,
     keys: &crate::LlmKeyStore,
     captured: crate::provider_admin::CapturedProviderSelection,
-    codex_native_owner: Option<
-        std::sync::Arc<crate::pg_auth_product_services::PgAuthProductServices>,
-    >,
+    codex_native_owner: Option<crate::auth::native_codex::NativeCodexSessionOwner>,
 ) -> Result<ResolvedProviderSelection, RebornLlmCatalogError> {
     use brassclaw_llm::registry::ProviderProtocol;
     let guard = crate::provider_dispatch::PgProviderDispatchGuard::from_capture(
@@ -285,34 +279,41 @@ pub(crate) fn resolve_captured_provider_selection(
     )?;
     let mut revision = captured.revision;
     revision.model = config.active_model_name();
-    // Build the native host-session source only when all three preconditions
-    // are met: OpenAiCodex protocol, a confirmed credential head reference in
-    // the selection record, and an authenticated PG bridge owner supplied by
-    // the caller. Missing any one leaves the field None so the SDK falls back
-    // to its ordinary token path without treating it as an error.
+    // Installed Codex has one authenticated host source. Missing ownership or
+    // head is a pre-submission configuration error, scoped to this protocol.
     let codex_host_source: Option<std::sync::Arc<dyn brassclaw_llm::CodexHostSessionSource>> =
         if captured.definition.protocol == ProviderProtocol::OpenAiCodex {
-            if let (Some(owner), Some(head_ref)) =
-                (codex_native_owner, captured.credential_ref.as_deref())
-            {
-                let api_base_url = config
-                    .openai_codex
-                    .as_ref()
-                    .map(|c| c.api_base_url.clone())
-                    .unwrap_or_default();
-                Some(std::sync::Arc::new(
-                    crate::pg_auth_product_services::codex_access::NativeCodexSourceSupplier::new(
-                        owner,
-                        tenant_id,
-                        captured.definition.id.clone(),
-                        head_ref,
-                        api_base_url,
-                        guard.clone(),
-                    ),
-                ))
-            } else {
-                None
-            }
+            let owner =
+                codex_native_owner.ok_or_else(|| RebornLlmCatalogError::ProviderConstruction {
+                    source: brassclaw_llm::LlmError::ConfigurationChanged {
+                        provider: captured.definition.id.clone(),
+                    },
+                })?;
+            let head_ref = captured.credential_ref.as_deref().ok_or_else(|| {
+                RebornLlmCatalogError::ProviderConstruction {
+                    source: brassclaw_llm::LlmError::ConfigurationChanged {
+                        provider: captured.definition.id.clone(),
+                    },
+                }
+            })?;
+            let codex = config.openai_codex.as_ref().ok_or_else(|| {
+                RebornLlmCatalogError::ProviderConstruction {
+                    source: brassclaw_llm::LlmError::ConfigurationChanged {
+                        provider: captured.definition.id.clone(),
+                    },
+                }
+            })?;
+            Some(std::sync::Arc::new(
+                crate::pg_auth_product_services::codex_access::NativeCodexSourceSupplier::new(
+                    owner,
+                    tenant_id,
+                    captured.definition.id.clone(),
+                    head_ref,
+                    codex.api_base_url.clone(),
+                    codex.token_refresh_margin_secs,
+                    guard.clone(),
+                ),
+            ))
         } else {
             None
         };

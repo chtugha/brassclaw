@@ -32,6 +32,9 @@ enum IssuerMode {
     DelayedStart,
     HoldStart,
     NoExpiry,
+    RefreshOmit,
+    RefreshInvalid,
+    RefreshDisconnect,
 }
 struct IssuerState {
     mode: IssuerMode,
@@ -109,6 +112,35 @@ async fn token(State(state): State<Arc<IssuerState>>, headers: HeaderMap, body: 
     );
     let values: std::collections::HashMap<String, String> =
         url::form_urlencoded::parse(&body).into_owned().collect();
+    if values.get("grant_type").map(String::as_str) == Some("refresh_token") {
+        assert_eq!(values.get("client_id").unwrap(), "public-native-client");
+        assert_eq!(
+            values.get("refresh_token").unwrap(),
+            "refresh-http-original"
+        );
+        assert!(!values.contains_key("code"));
+        if state.mode == IssuerMode::RefreshDisconnect {
+            let stream = futures::stream::once(async {
+                Err::<Bytes, std::io::Error>(std::io::Error::other("lost refresh return"))
+            });
+            return Response::builder()
+                .status(StatusCode::OK)
+                .body(Body::from_stream(stream))
+                .unwrap();
+        }
+        if state.mode == IssuerMode::RefreshInvalid {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(serde_json::json!({"error":"invalid_grant"})),
+            )
+                .into_response();
+        }
+        let mut response = serde_json::json!({"access_token":"access-http-refreshed","expires_in":3600,"token_type":"Bearer"});
+        if state.mode != IssuerMode::RefreshOmit {
+            response["refresh_token"] = serde_json::json!("refresh-http-original");
+        }
+        return axum::Json(response).into_response();
+    }
     assert_eq!(values.get("grant_type").unwrap(), "authorization_code");
     assert_eq!(values.get("code").unwrap(), "authorization-http-original");
     assert_eq!(values.get("code_verifier").unwrap(), &state.verifier);
@@ -373,9 +405,6 @@ async fn transport(
     timeout: Option<u32>,
     body_limit: Option<u64>,
 ) -> crate::oauth_provider_client::HostOAuthProviderClient {
-    use crate::oauth_provider_client::{
-        ExchangeScopePolicy, HostOAuthProviderClient, HostOAuthProviderSpec,
-    };
     let settings = Arc::new(crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
         pool.clone(),
         "native-device-test",
@@ -408,13 +437,23 @@ async fn transport(
         })
         .unwrap();
     source.bind(settings).await.unwrap();
+    endpoint_transport(auth, &issuer.endpoint, source)
+}
+fn endpoint_transport(
+    auth: &PgAuthProductServices,
+    endpoint: &str,
+    source: Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>,
+) -> crate::oauth_provider_client::HostOAuthProviderClient {
+    use crate::oauth_provider_client::{
+        ExchangeScopePolicy, HostOAuthProviderClient, HostOAuthProviderSpec,
+    };
     let obligations = brassclaw_host_runtime::BuiltinObligationServices::new(
         Arc::new(brassclaw_events::InMemoryAuditSink::new()),
         auth.secret_store.clone(),
         Arc::new(brassclaw_resources::InMemoryResourceGovernor::new()),
     );
     let http = Arc::new(LocalIssuerHttp {
-        endpoint: issuer.endpoint.clone(),
+        endpoint: endpoint.to_string(),
         client: reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .retry(reqwest::retry::never())
@@ -1496,3 +1535,6 @@ async fn native_device_lost_caller_return_after_actual_http_and_pg_capture_recon
             .is_some()
     );
 }
+
+#[path = "pg_auth_codex_refresh_tests.rs"]
+mod codex_refresh_tests;

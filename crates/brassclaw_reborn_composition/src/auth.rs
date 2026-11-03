@@ -1,6 +1,6 @@
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 #[path = "auth_native_codex.rs"]
-mod native_codex;
+pub(crate) mod native_codex;
 
 #[path = "auth_google_original.rs"]
 mod google_original;
@@ -411,6 +411,9 @@ impl CredentialAccountRecordSource for UnsupportedCredentialAccountRecordSource 
 
 #[derive(Clone)]
 pub struct RebornProductAuthServicePorts {
+    // Sealed support can only come from an already composed facade. Generic
+    // trait bundles never acquire a native store through a downcast or fallback.
+    composed_support: Option<Arc<RebornProductAuthServices>>,
     flow_manager: Arc<dyn AuthFlowManager>,
     interaction_service: Arc<dyn AuthInteractionService>,
     manual_token_flow_service: Arc<dyn RebornManualTokenFlowService>,
@@ -463,6 +466,7 @@ impl RebornProductAuthServicePorts {
             interaction_service.clone(),
         ));
         Self {
+            composed_support: None,
             flow_manager,
             interaction_service,
             manual_token_flow_service,
@@ -526,6 +530,23 @@ impl RebornProductAuthServicePorts {
         ports
     }
 
+    /// Reuse an existing factory-composed Auth capability explicitly, including
+    /// its original native store/host pair. Generic `new`/`from_shared` remain
+    /// unsupported for native Codex. No new owner is inferred or reconstructed.
+    pub fn from_composed(services: Arc<RebornProductAuthServices>) -> Self {
+        Self {
+            flow_manager: services.flow_manager.clone(),
+            interaction_service: services.interaction_service.clone(),
+            manual_token_flow_service: services.manual_token_flow_service.clone(),
+            credential_setup_service: services.credential_setup_service.clone(),
+            credential_account_service: services.credential_account_service.clone(),
+            credential_account_record_source: services.credential_account_record_source.clone(),
+            provider_client: services.provider_client.clone(),
+            cleanup_service: services.cleanup_service.clone(),
+            composed_support: Some(services),
+        }
+    }
+
     pub fn credential_account_service(&self) -> Arc<dyn CredentialAccountService> {
         self.credential_account_service.clone()
     }
@@ -534,7 +555,7 @@ impl RebornProductAuthServicePorts {
         self,
         continuation_dispatcher: Arc<dyn RebornAuthContinuationDispatcher>,
     ) -> RebornProductAuthServices {
-        RebornProductAuthServices::new(
+        let mut services = RebornProductAuthServices::new(
             self.flow_manager,
             self.interaction_service,
             self.credential_setup_service,
@@ -544,7 +565,18 @@ impl RebornProductAuthServicePorts {
             continuation_dispatcher,
         )
         .with_manual_token_flow_service(self.manual_token_flow_service)
-        .with_credential_account_record_source(self.credential_account_record_source)
+        .with_credential_account_record_source(self.credential_account_record_source);
+        if let Some(original) = self.composed_support {
+            services.flow_record_source = original.flow_record_source.clone();
+            services.primitive_settings = original.primitive_settings.clone();
+            services.dcr_oauth_registry = original.dcr_oauth_registry.clone();
+            services.oauth_gate_registry = original.oauth_gate_registry.clone();
+            #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+            {
+                services.native_codex = original.native_codex.clone();
+            }
+        }
+        services
     }
 
     pub fn with_provider_client(mut self, provider_client: Arc<dyn AuthProviderClient>) -> Self {

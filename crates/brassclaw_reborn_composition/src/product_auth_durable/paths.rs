@@ -5,18 +5,18 @@ use brassclaw_auth::{
     AuthFlowId, AuthInteractionId, AuthProductError, AuthSurface, CredentialAccountId,
 };
 
-pub(super) fn flow_path(
+pub(crate) fn flow_path(
     scope: &brassclaw_auth::AuthProductScope,
     flow_id: AuthFlowId,
 ) -> ScopedPath {
     ScopedPath::from_trusted(format!("{}/flows/{flow_id}.json", product_auth_root(scope)))
 }
 
-pub(super) fn flow_root(scope: &brassclaw_auth::AuthProductScope) -> ScopedPath {
+pub(crate) fn flow_root(scope: &brassclaw_auth::AuthProductScope) -> ScopedPath {
     ScopedPath::from_trusted(format!("{}/flows", product_auth_root(scope)))
 }
 
-pub(super) fn surface_sessions_root(resource: &ResourceScope, surface: AuthSurface) -> ScopedPath {
+pub(crate) fn surface_sessions_root(resource: &ResourceScope, surface: AuthSurface) -> ScopedPath {
     ScopedPath::from_trusted(format!(
         "{}/{}/sessions",
         product_auth_base_root(resource),
@@ -24,7 +24,7 @@ pub(super) fn surface_sessions_root(resource: &ResourceScope, surface: AuthSurfa
     ))
 }
 
-pub(super) fn interaction_path(
+pub(crate) fn interaction_path(
     scope: &brassclaw_auth::AuthProductScope,
     interaction_id: AuthInteractionId,
 ) -> ScopedPath {
@@ -34,7 +34,7 @@ pub(super) fn interaction_path(
     ))
 }
 
-pub(super) fn requirement_selection_path(
+pub(crate) fn requirement_selection_path(
     scope: &brassclaw_auth::AuthProductScope,
     key: &brassclaw_auth::CredentialRequirementKey,
 ) -> ScopedPath {
@@ -45,7 +45,7 @@ pub(super) fn requirement_selection_path(
     ))
 }
 
-pub(super) fn account_path(
+pub(crate) fn account_path(
     scope: &brassclaw_auth::AuthProductScope,
     account_id: CredentialAccountId,
 ) -> ScopedPath {
@@ -55,7 +55,7 @@ pub(super) fn account_path(
     ))
 }
 
-pub(super) fn account_root(scope: &brassclaw_auth::AuthProductScope) -> ScopedPath {
+pub(crate) fn account_root(scope: &brassclaw_auth::AuthProductScope) -> ScopedPath {
     ScopedPath::from_trusted(format!("{}/accounts", product_auth_root(scope)))
 }
 
@@ -97,7 +97,7 @@ fn scoped_path(raw: &str) -> Result<ScopedPath, AuthProductError> {
     ScopedPath::new(raw).map_err(|_| AuthProductError::BackendUnavailable)
 }
 
-pub(super) fn join_scoped(prefix: &ScopedPath, leaf: &str) -> Result<ScopedPath, AuthProductError> {
+pub(crate) fn join_scoped(prefix: &ScopedPath, leaf: &str) -> Result<ScopedPath, AuthProductError> {
     scoped_path(&format!(
         "{}/{}",
         prefix.as_str().trim_end_matches('/'),
@@ -105,7 +105,7 @@ pub(super) fn join_scoped(prefix: &ScopedPath, leaf: &str) -> Result<ScopedPath,
     ))
 }
 
-pub(super) fn manual_token_secret_handle(
+pub(crate) fn manual_token_secret_handle(
     account_id: CredentialAccountId,
     interaction_id: AuthInteractionId,
 ) -> Result<SecretHandle, AuthProductError> {
@@ -113,7 +113,7 @@ pub(super) fn manual_token_secret_handle(
         .map_err(|_| AuthProductError::BackendUnavailable)
 }
 
-pub(super) fn fs_error(error: FilesystemError) -> AuthProductError {
+pub(crate) fn fs_error(error: FilesystemError) -> AuthProductError {
     match error {
         // CAS precondition failure — callers can detect and retry on BackendConflict.
         FilesystemError::VersionMismatch { .. } | FilesystemError::SnapshotMismatch { .. } => {
@@ -125,7 +125,7 @@ pub(super) fn fs_error(error: FilesystemError) -> AuthProductError {
 
 /// Stable original intent/result location. Only the account envelope's matching
 /// final receipt certifies publication; original request facts never change.
-pub(super) fn refresh_action_path(
+pub(crate) fn refresh_action_path(
     original: &brassclaw_auth::CredentialRefreshOriginal,
 ) -> Result<ScopedPath, AuthProductError> {
     Ok(ScopedPath::from_trusted(format!(
