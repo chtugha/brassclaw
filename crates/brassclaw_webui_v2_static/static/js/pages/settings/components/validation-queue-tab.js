@@ -145,7 +145,7 @@ function QueueRow({ item }) {
   const statusTone =
     item.validation_status === "validated"
       ? "positive"
-      : item.validation_status === "rejected"
+      : item.validation_status === "rejected" || item.validation_status === "garbage"
       ? "negative"
       : "neutral";
 

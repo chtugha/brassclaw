@@ -46,9 +46,10 @@ pub enum ValidationQueueFilter {
     /// Q2 — waiting for manual operator validation (AutoPassed + ReviewRequested + UpgradeQueued).
     #[default]
     Manual,
-    /// Q3 — rejected, review_attempts < 3 (awaiting revision mission).
+    /// Q3 — state-3 rejection below the current owner threshold (awaiting revision).
     Revision,
-    /// Q4 — rejected, review_attempts >= 3 (pending wipe).
+    /// Q4 — persisted deletion candidates (state 4) plus state-3 rejections
+    /// at/above the current owner threshold. A higher threshold never revives state 4.
     Rejection,
 }
 
@@ -185,7 +186,8 @@ pub struct ValidationQueueItem {
     pub class_code: u16,
     /// Human-readable label derived from `class_code`.
     pub class_label: String,
-    /// Derived queue bucket: "q1_auto" | "q2_manual" | "q3_revision" | "q4_rejection".
+    /// Derived queue label: "q1_auto" | "q2_manual" | "q3_revision" |
+    /// "q4_rejection" (state 3 at/above threshold) | "garbage" (persisted state 4).
     pub queue_code: String,
     /// True when the `05:validator` workflow tag is present.
     pub validator_tag_present: bool,

@@ -77,7 +77,7 @@ fn projection_sql() -> String {
           COALESCE(c.name,'Missing component') AS name,COALESCE(c.description,'') AS description,
           COALESCE(c.consumer_tags,ARRAY[]::text[]) AS consumer_tags,COALESCE(c.source,'') AS source,
           COALESCE(q.state,(CASE c.validation_status WHEN 'pending' THEN 1 WHEN 'auto_failed' THEN 1 WHEN 'auto_passed' THEN 2
-            WHEN 'review_requested' THEN 2 WHEN 'upgrade_queued' THEN 2 WHEN 'rejected' THEN 3 ELSE 0 END)::smallint) AS state,
+            WHEN 'review_requested' THEN 2 WHEN 'upgrade_queued' THEN 2 WHEN 'rejected' THEN 3 WHEN 'garbage' THEN 4 ELSE 0 END)::smallint) AS state,
           CASE WHEN q.id IS NULL THEN c.validation_status WHEN q.state=1 THEN 'pending' WHEN q.state=2 THEN 'auto_passed'
             WHEN q.state=3 THEN 'rejected' ELSE 'garbage' END AS validation_status,
           COALESCE(q.counter,0) AS counter,q.review_feedback,COALESCE(q.validation_errors,ARRAY[]::text[]) AS validation_errors,
@@ -117,7 +117,7 @@ pub(crate) async fn list_page(
         ValidationQueueFilter::Auto => "state=1",
         ValidationQueueFilter::Manual => "state=2",
         ValidationQueueFilter::Revision => "state=3 AND counter<$5",
-        ValidationQueueFilter::Rejection => "state=3 AND counter>=$5",
+        ValidationQueueFilter::Rejection => "state=4 OR (state=3 AND counter>=$5)",
     };
     // Always type/use the owner threshold parameter, including non-rejection pages.
     let sql=format!("{} SELECT * FROM projected WHERE ({condition}) AND $5::int>=0
@@ -224,6 +224,7 @@ pub(crate) async fn list_page(
                 1 => "q1_auto",
                 2 => "q2_manual",
                 3 if counter < threshold => "q3_revision",
+                4 => "garbage",
                 _ => "q4_rejection",
             }
             .into(),

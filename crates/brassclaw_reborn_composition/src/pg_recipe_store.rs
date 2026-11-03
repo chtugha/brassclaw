@@ -2618,5 +2618,74 @@ mod tests {
                 .iter()
                 .all(|row| row.queue_code == "q4_rejection")
         );
+        for component in [recipe, code] {
+            // Q2 lifecycle fixture only; the real writer makes the persisted
+            // terminal transition, not the projection or a synthetic verdict.
+            rig.pool
+                .get()
+                .await
+                .unwrap()
+                .execute(
+                    "UPDATE reborn_validation_queue SET state=2 WHERE component_id=$1",
+                    &[&component],
+                )
+                .await
+                .unwrap();
+            facade
+                .queue_store
+                .reject(&scope, component, "Deletion candidate")
+                .await
+                .unwrap();
+        }
+        let terminal = facade.queue_store.list(&scope, None).await.unwrap();
+        assert!(terminal.iter().all(|row| row.state == 4));
+        let higher =
+            u8::try_from(terminal.iter().map(|row| row.counter).max().unwrap() + 1).unwrap();
+        facade.queue_store = ValidationQueueStore::with_reject_threshold(rig.pool.clone(), higher);
+        let still_terminal = facade
+            .list_validation_queue(
+                &scope.user_id,
+                &scope.project_id,
+                ValidationQueueFilter::Rejection,
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(still_terminal.items.len(), 2);
+        assert!(
+            still_terminal
+                .items
+                .iter()
+                .all(|row| row.queue_code == "garbage"
+                    && row.validation_status == "garbage"
+                    && row.review_attempts < u32::from(higher))
+        );
+        assert!(
+            facade
+                .list_validation_queue(
+                    &scope.user_id,
+                    &scope.project_id,
+                    ValidationQueueFilter::Revision,
+                    None
+                )
+                .await
+                .unwrap()
+                .items
+                .is_empty()
+        );
+        assert_eq!(
+            facade
+                .count_by_status(&scope.user_id, &scope.project_id, "garbage")
+                .await
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            facade
+                .count_by_status(&scope.user_id, &scope.project_id, "rejected")
+                .await
+                .unwrap(),
+            0
+        );
     }
 }

@@ -337,3 +337,31 @@ ports, pagination, migration and UI still require supervisor compilation and
 native/browser verification. The escaped-source test deliberately exceeds the
 removed seal ceiling using real server-side formatter data and should be run
 with its memory footprint in mind; no smaller input/transport policy is relaxed.
+
+
+### Persisted state-4 rejection visibility correction
+
+Rejection pages now include persisted state 4 independently of the current
+threshold, as well as state-3 rows at/above that threshold. A later higher
+threshold cannot revive or hide an actual deletion candidate. The wire preserves
+its existing distinct `queue_code="garbage"`, `validation_status="garbage"`;
+state-3 threshold rejections keep `q4_rejection`/`rejected`. Counts reuse the
+same projected lifecycle status, so state-4 rows count under garbage and are
+not silently relabeled as rejected/pending. Legacy component-only garbage also
+projects state 4. The queue status badge uses the existing negative tone for
+both rejected and garbage. Approval gates and cleanup behavior are unchanged.
+
+Added native test (written, not executed):
+`original_queue_rejection_api_retains_writer_deletion_candidates_and_counts`.
+Actual Recipe and PythonCode rejection writes cross the configured owner
+threshold into state 4; the mounted Rejection API must return both, Revision
+must exclude them, garbage/rejected/pending counts must agree, and attempted
+Recipe validation must remain rejected with both terminal queue states intact.
+Q2 state setup is explicitly a lifecycle fixture, not Q1/evidence qualification.
+The existing facade threshold test now also crosses the threshold through the
+real writer, raises the read-owner threshold above the persisted counters and
+checks that both classes remain terminal/visible/countable under garbage.
+
+There are now fifteen `original_queue_*` tests plus the facade threshold test.
+This correction has only parser/format/diff verification; no Cargo, SQL migration,
+native test or Modal compilation was run. Full B1-02/plan acceptance remains open.

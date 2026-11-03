@@ -1092,3 +1092,90 @@ async fn original_queue_http_pages_full_recipe_stock_without_class_starvation() 
         "a cursor cannot silently switch queue buckets"
     );
 }
+
+#[tokio::test]
+async fn original_queue_rejection_api_retains_writer_deletion_candidates_and_counts() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let app = super::tests::app(rig.pool.clone());
+    let sc = scope();
+    let writer = ValidationQueueStore::new(rig.pool.clone());
+    let threshold = i32::from(writer.reject_threshold());
+    let recipe = Uuid::new_v4();
+    let code = Uuid::new_v4();
+    let client = rig.pool.get().await.unwrap();
+    client.execute("INSERT INTO reborn_recipes(id,tenant_id,user_id,agent_id,project_id,name,description,steps) VALUES($1,$2,$3,$4,$5,'terminal-recipe','Rejection lifecycle fixture','[]')",
+        &[&recipe,&sc.tenant_id,&sc.user_id,&sc.agent_id,&sc.project_id]).await.unwrap();
+    client.execute("INSERT INTO reborn_python_code(id,tenant_id,user_id,agent_id,project_id,name,description) VALUES($1,$2,$3,$4,$5,'terminal-code','Rejection lifecycle fixture')",
+        &[&code,&sc.tenant_id,&sc.user_id,&sc.agent_id,&sc.project_id]).await.unwrap();
+    drop(client);
+    for (id, class) in [(recipe, 21), (code, 22)] {
+        writer.submit(&sc, id, class, None).await.unwrap();
+        // Lifecycle setup only; this is no Q1/behavior/approval evidence.
+        rig.pool
+            .get()
+            .await
+            .unwrap()
+            .execute(
+                "UPDATE reborn_validation_queue SET state=2,counter=$2 WHERE component_id=$1",
+                &[&id, &(threshold - 1)],
+            )
+            .await
+            .unwrap();
+        writer.reject(&sc, id, "Final rejection").await.unwrap();
+    }
+    let rows = writer.list(&sc, None).await.unwrap();
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().all(|r| r.state == 4 && r.counter == threshold));
+    let uri = "/api/webchat/v2/validation-queue?project_id=default&q=rejection";
+    let (status, view) = super::tests::send(&app, "GET", uri, None, true).await;
+    assert!(status.is_success(), "{status}: {view}");
+    let items = view["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    for item in items {
+        assert_eq!(item["validation_status"], "garbage");
+        assert_eq!(item["queue_code"], "garbage");
+        assert_eq!(item["review_attempts"], threshold);
+    }
+    let (status, revision) = super::tests::send(
+        &app,
+        "GET",
+        "/api/webchat/v2/validation-queue?project_id=default&q=revision",
+        None,
+        true,
+    )
+    .await;
+    assert!(status.is_success());
+    assert!(revision["items"].as_array().unwrap().is_empty());
+    for (status_name, expected) in [("garbage", 2), ("rejected", 0), ("pending", 0)] {
+        let (status, count) = super::tests::send(
+            &app,
+            "GET",
+            &format!(
+                "/api/webchat/v2/validation-queue/count?project_id=default&status={status_name}"
+            ),
+            None,
+            true,
+        )
+        .await;
+        assert!(status.is_success());
+        assert_eq!(count["count"], expected);
+    }
+    // Listing deletion candidates must not weaken the original/Q1 approval gate.
+    let (status, _) = super::tests::send(
+        &app,
+        "PUT",
+        &format!("/api/webchat/v2/components/21/{recipe}/validate?project_id=default"),
+        Some(&json!({})),
+        true,
+    )
+    .await;
+    assert!(!status.is_success());
+    assert!(
+        writer
+            .list(&sc, None)
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| r.state == 4)
+    );
+}
