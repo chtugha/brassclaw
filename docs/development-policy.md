@@ -122,31 +122,44 @@ affected evidence; unchanged execution logic does not require a blanket remigrat
 
 ## Shared source and central build ownership (2026-10-30)
 
-**Single-agent workflow — user instruction, 2026-11-03:** the agent in the
-current user chat is the sole development, integration and build owner. This
-supersedes previous delegation, multi-chat coordination, build-window handoffs
-and development build-queue requirements. Do not spawn/delegate to agents,
-create per-agent worktrees/branches, or dispatch work to other chats. Use the
-current checkout and perform implementation, review and validation directly.
-This changes development coordination only; BrassClaw's product architecture
-and its Recipe-defined child/subagent workflows keep their existing contracts.
+**Two package chats and one supervisor — latest user instruction, 2026-11-03:**
+the leading chat assigns bounded implementation packages, reviews their complete
+connected changes, performs local validation/final acceptance and integrates
+accepted results into `main`. It writes no new implementation code. Review
+corrections return to the responsible package chat with concrete findings and
+evidence. Previously written leading-chat code is handed over with its exact
+validation status; it is not automatically accepted.
 
-**Narrow two-chat exception — explicit user instruction, 2026-11-03:** one
-additional user-owned chat may implement the Codex/Auth portion of Bob 3 in a
-separate Git worktree and use the qualified Modal compiler. The leading chat
-keeps Bob 1, Bob 2, shared Q1/driver lifecycle, native Cargo/tests and final main
-integration. The user explicitly approved that worktree. Do not expand this into
-further delegation. The second chat runs no local Cargo or remote tests, writes
-only its assigned source/contracts and commits on its own branch without pushing
-or merging main. Necessary eligible Modal builds within this assignment have
-the user's location authorization; retain the existing resource/cost rules and
-one remote job at a time. Independent source snapshots/caches and per-environment
-locks permit that compiler to overlap the leading chat's one native Cargo job.
-The leading chat reviews/merges its commits and runs actual native acceptance;
-neither branch's receipt certifies the other branch's different inputs.
+Create a fresh user-owned chat for each new package to limit context. At most
+two package chats implement concurrently, using the already authorized isolated
+Git-worktree approach. A package chat handles only its assigned package and its
+review corrections; after acceptance, a subsequent package gets a fresh chat.
+Do not add nested delegation. Each package chat must read the current root
+`AGENTS.md`, `CLAUDE.md`, `recipe.md`, `skills.md`, `tools.md`, `toolskills.md`,
+`path_to_v3.5.md`, this policy, applicable crate guides and its owning plans before
+implementation. Report the relevant architectural constraints with the package
+handoff; recording hashes alone is not an architecture review.
 
-Use the common repository-root checkout and Git index for all current work.
-Compile that source directly with one canonical Cargo target; on this host it is
+Package chats commit only their own worktree branches, never edit the leading
+checkout, merge/push `main`, run local Cargo or run tests remotely. They share
+the existing qualified Modal builder, serialized through its controller and
+`/private/tmp/brassclaw-modal-build.lock`, including source synchronization,
+submission and receipt collection. Use immutable source snapshots, existing
+activation/resource/cost rules and one remote job at a time. No independent
+manual upload may overwrite another job's source. Eligible necessary Modal
+compilation has location authorization under this assignment; small checks do
+not justify cloud spending. Tests remain local and supervisor-owned.
+
+The leading chat maintains the [package board](development-package-board.md)
+with package scopes, owners, dependencies, reserved interfaces/migrations,
+commits, review findings and exact acceptance. Shared responsibilities have one
+implementation owner. The supervisor retains sole integration/release authority;
+receipts apply only to their actual source/feature/artifact inputs. This replaces
+the earlier single-agent rule and narrow Codex/Auth exception. It changes only
+development coordination, not BrassClaw's product/subagent architecture.
+
+The leading repository-root checkout and Git index are the integration tree.
+Compile its source directly with one canonical local Cargo target; on this host it is
 `/Users/ollama/brassclaw-target`. Native Cargo executions are serial under
 `/private/tmp/brassclaw-target-cargo.lock`. Do not restart the retired target2
 or mutable validation build mirrors. Never replace current source with an older
@@ -162,7 +175,8 @@ in [the build environment contract](build-environments.md). This supersedes the
 former global-Cargo serialization rule and one-off parallel-host flag requirement.
 It does not change source custody, paid-build authorization or local-only tests.
 
-The sole agent runs Cargo, including build, test, Clippy, metadata, fmt and clean.
+The supervisor owns local Cargo, tests and build-artifact cleanup. Package chats
+use the existing Modal controller for authorized remote compilation.
 The former [development build queue](development-build-queue.md) is a historical
 record, not an active submission or scheduling mechanism. Preserve earlier
 receipts and unresolved work; queue retirement does not mark that work complete.
@@ -174,8 +188,9 @@ requirements remain independent of development review.
 
 Record intended behavior, actual source changes, affected packages/features,
 required checks and applicable prior evidence in the existing work/validation
-record. Review the connected changes and fix causes before rerunning failures;
-no inter-agent request, handoff or queue entry is required.
+record. Review the connected changes and return defects to their package owner
+before rerunning failures. Package handoffs identify exact commits, reused owners,
+changed contracts, actual receipts, unexecuted tests and known limitations.
 
 Collect coherent, reviewed changes before starting the next compilation.
 Compile shared affected artifacts once, then reuse them for the necessary selected
@@ -183,8 +198,9 @@ cases. Do not start a new compile for each small patch or repeat passing checks
 whose inputs remain applicable. Keep independent failures attributable; a bundle
 does not turn unrelated changes into one acceptance claim.
 
-Run long validation batches in detached Screen sessions and continue implementation
-in the foreground. Check progress after useful work intervals, on failure or on
+Run long local validation batches in detached Screen sessions; the supervisor
+continues review and coordination while package chats implement in their own
+worktrees. Check progress after useful work intervals, on failure or on
 completion; do not spend the foreground turn polling an unchanged build. Capture
 only the actual compiler, embedded-content and runtime inputs required by the
 batch, allowing unrelated source work to continue. Changes to those captured inputs
@@ -193,7 +209,7 @@ not make competing Cargo executions within one environment or edits to its
 captured inputs safe. The isolated Modal environment may compile concurrently.
 
 While a native batch runs, its complete captured dependency/input set is frozen. The
-sole agent may inspect source and work on paths outside that input set. Changes
+supervisor may inspect source and review independent packages. Integration changes
 to captured inputs wait until the batch is terminal or remain unapplied patches.
 Do not build another local tree/target or overwrite newer source with archived
 bytes. Reconcile actual processes, locks and retained inputs before taking over
