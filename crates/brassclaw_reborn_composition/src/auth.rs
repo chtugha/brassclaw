@@ -570,8 +570,6 @@ pub struct RebornProductAuthServices {
     /// Native ownership is either the actual coherent composed pair or
     /// unavailable; externally supplied/non-PG Auth never adopts another store.
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-    #[allow(dead_code)]
-    // PRIVATE036: used by with_native_codex_owners/native_codex_owner/native_codex_transport once callers land.
     native_codex: native_codex::NativeCodexOwners,
     flow_manager: Arc<dyn AuthFlowManager>,
     interaction_service: Arc<dyn AuthInteractionService>,

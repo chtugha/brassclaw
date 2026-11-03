@@ -9,14 +9,17 @@ import { modelSelectionRef } from "./llm-providers.js";
 export async function waitForProviderLogin(id, providerId, deadlineMs, intervalMs, isCurrent = () => true) {
   if (typeof id !== "string" || !id) throw new Error("Original login identity is unavailable.");
   const deadline = Date.now() + deadlineMs;
+  const validateReceipt = receipt => {
+    if (receipt?.mutation_id !== id || receipt.operation !== "upsert" || receipt.provider_id !== providerId) throw new Error("Original login acknowledgement differs.");
+  };
   while (isCurrent() && Date.now() < deadline) {
     let originalKnown = false;
     try {
-      const receipt = await readProviderMutation(id);
+      const receipt = await readProviderMutation(id, { isCurrent, validateReceipt });
       if (!isCurrent()) return false;
       if (receipt?.mutation_id !== id || receipt.operation !== "upsert" || receipt.provider_id !== providerId) throw new Error("Original login acknowledgement differs.");
       originalKnown = true;
-      const snapshot = await reconcileProviderMutation(id);
+      const snapshot = await reconcileProviderMutation(id, { isCurrent, validateReceipt });
       if (!isCurrent()) return false;
       if (snapshot?.mutation_receipt?.mutation_id !== id) throw new Error("Original login reconciliation differs.");
       return true;
@@ -203,7 +206,9 @@ export async function runCodexLogin(context, selection, {
     original = observeCodexStatus(status, original, storage);
     onStatus(status);
     if (status.status === "completed") {
-      const snapshot = await reconcileProviderMutation(request.mutation_id);
+      const snapshot = await reconcileProviderMutation(request.mutation_id, {
+        signal, isCurrent, validateReceipt: receipt => codexReceipt(receipt, request),
+      });
       if (!isCurrent()) return { completed: false };
       codexReceipt(snapshot?.mutation_receipt, request);
       return { completed: true, status, snapshot };

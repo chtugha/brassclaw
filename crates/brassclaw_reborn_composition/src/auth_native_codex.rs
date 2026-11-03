@@ -1,4 +1,3 @@
-#![allow(dead_code)] // PRIVATE036: staged native owner APIs; callers land with the full login/refresh/startup wiring.
 //! PRIVATE036: reuse the concretely composed Auth/HTTP owners, never reconstruct
 //! stores from a downcast or select a file/environment session as a fallback.
 use super::RebornProductAuthServices;

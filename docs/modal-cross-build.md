@@ -7,6 +7,9 @@ Use only the `brassclaw` Modal environment and `brassclaw-build` Volume.
 
 The image is a prerequisite, not proof of a working BrassClaw build or activation.
 All tests, including test compilation, remain local. Remote workers compile only.
+For current independent local/Modal settings, locks and parallel operation, see
+[the build environment contract](build-environments.md). Dated qualification
+observations below retain their historical activation/serialization state.
 
 ## Image inputs
 
@@ -38,13 +41,13 @@ command has a 1200-second timeout.
 ## Project build
 
 The existing source synchronizer runs first, uploads the deterministic overlay,
-and verifies source and readback hashes. The controller checks actual local Cargo/compiler processes before synchronization,
-after acquiring the common local Cargo lock, and immediately before submission.
-It holds that lock until remote Cargo is terminal and checks for uncooperative
-local builds every five seconds during the call. A detected collision cancels
-the remote input, leaves the local build untouched and requires terminal-state
-reconciliation before another Cargo run. Do not run other Cargo commands
-on any host during this interval. The current Apple controller supports the standalone CLI product build shown
+and verifies source and readback hashes. The controller holds its independent
+Modal lock continuously across unsettled-job checks, synchronization, submission
+and terminal receipt collection. It neither takes the native Cargo lock nor
+cancels a remote build when local Cargo runs. One local build and one remote
+build may run concurrently with independent settings and caches; a second remote
+build/sync remains blocked. Unresolved remote jobs require terminal-state
+reconciliation before remote cache/source changes. The current Apple controller supports the standalone CLI product build shown
 below (dev or `--release`), not arbitrary check/profile commands.
 The worker verifies base/overlay coverage and
 all resulting source bytes before updating the persistent image-specific source
@@ -131,15 +134,17 @@ The App `ap-Grch5hKIBbRVpj2wrIS9mJ` is confirmed stopped with zero tasks. Its
 registry and target caches remain. This interrupted run is not a successful
 project qualification. General Apple Modal use remains **DEACTIVATED**.
 
-### Explicit parallel-host exception
+### Historical explicit parallel-host exception
 
 On 2026-11-03 the user explicitly instructed this qualification to compile in
 parallel with the existing local build. `run --allow-parallel-hosts` records
 that per-call exception in `request.json` and disables only the local-process
 collision rejection/cancellation for that call. The Modal source is an immutable
 verified snapshot and its Linux-host/Apple-target cache is separate from native
-macOS Cargo caches. The default remains the existing serial policy; this flag
-requires explicit human authorization and does not activate general Modal use.
+macOS Cargo caches. At that qualification the default was serial and the flag
+required explicit authorization. The later independent-environment contract
+supersedes that scheduling rule; the flag remains accepted for command
+compatibility and is no longer required. Activation/spending remain separate.
 
 Job `58f2b80e-927c-4ba7-a103-a0a0ffc7e914` was cancelled during source-cache
 preparation when a new local build was detected. Its terminal remote result is
@@ -190,4 +195,8 @@ Artifacts and receipts are under
   passed and both logs are preserved.
 
 The image and this concrete cross-build are qualified for the stated checks.
-General Modal usage remains **DEACTIVATED** until explicit operator activation.
+At qualification handoff general Modal usage was **DEACTIVATED** pending explicit
+operator activation. The subsequent
+[current-source build](validation/2026-11-03-b3-modal-cli-build.md) records that
+explicit activation and successful use. Read `activation-status` for actual
+current state; documentation does not activate the image.

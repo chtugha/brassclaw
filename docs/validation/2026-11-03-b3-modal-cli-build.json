@@ -1,0 +1,105 @@
+{
+  "date": "2026-11-03",
+  "job_id": "e1fb11c2-e5ce-4bb9-be5b-a3f9d8e98b0a",
+  "app_id": "ap-BJ6WG0inuMLRSGC9AJhrf4",
+  "image_id": "im-S1cpT9G1fsMPpwjISvBSlK",
+  "source_manifest_sha256": "26b4e5b77ebbdf9faa3ca5f0d7c2b29931e04f0e5f5f91dd2dc31d747384b4e2",
+  "head": "35be9773d498256c6ab788d9ad613f52e776fd71",
+  "command": [
+    "cargo",
+    "build",
+    "--locked",
+    "-p",
+    "brassclaw_reborn_cli",
+    "--bin",
+    "brassclaw-reborn",
+    "--target",
+    "aarch64-apple-darwin"
+  ],
+  "returncode": 0,
+  "cargo_reported_secs": 294,
+  "worker_secs": 340.5550138950348,
+  "controller_secs": 383.0939037799835,
+  "binary": {
+    "file": "/build/cache/images/im-S1cpT9G1fsMPpwjISvBSlK/target/aarch64-apple-darwin/debug/brassclaw-reborn: Mach-O 64-bit arm64 executable, flags:<NOUNDEFS|DYLDLINK|TWOLEVEL|PIE|HAS_TLV_DESCRIPTORS>",
+    "sha256": "3880b76c5569397745fcb15d63fec2ad77dffc8455fbd5522801aa979bbefb08",
+    "size": 336109904
+  },
+  "native": {
+    "artifact_sha256": "3880b76c5569397745fcb15d63fec2ad77dffc8455fbd5522801aa979bbefb08",
+    "checks": {
+      "dependencies": {
+        "command": [
+          "otool",
+          "-L",
+          "/Users/ollama/brassclaw-target/modal-build/jobs/e1fb11c2-e5ce-4bb9-be5b-a3f9d8e98b0a/brassclaw-reborn"
+        ],
+        "returncode": 0
+      },
+      "file": {
+        "command": [
+          "file",
+          "/Users/ollama/brassclaw-target/modal-build/jobs/e1fb11c2-e5ce-4bb9-be5b-a3f9d8e98b0a/brassclaw-reborn"
+        ],
+        "returncode": 0
+      },
+      "help": {
+        "command": [
+          "/Users/ollama/brassclaw-target/modal-build/jobs/e1fb11c2-e5ce-4bb9-be5b-a3f9d8e98b0a/brassclaw-reborn",
+          "--help"
+        ],
+        "returncode": 0
+      },
+      "version": {
+        "command": [
+          "/Users/ollama/brassclaw-target/modal-build/jobs/e1fb11c2-e5ce-4bb9-be5b-a3f9d8e98b0a/brassclaw-reborn",
+          "--version"
+        ],
+        "returncode": 0
+      }
+    },
+    "scope": "native Mach-O inspection and actual CLI --version/--help; no complete product acceptance"
+  },
+  "source_and_embedded_assets": [
+    {
+      "path": "crates/brassclaw_reborn_composition/src/factory.rs",
+      "sha256": "7b3912e8be30c2840c690676dc419b4c5c10875ec6a6e919e3690a70eed44d32",
+      "matches_build_manifest": true
+    },
+    {
+      "path": "crates/brassclaw_reborn_composition/src/auth_native_codex.rs",
+      "sha256": "d5972af4db412e91c83a31d30b27c47c493bab5a1a365a73e429ea49aa304145",
+      "matches_build_manifest": true
+    },
+    {
+      "path": "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutations.js",
+      "sha256": "18969e7b3710b9f310cb180fccbbedf2e01e509c8de928ef686b9a9477ce6847",
+      "matches_build_manifest": true,
+      "exact_bytes_embedded": true,
+      "binary_offset": 125303607
+    },
+    {
+      "path": "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-login.js",
+      "sha256": "610123273318f0ce12e461719534966d6ece0adef9bf143e1a141229276412d6",
+      "matches_build_manifest": true,
+      "exact_bytes_embedded": true,
+      "binary_offset": 125280293
+    },
+    {
+      "path": "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/provider-mutation-status.js",
+      "sha256": "677a1556d52bd1644e015b5882526a968b62462493233c6176ca3813e73b5566",
+      "matches_build_manifest": true,
+      "exact_bytes_embedded": true,
+      "binary_offset": 125019471
+    }
+  ],
+  "pgvector_sha256": "e4e03c5defc87c5540c2b294cd32b6b7010d54afa54dd37376ab89e8520f3b1f",
+  "reused_pgvector_native_evidence": "/Users/ollama/brassclaw-target/modal-build/jobs/7da58631-e7e7-4faa-a144-025eb4f1845f/native-pgvector-accepted.json",
+  "app_terminal_observation": {
+    "state": "stopped",
+    "tasks": 0,
+    "stopped_at": "2026-11-03 06:08:48+01:00"
+  },
+  "scope": "Default-feature standalone CLI cross-build; native Mach-O/dependencies/version/help and exact embedded JS bytes. No Rust tests, live issuer, PostgreSQL integration or complete Bob-plan acceptance.",
+  "performance_limit": "No per-crate/linker timing or equivalent local baseline; speedup is not established."
+}

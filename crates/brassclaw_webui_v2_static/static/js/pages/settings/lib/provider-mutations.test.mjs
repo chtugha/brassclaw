@@ -9,12 +9,18 @@ const source = readFileSync(new URL("./provider-mutations.js", import.meta.url),
   .split("\n").filter(line => !line.startsWith("import ")).join("\n").replaceAll("export ", "");
 function fixture() {
   const calls = [], events = []; let next = 0;
-  const context = { clientActionId: () => `00000000-0000-4000-8000-${String(++next).padStart(12, "0")}`,
+  let nonce = "original", authenticated = true;
+  const auth = {
+    readStoredToken: () => authenticated ? "controlled-token" : "",
+    readOriginalAuthContext: () => { if (!authenticated) throw Error("Authentication required"); return { origin: "http://operator.example", nonce }; },
+    originalAuthContextIsCurrent: (value, token) => authenticated && token === "controlled-token" && value.nonce === nonce,
+  };
+  const context = { ...auth, clientActionId: () => `00000000-0000-4000-8000-${String(++next).padStart(12, "0")}`,
     apiFetch: (path, options) => new Promise((resolve, reject) => calls.push({ path, options, resolve, reject })),
     Event: class { constructor(type) { this.type = type; } }, dispatchEvent: event => events.push(event.type) };
   vm.createContext(context);
-  vm.runInContext(source + "\nglobalThis.api = { submitProviderMutation, pendingProviderMutations, readProviderMutation, reconcileProviderMutation };", context);
-  return { calls, events, ...context.api };
+  vm.runInContext(source + "\nglobalThis.api = { submitProviderMutation, pendingProviderMutations, readProviderMutation, reconcileProviderMutation, subscribeProviderBootstrap };", context);
+  return { calls, events, ...context.api, changeAuth() { nonce = "successor"; }, logout() { authenticated = false; }, restoreAuth() { nonce = "original"; authenticated = true; } };
 }
 const payload = () => ({ id: "local", adapter: "open_ai_completions", expected_revision: 4, api_key: "fixture-private-key" });
 const submit = (f, p = payload()) => f.submitProviderMutation("upsert", "local", "/providers", p);
@@ -129,4 +135,114 @@ test("manual original read settles uncertainty without requiring a successful re
   const correction = submit(f, { ...payload(), name: "Corrective definition" });
   const nextId = request(f.calls[3]).mutation_id; assert.notEqual(nextId, id);
   f.calls[3].resolve({ mutation_receipt: receipt(nextId) }); await correction;
+});
+
+test("inactive or aborted login observers send no read or reconciliation request", async () => {
+  const f = fixture(), abort = new AbortController(); abort.abort();
+  for (const operation of [f.readProviderMutation, f.reconcileProviderMutation]) {
+    assert.equal(await operation("original", { isCurrent: () => false }), null);
+    assert.equal(await operation("original", { signal: abort.signal }), null);
+  }
+  assert.equal(f.calls.length, 0); assert.deepEqual(f.events, []);
+});
+
+test("a stale or aborted response neither settles pending work nor publishes bootstrap/settings", async () => {
+  for (const reconcile of [false, true]) for (const cancelled of [false, true]) {
+    const f = fixture(), notices = [], work = submit(f), id = request(f.calls[0]).mutation_id;
+    const originalEvents = [...f.events];
+    f.subscribeProviderBootstrap(value => notices.push(value));
+    let current = true; const abort = new AbortController();
+    const operation = reconcile ? f.reconcileProviderMutation : f.readProviderMutation;
+    const response = operation(id, { isCurrent: () => current, signal: abort.signal });
+    assert.equal(f.calls[1].options.signal, abort.signal);
+    if (cancelled) abort.abort(); else current = false;
+    f.calls[1].resolve(reconcile ? { mutation_receipt: receipt(id) } : receipt(id));
+    assert.equal(await response, null);
+    assert.equal(f.pendingProviderMutations()[0].committed, false);
+    assert.deepEqual(f.events, originalEvents); assert.deepEqual(notices, []);
+    f.calls[0].resolve({ mutation_receipt: receipt(id) }); await work;
+  }
+});
+
+test("the caller's exact receipt validator runs before any shared projection changes", async () => {
+  for (const reconcile of [false, true]) {
+    const f = fixture(), notices = [], work = submit(f), id = request(f.calls[0]).mutation_id;
+    const originalEvents = [...f.events];
+    f.subscribeProviderBootstrap(value => notices.push(value));
+    const operation = reconcile ? f.reconcileProviderMutation : f.readProviderMutation;
+    const response = operation(id, { validateReceipt: value => {
+      if (value.provider_id !== "local") throw new Error("Wrong original provider");
+    } });
+    const foreign = { ...receipt(id), provider_id: "foreign" };
+    f.calls[1].resolve(reconcile ? { mutation_receipt: foreign } : foreign);
+    await assert.rejects(response, /Wrong original provider/);
+    assert.equal(f.pendingProviderMutations()[0].committed, false);
+    assert.deepEqual(f.events, originalEvents); assert.deepEqual(notices, []);
+    f.calls[0].resolve({ mutation_receipt: receipt(id) }); await work;
+  }
+});
+
+
+test("auth changes prevent success projection and all automatic recovery under a new context", async () => {
+  for (const rejected of [false, true]) {
+    const f = fixture(), notices = [], work = submit(f), id = request(f.calls[0]).mutation_id;
+    f.subscribeProviderBootstrap(value => notices.push(value));
+    const before = [...f.events]; f.changeAuth();
+    if (rejected) f.calls[0].reject(reject(503)); else f.calls[0].resolve({ mutation_receipt: receipt(id) });
+    await assert.rejects(work, error => error.mutationId === id && /Authentication changed/.test(error.message));
+    assert.equal(f.calls.length, 1); assert.deepEqual(f.events, before); assert.deepEqual(notices, []);
+    assert.equal(f.pendingProviderMutations().length, 0);
+    // A new explicit operator observation is allowed; automatic submit
+    // recovery above sent nothing after the context change.
+    const read = f.readProviderMutation(id);
+    assert.equal(f.calls[1].options.body, undefined);
+    f.calls[1].resolve(receipt(id)); await read;
+    const reconcile = f.reconcileProviderMutation(id);
+    assert.equal(f.calls[2].options.body, undefined);
+    f.calls[2].resolve({ mutation_receipt: receipt(id) }); await reconcile;
+    assert.equal(f.calls.length, 3);
+  }
+});
+
+test("an explicit successor context gets its own bytes/ID instead of the old unresolved payload", async () => {
+  const f = fixture(), first = submit(f), oldId = request(f.calls[0]).mutation_id;
+  f.changeAuth();
+  const next = submit(f, { ...payload(), api_key: "new-context-private-key" });
+  assert.equal(f.calls.length, 2); const nextId = request(f.calls[1]).mutation_id;
+  assert.notEqual(nextId, oldId); assert.equal(request(f.calls[1]).api_key, "new-context-private-key");
+  f.calls[0].resolve({ mutation_receipt: receipt(oldId) }); await assert.rejects(first, /Authentication changed/);
+  assert.equal(f.pendingProviderMutations()[0].id, nextId);
+  f.calls[1].resolve({ mutation_receipt: receipt(nextId) }); await next;
+});
+
+test("auth changes during original read or reconcile stop the submit recovery chain", async () => {
+  for (const duringReconcile of [false, true]) {
+    const f = fixture(), work = submit(f), id = request(f.calls[0]).mutation_id;
+    f.calls[0].reject(reject(503)); await tick();
+    if (duringReconcile) { f.calls[1].resolve(receipt(id)); await tick(); }
+    const count = f.calls.length; f.changeAuth();
+    f.calls[count - 1].resolve(duringReconcile ? { mutation_receipt: receipt(id) } : receipt(id));
+    await assert.rejects(work, /Authentication changed/); assert.equal(f.calls.length, count);
+  }
+});
+
+test("missing authentication fails before retaining/sending a new secret payload", async () => {
+  const f = fixture(); f.logout(); await assert.rejects(submit(f), /Authentication required/);
+  assert.equal(f.calls.length, 0); assert.equal(f.pendingProviderMutations().length, 0);
+});
+
+test("a retired POST body cannot be reused even if the original auth observation recovers", async () => {
+  const f = fixture(), work = submit(f), id = request(f.calls[0]).mutation_id;
+  f.logout(); f.calls[0].reject(reject(503)); await assert.rejects(work, /Authentication changed/);
+  f.restoreAuth();
+  const retry = submit(f); assert.equal(f.calls.length, 1);
+  await assert.rejects(retry, /unresolved/);
+  const read = f.readProviderMutation(id);
+  assert.equal(f.calls[1].options.body, undefined);
+  f.calls[1].resolve(receipt(id)); await read;
+  const reconcile = f.reconcileProviderMutation(id);
+  assert.equal(f.calls[2].options.body, undefined);
+  f.calls[2].resolve({ mutation_receipt: receipt(id) }); await reconcile;
+  assert.equal(f.pendingProviderMutations().length, 0);
+  assert.equal(f.calls.filter(call => call.path === "/providers").length, 1);
 });

@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
-const load = (path, names, bindings = {}) => vm.runInNewContext("(function(){" + readFileSync(new URL(path, import.meta.url), "utf8").split("\n").filter(line => !line.startsWith("import ")).join("\n").replaceAll("export ", "") + ";return {" + names.join(",") + "};})()", bindings);
+const sourceBase = process.env.PROVIDER_TEST_SOURCE_BASE || import.meta.url;
+const load = (path, names, bindings = {}) => vm.runInNewContext("(function(){" + readFileSync(path === "./provider-mutations.js" && process.env.PROVIDER_MUTATION_SOURCE ? process.env.PROVIDER_MUTATION_SOURCE : new URL(path, sourceBase), "utf8").split("\n").filter(line => !line.startsWith("import ")).join("\n").replaceAll("export ", "") + ";return {" + names.join(",") + "};})()", bindings);
 const api = load("./settings-api.js", ["validatePrefixRevision"]);
 const setup = load("./model-setup-draft.js", ["parseSetupDraft"]);
 const parser = load("./provider-bootstrap.js", ["providerBootstrapTarget", "providerBootstrapStatus"], { ...api, ...setup });
@@ -56,7 +57,7 @@ test("unmount invalidates an in-flight original inspection",async()=>{
 });
 test("provider transport retains action order across out-of-order original acknowledgements",async()=>{
   const calls=[],observed=[];let next=0;
-  const transport=load("./provider-mutations.js",["submitProviderMutation","subscribeProviderBootstrap"],{clientActionId:()=>id(++next),apiFetch:(path,options)=>new Promise(resolve=>calls.push({path,options,resolve}))});
+  const transport=load("./provider-mutations.js",["submitProviderMutation","subscribeProviderBootstrap"],{readStoredToken:()=>"controlled-bootstrap-token",readOriginalAuthContext:()=>({origin:"http://operator.example",nonce:"original"}),originalAuthContextIsCurrent:()=>true,clientActionId:()=>id(++next),apiFetch:(path,options)=>new Promise(resolve=>calls.push({path,options,resolve}))});
   const unsubscribe=transport.subscribeProviderBootstrap((r,order)=>observed.push([r.mutation_id,order]));
   const a=transport.submitProviderMutation("select","a","/active",{provider_id:"a"}),b=transport.submitProviderMutation("select","b","/active",{provider_id:"b"});
   calls[1].resolve({mutation_receipt:{...receipt(2),operation:"select"}});await b;

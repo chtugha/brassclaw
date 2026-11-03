@@ -1,0 +1,12 @@
+✔ actual settings caller rejects a late old-context commit before bootstrap or recovery (22.5285ms)
+✔ actual settings recovery never sends original read/reconcile using a successor bearer (2.511375ms)
+✔ an explicit new-context edit cannot reuse the old original identity or API-key bytes (0.597375ms)
+✔ logout blocks a new actual settings write before HTTP (0.102583ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 95.688792

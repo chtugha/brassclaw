@@ -1,6 +1,5 @@
-# ── Build output directory (NVMe, not SSDE) ──────────────────────────────────
-[build]
-target-dir = "/Users/ollama/brassclaw-target"
+# Build output location follows host-local Cargo configuration or Cargo's default.
+# Custom output directories belong in local configuration or the environment.
 
 # ── Cross-compilation target ──────────────────────────────────────────────────
 [target.x86_64-unknown-linux-musl]

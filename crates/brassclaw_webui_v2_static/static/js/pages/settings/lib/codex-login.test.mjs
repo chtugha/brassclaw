@@ -5,6 +5,7 @@ import test, { afterEach } from "node:test";
 import { randomUUID } from "node:crypto";
 import { storeToken, readOriginalAuthContext } from "../../../lib/api.js";
 import { codexLoginSelection, findCodexLoginOriginal, runCodexLogin } from "./provider-login.js";
+import { subscribeProviderBootstrap } from "./provider-mutations.js";
 
 const originalTimer = globalThis.setTimeout;
 const originalStorage = globalThis.sessionStorage, originalWindow = globalThis.window, originalFetch = globalThis.fetch;
@@ -237,4 +238,62 @@ test("legacy authenticated sessions initialize one verified nonsecret context wi
   assert(!saved.values.get("brassclaw_auth_original_context").includes("legacy-controlled-token"));
   saved.values.delete("brassclaw_auth_original_context");saved.setItem=()=>{};
   assert.throws(()=>readOriginalAuthContext(),/verified/);
+});
+
+test("Codex rejects a foreign reconciliation receipt before bootstrap notification", async () => {
+  const f = fixture(), notices = [], unsubscribe = subscribeProviderBootstrap(value => notices.push(value));
+  try {
+    f.foreignReconcile({ provider_id: "foreign-provider" });
+    await assert.rejects(f.run(), /could not be verified/);
+    assert.deepEqual(notices, []);
+    assert.equal(f.calls.filter(call => call.path.endsWith("/codex/login")).length, 1);
+  } finally { unsubscribe(); }
+});
+
+test("late Codex reconciliation after unmount, auth change or abort cannot publish bootstrap", async () => {
+  for (const change of ["unmount", "auth", "abort"]) {
+    const f = fixture(), notices = [], abort = new AbortController(); let current = true, release, arrived;
+    const waiting = new Promise(resolve => { release = resolve; });
+    const started = new Promise(resolve => { arrived = resolve; });
+    const fetch = globalThis.fetch;
+    globalThis.fetch = async (path, options) => {
+      const response = await fetch(path, options);
+      if (path.endsWith("/reconcile")) { arrived(); await waiting; }
+      return response;
+    };
+    const unsubscribe = subscribeProviderBootstrap(value => notices.push(value));
+    try {
+      const pending = f.run({ isCurrent: () => current, signal: abort.signal });
+      await started;
+      if (change === "auth") storeToken("changed-during-reconciliation");
+      else if (change === "abort") abort.abort();
+      else current = false;
+      release();
+      assert.equal((await pending).completed, false);
+      assert.deepEqual(notices, []);
+      const reconcile = f.calls.find(call => call.path.endsWith("/reconcile"));
+      assert.equal(reconcile.options.signal, abort.signal);
+      assert.equal(f.calls.filter(call => call.path.endsWith("/codex/login")).length, 1);
+    } finally { release(); unsubscribe(); }
+  }
+});
+
+test("a Codex observer superseded by its terminal-status callback starts no reconciliation", async () => {
+  const f = fixture(); let current = true;
+  const result = await f.run({ isCurrent: () => current, onStatus: value => {
+    if (value.status === "completed") current = false;
+  } });
+  assert.equal(result.completed, false);
+  assert.deepEqual(f.events, ["post", "read"]);
+});
+
+test("an exact current Codex completion publishes its original bootstrap receipt once", async () => {
+  const f = fixture(), notices = [], unsubscribe = subscribeProviderBootstrap(value => notices.push(value));
+  try {
+    const result = await f.run();
+    assert.equal(result.completed, true);
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0].mutation_id, f.request().mutation_id);
+    assert.equal(notices[0].provider_id, f.selection.provider_id);
+  } finally { unsubscribe(); }
 });

@@ -1,0 +1,20 @@
+{
+  "kind": "ui-transport-regression",
+  "date": "2026-11-03",
+  "scope": "B3-09 ProviderMutationStatus original observer lifecycle",
+  "before": {
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/provider-mutation-status.js": "3b8698421cb636fef3c76ad7924ecd8b1759f19b798ad92310ecc266b1661777",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/provider-mutation-status.test.mjs": "cf5198d0b13611bc27a51a4040653db881941be477843d337a9724771219e110"
+  },
+  "after": {
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/provider-mutation-status.js": "677a1556d52bd1644e015b5882526a968b62462493233c6176ca3813e73b5566",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/provider-mutation-status.test.mjs": "5df5e08e881038a52d2949ed89f1502ce5718a69e474e9b67d50cd549c63394c"
+  },
+  "validation": {
+    "tests": 10,
+    "passed": 10,
+    "failed": 0,
+    "skipped": 0
+  },
+  "native_packaging_verified": false
+}

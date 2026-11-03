@@ -138,11 +138,8 @@ def capture(root: Path, archive_path: Path, baseline: dict | None = None) -> dic
 
 
 @contextmanager
-def cargo_lock():
-    default = "/private/tmp/brassclaw-target-cargo.lock" if sys.platform == "darwin" else str(
-        Path(tempfile.gettempdir()) / "brassclaw-target-cargo.lock"
-    )
-    with open(os.environ.get("BRASSCLAW_CARGO_LOCK", default), "a+b") as lock:
+def build_lock(path):
+    with open(path, "a+b") as lock:
         if os.name == "nt":
             import msvcrt
 
@@ -166,20 +163,44 @@ def cargo_lock():
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--volume", default=os.environ.get("BRASSCLAW_MODAL_VOLUME", DEFAULT_VOLUME))
-    parser.add_argument("--environment", default="brassclaw", help="Explicit Modal environment")
-    parser.add_argument("--create", action="store_true", help="Create the named Volume if absent; no compute")
-    args = parser.parse_args()
+def lock_path(name, variable):
+    temporary = Path("/private/tmp") if sys.platform == "darwin" else Path(tempfile.gettempdir())
+    return Path(os.environ.get(variable, temporary / name)).resolve()
+
+
+def cargo_lock():
+    return build_lock(lock_path("brassclaw-target-cargo.lock", "BRASSCLAW_CARGO_LOCK"))
+
+
+def modal_lock():
+    remote = lock_path("brassclaw-modal-build.lock", "BRASSCLAW_MODAL_LOCK")
+    if remote == lock_path("brassclaw-target-cargo.lock", "BRASSCLAW_CARGO_LOCK"):
+        raise ValueError("Local and Modal build locks must have different paths")
+    return build_lock(remote)
+
+
+def assert_remote_settled():
+    # A disconnected controller releases its OS lock, not the running worker.
+    # Unresolved receipts therefore continue to fence remote cache/source writes.
+    jobs = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")) / "modal-build/jobs"
+    for previous in jobs.glob("*/state.json"):
+        state = json.loads(previous.read_bytes())
+        if state["state"] not in {"completed", "failed", "not_started"}:
+            raise RuntimeError(f"Unsettled remote build blocks Modal source/cache changes: {previous}")
+
+
+def sync_source(environment, volume_name, create=False):
+    """Publish and verify source; caller holds modal_lock for the whole job."""
+    if environment != "brassclaw":
+        raise ValueError("This synchronizer is restricted to the brassclaw environment")
     import modal
 
-    with cargo_lock(), tempfile.TemporaryDirectory(prefix="brassclaw-modal-source-") as scratch:
-        if args.create:
+    with tempfile.TemporaryDirectory(prefix="brassclaw-modal-source-") as scratch:
+        if create:
             modal.Volume.objects.create(
-                args.volume, version=2, allow_existing=True, environment_name=args.environment
+                volume_name, version=2, allow_existing=True, environment_name=environment
             )
-        volume = modal.Volume.from_name(args.volume, environment_name=args.environment)
+        volume = modal.Volume.from_name(volume_name, environment_name=environment)
         volume.hydrate()  # Actual availability/auth check; never starts a worker.
         try:
             baseline_bytes = b"".join(volume.read_file(BASE_MANIFEST_PATH))
@@ -219,8 +240,8 @@ def main() -> None:
             raise ValueError("Remote source archive readback differs")
         verify_source(ROOT, manifest)
         print(json.dumps({
-            "volume": args.volume,
-            "environment": args.environment,
+            "volume": volume_name,
+            "environment": environment,
             "source": destination,
             "manifest": MANIFEST_PATH,
             "archive_sha256": manifest["archive_sha256"],
@@ -230,6 +251,17 @@ def main() -> None:
             "compressed_bytes": archive.stat().st_size,
             "status": "source upload/readback verified; no compilation or tests executed",
         }, indent=2))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--volume", default=os.environ.get("BRASSCLAW_MODAL_VOLUME", DEFAULT_VOLUME))
+    parser.add_argument("--environment", default="brassclaw", help="Explicit Modal environment")
+    parser.add_argument("--create", action="store_true", help="Create the named Volume if absent; no compute")
+    args = parser.parse_args()
+    with modal_lock():
+        assert_remote_settled()
+        sync_source(args.environment, args.volume, args.create)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,15 @@
 # Central development build queue
 
+> **Retired — user instruction, 2026-11-03:** development now uses one sole
+> agent in the current user chat. This file is retained only as historical work
+> and evidence; do not submit requests, delegate tasks or resume its coordination
+> workflow. Earlier open rows remain unresolved until actually implemented and
+> verified. The current [development policy](development-policy.md#shared-source-and-central-build-ownership-2026-10-30)
+> supersedes the historical instructions below. Preserve active process locks
+> and original receipts when reconciling earlier work.
+
+## Historical coordination instructions and records
+
 The leading Root/Auth chat owns all Cargo execution on the shared checkout and
 canonical target. Other chats send requests to it; build windows are not handed
 out. Only the leading chat edits this queue. The

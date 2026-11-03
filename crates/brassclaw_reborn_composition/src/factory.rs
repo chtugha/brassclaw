@@ -979,11 +979,27 @@ async fn build_local_dev(
                                     .to_string(),
                         })?,
                 ));
-                Some(compose_durable_product_auth_services(
+                #[cfg(feature = "root-llm-provider")]
+                let native_codex_auth = Arc::clone(&pg_auth);
+                let auth_services = compose_durable_product_auth_services(
                     pg_auth,
                     turn_coordinator.clone(),
                     &provider_composition,
-                ))
+                );
+                #[cfg(feature = "root-llm-provider")]
+                let auth_services = Arc::new(
+                    Arc::unwrap_or_clone(auth_services)
+                        .with_native_codex_owners(
+                            native_codex_auth,
+                            product_auth_runtime_ports.clone(),
+                        )
+                        .map_err(|_| RebornBuildError::InvalidConfig {
+                            reason:
+                                "native Codex owners conflict with composed product-auth services"
+                                    .to_string(),
+                        })?,
+                );
+                Some(auth_services)
             } else {
                 None
             };

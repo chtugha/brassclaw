@@ -1,0 +1,625 @@
+# missing4_v3_at_k3 — Validator Steps 7–12: class routes, behavioral evidence, human Q2, production cutover
+
+**Date:** 2026-11-02.
+**Reviewed and corrected:** 2026-11-03 — seven errors corrected (see §7).
+**Deep audit corrections:** 2026-11-03 — twenty-one further errors corrected (see §8).
+**Status:** Plan only. No code, runtime, seed or activation change results from
+creating this file. Implementation belongs to its named owning layer. Existing
+approvals, running tasks and current placeholder bytes remain unchanged until
+the steps below are completed and accepted.
+
+---
+
+## 1. Problem statement
+
+Steps 1–8 (system-seed path) of `validator_v3.md` are structurally closed or
+operationally complete as of 2026-11-02:
+
+| Step | Status |
+|------|--------|
+| 1 — Freeze contracts / inventory | Closed (structural) |
+| 2 — Immutable submissions / review subjects | Closed (BUILD-018, 2026-10-31) |
+| 3 — Retain validator selection / trusted evidence contracts | **Partial** — source prerequisites met (inspector, reader, subject/input custody, sealed observer); exact cutover contract items 1–8 (`pure-component-review.md`) entirely open |
+| 4 — Repair shared seed defect | Closed |
+| 5 — Reusable facts and checking components | Partial — source/inventory/definition/contract/graph checks closed (sessions 2026-10-23/24); call/binding/behavior coverage, trusted durable evidence and complete class-22 workflow integration remain open per `pure-component-review.md` |
+| 5a — Qualify effect-free preload / pinned function invocation | Source-closed; live receipt pending TASK-022 |
+| 6 — Assemble and execute multi-step validation Recipes | Closed; legacy path removed; TASK-022 retest pending |
+| **7-A** — Class-specific PC bodies (one per route) | **Closed** — session-4 commit `1f0337469` |
+| **7-B** — Negative fixture tests per class route | **Closed (source)** — session-5 commit `5387fe588`; live receipt pending TASK-022 |
+| **8 (system-seed path)** — Behavioral evidence + `pure-component-approval/1` for validator PCs | **Closed (source)** — `bootstrap_validator_approval.rs` wired in `component_boot.rs`; live receipt pending TASK-022 |
+
+**Steps 9–12 are entirely open.** The current structural scaffolding
+(immutable `ComponentRevisionDraft` envelopes, class-specific PC bodies,
+boot-time `qualify_all_validators` for association/pure approvals, fixture tests)
+is complete for the *system-seed* path but does not cover:
+
+| Remaining gap | Layer | Consequence |
+|---------------|-------|-------------|
+| **G-3 No human Q2 path for authored changes** | `pg_association_review`, WebUI | The existing association-review panel covers one Tool-usage pair (class-1 Skill). It does not cover class-21 (Recipe) or class-22 (PythonCode-only) review subjects, nor the authored `pure-component-approval/1` write path. |
+| **G-4 No production activation / cutover** | Internal validator selection path, catalogue publication | No generation switch from legacy mutable `reborn_recipes` rows to the immutable-revision validator selection path has been performed. The general catalogue publication path is separate from the internal validator routing path. |
+
+The TASK-022 live-execution receipt (T2–T5 retest after the `qualify_tool_calling_pair`
+dependency-graph bugfix, commit `e94d4b141`) is a prerequisite for formally closing
+Steps 5a, 6, 7-B and 8; it is not a deliverable of this plan.
+
+---
+
+## 2. Exact current state of the infrastructure
+
+### 2.1 What exists (re-used for this work)
+
+- **Eight legacy `validator-class-N` Recipes** in `reborn_recipes` with
+  `validation_status = 'validated'` and `consumer_tags = ["05:validator"]`.
+  These are mutable rows; they are *not* the retained-path revisions.
+
+- **Eight `ComponentRevisionDraft` envelopes** in `reborn_component_revisions`,
+  one per class, produced by
+  `brassclaw_skills::validator_components::structural_validator_recipe_drafts`.
+  Each envelope carries a `validator_coverage` field used by
+  `RetainedValidatorCoverage::from_inputs()`. These have class-specific PC bodies
+  and boot-time `pure-component-approval/1` records.
+
+  *Note: `find_validator_recipe` currently reads from `reborn_recipes` (the
+  `validates_class_code` column on legacy mutable rows — `pg_recipe_store.rs`
+  lines 153–154). The `ComponentRevisionDraft` envelopes in
+  `reborn_component_revisions` are produced but not yet read by the validator
+  path — that wiring is the deliverable of Step 10-A.*
+
+- **Six class-specific PC body constants** in `builtin_bootstrap.rs`:
+  `PC_VALIDATOR_CLASS_0_BODY`, `PC_VALIDATOR_CLASS_SKILL_BODY` (classes 1–3),
+  `PC_VALIDATOR_CLASS_13_BODY`, `PC_VALIDATOR_CLASS_21_BODY`,
+  `PC_VALIDATOR_CLASS_22_BODY`, `PC_VALIDATOR_CLASS_23_BODY`.
+  Selected via `validator_pc_body_for_class(class_code)`. Each body parses
+  `inputs["content"]` as JSON (the component's content/steps field) and returns
+  `{"pass": bool, "errors": [str]}`. Uses `import json` only; zero host calls.
+
+- **16 fixture tests** in `validator_pc_body_tests.rs` (source-authored,
+  live receipt pending TASK-022): two per class (valid + class-specific defect),
+  run through `UtilityRequest::Evaluate` against the real Monty worker.
+
+- **`bootstrap_validator_approval.rs`** — boot-time qualification for all eight
+  validator PCs. Called from `component_boot.rs` after `qualify_all` (L013–L101).
+  For each PC: reads the `ComponentRevisionDraft` from `reborn_component_revisions`,
+  reads PC source content from `reborn_python_code` rows (via the UUID references
+  in the draft) to compute checksums for the `PureComponentApprovalDeclaration`,
+  writes Q1 evidence via `bootstrap_evidence::retain_intent`, writes behavioral
+  evidence via direct `reborn_component_review_evidence` INSERT, then writes a
+  `pure-component-approval/1` record via `record_pure_component_approval`.
+  All UUIDs are deterministic (UUID v5, `VALIDATOR_QUAL_NAMESPACE`). Idempotent.
+
+- **`run_q1_validation_retained`** — sole production Q1 entry point, wired via
+  `ValidatorTaskDriver` → `GlobalMontyDriver::drive_admitted`. Legacy path removed
+  (PKG-H). TASK-022 retest in progress.
+
+- **`pg_retained_q1.rs`** — structural observation writer.
+
+- **`pg_validator_q1_evidence.rs`** — durable Q1 evidence writer, links completed
+  validator Recipe executions to `reborn_component_review_evidence` rows atomically.
+
+- **`pg_association_review.rs`** — human Q2 route for one Tool-usage pair (one
+  Skill + PythonCode). Existing scope: `catalogue_activated = false`.
+
+- **`pure-component-review.md` exact remaining cutover contract** — eight-item
+  requirement list for Steps 3/8–10. Items 1–8 are all open.
+
+### 2.2 What does NOT exist (required by Steps 9–12)
+
+- Human Q2 support for class-21 (Recipe) and class-22 (PythonCode) review
+  subjects via the existing review-handler class dispatch (G-3).
+- Authored `pure-component-approval/1` write path for operator-submitted
+  pure-logic components (distinct from the system-seed bootstrap path) (G-3).
+- Immutable revision selection wired into `run_q1_validation_retained` /
+  `RetainedValidatorCoverage` (internal validator routing path) (G-4).
+- Coherent catalogue generation side-effect after new validator approvals are
+  recorded (G-4). *Note: `authored_monty_catalogue::prepare_with_policy` already
+  calls `load_independently_qualified` against `reborn_pure_component_approvals`
+  (lines 463–486 of `authored_monty_catalogue.rs`). The catalogue gate is already
+  wired — once a validator PC has a `pure-component-approval/1` record it is
+  automatically included in `independently_qualified`. Step 10-B's remaining work
+  is approval-pin carriage through retained task selection, child/wait and
+  recovery readers (`pure-component-review.md` item 7's second half), not the
+  catalogue gate itself.*
+- Production cutover: all acceptance matrix cases from `validator_v3.md §5` (G-4).
+- **G-5 No successor migration for pure-component evidence format** (`pure-component-review.md`
+  item 1): V102's `reborn_component_review_evidence` format is constrained to its
+  existing usage-specific layout; V106 workflow evidence expects a Recipe
+  selection. A new checked successor migration must introduce the linked pure
+  evidence/approval records before Steps 9–12 can write durable pure evidence.
+  **This migration is a hard prerequisite for Step 9.**
+
+---
+
+## 3. Step-by-step implementation plan
+
+The steps below follow `validator_v3.md` §4 Steps 9–12 and the
+`pure-component-review.md` exact remaining cutover contract. Each step has a
+bounded deliverable and an explicit acceptance gate. No step activates against
+incomplete prerequisites.
+
+**Prerequisites before starting Step 9:**
+- TASK-022 must have a live-execution receipt confirming T2–T5 pass and the
+  16 fixture tests pass.
+- The G-5 successor migration (`pure-component-review.md` item 1) must be
+  authored and applied before Step 9 can write durable pure evidence in the
+  correct format.
+
+---
+
+### Step 9 — Human Q2 path for authored (non-seed) validator changes
+
+**Owner:** `crates/brassclaw_reborn_composition/src/pg_association_review.rs`,
+`crates/brassclaw_product_workflow/src/settings.rs`,
+`crates/brassclaw_webui_v2_static/…/settings-tabs.js`.
+
+Step 9 of `validator_v3.md` requires that *installed authored changes* to
+validator Recipes or their PythonCode go through authenticated human Q2.
+The existing association-review panel covers only one Tool-usage (class-1 Skill)
+pair. It must be extended to cover class-21 (Recipe) and class-22 (PythonCode-only)
+review subjects.
+
+**Extension approach:**
+
+The existing `pg_association_review.rs` module uses `prepare_human_association_review`
+/ `record_human_association_approval`, which are scoped to Skill+PythonCode pairs
+and write `skill-association-approval/1` records. For class-21 (Recipe) and
+class-22 (pure-logic PythonCode), **these functions cannot be reused as-is** —
+they operate on a `skill_id` and write the wrong approval format. The correct
+approach is to add **separate store functions** for Recipe and pure-logic Q2
+that are reached through the existing class-code dispatch point in the
+operator-only review handler:
+
+- For class-22 pure-logic subjects: a new store function calls
+  `record_pure_component_approval` after evidence verification.
+- For class-21 Recipe subjects: a comparable new writer for Recipe workflow
+  approval (which does not use `skill-association-approval/1`).
+
+Do not create separately named API routes; the submission ID and review action
+remain the same surface. The class code determines which store functions and
+approval tables are written. Both paths require the G-5 migration before they
+can store evidence in the correct format.
+
+**Required work:**
+
+1. Author and apply the G-5 migration (a checked successor migration to
+   `reborn_component_review_evidence` per `pure-component-review.md` item 1)
+   before any Step 9 evidence is written. Inspect the current migration
+   inventory before allocating a version; never edit applied migrations.
+
+2. Add separate store functions for class-21 and class-22 Q2 behind the
+   existing class-code dispatch in the operator-only review handler. For
+   class-22 pure-logic subjects, the approval path writes a
+   `pure-component-approval/1` record (via
+   `pg_pure_component_approval::record_pure_component_approval`), not a
+   `skill-association-approval/1` record. Use `reborn_pure_evidence_submission_links`
+   (V201) to bind each `submission_id` to its `approval_id`
+   (`pg_pure_component_approval.rs` lines 298–310).
+
+3. The review view must show the *reviewed combination* — draft revision +
+   evidence records keyed to the exact submission ID — not a display recomputed
+   from latest mutable rows. This applies to WebUI component detail and the
+   validation-queue view.
+
+4. Gate the approval write on: Q1 evidence exists and checksum matches, at
+   least one behavioral evidence record exists and checksum matches, no
+   partial/missing required checks. These gates require the G-5 migration to
+   be in place; the existing V102/V106 schema cannot enforce them for pure/Recipe
+   evidence. Enforce server-side without bypassing existing guards.
+
+5. Also trace and verify that model/component-management ports (e.g. Sempai
+   proposal sink, WebUI Recipes facade) cannot reach the Q2 write path — per
+   `validator_v3.md §Step 9` item 4. A literal `human` field in the API body
+   is not proof of authenticated action; use the existing `simplified Phase 1`
+   ingress unchanged.
+
+6. Authored Q2 applies only to installed changes; shipped packages use the
+   existing `system_seed` path with `q2_ref = null`. The `bootstrap_validator_approval`
+   module (Step 8) already handles the system-seed path correctly; do not
+   modify it.
+
+**Exact boundaries from `validator_v3.md` §Step 9:**
+- Human review verifies semantics, coverage and the selected Q1/behavior records.
+- Immutable human evidence and association approvals are written through trusted
+  writers using `skills.md` formats unchanged.
+- Required reused dependencies retain individual approvals; the new combination
+  gets its own evidence.
+- Extend linked review storage and readers explicitly where V102 usage-specific
+  contracts do not suffice (`pure-component-review.md` items 1 and 6 give the
+  exact migration requirement: introduce a checked successor migration, not a
+  relabelling). Do not pretend class-21 or class-22 roots own a
+  `skill-association/1`.
+- Do not introduce a new outbox, queue framework or polling loop; bind submissions
+  into the **existing shared review-runtime contract** (`simplified_v3.md`).
+  Simplified implements request/run idempotency, wake/reconciliation and execution
+  ownership; this step supplies exact submission/subject/validator/check-set
+  references only.
+
+**Acceptance:**
+- A test authored Recipe change submitted via WebUI/API goes through:
+  `submitted → Q1 pass → behavioral evidence → human Q2 view → approved → next task selection`.
+- A test authored pure-logic PythonCode change goes through the same flow ending
+  in a `pure-component-approval/1` record in `reborn_pure_component_approvals`
+  with an associated `reborn_pure_evidence_submission_links` row.
+- The approval record is immutable; a later body edit creates a new submission,
+  not a mutation of the approved row.
+- A fake human marker in the API body is rejected by the existing ingress.
+- Model/component-management ports cannot write successful Q2 records.
+
+---
+
+### Step 10 — Production activation: internal validator routing and catalogue side-effects
+
+**Owner:** `run_q1_validation_retained`, `RetainedValidatorCoverage`,
+`authored_monty_catalogue.rs`, `pg_component_revision_store.rs`.
+
+This step has two distinct sub-parts with different owners:
+
+#### Step 10-A — Wire immutable-revision selection into the internal validator path
+
+**Owner:** `run_q1_validation_retained` / `RetainedValidatorCoverage` /
+`find_validator_recipe`.
+
+Currently `find_validator_recipe` reads from the legacy mutable `reborn_recipes`
+rows (the `validator-class-N` rows seeded by `seed_validator_recipes`). Step 10-A
+switches it to select the immutable `ComponentRevisionDraft` envelopes from
+`reborn_component_revisions` when they are present and have a valid
+`pure-component-approval/1` record.
+
+The validator Recipes are **internal routing entries** with `05:validator` consumer
+tag. They are consumed exclusively by `find_validator_recipe` and
+`run_q1_validation_retained` — **not** by the general user-matching catalogue
+(`authored_monty_catalogue::prepare_with_policy`) used for Tier-0/1 routing.
+The general catalogue remains unchanged by this sub-step.
+
+Required work:
+1. Extend `find_validator_recipe` to prefer the immutable revision path when
+   `reborn_pure_component_approvals` has a valid record for the validator PC UUID,
+   falling back to the legacy mutable row when none exists. **This fallback is a
+   temporary compatibility measure only** — `validator_v3.md §Step 12` item 5
+   requires retiring the legacy path after all tasks that selected it complete.
+   Do not treat the fallback as a permanent design.
+2. Verify that `RetainedValidatorCoverage::from_inputs()` and the downstream
+   `compile_retained_recipe` / `prepare_retained_unbound_program` calls resolve
+   the correct revision (the one with the class-specific PC body, not the legacy
+   three-field structural body).
+3. Keep the legacy mutable rows readable for any task that selected them; only
+   newly admitted tasks use the new generation.
+
+#### Step 10-B — Downstream reader carriage for validator approval pins
+
+**Owner:** `authored_monty_catalogue.rs`, retained task selection, child/wait
+and recovery readers (`pure-component-review.md` item 7, `simplified_v3.md §8.2`).
+
+**The catalogue gate is already wired.** `authored_monty_catalogue::prepare_with_policy`
+already calls `pg_pure_component_approval::load_independently_qualified` for
+every non-binding step UUID (lines 463–486 of `authored_monty_catalogue.rs`),
+querying `reborn_pure_component_approvals`. Once a validator PC has a
+`pure-component-approval/1` record, it is automatically included in
+`independently_qualified` — no new wiring is required for `prepare_with_policy`.
+
+Required work:
+1. Verify that `RetainedValidatorCoverage::validate_catalogue` (lines 603–606
+   of `authored_monty_catalogue.rs`) correctly handles the approved validator
+   PC state alongside the existing `independently_qualified` set.
+2. Carry checksummed pure approval references through retained task selection,
+   `child`/`wait` and recovery readers (`pure-component-review.md` item 7's
+   second half): add checksummed pure references to catalogue
+   serialization/restore/deployment, retained task selection, matching, private
+   validator admission and recovery readers.
+3. Follow `simplified_v3.md §8.2` for the publication cycle: publish the fully
+   approved catalogue together with durable affected-prefix invalidation, then
+   let the prefix owner build from that active snapshot.
+4. Do not add validator Recipe revisions to the general user-matching catalogue.
+   `05:validator`-tagged routes are excluded from ordinary matching in all
+   generation states.
+
+**Refer to `pure-component-review.md` items 6–7** (extend the independent
+occurrence gate with real approvals; carry approval pins through every reader).
+
+**Acceptance gate from `validator_v3.md §Step 10`:**
+> Concurrent activation yields one complete old/new generation; an old waiting
+> task continues its original code, while a live Tool block affects its next dispatch.
+
+---
+
+### Step 11 — Bootstrap, migration and upgrade
+
+**Owner:** `component_boot.rs`, `builtin_bootstrap.rs`, `content_integrity.rs`,
+`bootstrap_validator_approval.rs`.
+
+1. Extend boot-time integrity to cover validator Recipe drafts in
+   `reborn_component_revisions`. **Important:** `run_content_integrity_check`
+   currently covers `reborn_skills`, `reborn_tool_skills` and `reborn_python_code`
+   only (all with `source='system'` and `content_checksum` columns). A separate
+   new query must verify the eight validator `ComponentRevisionDraft` rows in
+   `reborn_component_revisions` by recomputing SHA-256 of the canonical JSON bytes
+   and comparing against their stored revision checksums. A mismatch aborts boot,
+   consistent with the existing pattern. This check must cover not just prose
+   checksums but also the complete executable dependency/artifact chain per
+   `validator_v3.md §Step 11` item 4: layout/bindings, the six class-specific PC
+   body constants and actual Monty executable image identity.
+
+2. Provide idempotent upgrade mapping: if a running instance has the legacy
+   mutable `validator-class-N` rows (from `seed_validator_recipes`) and new
+   immutable draft revisions are present (from `structural_validator_recipe_drafts`),
+   the `bootstrap_validator_approval::qualify_all_validators` boot call must
+   detect the existing legacy rows, retain the new immutable revisions idempotently
+   and never overwrite an operator override. Also handle in-flight pending review
+   submissions: if an operator started a review of a validator PC with the legacy
+   body and the new immutable body is now seeded, the pending review must be
+   flagged as superseded/incomplete — not silently adopted or failed. Per
+   `validator_v3.md §Step 11` item 5: *"identify unsealed/incomplete reviews as
+   needing review."* Preserve exact originals and their pending records.
+
+3. Preserve old artifacts and evidence. Legacy `reborn_recipes` rows for the
+   eight validators remain readable for any task that selected them; only
+   newly admitted tasks select the new generation (via Step 10-A).
+
+4. Ensure the `brassclaw repair` command re-seeds the validator revisions when
+   their content checksums mismatch (per the existing `ON CONFLICT DO UPDATE`
+   pattern in `repair.rs`).
+
+**Acceptance gate from `validator_v3.md §Step 11`:**
+> fresh/existing boot, repeated boot, upgrade with overrides, interrupted
+> review/commit and restore preserve trust and task retention without invented passes.
+
+---
+
+### Step 12 — WebUI/API and production cutover
+
+**Owner:** WebUI `settings-tabs.js`, `pg_settings_listing.rs`,
+`crates/brassclaw_product_workflow/src/settings.rs`,
+`crates/brassclaw_reborn_webui_ingress/…`.
+
+1. **Show class-route detail in the WebUI component catalog:**
+   - For each `validator-class-N` Recipe in the Settings → Component Catalog tab,
+     display: draft revision, active revision (if any), exact validator selection,
+     check failures, missing evidence, behavioral observations and human Q2 status.
+   - Show the *reviewed combination*, not a display recomputed from latest mutable rows.
+
+2. **Preserve pending/failed/incomplete/rejected states** and resubmission:
+   disabling approval when backend gates are incomplete; the UI is not the gate.
+
+3. **Support operator editing** of validator Recipes and associated PythonCode
+   through immutable versions and the same Q1/behavior/Q2 contract. Do not expose
+   success-evidence writes or mutable approved-body editing.
+
+4. **Production acceptance matrix** (from `validator_v3.md §5`):
+   - All eight class routes: valid candidate reaches required gates; distinct
+     invalid candidate is rejected for its class defect.
+   - Metadata/source separation: hostile strings remain data; checksum unchanged.
+   - Full Recipe inspection: empty steps, bad links, multiple UUIDs, unpaired
+     bindings and invalid result edges fail.
+   - **Complete Skill:** Missing association, multi-Tool purpose and prose/code
+     disagreement do not pass final approval (class-1/2/3 routes).
+   - **Interface integrity/selection:** Changing only an export/signature/fixed
+     argument changes the reviewed Skill content/combination; undeclared symbols,
+     incompatible aliases and ambiguous multiple exports fail before effects.
+     Association formats remain unchanged.
+   - **Mutable invocation isolation:** Repeated/concurrent invocations get fresh
+     mutable defaults/arguments/arrays/results. Shared mutable globals/caches and
+     closures over foreign inputs/host context fail.
+   - **Export/host generation coexistence:** Activate a successor during an old
+     task's wait — both use their own interface/code/host implementation.
+   - **Deterministic export loading:** Dependency-first order with stable-UUID
+     ties is repeatable; missing helpers, cycles, conflicting names and undeclared
+     imports fail.
+   - Human/provenance: fake human flags, old receipts and self-issued evidence fail.
+   - Authored production end-to-end: actual installed submission → pinned validator
+     exports → evidence → human Q2 → publication → next matched task works.
+   - Bundled production end-to-end: reviewed installation package → noncircular
+     integrity/Q1/behavior → system_seed records with null Q2 → coherent publication.
+
+5. **Replace the legacy Q1 entry path** only after the above acceptance matrix
+   is complete. The legacy `seed_validator_recipes` `validation_status='validated'`
+   path is already bypassed by `run_q1_validation_retained`; no second removal
+   is required, but the legacy mutable rows must remain readable until all
+   running tasks that may have selected them have completed. Also remove
+   `executor/code_audit.rs` (the orphaned Rust audit workflow) after verifying
+   no active caller uses it, per `validator_v3.md §Step 12` item 5.
+
+6. Update `docs/implementation-status.md` with a dated entry recording:
+   - Commits for each step (9 through 12).
+   - Confirmation that the human Q2 path for authored changes covers classes 21 and 22.
+   - Confirmation that `find_validator_recipe` selects the immutable revision path.
+   - Confirmation that the production acceptance matrix cases passed.
+
+---
+
+## 4. Dependency and ordering constraints
+
+```
+G-5 migration (checked successor to V102/V106 pure-evidence schema)
+    │
+    ▼
+TASK-022 live-execution receipt (T2–T5 + 16 fixture tests)
+    │
+    ▼  [also: simplified_v3.md Phase 3a — shared review-runtime contract]
+Step 9    (human Q2 path for authored changes; G-5 migration is hard prerequisite)
+    │
+    ├──► Step 10-B  (downstream reader carriage — catalogue gate already wired;
+    │               approval-pin carriage through task-selection/child/wait/recovery
+    │               readers can be developed in parallel with 9, cannot activate
+    │               before Step 9 authored path is working)
+    │
+    ▼
+Step 10-A (internal validator revision selection wired into find_validator_recipe)
+    │
+    ▼
+Step 11   (bootstrap/migration — requires Step 10-A's activation contract)
+    │
+    ▼
+Step 12   (WebUI/production cutover — requires all prior gates)
+```
+
+Steps 7-A, 7-B and 8 (system-seed) are closed; they do not appear in this ordering
+because their deliverables are already present in the codebase.
+
+Steps 9 through 12 depend on three already-open external items:
+
+- **G-5 migration** (`pure-component-review.md` item 1 — a checked successor
+  migration to the V102/V106 pure-evidence schema): must be authored and applied
+  before Step 9 can write durable pure evidence. This is the immediate first
+  prerequisite for Step 9.
+- **TASK-022** (dependency-graph bugfix retest of T2–T5 and 16 validator PC
+  body tests): provides the behavioral live-execution receipt that formally closes
+  Steps 5a, 6, 7-B and 8. Must complete before Step 9 is considered activated.
+- **simplified_v3.md Phase 3a** (durable recovery, resource accounts): Steps 9
+  and 12 use the shared admission/recovery contract; missing support blocks
+  affected review work without blocking unrelated deterministic routes.
+
+---
+
+## 5. What this plan does NOT change
+
+- **Steps 7-A, 7-B and 8 (system-seed)** — already implemented in sessions 4 and 5.
+  `bootstrap_validator_approval.rs` is wired and live-execution receipt is pending
+  TASK-022 only.
+
+- **L013–L101 component qualification** — covered by `missing2_v3_at_k3.md`
+  and `bootstrap_l013_approval.rs`. Not touched here.
+
+- **TASK-022 T2–T5 retest** — tracked separately. A prerequisite, not a
+  deliverable of this plan.
+
+- **General standalone pure approval** — `pure-component-review.md` items 1–8
+  belong specifically to **validator Steps 3/8–10** and are this plan's
+  deliverables. V35-03/04 and composition R10 *consume* that implementation;
+  they do not own it. Implement all eight cutover-contract items here. The
+  general standalone pure approval for arbitrary operator-authored
+  *non-validator* pure components remains separate open work, but the eight
+  contract items themselves must be closed by this plan.
+
+- **MCP publication** — having behavioral evidence and approval records for
+  validator Recipes does not publish them as MCP commands. They are internal
+  private routes (`05:validator` tag) and must remain excluded from ordinary
+  user matching.
+
+- **prefix Phase C2/C3/D** — Step 10-B's catalogue publication triggers prefix
+  invalidation; the prefix *owner* builds from the active snapshot. This plan
+  does not implement prefix generation or serving.
+
+- **Dynamic occurrences (V35-13/14)** — conditional/repeated check coverage in
+  Steps 7–8 requires the occurrence/control owner to supply qualified control
+  primitives. Until those are available, validator workflows that require
+  conditional branching over class-specific check sub-sets remain as drafts.
+
+- **Classes 10/50 (Orchestrator/Scaffold) roots** — Step 7's requirement note
+  states these must not be accidentally certified by a generic class-1/2/3
+  route. Their coordinated review is an explicit dependency; no generic validator
+  route may certify them.
+
+---
+
+## 6. Constraints inherited from the owning architecture
+
+- **`system_seed` approval uses `q2_ref = null`.** Per `AGENTS.md §Installation
+  seeds and post-installation changes`, first-party packaged validators use the
+  controlled seed path with `q2_ref = null`. `bootstrap_validator_approval.rs`
+  already implements this correctly. An installed operator edit requires
+  the authored Q1/behavior/human-Q2 path (Steps 9/12).
+
+- **Association is embedded in the revision, not a standalone row.** The
+  `"association"` field of the `"component-revision/1"` envelope must be embedded
+  in `reborn_component_revisions` (same pattern as `missing2_v3_at_k3.md` §6).
+
+- **One UUID per component step.** `validator-class-N` Recipes follow the
+  one-UUID-per-`include` rule; the current structural scaffold already enforces this.
+
+- **Candidate JSON is string data decoded by `json.loads(inputs["content"])`.** The
+  validator PC bodies decode the component's `content` field (a JSON string)
+  using `import json`. The validator body must never `eval()` or `exec()` candidate
+  source. The input key is `inputs["content"]`, not `inputs["candidate_json"]`.
+
+- **`retain_completed` is the correct writer for Tool-calling pairs only.**
+  `bootstrap_evidence::retain_completed` writes atomically to both
+  `reborn_component_review_evidence` AND `reborn_skill_association_approvals`.
+  It is the correct path for class-1 Skill/PythonCode pairs. For pure-logic
+  components (validator PCs), the correct path is: write behavioral evidence
+  directly to `reborn_component_review_evidence`, then call
+  `record_pure_component_approval` which writes to `reborn_pure_component_approvals`.
+  Do not use `retain_completed` for pure-logic components.
+
+- **`record_pure_component_approval` verifies evidence existence and `succeeded=true`**
+  before inserting. It checks all evidence UUIDs in `reborn_component_review_evidence`
+  and all component revisions in `reborn_component_revisions`; an approval
+  declaration referencing a missing or failed evidence row is rejected.
+
+- **All approval UUIDs are deterministic (UUID v5)** derived from component bytes
+  + a fixed namespace constant. Re-runs produce no duplicate inserts.
+
+- **`run_q1_validation_retained` is the sole production Q1 entry point.**
+  No second Q1 path, validator-specific scheduler or Rust sweep loop is introduced.
+
+- **Validator Routes are internal only.** `05:validator`-tagged Recipes are
+  excluded from ordinary user matching and must not appear in the general
+  user-visible catalogue generation. Step 10-A wires them through the internal
+  `find_validator_recipe` / `RetainedValidatorCoverage` path; Step 10-B handles
+  only the approval-pin carriage in downstream readers — the catalogue gate in
+  `prepare_with_policy` is already implemented.
+
+- **Draft containment.** Draft validator Recipe revisions are assembled and
+  tested only in the constrained review environment. Ordinary matching sees only
+  the coherent active approved catalogue.
+
+- **`reborn_pure_evidence_submission_links` (V201) must be used for authored Q2.**
+  `pg_pure_component_approval.rs` lines 298–310 document the link-writing API.
+  All new pure-evidence writes for authored Q2 (Step 9) must go through this path
+  to bind each `submission_id` to its `approval_id`, tying the pure approval to
+  the exact review subject (`pure-component-review.md` item 1).
+
+- **No new outbox, queue framework or polling loop for Step 9.** Step 9 binds
+  immutable submissions into the **existing shared review-runtime contract**
+  (`simplified_v3.md`). Simplified implements request/run idempotency,
+  wake/reconciliation and execution ownership; this plan supplies exact
+  submission/subject/validator/check-set references only. Per
+  `validator_v3.md §Step 9` item 1.
+
+---
+
+## 7. Review corrections record
+
+**Reviewed:** 2026-11-03 against live codebase. Seven errors in the original
+plan were found and corrected. No code was changed by this review; all
+corrections are to plan text only.
+
+| # | Severity | Error in original plan | Correction |
+|---|----------|------------------------|------------|
+| 1 | **Critical** | Steps 7-A and 7-B presented as open work to be done. | Both are already implemented (session-4/5). Step 8 system-seed path is also implemented in `bootstrap_validator_approval.rs`. §1 status table updated; §3 now starts at Step 9. |
+| 2 | **Moderate** | Step 7-A specified `inputs["candidate_json"]` as the validator PC input key. | The actual bodies use `inputs["content"]`. Corrected throughout §3 Step 7-A description and §6 constraints. |
+| 3 | **Moderate** | Step 8 directed use of `bootstrap_evidence::retain_completed` for behavioral evidence of pure-logic validator PCs. | `retain_completed` writes to `reborn_skill_association_approvals` — correct only for Tool-calling pairs. Pure-logic validator PCs use direct `reborn_component_review_evidence` INSERT followed by `record_pure_component_approval`. The actual implementation is correct; §6 now states this constraint explicitly. |
+| 4 | **Minor** | Step 9 proposed creating new named `human-review/class-21` and `human-review/class-22` API routes. | The correct approach is to add class-21 and class-22 cases to the **existing class-code dispatch** inside `pg_association_review.rs`, not create new named routes. §3 Step 9 rewritten accordingly. |
+| 5 | **Minor** | Step 8 acceptance used `WHERE kind='behavior' AND component_id IN (…)` on `reborn_component_review_evidence`. | That table has no `kind` or `component_id` columns; evidence is JSON-embedded. Acceptance criterion corrected to query `reborn_pure_component_approvals WHERE root IN (…)`. |
+| 6 | **Moderate** | Step 10 conflated internal validator routing with general catalogue generation, implying validator Recipe revisions are published into the general user-matching catalogue. | Step 10 split into Step 10-A (internal `find_validator_recipe` / `RetainedValidatorCoverage` switch) and Step 10-B (catalogue `independently_qualified` side-effect). Validator Recipes remain excluded from general matching in all cases. |
+| 7 | **Minor** | §4 listed T2–T5 live execution generally as blocking Steps 8/9/12. | Precise blocker is **TASK-022** (T2–T5 retest after the `qualify_tool_calling_pair` dependency-graph bugfix, commit `e94d4b141`). §4 updated accordingly. |
+
+---
+
+## 8. Deep audit corrections record
+
+**Reviewed:** 2026-11-03 against ground-truth guides (recipe.md, skills.md, tools.md,
+toolskills.md), path_to_v3.5.md, validator_v3.md §§4–5, pure-component-review.md
+exact cutover contract, and live codebase. Twenty-one further errors corrected.
+No code was changed by this review; all corrections are to plan text only.
+
+| # | Severity | Location | Error | Correction |
+|---|----------|----------|-------|------------|
+| 8 | Minor | §1 Step 3 status | Marked "Closed (source)" — exact cutover contract items 1–8 are entirely open per `pure-component-review.md`. | Changed to "Partial — source prerequisites met; exact cutover contract items 1–8 entirely open". |
+| 9 | Minor | §1 Step 5 status | "Partial; core prerequisites met" — too vague. | Replaced with specific list of what is closed vs. open. |
+| 10 | **Critical** | §2.1 bullet 2 | Conflated `reborn_component_revisions` (Step 10-A goal state) with the current `reborn_recipes` usage by `find_validator_recipe` (`pg_recipe_store.rs` lines 153–154). | Added clarifying note that `find_validator_recipe` currently reads `reborn_recipes` and that the `ComponentRevisionDraft` wiring is the Step 10-A deliverable. |
+| 11 | Moderate | §2.1 bootstrap bullet | Didn't clarify which table `bootstrap_validator_approval` reads PC content from. | Added that it reads from `reborn_python_code` rows via UUID references. |
+| 12 | **Critical** | §2.2 | Missing G-5 gap: no successor migration for the V102/V106 pure-component evidence format, which is required before Steps 9–12 can write durable pure evidence. | Added G-5 gap entry to §2.2 and to §4 ordering diagram. |
+| 13 | Moderate | §2.2 | Omitted that `prepare_with_policy` already calls `load_independently_qualified` (lines 463–486 of `authored_monty_catalogue.rs`) — the catalogue gate is already wired. Step 10-B's remaining work is only the downstream reader carriage. | Added clarifying note to §2.2 G-4 entry. |
+| 14 | **Critical** | §3 Step 9 "Extension approach" | `prepare_human_association_review`/`record_human_association_approval` cannot be reused for class-21/22 — they operate on `skill_id` and write `skill-association-approval/1`. Separate store functions are required. | Rewrote "Extension approach" to clarify that separate store functions are needed; existing `pg_association_review.rs` functions do not apply to Recipe/pure-PythonCode Q2. |
+| 15 | Moderate | §3 Step 9 item 3 | Omitted that V102/V106 schema blocks enforcement without the G-5 migration. | Added explicit statement that the G-5 migration is required and that existing V102/V106 schema cannot enforce these gates for pure/Recipe evidence. |
+| 16 | Minor | §3 Step 9 item 4 | Omitted the requirement to trace model/component-management port rejection. | Added explicit requirement to trace and verify that model/component-management ports cannot reach the Q2 write path. |
+| 17 | Moderate | §3 Step 10-A item 1 | "Fallback to legacy mutable row" language understated the Step 12 requirement to retire the legacy path. | Added explicit note that the fallback is a temporary compatibility measure only and that Step 12 item 5 requires retiring it. |
+| 18 | **Critical** | §3 Step 10-B item 1 | Described `load_independently_qualified` wiring in `prepare_with_policy` as future work — it is already implemented in `authored_monty_catalogue.rs` lines 463–486. | Rewrote Step 10-B to reflect the already-implemented state and identify the actual remaining work (downstream reader carriage, `pure-component-review.md` item 7's second half). |
+| 19 | Moderate | §3 Step 11 item 1 | `run_content_integrity_check` covers `reborn_skills`/`reborn_tool_skills`/`reborn_python_code` only, not `reborn_component_revisions`. A new separate query is needed. | Rewrote item 1 to clarify that a new query is required for `reborn_component_revisions`. |
+| 20 | Moderate | §3 Step 11 item 1 | Integrity check described as prose-checksum only; `validator_v3.md §Step 11` item 4 requires covering complete executable dependencies/artifacts too. | Added requirement to cover layout/bindings, PC body constants and Monty executable image identity. |
+| 21 | Moderate | §3 Step 11 item 2 | Omitted handling of in-flight pending review submissions during upgrade. | Added requirement to flag pending reviews as superseded/incomplete when the new immutable body is seeded. |
+| 22 | Moderate | §3 Step 12 item 4 | Acceptance matrix labelled "abridged" — dropped five required cases from `validator_v3.md §5`. | Added the five missing cases: Complete Skill, Interface integrity/selection, Mutable invocation isolation, Export/host generation coexistence, Deterministic export loading. Removed "abridged" label. |
+| 23 | Minor | §3 Step 12 item 5 | Omitted requirement to remove `executor/code_audit.rs` (orphaned Rust audit workflow). | Added explicit requirement to remove it after caller verification. |
+| 24/25 | Moderate | §4 diagram | Missing G-5 migration and `simplified_v3.md Phase 3a` as explicit nodes/dependencies. | Updated diagram to show G-5 migration as the first node; added `simplified_v3.md Phase 3a` annotation; expanded Step 10-B description. Added G-5 to the external-items prose list. |
+| 26 | Minor | §5 | Incorrectly framed `pure-component-review.md` items 1–8 as "general work not owned by this plan" — they are specifically validator Steps 3/8–10 deliverables. | Rewrote to state that items 1–8 are this plan's deliverables; V35-03/04 and R10 consume the implementation. |
+| 27 | Minor | §6 | Omitted `reborn_pure_evidence_submission_links` (V201) link table as a required write path for authored Q2. | Added new §6 constraint on this link table. |
+| 28 | Minor | §6 | Omitted "no new outbox/queue framework" constraint for Step 9. | Added new §6 constraint on binding into the existing shared review-runtime contract. |

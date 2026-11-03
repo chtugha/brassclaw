@@ -122,35 +122,48 @@ affected evidence; unchanged execution logic does not require a blanket remigrat
 
 ## Shared source and central build ownership (2026-10-30)
 
+**Single-agent workflow — user instruction, 2026-11-03:** the agent in the
+current user chat is the sole development, integration and build owner. This
+supersedes previous delegation, multi-chat coordination, build-window handoffs
+and development build-queue requirements. Do not spawn/delegate to agents,
+create per-agent worktrees/branches, or dispatch work to other chats. Use the
+current checkout and perform implementation, review and validation directly.
+This changes development coordination only; BrassClaw's product architecture
+and its Recipe-defined child/subagent workflows keep their existing contracts.
+
 Use the common repository-root checkout and Git index for all current work.
 Compile that source directly with one canonical Cargo target; on this host it is
-`/Users/ollama/brassclaw-target`. Cargo executions are serial under
+`/Users/ollama/brassclaw-target`. Native Cargo executions are serial under
 `/private/tmp/brassclaw-target-cargo.lock`. Do not restart the retired target2
 or mutable validation build mirrors. Never replace current source with an older
 frozen projection.
 
-The human-designated leading Root/Auth chat keeps Cargo and build ownership.
-Do not pass build windows between chats. Other chats send proposed work and
-ready validation requests to that chat; only the leading chat runs Cargo,
-including build, test, Clippy, metadata, fmt and clean. This supersedes historical
-window handoffs. Use the [central build queue](development-build-queue.md) for
-current requests, outcomes and source/evidence references; the leading chat is
-its only writer. This is development coordination, not a product runtime service.
+**Independent build environments — user instruction, 2026-11-03:** native and
+Modal compilation may run concurrently with different settings. Serialize jobs
+within each environment, not globally across the two hosts. Native Cargo keeps
+its canonical target and lock; Modal sync/submission uses
+`/private/tmp/brassclaw-modal-build.lock` on this Mac and an immutable source
+snapshot with its separate remote cache. Both settings and limits are documented
+in [the build environment contract](build-environments.md). This supersedes the
+former global-Cargo serialization rule and one-off parallel-host flag requirement.
+It does not change source custody, paid-build authorization or local-only tests.
 
-Before shared implementation, identify the existing plan owner, affected paths,
-reused interfaces and any proposed shared contract changes. The leading chat
-checks overlap and chooses one implementation of shared responsibilities.
-Central compilation alone cannot prevent duplicate architecture. Component
-review/activation requirements remain independent of this development review.
+The sole agent runs Cargo, including build, test, Clippy, metadata, fmt and clean.
+The former [development build queue](development-build-queue.md) is a historical
+record, not an active submission or scheduling mechanism. Preserve earlier
+receipts and unresolved work; queue retirement does not mark that work complete.
 
-A request supplies its intended behavior, source before/after hashes or a bounded
-patch, affected packages/features, required checks and applicable prior evidence.
-The leading chat reviews and integrates compatible requests, batches only where
-failure diagnosis and evidence remain clear, and records exact inputs/results.
-Failures return to the author for connected repairs; authors submit the successor
-to the same queue rather than starting their own Cargo run.
+Before implementation, identify the existing subsystem/plan owner, affected
+paths, reused interfaces and proposed shared-contract changes. Check overlap
+and implement shared responsibilities once. Component review/activation
+requirements remain independent of development review.
 
-Collect the ready, reviewed, compatible patches before starting the next compilation.
+Record intended behavior, actual source changes, affected packages/features,
+required checks and applicable prior evidence in the existing work/validation
+record. Review the connected changes and fix causes before rerunning failures;
+no inter-agent request, handoff or queue entry is required.
+
+Collect coherent, reviewed changes before starting the next compilation.
 Compile shared affected artifacts once, then reuse them for the necessary selected
 cases. Do not start a new compile for each small patch or repeat passing checks
 whose inputs remain applicable. Keep independent failures attributable; a bundle
@@ -162,21 +175,26 @@ completion; do not spend the foreground turn polling an unchanged build. Capture
 only the actual compiler, embedded-content and runtime inputs required by the
 batch, allowing unrelated source work to continue. Changes to those captured inputs
 remain private patches until that batch ends. Screen detaches the process; it does
-not make concurrent Cargo executions or edits to captured inputs safe.
+not make competing Cargo executions within one environment or edits to its
+captured inputs safe. The isolated Modal environment may compile concurrently.
 
-While a batch runs, its complete captured dependency/input set is frozen. Other
-chats may inspect source, develop bounded patches outside the checkout, and edit
-explicitly assigned paths outside that input set. They must not change captured
-inputs, build another tree/target, or introduce a parallel owner/interface. Private
-patches are proposals, not competing canonical trees. Apply them against current
-preconditions after review; never overwrite newer source with archived bytes.
-Release the source freeze after the batch is terminal; retain Cargo ownership.
+While a native batch runs, its complete captured dependency/input set is frozen. The
+sole agent may inspect source and work on paths outside that input set. Changes
+to captured inputs wait until the batch is terminal or remain unapplied patches.
+Do not build another local tree/target or overwrite newer source with archived
+bytes. Reconcile actual processes, locks and retained inputs before taking over
+work left by an earlier chat; never force-release an active build's ownership.
+Release the source freeze after the batch is terminal.
+For a Modal batch, the admitted remote snapshot stays frozen; later local
+checkout edits cannot change it. A simultaneous native batch retains its own
+input freeze independently. Source capture/admission itself still requires
+stable local bytes and fails if they change during synchronization.
 
 On this host, Codex configuration supplies `CARGO_TARGET_DIR`. Invoke Cargo directly,
 for example `cargo test -p package_name test_name`, without an inline target assignment
 or an explicit `/bin/zsh -lc` wrapper. Background runners inherit that configured
 environment rather than overriding the target themselves. The one-target,
-serial-execution and disk-space rules still apply.
+per-environment serial-execution and disk-space rules still apply.
 Do not clean build caches routinely; clean only when required by the disk-space
 rules or a diagnosed stale/corrupt artifact problem. Other hosts use their
 configured canonical target rather than copying this host's absolute path.
@@ -187,6 +205,150 @@ Preserve actual needed executables before cleaning disposable caches; do not
 clean the repository's entire `target` directory because it contains evidence.
 Follow the unchanged free-space rules and choose checks for the merged claim.
 A combined-root build does not retrospectively broaden older frozen receipts.
+
+### Modal usage and cost policy (2026-11-03)
+
+**Activation prerequisite — user instruction, 2026-11-03:** until a suitable
+Modal compiler image has been successfully qualified and explicitly activated
+for the requested build target, run Cargo locally without asking Local or Modal,
+including commands expected to take at least 60 seconds. Authentication,
+available storage, a local image definition or a successful image build alone
+does not establish activation. Missing, disabled or inapplicable activation keeps
+the local path available without a Modal prompt, source upload or cloud-readiness
+probe. An explicitly commissioned image setup/qualification job may run under
+its own authorization before activation; it does not enable general offloading.
+
+Local execution is the default. Modal is eligible only for necessary compilation
+or static-analysis work whose expected local command runtime is **at least
+60 seconds**, and only when the expected complete remote turnaround (source
+transfer, provisioning, cache restore, command and result collection) improves
+on local execution. Eligibility is not an instruction to offload every long run.
+Use recent applicable timings for the same packages, features and warm/cold cache
+state. If there is no credible estimate, keep the work local and use its normal
+required run to inform future estimates; do not launch duplicate timing probes.
+The threshold chooses execution location before launch, not a timeout or a reason
+to restart a local command remotely after 60 seconds.
+
+**Build-location choice — user-confirmed, 2026-11-03:** before an eligible non-test
+compilation or Clippy batch expected to take at least 60 seconds locally, ask the user to choose
+Local or Modal only when a qualified, explicitly activated image is available
+for that command's target. State the estimate and recommend local
+when remote turnaround/cost offers no advantage. Wait for the answer; do not
+interpret account authentication or a previous batch's choice as permission to
+choose Modal automatically for the next batch. Short runs and test execution/compilation
+remain local under the rules below. Source byte size is not the threshold.
+
+**Temporary explicit Modal choice — user instruction, 2026-11-03:** after
+verifying the qualified Apple build image, this chat is authorized to use it
+for its necessary eligible compilations while the other chat finishes its
+validation build. Do not ask Local/Modal again within that explicit scope.
+The general independent-environment contract above now permits isolated
+remote/local overlap; do not interfere with local validation's source, artifacts
+or processes.
+Keep one remote build at a time, exact immutable remote inputs, separate target
+caches, the 60-second eligibility rule and all test work local. Once that
+validation work is finished or the user changes this instruction, return to
+the ordinary per-batch location choice above.
+
+**No speculative spending — user instruction, 2026-11-03:** do not provision
+workers, build/publish compiler images or run paid sizing/benchmark jobs merely
+to prepare for possible future builds or answer a question. Reuse existing
+storage/images. Any necessary paid setup must be disclosed with its estimated
+cost as part of a concrete eligible build's Local/Modal choice, or obtain an
+explicit request for image setup and qualification; wait for that authorization
+before starting it. Do not solicit a general build-location choice while the
+image is inactive. Account authentication and a prepared local script
+are not spending authorization. Source sync runs for an actual compilation or
+explicitly requested storage setup, not every edit or planning response.
+
+Before an authorized remote compilation, the Modal controller synchronizes exact
+source through the existing `modal_source_sync.py` implementation. Standalone
+`python scripts/modal_source_sync.py` remains available for authorized storage
+setup/sync and uses the same remote lock. Local
+Cargo does not require a Modal source sync or availability check. Initial
+authorized setup uses `--create`; use the **`brassclaw` Modal environment**
+explicitly (the helper's `--environment` default). The default Volume is
+`brassclaw-build`, configurable with `--volume` or `BRASSCLAW_MODAL_VOLUME`.
+Do not inherit the account's active `main` environment. This is storage transfer
+only; it starts no worker and executes no Cargo/test command. The helper uses
+the independent Modal lock and publishes a verified `/source/base.tar.gz` and base
+manifest once, then only changed-file overlays in `/source/repository.tar.gz`
+and the complete `/source/manifest.json`, retaining `/cache` separately. The archives
+includes tracked and non-ignored pending files, safe symlinks and executable
+modes. A fresh extraction represents deletions without stale working files.
+No local `target/` or Git-ignored credentials are synchronized.
+
+Remote compilation requires successful sync/readback, unchanged captured inputs,
+base/overlay digest/member verification and fresh materialization before the
+direct Cargo command. Apply exact deletions/replacements from the current
+manifest and verify every final path, byte hash, symlink and executable mode;
+never compile the overlay alone or leave stale base entries in the source tree.
+Retain the original HEAD/manifest with results; never compile an old
+remote archive after a failed sync. If Modal is unavailable, report that state
+and continue an authorized local build; do not hide the sync failure or start a
+replacement paid worker. The controller holds the Modal lock continuously across
+unsettled-job preflight, in-process sync, readback, submission and terminal receipt
+collection. Do not invoke the standalone sync CLI inside a lock-owning controller.
+Recheck the captured source identity before submission. A disconnected unresolved
+job blocks remote sync/new submissions even after its OS lock is released.
+
+**Tests stay local regardless of duration.** Do not run unit, integration,
+browser, end-to-end, behavioral or acceptance tests on Modal, or move a test suite
+there under a benchmark/smoke/setup label. Test-binary compilation, including
+`cargo test --no-run` and `cargo build --tests`, also stays local so its artifacts
+remain usable by the local test environment. A mixed build-and-test command or
+runner stays local; do not submit it to Modal on the strength of its build time.
+
+Clippy is local by default. A demonstrated long Clippy batch may use Modal only
+under the same 60-second and total-turnaround rules. `cargo clippy --tests` checks
+test-target code without running tests and is static analysis; it does not permit
+invoking a test executable or using a test runner remotely. Verify the complete
+command, wrapper and build-script behavior before submission: custom compilation
+steps must not execute tests on Modal. Formatting, metadata inspection, short
+checks, scripts and document validation remain local. Do not add unnecessary
+targets/checks or pad a batch merely to cross the threshold. Do not rerun passing
+local Clippy remotely merely to obtain a second receipt.
+
+For an eligible job, record the source identity, exact command/target/features,
+timing basis, selected CPU/RAM and estimated compute cost in the existing
+validation record; capture actual duration/cost when available with its outcome.
+Request only resources justified by the workload and measured scaling, preserve reusable
+toolchain/dependency caches, and release paid workers after their necessary work.
+No GPU is needed for ordinary Rust compilation. Required checks are never omitted
+or weakened to meet the time/cost policy.
+
+The sole agent controls Modal submissions directly under the independent remote
+lock until remote Cargo is confirmed terminal. Native Cargo may run concurrently
+under its native lock with different settings and a separate target cache.
+A disconnected client is not proof that the remote job stopped; reconcile its
+actual state before admitting another remote build or changing remote source.
+Local work remains available when remote state is unresolved.
+
+**Local tests may run concurrently with remote Cargo.** Test compilation still
+uses the native Cargo lock and its canonical target; execution-only native
+runners retain their existing backend/test-resource locks. Preserve exact
+application/worker/test artifacts, fixtures and source inputs for each claim.
+Do not interrupt or bypass an active native build's locks/frozen inputs to enable
+concurrency. The remote worker uses its already captured immutable snapshot;
+local results establish only the source/artifacts actually tested, even if Modal
+is compiling a different snapshot. No tests or test compilation move to Modal.
+
+The local checkout remains authoritative. Remote jobs use an exact isolated
+source snapshot with original tracked/pending input hashes, not a second editable
+development tree or an old projection restored over the checkout. A persistent
+remote source directory may receive one-way changed-file updates between jobs,
+including deletions, after its prior job is confirmed terminal. Verify the full
+resulting input manifest before compiling; do not sync into a running job's
+inputs or overwrite local changes from the remote directory. Preserve a separate
+remote target cache with platform/toolchain/profile-aware identity; do not sync
+local and remote `target/` directories or mix Linux artifacts into the local
+macOS target. Persistent storage and transfer allowances are distinct from
+compute cost and must use actual current account pricing, not an assumption that
+all storage/transfer is free. Return logs and exact source/
+artifact identities through existing evidence owners. Remote Linux compilation
+or lint does not establish macOS/Windows acceptance or local test completion.
+Do not copy operator/provider credentials into the source snapshot. This policy
+does not authorize provisioning or compiling as part of a documentation edit.
 
 **Evidence retention format (2026-11-02):** each validation run writes
 `source.json` (per-file SHA-256 manifest of all git-tracked files plus HEAD

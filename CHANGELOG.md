@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Provider mutation custody**: Fence delayed login/status results and automatic
+  recovery with the existing browser auth context; retire abandoned secret-bearing
+  request bodies while retaining explicit reference-only inspection. Attach the
+  existing native Codex owners to the actually selected PostgreSQL Auth factory
+  branch without replacing default-tenant historical Auth storage. Full native
+  login/refresh and migration acceptance remain separate Bob-plan work.
+
+- **Independent local/Modal build environments**: Add separate build locks and
+  host/target settings so one native build and one immutable-snapshot Modal
+  compilation can run concurrently. Separate remote CPU/RAM reservations from
+  their limits and Cargo job count; retain activation, spending and local-test
+  rules. Unresolved remote jobs fence new remote sync/builds without blocking
+  native Cargo. Add a local launcher that inherits the canonical target.
+
 - **Modal Apple Silicon cross-build**: Add a pinned Linux/amd64 compiler image
   and verified source synchronization for `aarch64-apple-darwin` builds, with
   retained caches, build receipts and explicit activation controls. Build pgvector

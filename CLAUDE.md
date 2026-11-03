@@ -1272,10 +1272,13 @@ Rules:
 
 ## Build and Test
 
-Build only from this common repository root and Git index. Use one serial Cargo
-execution and the canonical NVMe target below; `brassclaw-target2` and mutable
+Build only from this common repository root and Git index. Use one serial native
+Cargo execution and the canonical NVMe target below; `brassclaw-target2` and mutable
 validation build mirrors are retired. Immutable validation archives preserve
 historical evidence and must not become alternative development/build trees.
+An authorized Modal build may run alongside native Cargo using its independent
+lock, immutable source snapshot and remote target cache. See
+[the build environment settings and isolation contract](docs/build-environments.md).
 Before publishing, stage the reviewed common tree, verify it, and use an ordinary
 fast-forward push; never copy an old validation snapshot over current source.
 
@@ -1295,7 +1298,7 @@ fast-forward push; never copy an old validation snapshot over current source.
 > when capacity is sufficient. Other hosts use their configured canonical target.
 
 The commands below are examples to select for the affected claim, not a checklist.
-Keep Cargo executions serial under `/private/tmp/brassclaw-target-cargo.lock`.
+Keep native Cargo executions serial under `/private/tmp/brassclaw-target-cargo.lock`.
 Use relevant features and targets; passing tests can also establish compilation
 for the targets/features they actually built. Required lint and acceptance remain.
 

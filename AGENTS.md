@@ -1075,10 +1075,13 @@ The *names* of these env vars are stored in `brassclaw_config`; the *values* are
 
 ## Build and Test
 
-Build only from this common repository root and Git index. Use one serial Cargo
-execution and the canonical NVMe target below; `brassclaw-target2` and mutable
+Build only from this common repository root and Git index. Use one serial native
+Cargo execution and the canonical NVMe target below; `brassclaw-target2` and mutable
 validation build mirrors are retired. Immutable validation archives preserve
 historical evidence and must not become alternative development/build trees.
+An authorized Modal build may run alongside native Cargo using its independent
+lock, immutable source snapshot and remote target cache. See
+[the build environment settings and isolation contract](docs/build-environments.md).
 Before publishing, stage the reviewed common tree, verify it, and use an ordinary
 fast-forward push; never copy an old validation snapshot over current source.
 
@@ -1099,7 +1102,7 @@ fast-forward push; never copy an old validation snapshot over current source.
 
 Choose commands for the affected claim; the templates below are not a checklist.
 Replace angle-bracket placeholders with actual package/test names before execution.
-Keep Cargo executions serial under `/private/tmp/brassclaw-target-cargo.lock` and
+Keep native Cargo executions serial under `/private/tmp/brassclaw-target-cargo.lock` and
 coordinate relevant source edits during validation. A build lock does not prevent
 another chat from changing compiler inputs. Keep features/profile stable where
 the claim permits, and reuse a test build's compilation evidence for its actual

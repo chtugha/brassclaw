@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -18,7 +19,8 @@ import tomllib
 import uuid
 
 from modal_build_worker import encoded, validate_command
-from modal_source_sync import ROOT, MANIFEST_PATH, cargo_lock, verify_source
+from build_settings import modal_resources
+from modal_source_sync import ROOT, MANIFEST_PATH, modal_lock, assert_remote_settled, sync_source, verify_source
 
 
 def records_root():
@@ -76,25 +78,9 @@ def setup(args):
         print(json.dumps(result, indent=2))
 
 
-def local_cargo_processes():
-    output = subprocess.check_output(["ps", "-axo", "pid=,comm="], text=True)
-    found = []
-    for line in output.splitlines():
-        fields = line.strip().split(None, 1)
-        if len(fields) == 2 and Path(fields[1]).name in {"cargo", "rustc", "clippy-driver"}:
-            found.append({"pid": int(fields[0]), "program": fields[1]})
-    return found
-
-
-def assert_no_local_cargo():
-    processes = local_cargo_processes()
-    if processes:
-        raise RuntimeError(f"Local Cargo/compiler processes block remote compilation, even without the lock: {processes}")
-
-
 def run(args):
-    import modal
-
+    for key, value in modal_resources(args).items():
+        setattr(args, key, value)
     command = args.cargo
     if command and command[0] == "--":
         command = command[1:]
@@ -107,25 +93,17 @@ def run(args):
             raise ValueError("The qualified Apple path builds -p brassclaw_reborn_cli --bin brassclaw-reborn using dev or --release")
     if not args.qualification:
         require_activation(args.platform)
-    if not args.confirmed_modal or args.estimated_local_secs < 60:
+    if (not args.confirmed_modal or not math.isfinite(args.estimated_local_secs)
+            or args.estimated_local_secs < 60):
         raise ValueError("An explicit Modal choice and expected local runtime >=60s are required")
-    if args.timeout_secs < 180:
-        raise ValueError("Reserve at least 120 seconds for shutdown and durable receipts")
-    if min(args.cpu, args.memory_mib, args.timeout_secs, args.shutdown_grace_secs, args.jobs) <= 0:
-        raise ValueError("Resource/time settings must be positive")
-    if not args.allow_parallel_hosts:
-        assert_no_local_cargo()
-    # This helper owns its own lock. Reacquire and revalidate before any worker.
-    subprocess.run([sys.executable, str(ROOT / "scripts/modal_source_sync.py"),
-                    "--environment", args.environment, "--volume", args.volume], check=True)
-    with cargo_lock():
-        if not args.allow_parallel_hosts:
-            assert_no_local_cargo()
+    import modal
+
+    # One remote critical section includes sync, submission and terminal receipt.
+    # Local Cargo has a separate lock and never writes this host's remote cache.
+    with modal_lock():
+        assert_remote_settled()
+        sync_source(args.environment, args.volume)
         jobs = records_root() / "jobs"
-        for previous in jobs.glob("*/state.json"):
-            state = json.loads(previous.read_bytes())
-            if state["state"] not in {"completed", "failed", "not_started"}:
-                raise RuntimeError(f"Unsettled remote build blocks new Cargo: {previous}")
         volume = modal.Volume.from_name(args.volume, environment_name=args.environment)
         manifest_bytes = b"".join(volume.read_file(MANIFEST_PATH))
         manifest = json.loads(manifest_bytes)
@@ -143,10 +121,12 @@ def run(args):
         job_id = str(uuid.uuid4())
         request = {"job_id": job_id, "command": command, "image_id": image.object_id,
                    "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
-                   "cpu": args.cpu, "memory_mib": args.memory_mib, "timeout_secs": args.timeout_secs,
+                   "cpu": args.cpu, "cpu_limit": args.cpu_limit,
+                   "memory_mib": args.memory_mib, "memory_limit_mib": args.memory_limit_mib,
+                   "timeout_secs": args.timeout_secs,
                    "shutdown_grace_secs": args.shutdown_grace_secs, "jobs": args.jobs,
                    "nonpreemptible": args.nonpreemptible,
-                   "allow_parallel_hosts": args.allow_parallel_hosts,
+                   "allow_parallel_hosts": True, "lock_scope": "modal",
                    "target_triple": target, "volume": args.volume, "environment": args.environment,
                    "estimated_local_secs": args.estimated_local_secs}
         directory = jobs / job_id
@@ -163,7 +143,7 @@ def run(args):
         app = modal.App("brassclaw-build", include_source=False)
 
         @app.function(image=image, serialized=True, include_source=False, volumes={"/build": volume},
-                      cpu=(args.cpu, args.cpu), memory=(args.memory_mib, args.memory_mib),
+                      cpu=(args.cpu, args.cpu_limit), memory=(args.memory_mib, args.memory_limit_mib),
                       timeout=args.timeout_secs, max_containers=1, min_containers=0,
                       buffer_containers=0, retries=0, single_use_containers=True,
                       nonpreemptible=args.nonpreemptible, restrict_modal_access=True)
@@ -192,11 +172,7 @@ def run(args):
 
         try:
             with modal.enable_output(), app.run(environment_name=args.environment):
-                state.update(state="checking_local", app_id=app.app_id)
-                write_record(directory / "state.json", state)
-                if not args.allow_parallel_hosts:
-                    assert_no_local_cargo()
-                state.update(state="submitting")
+                state.update(state="submitting", app_id=app.app_id)
                 write_record(directory / "state.json", state)
                 call = compile_source.spawn(request)
                 state.update(state="running", function_call_id=call.object_id)
@@ -206,12 +182,7 @@ def run(args):
                         result = call.get(timeout=5)
                         break
                     except TimeoutError:
-                        processes = [] if args.allow_parallel_hosts else local_cargo_processes()
-                        if processes:
-                            state.update(state="cancelling", local_conflicts=processes)
-                            write_record(directory / "state.json", state)
-                            call.cancel(terminate_containers=True)
-                            raise RuntimeError("A local build bypassed the lock; remote input cancelled. Reconcile its terminal state before any new Cargo.")
+                        continue
                 # The returned original is also retained durably by the worker.
                 retained = json.loads(b"".join(volume.read_file(f"/cache/jobs/{job_id}/completed.json")))
                 if result != retained or result["job_id"] != job_id or result["command"] != command:
@@ -237,10 +208,7 @@ def run(args):
                 print(json.dumps(result, indent=2))
                 return result["returncode"]
         except BaseException:
-            if state["state"] == "checking_local":
-                state["state"] = "not_started"
-                write_record(directory / "state.json", state)
-            elif state["state"] != "not_started":
+            if state["state"] != "not_started":
                 state["state"] = "unresolved"
                 write_record(directory / "state.json", state)
             raise
@@ -272,7 +240,7 @@ def status(args):
                 or result["image_id"] != original["image_id"]
                 or result["manifest_sha256"] != original["manifest_sha256"]):
             raise ValueError("Recovered completion differs from original")
-        volume = modal.Volume.from_name(args.volume, environment_name=state["environment"])
+        volume = modal.Volume.from_name(original["volume"], environment_name=original["environment"])
         retained = json.loads(b"".join(volume.read_file(f'/cache/jobs/{original["job_id"]}/completed.json')))
         if result != retained:
             raise ValueError("Recovered completion is not the retained original")
@@ -345,24 +313,28 @@ def main():
     parser.add_argument("--environment", default="brassclaw")
     parser.add_argument("--volume", default="brassclaw-build")
     parser.add_argument("--platform", choices=["linux", "apple"], default="linux")
+    parser.add_argument("--config", type=Path, help="Build-host TOML settings (no cloud access to read)")
     commands = parser.add_subparsers(dest="action", required=True)
     prepare = commands.add_parser("setup")
     prepare.add_argument("--confirmed-paid-setup", action="store_true")
     prepare.add_argument("--sdk", type=Path)
     execute = commands.add_parser("run")
-    execute.add_argument("--allow-parallel-hosts", action="store_true", help="Explicit user-authorized local/remote overlap with isolated caches")
+    execute.add_argument("--allow-parallel-hosts", action="store_true", help="Compatibility option; isolated local/Modal overlap is now supported by separate locks")
     execute.add_argument("--qualification", action="store_true", help="Explicitly authorized qualification; does not activate Modal")
     execute.add_argument("--confirmed-modal", action="store_true")
     execute.add_argument("--estimated-local-secs", type=float, required=True)
-    execute.add_argument("--cpu", type=float, required=True)
-    execute.add_argument("--memory-mib", type=int, required=True)
-    execute.add_argument("--jobs", type=int, required=True)
-    execute.add_argument("--timeout-secs", type=int, required=True)
-    execute.add_argument("--shutdown-grace-secs", type=int, required=True)
-    execute.add_argument("--nonpreemptible", action="store_true")
+    execute.add_argument("--cpu", type=float, help="Reserved cores; also sets limit unless --cpu-limit is given")
+    execute.add_argument("--cpu-limit", type=float, help="Maximum cores, at least --cpu")
+    execute.add_argument("--memory-mib", type=int, help="Reserved RAM; also sets limit unless --memory-limit-mib is given")
+    execute.add_argument("--memory-limit-mib", type=int, help="Hard RAM ceiling in MiB")
+    execute.add_argument("--jobs", type=int)
+    execute.add_argument("--timeout-secs", type=int)
+    execute.add_argument("--shutdown-grace-secs", type=int)
+    execute.add_argument("--nonpreemptible", action=argparse.BooleanOptionalAction, default=None)
     execute.add_argument("cargo", nargs=argparse.REMAINDER)
     inspect = commands.add_parser("status")
     inspect.add_argument("job_id")
+    commands.add_parser("settings", help="Show resolved target settings without cloud access or compilation")
     for action in ["activation-status", "activate", "deactivate", "accept-native"]:
         control = commands.add_parser(action)
         if action in {"activate", "accept-native"}:
@@ -376,6 +348,8 @@ def main():
         setup(args)
     elif args.action == "run":
         raise SystemExit(run(args))
+    elif args.action == "settings":
+        print(json.dumps(modal_resources(args), indent=2))
     elif args.action == "accept-native":
         accept_native(args)
     elif args.action == "status":

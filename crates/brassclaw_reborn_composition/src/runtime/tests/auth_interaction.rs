@@ -108,6 +108,27 @@ async fn local_dev_runtime_auth_interactions_use_flow_record_source() {
     runtime.shutdown().await.expect("runtime shutdown");
 }
 
+#[cfg(feature = "root-llm-provider")]
+#[tokio::test]
+async fn pg_factory_explicit_tenant_reuses_native_auth_owner() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let rig = super::test_pg::pg_rig().await;
+    let services = crate::build_reborn_services(
+        rig.build_input("auth-explicit-tenant", root.path())
+            .with_tenant_id("auth-explicit-tenant")
+            .with_runtime_policy(local_dev_runtime_policy())
+            .with_runtime_process_binding(RebornRuntimeProcessBinding::None),
+    )
+    .await
+    .expect("explicit-tenant factory builds");
+    let auth = services.product_auth.as_ref().expect("product auth");
+    let native = auth
+        .native_codex_owner()
+        .expect("explicit-tenant factory attaches native owner");
+    let original: Arc<dyn brassclaw_auth::AuthFlowManager> = native;
+    assert!(Arc::ptr_eq(&auth.flow_manager(), &original));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_dev_runtime_auth_interactions_are_unavailable_without_flow_record_source() {
     let auth = Arc::new(InMemoryAuthProductServices::new());
@@ -118,6 +139,16 @@ async fn local_dev_runtime_auth_interactions_are_unavailable_without_flow_record
     let runtime = build_runtime(&rig, "auth-read-model-absent", root.path(), Some(ports))
         .await
         .expect("runtime builds");
+    #[cfg(feature = "root-llm-provider")]
+    assert!(matches!(
+        runtime
+            .services
+            .product_auth
+            .as_ref()
+            .expect("product auth")
+            .native_codex_owner(),
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
+    ));
     assert!(
         runtime
             .services

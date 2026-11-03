@@ -1,0 +1,53 @@
+{
+  "kind": "ui-transport-regression",
+  "date": "2026-11-03",
+  "head": "958cbb9c86d50644c59fcd40ced9c5a7cafc9cdc",
+  "scope": "B3-09 provider mutation original authentication and explicit reference inspection",
+  "before": {
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutations.js": "203d4dc21fa560a5bc27f192ecb5d71f39e83c924e212ed848156a187f8ffb0d",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutations.test.mjs": "3cf56f320f7c32f18cd61c33c778c68b08b1766fbdd83ea649ae52b53d9eb8c6",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-bootstrap.test.mjs": "4d904ac8727ef3e9c8a1ffae64237970bd99e84a2f178dc8a7971903148a68a0"
+  },
+  "after": {
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutations.js": "18969e7b3710b9f310cb180fccbbedf2e01e509c8de928ef686b9a9477ce6847",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutations.test.mjs": "e8c498f699321dc8051b6285e08603c5981ed258fdd9c1a8046532a20a34aa09",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-bootstrap.test.mjs": "767e0939bda318946d6394520658c564a95b69946923f4f4352a23ae404f9f8f",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutation-auth.test.mjs": "03c76d1913dd858ea434fb29c655d7c8e5223cb272cac115f7dfdb6d5eeae1b7"
+  },
+  "unchanged_test_inputs": {
+    "crates/brassclaw_webui_v2_static/static/js/lib/api.js": "6d8a62428c5782fa64db7eb25b0f42cd0e61d0cfcabcd516fc22954a49aa114c",
+    "crates/brassclaw_webui_v2_static/static/js/lib/original-custody.js": "4dbfbca1eeb18bfc34f26704ab954d17821ec283f03718369cd4126fd9a59eca",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/provider-mutation-status.js": "677a1556d52bd1644e015b5882526a968b62462493233c6176ca3813e73b5566",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/provider-mutation-status.test.mjs": "5df5e08e881038a52d2949ed89f1502ce5718a69e474e9b67d50cd549c63394c",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/hooks/useProviderLogin.js": "dad43d1c94ed1aabd13c44650c883791a412329c4dd23c28009b7139e29c8abf",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/hooks/useProviderLogin.test.mjs": "09c233b0ed6cfdbbeff9c56143a9021d3a90e68fc58c226f9855fe524a72edb0",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/codex-login.test.mjs": "b12bfcca9251453b6ec1da262e159a3e14ea82a285c9656799bab43c84d0d48f",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-login.js": "610123273318f0ce12e461719534966d6ece0adef9bf143e1a141229276412d6",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-login.test.mjs": "2b3a0da22999b226033b24f1f0bd4b986ec9e4b5eb4b475f9fe93aff9ff98072",
+    "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/settings-api.js": "83ef7930a76b00e8220d1a112a72329579e0e931f646f95431bcc6e8a167d5f1",
+    "crates/brassclaw_webui_v2_static/static/vendor/esm/htm.js": "a52e71e814df3b2515971d3356c7fe43ec3830d5ea4cfa067067461a5e611974",
+    "crates/brassclaw_webui_v2_static/static/vendor/esm/react-dom-client.js": "a2c9b67b37cfa3871170440c961f92ea0f5a36282fde9f92c18311eb345bdb22",
+    "crates/brassclaw_webui_v2_static/static/vendor/esm/react-dom.js": "80180679121f101fa45a79b53a201c55703128bc327b3e35858c7e4611a25f21",
+    "crates/brassclaw_webui_v2_static/static/vendor/esm/react-hook-form.js": "6c9c4fe6af6b5700bc02d04f884e60453b761f2aea5e1559016b2bc3b3f140e2",
+    "crates/brassclaw_webui_v2_static/static/vendor/esm/react-jsx-runtime.js": "8a4a695d24019d5d5c22b2eb41073c20078973bf4240ad3b83c5bb06ea5fa9e4",
+    "crates/brassclaw_webui_v2_static/static/vendor/esm/react-query.js": "87b35904b82cfc7ac3a05e44ccd967ae298f5a0671daa985b0fa1fa0205663c5",
+    "crates/brassclaw_webui_v2_static/static/vendor/esm/react-router.js": "8ff502aab6759143d323c9d1e9c9373eb6265c505216b81559b500c405f3d6c0",
+    "crates/brassclaw_webui_v2_static/static/vendor/esm/react.js": "307e57d6c52025e096c274bfbc4abaa7992e35f33102115aae5365b285913b01",
+    "crates/brassclaw_webui_v2_static/static/vendor/esm/react@19.1.0/es2022/react.mjs": "4ae29c429a7d0a61a039f96985bef5a0a9c141ae8b0df3d65ffd17382f62b881"
+  },
+  "node": "v25.6.1",
+  "result": {
+    "tests": 73,
+    "passed": 73,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "output_sha256": "099c1db2fa3d97ea8d43212e98873479198b6e09d5a30b981c8910b417435fcd",
+  "limits": [
+    "controlled browser storage and HTTP responses",
+    "no native Cargo packaging",
+    "no PG/issuer or real browser acceptance",
+    "no new operator authorization restriction"
+  ]
+}

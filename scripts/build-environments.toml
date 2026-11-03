@@ -1,0 +1,24 @@
+# Independent build-host settings. No target paths or credentials belong here.
+version = 1
+
+[local]
+# "inherit" preserves CARGO_BUILD_JOBS and Cargo's own configuration/default.
+# Set a positive integer to limit local parallel compilation, e.g. jobs = 4.
+jobs = "inherit"
+
+[modal]
+# Reserved physical cores and maximum usable cores; billed at least reservation.
+cpu = 8.0
+cpu_limit = 8.0
+# RAM reservation and hard ceiling in MiB. These preserve the qualified build.
+memory_mib = 32768
+memory_limit_mib = 32768
+jobs = 8
+timeout_secs = 900
+shutdown_grace_secs = 30
+nonpreemptible = true
+
+# Optional per-target overrides reuse the common Modal defaults above.
+[modal.apple]
+
+[modal.linux]
