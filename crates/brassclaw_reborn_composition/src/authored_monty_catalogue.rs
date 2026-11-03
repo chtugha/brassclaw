@@ -64,12 +64,13 @@ fn digest(value: &str) -> String {
 /// Dependency approval covers use inside its selected Tool usage, not an
 /// independent execution of that dependency. Check actual selected occurrences
 /// in each variant; the recipe-wide UUID union below is only graph coverage.
-/// This private set comes solely from the exact canonical bootstrap owner until
-/// the general pure approval reader is implemented. It is never request data.
+/// This private occurrence map comes solely from verification of the complete
+/// canonical selection below. It is never a UUID-based approval or request data.
 fn require_independent_execution_coverage(
     program: &RetainedToolProgram,
-    independently_qualified: &BTreeSet<Uuid>,
+    independently_qualified: &BTreeMap<String, ComponentRevisionRef>,
 ) -> Result<(), RecipeStoreError> {
+    let mut selected = BTreeMap::new();
     for step in &program.program().steplist {
         if program.bindings().contains_key(&step.step_id) {
             continue;
@@ -79,11 +80,12 @@ fn require_independent_execution_coverage(
             .components()
             .get(&step.step_id)
             .ok_or_else(|| invalid("selected executable component is missing"))?;
-        if !independently_qualified.contains(&component.uuid) {
-            return Err(invalid(
-                "standalone execution lacks exact pure-component approval",
-            ));
-        }
+        selected.insert(step.step_id.clone(), *component);
+    }
+    if &selected != independently_qualified {
+        return Err(invalid(
+            "standalone execution lacks exact pure-component approval",
+        ));
     }
     Ok(())
 }
@@ -450,40 +452,6 @@ impl InstalledMontyCatalogue {
                     ));
                 }
                 let program = prepare_retained_tool_program(compiled).map_err(invalid)?;
-                let mut canonical_generation = None;
-                let mut independently_qualified = BTreeSet::new();
-                for owner in &self.generation_approvals {
-                    if let Some(formatter) = owner.canonical_coverage(&program).map_err(invalid)? {
-                        owner.verify_in_transaction(tx).await.map_err(invalid)?;
-                        covered.insert(formatter);
-                        independently_qualified.insert(formatter);
-                        canonical_generation = Some(owner);
-                    }
-                }
-                // Extend with general pure-component approvals from the DB.
-                // Collect UUIDs of standalone executable steps (non-binding steps).
-                let pure_step_ids: Vec<Uuid> = program
-                    .program()
-                    .steplist
-                    .iter()
-                    .filter(|step| !program.bindings().contains_key(&step.step_id))
-                    .filter_map(|step| {
-                        program
-                            .inputs()
-                            .components()
-                            .get(&step.step_id)
-                            .map(|r| r.uuid)
-                    })
-                    .collect();
-                if !pure_step_ids.is_empty() {
-                    let approved = crate::pg_pure_component_approval::load_independently_qualified(
-                        tx,
-                        &pure_step_ids,
-                    )
-                    .await
-                    .map_err(|e| invalid(e.to_string()))?;
-                    independently_qualified.extend(approved);
-                }
                 let mut records = BTreeMap::new();
                 let mut approvals = BTreeMap::new();
 
@@ -558,15 +526,10 @@ impl InstalledMontyCatalogue {
                 )
                 .await
                 .map_err(invalid)?;
-                if let Some(owner) = canonical_generation {
-                    owner
-                        .require_selected_program(&inspected)
-                        .map_err(invalid)?;
-                }
-                let RetainedProgram::Tools(selected_tools) = inspected.program() else {
-                    return Err(invalid("activated workflow lacks prepared Tool bindings"));
-                };
-                require_independent_execution_coverage(selected_tools, &independently_qualified)?;
+                covered.extend(
+                    self.verify_independent_execution_coverage(tx, &inspected)
+                        .await?,
+                );
                 if inspected.preload_order().is_empty()
                     || inspected
                         .program()
@@ -881,11 +844,26 @@ impl InstalledMontyCatalogue {
                 }
             }
         }
-        // Retained tasks and command qualification recheck the same independent
-        // occurrence boundary. Replacement/withdrawal changes no selected refs.
+        self.verify_independent_execution_coverage(tx, selected)
+            .await?;
+        Ok(())
+    }
+
+    /// Preparation, retained capture and command qualification use this same
+    /// exact owner proof. Returned UUIDs cover the dependency graph only; they
+    /// cannot authorize an independent invocation in another selection.
+    async fn verify_independent_execution_coverage(
+        &self,
+        tx: &Transaction<'_>,
+        selected: &InspectedRetainedProgram,
+    ) -> Result<BTreeSet<Uuid>, RecipeStoreError> {
+        let RetainedProgram::Tools(program) = selected.program() else {
+            return Err(invalid("unsupported selected runner"));
+        };
         // Canonical coverage is resolved from the original pre-pin candidate;
         // require_selected_program then compares the actual full pinned variant.
-        let mut independently_qualified = BTreeSet::new();
+        let mut independently_qualified = BTreeMap::new();
+        let mut graph_coverage = BTreeSet::new();
         let selected_instruction = program.inputs().instruction();
         for candidate in &self._generation_candidates {
             let RetainedProgram::Tools(candidate_program) = candidate.program() else {
@@ -905,11 +883,37 @@ impl InstalledMontyCatalogue {
                 {
                     owner.verify_in_transaction(tx).await.map_err(invalid)?;
                     owner.require_selected_program(selected).map_err(invalid)?;
-                    independently_qualified.insert(formatter);
+                    for step in &candidate_program.program().steplist {
+                        if candidate_program.bindings().contains_key(&step.step_id) {
+                            continue;
+                        }
+                        let component = candidate_program
+                            .inputs()
+                            .components()
+                            .get(&step.step_id)
+                            .filter(|component| component.uuid == formatter)
+                            .ok_or_else(|| invalid("canonical pure occurrence differs"))?;
+                        if independently_qualified
+                            .insert(step.step_id.clone(), *component)
+                            .is_some()
+                        {
+                            return Err(invalid("ambiguous canonical pure occurrence"));
+                        }
+                    }
+                    graph_coverage.extend(
+                        candidate_instruction
+                            .snapshot()
+                            .select_roots(&[formatter])
+                            .map_err(invalid)?
+                            .revisions()
+                            .keys()
+                            .copied(),
+                    );
                 }
             }
         }
-        require_independent_execution_coverage(program, &independently_qualified)
+        require_independent_execution_coverage(program, &independently_qualified)?;
+        Ok(graph_coverage)
     }
 
     pub(crate) async fn refresh_active_discovery(

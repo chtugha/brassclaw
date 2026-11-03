@@ -137,7 +137,18 @@ fn bound_usage_dependency_does_not_require_independent_invocation_approval() {
             .iter()
             .any(|r| r.uuid == helper)
     );
-    require_independent_execution_coverage(&program, &BTreeSet::new()).unwrap();
+    require_independent_execution_coverage(&program, &BTreeMap::new()).unwrap();
+    assert!(
+        require_independent_execution_coverage(
+            &program,
+            &BTreeMap::from([(
+                "1:1".into(),
+                program.inputs().instruction().snapshot().revisions()[&helper].reference()
+            )])
+        )
+        .is_err(),
+        "extra occurrence coverage must not be ignored"
+    );
 }
 
 #[test]
@@ -151,16 +162,37 @@ fn same_variant_dependency_membership_cannot_approve_an_independent_step() {
             .any(|r| r.uuid == helper)
     );
     assert!(
-        matches!(require_independent_execution_coverage(&program, &BTreeSet::new()),
+        matches!(require_independent_execution_coverage(&program, &BTreeMap::new()),
         Err(RecipeStoreError::Invalid(reason)) if reason=="standalone execution lacks exact pure-component approval")
     );
-    // Internal owner coverage must identify the selected pure component. The
-    // set is not an operator input or an approval capability exposed by an API.
+    // A foreign occurrence cannot cover this step, even when its component
+    // UUID is the same. This tests the gate only, not an approval producer.
+    let reference = program.inputs().components()["0:3"];
     assert!(
-        require_independent_execution_coverage(&program, &BTreeSet::from([Uuid::new_v4()]))
-            .is_err()
+        require_independent_execution_coverage(
+            &program,
+            &BTreeMap::from([("1:1".into(), reference)])
+        )
+        .is_err()
     );
-    require_independent_execution_coverage(&program, &BTreeSet::from([helper])).unwrap();
+    let mut different_version = reference;
+    different_version.version += 1;
+    assert!(
+        require_independent_execution_coverage(
+            &program,
+            &BTreeMap::from([("0:3".into(), different_version)])
+        )
+        .is_err()
+    );
+    let mut different_source = reference;
+    different_source.checksum[0] ^= 1;
+    assert!(
+        require_independent_execution_coverage(
+            &program,
+            &BTreeMap::from([("0:3".into(), different_source)])
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -175,9 +207,9 @@ fn another_variants_usage_closure_cannot_approve_a_pure_only_variant() {
             .any(|r| r.uuid == helper)
     );
     assert!(pure.bindings().is_empty());
-    require_independent_execution_coverage(&bound, &BTreeSet::new()).unwrap();
+    require_independent_execution_coverage(&bound, &BTreeMap::new()).unwrap();
     assert!(
-        matches!(require_independent_execution_coverage(&pure, &BTreeSet::new()),
+        matches!(require_independent_execution_coverage(&pure, &BTreeMap::new()),
         Err(RecipeStoreError::Invalid(reason)) if reason=="standalone execution lacks exact pure-component approval")
     );
 }

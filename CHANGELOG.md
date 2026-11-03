@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Canonical pure occurrence coverage (A-02a)**: Catalogue preparation and
+  retained verification share the exact existing canonical qualification check.
+  Independent occurrences require matching step/revision coverage; arbitrary
+  pure-approval UUID rows no longer qualify them. Existing `/1` bytes and narrow
+  bootstrap scopes remain unchanged. General pure activation remains open;
+  new regression sources await native execution.
+
 - **Bob approval boundary repair (partial)**: Restrict raw pure-approval JSON
   to resolving an exact existing decision. Check exact evidence stages,
   immutable dependency closure and root/submission relationships in the

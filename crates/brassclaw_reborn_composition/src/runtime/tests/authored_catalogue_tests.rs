@@ -14,6 +14,9 @@ use uuid::Uuid;
 #[path = "catalogue_publication_tests.rs"]
 mod publication_tests;
 
+#[path = "authored_canonical_coverage_tests.rs"]
+mod canonical_coverage_tests;
+
 struct CatalogueOperator;
 #[async_trait::async_trait]
 impl crate::WebuiAuthenticator for CatalogueOperator {

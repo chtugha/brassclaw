@@ -7,9 +7,10 @@
 //! then stores the approval in `reborn_pure_component_approvals` and its closure
 //! in `reborn_pure_component_approval_closure`.
 //!
-//! The returned root UUID may be inserted into the `independently_qualified` set
-//! in `authored_monty_catalogue`. Storing an approval does not activate any
-//! catalogue entry or grant Tool permission; those remain separate gates.
+//! Stored declarations do not qualify independent execution in the retained
+//! catalogue. Trusted general approval production and exact retained carriage
+//! remain separate work; storing a record activates nothing and grants no Tool
+//! permission.
 //!
 //! No public success-write API: only `record_pure_component_approval` may insert.
 
@@ -46,9 +47,8 @@ fn db(error: tokio_postgres::Error) -> PureApprovalError {
 
 /// Read, verify and store one pure-component approval declaration.
 ///
-/// Returns the approved root UUID on success. The caller must include this in
-/// the `independently_qualified` set during catalogue preparation; it must never
-/// be derived from request data or a caller-authored success flag.
+/// Returns the stored root UUID on success. This identity alone must never
+/// authorize catalogue preparation or independent execution.
 ///
 /// # Invariants
 ///
@@ -409,34 +409,6 @@ fn validate_evidence_declaration(
         ));
     }
     Ok(())
-}
-
-/// Read the set of approved pure-component root UUIDs for the given component
-/// IDs within a transaction. Used by `authored_monty_catalogue` to populate
-/// the `independently_qualified` set from stored approval records.
-///
-/// Returns only roots that have a verified approval record. Components with no
-/// stored approval are absent from the returned set; missing approval is not an
-/// error here — it means the component is not independently qualified via this
-/// path.
-pub async fn load_independently_qualified(
-    tx: &tokio_postgres::Transaction<'_>,
-    component_ids: &[Uuid],
-) -> Result<std::collections::BTreeSet<Uuid>, PureApprovalError> {
-    if component_ids.is_empty() {
-        return Ok(std::collections::BTreeSet::new());
-    }
-    // Find all approvals whose root_id is in the given component set.
-    // We match by root_id because the component is the root of its own closure.
-    let rows = tx
-        .query(
-            "SELECT DISTINCT root_id FROM reborn_pure_component_approvals
-             WHERE root_id = ANY($1::uuid[])",
-            &[&component_ids],
-        )
-        .await
-        .map_err(db)?;
-    Ok(rows.iter().map(|row| row.get::<_, Uuid>(0)).collect())
 }
 
 /// Record an immutable link between a review submission and a pure-component
