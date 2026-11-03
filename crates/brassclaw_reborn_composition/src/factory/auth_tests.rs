@@ -1112,7 +1112,7 @@ async fn pg_factory_pending_auth_custody_exposes_original_recovery_then_retries_
     );
     assert!(matches!(
         auth.native_codex_owner(),
-        Err(AuthProductError::BackendUnavailable)
+        Err(brassclaw_auth::AuthProductError::BackendUnavailable)
     ));
     // A stale/lower native facade cannot race a fresh native-only record into
     // the namespace after the exclusive FS owner is published.
