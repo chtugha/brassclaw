@@ -3,8 +3,10 @@
 Date: 2026-11-03. Branch: `codex/b01-original-review-binding`.
 Base: `a4f308dc472b6f5b63e5825ad096f626895f6040`.
 Owner/scope: bounded B1-02 original submission/candidate capture; migration V206.
-This is a source handoff, not a build, native-test, component-approval, activation,
-or complete B1/B2/B3 acceptance record.
+The source handoff and review corrections below retain their original verification
+scope. The final section records the subsequently authorized successful CLI
+cross-build of 419a132e3. Native tests, component approval, activation and complete
+B1/B2/B3 acceptance remain unclaimed.
 
 ## Implemented source boundary
 
@@ -365,3 +367,86 @@ checks that both classes remain terminal/visible/countable under garbage.
 There are now fifteen `original_queue_*` tests plus the facade threshold test.
 This correction has only parser/format/diff verification; no Cargo, SQL migration,
 native test or Modal compilation was run. Full B1-02/plan acceptance remains open.
+
+
+## Authorized frozen-source Modal CLI build — 2026-11-03
+
+The supervisor authorized exactly one bundled CLI compilation after reviewing
+`419a132e3d18da259392041fcdd0d21a9e3f84f6`. Compiler inputs stayed unchanged for
+capture, synchronization, worker execution and receipt collection. The worktree
+was clean at that HEAD before launch and after completion. This report-only
+update is subsequent to the captured source and is not another compiler run.
+
+The Modal skill was read; its version and the existing SDK both report 1.6.3.
+Existing Apple activation pins `im-S1cpT9G1fsMPpwjISvBSlK`, qualified by job
+`7da58631-e7e7-4faa-a144-025eb4f1845f`. No image/setup/activation change was made.
+Actual process/lock and persisted unsettled-job checks found no competing remote
+run. The existing controller held `/private/tmp/brassclaw-modal-build.lock`
+continuously across sync, upload/readback verification, submission and terminal
+receipt/artifact collection. Local native work remained independent.
+
+One initial **local launcher** used Homebrew Python without the installed Modal
+SDK and failed at `import modal`, before entering the lock, synchronizing source
+or starting an App/function. That terminal log is retained. The launcher was
+corrected to the existing Miniconda SDK interpreter; no source/profile changed.
+There was exactly **one paid compiler job**, with no compiler retry.
+
+| Receipt field | Actual value |
+| --- | --- |
+| Source HEAD | `419a132e3d18da259392041fcdd0d21a9e3f84f6` |
+| Source Git tree | `f0e37f946917572172bc1b78fba3658ecf16cb75` |
+| Source manifest SHA-256 | `636b2f8924c766de45acf22c771f64927db1af9f8f25876f8653d15c49015fda` |
+| Source entries | 10,160, with exact file identities in `source.json` |
+| Job | `c44d9601-93af-4156-81c8-35c87d24918d` |
+| App | `ap-gCNsQzDuXnCxFSUwMnMvz6` |
+| Function call | `fc-01M6GNJFFC9GYEWTYP249APX16` |
+| Environment / Volume | `brassclaw` / `brassclaw-build` |
+| Profile | 8 CPU reserved/maximum, 32,768 MiB reserved/maximum, 8 Cargo jobs, 900-second timeout, 30-second shutdown grace, non-preemptible |
+| Expected local duration | 480 seconds, authorized from comparable 6–8-minute CLI batches |
+| Worker return code | **0** |
+| Worker duration | **353.8550000190735 seconds** |
+| Cargo completion | `Finished dev profile [unoptimized + debuginfo] target(s) in 5m 03s` |
+| Final remote state | Actual App listing: `stopped`, `tasks=0`; controller `state.json=completed`, `returncode=0` |
+
+The exact compilation command was:
+
+```text
+cargo build --locked -p brassclaw_reborn_cli --bin brassclaw-reborn --target aarch64-apple-darwin
+```
+
+The existing controller, qualified image, resource settings and compiler/cache
+owners were reused. Upload/readback verification reported archive SHA-256
+`e025c68bad5b845a9e8d65ce562486742493e58f81cd788018fccec31f629047`,
+143 changed files relative to the retained remote baseline, zero deletions and
+1,168,648 compressed bytes. The worker verified the admitted complete source
+before compiling. Request, completion and actual source-manifest hashes agree.
+
+Artifacts:
+
+* Downloaded `brassclaw-reborn`: **337,439,792 bytes**, actual local `file` reports
+  **Mach-O 64-bit executable arm64**. Local SHA-256 was recomputed and matches
+  the worker/controller receipt:
+  `02e1c110a90d738946b8460c2d40119d6c85c9fedd46c847d0ad193dd33639ff`.
+* Worker-verified pgvector archive:
+  `aarch64-apple-darwin/debug/build/brassclaw_embedded_postgres-ca1c2a1628a504f0/out/pgvector.tar.gz`,
+  **73,888 bytes**, SHA-256
+  `e4e03c5defc87c5540c2b294cd32b6b7010d54afa54dd37376ab89e8520f3b1f`.
+  The exact path/hash is in the completion receipt; the controller downloads the
+  CLI binary but does not separately download path-bearing artifact keys.
+
+Full actual evidence directory:
+`/Users/ollama/brassclaw-target/modal-build/jobs/c44d9601-93af-4156-81c8-35c87d24918d/`.
+It contains `request.json`, `source.json`, `applied.json`, `completed.json`,
+`state.json`, `cargo.log`, full `controller.log`, downloaded binary,
+`image-provenance.json`, actual `app-list.json`/`app-final.json`, launcher
+`launch.json`/`terminal.json`, initial local-preflight failure record, original
+worker/controller/source-sync/settings inputs, `verification.json` and
+`evidence-index.json` with file identities. Original launcher logs are also kept
+under `/private/tmp/brassclaw-b01-modal-419a132e3-20261103*`.
+App URL: <https://modal.com/apps/chtugha/brassclaw/ap-gCNsQzDuXnCxFSUwMnMvz6>.
+
+This establishes the exact default-feature Apple CLI compilation and recorded
+artifact identities, **not** test-target compilation, SQL/migration execution,
+Clippy, native binary execution, native/runtime/browser testing, activation or
+B1-02/whole-plan acceptance. No local Cargo, remote tests, native artifact startup
+or additional paid job was run. Native acceptance remains supervisor-owned.
