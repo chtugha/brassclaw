@@ -39,12 +39,13 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 | Package | Chat/worktree | Scope and state |
 | --- | --- | --- |
-| A-01 — native Codex/Auth custody | `01a1a022-90b1-7932-8dcf-c0ef34b79fee`, host `local`, title “Bob 3 — Native Codex/Auth via Modal”; `/Users/ollama/.codex/worktrees/e8ba/brassclaw`, branch `codex/bob3-auth-custody` | First commit `77b31f122` integrated as `e92b66b5d`. Modal CLI compiled; final encoder/test-source delta and native behavior still require local acceptance. Review corrections remain in this same package: recover original unfinished filesystem custody without blocking its only startup/recovery path; compare all imported native identity/index columns, not JSON alone. No further independent Auth task is assigned in this chat. |
-| B-00 — review inherited Q1/Oracle repair and finish its acceptance fixes | `01a1a062-b1c4-7ba0-8506-b7c8b3ee4b33`, host `local`, title “Paket B-00 — Q1- und Oracle-Reparatur”; `/Users/ollama/.codex/worktrees/ac66/brassclaw` | Inherit source commits `548254e43`, `a534c4654`, `626e9fddc`, `fdc1f0bc2`. Review exact pure-link restrictions, shared driver settlement proof and protocol oracle classification; repair attributable implementation/test defects. Keep within this existing connected package, with no new approval architecture, queue or VM. Root's already written code is not automatically accepted. |
+| A-01 — native Codex/Auth custody | `01a1a022-90b1-7932-8dcf-c0ef34b79fee`, host `local`, title “Bob 3 — Native Codex/Auth via Modal”; `/Users/ollama/.codex/worktrees/e8ba/brassclaw`, branch `codex/bob3-auth-custody` | First commit `77b31f122` integrated as `e92b66b5d`. Follow-ups `7dfa17d4f` and `fffe781ad` remain unintegrated. Review corrections stay here: original pending-custody recovery, complete native-index comparisons/inventory, MVCC-safe writer fencing, duplicate-key rejection and the ten native failures below. No further independent Auth task is assigned in this chat. |
+| B-00 — review inherited Q1/Oracle repair and finish its acceptance fixes | `01a1a062-b1c4-7ba0-8506-b7c8b3ee4b33`, host `local`, title “Paket B-00 — Q1- und Oracle-Reparatur”; `/Users/ollama/.codex/worktrees/ac66/brassclaw` | Inherited source commits `548254e43`, `a534c4654`, `626e9fddc`, `fdc1f0bc2` reviewed. Correction `f62e911cf` and report `25a9536bd` integrated as `3223415ff`/`6c2041ab6`: incomplete execution no longer writes a negative candidate verdict. Exact-source Modal CLI and local native CLI smoke checks passed; new regression compilation/execution and affected lint remain pending. Chat is idle awaiting supervisor acceptance, not assigned another package. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
-(filesystem Auth cutover) and is integrated. Coordinate any next migration with
-the supervisor before using its number. B-00 requires no migration by default;
+(filesystem Auth cutover) and is integrated. V205 is reserved exclusively for
+A-01's snapshot-safe custody successor; do not modify applied V203/V204. Coordinate
+any later migration with the supervisor before using its number. B-00 requires no migration by default;
 it must explain any actual schema need before implementation.
 
 ## Current native evidence and handoff
@@ -59,12 +60,29 @@ it must explain any actual schema need before implementation.
   not compilation evidence. Needed test executables/worker were already retained.
   Serial package-only cleanup removed 9.1 GiB. Afterwards: 29 GiB free, 86% shown
   by `df`; no repository evidence or whole target was cleaned.
-- The prepared combined native runner is
-  `/private/tmp/brassclaw-bob-native-20261103/run-3.py`; use a new evidence
-  directory for a rerun. It compiles Composition/LLM libraries together, then the
-  Auth contract target serially, retains actual binaries/worker and runs exact
-  selected tests locally. Check source manifests and actual outcomes; do not
-  reuse an old binary to claim a new interface was tested.
+- Fourth batch `.../run-4/`, source `4cebad6b6`: Composition/LLM compilation
+  succeeded in 479.73 seconds. Disk guard stopped the following Auth compilation
+  before Cargo. After retaining both actual executables and worker, package-only
+  cleanup removed 4.8 GiB; the Auth contract executable compiled in 6.15 seconds.
+  `continuation-1/` rejected an ignored private cross-process worker in its test
+  selection before execution. This was a harness rejection, not product evidence.
+- `.../run-4/native-tests-1/` reused those exact hashed executables without Cargo:
+  **59/69 selected native cases passed**, ten failed. All six retained Q1 cases,
+  Oracle, exact pure links/public-write restrictions, driver lifecycle, LLM host
+  custody and Auth no-send contract cases passed. Two Auth migration tests failed
+  on invalid fixture master keys, five new Codex-refresh cases on publication
+  `Unavailable`, and three existing Device cases on missing original/conflicting
+  readback. Exact names and logs are in `selection.json`, `test-progress.json`
+  and `completed.json`; all ten belong to A-01 for diagnosis. No ignored or
+  zero-selected test counted as passed. No full-package acceptance is claimed.
+- B-00 Modal job `cf5e67e0-597d-4cc3-ae4a-0854fccb0f5c` compiled `f62e911cf`;
+  its retained CLI SHA-256 is
+  `809e6ff0648b2aa701e806d1cc9ce4215d0229f83962a499a83b1353e8573d76`.
+  Supervisor `accept-native` passed actual Mach-O/dependency inspection and
+  `--version`/`--help`; it ran no Cargo or cloud job. The existing job directory
+  retains `native-accepted.json`. This does not compile its new test source or
+  establish full product acceptance. See the exact-source
+  [B-00 report](validation/2026-11-03-b00-package-review.md).
 - The Apple linker unwind-size warning remains visible and unresolved. No
   panic/exception behavior change or warning suppression is accepted as a fix.
 - Private canonical-factory draft:
