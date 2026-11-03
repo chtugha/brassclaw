@@ -262,7 +262,7 @@ impl PgAuthProductServices {
                 let egress = transport.native_original_egress()?;
                 let custodian = RefreshCustodian {
                     auth: self,
-                    action: action,
+                    action,
                     selected,
                     expected: request.clone(),
                     transport: None,
