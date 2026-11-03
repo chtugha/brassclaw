@@ -110,5 +110,9 @@ See [Modal image qualification](modal-cross-build.md) and
 qualified image can execute this controller's resource settings without a new
 image build; no embedded compiler-worker implementation changed here. Local
 regression checks exercise settings, actual cross-process locks and SDK transport
-handoff. The changed controller still needs its next necessary authorized build
-for live remote acceptance; no extra paid validation run is required.
+handoff. The subsequent necessary
+[integrated-main build](validation/2026-11-03-bob-main-integration.md) passed
+through this controller on the qualified image, followed by native startup and
+embedded-byte checks. That live run used the unchanged eight-core settings;
+it does not establish sixteen-core scaling or burst utilization. No separate
+verification-only paid build was run.

@@ -1,0 +1,306 @@
+{
+  "integration_commit": "c3de59205f9a537397bfbd658daadb6926f4819c",
+  "job_id": "911aa4b9-571a-41be-a53a-c8eb00c23f46",
+  "app_id": "ap-zTdmBtm5bOQs5vfh8Ogrdl",
+  "request": {
+    "allow_parallel_hosts": true,
+    "command": [
+      "cargo",
+      "build",
+      "--locked",
+      "-p",
+      "brassclaw_reborn_cli",
+      "--bin",
+      "brassclaw-reborn",
+      "--target",
+      "aarch64-apple-darwin"
+    ],
+    "cpu": 8.0,
+    "cpu_limit": 8.0,
+    "environment": "brassclaw",
+    "estimated_local_secs": 600.0,
+    "image_id": "im-S1cpT9G1fsMPpwjISvBSlK",
+    "job_id": "911aa4b9-571a-41be-a53a-c8eb00c23f46",
+    "jobs": 8,
+    "lock_scope": "modal",
+    "manifest_sha256": "fce56666bd1d11dd46c87440d1b11c77273e0c4731c49ce2b6a96d8b657ed9f9",
+    "memory_limit_mib": 32768,
+    "memory_mib": 32768,
+    "nonpreemptible": true,
+    "shutdown_grace_secs": 30,
+    "target_triple": "aarch64-apple-darwin",
+    "timeout_secs": 900,
+    "volume": "brassclaw-build"
+  },
+  "completion": {
+    "artifacts": {
+      "aarch64-apple-darwin/debug/build/brassclaw_embedded_postgres-ca1c2a1628a504f0/out/pgvector.tar.gz": {
+        "sha256": "e4e03c5defc87c5540c2b294cd32b6b7010d54afa54dd37376ab89e8520f3b1f",
+        "size": 73888
+      },
+      "brassclaw-reborn": {
+        "file": "/build/cache/images/im-S1cpT9G1fsMPpwjISvBSlK/target/aarch64-apple-darwin/debug/brassclaw-reborn: Mach-O 64-bit arm64 executable, flags:<NOUNDEFS|DYLDLINK|TWOLEVEL|PIE|HAS_TLV_DESCRIPTORS>",
+        "sha256": "37a02e44576f9774d6e18d8c7bdc0b5158796e6acac579fb667291ed6922bd15",
+        "size": 336129008
+      }
+    },
+    "command": [
+      "cargo",
+      "build",
+      "--locked",
+      "-p",
+      "brassclaw_reborn_cli",
+      "--bin",
+      "brassclaw-reborn",
+      "--target",
+      "aarch64-apple-darwin"
+    ],
+    "duration_secs": 365.3959469795227,
+    "image_id": "im-S1cpT9G1fsMPpwjISvBSlK",
+    "job_id": "911aa4b9-571a-41be-a53a-c8eb00c23f46",
+    "manifest_sha256": "fce56666bd1d11dd46c87440d1b11c77273e0c4731c49ce2b6a96d8b657ed9f9",
+    "returncode": 0,
+    "started_at": 1793684606.0227876,
+    "target": "/build/cache/images/im-S1cpT9G1fsMPpwjISvBSlK/target",
+    "toolchain": {
+      "base": "rust@sha256:811d6caab4a84e6148c8722128993c1caf152156868b2b66f3a26af189b0dad8",
+      "debian_snapshot": "20260701T000000Z",
+      "deployment_target": "14.0",
+      "llvm": "19",
+      "osxcross_commit": "27d21e4977c9751d01199c7a226a6faf494c3dd9",
+      "osxcross_sha256": "c94952432565db84f1b3a9e4ba3d44344b1464fcbeb8c7580ab9db1e7c22834a",
+      "rust": "1.96.0",
+      "sdk_sha256": "0c93ec9a911f0ee9b3de343e3b980d3a449370c737f722ca780f1dd0b4f09926",
+      "sdk_version": "26.5",
+      "target": "aarch64-apple-darwin"
+    }
+  },
+  "controller_secs": 404.52281379699707,
+  "owned_committed_paths_verified": 44,
+  "embedded_bytes": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "d98b7fae6bad991015a5847b6acb1b3907d34d8c4e6aa5dd3265b77a200312c6",
+      "binary_offset": 113998345
+    },
+    {
+      "path": "CLAUDE.md",
+      "sha256": "0e86999e2142cd6198ea22463d48e039c1efebadb7e4fa85ea79a161035ff74c",
+      "binary_offset": 113890238
+    },
+    {
+      "path": "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutations.js",
+      "sha256": "18969e7b3710b9f310cb180fccbbedf2e01e509c8de928ef686b9a9477ce6847",
+      "binary_offset": 125311007
+    },
+    {
+      "path": "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-login.js",
+      "sha256": "610123273318f0ce12e461719534966d6ece0adef9bf143e1a141229276412d6",
+      "binary_offset": 125287693
+    },
+    {
+      "path": "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/provider-mutation-status.js",
+      "sha256": "677a1556d52bd1644e015b5882526a968b62462493233c6176ca3813e73b5566",
+      "binary_offset": 125026871
+    }
+  ],
+  "native_acceptance": {
+    "artifact_sha256": "37a02e44576f9774d6e18d8c7bdc0b5158796e6acac579fb667291ed6922bd15",
+    "checks": {
+      "dependencies": {
+        "command": [
+          "otool",
+          "-L",
+          "/Users/ollama/brassclaw-target/modal-build/jobs/911aa4b9-571a-41be-a53a-c8eb00c23f46/brassclaw-reborn"
+        ],
+        "returncode": 0
+      },
+      "file": {
+        "command": [
+          "file",
+          "/Users/ollama/brassclaw-target/modal-build/jobs/911aa4b9-571a-41be-a53a-c8eb00c23f46/brassclaw-reborn"
+        ],
+        "returncode": 0
+      },
+      "help": {
+        "command": [
+          "/Users/ollama/brassclaw-target/modal-build/jobs/911aa4b9-571a-41be-a53a-c8eb00c23f46/brassclaw-reborn",
+          "--help"
+        ],
+        "returncode": 0
+      },
+      "version": {
+        "command": [
+          "/Users/ollama/brassclaw-target/modal-build/jobs/911aa4b9-571a-41be-a53a-c8eb00c23f46/brassclaw-reborn",
+          "--version"
+        ],
+        "returncode": 0
+      }
+    },
+    "scope": "native Mach-O inspection and actual CLI --version/--help; no complete product acceptance"
+  },
+  "scope": "Own prepared patches reconciled and committed on local main; full working-tree CLI snapshot (including separately uncommitted other-agent validator work) cross-compiled. Native startup/assets checked, no Rust test/issuer/full-Bob acceptance.",
+  "date": "2026-11-03",
+  "cargo_reported_secs": 287,
+  "integration": {
+    "integration_commit": "c3de59205f9a537397bfbd658daadb6926f4819c",
+    "branch": "main",
+    "owned_paths": [
+      ".cargo/config.toml",
+      "AGENTS.md",
+      "CHANGELOG.md",
+      "CLAUDE.md",
+      "Repair_bob_1_v3_at_k3.md",
+      "Repair_bob_2_v3_at_k3.md",
+      "Repair_bob_3_v3_at_k3.md",
+      "crates/brassclaw_reborn_composition/src/auth.rs",
+      "crates/brassclaw_reborn_composition/src/auth_native_codex.rs",
+      "crates/brassclaw_reborn_composition/src/factory.rs",
+      "crates/brassclaw_reborn_composition/src/runtime/tests/auth_interaction.rs",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/provider-mutation-status.js",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/provider-mutation-status.test.mjs",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/codex-login.test.mjs",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-bootstrap.test.mjs",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-login.js",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutation-auth.test.mjs",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutations.js",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutations.test.mjs",
+      "docs/archive/missing4_v3_at_k3.pre-bob-2026-11-03.txt",
+      "docs/build-environments.md",
+      "docs/development-build-queue.md",
+      "docs/development-policy.md",
+      "docs/modal-cross-build.md",
+      "docs/reborn/bob2-retained-reader-inventory.md",
+      "docs/validation/2026-11-03-b2-reader-inventory.json",
+      "docs/validation/2026-11-03-b3-login-observer-fencing.md",
+      "docs/validation/2026-11-03-b3-modal-cli-build.json",
+      "docs/validation/2026-11-03-b3-modal-cli-build.md",
+      "docs/validation/2026-11-03-b3-mutation-auth.final-ui.log",
+      "docs/validation/2026-11-03-b3-mutation-auth.json",
+      "docs/validation/2026-11-03-b3-mutation-auth.md",
+      "docs/validation/2026-11-03-b3-mutation-auth.repository.log",
+      "docs/validation/2026-11-03-b3-mutation-status-observer.json",
+      "docs/validation/2026-11-03-b3-mutation-status-observer.md",
+      "docs/validation/2026-11-03-independent-build-environments.json",
+      "docs/validation/2026-11-03-independent-build-environments.md",
+      "missing4_v3_at_k3.md",
+      "scripts/build-environments.toml",
+      "scripts/build_settings.py",
+      "scripts/local_build.py",
+      "scripts/modal_build.py",
+      "scripts/modal_source_sync.py",
+      "scripts/test_build_environments.py"
+    ],
+    "owned_sha256": {
+      ".cargo/config.toml": "19ee0b46cb6d3bc4290c2c724d3905134218f2e330a6239609acbeab251b98e3",
+      "AGENTS.md": "d98b7fae6bad991015a5847b6acb1b3907d34d8c4e6aa5dd3265b77a200312c6",
+      "CHANGELOG.md": "cf615b8176627941a5e51c59c49984cb4973a12baef002623d3665475ec9900e",
+      "CLAUDE.md": "0e86999e2142cd6198ea22463d48e039c1efebadb7e4fa85ea79a161035ff74c",
+      "Repair_bob_1_v3_at_k3.md": "d1fadef989c893ffa5335449dd242e8ee1132cb4ab541ce4f57726fcc119e3a4",
+      "Repair_bob_2_v3_at_k3.md": "d901fe430c7dc1c4767400f6139b237627c0e9d251e2fe077442c07eb321a338",
+      "Repair_bob_3_v3_at_k3.md": "093082d020b77f79688fb9d6b848fa60e9858520bd0e88950cd2ed71880978e9",
+      "crates/brassclaw_reborn_composition/src/auth.rs": "5e9877a7421b7634d20c3037bdfcd65fdfd8b631773e41dadad48654ef0e1a84",
+      "crates/brassclaw_reborn_composition/src/auth_native_codex.rs": "d5972af4db412e91c83a31d30b27c47c493bab5a1a365a73e429ea49aa304145",
+      "crates/brassclaw_reborn_composition/src/factory.rs": "7b3912e8be30c2840c690676dc419b4c5c10875ec6a6e919e3690a70eed44d32",
+      "crates/brassclaw_reborn_composition/src/runtime/tests/auth_interaction.rs": "b4a9e983d0e5e8647f6dcf707c7e0624f887d46fa2fb909056da9ec9b99f10e4",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/provider-mutation-status.js": "677a1556d52bd1644e015b5882526a968b62462493233c6176ca3813e73b5566",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/components/provider-mutation-status.test.mjs": "5df5e08e881038a52d2949ed89f1502ce5718a69e474e9b67d50cd549c63394c",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/codex-login.test.mjs": "b12bfcca9251453b6ec1da262e159a3e14ea82a285c9656799bab43c84d0d48f",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-bootstrap.test.mjs": "767e0939bda318946d6394520658c564a95b69946923f4f4352a23ae404f9f8f",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-login.js": "610123273318f0ce12e461719534966d6ece0adef9bf143e1a141229276412d6",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutation-auth.test.mjs": "03c76d1913dd858ea434fb29c655d7c8e5223cb272cac115f7dfdb6d5eeae1b7",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutations.js": "18969e7b3710b9f310cb180fccbbedf2e01e509c8de928ef686b9a9477ce6847",
+      "crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/provider-mutations.test.mjs": "e8c498f699321dc8051b6285e08603c5981ed258fdd9c1a8046532a20a34aa09",
+      "docs/archive/missing4_v3_at_k3.pre-bob-2026-11-03.txt": "083b8cf4e485726b04c231ab42e91cce040e82e65be7b572a82d2630ec5bf2ae",
+      "docs/build-environments.md": "68e166fad2c4c8463588a4110e7495c452dc861718ec528cff4dc3cec07d6e9c",
+      "docs/development-build-queue.md": "9e86f04ccdd515564c6c0cc9bf9c94bdca3200003d78541b110cf390cdbe805d",
+      "docs/development-policy.md": "4de52337fe1b66c36d567d006416f43c2c76f5324af44665356b1cffef0f6b52",
+      "docs/modal-cross-build.md": "211c210e60126efcda916c4e080bcd934fd3436f99679fd9ec01eb0325ceff43",
+      "docs/reborn/bob2-retained-reader-inventory.md": "ba2725dde7fb96814b7f7dc58452b5cc38cca75a31045423ddbf6a4592dee47a",
+      "docs/validation/2026-11-03-b2-reader-inventory.json": "e5a6939edfbfe9eb28781652e9f59558fda7e87ae92a9e3a1addef529439a138",
+      "docs/validation/2026-11-03-b3-login-observer-fencing.md": "e7dfe67486e4b2d853537aba798770802533dcf39c2acadfb34a91a2384303aa",
+      "docs/validation/2026-11-03-b3-modal-cli-build.json": "595c313e587bc5c55025a0c2cc8c6d2e601c795aae95785b40bc375ff622f67e",
+      "docs/validation/2026-11-03-b3-modal-cli-build.md": "be476c3791deee101f475e8b043e4f982ebedebb65b720ba8cb969c879db77d3",
+      "docs/validation/2026-11-03-b3-mutation-auth.final-ui.log": "099c1db2fa3d97ea8d43212e98873479198b6e09d5a30b981c8910b417435fcd",
+      "docs/validation/2026-11-03-b3-mutation-auth.json": "d732f4bb2701cacb6b00e81fc66c5e1332a91a1a03c6140eb96a32d4eaad9264",
+      "docs/validation/2026-11-03-b3-mutation-auth.md": "72ce622e0fffcff6065a0a0da88ddbb795f678b5375a10348d1c40fa5e6da564",
+      "docs/validation/2026-11-03-b3-mutation-auth.repository.log": "2ba6f42c697324b135a26570ea4f5ff6bc4a9cd0bfa5ef92dc549bff8a3291f5",
+      "docs/validation/2026-11-03-b3-mutation-status-observer.json": "c9ccf64b18714f3bf1a57aba5e1e4ed702c34cbd5b4352062c144ceddd25450c",
+      "docs/validation/2026-11-03-b3-mutation-status-observer.md": "7800ca88efa6a725603a0b78bc31f2c37ac4542d6523850ca26199c937ec7124",
+      "docs/validation/2026-11-03-independent-build-environments.json": "20eabae5bc6c2b6caad4c256fb6682be33491d9566391ebf1e83f03356781a28",
+      "docs/validation/2026-11-03-independent-build-environments.md": "47f6f71117532458af048bba6ec2df834b956bc53059d3fc7bef7471f8b094ff",
+      "missing4_v3_at_k3.md": "a4a02dfe53e4698acde49dc0178ec03cc0b1babfb60a45655b73a2241ec8c49d",
+      "scripts/build-environments.toml": "0be9d563664e3e75f8a97b187ca4b21a1480878121a2214412c133b80b7f25be",
+      "scripts/build_settings.py": "0c4365035d4c57c1670bbc0bb6b7f93497948127ec43f594ca94bdefad5be2f6",
+      "scripts/local_build.py": "1458b007ab4cf860745c4607a392ced3887361e683ebeea18117bac2d2426e17",
+      "scripts/modal_build.py": "ec621d230e39804002c5323c3ec842f273f8929bbbf198b6bb68afae4a588e80",
+      "scripts/modal_source_sync.py": "c53d9cc3738689a878c43410219704c3c48b7f48d0c275126ba0edf4fe3a55ea",
+      "scripts/test_build_environments.py": "59ffcb0910c6e24e121d8122f1249152c5da6d14a30207acb57e66970eb98b58"
+    },
+    "temporary_sources": [
+      "/private/tmp/brassclaw-b3-02-native-auth-20261103.patch",
+      "/private/tmp/brassclaw-b3-09-login-guard-source.json",
+      "/private/tmp/brassclaw-b3-09-mutation-observer/applied.json",
+      "/private/tmp/brassclaw-b3-09-mutation-auth/reference-read/applied.json",
+      "/private/tmp/brassclaw-b2-reader-inventory/applied.json"
+    ],
+    "reconciliation": "Prepared own changes already present in checkout; checked retained final hashes, applied superseding reference-only recovery and explicit-tenant corrections, and committed without replaying older patches. B2 plan later changes only prepared -> recorded wording.",
+    "foreign_pending_paths": [
+      ".DS_Store",
+      "crates/brassclaw_engine/src/memory/retained_validator.rs",
+      "crates/brassclaw_reborn_composition/src/bootstrap_validation.rs",
+      "crates/brassclaw_reborn_composition/src/bootstrap_validator_approval.rs",
+      "crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs",
+      "crates/brassclaw_reborn_composition/src/global_monty_driver.rs",
+      "crates/brassclaw_reborn_composition/src/global_recipe_ports.rs",
+      "crates/brassclaw_reborn_composition/src/pg_review_admission_source.rs",
+      "crates/brassclaw_reborn_composition/src/q1_orchestrator.rs",
+      "crates/brassclaw_reborn_composition/src/runtime.rs",
+      "crates/brassclaw_reborn_composition/src/runtime/tests/validation_queue_q1_retained_tests.rs",
+      "crates/brassclaw_reborn_composition/src/runtime/tests/validator_pc_body_tests.rs",
+      "crates/brassclaw_reborn_composition/src/runtime/tests/validator_retained_q1_tests.rs",
+      "crates/brassclaw_reborn_composition/src/validator_component_tests.rs",
+      "crates/brassclaw_skills/src/validator_components.rs",
+      "docs/orchestration/INBOX.md"
+    ],
+    "push_performed": false
+  },
+  "app_terminal_observation": {
+    "state": "stopped",
+    "tasks": 0,
+    "stopped_at": "2026-11-03 06:49:48+01:00"
+  },
+  "diagnostics": {
+    "scope": "Two read-only process inspections in the existing worker; no additional worker or compilation",
+    "observations": [
+      {
+        "process": "cargo",
+        "state": "D",
+        "rchar": 53513367,
+        "syscr": 7713,
+        "rustc_present": false
+      },
+      {
+        "process": "cargo",
+        "state": "R",
+        "rchar": 53570524,
+        "syscr": 8648,
+        "rustc_present": false
+      }
+    ],
+    "interpretation": "Progress before rustc; cache/filesystem activity is a likely source of startup latency. No per-crate/linker timings or CPU scaling claim."
+  },
+  "reused_evidence": {
+    "ui_distinct_tests": 73,
+    "ui_inputs_verified": 19,
+    "build_coordination_distinct_local_tests": 27,
+    "note": "Prior passing checks reused only after exact source applicability verification; not rerun remotely."
+  },
+  "remote_tests_executed": false,
+  "github_push_performed": false,
+  "pgvector_evidence": {
+    "sha256": "e4e03c5defc87c5540c2b294cd32b6b7010d54afa54dd37376ab89e8520f3b1f",
+    "native_reference_job": "7da58631-e7e7-4faa-a144-025eb4f1845f",
+    "scope": "Unchanged artifact; native PostgreSQL extension acceptance reused, not rerun."
+  }
+}

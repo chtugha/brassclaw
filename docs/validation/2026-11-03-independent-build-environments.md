@@ -33,3 +33,8 @@ artifacts and exact seed/prefix receipts retain their original scope; this
 tooling validation does not qualify or activate new component bytes. The native
 lock implementation was exercised on macOS, without claiming new Windows/Linux
 runtime acceptance. Existing pending validator/Auth/Bob work is unchanged.
+
+Subsequent live evidence: the necessary
+[integrated-main build](2026-11-03-bob-main-integration.md) accepted the changed
+controller on the existing image with the qualified default resources. The
+local check record above retains its original pre-build scope and identities.
