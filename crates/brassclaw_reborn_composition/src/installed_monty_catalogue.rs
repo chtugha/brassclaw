@@ -475,8 +475,9 @@ impl InstalledMontyCatalogue {
         scope: &IntentScope,
         memory_mounts: MountView,
         root: brassclaw_skills::association_contract::ComponentRevisionRef,
-        preparation_policy: brassclaw_host_api::MontyExecutionLimits,
+        startup_settings: &brassclaw_product_workflow::MontyVmSettings,
     ) -> Result<Arc<Self>, RebornBuildError> {
+        let preparation_policy = startup_settings.execution_limits;
         let preparation =
             brassclaw_monty_host::utility::UtilityLimits::from_execution(preparation_policy)
                 .map_err(invalid)?;
@@ -642,6 +643,7 @@ impl InstalledMontyCatalogue {
                 scope,
                 worker,
                 preparation,
+                crate::live_monty_settings::task_settings(startup_settings),
             ))
             .await?;
         let store = PgComponentRevisionStore::new(pool.clone());

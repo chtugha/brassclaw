@@ -537,7 +537,7 @@ fn observed_limits(
     }
 }
 
-fn task_settings(settings: &MontyVmSettings) -> TaskSettings {
+pub(crate) fn task_settings(settings: &MontyVmSettings) -> TaskSettings {
     TaskSettings {
         revision: settings.revision,
         max_compute_time: Duration::from_secs(settings.max_duration_secs),

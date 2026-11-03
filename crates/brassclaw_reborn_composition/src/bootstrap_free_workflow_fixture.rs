@@ -10,7 +10,7 @@ use brassclaw_skills::{
     value_contract::{InputContract, ValueContract},
 };
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, path::Path, time::Duration};
+use std::{collections::BTreeMap, path::Path};
 use uuid::Uuid;
 
 /// Cases exercised by the contained pure oracle.
@@ -144,6 +144,7 @@ pub(super) async fn execute_pure_oracle(
     protocol_id: Uuid,
     worker: &Path,
     limits: UtilityLimits,
+    task_settings: brassclaw_monty_host::process::TaskSettings,
 ) -> Result<Value, RebornBuildError> {
     let pure = inspected.pure_component(protocol_id).map_err(invalid)?;
     let graph = inspected
@@ -182,8 +183,7 @@ pub(super) async fn execute_pure_oracle(
         .get("validate_captured_bootstrap_answer")
         .ok_or_else(|| invalid("free-workflow protocol export absent"))?
         .clone();
-    source.push_str(&export);
-    source.push_str("\nresult\n");
+    append_observed_invocation(&mut source, &export);
     let mut cases = Vec::new();
     for &case_name in CASES {
         let (packet_bytes, answer_bytes, expect_success) = case_inputs(case_name)?;
@@ -197,33 +197,28 @@ pub(super) async fn execute_pure_oracle(
                 source: source.clone(),
                 inputs,
                 bounds: limits.bounds,
-                max_compute_time: Duration::from_secs(5),
+                max_compute_time: task_settings.max_compute_time,
             },
             limits.process,
         )
         .await;
-        let observation = match output {
-            Ok(UtilityOutput::Evaluated { value, stdout }) => {
-                if !expect_success {
-                    return Err(invalid(format!(
-                        "free-workflow oracle expected failure for case {case_name}"
-                    )));
-                }
+        // Only a Python ValueError caught inside the actual invocation is a
+        // rejected protocol input. Containment, timeout, transport, syntax and
+        // unrelated runtime failures remain infrastructure errors.
+        let observation = match output.map_err(invalid)? {
+            UtilityOutput::Evaluated { value, stdout } => {
                 if !stdout.is_empty() {
                     return Err(invalid("free-workflow oracle produced unexpected stdout"));
                 }
-                result_contract.validate(&value).map_err(invalid)?;
-                json!({"succeeded": true, "result": value})
-            }
-            Err(_) => {
                 if expect_success {
-                    return Err(invalid(format!(
-                        "free-workflow oracle expected success for case {case_name}"
-                    )));
+                    result_contract
+                        .validate(&value["result"])
+                        .map_err(invalid)?;
                 }
-                json!({"succeeded": false})
+                verify_case_observation(case_name, &value)?;
+                value
             }
-            Ok(other) => {
+            other => {
                 return Err(invalid(format!(
                     "free-workflow oracle unexpected output kind for {case_name}: {other:?}"
                 )));
@@ -237,35 +232,138 @@ pub(super) async fn execute_pure_oracle(
             "observation": observation
         }));
     }
-    Ok(json!({"format": "free-workflow-pure-oracle/1", "cases": cases}))
+    Ok(json!({"format": "free-workflow-pure-oracle/2", "cases": cases}))
 }
 
 /// Verify stored oracle observations match the independent fixture oracle.
 pub(super) fn verify_oracle_observations(observations: &Value) -> Result<(), RebornBuildError> {
+    if observations
+        .as_object()
+        .is_none_or(|object| object.len() != 2)
+        || observations["format"] != "free-workflow-pure-oracle/2"
+    {
+        return Err(invalid("free-workflow oracle envelope differs"));
+    }
     let cases = observations["cases"]
         .as_array()
         .filter(|v| v.len() == CASES.len())
         .ok_or_else(|| invalid("free-workflow oracle cases incomplete"))?;
     for (record, &case_name) in cases.iter().zip(CASES) {
         let (packet_bytes, answer_bytes, expect_success) = case_inputs(case_name)?;
-        if record["case"] != case_name
+        if record.as_object().is_none_or(|object| object.len() != 5)
+            || record["case"] != case_name
             || record["packet_bytes_sha256"] != crate::bootstrap_evidence::checksum(&packet_bytes)
             || record["answer_bytes_sha256"] != crate::bootstrap_evidence::checksum(&answer_bytes)
             || record["expected_success"] != expect_success
         {
             return Err(invalid("free-workflow oracle case provenance differs"));
         }
-        let succeeded = record["observation"]["succeeded"]
-            .as_bool()
-            .ok_or_else(|| invalid("free-workflow oracle observation malformed"))?;
-        if succeeded != expect_success {
-            return Err(invalid("free-workflow oracle success state differs"));
-        }
-        if expect_success && record["observation"]["result"].is_null() {
-            return Err(invalid(
-                "free-workflow oracle expected result missing for valid case",
-            ));
-        }
+        verify_case_observation(case_name, &record["observation"])?;
     }
     Ok(())
+}
+
+fn verify_case_observation(case: &str, observed: &Value) -> Result<(), RebornBuildError> {
+    let (packet_bytes, _, expect_success) = case_inputs(case)?;
+    let expected = if expect_success {
+        let packet: Value = serde_json::from_str(&packet_bytes).map_err(invalid)?;
+        json!({"succeeded":true,"result":canonical(&valid_answer(&packet))?})
+    } else {
+        let message = match case {
+            "b1-wrong-request" | "b2-wrong-digest" | "b1-wrong-task" => {
+                "bootstrap answer contract or echo mismatch"
+            }
+            "b2-extra-field" | "b1-wrong-body" => "bootstrap object fields differ",
+            "b2-foreign-candidate" => "unknown bootstrap candidate",
+            _ => return Err(invalid("negative oracle case has no declared rejection")),
+        };
+        json!({"succeeded":false,"rejection":{"kind":"ValueError","message":message}})
+    };
+    if observed != &expected {
+        return Err(invalid(
+            "free-workflow oracle actual outcome differs from the independent case",
+        ));
+    }
+    Ok(())
+}
+
+/// Installation-only observation wrapper. Source comes from the inspected
+/// preload graph; request values remain separately bound typed inputs.
+fn append_observed_invocation(source: &mut String, export: &str) {
+    source.push_str("try:\n");
+    for line in export.lines() {
+        source.push_str("    ");
+        source.push_str(line);
+        source.push('\n');
+    }
+    source.push_str("except ValueError as _oracle_error:\n    _oracle_observation = {'succeeded': False, 'rejection': {'kind': 'ValueError', 'message': str(_oracle_error)}}\nelse:\n    _oracle_observation = {'succeeded': True, 'result': result}\n_oracle_observation\n");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn native_oracle_only_classifies_the_expected_protocol_rejection() {
+        let worker = brassclaw_monty_host::process::installed_worker().unwrap();
+        let limits = UtilityLimits::from_execution(Default::default()).unwrap();
+        for (exception, rejected) in [
+            ("ValueError", true),
+            ("RuntimeError", false),
+            ("MemoryError", false),
+        ] {
+            let mut source =
+                format!("def oracle(inputs):\n    raise {exception}('fixture failure')\n");
+            append_observed_invocation(&mut source, "result = oracle(inputs=inputs)");
+            let result = execute(
+                &worker,
+                UtilityRequest::Evaluate {
+                    source,
+                    inputs: BTreeMap::from([("inputs".into(), json!({}))]),
+                    bounds: limits.bounds,
+                    max_compute_time: std::time::Duration::from_secs(1),
+                },
+                limits.process,
+            )
+            .await;
+            if rejected {
+                let UtilityOutput::Evaluated { value, stdout } = result.unwrap() else {
+                    panic!("native oracle returned the wrong operation output")
+                };
+                assert!(stdout.is_empty());
+                assert_eq!(
+                    value,
+                    json!({"succeeded":false,"rejection":{"kind":"ValueError","message":"fixture failure"}})
+                );
+            } else {
+                assert!(
+                    result.is_err(),
+                    "unexpected {exception} cannot qualify a negative case"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn stored_oracle_requires_the_exact_independent_answer_and_rejection() {
+        let (bytes, _, _) = case_inputs("b1-valid").unwrap();
+        let packet: Value = serde_json::from_str(&bytes).unwrap();
+        let actual = json!({"succeeded":true,"result":canonical(&valid_answer(&packet)).unwrap()});
+        verify_case_observation("b1-valid", &actual).unwrap();
+        assert!(
+            verify_case_observation("b1-valid", &json!({"succeeded":true,"result":"unrelated"}))
+                .is_err()
+        );
+        assert!(verify_case_observation("b1-wrong-request", &json!({"succeeded":false})).is_err());
+        assert!(verify_case_observation("b1-wrong-request", &json!({
+            "succeeded":false,"rejection":{"kind":"ValueError","message":"unrelated failure"}
+        })).is_err());
+        assert!(
+            verify_case_observation(
+                "b1-wrong-request",
+                &json!({"succeeded":false,"rejection":"RuntimeError"})
+            )
+            .is_err()
+        );
+    }
 }

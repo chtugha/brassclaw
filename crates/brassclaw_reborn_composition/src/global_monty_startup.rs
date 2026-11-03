@@ -108,7 +108,7 @@ pub(crate) async fn start(
         scope,
         mounts,
         root.reference(),
-        settings.execution_limits,
+        &settings,
     )
     .await
     .map_err(|error| invalid(error.to_string()))?;

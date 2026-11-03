@@ -16,7 +16,7 @@ use tokio_postgres::Transaction;
 use uuid::Uuid;
 
 /// Structural checks on the assembled B1/B2 program beyond pure-protocol oracle.
-fn check_graph_structure(
+pub(super) fn check_graph_structure(
     inspected: &InspectedRetainedProgram,
     ids: &FreeWorkflowIds,
 ) -> Result<(), RebornBuildError> {
@@ -66,6 +66,7 @@ pub(super) async fn execute(
     ids: &FreeWorkflowIds,
     worker: &Path,
     limits: UtilityLimits,
+    task_settings: brassclaw_monty_host::process::TaskSettings,
 ) -> Result<Value, RebornBuildError> {
     check_graph_structure(&inspected, ids)?;
     // Verify all referenced component revisions are exact packaged definitions.
@@ -84,7 +85,8 @@ pub(super) async fn execute(
     // Record the serving selection hash before and after to confirm no side effect.
     let before_hash = serving_hash(&pool).await?;
     let observations =
-        fixture::execute_pure_oracle(&inspected, ids.protocol, worker, limits).await?;
+        fixture::execute_pure_oracle(&inspected, ids.protocol, worker, limits, task_settings)
+            .await?;
     let after_hash = serving_hash(&pool).await?;
     if before_hash != after_hash {
         return Err(invalid("free-workflow oracle changed serving selection"));
@@ -133,7 +135,7 @@ pub(super) async fn verify(
         .map_err(invalid)?;
     // Verify oracle cases against the independent fixture constants.
     let oracle_observations = &observed["observations"];
-    if oracle_observations["format"] != "free-workflow-pure-oracle/1" {
+    if oracle_observations["format"] != "free-workflow-pure-oracle/2" {
         return Err(invalid("free-workflow oracle format differs"));
     }
     fixture::verify_oracle_observations(oracle_observations)?;

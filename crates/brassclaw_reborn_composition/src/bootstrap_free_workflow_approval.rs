@@ -157,6 +157,7 @@ impl Subject {
             ));
         }
         let ids = validation::FreeWorkflowIds { recipe, protocol };
+        validation::check_graph_structure(inspected, &ids)?;
         let selection_checksum = hex::encode(
             instruction
                 .retained_selection()
@@ -166,7 +167,7 @@ impl Subject {
         // Derive stable evidence UUIDs from the recipe UUID and selection checksum.
         let identity = Uuid::new_v5(
             &recipe,
-            format!("brassclaw-bootstrap-free-workflow-qualification/1:{selection_checksum}")
+            format!("brassclaw-bootstrap-free-workflow-qualification/2:{selection_checksum}")
                 .as_bytes(),
         );
         let q1 = Uuid::new_v5(&identity, b"q1");
@@ -180,15 +181,13 @@ impl Subject {
             "succeeded": true,
             "report": {
                 "header": {
-                    "producer": "brassclaw-bootstrap-free-workflow-qualification/1",
+                    "producer": "brassclaw-bootstrap-free-workflow-qualification/2",
                     "scope": "exact-packaged-b1-b2-answer-workflow/1"
                 },
                 "checks": [
                     "exact-packaged-root-and-recursive-dependencies",
                     "three-immutable-tool-bindings-kohai-json-json",
-                    "pure-protocol-component-present-and-evaluable",
-                    "b1-and-b2-answer-cases-validated-against-oracle",
-                    "negative-cases-confirmed-failing"
+                    "pure-protocol-component-present-and-inspected"
                 ],
                 "model_quality": "unmeasured",
                 "cache_quality": "unmeasured"
@@ -251,6 +250,7 @@ pub(super) async fn qualify(
     scope: &brassclaw_engine::memory::intent_system::IntentScope,
     worker: &Path,
     limits: UtilityLimits,
+    task_settings: brassclaw_monty_host::process::TaskSettings,
 ) -> Result<Option<QualifiedPrefixFreeWorkflow>, RebornBuildError> {
     // Resolve the installed tool IDs needed for the free workflow candidate.
     let client = pool.get().await.map_err(invalid)?;
@@ -384,6 +384,7 @@ pub(super) async fn qualify(
         &subject.ids,
         worker,
         limits,
+        task_settings,
     )
     .await?;
 
@@ -414,7 +415,7 @@ pub(super) async fn qualify(
         "succeeded": true,
         "report": {
             "header": {
-                "producer": "brassclaw-bootstrap-free-workflow-qualification/1",
+                "producer": "brassclaw-bootstrap-free-workflow-qualification/2",
                 "scope": "exact-packaged-b1-b2-answer-workflow/1",
                 "owner_checksum": crate::bootstrap_evidence::checksum(include_str!("bootstrap_free_workflow_approval.rs")),
                 "fixture_checksum": crate::bootstrap_evidence::checksum(include_str!("bootstrap_free_workflow_fixture.rs")),
