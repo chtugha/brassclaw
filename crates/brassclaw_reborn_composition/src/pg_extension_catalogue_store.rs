@@ -68,6 +68,9 @@ const VALIDATOR_CONSUMER_TAG: &str = "05:validator";
 /// Errors raised by `reborn_extension_catalogues` store operations.
 #[derive(Debug, Error)]
 pub(crate) enum PgExtensionCatalogueStoreError {
+    #[error(transparent)]
+    OriginalReview(#[from] crate::validation_queue::ValidationQueueError),
+
     #[error("pool error: {reason}")]
     Pool { reason: String },
     #[error("database error: {reason}")]
@@ -254,7 +257,7 @@ impl PgExtensionCatalogueStore {
         row: NewPgExtensionCatalogue,
     ) -> Result<Uuid, PgExtensionCatalogueStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
-        Self::insert_on(&**client, row, false).await
+        Self::insert_on(&**client, row, false, Uuid::new_v4()).await
     }
 
     /// Installation-owned legacy projection, separate from actual v3 approval.
@@ -268,13 +271,14 @@ impl PgExtensionCatalogueStore {
             });
         }
         let client = self.pool.get().await.map_err(map_pool)?;
-        Self::insert_on(&**client, row, true).await
+        Self::insert_on(&**client, row, true, Uuid::new_v4()).await
     }
 
     async fn insert_on(
         client: &(impl tokio_postgres::GenericClient + Sync),
         row: NewPgExtensionCatalogue,
         installation_projection: bool,
+        id: Uuid,
     ) -> Result<Uuid, PgExtensionCatalogueStoreError> {
         let validation_status = if installation_projection {
             "validated"
@@ -284,13 +288,13 @@ impl PgExtensionCatalogueStore {
         let db_row = client
             .query_one(
                 "INSERT INTO reborn_extension_catalogues
-                    (tenant_id, user_id, agent_id, project_id,
+                    (id, tenant_id, user_id, agent_id, project_id,
                      name, description, version,
                      overview_doc, task_groups, child_component_ids, intent_index,
                      prior_knowledge_content, override_prompt_creation,
                      consumer_tags, intent_examples, source, dependency_registry,
                      validation_status)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+                 VALUES ($19,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
                          $18)
                  RETURNING id",
                 &[
@@ -312,6 +316,7 @@ impl PgExtensionCatalogueStore {
                     &row.source,
                     &row.dependency_registry,
                     &validation_status,
+                    &id,
                 ],
             )
             .await
@@ -540,6 +545,63 @@ impl PgExtensionCatalogueStore {
     /// `proposed_payload` is `None` (new-component submission per §0.23.5);
     /// the upgrade-copy path (edit of a validated row with a
     /// `proposed_payload`) lands in Phase K/N. Returns the new component UUID.
+
+    /// Complete immutable authoring path. Caller retains the original request ID
+    /// and full revision bytes; constructor fields are independently compared by
+    /// the DB binding verifier before either row or subject may commit.
+    pub(crate) async fn create_and_submit_review(
+        &self,
+        row: NewPgExtensionCatalogue,
+        draft: &brassclaw_skills::review_submission_store::ReviewSubmissionDraft,
+        queue_store: &ValidationQueueStore,
+    ) -> Result<
+        brassclaw_skills::review_submission_store::RetainedReviewSubmission,
+        PgExtensionCatalogueStoreError,
+    > {
+        let scope = ComponentScope {
+            tenant_id: row.tenant_id.clone(),
+            user_id: row.user_id.clone(),
+            agent_id: row.agent_id.clone(),
+            project_id: row.project_id.clone(),
+        };
+        let id = draft.candidate().uuid;
+        if draft.candidate().class_code != 23 || draft.candidate().version != 1 {
+            return Err(PgExtensionCatalogueStoreError::Queue {
+                reason: "new candidate identity required".into(),
+            });
+        }
+        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .map_err(map_pg)?;
+        ValidationQueueStore::lock_queue_key(&tx, &scope, id).await?;
+        if let Some(original) =
+            ValidationQueueStore::read_original_create(&tx, draft, &scope).await?
+        {
+            tx.commit().await.map_err(map_pg)?;
+            return Ok(original);
+        }
+        Self::insert_on(&*tx, row, false, id).await?;
+        queue_store
+            .submit_in_transaction(&tx, &scope, id, 23, None)
+            .await?;
+        let queue_id:Uuid=tx.query_one("SELECT id FROM reborn_validation_queue WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4 AND component_id=$5",&[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&id]).await.map_err(map_pg)?.get(0);
+        let subject = ValidationQueueStore::submit_original_in_transaction(
+            &tx,
+            draft,
+            &[(scope.clone(), id, queue_id)],
+            &[queue_id],
+            "create_queue",
+        )
+        .await?;
+        tx.commit().await.map_err(map_pg)?;
+        #[cfg(feature = "skills-db")]
+        queue_store.fire_q1_kick_if_wired(&scope, id, 23);
+        Ok(subject)
+    }
     pub(crate) async fn create_and_submit(
         &self,
         row: NewPgExtensionCatalogue,
@@ -553,7 +615,13 @@ impl PgExtensionCatalogueStore {
         };
         let mut client = self.pool.get().await.map_err(map_pool)?;
         let transaction = client.transaction().await.map_err(map_pg)?;
-        let id = Self::insert_on(&*transaction, row, false).await?;
+        let id = Uuid::new_v4();
+        ValidationQueueStore::lock_queue_key(&transaction, &scope, id)
+            .await
+            .map_err(|e| PgExtensionCatalogueStoreError::Queue {
+                reason: e.to_string(),
+            })?;
+        let id = Self::insert_on(&*transaction, row, false, id).await?;
         queue_store
             .submit_in_transaction(&transaction, &scope, id, 23, None)
             .await

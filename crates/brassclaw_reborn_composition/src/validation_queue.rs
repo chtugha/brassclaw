@@ -90,6 +90,10 @@ pub enum ValidationQueueError {
     InvalidGate1Result { component_id: Uuid },
     #[error("component {component_id} requires the human Q2 review path")]
     InvalidQ2Actor { component_id: Uuid },
+    #[error(
+        "component {component_id}: original review binding unresolved; explicit submission required"
+    )]
+    OriginalReviewUnresolved { component_id: Uuid },
     #[error("component {component_id} or its submission changed since Q1 review")]
     ReviewChanged { component_id: Uuid },
     #[error(
@@ -102,6 +106,21 @@ pub enum ValidationQueueError {
     NotQ1Passed { component_id: Uuid, state: i16 },
     #[error("queue row for component {component_id} not found (or not in the expected state)")]
     NotFound { component_id: Uuid },
+}
+
+pub(crate) fn original_review_error(
+    error: ValidationQueueError,
+) -> brassclaw_product_workflow::RecipeStoreError {
+    match error {
+        ValidationQueueError::Pool { .. } | ValidationQueueError::Db { .. } => {
+            brassclaw_product_workflow::RecipeStoreError::Unavailable(
+                "original review storage unavailable; retain original request for readback".into(),
+            )
+        }
+        _ => brassclaw_product_workflow::RecipeStoreError::Conflict(
+            "original queue candidate differs or requires explicit resubmission".into(),
+        ),
+    }
 }
 
 fn map_pool(e: deadpool_postgres::PoolError) -> ValidationQueueError {
@@ -443,7 +462,7 @@ impl ValidationQueueStore {
 
     /// Serialize absence/insert for the actual unique queue key. Existing
     /// row locks still own review state; this lock creates no row or authority.
-    async fn lock_queue_key(
+    pub(crate) async fn lock_queue_key(
         client: &tokio_postgres::Transaction<'_>,
         scope: &ComponentScope,
         component_id: Uuid,
@@ -609,7 +628,12 @@ impl ValidationQueueStore {
         // Queue-before-component lock order is shared with invalidation and
         // purge. Read the reviewed state/payload under the graduation lock; a
         // rejection or concurrent approval cannot invalidate an earlier read.
-        let tx = client.transaction().await.map_err(map_pg)?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .map_err(map_pg)?;
         let row = tx
             .query_opt(
                 &format!(
@@ -669,6 +693,21 @@ impl ValidationQueueStore {
             || reviewed_queue.as_deref() != Some(row.get::<_, String>(7).as_str())
         {
             return Err(ValidationQueueError::ReviewChanged { component_id });
+        }
+
+        if matches!(class_code,0|1..=3|13|21..=23) {
+            let original = brassclaw_skills::review_submission_store::queue::read_in_transaction(
+                &tx, queue_id,
+            )
+            .await
+            .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?
+            .ok_or(ValidationQueueError::OriginalReviewUnresolved { component_id })?;
+            Self::verify_original_in_transaction(&tx, queue_id, &original).await?;
+            if original.component_bytes() != current_component
+                || original.queue_bytes() != row.get::<_, String>(7)
+            {
+                return Err(ValidationQueueError::ReviewChanged { component_id });
+            }
         }
 
         // Update the component, then delete the locked queue row.

@@ -12,6 +12,9 @@ use uuid::Uuid;
 #[path = "review_selection_store.rs"]
 pub mod selection;
 
+#[path = "review_queue_binding.rs"]
+pub mod queue;
+
 #[path = "review_function_subject.rs"]
 mod function;
 use function::FunctionPartner;
@@ -137,6 +140,26 @@ pub struct ReviewSubmissionDraft {
     function_partner: Option<FunctionPartner>,
 }
 impl ReviewSubmissionDraft {
+    pub fn submission_id(&self) -> Uuid {
+        self.id
+    }
+    pub fn candidate(&self) -> ComponentRevisionRef {
+        self.reference
+    }
+    pub fn candidate_document(&self) -> &serde_json::Value {
+        self.candidate.document()
+    }
+    pub fn changed_roots(&self) -> Result<Vec<ComponentRevisionRef>, SubmissionStoreError> {
+        let mut roots = vec![self.reference];
+        if let Some(partner) = &self.function_partner {
+            if partner.is_changed() {
+                roots.push(partner.reference()?);
+            }
+        }
+        roots.sort_by_key(|r| r.uuid);
+        Ok(roots)
+    }
+
     pub fn new(
         id: Uuid,
         actor: &str,

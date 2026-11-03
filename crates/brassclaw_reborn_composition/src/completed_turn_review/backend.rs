@@ -13,10 +13,8 @@ use brassclaw_loop_support::{
 };
 use brassclaw_pg::PgPool;
 use brassclaw_skills::{
-    completed_turn_analysis,
-    component_revision::REVISION_LIMITS,
-    review_submission_store::{PgReviewSubmissionStore, ReviewSubmissionDraft},
-    value_contract::strict_json,
+    completed_turn_analysis, component_revision::REVISION_LIMITS,
+    review_submission_store::ReviewSubmissionDraft, value_contract::strict_json,
 };
 use brassclaw_threads::{SessionThreadService, ThreadHistoryRequest, ThreadScope};
 use brassclaw_turns::{
@@ -198,10 +196,18 @@ impl Backend {
                         candidate.dependencies,
                     )
                     .map_err(|_| error())?;
-                    let stored = PgReviewSubmissionStore::new(self.pool.clone())
-                        .submit(&draft)
+                    // This producer already owns complete original bytes and a
+                    // host-derived operation ID. Retain the explicit standalone
+                    // queue-target choice with the same subject transaction.
+                    let mut client = self.pool.get().await.map_err(|_| error())?;
+                    let tx = client
+                        .build_transaction()
+                        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+                        .start()
                         .await
                         .map_err(|_| error())?;
+                    let stored=crate::validation_queue::ValidationQueueStore::submit_original_in_transaction(&tx,&draft,&[],&[],"standalone").await.map_err(|_|error())?;
+                    tx.commit().await.map_err(|_| error())?;
                     receipts.push(json!({"submission_id":stored.id,"subject_checksum":stored.checksum,
                         "candidate":{"uuid":stored.candidate.uuid,"version":stored.candidate.version,
                             "class_code":stored.candidate.class_code,"checksum":hex::encode(stored.candidate.checksum)},

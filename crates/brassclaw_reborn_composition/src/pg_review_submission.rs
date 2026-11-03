@@ -1,5 +1,6 @@
 //! Operator authoring boundary. Only immutable, unreviewed subjects are written;
-//! no legacy live row, evidence record or active catalogue is changed here.
+//! explicit queue capture may create its pending legacy projection atomically.
+//! No evidence record or active catalogue is changed here.
 use std::sync::Arc;
 
 use brassclaw_pg::PgPool;
@@ -70,6 +71,7 @@ pub(crate) fn selection(value: ComponentRevisionRef) -> ComponentRevisionSelecti
 }
 fn receipt(value: &RetainedReviewSubmission) -> ComponentReviewSubmissionReceipt {
     ComponentReviewSubmissionReceipt {
+        queue_ids: vec![],
         submission_id: value.id.to_string(),
         subject_checksum: value.checksum.clone(),
         candidate: selection(value.candidate),
@@ -86,6 +88,28 @@ fn receipt(value: &RetainedReviewSubmission) -> ComponentReviewSubmissionReceipt
         catalogue_activated: false,
     }
 }
+async fn original_receipt(
+    pool: &Arc<PgPool>,
+    retained: &RetainedReviewSubmission,
+) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
+    let mut result = receipt(retained);
+    let client = pool.get().await.map_err(storage_io)?;
+    if let Some(row) = client
+        .query_opt(
+            "SELECT queue_ids FROM reborn_component_review_queue_requests WHERE submission_id=$1",
+            &[&retained.id],
+        )
+        .await
+        .map_err(storage_io)?
+    {
+        result.queue_ids = row
+            .get::<_, Vec<Uuid>>(0)
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect();
+    }
+    Ok(result)
+}
 fn storage(value: SubmissionStoreError) -> RecipeStoreError {
     match value {
         SubmissionStoreError::Conflict
@@ -99,9 +123,16 @@ fn storage(value: SubmissionStoreError) -> RecipeStoreError {
         _ => RecipeStoreError::Invalid(value.to_string()),
     }
 }
+fn storage_io(_: impl std::fmt::Display) -> RecipeStoreError {
+    RecipeStoreError::Unavailable(
+        "original review storage unavailable; retain original request for readback".into(),
+    )
+}
 pub(crate) async fn submit(
     pool: &Arc<PgPool>,
     actor: &str,
+    tenant: &str,
+    agent: &str,
     request: SubmitComponentReviewRequest,
 ) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
     if request.dependencies.len() > 4095 {
@@ -109,6 +140,11 @@ pub(crate) async fn submit(
             "dependency selection exceeds capacity".into(),
         ));
     }
+    let queue_ids = request
+        .queue_ids
+        .iter()
+        .map(|id| identifier(id))
+        .collect::<Result<Vec<_>, _>>()?;
     let id = identifier(&request.submission_id)?;
     let candidate = ComponentRevisionDraft::from_json(&request.candidate_bytes)
         .map_err(|_| RecipeStoreError::Invalid("invalid immutable candidate revision".into()))?;
@@ -161,11 +197,85 @@ pub(crate) async fn submit(
         (None, None) => ReviewSubmissionDraft::new(id, actor, candidate, base, dependencies),
     }
     .map_err(storage)?;
-    let retained = PgReviewSubmissionStore::new(pool.clone())
-        .submit(&draft)
-        .await
-        .map_err(storage)?;
-    Ok(receipt(&retained))
+    if let Some(project) = request.create_queue_project {
+        if project.is_empty()
+            || !queue_ids.is_empty()
+            || draft.changed_roots().map_err(storage)?.len() != 1
+        {
+            return Err(RecipeStoreError::Invalid(
+                "one explicit new queue projection required".into(),
+            ));
+        }
+        let retained = crate::queued_review_submission::create(
+            pool,
+            brassclaw_engine::memory::retrieval_source::ComponentScope {
+                tenant_id: tenant.into(),
+                user_id: actor.into(),
+                agent_id: agent.into(),
+                project_id: project,
+            },
+            &draft,
+        )
+        .await?;
+        return original_receipt(pool, &retained).await;
+    }
+    let retained = {
+        let mut client = pool.get().await.map_err(storage_io)?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .map_err(storage_io)?;
+        let mut targets = Vec::new();
+        // The explicit selector is retained; no component/latest lookup chooses
+        // the subject. Locks and complete payload checks happen in the helper.
+        for queue_id in &queue_ids {
+            let row=tx.query_opt("SELECT tenant_id,user_id,agent_id,project_id,component_id FROM reborn_validation_queue WHERE id=$1",&[queue_id]).await.map_err(storage_io)?;
+            if let Some(row) = row {
+                targets.push((
+                    brassclaw_engine::memory::retrieval_source::ComponentScope {
+                        tenant_id: row.get(0),
+                        user_id: row.get(1),
+                        agent_id: row.get(2),
+                        project_id: row.get(3),
+                    },
+                    row.get(4),
+                    *queue_id,
+                ));
+            } else {
+                // Historical original readback is valid after Q2 queue removal.
+                let old = brassclaw_skills::review_submission_store::queue::read_in_transaction(
+                    &tx, *queue_id,
+                )
+                .await
+                .map_err(storage)?
+                .ok_or_else(|| RecipeStoreError::NotFound("queue capture not found".into()))?;
+                if old.submission_id() != id {
+                    return Err(RecipeStoreError::Conflict(
+                        "queue belongs to another original review".into(),
+                    ));
+                }
+            }
+        }
+        let retained =
+            crate::validation_queue::ValidationQueueStore::submit_original_in_transaction(
+                &tx,
+                &draft,
+                &targets,
+                &queue_ids,
+                if queue_ids.is_empty() {
+                    "standalone"
+                } else {
+                    "existing_queue"
+                },
+            )
+            .await
+            .map_err(crate::validation_queue::original_review_error)?;
+        tx.commit().await.map_err(storage_io)?;
+        retained
+    };
+    original_receipt(pool, &retained).await
 }
 pub(crate) async fn head(
     pool: &Arc<PgPool>,
@@ -216,11 +326,27 @@ pub(crate) async fn get(
             .map_err(|reason| RecipeStoreError::Invalid(reason.into()))?;
     }
     let review_selection_bytes = saved.map(|saved| saved.bytes().to_owned());
+    let mut retained_receipt = receipt(&retained);
+    if let Some(row) = tx
+        .query_opt(
+            "SELECT queue_ids FROM reborn_component_review_queue_requests WHERE submission_id=$1",
+            &[&retained.id],
+        )
+        .await
+        .map_err(storage_io)?
+    {
+        retained_receipt.queue_ids = row
+            .get::<_, Vec<Uuid>>(0)
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect();
+    }
+
     tx.commit()
         .await
         .map_err(|_| RecipeStoreError::Unavailable("review snapshot commit unavailable".into()))?;
     Ok(ComponentReviewSubmissionView {
-        receipt: receipt(&retained),
+        receipt: retained_receipt,
         subject_bytes: retained.subject_bytes,
         component_bytes: retained
             .snapshot
@@ -243,3 +369,7 @@ mod model_selection_tests;
 #[cfg(test)]
 #[path = "pg_function_review_submission_tests.rs"]
 mod function_tests;
+
+#[cfg(test)]
+#[path = "original_queue_binding_tests.rs"]
+mod queue_tests;

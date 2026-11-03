@@ -48,6 +48,8 @@ pub(super) fn request(
     deps: &[ComponentRevisionRef],
 ) -> Value {
     serde_json::to_value(SubmitComponentReviewRequest {
+        queue_ids: vec![],
+        create_queue_project: None,
         submission_id: id.to_string(),
         candidate_bytes: draft.exact_bytes().into(),
         expected_previous_version: None,

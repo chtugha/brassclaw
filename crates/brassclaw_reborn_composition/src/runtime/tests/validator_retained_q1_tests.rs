@@ -25,8 +25,7 @@ use crate::{
 };
 use brassclaw_engine::memory::retrieval_source::ComponentScope;
 use brassclaw_skills::{
-    component_revision::ComponentRevisionDraft,
-    review_submission_store::{PgReviewSubmissionStore, ReviewSubmissionDraft},
+    component_revision::ComponentRevisionDraft, review_submission_store::ReviewSubmissionDraft,
 };
 use sha2::Digest;
 use uuid::Uuid;
@@ -105,6 +104,8 @@ async fn run_q1_validation_retained_passes_and_persists_evidence() {
         "uuid": component_id,
         "class_code": 22,
         "document": {
+            "consumer_tags":["02:orchestrator","05:validator"],"prior_knowledge_content":null,
+            "override_prompt_creation":false,"intent_examples":null,"dependency_registry":null,"includes":[],
             "name": component_name,
             "description": "Minimal test PythonCode component for Q1 retained integration test.",
             "content": "def retain_value(inputs):\n    return inputs['value']\n",
@@ -134,19 +135,14 @@ async fn run_q1_validation_retained_passes_and_persists_evidence() {
     .to_string();
 
     let submission_id = Uuid::new_v4();
-    PgReviewSubmissionStore::new(rig.pool.clone())
-        .submit(
-            &ReviewSubmissionDraft::new(
-                submission_id,
-                "validator-structural-review",
-                ComponentRevisionDraft::from_json(&doc).expect("minimal class-22 doc must parse"),
-                None,
-                vec![],
-            )
-            .expect("ReviewSubmissionDraft::new must succeed"),
-        )
-        .await
-        .expect("PgReviewSubmissionStore::submit must succeed");
+    let original_draft = ReviewSubmissionDraft::new(
+        submission_id,
+        "validator-structural-review",
+        ComponentRevisionDraft::from_json(&doc).expect("minimal class-22 doc must parse"),
+        None,
+        vec![],
+    )
+    .expect("ReviewSubmissionDraft::new must succeed");
 
     // Submit to the validation queue (required for capture_q1_candidate).
     // Fire-and-forget kick from submit() is a no-op here (bridge not wired on the store).
@@ -154,6 +150,32 @@ async fn run_q1_validation_retained_passes_and_persists_evidence() {
         .submit(&scope, component_id, 22, None)
         .await
         .expect("ValidationQueueStore::submit must succeed");
+    let mut client = rig.pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    let queue_id: Uuid = tx
+        .query_one(
+            "SELECT id FROM reborn_validation_queue WHERE component_id=$1",
+            &[&component_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    ValidationQueueStore::submit_original_in_transaction(
+        &tx,
+        &original_draft,
+        &[(scope.clone(), component_id, queue_id)],
+        &[queue_id],
+        "existing_queue",
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    drop(client);
 
     // An unrelated validator result for the same submission must not decide
     // this execution. Deliberately future-date this negative historical fixture
@@ -310,6 +332,8 @@ async fn run_q1_validation_retained_fails_for_empty_content() {
         "uuid": component_id,
         "class_code": 22,
         "document": {
+            "consumer_tags":["02:orchestrator","05:validator"],"prior_knowledge_content":null,
+            "override_prompt_creation":false,"intent_examples":null,"dependency_registry":null,"includes":[],
             "name": fail_name,
             "description": "A component whose content is deliberately empty.",
             "content": "",
@@ -331,25 +355,46 @@ async fn run_q1_validation_retained_fails_for_empty_content() {
     .to_string();
 
     let submission_id = Uuid::new_v4();
-    brassclaw_skills::review_submission_store::PgReviewSubmissionStore::new(rig.pool.clone())
-        .submit(
-            &brassclaw_skills::review_submission_store::ReviewSubmissionDraft::new(
-                submission_id,
-                "validator-structural-review",
-                brassclaw_skills::component_revision::ComponentRevisionDraft::from_json(&doc)
-                    .expect("malformed doc must parse at the JSON/schema level"),
-                None,
-                vec![],
-            )
-            .expect("ReviewSubmissionDraft::new must succeed"),
-        )
-        .await
-        .expect("PgReviewSubmissionStore::submit must succeed");
+    let original_draft = brassclaw_skills::review_submission_store::ReviewSubmissionDraft::new(
+        submission_id,
+        "validator-structural-review",
+        brassclaw_skills::component_revision::ComponentRevisionDraft::from_json(&doc)
+            .expect("malformed doc must parse at the JSON/schema level"),
+        None,
+        vec![],
+    )
+    .expect("ReviewSubmissionDraft::new must succeed");
 
     store
         .submit(&scope, component_id, 22, None)
         .await
         .expect("ValidationQueueStore::submit must succeed");
+    let mut client = rig.pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    let queue_id: Uuid = tx
+        .query_one(
+            "SELECT id FROM reborn_validation_queue WHERE component_id=$1",
+            &[&component_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    ValidationQueueStore::submit_original_in_transaction(
+        &tx,
+        &original_draft,
+        &[(scope.clone(), component_id, queue_id)],
+        &[queue_id],
+        "existing_queue",
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    drop(client);
 
     let outcome = run_q1_validation_retained(
         &rig.pool,

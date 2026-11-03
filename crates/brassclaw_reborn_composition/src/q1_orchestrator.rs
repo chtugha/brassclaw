@@ -166,6 +166,23 @@ pub(crate) async fn run_q1_validation_retained(
         }
     };
 
+    // Compatibility callers carry a component key, but resolution is solely
+    // through its explicit original queue link. Unbound legacy work is visible
+    // and never admitted by guessing a later immutable subject.
+    {
+        let client = pool.get().await.map_err(|_| Q1Error::Db {
+            reason: "original queue read unavailable".into(),
+        })?;
+        let row=client.query_opt("SELECT b.submission_id FROM reborn_validation_queue q LEFT JOIN reborn_component_review_queue_bindings b ON b.queue_id=q.id WHERE q.tenant_id=$1 AND q.user_id=$2 AND q.agent_id=$3 AND q.project_id=$4 AND q.component_id=$5",
+            &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&component_id]).await.map_err(q1_db)?
+            .ok_or(crate::validation_queue::ValidationQueueError::NotFound{component_id})?;
+        if row.get::<_, Option<Uuid>>(0).is_none() {
+            return Ok(Q1Outcome::deferred(format!(
+                "original review binding unresolved; no active submission for component {component_id}; explicit resubmission required"
+            )));
+        }
+    }
+
     // Step 2 — convert class_code and check if the structural validator revision
     // draft is seeded for this class.
     let class_i16: i16 = class_code
@@ -311,51 +328,17 @@ pub(crate) async fn run_q1_validation_retained(
         })?,
     );
 
-    // Step 5 — find the most-recent active submission for this component and
-    // read its sealed validator subject.  A missing submission is expected
-    // until the operator has explicitly submitted the component for review via
-    // the retained authoring path; defer rather than error.
-    //
-    // We query reborn_component_review_submissions directly by component_id
-    // because PgReviewSubmissionStore only provides lookup-by-submission-id.
-    let submission_id: Option<Uuid> = {
-        let client = pool.get().await.map_err(|e| Q1Error::Db {
-            reason: e.to_string(),
-        })?;
-        client
-            .query_opt(
-                "SELECT submission_id FROM reborn_component_review_submissions \
-                 WHERE component_id=$1 ORDER BY recorded_at DESC LIMIT 1",
-                &[&component_id],
-            )
-            .await
-            .map_err(q1_db)?
-            .map(|row| row.get(0))
-    };
-    let submission_id = match submission_id {
-        Some(id) => id,
-        None => {
-            return Ok(Q1Outcome::deferred(format!(
-                "no active submission for component {component_id}"
-            )));
-        }
-    };
-
-    // Capture the queue candidate to record the result later (state check + field extraction).
-    let review = match queue_store.capture_q1_candidate(scope, component_id).await {
-        Ok(review) => review,
-        Err(crate::validation_queue::ValidationQueueError::ComponentMissing { .. }) => {
-            return Ok(Q1Outcome::deferred(format!(
-                "component {component_id} not found in scope"
-            )));
-        }
-        Err(error) => return Err(error.into()),
-    };
+    // The queued original, never the newest unrelated subject for this UUID.
+    let review = queue_store
+        .capture_q1_candidate(scope, component_id)
+        .await?;
     if review.class_code() != class_i16 {
         return Err(
             crate::validation_queue::ValidationQueueError::ReviewChanged { component_id }.into(),
         );
     }
+    let original = review.original()?;
+    let submission_id = original.submission_id();
 
     // Read the sealed validator subject from the review-submission store.
     let subject = {
@@ -389,6 +372,19 @@ pub(crate) async fn run_q1_validation_retained(
             )));
         }
     };
+
+    original
+        .require_subject(&subject)
+        .map_err(|_| Q1Error::Db {
+            reason: "original queue subject changed".into(),
+        })?;
+    // Current /1 validator preparation cannot cover a joint function. Keep the
+    // complete /3 subject; never graduate only its primary class/root.
+    if subject.is_function_review() {
+        return Ok(Q1Outcome::deferred(
+            "joint function validator selection not yet supported",
+        ));
+    }
 
     // Step 6 — retain the sealed validator selection (idempotent).
     let retained_selection =

@@ -9,7 +9,6 @@ use uuid::Uuid;
 // Exclude only lifecycle/accounting fields which may change without changing
 // authoring meaning. New columns are protected by default. Processing status,
 // consumer tags, contracts, binding metadata and content hashes stay included.
-const COMPONENT_VOLATILE: &str = "ARRAY['created_at','updated_at','usage_count','success_count','failure_count','wilson_lower','tier','confidence','last_audit_at','audit_failure_count','validation_status','validation_errors','review_feedback','review_attempts','rejected_at','queue_code']::text[]";
 pub(super) const QUEUE_VOLATILE: &str = "ARRAY['state','validation_errors','updated_at','q2_actor','q1_component_bytes','q1_component_checksum','q1_queue_bytes','q1_queue_checksum']::text[]";
 
 /// Constructed only by a locked read of an actual queued candidate. No Debug:
@@ -20,8 +19,22 @@ pub(crate) struct Q1Candidate {
     component_bytes: String,
     queue_bytes: String,
     reviewed: Value,
+    queue_id: Uuid,
+    binding: Option<brassclaw_skills::review_submission_store::queue::RetainedQueueReview>,
 }
 impl Q1Candidate {
+    pub(crate) fn original(
+        &self,
+    ) -> Result<
+        &brassclaw_skills::review_submission_store::queue::RetainedQueueReview,
+        ValidationQueueError,
+    > {
+        self.binding
+            .as_ref()
+            .ok_or(ValidationQueueError::OriginalReviewUnresolved {
+                component_id: self.component_id,
+            })
+    }
     pub(crate) fn class_code(&self) -> i16 {
         self.class_code
     }
@@ -42,7 +55,7 @@ pub(super) async fn component_bytes(
         },
     )?;
     let sql = format!(
-        "SELECT (to_jsonb(c) - {COMPONENT_VOLATILE})::text FROM {table} c
+        "SELECT review_component_bytes(to_jsonb(c)) FROM {table} c
          WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5
          AND class_code=$6 FOR UPDATE"
     );
@@ -72,11 +85,26 @@ impl ValidationQueueStore {
         component_id: Uuid,
     ) -> Result<Q1Candidate, ValidationQueueError> {
         let mut client = self.pool.get().await.map_err(map_pool)?;
-        let tx = client.transaction().await.map_err(map_pg)?;
-        let sql = format!(
-            "SELECT state, component_class, proposed_payload, (to_jsonb(q)-{QUEUE_VOLATILE})::text
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .map_err(map_pg)?;
+        let review = Self::capture_candidate_in_transaction(&tx, scope, component_id).await?;
+        tx.commit().await.map_err(map_pg)?;
+        Ok(review)
+    }
+
+    pub(super) async fn capture_candidate_in_transaction(
+        tx: &tokio_postgres::Transaction<'_>,
+        scope: &ComponentScope,
+        component_id: Uuid,
+    ) -> Result<Q1Candidate, ValidationQueueError> {
+        let sql = String::from(
+            "SELECT state, component_class, proposed_payload, review_queue_bytes(q), id
              FROM reborn_validation_queue q WHERE tenant_id=$1 AND user_id=$2
-             AND agent_id=$3 AND project_id=$4 AND component_id=$5 FOR UPDATE"
+             AND agent_id=$3 AND project_id=$4 AND component_id=$5 FOR UPDATE",
         );
         let row = tx
             .query_opt(
@@ -101,7 +129,8 @@ impl ValidationQueueStore {
             validate_upgrade_payload(i32::from(class_code), component_id, payload)?;
         }
         let queue_bytes: String = row.get(3);
-        let component_bytes = component_bytes(&tx, scope, component_id, class_code).await?;
+        let queue_id: Uuid = row.get(4);
+        let component_bytes = component_bytes(tx, scope, component_id, class_code).await?;
         let mut reviewed: Value = serde_json::from_str(&component_bytes)
             .map_err(|_| ValidationQueueError::InvalidPayload { component_id })?;
         let fields = reviewed
@@ -119,13 +148,24 @@ impl ValidationQueueStore {
                 fields.insert(column.to_owned(), value.clone());
             }
         }
-        tx.commit().await.map_err(map_pg)?;
+        let binding =
+            brassclaw_skills::review_submission_store::queue::read_in_transaction(tx, queue_id)
+                .await
+                .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?;
+        if let Some(binding) = &binding {
+            if binding.component_bytes() != component_bytes || binding.queue_bytes() != queue_bytes
+            {
+                return Err(ValidationQueueError::ReviewChanged { component_id });
+            }
+        }
         Ok(Q1Candidate {
             component_id,
             class_code,
             component_bytes,
             queue_bytes,
             reviewed,
+            queue_id,
+            binding,
         })
     }
 
@@ -167,11 +207,16 @@ impl ValidationQueueStore {
     ) -> Result<(), ValidationQueueError> {
         let component_id = review.component_id;
         let mut client = self.pool.get().await.map_err(map_pool)?;
-        let tx = client.transaction().await.map_err(map_pg)?;
-        let sql = format!(
-            "SELECT state, (to_jsonb(q)-{QUEUE_VOLATILE})::text FROM reborn_validation_queue q
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .map_err(map_pg)?;
+        let sql = String::from(
+            "SELECT state, review_queue_bytes(q), id FROM reborn_validation_queue q
              WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-             AND component_id=$5 FOR UPDATE"
+             AND component_id=$5 FOR UPDATE",
         );
         let row = tx
             .query_opt(
@@ -196,6 +241,10 @@ impl ValidationQueueStore {
         {
             return Err(ValidationQueueError::ReviewChanged { component_id });
         }
+        if matches!(review.class_code,0|1..=3|13|21..=23) {
+            let original = review.original()?;
+            Self::verify_original_in_transaction(&tx, row.get(2), original).await?;
+        }
         let n = tx.execute(
             "UPDATE reborn_validation_queue SET state=$8, validation_errors=$9, updated_at=now(),
              q1_component_bytes=$6, q1_component_checksum=encode(sha256(convert_to($6::text,'UTF8')),'hex'),
@@ -212,6 +261,184 @@ impl ValidationQueueStore {
         Ok(())
     }
 
+    pub(super) async fn verify_original_in_transaction(
+        tx: &tokio_postgres::Transaction<'_>,
+        queue_id: Uuid,
+        original: &brassclaw_skills::review_submission_store::queue::RetainedQueueReview,
+    ) -> Result<(), ValidationQueueError> {
+        let component_id = original
+            .candidate()
+            .map_err(|_| ValidationQueueError::InvalidPayload {
+                component_id: Uuid::nil(),
+            })?
+            .uuid;
+        let current =
+            brassclaw_skills::review_submission_store::queue::read_in_transaction(tx, queue_id)
+                .await
+                .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?
+                .ok_or(ValidationQueueError::OriginalReviewUnresolved { component_id })?;
+        let subject=brassclaw_skills::review_submission_store::PgReviewSubmissionStore::read_in_transaction(tx,current.submission_id()).await
+            .map_err(|_|ValidationQueueError::ReviewChanged{component_id})?.ok_or(ValidationQueueError::ReviewChanged{component_id})?;
+        if subject.function_partner.is_some() {
+            return Err(ValidationQueueError::OriginalReviewUnresolved { component_id });
+        }
+        if current.checksum() != original.checksum() || current.queue_id() != original.queue_id() {
+            return Err(ValidationQueueError::ReviewChanged { component_id });
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn read_original_create(
+        tx: &tokio_postgres::Transaction<'_>,
+        draft: &brassclaw_skills::review_submission_store::ReviewSubmissionDraft,
+        scope: &ComponentScope,
+    ) -> Result<
+        Option<brassclaw_skills::review_submission_store::RetainedReviewSubmission>,
+        ValidationQueueError,
+    > {
+        let component_id = draft.candidate().uuid;
+        let existing=brassclaw_skills::review_submission_store::PgReviewSubmissionStore::read_in_transaction(tx,draft.submission_id()).await
+            .map_err(|_|ValidationQueueError::ReviewChanged{component_id})?;
+        if existing.is_none() {
+            return Ok(None);
+        }
+        let ids:Vec<Uuid>=tx.query_opt("SELECT queue_ids,request_kind FROM reborn_component_review_queue_requests WHERE submission_id=$1",&[&draft.submission_id()]).await.map_err(map_pg)?
+            .ok_or(ValidationQueueError::ReviewChanged{component_id})?.get(0);
+        if ids.len() != 1 {
+            return Err(ValidationQueueError::ReviewChanged { component_id });
+        }
+        let original =
+            brassclaw_skills::review_submission_store::queue::read_in_transaction(tx, ids[0])
+                .await
+                .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?
+                .ok_or(ValidationQueueError::ReviewChanged { component_id })?;
+        let queue: Value = serde_json::from_str(original.queue_bytes())
+            .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?;
+        if queue["tenant_id"] != scope.tenant_id
+            || queue["user_id"] != scope.user_id
+            || queue["agent_id"] != scope.agent_id
+            || queue["project_id"] != scope.project_id
+        {
+            return Err(ValidationQueueError::ReviewChanged { component_id });
+        }
+        Self::submit_original_in_transaction(tx, draft, &[], &ids, "create_queue")
+            .await
+            .map(Some)
+    }
+
+    /// Capture all queue roots before the immutable store takes revision-head
+    /// locks. This method performs no Monty work and joins the author transaction.
+    pub(crate) async fn submit_original_in_transaction(
+        tx: &tokio_postgres::Transaction<'_>,
+        draft: &brassclaw_skills::review_submission_store::ReviewSubmissionDraft,
+        targets: &[(ComponentScope, Uuid, Uuid)],
+        queue_ids: &[Uuid],
+        request_kind: &str,
+    ) -> Result<
+        brassclaw_skills::review_submission_store::RetainedReviewSubmission,
+        ValidationQueueError,
+    > {
+        let component_id = draft.candidate().uuid;
+        let mut original_ids = queue_ids.to_vec();
+        original_ids.sort();
+        if original_ids.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(ValidationQueueError::InvalidPayload { component_id });
+        }
+        if brassclaw_skills::review_submission_store::PgReviewSubmissionStore::read_in_transaction(
+            tx,
+            draft.submission_id(),
+        )
+        .await
+        .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?
+        .is_some()
+        {
+            // Verify identical subject bytes before returning any original ACK.
+            let subject=brassclaw_skills::review_submission_store::PgReviewSubmissionStore::submit_in_transaction(tx,draft).await
+                .map_err(|_|ValidationQueueError::ReviewChanged{component_id})?;
+            let old=tx.query_opt("SELECT queue_ids,request_kind FROM reborn_component_review_queue_requests WHERE submission_id=$1",&[&draft.submission_id()]).await.map_err(map_pg)?;
+            match old {
+                Some(row)
+                    if row.get::<_, Vec<Uuid>>(0) == original_ids
+                        && row.get::<_, String>(1) == request_kind =>
+                {
+                    for queue_id in &original_ids {
+                        let binding =
+                            brassclaw_skills::review_submission_store::queue::read_in_transaction(
+                                tx, *queue_id,
+                            )
+                            .await
+                            .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?
+                            .ok_or(ValidationQueueError::ReviewChanged { component_id })?;
+                        if binding.submission_id() != subject.id
+                            || binding.subject_checksum() != subject.checksum
+                        {
+                            return Err(ValidationQueueError::ReviewChanged { component_id });
+                        }
+                    }
+                    return Ok(subject);
+                }
+                None if original_ids.is_empty() && request_kind == "standalone" => {
+                    return Ok(subject);
+                }
+                _ => return Err(ValidationQueueError::ReviewChanged { component_id }),
+            }
+        }
+        let roots = draft
+            .changed_roots()
+            .map_err(|_| ValidationQueueError::InvalidPayload {
+                component_id: draft.candidate().uuid,
+            })?;
+        let mut targets = targets.to_vec();
+        targets.sort_by_key(|(_, id, _)| *id);
+        if targets.windows(2).any(|pair| pair[0].1 == pair[1].1)
+            || targets
+                .iter()
+                .any(|(_, id, _)| !roots.iter().any(|r| r.uuid == *id))
+            || (!targets.is_empty() && targets.len() != roots.len())
+        {
+            return Err(ValidationQueueError::InvalidPayload {
+                component_id: draft.candidate().uuid,
+            });
+        }
+        for (scope, id, _) in &targets {
+            Self::lock_queue_key(tx, scope, *id).await?;
+        }
+        // Lock every queue before any component, including joint submissions.
+        for (scope, id, _) in &targets {
+            tx.query_opt("SELECT id FROM reborn_validation_queue WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4 AND component_id=$5 FOR UPDATE",
+                &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,id]).await.map_err(map_pg)?
+                .ok_or(ValidationQueueError::NotFound{component_id:*id})?;
+        }
+        let mut captures = Vec::new();
+        for (scope, id, queue_id) in &targets {
+            let capture = Self::capture_candidate_in_transaction(tx, scope, *id).await?;
+            if capture.queue_id != *queue_id {
+                return Err(ValidationQueueError::ReviewChanged { component_id: *id });
+            }
+            captures.push(capture);
+        }
+        let subject=brassclaw_skills::review_submission_store::PgReviewSubmissionStore::submit_in_transaction(tx,draft).await
+            .map_err(|_|ValidationQueueError::ReviewChanged{component_id:draft.candidate().uuid})?;
+        tx.execute("INSERT INTO reborn_component_review_queue_requests(submission_id,queue_ids,request_kind) VALUES($1,$2,$3)",
+            &[&subject.id,&original_ids,&request_kind]).await.map_err(map_pg)?;
+        for capture in captures {
+            brassclaw_skills::review_submission_store::queue::retain_in_transaction(
+                tx,
+                &subject,
+                capture.queue_id,
+                capture.component_id,
+                capture.component_bytes,
+                capture.queue_bytes,
+                capture.reviewed.to_string(),
+            )
+            .await
+            .map_err(|_| ValidationQueueError::ReviewChanged {
+                component_id: capture.component_id,
+            })?;
+        }
+        Ok(subject)
+    }
+
     // Queue lifecycle fixtures intentionally bypass structural execution, but
     // must still inspect an actual existing candidate and satisfy its seal.
     #[cfg(test)]
@@ -223,6 +450,67 @@ impl ValidationQueueStore {
     ) -> Result<(), ValidationQueueError> {
         if !errors.is_empty() {
             return Err(ValidationQueueError::InvalidGate1Result { component_id });
+        }
+        let review = self.capture_q1_candidate(scope, component_id).await?;
+        if review.class_code == 21 && review.binding.is_none() {
+            use brassclaw_skills::{
+                component_revision::ComponentRevisionDraft,
+                review_submission_store::ReviewSubmissionDraft,
+                revision_store::PgComponentRevisionStore,
+            };
+            // Existing Recipe lifecycle fixtures declare no retained dependency
+            // graph. This helper is deliberately limited to those fixtures; it
+            // cannot reconstruct a Skill association or certify executable Q1.
+            let revision = |document: Value| {
+                ComponentRevisionDraft::from_json(
+                    &serde_json::json!({
+                        "format":"component-revision/1","uuid":component_id,"class_code":21,
+                        "document":document,"dependencies":[],"association":null,
+                    })
+                    .to_string(),
+                )
+                .map_err(|_| ValidationQueueError::InvalidPayload { component_id })
+            };
+            let candidate = revision(review.reviewed)?;
+            let mut client = self.pool.get().await.map_err(map_pool)?;
+            let tx = client
+                .build_transaction()
+                .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+                .start()
+                .await
+                .map_err(map_pg)?;
+            Self::lock_queue_key(&tx, scope, component_id).await?;
+            let current = Self::capture_candidate_in_transaction(&tx, scope, component_id).await?;
+            let queue: Value = serde_json::from_str(&current.queue_bytes)
+                .map_err(|_| ValidationQueueError::InvalidPayload { component_id })?;
+            let base = if !queue["proposed_payload"].is_null() {
+                let document = serde_json::from_str(&current.component_bytes)
+                    .map_err(|_| ValidationQueueError::InvalidPayload { component_id })?;
+                Some(
+                    PgComponentRevisionStore::stage_in_transaction(&tx, &revision(document)?, 0)
+                        .await
+                        .map_err(|_| ValidationQueueError::ReviewChanged { component_id })?,
+                )
+            } else {
+                None
+            };
+            let draft = ReviewSubmissionDraft::new(
+                Uuid::new_v4(),
+                "queue-lifecycle-fixture",
+                candidate,
+                base,
+                vec![],
+            )
+            .map_err(|_| ValidationQueueError::InvalidPayload { component_id })?;
+            Self::submit_original_in_transaction(
+                &tx,
+                &draft,
+                &[(scope.clone(), component_id, review.queue_id)],
+                &[review.queue_id],
+                "existing_queue",
+            )
+            .await?;
+            tx.commit().await.map_err(map_pg)?;
         }
         let review = self.capture_q1_candidate(scope, component_id).await?;
         self.gate1_pass_reviewed(scope, &review, errors).await

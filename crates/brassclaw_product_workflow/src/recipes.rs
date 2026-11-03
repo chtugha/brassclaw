@@ -246,6 +246,14 @@ pub struct ComponentRevisionSelection {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SubmitComponentReviewRequest {
+    /// Explicit new queue captures. Empty retains the standalone immutable path.
+    /// IDs are selectors only; the host verifies the complete candidate and scope.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub queue_ids: Vec<String>,
+    /// Create the supported legacy projection in this explicitly selected project.
+    /// Tenant/actor/agent remain host-derived; candidate bytes remain original.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub create_queue_project: Option<String>,
     pub submission_id: String,
     pub candidate_bytes: String,
     /// Observed allocation head, independent of the exact lineage base. Missing
@@ -292,6 +300,9 @@ pub struct ComponentRevisionHeadView {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentReviewSubmissionReceipt {
+    /// Original immutable queue selectors, also readable after Q2 removes rows.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub queue_ids: Vec<String>,
     pub submission_id: String,
     pub subject_checksum: String,
     pub candidate: ComponentRevisionSelection,
