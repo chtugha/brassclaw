@@ -482,8 +482,14 @@ stored subject/selection or silently truncate it.
 
 **Already implemented, scoped:** `71d5c4f49` routes the recorded negative
 structural outcome to failure instead of inferring pass from ResultOnly.
-Exact original request/run binding, actual diagnostics and post-terminal sealed
-settlement are still open; the latest-row boolean query is not this full gate.
+The subsequent repair replaces the latest-row verdict query with an opaque
+post-terminal driver proof plus exact run/claim/VM/task/selection/subject and
+durable settlement checks, preserving actual rule diagnostics. The second
+native batch compiled and passed 18/19 tests; its sole failure was the new
+foreign-result fixture violating V102 before execution. The corrected fixture
+awaits the next bundled run. Original queue/submission binding, full required
+check coverage and idempotent durable graduation remain open; this step stays
+unchecked.
 
 1. Inside `GlobalRecipePorts::finish`, the internal source verifies the original
    selected program, actual input/result observations and all required checks.

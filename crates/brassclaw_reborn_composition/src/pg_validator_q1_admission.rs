@@ -51,15 +51,15 @@ pub(crate) enum Q1AdmissionError {
 ///
 /// Derives `component-validator-selection/1` bytes from the inspected programme
 /// and the sealed subject, then retains them idempotently in
-/// `reborn_component_validator_selections`. Returns the selection bytes on
-/// success so the caller can verify idempotent retry round-trips.
+/// `reborn_component_validator_selections`. Returns the exact verified retained
+/// selection read in that transaction for later post-settlement authentication.
 ///
 /// This is preparation, not execution authority or Q1 evidence.
 pub(crate) async fn retain_validator_selection(
     pool: &PgPool,
     subject: &RetainedValidatorSubject,
     inspected: &InspectedRetainedProgram,
-) -> Result<String, Q1AdmissionError> {
+) -> Result<selection::RetainedValidatorSelection, Q1AdmissionError> {
     let selection_bytes =
         RetainedValidatorCoverage::selection_bytes(subject, inspected, REVISION_LIMITS)
             .map_err(Q1AdmissionError::SelectionBytes)?;
@@ -74,8 +74,13 @@ pub(crate) async fn retain_validator_selection(
     selection::retain_in_transaction(&tx, &selection_bytes, REVISION_LIMITS)
         .await
         .map_err(|_| Q1AdmissionError::Retention)?;
+    let retained =
+        selection::read_preparation_in_transaction(&tx, subject.submission_id(), REVISION_LIMITS)
+            .await
+            .map_err(|_| Q1AdmissionError::Retention)?
+            .ok_or(Q1AdmissionError::Retention)?;
     tx.commit().await.map_err(|_| Q1AdmissionError::Pool)?;
-    Ok(selection_bytes)
+    Ok(retained)
 }
 
 #[cfg(test)]

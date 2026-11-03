@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use brassclaw_pg::PgPool;
-use brassclaw_turns::{LoopExit, run_profile::AgentLoopDriverError};
+use brassclaw_turns::run_profile::AgentLoopDriverError;
 use uuid::Uuid;
 
 use crate::bootstrap_validation;
@@ -58,12 +58,14 @@ impl ValidatorTaskDriver {
     /// - The live `InstalledMontyCatalogue` will route
     ///   `VALIDATOR_REVIEW_PREFIX + submission_id` to `ReviewAdmissionSource`.
     ///
-    /// Returns the `LoopExit` on service completion.
+    /// Returns the actual exit and, for a completed internal task, the opaque
+    /// post-settlement proof issued by the shared driver. A ResultOnly exit
+    /// alone is insufficient to graduate the original review.
     pub(crate) async fn submit(
         &self,
         pool: Arc<PgPool>,
         submission_id: Uuid,
-    ) -> Result<LoopExit, ValidatorDriverError> {
+    ) -> Result<crate::global_monty_driver::DrivenMontyTask, ValidatorDriverError> {
         // Admit through the trusted internal path.
         // AdmissionMode::ValidatorInternal sets trusted_internal_turn = true,
         // uses TRUSTED_INTERNAL_SOURCE_BINDING, and calls new_claimed on the handoff.

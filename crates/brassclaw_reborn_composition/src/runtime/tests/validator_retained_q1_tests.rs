@@ -28,6 +28,7 @@ use brassclaw_skills::{
     component_revision::ComponentRevisionDraft,
     review_submission_store::{PgReviewSubmissionStore, ReviewSubmissionDraft},
 };
+use sha2::Digest;
 use uuid::Uuid;
 
 fn q1_retained_scope() -> ComponentScope {
@@ -153,6 +154,43 @@ async fn run_q1_validation_retained_passes_and_persists_evidence() {
         .submit(&scope, component_id, 22, None)
         .await
         .expect("ValidationQueueStore::submit must succeed");
+
+    // An unrelated validator result for the same submission must not decide
+    // this execution. Deliberately future-date this negative historical fixture
+    // so a latest-row query would select it after the real run finishes. It is
+    // not a trusted positive observation or an approval fixture.
+    let decoy = Uuid::new_v4();
+    let decoy_bytes = serde_json::json!({
+        "format":"component-review-evidence/1", "evidence_id":decoy,
+        "kind":"q1", "succeeded":false,
+        "report":{"fixture":"unrelated negative validator result"}
+    })
+    .to_string();
+    let decoy_checksum = hex::encode(sha2::Sha256::digest(decoy_bytes.as_bytes()));
+    let decoy_selection = hex::encode(sha2::Sha256::digest(
+        b"unrelated validator selection fixture",
+    ));
+    {
+        let mut client = rig.pool.get().await.unwrap();
+        let tx = client.transaction().await.unwrap();
+        tx.execute(
+            "INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum)
+             VALUES($1,$2,$3)",
+            &[&decoy, &decoy_bytes, &decoy_checksum],
+        )
+        .await
+        .unwrap();
+        tx.execute(
+            "INSERT INTO reborn_validator_q1_runs
+             (run_id,submission_id,validator_selection_checksum,candidate_class_code,
+              task_handle,evidence_id,succeeded,recorded_at)
+             VALUES($1,$2,$3,22,$4,$1,false,clock_timestamp()+interval '1 day')",
+            &[&decoy, &submission_id, &decoy_selection, &Uuid::new_v4()],
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+    }
 
     // Run the full retained Q1 path.
     let outcome = run_q1_validation_retained(
@@ -332,8 +370,8 @@ async fn run_q1_validation_retained_fails_for_empty_content() {
                 "expected non-empty error list for empty-content component; got none"
             );
             assert!(
-                errors.iter().any(|e| e.contains("content")),
-                "expected an error mentioning 'content'; got: {errors:?}"
+                errors.iter().any(|e| e.ends_with(": content is empty")),
+                "expected the actual rule diagnostic, not a generic failure; got: {errors:?}"
             );
         }
         other => panic!("expected Q1Outcome::Failed for empty-content component; got {other:?}"),

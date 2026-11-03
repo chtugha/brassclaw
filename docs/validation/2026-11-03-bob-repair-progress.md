@@ -46,3 +46,22 @@ qualified selection, actual noncircular qualification, observed-vs-settled Q1,
 durable work and the complete strict retained/publication reader cutover. Do
 not mark broader steps complete from a parser test or boolean result. No new
 Rust workflow loop, approval service, queue or VM. Commits do not end the task.
+
+Second package: `SettledInternalCompletion` is issued only after the shared
+driver's actual terminal receipt and factory acknowledgement. The Q1 reader
+checks exact run/runner/lease hash/VM/task/selection/subject and durable result,
+then preserves the observed negative diagnostics. Its native compile succeeded
+in 414.02 seconds; 18/19 selected tests passed. The new positive/foreign-result
+case failed before task execution because its intentionally negative historical
+fixture lacked V102's required format/evidence ID. Those fields are corrected
+in source; rerun is pending. No full acceptance is claimed for that batch.
+
+The next bundled package also repairs the B1/B2 pure protocol oracle: only its
+declared ValueError and exact diagnostic satisfy a negative case. Transport,
+resource and other runtime errors cannot count as success. Positive cases must
+match the independent exact answer. Producer/oracle versions advance, original
+records remain unchanged, and compute duration comes from captured startup
+settings. This source is reviewed but not yet compiled/tested. A canonical
+validator-draft factory patch remains private in
+`/private/tmp/brassclaw-bob-seed-20261103/canonical.patch`; do not apply it alone
+while seed qualification still uses incomplete evidence/head-based skipping.

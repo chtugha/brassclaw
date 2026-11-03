@@ -65,6 +65,10 @@ fn db(error: tokio_postgres::Error) -> ValidatorQ1EvidenceError {
     ValidatorQ1EvidenceError::Database(error)
 }
 
+#[path = "pg_validator_q1_verdict.rs"]
+mod verdict;
+pub(crate) use verdict::read_settled_validator_q1;
+
 /// Opaque reference to a persisted Q1 evidence record. The UUID identifies
 /// the immutable row; bytes are sealed inside and never exposed to callers.
 ///

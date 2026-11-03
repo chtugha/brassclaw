@@ -12,7 +12,9 @@
 //!
 //! # State-2 write invariant (FIND-P9-01 / FIND-P9-08)
 //!
-//! Only `run_q1_validation_retained` (via `verify_receipt`) may write state 2.
+//! `verify_receipt` records observations before terminal native settlement.
+//! `run_q1_validation_retained` authenticates that exact settled execution before
+//! its reviewed queue transition may write state 2.
 //! The reviewed pass/failure methods are `pub(crate)` on [`ValidationQueueStore`],
 //! preventing any API layer from calling them directly.
 //!
@@ -388,15 +390,16 @@ pub(crate) async fn run_q1_validation_retained(
     };
 
     // Step 6 — retain the sealed validator selection (idempotent).
-    crate::pg_validator_q1_admission::retain_validator_selection(pool, &subject, &inspected)
-        .await
-        .map_err(|e| Q1Error::Admission(e.to_string()))?;
+    let retained_selection =
+        crate::pg_validator_q1_admission::retain_validator_selection(pool, &subject, &inspected)
+            .await
+            .map_err(|e| Q1Error::Admission(e.to_string()))?;
 
     // Step 7 — submit through the trusted internal drive_turn path.
     // drive_admitted calls build -> capture_internal -> GlobalRecipePorts::for_internal.
     // On InternalCompleted, GlobalRecipePorts::finish calls source.verify_receipt,
     // which persists the Q1 evidence. `settle_closed` must NOT be called after this.
-    let loop_exit = bridge
+    let driven = bridge
         .driver
         .submit(Arc::new(pool.clone()), submission_id)
         .await
@@ -406,59 +409,36 @@ pub(crate) async fn run_q1_validation_retained(
         component_id = %component_id,
         class_code   = class_code,
         submission_id = %submission_id,
-        loop_exit     = ?loop_exit,
+        loop_exit     = ?driven.exit,
         "Q1 retained: validator review task settled"
     );
 
-    match loop_exit {
+    match driven.exit {
         brassclaw_turns::LoopExit::Completed(LoopCompleted {
             completion_kind: brassclaw_turns::LoopCompletionKind::ResultOnly,
             ..
         }) => {
-            // InternalCompleted path: verify_receipt ran and persisted evidence.
-            // The actual pass/fail outcome is stored by verify_receipt in
-            // reborn_validator_q1_runs.succeeded. Read it now to route correctly —
-            // the loop exit alone does not indicate whether the aggregate step passed.
-            let succeeded: Option<bool> = {
-                let client = pool.get().await.map_err(|e| Q1Error::Db {
-                    reason: e.to_string(),
-                })?;
-                client
-                    .query_opt(
-                        "SELECT succeeded FROM reborn_validator_q1_runs \
-                         WHERE submission_id = $1 \
-                         ORDER BY recorded_at DESC LIMIT 1",
-                        &[&submission_id],
-                    )
-                    .await
-                    .map_err(q1_db)?
-                    .map(|row| row.get(0))
-            };
-            match succeeded {
-                Some(true) => {
-                    queue_store.gate1_pass_reviewed(scope, &review, &[]).await?;
-                    Ok(Q1Outcome::Passed)
-                }
-                Some(false) => {
-                    // Aggregate step produced pass:false — record the failure.
-                    let errors =
-                        vec!["structural validator: one or more content checks failed".into()];
-                    queue_store
-                        .gate1_fail_reviewed(scope, &review, &errors)
-                        .await?;
-                    Ok(Q1Outcome::Failed { errors })
-                }
-                None => {
-                    // verify_receipt should have written the run row; if it is
-                    // absent the evidence path did not complete — treat as failure.
-                    let errors = vec![
-                        "retained validator: no Q1 run evidence found after completion".into(),
-                    ];
-                    queue_store
-                        .gate1_fail_reviewed(scope, &review, &errors)
-                        .await?;
-                    Ok(Q1Outcome::Failed { errors })
-                }
+            let completion = driven.internal_completion.as_ref().ok_or_else(|| {
+                Q1Error::Admission("validator terminal settlement proof missing".into())
+            })?;
+            let verdict = crate::pg_validator_q1_evidence::read_settled_validator_q1(
+                pool,
+                &subject,
+                &retained_selection,
+                completion,
+            )
+            .await
+            .map_err(|error| Q1Error::Admission(error.to_string()))?;
+            if verdict.succeeded {
+                queue_store.gate1_pass_reviewed(scope, &review, &[]).await?;
+                Ok(Q1Outcome::Passed)
+            } else {
+                queue_store
+                    .gate1_fail_reviewed(scope, &review, &verdict.errors)
+                    .await?;
+                Ok(Q1Outcome::Failed {
+                    errors: verdict.errors,
+                })
             }
         }
         brassclaw_turns::LoopExit::Completed(_) => {

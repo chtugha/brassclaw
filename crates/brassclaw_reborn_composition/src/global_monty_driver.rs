@@ -93,6 +93,35 @@ pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
     ) -> Result<(), AgentLoopDriverError>;
 }
 
+/// Native settlement proof issued only after the real service receipt and
+/// its original factory acknowledgement completed. Neither a ResultOnly exit,
+/// receipt text nor a persisted observation row can construct this proof.
+pub(crate) struct SettledInternalCompletion {
+    attempt: MontyTaskAttempt,
+    receipt: Arc<TaskReceipt>,
+}
+impl SettledInternalCompletion {
+    pub(crate) fn attempt(&self) -> MontyTaskAttempt {
+        self.attempt
+    }
+    pub(crate) fn receipt(&self) -> &TaskReceipt {
+        &self.receipt
+    }
+}
+
+pub(crate) struct DrivenMontyTask {
+    pub(crate) exit: LoopExit,
+    pub(crate) internal_completion: Option<SettledInternalCompletion>,
+}
+impl From<LoopExit> for DrivenMontyTask {
+    fn from(exit: LoopExit) -> Self {
+        Self {
+            exit,
+            internal_completion: None,
+        }
+    }
+}
+
 enum Phase {
     Preparing,
     AwaitingAdmission,
@@ -591,7 +620,7 @@ impl GlobalMontyDriver {
     pub(crate) async fn drive_admitted(
         &self,
         host: Arc<MontyTaskHost>,
-    ) -> Result<LoopExit, AgentLoopDriverError> {
+    ) -> Result<DrivenMontyTask, AgentLoopDriverError> {
         if !host.is_result_only_completion() {
             return Err(failed("monty_internal_completion_contract_invalid"));
         }
@@ -601,7 +630,10 @@ impl GlobalMontyDriver {
     /// One lifecycle for ordinary and already admitted hosts. Admission chooses
     /// the original namespace and completion contract; neither entry replays
     /// work, starts a VM or substitutes a different host after a failure.
-    async fn drive_host(&self, host: Arc<MontyTaskHost>) -> Result<LoopExit, AgentLoopDriverError> {
+    async fn drive_host(
+        &self,
+        host: Arc<MontyTaskHost>,
+    ) -> Result<DrivenMontyTask, AgentLoopDriverError> {
         let entry = self.register(host.clone())?;
         let guard = DriveGuard(entry.clone());
         let context = host.run_context();
@@ -722,7 +754,8 @@ impl GlobalMontyDriver {
                     interrupted_message_refs: Vec::new(),
                     exit_id: LoopExitId::new(format!("exit:{}-cancelled", context.run_id))
                         .map_err(|_| failed("monty_exit_reference_invalid"))?,
-                }));
+                })
+                .into());
             }
         };
         let waiting = ticket.wait();
@@ -781,9 +814,16 @@ impl GlobalMontyDriver {
                     exit_id: LoopExitId::new(format!("exit:{}-completed", context.run_id))
                         .map_err(|_| failed("monty_exit_reference_invalid"))?,
                 });
+                let internal_completion = SettledInternalCompletion {
+                    attempt: host.attempt(),
+                    receipt,
+                };
                 drop(guard);
                 self.remove(host.attempt())?;
-                Ok(exit)
+                Ok(DrivenMontyTask {
+                    exit,
+                    internal_completion: Some(internal_completion),
+                })
             }
             TaskOutcome::Completed { reply_ref } => {
                 if internal_entry || host.is_result_only_completion() {
@@ -814,7 +854,7 @@ impl GlobalMontyDriver {
                 self.settle_attempt(&entry, receipt.clone()).await?;
                 drop(guard);
                 self.remove(host.attempt())?;
-                Ok(exit)
+                Ok(exit.into())
             }
             TaskOutcome::Failed { reason_kind } => {
                 self.settle_attempt(&entry, receipt.clone()).await?;
@@ -834,7 +874,8 @@ impl GlobalMontyDriver {
                         interrupted_message_refs: Vec::new(),
                         exit_id: LoopExitId::new(format!("exit:{}-cancelled", context.run_id))
                             .map_err(|_| failed("monty_exit_reference_invalid"))?,
-                    }));
+                    })
+                    .into());
                 }
                 Err(failed(reason_kind))
             }
@@ -848,7 +889,9 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
         &self,
         handoff: MontyTaskHandoff,
     ) -> Result<LoopExit, AgentLoopDriverError> {
-        self.drive_host(Arc::new(MontyTaskHost::new(handoff))).await
+        self.drive_host(Arc::new(MontyTaskHost::new(handoff)))
+            .await
+            .map(|driven| driven.exit)
     }
 
     async fn stop_attempt(&self, attempt: MontyTaskAttempt) -> Result<(), AgentLoopDriverError> {

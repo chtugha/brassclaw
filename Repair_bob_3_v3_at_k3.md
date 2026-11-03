@@ -400,6 +400,15 @@ original-state reconciliation, with no duplicate native validation effects.
 
 - [ ] **B3-08 — Share drive logic and preserve admission provenance.**
 
+**Implemented boundary, validation scope:** ordinary/admitted work shares
+`GlobalMontyDriver::drive_host` (17 selected native cases passed in the first
+repair batch). Completed internal work now returns an opaque proof only after
+the actual receipt and durable factory acknowledgement; Q1 consumes that proof
+instead of ResultOnly alone. The second batch compiled; one newly added decoy
+fixture needed correction before its positive integration case could execute.
+Private typed non-chat provenance and complete durable work/recovery gates
+remain open, so the full step is not completed.
+
 **Already implemented, scoped:** `0f1236a6c` supplies the admission-pool builder
 and its runtime attachment, fixing private review thread lookup. The two drive
 methods still duplicate submission/cancellation/receipt/settlement lifecycle;
