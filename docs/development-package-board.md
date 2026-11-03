@@ -39,13 +39,15 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 | Package | Chat/worktree | Scope and state |
 | --- | --- | --- |
-| A-01 — native Codex/Auth custody | `01a1a022-90b1-7932-8dcf-c0ef34b79fee`, host `local`, title “Bob 3 — Native Codex/Auth via Modal”; `/Users/ollama/.codex/worktrees/e8ba/brassclaw`, branch `codex/bob3-auth-custody` | First commit `77b31f122` integrated as `e92b66b5d`. Follow-ups `7dfa17d4f` and `fffe781ad` remain unintegrated. Review corrections stay here: original pending-custody recovery, complete native-index comparisons/inventory, MVCC-safe writer fencing, duplicate-key rejection and the ten native failures below. No further independent Auth task is assigned in this chat. |
+| A-01 — native Codex/Auth custody | `01a1a022-90b1-7932-8dcf-c0ef34b79fee`, host `local`, title “Bob 3 — Native Codex/Auth via Modal”; `/Users/ollama/.codex/worktrees/e8ba/brassclaw`, branch `codex/bob3-auth-custody` | Initial `77b31f122` and follow-ups `7dfa17d4f`, `fffe781ad`, `43f81e48c`, `92fa1fee0` integrated through `74fe7b1cc`. Pending-custody recovery, native-index inventory, V205 fencing, strict JSON and exact-source Retained reads await connected native acceptance. Review corrections remain here; no independent new Auth task. |
 | B-00 — review inherited Q1/Oracle repair and finish its acceptance fixes | `01a1a062-b1c4-7ba0-8506-b7c8b3ee4b33`, host `local`, title “Paket B-00 — Q1- und Oracle-Reparatur”; `/Users/ollama/.codex/worktrees/ac66/brassclaw` | Inherited source commits `548254e43`, `a534c4654`, `626e9fddc`, `fdc1f0bc2` reviewed. Correction `f62e911cf` and report `25a9536bd` integrated as `3223415ff`/`6c2041ab6`: incomplete execution no longer writes a negative candidate verdict. Exact-source Modal CLI and local native CLI smoke checks passed; new regression compilation/execution and affected lint remain pending. Chat is idle awaiting supervisor acceptance, not assigned another package. |
+| B-01 — original immutable review request | `01a1a0d0-de89-7a73-9fd2-af06d5d1ca81`, host `local`, title “Paket B-01 — Originale Review-Anforderung”; `/Users/ollama/.codex/worktrees/2f1e/brassclaw` | Fresh successor chat begins mandatory architecture/source reading and a concrete B1-02 contract proposal only. Product implementation and paid compilation await supervisor review and the predecessor acceptance gate. No queue/scheduler or B2 format owner is duplicated. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for
 A-01's snapshot-safe custody successor; do not modify applied V203/V204. Coordinate
-any later migration with the supervisor before using its number. B-00 requires no migration by default;
+any later migration with the supervisor before using its number. V206 is reserved
+for B-01 if its reviewed original-request contract needs a migration. B-00 requires no migration by default;
 it must explain any actual schema need before implementation.
 
 ## Current native evidence and handoff
@@ -83,6 +85,19 @@ it must explain any actual schema need before implementation.
   retains `native-accepted.json`. This does not compile its new test source or
   establish full product acceptance. See the exact-source
   [B-00 report](validation/2026-11-03-b00-package-review.md).
+- `.../v205-sql-review-2/` independently executed captured V205 function SQL on
+  isolated local PostgreSQL. Three fixed-snapshot insert/transfer cases failed
+  with required `40001`; matching owners succeeded and a visible competitor
+  failed `55000`. Exact V205 SHA-256:
+  `c36c5c7c16b067bc0dbf2b56467fa6dc260670ad5cd54500cdda819e96a35ce0`.
+  This verifies row-lock semantics, not Rust import/trigger attachment/upgrade.
+  The preceding sandbox attempt failed on shared-memory creation and remains a
+  separate failed setup record; the authorized rerun stopped its cluster cleanly.
+- Fifth batch `.../run-5/` compiled source `a4f308dc4` for 207.08 seconds and
+  stopped at missing test-local `AuthProductError` qualification. No selected
+  tests ran; no successful Composition artifact is claimed. A-01 supplied the
+  reviewed one-line correction, integrated as `74fe7b1cc`; the next run reuses
+  the canonical Cargo cache without cleaning it.
 - The Apple linker unwind-size warning remains visible and unresolved. No
   panic/exception behavior change or warning suppression is accepted as a fix.
 - Private canonical-factory draft:
