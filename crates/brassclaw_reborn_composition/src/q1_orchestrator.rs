@@ -125,7 +125,9 @@ fn q1_db(error: tokio_postgres::Error) -> Q1Error {
 /// - The installed worker binary is unavailable
 ///
 /// Returns `Q1Outcome::Passed` / `Q1Outcome::Failed` only when the complete
-/// IBS path executed and `verify_receipt` persisted evidence without error.
+/// IBS path executed, native settlement was acknowledged and the exact stored
+/// verdict was authenticated. Cancellation and incomplete execution return an
+/// error without recording a negative candidate verdict.
 #[cfg(feature = "skills-db")]
 pub(crate) async fn run_q1_validation_retained(
     pool: &PgPool,
@@ -155,7 +157,6 @@ pub(crate) async fn run_q1_validation_retained(
             structural_validator_recipe_id,
         },
     };
-    use brassclaw_turns::LoopCompleted;
 
     // Step 1 — require wired bridge; defer if not yet available.
     let bridge = match bridge {
@@ -413,61 +414,52 @@ pub(crate) async fn run_q1_validation_retained(
         "Q1 retained: validator review task settled"
     );
 
+    let completion = require_settled_validator_completion(driven)?;
+    let verdict = crate::pg_validator_q1_evidence::read_settled_validator_q1(
+        pool,
+        &subject,
+        &retained_selection,
+        &completion,
+    )
+    .await
+    .map_err(|error| Q1Error::Admission(error.to_string()))?;
+    if verdict.succeeded {
+        queue_store.gate1_pass_reviewed(scope, &review, &[]).await?;
+        Ok(Q1Outcome::Passed)
+    } else {
+        queue_store
+            .gate1_fail_reviewed(scope, &review, &verdict.errors)
+            .await?;
+        Ok(Q1Outcome::Failed {
+            errors: verdict.errors,
+        })
+    }
+}
+
+/// Execution failures cannot become candidate diagnostics. Only the settled
+/// reader's authenticated negative verdict may reach the queue failure writer.
+#[cfg(feature = "skills-db")]
+fn require_settled_validator_completion(
+    driven: crate::global_monty_driver::DrivenMontyTask,
+) -> Result<crate::global_monty_driver::SettledInternalCompletion, Q1Error> {
+    use brassclaw_turns::{LoopCompleted, LoopCompletionKind, LoopExit};
     match driven.exit {
-        brassclaw_turns::LoopExit::Completed(LoopCompleted {
-            completion_kind: brassclaw_turns::LoopCompletionKind::ResultOnly,
+        LoopExit::Completed(LoopCompleted {
+            completion_kind: LoopCompletionKind::ResultOnly,
             ..
-        }) => {
-            let completion = driven.internal_completion.as_ref().ok_or_else(|| {
-                Q1Error::Admission("validator terminal settlement proof missing".into())
-            })?;
-            let verdict = crate::pg_validator_q1_evidence::read_settled_validator_q1(
-                pool,
-                &subject,
-                &retained_selection,
-                completion,
-            )
-            .await
-            .map_err(|error| Q1Error::Admission(error.to_string()))?;
-            if verdict.succeeded {
-                queue_store.gate1_pass_reviewed(scope, &review, &[]).await?;
-                Ok(Q1Outcome::Passed)
-            } else {
-                queue_store
-                    .gate1_fail_reviewed(scope, &review, &verdict.errors)
-                    .await?;
-                Ok(Q1Outcome::Failed {
-                    errors: verdict.errors,
-                })
-            }
-        }
-        brassclaw_turns::LoopExit::Completed(_) => {
-            // Unexpected normal Completed (FinalReply) for an internal task.
-            let errors =
-                vec!["retained validator returned unexpected FinalReply completion".into()];
-            queue_store
-                .gate1_fail_reviewed(scope, &review, &errors)
-                .await?;
-            Ok(Q1Outcome::Failed { errors })
-        }
-        brassclaw_turns::LoopExit::Cancelled(cancelled) => {
-            let errors = vec![format!(
-                "validator task cancelled: {:?}",
-                cancelled.reason_kind
-            )];
-            queue_store
-                .gate1_fail_reviewed(scope, &review, &errors)
-                .await?;
-            Ok(Q1Outcome::Failed { errors })
-        }
-        brassclaw_turns::LoopExit::Blocked(_) | brassclaw_turns::LoopExit::Failed(_) => {
-            // Not produced by drive_admitted for internal tasks — treat as failure.
-            let errors = vec!["retained validator returned unexpected blocked/failed exit".into()];
-            queue_store
-                .gate1_fail_reviewed(scope, &review, &errors)
-                .await?;
-            Ok(Q1Outcome::Failed { errors })
-        }
+        }) => driven.internal_completion.ok_or_else(|| {
+            Q1Error::Admission("validator terminal settlement proof missing".into())
+        }),
+        LoopExit::Completed(_) => Err(Q1Error::Admission(
+            "retained validator returned unexpected reply completion".into(),
+        )),
+        LoopExit::Cancelled(cancelled) => Err(Q1Error::Admission(format!(
+            "validator task cancelled: {:?}",
+            cancelled.reason_kind
+        ))),
+        LoopExit::Blocked(_) | LoopExit::Failed(_) => Err(Q1Error::Admission(
+            "retained validator returned unexpected blocked/failed exit".into(),
+        )),
     }
 }
 
@@ -478,6 +470,43 @@ pub(crate) async fn run_q1_validation_retained(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Pure classification coverage; native settlement and queue behavior are
+    /// covered separately by the retained Q1 integration cases.
+    #[cfg(feature = "skills-db")]
+    #[test]
+    fn incomplete_execution_cannot_become_a_negative_candidate_verdict() {
+        use brassclaw_turns::{
+            LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, LoopFailureKind,
+        };
+        let id = || LoopExitId::new("exit:q1-incomplete-fixture".to_owned()).unwrap();
+        let mut exits = vec![
+            LoopExit::cancelled_for_observed_interrupt(id()),
+            LoopExit::failed(LoopFailureKind::EffectOutcomeUnresolved, id()),
+        ];
+        for completion_kind in [
+            LoopCompletionKind::FinalReply,
+            LoopCompletionKind::AskUserReply,
+            LoopCompletionKind::NoReply,
+            LoopCompletionKind::DelegatedResult,
+            LoopCompletionKind::ResultOnly,
+        ] {
+            exits.push(LoopExit::Completed(LoopCompleted {
+                completion_kind,
+                reply_message_refs: Vec::new(),
+                result_refs: Vec::new(),
+                final_checkpoint_id: None,
+                usage_summary_ref: None,
+                exit_id: id(),
+            }));
+        }
+        for exit in exits {
+            assert!(matches!(
+                require_settled_validator_completion(exit.into()),
+                Err(Q1Error::Admission(_))
+            ));
+        }
+    }
 
     #[test]
     fn q1outcome_deferred_is_not_passed() {
