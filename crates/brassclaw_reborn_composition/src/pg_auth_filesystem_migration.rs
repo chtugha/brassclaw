@@ -54,12 +54,46 @@ async fn import_record(
     )
     .await
     .map_err(db_err)?;
-    let query = format!("SELECT data FROM {table} WHERE tenant_id=$1 AND id=$2");
+    let query = format!("SELECT user_id,data FROM {table} WHERE tenant_id=$1 AND id=$2 FOR UPDATE");
     let row = tx
         .query_one(&query, &[&scope.resource.tenant_id.as_str(), &id])
         .await
         .map_err(db_err)?;
-    if row.get::<_, serde_json::Value>(0) != *data {
+    if row.get::<_, String>(0) != scope.resource.user_id.as_str()
+        || row.get::<_, serde_json::Value>(1) != *data
+    {
+        return Err(conflict());
+    }
+    Ok(())
+}
+
+async fn import_refresh_record(
+    tx: &tokio_postgres::Transaction<'_>,
+    tenant: &str,
+    action: &CredentialRefreshAction,
+) -> Result<(), AuthProductError> {
+    let json = serde_json::to_value(action).map_err(|_| conflict())?;
+    let scope_ref = action.original.scope_ref()?;
+    let id = action.original.id.to_string();
+    let account_id = action.original.account_id.to_string();
+    let refresh = action
+        .expected_account
+        .refresh_secret
+        .as_ref()
+        .map(|h| h.as_str());
+    let blocks = action
+        .expected_account
+        .refresh_secret
+        .as_ref()
+        .is_some_and(|h| action.blocks_credential(h));
+    tx.execute("INSERT INTO brassclaw_product_auth_refreshes (tenant_id,scope_ref,id,account_id,refresh_handle,blocks_refresh,data) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (tenant_id,scope_ref,id) DO NOTHING",
+        &[&tenant,&scope_ref,&id,&account_id,&refresh,&blocks,&json]).await.map_err(db_err)?;
+    let found=tx.query_one("SELECT account_id,refresh_handle,blocks_refresh,data FROM brassclaw_product_auth_refreshes WHERE tenant_id=$1 AND scope_ref=$2 AND id=$3 FOR UPDATE",&[&tenant,&scope_ref,&id]).await.map_err(db_err)?;
+    if found.get::<_, String>(0) != account_id
+        || found.get::<_, Option<String>>(1).as_deref() != refresh
+        || found.get::<_, bool>(2) != blocks
+        || found.get::<_, serde_json::Value>(3) != json
+    {
         return Err(conflict());
     }
     Ok(())
@@ -268,25 +302,8 @@ impl PgAuthProductServices {
             ) {
                 return Err(conflict());
             }
-            let json = serde_json::to_value(&action).map_err(|_| conflict())?;
-            let scope_ref = action.original.scope_ref()?;
-            let id = action.original.id.to_string();
-            let refresh = action
-                .expected_account
-                .refresh_secret
-                .as_ref()
-                .map(|h| h.as_str());
-            let blocks = action
-                .expected_account
-                .refresh_secret
-                .as_ref()
-                .is_some_and(|h| action.blocks_credential(h));
-            tx.execute("INSERT INTO brassclaw_product_auth_refreshes (tenant_id,scope_ref,id,account_id,refresh_handle,blocks_refresh,data) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (tenant_id,scope_ref,id) DO NOTHING",
-                &[&tenant,&scope_ref,&id,&action.original.account_id.to_string(),&refresh,&blocks,&json]).await.map_err(db_err)?;
-            let found=tx.query_one("SELECT data FROM brassclaw_product_auth_refreshes WHERE tenant_id=$1 AND scope_ref=$2 AND id=$3",&[&tenant,&scope_ref,&id]).await.map_err(db_err)?;
-            if found.get::<_, serde_json::Value>(0) != json
-                || !imported.insert((action.original.account_id, action.original.id))
-            {
+            import_refresh_record(&tx, tenant, &action).await?;
+            if !imported.insert((action.original.account_id, action.original.id)) {
                 return Err(conflict());
             }
         }
@@ -585,5 +602,119 @@ mod conflict_tests {
         )
         .await
         .unwrap();
+    }
+}
+
+#[cfg(all(test, feature = "skills-db"))]
+mod indexed_conflict_tests {
+    use super::*;
+    use brassclaw_auth::{
+        AuthSurface, CredentialRefreshOriginal, CredentialRefreshOutcome,
+        CredentialRefreshPublication,
+    };
+    use brassclaw_host_api::{InvocationId, ResourceScope, TenantId, UserId};
+
+    #[tokio::test]
+    async fn native_auth_migration_rejects_same_json_with_conflicting_native_indexes() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        run_auth_migrations(&rig.pool).await.unwrap();
+        let scope = AuthProductScope::new(
+            ResourceScope {
+                tenant_id: TenantId::new("indexed-custody").unwrap(),
+                user_id: UserId::new("original-user").unwrap(),
+                agent_id: None,
+                project_id: None,
+                thread_id: None,
+                invocation_id: InvocationId::new(),
+            },
+            AuthSurface::Web,
+        );
+        // SQL identity/index fidelity only: no provider/account approval or
+        // issuer completion is manufactured by these controlled data inputs.
+        let json = serde_json::json!({"original":"unchanged JSON bytes"});
+        let mut connection = rig.pool.get().await.unwrap();
+        for table in [
+            "brassclaw_product_auth_accounts",
+            "brassclaw_product_auth_flows",
+            "brassclaw_product_auth_interactions",
+            "brassclaw_product_auth_requirement_selections",
+        ] {
+            let tx = connection.transaction().await.unwrap();
+            import_record(&tx, table, &scope, "original-id", &json)
+                .await
+                .unwrap();
+            tx.execute(&format!("UPDATE {table} SET user_id='different-indexed-user' WHERE tenant_id=$1 AND id=$2"),&[&scope.resource.tenant_id.as_str(),&"original-id"]).await.unwrap();
+            assert_eq!(
+                import_record(&tx, table, &scope, "original-id", &json)
+                    .await
+                    .unwrap_err(),
+                AuthProductError::BackendConflict
+            );
+            let row = tx
+                .query_one(
+                    &format!("SELECT user_id,data FROM {table} WHERE tenant_id=$1 AND id=$2"),
+                    &[&scope.resource.tenant_id.as_str(), &"original-id"],
+                )
+                .await
+                .unwrap();
+            assert_eq!(row.get::<_, String>(0), "different-indexed-user");
+            assert_eq!(row.get::<_, serde_json::Value>(1), json);
+            tx.rollback().await.unwrap();
+        }
+        let now = Utc::now();
+        let account = CredentialAccount {
+            id: CredentialAccountId::new(),
+            scope: scope.clone(),
+            provider: AuthProviderId::new("google").unwrap(),
+            label: CredentialAccountLabel::new("SQL original identity").unwrap(),
+            status: CredentialAccountStatus::Configured,
+            ownership: CredentialOwnership::UserReusable,
+            owner_extension: None,
+            granted_extensions: vec![],
+            access_secret: Some(SecretHandle::new("indexed-access").unwrap()),
+            access_expires_at: None,
+            refresh_secret: Some(SecretHandle::new("indexed-refresh").unwrap()),
+            scopes: vec![],
+            created_at: now,
+            updated_at: now,
+        };
+        let request =
+            CredentialRefreshRequest::new(scope.clone(), account.provider.clone(), account.id);
+        let action = CredentialRefreshAction {
+            original: CredentialRefreshOriginal::from(&request),
+            expected_account: account,
+            destinations: None,
+            source: None,
+            outcome: CredentialRefreshOutcome::Unknown(
+                brassclaw_auth::AuthErrorCode::BackendUnavailable,
+            ),
+            publication: CredentialRefreshPublication::Pending,
+            published_account: None,
+            created_at: now,
+            updated_at: now,
+        };
+        for assignment in [
+            "account_id='different-indexed-account'",
+            "refresh_handle=NULL",
+            "blocks_refresh=FALSE",
+        ] {
+            let tx = connection.transaction().await.unwrap();
+            import_refresh_record(&tx, scope.resource.tenant_id.as_str(), &action)
+                .await
+                .unwrap();
+            tx.execute(&format!("UPDATE brassclaw_product_auth_refreshes SET {assignment} WHERE tenant_id=$1 AND scope_ref=$2 AND id=$3"),&[&scope.resource.tenant_id.as_str(),&action.original.scope_ref().unwrap(),&action.original.id.to_string()]).await.unwrap();
+            assert_eq!(
+                import_refresh_record(&tx, scope.resource.tenant_id.as_str(), &action)
+                    .await
+                    .unwrap_err(),
+                AuthProductError::BackendConflict
+            );
+            let row=tx.query_one("SELECT data FROM brassclaw_product_auth_refreshes WHERE tenant_id=$1 AND scope_ref=$2 AND id=$3",&[&scope.resource.tenant_id.as_str(),&action.original.scope_ref().unwrap(),&action.original.id.to_string()]).await.unwrap();
+            assert_eq!(
+                row.get::<_, serde_json::Value>(0),
+                serde_json::to_value(&action).unwrap()
+            );
+            tx.rollback().await.unwrap();
+        }
     }
 }
