@@ -39,9 +39,9 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 | Package | Chat/worktree | Scope and state |
 | --- | --- | --- |
-| A-01 — native Codex/Auth custody | `01a1a022-90b1-7932-8dcf-c0ef34b79fee`, host `local`, title “Bob 3 — Native Codex/Auth via Modal”; `/Users/ollama/.codex/worktrees/e8ba/brassclaw`, branch `codex/bob3-auth-custody` | Initial `77b31f122` and follow-ups `7dfa17d4f`, `fffe781ad`, `43f81e48c`, `92fa1fee0` integrated through `74fe7b1cc`. Pending-custody recovery, native-index inventory, V205 fencing, strict JSON and exact-source Retained reads await connected native acceptance. Review corrections remain here; no independent new Auth task. |
+| A-01 — native Codex/Auth custody | `01a1a022-90b1-7932-8dcf-c0ef34b79fee`, host `local`, title “Bob 3 — Native Codex/Auth via Modal”; `/Users/ollama/.codex/worktrees/e8ba/brassclaw`, branch `codex/bob3-auth-custody` | Initial and review follow-ups integrated through `7936dc29e`. Run-6 passed all five new Codex-refresh cases, migration/index/strict-JSON/fence cases and original Device failures except one later fixture assertion. The two remaining fixture corrections `39d4c0c8d`/`c7ec0ef89` are integrated; their actual connected execution and relevant lint remain pending. Full mandatory architecture reading confirmed; no independent new Auth task. |
 | B-00 — review inherited Q1/Oracle repair and finish its acceptance fixes | `01a1a062-b1c4-7ba0-8506-b7c8b3ee4b33`, host `local`, title “Paket B-00 — Q1- und Oracle-Reparatur”; `/Users/ollama/.codex/worktrees/ac66/brassclaw` | Inherited source commits `548254e43`, `a534c4654`, `626e9fddc`, `fdc1f0bc2` reviewed. Correction `f62e911cf` and report `25a9536bd` integrated as `3223415ff`/`6c2041ab6`: incomplete execution no longer writes a negative candidate verdict. Exact-source Modal CLI and local native CLI smoke checks passed; new regression compilation/execution and affected lint remain pending. Chat is idle awaiting supervisor acceptance, not assigned another package. |
-| B-01 — original immutable review request | `01a1a0d0-de89-7a73-9fd2-af06d5d1ca81`, host `local`, title “Paket B-01 — Originale Review-Anforderung”; `/Users/ollama/.codex/worktrees/2f1e/brassclaw` | Fresh successor chat begins mandatory architecture/source reading and a concrete B1-02 contract proposal only. Product implementation and paid compilation await supervisor review and the predecessor acceptance gate. No queue/scheduler or B2 format owner is duplicated. |
+| B-01 — original immutable review request | `01a1a0d0-de89-7a73-9fd2-af06d5d1ca81`, host `local`, title “Paket B-01 — Originale Review-Anforderung”; `/Users/ollama/.codex/worktrees/2f1e/brassclaw` | Complete mandatory reading and revised contract reviewed. Bounded implementation authorized after the terminal run-6 and passing B-00 native cases; final predecessor lint remains supervisor-owned. Implement exact immutable request/queue binding, coherent supported caller capture and final CAS in the existing owners. V206 reserved. Keep actual legacy and joint-runner gaps explicit; no replacement scheduler/approval owner or blanket disabling of authors. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for
@@ -98,6 +98,28 @@ it must explain any actual schema need before implementation.
   tests ran; no successful Composition artifact is claimed. A-01 supplied the
   reviewed one-line correction, integrated as `74fe7b1cc`; the next run reuses
   the canonical Cargo cache without cleaning it.
+- Before run-6 the disk guard required another package-only cleanup (1.8 GiB).
+  Run-6 captured `a64d9d93e`, compiled Composition/LLM in 473.36 seconds and
+  executed 73 exact native Composition cases: **71 passed, two failed**.
+  Total batch 961.51 seconds. New Q1 incomplete-execution classification and all
+  six retained Q1 callers passed. Auth's pending-factory fixture expected
+  `Completing` instead of actual `CallbackReceived`/`Submitted`; its Device
+  custody fixture incorrectly deserialized privileged host `RuntimeKind::System`.
+  The supplied test corrections preserve production custody/identity rules.
+  No zero-selected/ignored case counted as passing. Actual Composition SHA-256:
+  `e617d6ab5435ea40b5195113772f3d7f8e86bca423e4e6c20257d611f8d8979f`.
+  Existing `completed.json` records the failure and must not be overwritten.
+- After user-requested inspection and explicit deletion authorization, the
+  supervisor removed exactly 28 unchanged, unreferenced temporary native-image
+  files and their empty parent directories: 9.91 GiB, about 29 GiB free afterwards.
+  No wildcard deletion, source/PG data or Cargo-cache cleanup was involved.
+  Read-only audit and exact deletion receipts remain at
+  `/private/tmp/brassclaw-native-deletion-audit.json` and
+  `/private/tmp/brassclaw-native-deletion-result.json`.
+- Run-7 is prepared to compile the two corrected test sources once, execute only
+  those two failed cases and then run affected-package Clippy serially if both
+  pass. The unchanged 71 passing run-6 cases and LLM/Auth run-4 evidence are
+  reusable; final lint/product/platform claims remain open.
 - The Apple linker unwind-size warning remains visible and unresolved. No
   panic/exception behavior change or warning suppression is accepted as a fix.
 - Private canonical-factory draft:
