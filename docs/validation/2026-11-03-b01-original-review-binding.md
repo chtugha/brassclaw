@@ -450,3 +450,52 @@ artifact identities, **not** test-target compilation, SQL/migration execution,
 Clippy, native binary execution, native/runtime/browser testing, activation or
 B1-02/whole-plan acceptance. No local Cargo, remote tests, native artifact startup
 or additional paid job was run. Native acceptance remains supervisor-owned.
+
+
+## UI regression test-source correction — 2026-11-04
+
+Supervisor review requested test-source coverage for the newly connected UI
+contracts while the integrated main remains frozen for native compilation.
+Only test sources and this report change in the package worktree; production
+JavaScript, Rust, SQL, DTOs and API behavior remain unchanged. No Cargo, Modal
+job or paid retry was started.
+
+The existing controlled VM/React-hook style is retained. Test transports produce
+controlled JS values/errors only: these cases do not certify a PostgreSQL seal,
+Q1, human Q2, activation, durable Work or actual browser acceptance.
+
+* `component-submission-panel.test.mjs`: preserves the original seven cases and
+  adds five. Existing-queue and create-project targets keep their exact original
+  selector values, order, candidate, ID and observed counter after an unknown
+  commit; controls and new-request action stay locked. An already queued stale
+  selector event cannot retarget the pending retry. For both target kinds,
+  inspection of a retained subject with the same ID but different selectors is
+  visible only as readback, never substituted for the pending POST acknowledgement
+  or original request. Standalone retains the old field absence after editing
+  both hidden selector types.
+* `validation-queue-paging.test.mjs`: four cases cover full traversal of both
+  buckets, opaque cursor encoding, an empty intermediate page, class-qualified
+  merging/deduplication, a live auto-to-manual transition, global time/class/ID
+  ordering and old-wire timestamp fallback. A later-page failure in either
+  bucket rejects the complete fetch, preserving the original error instead of
+  returning a partial success. A non-advancing cursor fails explicitly.
+* `validation-queue-tab.test.mjs`: eight cases load the actual English/German
+  message packs and render the actual QueueRow with controlled hooks. Both
+  legacy custody and joint-unsupported diagnoses/queue IDs must be visible;
+  Recipe Q2 approval is disabled. Joint Skill/PythonCode rows expose no partial
+  Q2 actions and show the missing-action message. Positive bound-Recipe and
+  new-unbound controls ensure the fixture is not simply blocking every row.
+  No mutation success callback or backend approval receipt is synthesized.
+
+Total: 24 UI cases across these three files, 17 newly added. Direct `node --check`
+parser checks and `git diff --check` passed. **The tests themselves were not run
+in this package chat**; local execution/acceptance remains supervisor-owned.
+Suggested bundled local command:
+
+```text
+node --test crates/brassclaw_webui_v2_static/static/js/pages/settings/components/component-submission-panel.test.mjs crates/brassclaw_webui_v2_static/static/js/pages/settings/lib/validation-queue-paging.test.mjs crates/brassclaw_webui_v2_static/static/js/pages/settings/components/validation-queue-tab.test.mjs
+```
+
+The successful Modal CLI receipt above still applies only to its frozen
+419a132e3 inputs. These test-source additions neither broaden that receipt nor
+claim completion of the open B1-02/whole-plan/native acceptance scope.
