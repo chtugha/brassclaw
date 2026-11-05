@@ -369,10 +369,10 @@ skills-db = ["brassclaw_engine/skills-db"]
 [profile.dev.package.sha2]
 opt-level = 3
 
-# This crate's native integration harness exceeds Mach-O's compact-unwind
-# offset range without optimization. Reduce generated code and unwind records;
-# keep the normal test panic/debug-check settings for actual failure coverage.
-[profile.test.package.brassclaw_reborn_composition]
+# Apply basic optimization throughout test dependency graphs to reduce generated
+# code and unwind records in large native harnesses. Retain normal test debug
+# assertions, overflow checks, debug information and unwinding.
+[profile.test]
 opt-level = 1
 
 [profile.release]

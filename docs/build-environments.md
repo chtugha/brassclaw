@@ -16,6 +16,22 @@ alternative complete configuration. Do not put credentials in that file.
 Existing Cargo profiles, target-specific linker settings and host environment
 remain in their current owners; no second Cargo target is introduced locally.
 
+The workspace `Cargo.toml` sets the normal test profile to `opt-level = 1` across
+workspace members and runtime dependencies, retaining the existing `sha2`
+optimization override. Test debug assertions, overflow checks and unwinding
+remain enabled; `.cargo/config.toml` retains debug level 1, unpacked debug
+information and incremental compilation. Existing CI environment overrides for
+debug information and incremental compilation still take precedence. Dev,
+release and dist profiles are unchanged. The first test build after this change
+recompiles affected dependencies and needs additional cache space; earlier warm
+build timings do not estimate that rebuild. Keep the canonical target and
+retained evidence. This addresses the distributed unoptimized contributions to
+large native harnesses; the Apple unwind-size repair still requires an actual
+native link without the warning, retained unwind sections and `__eh_frame` below
+16 MiB, followed by real harness/caller checks. See the
+[source-only profile review](validation/2026-11-05-c00-test-unwind-profile.md);
+configuration inspection alone does not establish those acceptance gates.
+
 | Setting | Meaning |
 | --- | --- |
 | Local `jobs` | Positive Cargo job count, or `"inherit"` to preserve `CARGO_BUILD_JOBS` and existing Cargo defaults. This is not an OS CPU/RAM reservation. |
