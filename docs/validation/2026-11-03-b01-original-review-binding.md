@@ -499,3 +499,30 @@ node --test crates/brassclaw_webui_v2_static/static/js/pages/settings/components
 The successful Modal CLI receipt above still applies only to its frozen
 419a132e3 inputs. These test-source additions neither broaden that receipt nor
 claim completion of the open B1-02/whole-plan/native acceptance scope.
+
+## Native run-8 lifecycle fixture correction — 2026-11-05
+
+Supervisor run-8 reported a successful native test compilation (463.38 seconds)
+and 33/36 passing tests. The two new rejection fixtures failed at their direct
+`state=2` setup with `q1_review_seal_complete`, before reaching the rejection
+writer. This section records their source correction, not a successful rerun.
+
+Both fixtures now seed only their counter while pending, then use the existing
+test-only `ValidationQueueStore::gate1_pass` lifecycle owner. That owner captures
+actual candidate/queue bytes and seals through the existing reviewed-state writer.
+Its existing Recipe fixture support now also permits PythonCode with explicitly
+empty `includes` and null `dependency_registry`; it does not infer dependencies
+or Skill associations. The resulting originals remain unreviewed lifecycle
+fixtures, never executable Q1/behavior/approval evidence.
+
+The threshold projection test uses fresh terminal candidates in a separate
+project scope after checking the nonterminal threshold projections. It does not
+reopen rejected originals or reuse their stale seals. Both classes still reach
+terminal state through the actual rejection writer, and retain garbage labels,
+counts and rejection-bucket placement after a higher threshold is configured.
+
+Production paths, database constraints and approval contracts are unchanged.
+Direct rustfmt parser/format checks and `git diff --check` pass. No Cargo command,
+test execution or Modal job was started for this correction; supervisor-owned
+native reruns remain required. The previous build receipt does not cover these
+changed test inputs, and general B1/B2/B3 acceptance remains open.

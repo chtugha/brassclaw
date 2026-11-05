@@ -512,19 +512,22 @@ impl ValidationQueueStore {
             return Err(ValidationQueueError::InvalidGate1Result { component_id });
         }
         let review = self.capture_q1_candidate(scope, component_id).await?;
-        if review.class_code == 21 && review.binding.is_none() {
+        let empty_code_fixture = review.class_code == 22
+            && review.reviewed.get("includes") == Some(&serde_json::json!([]))
+            && review.reviewed.get("dependency_registry") == Some(&Value::Null);
+        if (review.class_code == 21 || empty_code_fixture) && review.binding.is_none() {
             use brassclaw_skills::{
                 component_revision::ComponentRevisionDraft,
                 review_submission_store::ReviewSubmissionDraft,
                 revision_store::PgComponentRevisionStore,
             };
-            // Existing Recipe lifecycle fixtures declare no retained dependency
-            // graph. This helper is deliberately limited to those fixtures; it
-            // cannot reconstruct a Skill association or certify executable Q1.
+            // Existing Recipe and explicitly dependency-free PythonCode lifecycle
+            // fixtures declare no retained graph. This test-only helper cannot
+            // reconstruct dependencies/Skill associations or certify executable Q1.
             let revision = |document: Value| {
                 ComponentRevisionDraft::from_json(
                     &serde_json::json!({
-                        "format":"component-revision/1","uuid":component_id,"class_code":21,
+                        "format":"component-revision/1","uuid":component_id,"class_code":review.class_code,
                         "document":document,"dependencies":[],"association":null,
                     })
                     .to_string(),
